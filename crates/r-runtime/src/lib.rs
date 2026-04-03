@@ -22,6 +22,9 @@ pub mod env;
 pub mod vector;
 pub mod promise;
 pub mod arena;
+pub mod eval;
+pub mod error;
+pub mod context;
 
 pub use sexp::{Sexp, Tag, TypeTagged, SEXPTYPE};
 pub use gc::{Gc, Root, Scope, Trace, WriteBarrier};
