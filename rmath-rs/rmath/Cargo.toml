@@ -1,0 +1,19 @@
+[package]
+name = "rmath"
+version = "0.1.0"
+edition = "2024"
+description = "Rust port of R's nmath statistical library"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+name = "rmath"
+
+[features]
+default = ["standalone"]
+standalone = []
+integrated = []
+
+[dependencies]
+libm = "0.1"
+num = "0.4"
+libc = "0.2"

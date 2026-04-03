@@ -1,0 +1,8 @@
+[package]
+name = "rmath-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rmath = { path = "../rmath" }
+libm = "0.1"
