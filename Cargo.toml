@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/r-runtime",
+  "crates/r-main",
+  "crates/r-nmath",
+  "crates/r-appl",
+  "crates/r-modules",
+  "crates/r-graphics-engine",
+  "crates/r-grdevices",
+  "crates/r-device-headless",
+  "crates/r-platform-unix",
+  "crates/r-platform-windows",
+  "crates/r-platform-macos",
+  "crates/r-embed",
+  "crates/r-ffi",
+  "crates/r-library-base",
+  "crates/r-library-compiler",
+  "crates/r-library-graphics",
+  "crates/r-library-grdevices",
+  "crates/r-library-methods",
+  "crates/r-library-parallel",
+  "crates/r-library-stats",
+  "crates/r-library-utils",
+  "crates/r-test-harness",
+  "crates/r-serialize",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Project contributors"]
+license = "GPL-2.0-or-later"
+repository = "https://github.com/rport/rport"
+homepage = "https://rport.dev"
+
+[workspace.dependencies]
+thiserror = "1.0"
+anyhow = "1.0"
+hashbrown = "0.15"
+smallvec = "1.13"
+libc = "0.2"
+jni = "0.22"
+
+[workspace.features]
+default = ["desktop-compat"]
+desktop-compat = ["external-blas-lapack", "compat-fortran-interop", "long-double"]
+desktop-pure-rust = ["pure-rust-linalg"]
+android-headless = ["pure-rust-linalg"]
+
+external-blas-lapack = []
+bundled-reference-lapack = []
+pure-rust-linalg = []
+compat-fortran-interop = []
+long-double = []

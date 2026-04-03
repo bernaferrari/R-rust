@@ -1,3 +1,16 @@
+/target
+Cargo.lock
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+.DS_Store
+.idea
+.vscode
+*.swp
+*.swo
+*~
 
 # Beads / Dolt files (added by bd init)
 .dolt/

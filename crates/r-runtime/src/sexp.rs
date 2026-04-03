@@ -1,8 +1,4 @@
-use core::marker::PhantomData;
 use core::ptr::NonNull;
-
-use crate::gc::Gc;
-use crate::object::Object;
 
 /// R's exact SEXPTYPE tag values.
 #[repr(u8)]
@@ -36,80 +32,46 @@ pub enum SEXPTYPE {
     FREESXP = 31,
 }
 
+pub type Tag = SEXPTYPE;
+
 /// Type tag trait for static type checking.
-pub trait TypeTagged: Object {
+pub trait TypeTagged {
     const TAG: SEXPTYPE;
 }
 
-/// Tagged SEXP pointer.
+/// Tagged SEXP pointer - stub implementation.
 #[repr(transparent)]
 #[derive(Copy, Clone)]
-pub struct Sexp<T: Object = dyn Object> {
+pub struct Sexp<T: ?Sized = ()> {
     ptr: NonNull<T>,
-    _marker: PhantomData<fn() -> T>,
 }
 
-impl<T: Object> Sexp<T> {
-    /// Create a new Sexp pointer from a valid GC-managed object.
-    #[inline(always)]
-    pub(crate) unsafe fn new_unchecked(ptr: NonNull<T>) -> Self {
-        Self {
-            ptr,
-            _marker: PhantomData,
-        }
-    }
-
-    /// Get the raw pointer.
-    #[inline(always)]
-    pub fn as_ptr(self) -> *const T {
-        self.ptr.as_ptr()
-    }
-
-    /// Get mutable raw pointer.
-    #[inline(always)]
-    pub fn as_mut_ptr(self) -> *mut T {
-        self.ptr.as_ptr()
-    }
-
-    /// Cast to a known object type.
-    #[inline]
-    pub fn cast<U: Object + TypeTagged>(self) -> Sexp<U> {
-        debug_assert_eq!(unsafe { (*self.as_ptr()).tag() }, U::TAG);
-        unsafe { Sexp::new_unchecked(self.ptr.cast()) }
-    }
-
-    /// Get the object header.
-    #[inline(always)]
-    pub fn header(self) -> &'static Header {
-        unsafe { &*(self.as_ptr() as *const Header) }
+impl<T: ?Sized> core::fmt::Debug for Sexp<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Sexp").field("ptr", &self.ptr).finish()
     }
 }
 
-/// Common object header present on all GC objects.
+impl Sexp {
+    /// Create a new Sexp pointer - stub
+    #[inline(always)]
+    pub unsafe fn new_unchecked(ptr: NonNull<()>) -> Self {
+        Self { ptr }
+    }
+}
+
+/// Common object header - stub implementation
 #[repr(C)]
 #[derive(Debug)]
 pub struct Header {
-    pub(crate) tag: SEXPTYPE,
-    pub(crate) gc_bits: u8,
-    pub(crate) gc_gen: u8,
-    pub(crate) flags: u8,
-    pub(crate) attributes: Option<Sexp>,
-    pub(crate) prev: Option<Sexp>,
-    pub(crate) next: Option<Sexp>,
+    pub tag: SEXPTYPE,
+    pub gc_bits: u8,
 }
 
 impl Header {
     #[inline(always)]
     pub const fn new(tag: SEXPTYPE) -> Self {
-        Self {
-            tag,
-            gc_bits: 0,
-            gc_gen: 0,
-            flags: 0,
-            attributes: None,
-            prev: None,
-            next: None,
-        }
+        Self { tag, gc_bits: 0 }
     }
 
     #[inline(always)]
@@ -118,5 +80,5 @@ impl Header {
     }
 }
 
-unsafe impl<T: Object> Send for Sexp<T> {}
-unsafe impl<T: Object> Sync for Sexp<T> {}
+unsafe impl Send for Sexp {}
+unsafe impl Sync for Sexp {}

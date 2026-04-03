@@ -1,0 +1,21 @@
+[package]
+name = "r-ffi"
+version = "0.2.0"
+edition = "2021"
+description = "R ABI compatibility layer - 100% libR compatible FFI interface"
+
+[dependencies]
+libc = "0.2"
+once_cell = "1.19"
+libloading = "0.8"
+
+[build-dependencies]
+cc = "1.1"
+
+[lib]
+crate-type = ["cdylib", "staticlib", "rlib"]
+name = "R"
+
+[features]
+default = []
+static = []

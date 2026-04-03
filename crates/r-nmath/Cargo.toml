@@ -1,0 +1,24 @@
+[package]
+name = "r-nmath"
+version = "0.1.0"
+edition = "2021"
+authors = ["R Port contributors"]
+license = "GPL-2.0-or-later"
+description = "R mathematical library ported to Rust"
+repository = "https://github.com/rport/rport"
+
+[features]
+default = ["standalone"]
+standalone = ["libm"]
+# For integration with full R runtime
+integrated = ["r-runtime"]
+
+[dependencies]
+libm = { version = "0.2", optional = true }
+
+# Optional: integration with r-runtime for SEXP types
+r-runtime = { path = "../r-runtime", optional = true }
+
+[dev-dependencies]
+# For generating reference values from R
+# This would need R installed to run comprehensive tests

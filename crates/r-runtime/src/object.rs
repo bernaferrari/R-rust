@@ -1,17 +1,24 @@
 use crate::gc::Trace;
 use crate::sexp::{Header, SEXPTYPE};
 
-/// Base trait for all GC-managed objects.
+/// Trait for GC-managed objects
 pub unsafe trait Object: Trace {
-    /// Get the common object header.
     fn header(&self) -> &Header;
+    fn size(&self) -> usize;
+}
 
-    /// Get the object's type tag.
-    #[inline(always)]
-    fn tag(&self) -> SEXPTYPE {
-        self.header().tag()
+/// Stub implementation for ()
+unsafe impl Trace for () {
+    unsafe fn trace(&mut self) {}
+}
+
+unsafe impl Object for () {
+    fn header(&self) -> &Header {
+        static HEADER: Header = Header::new(SEXPTYPE::NILSXP);
+        &HEADER
     }
 
-    /// Get the object's size in bytes.
-    fn size(&self) -> usize;
+    fn size(&self) -> usize {
+        0
+    }
 }
