@@ -1,4 +1,4 @@
-#![allow(unused_assignments)]
+#![allow(unused_assignments, clippy::neg_cmp_op_on_partial_ord)]
 // Ported from R's nmath/bessel_j.c
 //
 // Original by W. J. Cody, Applied Mathematics Division,

@@ -329,7 +329,7 @@ fn dpsifn(x: f64, n: i32, kode: i32, m: i32) -> (Vec<f64>, i32, i32) {
                         let mut xm_j = xinc - 1.0;
                         let mut fx_j = x + xm_j;
                         for i in 1..=nx_l {
-                            trmr[i as usize] = trmr[i as usize] * fx_j;
+                            trmr[i as usize] *= fx_j;
                             s_j += trmr[i as usize];
                             xm_j -= 1.0;
                             fx_j = x + xm_j;

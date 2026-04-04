@@ -210,7 +210,7 @@ pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     let mut q: i32 = 0;
 
     if x <= 0.5 {
-        x = x - 10.0 * DBL_EPSILON;
+        x -= 10.0 * DBL_EPSILON;
         loop {
             p += csignrank(q, nn) * f;
             if p >= x {

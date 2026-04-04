@@ -235,8 +235,8 @@ fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i
             t2 = c * t2 + Q[i as usize];
             i += 2;
         }
-        d1 = nu * d1;
-        t1 = nu * t1;
+        d1 *= nu;
+        t1 *= nu;
         let mut f1 = log(ex);
         let mut f0 = A + nu * (P[7] - nu * (d1 + d2) / (t1 + t2)) - f1;
         let mut q0 = exp(-nu * (A - nu * (P[7] + nu * (d1 - d2) / (t1 - t2)) - f1));
@@ -327,8 +327,8 @@ fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i
             ------------------------------------------------------ */
             let mut c_local = 1.0;
             let x2by4 = ex * ex / 4.0;
-            p0 = 0.5 * p0;
-            q0 = 0.5 * q0;
+            p0 *= 0.5;
+            q0 *= 0.5;
             let mut d1 = -1.0;
             let mut d2 = 0.0;
             let mut bk1 = 0.0;
@@ -339,7 +339,7 @@ fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i
             loop {
                 d1 += 2.0;
                 d2 += 1.0;
-                d3 = d1 + d3;
+                d3 += d1;
                 c_local = x2by4 * c_local / d2;
                 f0 = (d2 * f0 + p0 + q0) / d3;
                 p0 /= d2 - nu;
@@ -354,7 +354,7 @@ fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i
                     break;
                 }
             }
-            bk1 = f1_sav + bk1;
+            bk1 += f1_sav;
             bk2 = 2.0 * (f2 + bk2) / ex;
             let wminf;
             if ize == 2 {
@@ -430,7 +430,7 @@ fn k_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bk: &mut [f64], ncalc: &mut i
                 f0 = f2;
                 i += 1;
             }
-            f1 = (d3_loc + 2.0) * f0 / ex + f1;
+            f1 += (d3_loc + 2.0) * f0 / ex;
 
             let mut d1 = 0.0;
             let mut t1 = 1.0;

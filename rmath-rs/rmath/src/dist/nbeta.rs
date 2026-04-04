@@ -1,4 +1,4 @@
-#![allow(unused_assignments)]
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 // Noncentral beta distribution: dnbeta, pnbeta, qnbeta
 // Ported from dnbeta.c, pnbeta.c, qnbeta.c
 //

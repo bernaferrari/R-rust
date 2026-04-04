@@ -1,3 +1,4 @@
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 // Ported from R's nmath/bessel_y.c
 //
 // Original by W. J. Cody, Applied Mathematics Division,
@@ -301,7 +302,7 @@ fn y_bessel(x: f64, alpha: f64, nb: i32, by: &mut [f64]) -> i32 {
                 g = q * e + p * g;
                 en1 = en;
             }
-            f = 1.0 + f;
+            f += 1.0;
             d = f * f + g * g;
             pa = f / d;
             qa = -g / d;

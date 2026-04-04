@@ -361,7 +361,7 @@ unsafe fn tre_parse_bracket_items(
             if re >= re_end {
                 status = REG_EBRACK;
             } else if *re == CHAR_RBRACKET && re > re_start {
-                re = re.offset(1);
+                re = re.add(1);
                 break;
             } else {
                 let mut min: tre_cint_t = 0;
@@ -369,33 +369,33 @@ unsafe fn tre_parse_bracket_items(
                 let mut class: tre_ctype_t = 0;
                 let mut skip: c_int = 0;
 
-                if re.offset(2) < re_end
-                    && *re.offset(1) == CHAR_MINUS
-                    && *re.offset(2) != CHAR_RBRACKET
+                if re.add(2) < re_end
+                    && *re.add(1) == CHAR_MINUS
+                    && *re.add(2) != CHAR_RBRACKET
                 {
                     min = *re;
-                    max = *re.offset(2);
-                    re = re.offset(3);
+                    max = *re.add(2);
+                    re = re.add(3);
                     if min > max {
                         status = REG_ERANGE;
                     }
-                } else if re.offset(1) < re_end
+                } else if re.add(1) < re_end
                     && *re == CHAR_LBRACKET
-                    && *re.offset(1) == CHAR_PERIOD
+                    && *re.add(1) == CHAR_PERIOD
                 {
                     status = REG_ECOLLATE;
-                } else if re.offset(1) < re_end
+                } else if re.add(1) < re_end
                     && *re == CHAR_LBRACKET
-                    && *re.offset(1) == CHAR_EQUAL
+                    && *re.add(1) == CHAR_EQUAL
                 {
                     status = REG_ECOLLATE;
-                } else if re.offset(1) < re_end
+                } else if re.add(1) < re_end
                     && *re == CHAR_LBRACKET
-                    && *re.offset(1) == CHAR_COLON
+                    && *re.add(1) == CHAR_COLON
                 {
-                    let mut endptr = re.offset(2);
+                    let mut endptr = re.add(2);
                     while endptr < re_end && *endptr != CHAR_COLON {
-                        endptr = endptr.offset(1);
+                        endptr = endptr.add(1);
                     }
                     if endptr != re_end {
                         let len = MIN(
@@ -429,7 +429,7 @@ unsafe fn tre_parse_bracket_items(
                             class = 0;
                             skip = 1;
                         }
-                        re = endptr.offset(2);
+                        re = endptr.add(2);
                     } else {
                         status = REG_ECTYPE;
                     }
@@ -437,15 +437,15 @@ unsafe fn tre_parse_bracket_items(
                     max = TRE_CHAR_MAX as tre_cint_t;
                 } else {
                     if *re == CHAR_MINUS
-                        && re.offset(1) < re_end
-                        && *re.offset(1) != CHAR_RBRACKET
+                        && re.add(1) < re_end
+                        && *re.add(1) != CHAR_RBRACKET
                         && re > re_start
                     {
                         status = REG_ERANGE;
                     }
                     min = *re;
                     max = *re;
-                    re = re.offset(1);
+                    re = re.add(1);
                 }
 
                 if status != REG_OK {
@@ -549,7 +549,7 @@ unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast
 
         if *ctx.re == CHAR_CARET {
             negate = 1;
-            ctx.re = ctx.re.offset(1);
+            ctx.re = ctx.re.add(1);
         }
 
         let mut items_mut = items;
@@ -705,7 +705,7 @@ unsafe fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_cha
             } else {
                 overflow = 1;
             }
-            r = r.offset(1);
+            r = r.add(1);
         }
         *regex = r;
         if overflow != 0 {
@@ -742,7 +742,7 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
 
         max = min;
         if ctx.re < ctx.re_end && *ctx.re == CHAR_COMMA {
-            ctx.re = ctx.re.offset(1);
+            ctx.re = ctx.re.add(1);
             max = tre_parse_int(&mut ctx.re, ctx.re_end);
         }
 
@@ -755,40 +755,40 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
             let mut done = false;
 
             if counts_set == 0 {
-                while ctx.re.offset(1) < ctx.re_end && !done {
+                while ctx.re.add(1) < ctx.re_end && !done {
                     let c = *ctx.re;
                     if c == CHAR_PLUS {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         limit_ins = tre_parse_int(&mut ctx.re, ctx.re_end);
                         if limit_ins < 0 {
                             limit_ins = c_int::MAX;
                         }
                         counts_set = 1;
                     } else if c == CHAR_MINUS {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         limit_del = tre_parse_int(&mut ctx.re, ctx.re_end);
                         if limit_del < 0 {
                             limit_del = c_int::MAX;
                         }
                         counts_set = 1;
                     } else if c == CHAR_HASH {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         limit_subst = tre_parse_int(&mut ctx.re, ctx.re_end);
                         if limit_subst < 0 {
                             limit_subst = c_int::MAX;
                         }
                         counts_set = 1;
                     } else if c == CHAR_TILDE {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         limit_err = tre_parse_int(&mut ctx.re, ctx.re_end);
                         if limit_err < 0 {
                             limit_err = c_int::MAX;
                         }
                         approx = 1;
                     } else if c == CHAR_COMMA {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                     } else if c == CHAR_SPACE {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                     } else if c == CHAR_RCURLY {
                         done = true;
                     } else {
@@ -799,14 +799,14 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
 
             done = false;
             if costs_set == 0 {
-                while ctx.re.offset(1) < ctx.re_end && !done {
+                while ctx.re.add(1) < ctx.re_end && !done {
                     let c = *ctx.re;
                     if c == CHAR_PLUS || c == CHAR_SPACE {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                     } else if c == '<' as tre_char_t {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         while ctx.re < ctx.re_end && *ctx.re == CHAR_SPACE {
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         }
                         cost_max = tre_parse_int(&mut ctx.re, ctx.re_end);
                         if cost_max < 0 {
@@ -816,21 +816,21 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
                         }
                         approx = 1;
                     } else if c == CHAR_COMMA {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         done = true;
                     } else if c >= '0' as tre_char_t && c <= '9' as tre_char_t {
                         let cost = tre_parse_int(&mut ctx.re, ctx.re_end);
                         let next_c = *ctx.re;
                         if next_c == 'i' as tre_char_t {
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                             cost_ins = cost;
                             costs_set = 1;
                         } else if next_c == 'd' as tre_char_t {
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                             cost_del = cost;
                             costs_set = 1;
                         } else if next_c == 's' as tre_char_t {
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                             cost_subst = cost;
                             costs_set = 1;
                         } else {
@@ -858,21 +858,21 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
             if ctx.re >= ctx.re_end || *ctx.re != CHAR_RBRACE {
                 return REG_BADBR;
             }
-            ctx.re = ctx.re.offset(1);
+            ctx.re = ctx.re.add(1);
         } else {
-            if ctx.re.offset(1) >= ctx.re_end
+            if ctx.re.add(1) >= ctx.re_end
                 || *ctx.re != CHAR_BACKSLASH
-                || *ctx.re.offset(1) != CHAR_RBRACE
+                || *ctx.re.add(1) != CHAR_RBRACE
             {
                 return REG_BADBR;
             }
-            ctx.re = ctx.re.offset(2);
+            ctx.re = ctx.re.add(2);
         }
 
         if ctx.re < ctx.re_end {
             if *ctx.re == CHAR_QUESTIONMARK {
                 minimal = if ctx.cflags & REG_UNGREEDY != 0 { 0 } else { 1 };
-                ctx.re = ctx.re.offset(1);
+                ctx.re = ctx.re.add(1);
             } else if *ctx.re == CHAR_STAR || *ctx.re == CHAR_PLUS {
                 return REG_BADRPT;
             }
@@ -1034,15 +1034,15 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     if (ctx.cflags & REG_EXTENDED != 0 && c == CHAR_RPAREN && depth > 0)
                         || (ctx.cflags & REG_EXTENDED == 0
                             && c == CHAR_BACKSLASH
-                            && ctx.re.offset(1) < ctx.re_end
-                            && *ctx.re.offset(1) == CHAR_RPAREN)
+                            && ctx.re.add(1) < ctx.re_end
+                            && *ctx.re.add(1) == CHAR_RPAREN)
                     {
                         if ctx.cflags & REG_EXTENDED == 0 && depth == 0 {
                             status = REG_EPAREN;
                         }
                         depth -= 1;
                         if ctx.cflags & REG_EXTENDED == 0 {
-                            ctx.re = ctx.re.offset(2);
+                            ctx.re = ctx.re.add(2);
                         }
                         continue;
                     }
@@ -1087,9 +1087,9 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         stack,
                         tre_parse_re_stack_symbol_t::PARSE_BRANCH as c_int,
                     );
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                 } else if c == CHAR_RPAREN {
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                 }
             } else if sym_val == tre_parse_re_stack_symbol_t::PARSE_POST_UNION as c_int {
                 let tree = stack::tre_stack_pop_voidptr(stack) as *mut tre_ast_node_t;
@@ -1121,16 +1121,16 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         rep_max = 1;
                     }
 
-                    if ctx.re.offset(1) < ctx.re_end {
-                        if *ctx.re.offset(1) == CHAR_QUESTIONMARK {
+                    if ctx.re.add(1) < ctx.re_end {
+                        if *ctx.re.add(1) == CHAR_QUESTIONMARK {
                             minimal = if ctx.cflags & REG_UNGREEDY != 0 { 0 } else { 1 };
-                            ctx.re = ctx.re.offset(1);
-                        } else if *ctx.re.offset(1) == CHAR_STAR || *ctx.re.offset(1) == CHAR_PLUS {
+                            ctx.re = ctx.re.add(1);
+                        } else if *ctx.re.add(1) == CHAR_STAR || *ctx.re.add(1) == CHAR_PLUS {
                             return REG_BADRPT;
                         }
                     }
 
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                     let tmp_node = tre_ast_new_iter(ctx.mem, result, rep_min, rep_max, minimal);
                     if tmp_node.is_null() {
                         return REG_ESPACE;
@@ -1145,16 +1145,16 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     let rep_min: c_int = 0;
                     let rep_max: c_int = -1;
 
-                    if ctx.re.offset(1) < ctx.re_end {
-                        if *ctx.re.offset(1) == CHAR_QUESTIONMARK {
+                    if ctx.re.add(1) < ctx.re_end {
+                        if *ctx.re.add(1) == CHAR_QUESTIONMARK {
                             minimal = if ctx.cflags & REG_UNGREEDY != 0 { 0 } else { 1 };
-                            ctx.re = ctx.re.offset(1);
-                        } else if *ctx.re.offset(1) == CHAR_STAR || *ctx.re.offset(1) == CHAR_PLUS {
+                            ctx.re = ctx.re.add(1);
+                        } else if *ctx.re.add(1) == CHAR_STAR || *ctx.re.add(1) == CHAR_PLUS {
                             return REG_BADRPT;
                         }
                     }
 
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                     let tmp_node = tre_ast_new_iter(ctx.mem, result, rep_min, rep_max, minimal);
                     if tmp_node.is_null() {
                         return REG_ESPACE;
@@ -1166,11 +1166,11 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     );
                 } else if c == CHAR_BACKSLASH {
                     if ctx.cflags & REG_EXTENDED == 0
-                        && ctx.re.offset(1) < ctx.re_end
-                        && *ctx.re.offset(1) == CHAR_LBRACE
+                        && ctx.re.add(1) < ctx.re_end
+                        && *ctx.re.add(1) == CHAR_LBRACE
                     {
-                        ctx.re = ctx.re.offset(1);
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
+                        ctx.re = ctx.re.add(1);
                         status = tre_parse_bound(ctx, &mut result);
                         if status != REG_OK {
                             return status;
@@ -1184,7 +1184,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     if ctx.cflags & REG_EXTENDED == 0 {
                         continue;
                     }
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                     status = tre_parse_bound(ctx, &mut result);
                     if status != REG_OK {
                         return status;
@@ -1215,12 +1215,12 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                 let c = *ctx.re;
                 if c == CHAR_LPAREN {
                     if ctx.cflags & REG_EXTENDED != 0
-                        && ctx.re.offset(1) < ctx.re_end
-                        && *ctx.re.offset(1) == CHAR_QUESTIONMARK
+                        && ctx.re.add(1) < ctx.re_end
+                        && *ctx.re.add(1) == CHAR_QUESTIONMARK
                     {
                         let mut new_cflags = ctx.cflags;
                         let mut bit: c_int = 1;
-                        ctx.re = ctx.re.offset(2);
+                        ctx.re = ctx.re.add(2);
                         loop {
                             let ac = *ctx.re;
                             if ac == 'i' as tre_char_t {
@@ -1229,40 +1229,40 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 } else {
                                     new_cflags &= !REG_ICASE;
                                 }
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                             } else if ac == 'n' as tre_char_t {
                                 if bit != 0 {
                                     new_cflags |= REG_NEWLINE;
                                 } else {
                                     new_cflags &= !REG_NEWLINE;
                                 }
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                             } else if ac == 'U' as tre_char_t {
                                 if bit != 0 {
                                     new_cflags |= REG_UNGREEDY;
                                 } else {
                                     new_cflags &= !REG_UNGREEDY;
                                 }
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                             } else if ac == CHAR_MINUS {
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                                 bit = 0;
                             } else if ac == CHAR_COLON {
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                                 depth += 1;
                                 break;
                             } else if ac == CHAR_HASH {
                                 while ctx.re < ctx.re_end && *ctx.re != CHAR_RPAREN {
-                                    ctx.re = ctx.re.offset(1);
+                                    ctx.re = ctx.re.add(1);
                                 }
                                 if ctx.re < ctx.re_end && *ctx.re == CHAR_RPAREN {
-                                    ctx.re = ctx.re.offset(1);
+                                    ctx.re = ctx.re.add(1);
                                     break;
                                 } else {
                                     return REG_BADPAT;
                                 }
                             } else if ac == CHAR_RPAREN {
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                                 break;
                             } else {
                                 return REG_BADPAT;
@@ -1279,14 +1279,14 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         );
                         ctx.cflags = new_cflags;
                     } else if ctx.cflags & REG_EXTENDED != 0
-                        || (ctx.re > ctx.re_start && *ctx.re.offset(-1) == CHAR_BACKSLASH)
+                        || (ctx.re > ctx.re_start && *ctx.re.sub(1) == CHAR_BACKSLASH)
                     {
                         depth += 1;
-                        if ctx.re.offset(2) < ctx.re_end
-                            && *ctx.re.offset(1) == CHAR_QUESTIONMARK
-                            && *ctx.re.offset(2) == CHAR_COLON
+                        if ctx.re.add(2) < ctx.re_end
+                            && *ctx.re.add(1) == CHAR_QUESTIONMARK
+                            && *ctx.re.add(2) == CHAR_COLON
                         {
-                            ctx.re = ctx.re.offset(3);
+                            ctx.re = ctx.re.add(3);
                             stack::tre_stack_push_int(
                                 stack,
                                 tre_parse_re_stack_symbol_t::PARSE_RE as c_int,
@@ -1302,7 +1302,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 tre_parse_re_stack_symbol_t::PARSE_RE as c_int,
                             );
                             ctx.submatch_id += 1;
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         }
                     } else {
                         result =
@@ -1315,14 +1315,14 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     if (ctx.cflags & REG_EXTENDED != 0 && depth > 0)
                         || (ctx.cflags & REG_EXTENDED == 0
                             && ctx.re > ctx.re_start
-                            && *ctx.re.offset(-1) == CHAR_BACKSLASH)
+                            && *ctx.re.sub(1) == CHAR_BACKSLASH)
                     {
                         result = tre_ast_new_literal(ctx.mem, EMPTY as c_int, -1, -1);
                         if result.is_null() {
                             return REG_ESPACE;
                         }
                         if ctx.cflags & REG_EXTENDED == 0 {
-                            ctx.re = ctx.re.offset(-1);
+                            ctx.re = ctx.re.sub(1);
                         }
                     } else {
                         result =
@@ -1332,17 +1332,17 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         }
                     }
                 } else if c == CHAR_LBRACKET {
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                     status = tre_parse_bracket(ctx, &mut result);
                     if status != REG_OK {
                         return status;
                     }
                 } else if c == CHAR_BACKSLASH {
                     if ctx.cflags & REG_EXTENDED == 0
-                        && ctx.re.offset(1) < ctx.re_end
-                        && (*ctx.re.offset(1) == CHAR_LPAREN || *ctx.re.offset(1) == CHAR_RPAREN)
+                        && ctx.re.add(1) < ctx.re_end
+                        && (*ctx.re.add(1) == CHAR_LPAREN || *ctx.re.add(1) == CHAR_RPAREN)
                     {
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         stack::tre_stack_push_int(
                             stack,
                             tre_parse_re_stack_symbol_t::PARSE_ATOM as c_int,
@@ -1350,10 +1350,10 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     } else {
                         // Check for macro expansion
                         let mut buf = [0u32; 64];
-                        if ctx.re.offset(1) < ctx.re_end {
-                            let remaining_len = ctx.re_end.offset_from(ctx.re.offset(1)) as usize;
+                        if ctx.re.add(1) < ctx.re_end {
+                            let remaining_len = ctx.re_end.offset_from(ctx.re.add(1)) as usize;
                             let remaining =
-                                std::slice::from_raw_parts(ctx.re.offset(1), remaining_len);
+                                std::slice::from_raw_parts(ctx.re.add(1), remaining_len);
                             tre_expand_macro(remaining, remaining.len(), &mut buf);
                             if buf[0] != 0 {
                                 let mut subctx: tre_parse_ctx_t = std::mem::zeroed();
@@ -1376,22 +1376,22 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 if status != REG_OK {
                                     return status;
                                 }
-                                ctx.re = ctx.re.offset(2);
+                                ctx.re = ctx.re.add(2);
                                 ctx.position = subctx.position;
                                 result = subctx.result;
                                 continue;
                             }
                         }
 
-                        if ctx.re.offset(1) >= ctx.re_end {
+                        if ctx.re.add(1) >= ctx.re_end {
                             return REG_EESCAPE;
                         }
 
                         // \Q literal mode
-                        if *ctx.re.offset(1) == 'Q' as tre_char_t {
+                        if *ctx.re.add(1) == 'Q' as tre_char_t {
                             ctx.cflags |= REG_LITERAL;
                             temporary_cflags |= REG_LITERAL;
-                            ctx.re = ctx.re.offset(2);
+                            ctx.re = ctx.re.add(2);
                             stack::tre_stack_push_int(
                                 stack,
                                 tre_parse_re_stack_symbol_t::PARSE_ATOM as c_int,
@@ -1399,7 +1399,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                             continue;
                         }
 
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                         let ac = *ctx.re;
                         if ac == 'b' as tre_char_t {
                             result = tre_ast_new_literal(
@@ -1408,7 +1408,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 ASSERT_AT_WB as c_int,
                                 -1,
                             );
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         } else if ac == 'B' as tre_char_t {
                             result = tre_ast_new_literal(
                                 ctx.mem,
@@ -1416,7 +1416,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 ASSERT_AT_WB_NEG as c_int,
                                 -1,
                             );
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         } else if ac == '<' as tre_char_t {
                             result = tre_ast_new_literal(
                                 ctx.mem,
@@ -1424,7 +1424,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 ASSERT_AT_BOW as c_int,
                                 -1,
                             );
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         } else if ac == '>' as tre_char_t {
                             result = tre_ast_new_literal(
                                 ctx.mem,
@@ -1432,21 +1432,21 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 ASSERT_AT_EOW as c_int,
                                 -1,
                             );
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         } else if ac == 'x' as tre_char_t {
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                             if ctx.re < ctx.re_end && *ctx.re != CHAR_LBRACE {
                                 let mut tmp = [0u8; 3];
                                 let mut idx = 0;
                                 if ctx.re < ctx.re_end && tre_isxdigit(*ctx.re) {
                                     tmp[idx] = *ctx.re as u8;
                                     idx += 1;
-                                    ctx.re = ctx.re.offset(1);
+                                    ctx.re = ctx.re.add(1);
                                 }
                                 if ctx.re < ctx.re_end && tre_isxdigit(*ctx.re) {
                                     tmp[idx] = *ctx.re as u8;
                                     idx += 1;
-                                    ctx.re = ctx.re.offset(1);
+                                    ctx.re = ctx.re.add(1);
                                 }
                                 let val = i32::from_str_radix(
                                     std::str::from_utf8(&tmp[..idx]).unwrap_or("0"),
@@ -1458,7 +1458,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                             } else if ctx.re < ctx.re_end {
                                 let mut tmp = [0u8; 32];
                                 let mut idx = 0;
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                                 while ctx.re < ctx.re_end {
                                     if *ctx.re == CHAR_RBRACE {
                                         break;
@@ -1466,12 +1466,12 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                     if tre_isxdigit(*ctx.re) {
                                         tmp[idx] = *ctx.re as u8;
                                         idx += 1;
-                                        ctx.re = ctx.re.offset(1);
+                                        ctx.re = ctx.re.add(1);
                                     } else {
                                         return REG_EBRACE;
                                     }
                                 }
-                                ctx.re = ctx.re.offset(1);
+                                ctx.re = ctx.re.add(1);
                                 let val = i32::from_str_radix(
                                     std::str::from_utf8(&tmp[..idx]).unwrap_or("0"),
                                     16,
@@ -1489,7 +1489,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                             }
                             ctx.position += 1;
                             ctx.max_backref = MAX(val, ctx.max_backref);
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         } else {
                             result = tre_ast_new_literal(
                                 ctx.mem,
@@ -1501,7 +1501,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                                 return REG_ESPACE;
                             }
                             ctx.position += 1;
-                            ctx.re = ctx.re.offset(1);
+                            ctx.re = ctx.re.add(1);
                         }
                         if result.is_null() {
                             return REG_ESPACE;
@@ -1540,12 +1540,12 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         }
                         ctx.position += 1;
                     }
-                    ctx.re = ctx.re.offset(1);
+                    ctx.re = ctx.re.add(1);
                 } else if c == CHAR_CARET {
                     if ctx.cflags & REG_EXTENDED != 0
-                        || (ctx.re.offset(-2) >= ctx.re_start
-                            && *ctx.re.offset(-2) == CHAR_BACKSLASH
-                            && *ctx.re.offset(-1) == CHAR_LPAREN)
+                        || (ctx.re.sub(2) >= ctx.re_start
+                            && *ctx.re.sub(2) == CHAR_BACKSLASH
+                            && *ctx.re.sub(1) == CHAR_LPAREN)
                         || ctx.re == ctx.re_start
                     {
                         result = tre_ast_new_literal(
@@ -1557,7 +1557,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         if result.is_null() {
                             return REG_ESPACE;
                         }
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                     } else {
                         result =
                             parse_literal(ctx, &mut temporary_cflags, &mut result, &mut status);
@@ -1567,10 +1567,10 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                     }
                 } else if c == CHAR_DOLLAR {
                     if ctx.cflags & REG_EXTENDED != 0
-                        || (ctx.re.offset(2) < ctx.re_end
-                            && *ctx.re.offset(1) == CHAR_BACKSLASH
-                            && *ctx.re.offset(2) == CHAR_RPAREN)
-                        || ctx.re.offset(1) == ctx.re_end
+                        || (ctx.re.add(2) < ctx.re_end
+                            && *ctx.re.add(1) == CHAR_BACKSLASH
+                            && *ctx.re.add(2) == CHAR_RPAREN)
+                        || ctx.re.add(1) == ctx.re_end
                     {
                         result = tre_ast_new_literal(
                             ctx.mem,
@@ -1581,7 +1581,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         if result.is_null() {
                             return REG_ESPACE;
                         }
-                        ctx.re = ctx.re.offset(1);
+                        ctx.re = ctx.re.add(1);
                     } else {
                         result =
                             parse_literal(ctx, &mut temporary_cflags, &mut result, &mut status);
@@ -1639,13 +1639,13 @@ unsafe fn parse_literal(
     unsafe {
         // Check for \E (end of literal mode)
         if *temporary_cflags != 0
-            && ctx.re.offset(1) < ctx.re_end
+            && ctx.re.add(1) < ctx.re_end
             && *ctx.re == CHAR_BACKSLASH
-            && *ctx.re.offset(1) == 'E' as tre_char_t
+            && *ctx.re.add(1) == 'E' as tre_char_t
         {
             ctx.cflags &= !*temporary_cflags;
             *temporary_cflags = 0;
-            ctx.re = ctx.re.offset(2);
+            ctx.re = ctx.re.add(2);
             stack::tre_stack_push_int(ctx.stack, tre_parse_re_stack_symbol_t::PARSE_PIECE as c_int);
             return ptr::null_mut();
         }
@@ -1660,9 +1660,9 @@ unsafe fn parse_literal(
                         || *ctx.re == CHAR_PLUS
                         || *ctx.re == CHAR_QUESTIONMARK))
                 || (ctx.cflags & REG_EXTENDED == 0
-                    && ctx.re.offset(1) < ctx.re_end
+                    && ctx.re.add(1) < ctx.re_end
                     && *ctx.re == CHAR_BACKSLASH
-                    && *ctx.re.offset(1) == CHAR_LBRACE)
+                    && *ctx.re.add(1) == CHAR_LBRACE)
             {
                 let node = tre_ast_new_literal(ctx.mem, EMPTY as c_int, -1, -1);
                 if node.is_null() {
@@ -1711,7 +1711,7 @@ unsafe fn parse_literal(
                 return ptr::null_mut();
             }
             ctx.position += 1;
-            ctx.re = ctx.re.offset(1);
+            ctx.re = ctx.re.add(1);
             node
         } else {
             let node =
@@ -1721,7 +1721,7 @@ unsafe fn parse_literal(
                 return ptr::null_mut();
             }
             ctx.position += 1;
-            ctx.re = ctx.re.offset(1);
+            ctx.re = ctx.re.add(1);
             node
         }
     }

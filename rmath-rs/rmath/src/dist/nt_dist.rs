@@ -1,3 +1,4 @@
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 // Noncentral t distribution: dnt, pnt, qnt, rnt
 // Ported from dnt.c, pnt.c, qnt.c
 //

@@ -1,3 +1,4 @@
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 // Gamma distribution: dgamma, pgamma, qgamma, rgamma
 // Ported from dgamma.c, pgamma.c, qgamma.c, rgamma.c
 //

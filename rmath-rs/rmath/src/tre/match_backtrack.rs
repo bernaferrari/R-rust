@@ -232,7 +232,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                         reg_newline,
                     )
                 {
-                    trans_i = trans_i.offset(1);
+                    trans_i = trans_i.add(1);
                     continue;
                 }
                 if state.is_null() {
@@ -299,18 +299,18 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                             if *tmp < (*tnfa).num_tags {
                                 *(*stack).item.tags.offset(*tmp as isize) = pos;
                             }
-                            tmp = tmp.offset(1);
+                            tmp = tmp.add(1);
                         }
                     }
                 }
-                trans_i = trans_i.offset(1);
+                trans_i = trans_i.add(1);
             }
 
             if !next_tags.is_null() {
                 let mut nt = next_tags;
                 while *nt >= 0 {
                     *tags.offset(*nt as isize) = pos;
-                    nt = nt.offset(1);
+                    nt = nt.add(1);
                 }
             }
 
@@ -424,7 +424,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                             result = libc_memcmp(
                                 string as *const u8,
                                 so as usize,
-                                str_byte.offset(-1),
+                                str_byte.sub(1),
                                 bt_len,
                             );
                         } else {
@@ -436,7 +436,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                         result = libc_memcmp(
                             string as *const u8,
                             so as usize,
-                            str_byte.offset(-1),
+                            str_byte.sub(1),
                             bt_len,
                         );
                     } else {
@@ -598,7 +598,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                                 reg_newline,
                             ) || CHECK_CHAR_CLASSES(trans_i, tnfa, eflags, prev_c))
                         {
-                            trans_i = trans_i.offset(1);
+                            trans_i = trans_i.add(1);
                             continue;
                         }
 
@@ -664,12 +664,12 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                                     if *tmp < (*tnfa).num_tags {
                                         *(*stack).item.tags.offset(*tmp as isize) = pos;
                                     }
-                                    tmp = tmp.offset(1);
+                                    tmp = tmp.add(1);
                                 }
                             }
                         }
                     }
-                    trans_i = trans_i.offset(1);
+                    trans_i = trans_i.add(1);
                 }
 
                 if !next_state.is_null() {
@@ -678,7 +678,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                         let mut nt = next_tags;
                         while *nt >= 0 {
                             *tags.offset(*nt as isize) = pos;
-                            nt = nt.offset(1);
+                            nt = nt.add(1);
                         }
                     }
                 } else {

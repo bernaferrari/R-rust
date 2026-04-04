@@ -1,4 +1,4 @@
-#![allow(unused_assignments)]
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 // Based on C translation of ACM TOMS 708
 // Please do not change this, e.g. to use R's versions of the
 // ancillary routines, without investigating the error analysis as we
@@ -584,7 +584,7 @@ fn fpser(a: f64, b: f64, x: f64, eps: f64, log_p: bool) -> f64 {
     s = t / an;
     loop {
         an += 1.0;
-        t = x * t;
+        t *= x;
         c = t / an;
         s += c;
         if !(fabs(c) > tol) {
@@ -1004,7 +1004,7 @@ fn brcomp(a: f64, b: f64, x: f64, y: f64, log_p: bool) -> f64 {
                 b0 += -1.0;
                 cc *= b0 / (a0 + b0);
             }
-            u = log(cc) + u;
+            u += log(cc);
         }
         z -= u;
         b0 += -1.0;
@@ -1489,8 +1489,8 @@ fn basym(a: f64, b: f64, lambda: f64, eps: f64, log_p: bool) -> f64 {
 
         j0 = e1 * znm1 + ((n - 1) as f64) * j0;
         j1 = e1 * zn + (n as f64) * j1;
-        znm1 = z2 * znm1;
-        zn = z2 * zn;
+        znm1 *= z2;
+        zn *= z2;
         w *= w0;
         let t0 = dd[n - 1] * w * j0;
         w *= w0;
@@ -1796,7 +1796,7 @@ fn erfc1(ind: i32, x: f64) -> f64 {
         let bot = ((b[0] * t + b[1]) * t + b[2]) * t + 1.0;
         ret_val = 0.5 - x * (top / bot) + 0.5;
         if ind != 0 {
-            ret_val = exp(t) * ret_val;
+            ret_val *= exp(t);
         }
         return ret_val;
     }
@@ -1843,7 +1843,7 @@ fn erfc1(ind: i32, x: f64) -> f64 {
         w = x * x;
         t = w;
         e = w - t; // should be 0.0, but for C compatibility
-        ret_val = (0.5 - e + 0.5) * exp(-t) * ret_val;
+        ret_val *= (0.5 - e + 0.5) * exp(-t);
         if x < 0.0 {
             ret_val = 2.0 - ret_val;
         }
@@ -2114,7 +2114,7 @@ fn psi(x: f64) -> f64 {
             upper = (upper + p2[i]) * w;
         }
 
-        aug = upper / (den + q2[3]) - 0.5 / x + aug;
+        aug += upper / (den + q2[3]) - 0.5 / x;
     }
     aug + log(x)
 }

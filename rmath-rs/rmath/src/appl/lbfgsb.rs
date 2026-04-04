@@ -1,3 +1,8 @@
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::never_loop, clippy::assigning_clones, clippy::unwrap_used, clippy::redundant_closure_call, clippy::needless_late_init)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::never_loop, clippy::assigning_clones, clippy::unwrap_used)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::never_loop, clippy::assigning_clones, clippy::unwrap_used)]
+#![allow(clippy::comparison_chain, clippy::assigning_clones, clippy::redundant_closure_call, clippy::needless_late_init)]
+#![allow(clippy::manual_memcpy, clippy::comparison_to_empty)]
 // Port of R's src/appl/lbfgsb.c to Rust
 //
 // L-BFGS-B (version 2.3) - A limited memory algorithm for bound constrained optimization

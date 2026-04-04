@@ -139,7 +139,7 @@ fn spawn_worker(
                     });
 
                     if let Some(cb) = callback.lock().unwrap().as_ref() {
-                        if let Ok(ref plot) = result {
+                        if let Ok(plot) = &result {
                             cb.on_plot_ready(plot.clone());
                         }
                     }

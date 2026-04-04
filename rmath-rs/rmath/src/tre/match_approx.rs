@@ -264,7 +264,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                                 reg_newline,
                             )
                         {
-                            trans = trans.offset(1);
+                            trans = trans.add(1);
                             continue;
                         }
                         (*reach_next.offset(stateid as isize)).state = (*trans).state;
@@ -313,7 +313,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                             }
                         }
                     }
-                    trans = trans.offset(1);
+                    trans = trans.add(1);
                 }
             }
 
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                                 reg_newline,
                             )
                         {
-                            trans = trans.offset(1);
+                            trans = trans.add(1);
                             continue;
                         }
 
@@ -494,7 +494,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                                             (*reach_next.offset(dest_id as isize)).tags,
                                         ) == 0)))
                         {
-                            trans = trans.offset(1);
+                            trans = trans.add(1);
                             continue;
                         }
 
@@ -537,7 +537,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                                 || match_costs[TRE_M_COST] > cost0
                                 || (match_costs[TRE_M_COST] == cost0
                                     && num_tags > 0
-                                    && *tmp_tags.offset(0) <= *match_tags.offset(0)))
+                                    && *tmp_tags <= *match_tags))
                         {
                             match_eo = pos;
                             for j in 0..TRE_M_LAST {
@@ -555,7 +555,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                             deque_end = 0;
                         }
 
-                        trans = trans.offset(1);
+                        trans = trans.add(1);
                     }
                     deque_start += 1;
                     if deque_start >= rb_size {
@@ -621,7 +621,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                             reg_newline,
                         ) || CHECK_CHAR_CLASSES(trans, tnfa, eflags, prev_c))
                     {
-                        trans = trans.offset(1);
+                        trans = trans.add(1);
                         continue;
                     }
 
@@ -632,19 +632,19 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                             cost += (*reach.offset(id as isize)).params.cost_subst;
                         }
                         if cost > (*reach.offset(id as isize)).params.max_cost {
-                            trans = trans.offset(1);
+                            trans = trans.add(1);
                             continue;
                         }
                         if (*reach.offset(id as isize)).costs[depth][TRE_M_NUM_SUBST] + 1
                             > (*reach.offset(id as isize)).params.max_subst
                         {
-                            trans = trans.offset(1);
+                            trans = trans.add(1);
                             continue;
                         }
                         if (*reach.offset(id as isize)).costs[depth][TRE_M_NUM_ERR] + 1
                             > (*reach.offset(id as isize)).params.max_err
                         {
-                            trans = trans.offset(1);
+                            trans = trans.add(1);
                             continue;
                         }
                         cost0 = cost;
@@ -683,7 +683,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                                     (*reach_next.offset(dest_id as isize)).tags,
                                 ) == 0))
                     {
-                        trans = trans.offset(1);
+                        trans = trans.add(1);
                         continue;
                     }
 
@@ -728,7 +728,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                             || cost0 < match_costs[TRE_M_COST]
                             || (cost0 == match_costs[TRE_M_COST]
                                 && num_tags > 0
-                                && *tmp_tags.offset(0) <= *match_tags.offset(0)))
+                                && *tmp_tags <= *match_tags))
                     {
                         match_eo = pos;
                         for j in 0..TRE_M_LAST {
@@ -739,7 +739,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                         }
                     }
 
-                    trans = trans.offset(1);
+                    trans = trans.add(1);
                 }
             }
         }

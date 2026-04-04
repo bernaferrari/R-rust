@@ -1,4 +1,4 @@
-#![allow(unused_assignments)]
+#![allow(unused_assignments, clippy::neg_cmp_op_on_partial_ord, clippy::assigning_mutate_iter)]
 // Ported from R's nmath/bessel_i.c
 //
 // From http://www.netlib.org/specfun/ribesl Fortran translated by f2c,
@@ -32,7 +32,11 @@ const XLRG_BESS_IJ: f64 = 1e5;
 /// Minimum of two ints
 #[inline(always)]
 fn min0(x: i32, y: i32) -> i32 {
-    if x <= y { x } else { y }
+    if x <= y {
+        x
+    } else {
+        y
+    }
 }
 
 // =====================================================================

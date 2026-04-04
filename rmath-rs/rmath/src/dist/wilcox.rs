@@ -252,7 +252,7 @@ pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
     let mut q: i32 = 0;
 
     if x <= 0.5 {
-        x = x - 10.0 * DBL_EPSILON;
+        x -= 10.0 * DBL_EPSILON;
         loop {
             p += cwilcox(q, mm, nn) / denom;
             if p >= x {

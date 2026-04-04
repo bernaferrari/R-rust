@@ -1,3 +1,4 @@
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
 // Noncentral chi-squared distribution: dnchisq, pnchisq, qnchisq, rnchisq
 // Ported from dnchisq.c, pnchisq.c, qnchisq.c, rnchisq.c
 //

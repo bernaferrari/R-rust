@@ -177,7 +177,7 @@ pub unsafe extern "C" fn vmmin(
                     iter += 1;
                     let mut d1 = 0.0_f64;
                     for i in 0..n_usize {
-                        t[i] = steplength * t[i];
+                        t[i] *= steplength;
                         c[i] = g[l[i]] - c[i];
                         d1 += t[i] * c[i];
                     }

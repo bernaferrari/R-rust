@@ -1,4 +1,8 @@
-#![allow(unused_variables)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::assigning_clones)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::assigning_clones)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::assigning_clones)]
+#![allow(clippy::comparison_chain, clippy::assigning_clones)]
+#![allow(unused_variables, clippy::manual_memcpy, clippy::comparison_to_empty)]
 #![allow(unused_assignments)]
 // Ported from R's appl/uncmin.c
 //
@@ -1118,7 +1122,7 @@ fn secfac(
     let mut alp = sqrt(den1 / den2);
     if *noupdt {
         for j in 0..n {
-            u[j] = alp * u[j];
+            u[j] *= alp;
             for i in j..n {
                 a[i + j * nr] *= alp;
             }

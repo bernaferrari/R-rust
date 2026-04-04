@@ -1081,7 +1081,7 @@ fn trio_write_double<W: Write>(
         if scaled.is_infinite() {
             let half_exp = exponent / 2;
             scaled = number / 10.0_f64.powi(half_exp);
-            scaled = scaled / 10.0_f64.powi(exponent - half_exp);
+            scaled /= 10.0_f64.powi(exponent - half_exp);
         }
         number = scaled;
 

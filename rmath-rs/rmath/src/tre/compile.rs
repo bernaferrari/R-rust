@@ -488,7 +488,7 @@ unsafe fn tre_add_tags(
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_LEFT as c_int => {
                     while *regset >= 0 {
-                        regset = regset.offset(1);
+                        regset = regset.add(1);
                     }
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_RIGHT as c_int => {
@@ -973,9 +973,9 @@ unsafe fn tre_set_one(
         (*new_set).class = class;
         (*new_set).neg_classes = neg_classes;
         (*new_set).backref = backref;
-        (*new_set.offset(1)).position = -1;
-        (*new_set.offset(1)).code_min = -1;
-        (*new_set.offset(1)).code_max = -1;
+        (*new_set.add(1)).position = -1;
+        (*new_set.add(1)).code_min = -1;
+        (*new_set.add(1)).code_max = -1;
         new_set
     }
 }
@@ -1455,7 +1455,7 @@ unsafe fn tre_make_trans(
                         .offset(*offs.offset((*p1.offset(pi)).position as isize) as isize);
                     let mut trans = trans;
                     while !(*trans).state.is_null() {
-                        trans = trans.offset(1);
+                        trans = trans.add(1);
                     }
 
                     if (*trans).state.is_null() {
@@ -1466,7 +1466,7 @@ unsafe fn tre_make_trans(
                     let mut t = transitions
                         .offset(*offs.offset((*p1.offset(pi)).position as isize) as isize);
                     while !(*t).state.is_null() {
-                        t = t.offset(1);
+                        t = t.add(1);
                     }
                     (*t).code_min = (*p1.offset(pi)).code_min as tre_cint_t;
                     (*t).code_max = (*p1.offset(pi)).code_max as tre_cint_t;
@@ -1856,7 +1856,7 @@ pub unsafe extern "C" fn tre_compile(
         let mut i: c_int = 0;
         while !p.is_null() && (*p).position >= 0 {
             i += 1;
-            p = p.offset(1);
+            p = p.add(1);
         }
 
         let initial = mem::xcalloc(
@@ -1906,7 +1906,7 @@ pub unsafe extern "C" fn tre_compile(
                 }
             }
             i2 += 1;
-            p = p.offset(1);
+            p = p.add(1);
         }
         (*initial.offset(i2 as isize)).state = ptr::null_mut();
 
@@ -1996,7 +1996,7 @@ pub unsafe extern "C" fn tre_free(preg: *mut regex_t) {
                 if !(*trans).params.is_null() {
                     mem::xfree((*trans).params as *mut c_void);
                 }
-                trans = trans.offset(1);
+                trans = trans.add(1);
             }
             mem::xfree((*tnfa).initial as *mut c_void);
         }

@@ -214,7 +214,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                                 reg_newline,
                             )
                         {
-                            trans_i = trans_i.offset(1);
+                            trans_i = trans_i.add(1);
                             continue;
                         }
 
@@ -228,7 +228,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                                 if *tag_i < num_tags {
                                     *(*reach_next_i).tags.offset(*tag_i as isize) = pos;
                                 }
-                                tag_i = tag_i.offset(1);
+                                tag_i = tag_i.add(1);
                             }
                         }
                         if (*reach_next_i).state == (*tnfa).final_ {
@@ -242,9 +242,9 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                         (*reach_pos.offset((*trans_i).state_id as isize)).pos = pos;
                         (*reach_pos.offset((*trans_i).state_id as isize)).tags =
                             &mut (*reach_next_i).tags;
-                        reach_next_i = reach_next_i.offset(1);
+                        reach_next_i = reach_next_i.add(1);
                     }
-                    trans_i = trans_i.offset(1);
+                    trans_i = trans_i.add(1);
                 }
                 (*reach_next_i).state = ptr::null_mut();
             } else {
@@ -309,9 +309,9 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                         let tmp_iptr = (*reach_next_i).tags;
                         (*reach_next_i).tags = (*reach_i).tags;
                         (*reach_i).tags = tmp_iptr;
-                        reach_next_i = reach_next_i.offset(1);
+                        reach_next_i = reach_next_i.add(1);
                     }
-                    reach_i = reach_i.offset(1);
+                    reach_i = reach_i.add(1);
                 }
                 (*reach_next_i).state = ptr::null_mut();
 
@@ -339,7 +339,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                                 reg_newline,
                             ) || CHECK_CHAR_CLASSES(trans_i, tnfa, eflags, prev_c))
                         {
-                            trans_i = trans_i.offset(1);
+                            trans_i = trans_i.add(1);
                             continue;
                         }
 
@@ -353,7 +353,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                                 if *tag_i < num_tags {
                                     *tmp_tags.offset(*tag_i as isize) = pos;
                                 }
-                                tag_i = tag_i.offset(1);
+                                tag_i = tag_i.add(1);
                             }
                         }
 
@@ -369,8 +369,8 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                             if (*reach_next_i).state == (*tnfa).final_
                                 && (match_eo == -1
                                     || (num_tags > 0
-                                        && *(*reach_next_i).tags.offset(0)
-                                            <= *match_tags.offset(0)))
+                                        && *(*reach_next_i).tags
+                                            <= *match_tags))
                             {
                                 match_eo = pos;
                                 new_match = 1;
@@ -379,7 +379,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                                         *(*reach_next_i).tags.offset(i as isize);
                                 }
                             }
-                            reach_next_i = reach_next_i.offset(1);
+                            reach_next_i = reach_next_i.add(1);
                         } else {
                             // Another path reached this state - choose winner
                             if tre_tag_order(
@@ -404,9 +404,9 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
                             }
                         }
                     }
-                    trans_i = trans_i.offset(1);
+                    trans_i = trans_i.add(1);
                 }
-                reach_i = reach_i.offset(1);
+                reach_i = reach_i.add(1);
             }
             (*reach_next_i).state = ptr::null_mut();
         }

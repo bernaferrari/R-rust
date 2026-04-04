@@ -1,3 +1,4 @@
+#![allow(clippy::unwrap_used)]
 //! Plural expression evaluation for GNU gettext.
 //!
 //! Ported from `plural-exp.c` in the GNU gettext `intl/` library.

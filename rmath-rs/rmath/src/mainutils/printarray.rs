@@ -1081,7 +1081,7 @@ pub unsafe extern "C" fn printMatrix(
         let rp = get_R_print_full();
         let pdim = INTEGER(dim);
         let r = *pdim;
-        let c = *pdim.offset(1);
+        let c = *pdim.add(1);
 
         // Check label lengths
         if rl != R_NilValue() && r > LENGTH(rl) {

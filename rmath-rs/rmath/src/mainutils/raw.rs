@@ -112,7 +112,7 @@ pub unsafe extern "C" fn inttomb(s: *mut c_char, wc: c_int) -> usize {
         while j > 0 {
             j -= 1;
             *bp = (0x80 | (cvalue & 0x3F)) as c_char;
-            bp = bp.offset(-1);
+            bp = bp.sub(1);
             cvalue >>= 6;
         }
         *bp = (utf8_table2[i] as u32 | cvalue) as c_char;

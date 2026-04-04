@@ -1201,13 +1201,13 @@ pub unsafe extern "C" fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: 
         let val = match locale {
             "LC_ALL" => std::env::var("LC_ALL")
                 .unwrap_or_else(|_| std::env::var("LANG").unwrap_or_else(|_| "C".to_string())),
-            "LC_COLLATE" => std::env::var("LC_COLLATE").unwrap_or_else(|_| "".to_string()),
-            "LC_CTYPE" => std::env::var("LC_CTYPE").unwrap_or_else(|_| "".to_string()),
-            "LC_MONETARY" => std::env::var("LC_MONETARY").unwrap_or_else(|_| "".to_string()),
-            "LC_NUMERIC" => std::env::var("LC_NUMERIC").unwrap_or_else(|_| "".to_string()),
-            "LC_TIME" => std::env::var("LC_TIME").unwrap_or_else(|_| "".to_string()),
-            "LC_MESSAGES" => std::env::var("LC_MESSAGES").unwrap_or_else(|_| "".to_string()),
-            _ => "".to_string(),
+            "LC_COLLATE" => std::env::var("LC_COLLATE").unwrap_or_else(|_| String::new()),
+            "LC_CTYPE" => std::env::var("LC_CTYPE").unwrap_or_else(|_| String::new()),
+            "LC_MONETARY" => std::env::var("LC_MONETARY").unwrap_or_else(|_| String::new()),
+            "LC_NUMERIC" => std::env::var("LC_NUMERIC").unwrap_or_else(|_| String::new()),
+            "LC_TIME" => std::env::var("LC_TIME").unwrap_or_else(|_| String::new()),
+            "LC_MESSAGES" => std::env::var("LC_MESSAGES").unwrap_or_else(|_| String::new()),
+            _ => String::new(),
         };
 
         Rf_mkString(CString::new(val).unwrap().as_ptr())
@@ -1246,10 +1246,10 @@ pub unsafe extern "C" fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: 
             if !elt.is_null() && elt != R_NilValue() {
                 CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("").to_string()
             } else {
-                "".to_string()
+                String::new()
             }
         } else {
-            "".to_string()
+            String::new()
         };
 
         // Attempt to set locale via libc

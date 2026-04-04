@@ -1,3 +1,4 @@
+#![allow(clippy::module_inception)]
 /*!
  * Port of R's trio library - Portable printf/scanf implementation.
  *

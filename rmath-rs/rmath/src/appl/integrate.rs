@@ -1,4 +1,4 @@
-#![allow(unused_variables)]
+#![allow(unused_variables, clippy::manual_memcpy)]
 #![allow(unused_assignments)]
 // Ported from R's appl/integrate.c
 //

@@ -584,7 +584,7 @@ fn qbeta_raw(
                     - log(fabs(pp * (1.0 - qq) * (2.0 - qq) / (2.0 * (pp + 2.0)))) / 2.0)
         {
             // MM's one-step correction
-            rp = rp * exp(u0);
+            rp *= exp(u0);
             u = if rp > -1.0 { u0 - log1p(rp) / pp } else { u0 };
             tx = exp(u);
             xinbta = exp(u);

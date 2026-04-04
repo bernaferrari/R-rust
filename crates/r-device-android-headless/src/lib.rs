@@ -11,21 +11,11 @@ use r_graphics_engine::{
 };
 
 /// Android headless plot renderer.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct AndroidHeadlessRenderer {
     width: u32,
     height: u32,
     pixmap: Option<tiny_skia::Pixmap>,
-}
-
-impl Default for AndroidHeadlessRenderer {
-    fn default() -> Self {
-        Self {
-            width: 0,
-            height: 0,
-            pixmap: None,
-        }
-    }
 }
 
 impl AndroidHeadlessRenderer {
@@ -85,10 +75,8 @@ impl RenderPlot for AndroidHeadlessRenderer {
 
     fn clear(&mut self, color: Color) {
         if let Some(pixmap) = &mut self.pixmap {
-            let pa = tiny_skia::PremultipliedColorU8::from_rgba(
-                color.r, color.g, color.b, color.a,
-            )
-            .unwrap_or(tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 0, 255).unwrap());
+            let pa = tiny_skia::PremultipliedColorU8::from_rgba(color.r, color.g, color.b, color.a)
+                .unwrap_or(tiny_skia::PremultipliedColorU8::from_rgba(0, 0, 0, 255).unwrap());
             let skia_color =
                 tiny_skia::Color::from_rgba8(pa.red(), pa.green(), pa.blue(), pa.alpha());
             pixmap.fill(skia_color);

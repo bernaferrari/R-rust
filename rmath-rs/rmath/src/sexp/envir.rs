@@ -104,7 +104,7 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
 ///
 /// If the input is not a promise, returns it as-is.
 #[must_use]
-pub fn force_promise_safe<'a>(prom: Sexp<'a>) -> LookupResult<'a> {
+pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
     if prom.typeof_() != SEXPTYPE::PROMSXP {
         return Some(prom);
     }

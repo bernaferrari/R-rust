@@ -352,11 +352,11 @@ unsafe fn isReal(s: SEXP) -> c_int {
 unsafe fn asLogical(s: SEXP) -> c_int {
     unsafe {
         if isLogical(s) != 0 && LENGTH(s) >= 1 {
-            *LOGICAL(s).offset(0)
+            *LOGICAL(s)
         } else if isInteger(s) != 0 && LENGTH(s) >= 1 {
-            *INTEGER(s).offset(0)
+            *INTEGER(s)
         } else if isReal(s) != 0 && LENGTH(s) >= 1 {
-            if *REAL(s).offset(0) == 0.0_f64 { 0 } else { 1 }
+            if *REAL(s) == 0.0_f64 { 0 } else { 1 }
         } else {
             crate::sexp::ffi::NA_INTEGER
         }
@@ -412,7 +412,7 @@ unsafe fn ScalarInteger(x: c_int) -> SEXP {
     unsafe {
         let s = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
         if !s.is_null() {
-            *INTEGER(s).offset(0) = x;
+            *INTEGER(s) = x;
             (*s).sxpinfo.set_scalar(true);
         }
         s
@@ -424,7 +424,7 @@ unsafe fn ScalarLogical(x: c_int) -> SEXP {
     unsafe {
         let s = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
         if !s.is_null() {
-            *LOGICAL(s).offset(0) = x;
+            *LOGICAL(s) = x;
             (*s).sxpinfo.set_scalar(true);
         }
         s
@@ -1607,7 +1607,7 @@ pub unsafe extern "C" fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEX
     unsafe {
         checkArity(op, args);
         let skip = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
-            *INTEGER(CAR(args)).offset(0)
+            *INTEGER(CAR(args))
         } else {
             crate::sexp::ffi::NA_INTEGER
         };
@@ -1719,7 +1719,7 @@ pub unsafe extern "C" fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
     unsafe {
         checkArity(op, args);
         let n = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
-            *INTEGER(CAR(args)).offset(0)
+            *INTEGER(CAR(args))
         } else {
             crate::sexp::ffi::NA_INTEGER
         };
@@ -1875,7 +1875,7 @@ pub unsafe extern "C" fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SE
     unsafe {
         checkArity(op, args);
         let mut i = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
-            *INTEGER(CAR(args)).offset(0)
+            *INTEGER(CAR(args))
         } else {
             crate::sexp::ffi::NA_INTEGER
         };

@@ -481,7 +481,7 @@ unsafe fn advancePrintArgs(
             *allMissing = 0;
             *prev = CDR(*prev);
         }
-        *missingArg = (*missingArg).offset(1);
+        *missingArg = (*missingArg).add(1);
     }
 }
 

@@ -1,4 +1,7 @@
-#![allow(unreachable_code)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else)]
+#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else)]
+#![allow(unreachable_code, clippy::comparison_to_empty, clippy::manual_memcpy)]
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
 #![allow(non_camel_case_types)]
@@ -1618,7 +1621,7 @@ fn timesub(timep: &i64, offset: i32, sp: &state, tmp: &mut stm) -> Option<*mut s
 
     while tdays < 0 || tdays >= YEAR_LENGTHS[if isleap(y) { 1 } else { 0 }] as i64 {
         let tdelta = tdays / DAYSPERLYEAR as i64;
-        if !(i32::MIN as i64 <= tdelta && tdelta <= i32::MAX as i64) {
+        if !i32::try_from(tdelta).is_ok() {
             return None;
         }
         let mut idelta = tdelta as i32;
