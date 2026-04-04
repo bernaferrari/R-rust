@@ -9,7 +9,7 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use super::ffi::{
-    NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData,
+    R_xlen_t, Rcomplex, SexprecCore, SexprecData, NA_INTEGER, NA_REAL, SEXP, SEXPTYPE,
 };
 
 // ---------------------------------------------------------------------------
@@ -226,9 +226,8 @@ pub unsafe extern "C" fn Rf_isNull(x: SEXP) -> c_int {
     unsafe { (TYPEOF(x) == SEXPTYPE::NILSXP.0) as c_int }
 }
 
-/// Check if an SEXP is a symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn TYPEOF_CHECK(x: SEXP) -> c_int {
+/// Check the type of a SEXP. Alias for TYPEOF.
+pub unsafe fn TYPEOF_CHECK(x: SEXP) -> c_int {
     unsafe { TYPEOF(x) }
 }
 
@@ -735,9 +734,8 @@ pub unsafe extern "C" fn CHAR(x: SEXP) -> *const c_char {
     unsafe { DATAPTR(x) as *const c_char }
 }
 
-/// Get the character data of a CHARSXP (mutable).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CHAR_RW(x: SEXP) -> *mut c_char {
+/// Get a mutable pointer to the character data of a CHARSXP.
+pub unsafe fn CHAR_RW(x: SEXP) -> *mut c_char {
     unsafe { DATAPTR(x) as *mut c_char }
 }
 
