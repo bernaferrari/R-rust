@@ -1,7 +1,5 @@
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::assigning_clones)]
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::assigning_clones)]
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::assigning_clones)]
-#![allow(clippy::comparison_chain, clippy::assigning_clones)]
+#![allow(clippy::self_assignment, clippy::assigning_clones)]
+#![allow(clippy::comparison_chain)]
 #![allow(unused_variables, clippy::manual_memcpy, clippy::comparison_to_empty)]
 #![allow(unused_assignments)]
 // Ported from R's appl/uncmin.c
@@ -1658,7 +1656,7 @@ fn optchk(
         return;
     }
 
-    if n <= 0 {
+    if n == 0 {
         *msg = -1;
         return;
     }

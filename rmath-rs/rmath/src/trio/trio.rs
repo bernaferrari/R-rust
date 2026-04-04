@@ -1868,25 +1868,23 @@ fn trio_scan_process(
                 }
 
                 // Alternative prefix (0x, 0b)
-                if flags & FLAGS_ALTERNATIVE != 0 {
-                    if ch == b'0' as c_int {
+                if flags & FLAGS_ALTERNATIVE != 0 && ch == b'0' as c_int {
+                    *input_pos += 1;
+                    ch = if *input_pos < input.len() {
+                        input[*input_pos] as c_int
+                    } else {
+                        -1
+                    };
+                    if ch != -1
+                        && base == BASE_HEX
+                        && trio_to_upper_char(ch as c_char) == 'X' as c_char
+                    {
                         *input_pos += 1;
                         ch = if *input_pos < input.len() {
                             input[*input_pos] as c_int
                         } else {
                             -1
                         };
-                        if ch != -1 {
-                            if base == BASE_HEX && trio_to_upper_char(ch as c_char) == 'X' as c_char
-                            {
-                                *input_pos += 1;
-                                ch = if *input_pos < input.len() {
-                                    input[*input_pos] as c_int
-                                } else {
-                                    -1
-                                };
-                            }
-                        }
                     }
                 }
 
@@ -1946,9 +1944,7 @@ fn trio_scan_process(
                                 *(pointer as *mut usize) = final_number as usize;
                             } else if flags & FLAGS_PTRDIFF_T != 0 {
                                 *(pointer as *mut isize) = final_number as isize;
-                            } else if flags & FLAGS_INTMAX_T != 0 {
-                                *(pointer as *mut i64) = final_number as i64;
-                            } else if flags & FLAGS_QUAD != 0 {
+                            } else if flags & FLAGS_INTMAX_T != 0 || flags & FLAGS_QUAD != 0 {
                                 *(pointer as *mut i64) = final_number as i64;
                             } else if flags & FLAGS_LONG != 0 {
                                 *(pointer as *mut c_long) = final_number as c_long;

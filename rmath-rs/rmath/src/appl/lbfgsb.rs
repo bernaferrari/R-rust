@@ -1,7 +1,10 @@
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::never_loop, clippy::assigning_clones, clippy::unwrap_used, clippy::redundant_closure_call, clippy::needless_late_init)]
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::never_loop, clippy::assigning_clones, clippy::unwrap_used)]
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else, clippy::self_assignment, clippy::never_loop, clippy::assigning_clones, clippy::unwrap_used)]
-#![allow(clippy::comparison_chain, clippy::assigning_clones, clippy::redundant_closure_call, clippy::needless_late_init)]
+#![allow(
+    clippy::self_assignment,
+    clippy::never_loop,
+    clippy::redundant_closure_call,
+    clippy::needless_late_init
+)]
+#![allow(clippy::comparison_chain)]
 #![allow(clippy::manual_memcpy, clippy::comparison_to_empty)]
 // Port of R's src/appl/lbfgsb.c to Rust
 //
@@ -373,7 +376,7 @@ pub unsafe extern "C" fn lbfgsb(
             if sr.is_none() {
                 *sr = Some(Box::new(LbfgsbState::new()));
             }
-            let st = sr.as_mut().unwrap();
+            let st = sr.as_mut().expect("LBFGSB_STATE should be initialized");
             let mut csave: [c_char; 60] = [0; 60];
 
             if cstrncmp(task, b"START", 5) {
@@ -2026,7 +2029,7 @@ unsafe fn hpsolb(n: i32, t: *mut f64, iorder: *mut i32, iheap: i32) {
                 let indxin = *iorder.add(k);
                 let mut i = k;
                 loop {
-                    if i <= 0 {
+                    if i == 0 {
                         break;
                     }
                     let j = (i - 1) / 2;

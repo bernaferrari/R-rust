@@ -102,11 +102,8 @@ pub(crate) fn dbinom_raw(x: f64, n: f64, p: f64, q: f64, give_log: bool) -> f64 
         return r_d__0(give_log);
     }
 
-    if !r_finite(n) {
-        if r_finite(x) {
-            return r_d__0(give_log);
-        }
-        // else n = DBL_MAX
+    if !r_finite(n) && r_finite(x) {
+        return r_d__0(give_log);
     }
 
     // We need bd0 and stirlerr which are in special::bd0 and special::stirlerr

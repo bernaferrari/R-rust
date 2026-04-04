@@ -1,4 +1,9 @@
-#![allow(unused_assignments, clippy::neg_cmp_op_on_partial_ord, clippy::assigning_mutate_iter)]
+#![allow(
+    unused_assignments,
+    clippy::neg_cmp_op_on_partial_ord,
+    clippy::assigning_mutate_iter,
+    clippy::mut_range_bound
+)]
 // Ported from R's nmath/bessel_i.c
 //
 // From http://www.netlib.org/specfun/ribesl Fortran translated by f2c,
@@ -130,7 +135,7 @@ fn i_bessel(x: f64, alpha: f64, nb: i32, ize: i32, bi: &mut [f64]) -> i32 {
                             let pold2 = plast;
                             plast = p;
                             p = en * plast / x + pold2;
-                            if !(p <= 1.0) {
+                            if p > 1.0 {
                                 break;
                             }
                         }

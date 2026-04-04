@@ -60,10 +60,10 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
     // Check cache first
     let cached = W_CACHE.with(|cache| {
         let cache = cache.borrow();
-        if let Some(entry) = cache.get(&(i, j)) {
-            if entry.len() > k as usize && entry[k as usize] >= 0.0 {
-                return Some(entry[k as usize]);
-            }
+        if let Some(entry) = cache.get(&(i, j))
+            && entry.len() > k as usize && entry[k as usize] >= 0.0
+        {
+            return Some(entry[k as usize]);
         }
         None
     });

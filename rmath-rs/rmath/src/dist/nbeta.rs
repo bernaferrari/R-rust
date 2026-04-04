@@ -57,7 +57,11 @@ pub fn dnbeta_inner(x: f64, a: f64, b: f64, ncp: f64, log_p: bool) -> f64 {
         0_i32
     } else {
         d_val = ceil(d + sqrt(d_val));
-        if d_val > 0.0 { d_val as i32 } else { 0 }
+        if d_val > 0.0 {
+            d_val as i32
+        } else {
+            0
+        }
     };
 
     // Starting "middle term" -- first look at its log scale
@@ -147,7 +151,6 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
 
     let mut sumq = 1.0 - q;
     let mut ans = q * temp;
-    let mut ax = ans;
 
     // recurse over subsequent terms until convergence
     let mut j = floor(x0);
@@ -158,8 +161,7 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
         gx *= x * (a + b + j - 1.0) / (a + j);
         let q_new = q * c / j;
         sumq -= q_new;
-        ax = temp * q_new;
-        ans += ax;
+        ans += temp * q_new;
         errbd = (temp - gx) * sumq;
 
         if !(errbd > errmax && j < (itrmax as f64) + x0) {
@@ -184,7 +186,11 @@ fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: 
 
     if lower_tail {
         if log_p {
-            if ans > 0.0 { log(ans) } else { ML_NEGINF }
+            if ans > 0.0 {
+                log(ans)
+            } else {
+                ML_NEGINF
+            }
         } else {
             ans
         }
@@ -195,7 +201,11 @@ fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: 
         if ans > 1.0 {
             return if log_p { r_d_lexp(0.0, true) } else { 0.0 };
         }
-        if log_p { log1p(-ans) } else { 1.0 - ans }
+        if log_p {
+            log1p(-ans)
+        } else {
+            1.0 - ans
+        }
     }
 }
 

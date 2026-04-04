@@ -70,10 +70,10 @@ fn logspace_add(logx: f64, logy: f64) -> f64 {
 /// - w1 = 1 - I_x(a,b)  (or log(1-I_x(a,b)) when log_p is true)
 /// - ierr: 0 = success, nonzero = error code
 pub fn bratio(a: f64, b: f64, x: f64, y: f64, log_p: bool) -> (f64, f64, i32) {
-    let mut ierr: i32 = 0;
+    let mut ierr: i32;
     let mut ierr1: i32 = 0;
-    let mut w: f64 = 0.0;
-    let mut w1: f64 = 0.0;
+    let mut w: f64;
+    let mut w1: f64;
 
     // eps is a machine dependent constant: the smallest
     // floating point number for which   1. + eps > 1.
@@ -807,9 +807,7 @@ fn bup(a: f64, b: f64, x: f64, y: f64, n: i32, eps: f64, give_log: bool) -> f64 
         // L30:
         for i in 0..k {
             let l = i as f64;
-            dd *= (apb + l) / (ap1 + l) * x;
-            dd += dd - dd + dd; // just to suppress unused warning; we use dd below
-                                // Actually we want: w += d but we're computing dd
+            dd = dd * (apb + l) / (ap1 + l) * x;
         }
         // Redo properly:
         dd = d;

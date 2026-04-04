@@ -96,7 +96,7 @@ unsafe fn set_binding_values(
                             {
                                 let layout =
                                     Layout::from_size_align(libc_strlen((*binding).dirname) + 1, 1)
-                                        .unwrap();
+                                        .unwrap_or_else(|_| Layout::new::<u8>());
                                 std::alloc::dealloc((*binding).dirname as *mut u8, layout);
                             }
                             (*binding).dirname = new_result;
@@ -120,7 +120,7 @@ unsafe fn set_binding_values(
                             if !(*binding).codeset.is_null() {
                                 let layout =
                                     Layout::from_size_align(libc_strlen((*binding).codeset) + 1, 1)
-                                        .unwrap();
+                                        .unwrap_or_else(|_| Layout::new::<u8>());
                                 std::alloc::dealloc((*binding).codeset as *mut u8, layout);
                             }
                             (*binding).codeset = new_result;
@@ -147,7 +147,7 @@ unsafe fn set_binding_values(
             let struct_size = std::mem::size_of::<binding>();
             let layout =
                 Layout::from_size_align(struct_size + len, std::mem::align_of::<binding>())
-                    .unwrap();
+                    .unwrap_or_else(|_| Layout::new::<u8>());
             let new_binding = std::alloc::alloc(layout) as *mut binding;
 
             if new_binding.is_null() {
@@ -164,12 +164,9 @@ unsafe fn set_binding_values(
                 // --- Set dirname ---
                 if !dirnamep.is_null() {
                     let mut dirname = *dirnamep;
-                    if dirname.is_null() {
-                        dirname = (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr();
-                    } else if libc_strcmp(
-                        dirname,
-                        (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr(),
-                    ) == 0
+                    if dirname.is_null()
+                        || libc_strcmp(dirname, (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr())
+                            == 0
                     {
                         dirname = (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr();
                     } else {
@@ -210,7 +207,7 @@ unsafe fn set_binding_values(
                                     libc_strlen((*new_binding).dirname) + 1,
                                     1,
                                 )
-                                .unwrap();
+                                .unwrap_or_else(|_| Layout::new::<u8>());
                                 std::alloc::dealloc((*new_binding).dirname as *mut u8, layout2);
                             }
                             std::alloc::dealloc(new_binding as *mut u8, layout);

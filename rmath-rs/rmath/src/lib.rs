@@ -24,7 +24,6 @@
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::redundant_else)]
 #![allow(clippy::unnested_or_patterns)]
-#![allow(clippy::collapsible_if)]
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::bool_comparison)]
 #![allow(clippy::redundant_closure)]

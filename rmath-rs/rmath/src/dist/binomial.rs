@@ -604,7 +604,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
         }
 
         // L_np_small: np = n*p < 30 : inverse CDF
-        loop {
+        {
             let mut ix: i32 = 0;
             let mut f = st.qn;
             let mut u = unif_rand();

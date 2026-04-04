@@ -204,18 +204,34 @@ pub fn qpois_inner(p: f64, lambda: f64, lower_tail: bool, log_p: bool) -> f64 {
     }
 
     let p_is_0 = if lower_tail {
-        if log_p { p == ML_NEGINF } else { p == 0.0 }
+        if log_p {
+            p == ML_NEGINF
+        } else {
+            p == 0.0
+        }
     } else {
-        if log_p { p == 0.0 } else { p == 1.0 }
+        if log_p {
+            p == 0.0
+        } else {
+            p == 1.0
+        }
     };
     if p_is_0 {
         return 0.0;
     }
 
     let p_is_1 = if lower_tail {
-        if log_p { p == 0.0 } else { p == 1.0 }
+        if log_p {
+            p == 0.0
+        } else {
+            p == 1.0
+        }
     } else {
-        if log_p { p == ML_NEGINF } else { p == 0.0 }
+        if log_p {
+            p == ML_NEGINF
+        } else {
+            p == 0.0
+        }
     };
     if p_is_1 {
         return ML_POSINF;
@@ -494,10 +510,8 @@ pub fn rpois_inner(mu: f64) -> f64 {
             }
         };
 
-        if g_pos {
-            if step_f(pois, 0, fk, difmuk, 0.0, u_sq, &st) {
-                return pois;
-            }
+        if g_pos && step_f(pois, 0, fk, difmuk, 0.0, u_sq, &st) {
+            return pois;
         }
 
         loop {

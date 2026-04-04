@@ -38,7 +38,11 @@ const M_PI_2: f64 = 1.57079632679489661923132169163975; // pi/2
 fn min0(x: i32, y: i32) -> i32 {
     let a = if x < 0 { 0 } else { x };
     let b = if y < 0 { 0 } else { y };
-    if a <= b { a } else { b }
+    if a <= b {
+        a
+    } else {
+        b
+    }
 }
 
 // =====================================================================
@@ -377,11 +381,9 @@ fn y_bessel(x: f64, alpha: f64, nb: i32, by: &mut [f64]) -> i32 {
         }
         if na == 1 {
             h = 2.0 * (nu + 1.0) / ex;
-            if h > 1.0 {
-                if fabs(ya1) > DBL_MAX / h {
-                    h = 0.0;
-                    ya = 0.0;
-                }
+            if h > 1.0 && fabs(ya1) > DBL_MAX / h {
+                h = 0.0;
+                ya = 0.0;
             }
             h = h * ya1 - ya;
             ya = ya1;

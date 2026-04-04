@@ -294,11 +294,9 @@ fn pnchisq_raw(
             t *= x / f_2n;
         }
 
-        if !lam_sml || lu >= _dbl_min_exp {
-            if !t_sml || lt >= _dbl_min_exp {
-                term = v * t;
-                ans += term;
-            }
+        if (!lam_sml || lu >= _dbl_min_exp) && (!t_sml || lt >= _dbl_min_exp) {
+            term = v * t;
+            ans += term;
         }
 
         f_2n += 2.0;

@@ -1,6 +1,3 @@
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else)]
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else)]
-#![allow(clippy::absurd_extreme_comparisons, clippy::collapsible_if, clippy::if_same_then_else)]
 #![allow(unreachable_code, clippy::comparison_to_empty, clippy::manual_memcpy)]
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
@@ -418,12 +415,12 @@ fn normalize_overflow32(tensptr: &mut i32, unitsptr: &mut i32, base: i32) -> boo
 /// Tries /etc/localtime symlink resolution, or returns "UTC".
 fn get_tzinfo() -> String {
     // Try to resolve /etc/localtime
-    if let Ok(target) = std::fs::read_link("/etc/localtime") {
-        if let Some(name) = target.to_str() {
-            // The target is typically something like "/usr/share/zoneinfo/America/New_York"
-            if let Some(pos) = name.rfind("zoneinfo/") {
-                return name[pos + 9..].to_string();
-            }
+    if let Ok(target) = std::fs::read_link("/etc/localtime")
+        && let Some(name) = target.to_str()
+    {
+        // The target is typically something like "/usr/share/zoneinfo/America/New_York"
+        if let Some(pos) = name.rfind("zoneinfo/") {
+            return name[pos + 9..].to_string();
         }
     }
     "UTC".to_string()
@@ -717,17 +714,14 @@ fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
             } else {
                 detzcode64(&data[p..p + 8])
             };
-            let fits = (i64::MIN <= at) && (at <= i64::MAX);
-            sp.types[i] = if fits { 1 } else { 0 };
-            if sp.types[i] != 0 {
-                if i > 0 && timecnt == 0 && at != i64::MIN {
-                    sp.types[i - 1] = 1;
-                    sp.ats[timecnt] = i64::MIN;
-                    timecnt += 1;
-                }
-                sp.ats[timecnt] = at;
+            sp.types[i] = 1;
+            if i > 0 && timecnt == 0 && at != i64::MIN {
+                sp.types[i - 1] = 1;
+                sp.ats[timecnt] = i64::MIN;
                 timecnt += 1;
             }
+            sp.ats[timecnt] = at;
+            timecnt += 1;
             p += stored;
         }
 
@@ -1756,8 +1750,8 @@ fn localsub(g: &mut TzGlobals, timep: &i64, _offset: i32, tmp: &mut stm) -> Opti
     if (goback != 0 && ats_first.map_or(false, |a| t < a))
         || (goahead != 0 && ats_last.map_or(false, |a| t > a))
     {
-        let ats_first = ats_first.unwrap();
-        let ats_last = ats_last.unwrap();
+        let ats_first = ats_first.unwrap_or(i64::MIN);
+        let ats_last = ats_last.unwrap_or(i64::MAX);
         let mut newt = t;
         let seconds = if t < ats_first {
             ats_first - t
@@ -1854,10 +1848,10 @@ fn time2sub(
     let mut yourtm = *tmp;
     let mut mytm = stm::default();
 
-    if do_norm_secs {
-        if normalize_overflow(&mut yourtm.tm_min, &mut yourtm.tm_sec, SECSPERMIN) {
-            return WRONG;
-        }
+    if do_norm_secs
+        && normalize_overflow(&mut yourtm.tm_min, &mut yourtm.tm_sec, SECSPERMIN)
+    {
+        return WRONG;
     }
     if normalize_overflow(&mut yourtm.tm_hour, &mut yourtm.tm_min, MINSPERHOUR) {
         return WRONG;
@@ -2175,9 +2169,10 @@ fn r_tzset_impl(g: &mut TzGlobals) {
         g.lclmem.chars[gmt_bytes.len()] = 0;
         g.lclmem.defaulttype = 0;
     } else if tzload(Some(&name), &mut g.lclmem, true) != 0 {
-        if name.starts_with(':') {
-            gmtload(&mut g.lclmem);
-        } else if tzparse(&name, &mut g.lclmem, false) != 0 {
+        // tzload failed, try other methods
+        if !name.starts_with(':') && tzparse(&name, &mut g.lclmem, false) == 0 {
+            // tzparse succeeded, keep result
+        } else {
             gmtload(&mut g.lclmem);
         }
     }
@@ -2192,7 +2187,7 @@ fn r_tzset_impl(g: &mut TzGlobals) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gmtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
         r_tzset_impl(&mut g);
         let t = if timep.is_null() { 0 } else { *timep };
         let mut tmp = stm::default();
@@ -2210,7 +2205,7 @@ pub unsafe extern "C" fn R_gmtime(timep: *const i64) -> *mut stm {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
@@ -2230,7 +2225,7 @@ pub unsafe extern "C" fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut st
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_localtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
         r_tzset_impl(&mut g);
         let t = if timep.is_null() { 0 } else { *timep };
         let mut tmp = stm::default();
@@ -2248,7 +2243,7 @@ pub unsafe extern "C" fn R_localtime(timep: *const i64) -> *mut stm {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
@@ -2268,7 +2263,7 @@ pub unsafe extern "C" fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_mktime(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
         r_tzset_impl(&mut g);
         if tmp.is_null() {
             return WRONG;
@@ -2282,7 +2277,7 @@ pub unsafe extern "C" fn R_mktime(tmp: *mut stm) -> i64 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_timegm(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
         if tmp.is_null() {
             return WRONG;
         }
@@ -2295,14 +2290,14 @@ pub unsafe extern "C" fn R_timegm(tmp: *mut stm) -> i64 {
 /// `R_tzset` -- set timezone from TZ environment variable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_tzset() {
-    let mut g = get_tz_globals().lock().unwrap();
+    let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
     r_tzset_impl(&mut g);
 }
 
 /// `R_tzsetwall` -- set timezone from system wall clock.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_tzsetwall() {
-    let mut g = get_tz_globals().lock().unwrap();
+    let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
     r_tzsetwall(&mut g);
 }
 
@@ -2311,7 +2306,7 @@ pub unsafe extern "C" fn R_tzsetwall() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_tzname() -> *mut *mut i8 {
     // Ensure tzset has been called so the names are populated
-    let mut g = get_tz_globals().lock().unwrap();
+    let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
     r_tzset_impl(&mut g);
     drop(g);
     std::ptr::addr_of_mut!(R_TZNAME) as *mut *mut i8
