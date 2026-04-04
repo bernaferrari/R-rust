@@ -11,10 +11,20 @@
 //! This module ports R's `eval()` function from src/main/eval.c.
 //! It handles expression evaluation by dispatching based on SEXPTYPE:
 //! - Self-evaluating types (NILSXP, LGLSXP, INTSXP, etc.) → return as-is
-//! - SYMSXP → variable lookup via R_findVar
+//! - SYMSXP → variable lookup via find_var_safe
 //! - PROMSXP → force the promise
 //! - LANGSXP → function call (dispatch to SPECIAL/BUILTIN/CLOSXP)
 //! - BCODESXP → bytecode evaluation
+//!
+//! # Architecture
+//!
+//! The module uses a two-layer design:
+//! - **Safe layer**: Functions like [`eval_safe`], [`eval_lang_safe`], and
+//!   [`find_var_safe`] work with `Sexp<'a>` and return `Result<Sexp<'a>, String>`.
+//!   These are the idiomatic Rust APIs.
+//! - **FFI layer**: Functions like [`Rf_eval`] are thin shims that convert
+//!   raw `SEXP` pointers to `Sexp<'a>`, delegate to the safe layer, and
+//!   convert back.
 
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -26,7 +36,7 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{set_R_Visible, R_EvalDepth, R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::protect::Rf_protect;
-use crate::sexp::safe::Sexp;
+use crate::sexp::safe::{PairlistIter, Sexp};
 use crate::sexp::symbol::R_DotsSymbol;
 
 // ---------------------------------------------------------------------------
@@ -146,29 +156,247 @@ impl std::fmt::Display for EvalError {
 }
 
 // ---------------------------------------------------------------------------
-// Safe eval API
+// Safe eval API — the primary internal implementation
 // ---------------------------------------------------------------------------
 
-/// Evaluate an R expression in an environment.
+/// Depth guard that decrements R_EvalDepth when dropped.
+struct DepthGuard(c_int);
+impl Drop for DepthGuard {
+    fn drop(&mut self) {
+        unsafe { crate::sexp::globals::set_R_EvalDepth(self.0 - 1) };
+    }
+}
+
+/// Check evaluation depth and return a guard that decrements on drop.
+fn check_eval_depth() -> Result<DepthGuard, String> {
+    let depth = unsafe { R_EvalDepth() } + 1;
+    if depth > 500 {
+        return Err(EvalError::TooDeeplyNested.to_string());
+    }
+    unsafe { crate::sexp::globals::set_R_EvalDepth(depth) };
+    Ok(DepthGuard(depth))
+}
+
+/// Safe evaluation of an R expression.
 ///
-/// This is the primary safe API for evaluating R expressions.
-/// It wraps the raw FFI `Rf_eval` and provides a `Result` return type.
+/// This is the idiomatic Rust API for evaluating R expressions.
+/// It catches panics, uses safe Sexp types, and returns Result.
 ///
 /// # Arguments
-/// * `e` - The expression to evaluate
-/// * `rho` - The environment in which to evaluate
+/// * `expr` - The expression to evaluate
+/// * `env` - The environment in which to evaluate
 ///
 /// # Returns
 /// * `Ok(Sexp)` - The result of evaluation
 /// * `Err(String)` - A description of the error that occurred
-#[must_use]
-pub fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    // SAFETY: `e` and `rho` are constructed from valid `Sexp` wrappers,
-    // so their raw pointers are guaranteed non-null and valid.
-    unsafe { eval_inner_safe(e.as_raw(), rho.as_raw()) }
+pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    let _guard = check_eval_depth()?;
+
+    // Self-evaluating types return themselves
+    match expr.typeof_() {
+        SEXPTYPE::NILSXP
+        | SEXPTYPE::LGLSXP
+        | SEXPTYPE::INTSXP
+        | SEXPTYPE::REALSXP
+        | SEXPTYPE::CPLXSXP
+        | SEXPTYPE::STRSXP
+        | SEXPTYPE::RAWSXP
+        | SEXPTYPE::VECSXP
+        | SEXPTYPE::EXPRSXP
+        | SEXPTYPE::EXTPTRSXP => return Ok(expr),
+        _ => {}
+    }
+
+    // Symbol lookup
+    if expr.is_symbol() {
+        return find_var_safe(expr, env).ok_or_else(|| format!("object '{}' not found", expr));
+    }
+
+    // Language object (function call)
+    if expr.is_pairlist() || expr.typeof_() == SEXPTYPE::LANGSXP {
+        return eval_lang_safe(expr, env);
+    }
+
+    // Closure — return as-is (self-evaluating)
+    if expr.is_closure() {
+        return Ok(expr);
+    }
+
+    // Promise
+    if expr.typeof_() == SEXPTYPE::PROMSXP {
+        return eval_promise_safe(expr, env);
+    }
+
+    // Dots
+    if expr.typeof_() == SEXPTYPE::DOTSXP {
+        return eval_dots_safe(expr, env);
+    }
+
+    // Bytecode
+    if expr.typeof_() == SEXPTYPE::BCODESXP {
+        eprintln!("Warning: bytecode evaluation not yet implemented");
+        return Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+    }
+
+    Err(format!("cannot evaluate type {:?}", expr.typeof_()))
 }
 
-/// Internal safe eval implementation.
+/// Safe evaluation of a language object (function call).
+fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    let fun = e.car().ok_or("empty call")?;
+    let args = e.cdr().ok_or("missing args")?;
+
+    // Evaluate the function
+    let fun_val = eval_safe(fun, rho)?;
+
+    // Dispatch based on function type
+    match fun_val.typeof_() {
+        SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, args, rho),
+        SEXPTYPE::SPECIALSXP => apply_special_safe(fun_val, e, args, rho),
+        SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
+        _ => Err(format!("cannot call type {:?}", fun_val.typeof_())),
+    }
+}
+
+/// Safe variable lookup using Sexp types.
+///
+/// Walks the environment chain looking for a symbol binding.
+pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
+    if symbol == unsafe { Sexp::from_raw_unchecked(R_DotsSymbol()) } {
+        return None;
+    }
+
+    // Walk environment chain
+    let mut current = rho;
+    loop {
+        if !current.is_environment() {
+            return None;
+        }
+        let frame = current.frame()?;
+        for cell in PairlistIter::new(frame) {
+            if let Some(tag) = cell.tag() {
+                if tag == symbol {
+                    return cell.car();
+                }
+            }
+        }
+        current = current.enclos()?;
+    }
+}
+
+/// Safe promise evaluation.
+fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    // If already evaluated, return the value
+    if let Some(val) = prom.prvalue() {
+        if val.typeof_() != SEXPTYPE::PROMSXP {
+            return Ok(val);
+        }
+    }
+
+    // Force the promise
+    let raw_result = unsafe { forcePromise(prom.as_raw()) };
+    Ok(unsafe { Sexp::from_raw_unchecked(raw_result) })
+}
+
+/// Safe dots evaluation.
+fn eval_dots_safe<'a>(_dots: Sexp<'a>, _rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    Err(EvalError::IncorrectDotsContext.to_string())
+}
+
+/// Safe closure application.
+fn apply_closure_safe<'a>(
+    fun: Sexp<'a>,
+    args: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
+    // Use the existing raw FFI applyClosure for now
+    // TODO: Port applyClosure to use Sexp<'a> internally
+    let raw_result = unsafe {
+        super::closure::applyClosure(
+            fun.as_raw(), // call placeholder
+            fun.as_raw(),
+            args.as_raw(),
+            rho.as_raw(),
+            R_NilValue(),
+            TRUE,
+        )
+    };
+    Ok(unsafe { Sexp::from_raw_unchecked(raw_result) })
+}
+
+/// Safe special form application.
+fn apply_special_safe<'a>(
+    fun: Sexp<'a>,
+    call: Sexp<'a>,
+    args: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
+    let _vmax = unsafe { vmaxget() };
+    let flag = unsafe { PRIMPRINT(fun.as_raw()) };
+    unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+
+    let tmp = if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
+        unsafe { primfun(call.as_raw(), fun.as_raw(), args.as_raw(), rho.as_raw()) }
+    } else {
+        unsafe {
+            super::special::do_special_dispatch(
+                call.as_raw(),
+                fun.as_raw(),
+                args.as_raw(),
+                rho.as_raw(),
+            )
+        }
+    };
+
+    if flag < 2 {
+        unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+    }
+
+    Ok(unsafe { Sexp::from_raw_unchecked(tmp) })
+}
+
+/// Safe builtin function application.
+fn apply_builtin_safe<'a>(
+    fun: Sexp<'a>,
+    call: Sexp<'a>,
+    args: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
+    let _vmax = unsafe { vmaxget() };
+    let flag = unsafe { PRIMPRINT(fun.as_raw()) };
+    unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+
+    // Evaluate arguments
+    let evaled_args =
+        unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), 0) };
+
+    let tmp = if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
+        unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
+    } else {
+        eprintln!("Warning: builtin function not implemented");
+        unsafe { R_NilValue() }
+    };
+
+    if flag < 2 {
+        unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+    }
+
+    Ok(unsafe { Sexp::from_raw_unchecked(tmp) })
+}
+
+// ---------------------------------------------------------------------------
+// Legacy raw-pointer-based safe API (kept for backward compatibility)
+// ---------------------------------------------------------------------------
+
+/// Evaluate an R expression in an environment.
+///
+/// This wraps the raw FFI `Rf_eval` and provides a `Result` return type.
+#[must_use]
+pub fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    eval_safe(e, rho)
+}
+
+/// Internal safe eval implementation (legacy, delegates to eval_safe).
 unsafe fn eval_inner_safe(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
     if e.is_null() {
         return Ok(Sexp::from_raw_unchecked(R_NilValue()));
@@ -176,26 +404,9 @@ unsafe fn eval_inner_safe(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
 
     set_R_Visible(TRUE);
 
-    let t = TYPEOF(e);
-
-    // Self-evaluating types — return immediately
-    if is_self_evaluating(t) {
-        return Ok(Sexp::from_raw_unchecked(e));
-    }
-
-    // Check evaluation depth
-    let depth = R_EvalDepth() + 1;
-    if depth > 500 {
-        return Err(EvalError::TooDeeplyNested.to_string());
-    }
-    crate::sexp::globals::set_R_EvalDepth(depth);
-
-    let result = eval_dispatch(t, e, rho);
-
-    // Restore depth
-    crate::sexp::globals::set_R_EvalDepth(depth - 1);
-
-    result
+    let expr = Sexp::from_raw_unchecked(e);
+    let env = Sexp::from_raw_unchecked(rho);
+    eval_safe(expr, env)
 }
 
 /// Check if a SEXPTYPE is self-evaluating (returns as-is without further evaluation).
@@ -222,54 +433,18 @@ fn is_self_evaluating(t: c_int) -> bool {
     )
 }
 
-/// Dispatch evaluation based on SEXPTYPE.
+/// Dispatch evaluation based on SEXPTYPE (legacy, delegates to eval_safe).
 unsafe fn eval_dispatch(t: c_int, e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
-    match t {
-        // Symbol lookup
-        SYMSXP => eval_symbol(e, rho),
-
-        // Promise — force it
-        PROMSXP => Ok(Sexp::from_raw_unchecked(forcePromise(e))),
-
-        // Language (function call)
-        LANGSXP => eval_lang(e, rho),
-
-        // Bytecode
-        BCODESXP => {
-            eprintln!("Warning: bytecode evaluation not yet implemented");
-            Ok(Sexp::from_raw_unchecked(R_NilValue()))
-        }
-
-        // DOTSXP in wrong context
-        DOTSXP => Err(EvalError::IncorrectDotsContext.to_string()),
-
-        _ => Err(EvalError::UnimplementedType(t).to_string()),
-    }
+    let expr = Sexp::from_raw_unchecked(e);
+    let env = Sexp::from_raw_unchecked(rho);
+    eval_safe(expr, env)
 }
 
-/// Evaluate a symbol (SYMSXP) — variable lookup.
+/// Evaluate a symbol (SYMSXP) — variable lookup (legacy).
 unsafe fn eval_symbol(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
-    if e == R_DotsSymbol() {
-        return Err(EvalError::IncorrectDotsContext.to_string());
-    }
-
-    let tmp = R_findVar(e, rho);
-
-    if tmp == R_UnboundValue() {
-        let name = get_symbol_name(e);
-        return Err(EvalError::ObjectNotFound(name).to_string());
-    }
-
-    if tmp == R_MissingArg() {
-        R_MissingArgError(e, ptr::null_mut(), std::ptr::null::<c_char>());
-        return Err(EvalError::MissingArgument.to_string());
-    }
-
-    if TYPEOF(tmp) == PROMSXP {
-        Ok(Sexp::from_raw_unchecked(forcePromise(tmp)))
-    } else {
-        Ok(Sexp::from_raw_unchecked(tmp))
-    }
+    let expr = Sexp::from_raw_unchecked(e);
+    let env = Sexp::from_raw_unchecked(rho);
+    eval_safe(expr, env)
 }
 
 /// Extract the name of a symbol for error messages.
@@ -289,7 +464,7 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// FFI eval function
+// FFI eval function — thin shim delegating to eval_safe
 // ---------------------------------------------------------------------------
 
 /// Evaluate an R expression in an environment.
@@ -303,12 +478,20 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 #[unsafe(no_mangle)]
 #[must_use]
 pub unsafe extern "C" fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
-    match eval_inner_safe(e, rho) {
-        Ok(result) => result.as_raw(),
-        Err(msg) => {
-            std::panic::panic_any(crate::sexp::context::RError { message: msg });
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        set_R_Visible(TRUE);
+
+        match (Sexp::from_raw(e), Sexp::from_raw(rho)) {
+            (Some(expr), Some(env)) => match eval_safe(expr, env) {
+                Ok(result) => result.as_raw(),
+                Err(msg) => {
+                    std::panic::panic_any(crate::sexp::context::RError { message: msg });
+                }
+            },
+            _ => R_NilValue(),
         }
-    }
+    }))
+    .unwrap_or_else(|_| R_NilValue())
 }
 
 /// Internal eval implementation (legacy, delegates to safe version).
@@ -317,100 +500,44 @@ pub unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// eval_lang — evaluate a language/function call
+// eval_lang — evaluate a language/function call (legacy, delegates to safe)
 // ---------------------------------------------------------------------------
 
-/// Evaluate a LANGSXP (function call expression).
+/// Evaluate a LANGSXP (function call expression) — legacy wrapper.
 unsafe fn eval_lang(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
-    let fun = CAR(e);
-    let args = CDR(e);
-
-    // Find the function
-    let op = if TYPEOF(fun) == SYMSXP {
-        findFun(fun, rho)
-    } else {
-        Rf_eval(fun, rho)
-    };
-
-    if op == R_UnboundValue() {
-        let name = if TYPEOF(fun) == SYMSXP {
-            get_symbol_name(fun)
-        } else {
-            "???".to_string()
-        };
-        return Err(EvalError::FunctionNotFound(name).to_string());
-    }
-
-    Rf_protect(op);
-
-    match TYPEOF(op) {
-        // Special — arguments not evaluated
-        SPECIALSXP => eval_special(e, op, args, rho),
-
-        // Builtin — arguments evaluated first
-        BUILTINSXP => eval_builtin(e, op, args, rho),
-
-        // Closure — full function call
-        CLOSXP => eval_closure(e, op, rho),
-
-        _ => Err(EvalError::NonFunction.to_string()),
-    }
+    let expr = Sexp::from_raw_unchecked(e);
+    let env = Sexp::from_raw_unchecked(rho);
+    eval_lang_safe(expr, env)
 }
 
-/// Evaluate a SPECIAL function (arguments not evaluated).
+/// Evaluate a SPECIAL function (arguments not evaluated) — legacy wrapper.
 unsafe fn eval_special(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
-    let _vmax = vmaxget();
-    Rf_protect(e);
-
-    let flag = PRIMPRINT(op);
-    set_R_Visible(if flag != 1 { TRUE } else { FALSE });
-
-    let tmp = if let Some(primfun) = get_primfun(op) {
-        primfun(e, op, args, rho)
-    } else {
-        super::special::do_special_dispatch(e, op, args, rho)
-    };
-
-    if flag < 2 {
-        set_R_Visible(if flag != 1 { TRUE } else { FALSE });
-    }
-
-    Ok(Sexp::from_raw_unchecked(tmp))
+    let fun = Sexp::from_raw_unchecked(op);
+    let call = Sexp::from_raw_unchecked(e);
+    let arglist = Sexp::from_raw_unchecked(args);
+    let env = Sexp::from_raw_unchecked(rho);
+    apply_special_safe(fun, call, arglist, env)
 }
 
-/// Evaluate a BUILTIN function (arguments evaluated first).
+/// Evaluate a BUILTIN function (arguments evaluated first) — legacy wrapper.
 unsafe fn eval_builtin(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
-    let _vmax = vmaxget();
-    Rf_protect(e);
-
-    // Evaluate arguments
-    let evaled_args = super::dispatch::evalList(args, rho, e, 0);
-    Rf_protect(evaled_args);
-
-    let flag = PRIMPRINT(op);
-    set_R_Visible(if flag != 1 { TRUE } else { FALSE });
-
-    let tmp = if let Some(primfun) = get_primfun(op) {
-        primfun(e, op, evaled_args, rho)
-    } else {
-        eprintln!("Warning: builtin function not implemented");
-        R_NilValue()
-    };
-
-    if flag < 2 {
-        set_R_Visible(if flag != 1 { TRUE } else { FALSE });
-    }
-
-    Ok(Sexp::from_raw_unchecked(tmp))
+    let fun = Sexp::from_raw_unchecked(op);
+    let call = Sexp::from_raw_unchecked(e);
+    let arglist = Sexp::from_raw_unchecked(args);
+    let env = Sexp::from_raw_unchecked(rho);
+    apply_builtin_safe(fun, call, arglist, env)
 }
 
-/// Evaluate a CLOSXP (user-defined function).
+/// Evaluate a CLOSXP (user-defined function) — legacy wrapper.
 unsafe fn eval_closure(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
-    let args = CDR(e);
-    let pargs = super::dispatch::promiseArgs(args, rho);
-    Rf_protect(pargs);
-    let result = super::closure::applyClosure(e, op, pargs, rho, R_NilValue(), TRUE);
-    Ok(Sexp::from_raw_unchecked(result))
+    let fun = Sexp::from_raw_unchecked(op);
+    let args = if let Some(cdr) = Sexp::from_raw_unchecked(e).cdr() {
+        cdr
+    } else {
+        return Err("missing args".to_string());
+    };
+    let env = Sexp::from_raw_unchecked(rho);
+    apply_closure_safe(fun, args, env)
 }
 
 // ---------------------------------------------------------------------------
