@@ -9,14 +9,14 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, Rf_isNull, SET_NAMED, TAG, TYPEOF,
+    Rf_isNull, CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, SET_NAMED, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::envir::{CheckFormals, addMissingVarsToNewEnv, defineVar, matchArgs};
+use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar, matchArgs, CheckFormals};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_EvalDepth, R_GlobalEnv, R_MissingArg, R_NilValue, set_R_Visible};
-use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE, vmaxget};
+use crate::sexp::globals::{set_R_Visible, R_EvalDepth, R_GlobalEnv, R_MissingArg, R_NilValue};
+use crate::sexp::memory_ext::{mkPROMISE, vmaxget, NewEnvironment};
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::symbol::Rf_install;
 use crate::sexp::symbol::{R_BraceSymbol, R_ForSymbol, R_IfSymbol, R_RepeatSymbol, R_WhileSymbol};

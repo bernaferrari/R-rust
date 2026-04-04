@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDDR, CDR, LENGTH, Rf_isNull, SET_ATTRIB, SETCAR, TAG, TYPEOF,
+    Rf_isNull, ATTRIB, CADR, CAR, CDDR, CDR, LENGTH, SETCAR, SET_ATTRIB, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};

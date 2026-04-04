@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unsafe_op_in_unsafe_fn)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unsafe_op_in_unsafe_fn
+)]
 
 //! Closure application — ports R's applyClosure from eval.c.
 //!
@@ -11,15 +17,15 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    BODY, CADDR, CAR, CDDR, CDR, CLOENV, FORMALS, LENGTH, Rf_isNull, SET_CLOENV, SET_NAMED, SETCAR,
-    SETCDR, SETTAG, TAG, TYPEOF,
+    Rf_isNull, BODY, CADDR, CAR, CDDR, CDR, CLOENV, FORMALS, LENGTH, SETCAR, SETCDR, SETTAG,
+    SET_CLOENV, SET_NAMED, TAG, TYPEOF,
 };
-use crate::sexp::context::{Rf_begincontext, Rf_endcontext, ctxt_flags};
+use crate::sexp::context::{ctxt_flags, Rf_begincontext, Rf_endcontext};
 use crate::sexp::envir::{
-    CheckFormals, addMissingVarsToNewEnv, defineVar, forcePromise, matchArgs,
+    addMissingVarsToNewEnv, defineVar, forcePromise, matchArgs, CheckFormals,
 };
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, set_R_Visible};
+use crate::sexp::globals::{set_R_Visible, R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::Rf_protect;
 

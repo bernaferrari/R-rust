@@ -4,6 +4,8 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::{self, NonNull};
 
 use super::ffi::{SexprecCore, SxpInfo, SEXP, SEXPTYPE};
+use super::memory::with_arena_for_gc;
+use super::protect::with_protected_objects;
 
 /// Card size in bytes for the card marking table.
 pub const CARD_SIZE: usize = 512;
@@ -222,15 +224,83 @@ pub unsafe fn init_gc_heap(heap_base: *mut u8, heap_size: usize) {
 }
 
 /// Run minor garbage collection on young generation.
-pub fn minor_gc() {
-    // 1. Collect roots from stack, registers, globals
-    // 2. Add all remembered set objects as extra roots
-    // 3. Trace reachable young objects
-    // 4. Promote surviving objects to old generation
-    // 5. Reset young generation
-    // 6. Clear dirty cards and remembered set
+///
+/// Returns (promoted_count, freed_count).
+pub fn minor_gc() -> (usize, usize) {
+    // Phase 1: Mark reachable objects from roots
+    let mut marked_count = 0;
+
+    // Mark objects on the protect stack
+    with_protected_objects(|objects| {
+        for &obj in objects {
+            if !obj.is_null() {
+                unsafe {
+                    if !(*obj).sxpinfo.mark() {
+                        (*obj).sxpinfo.set_mark(true);
+                        marked_count += 1;
+                    }
+                }
+            }
+        }
+    });
+
+    // Mark objects from remembered set (old -> young references)
+    REMBERED_SET.with(|rs| {
+        let rs = rs.borrow();
+        let entries: Vec<SEXP> = rs.entries.iter().copied().collect();
+        for obj in entries {
+            if !obj.is_null() {
+                unsafe {
+                    if !(*obj).sxpinfo.mark() {
+                        (*obj).sxpinfo.set_mark(true);
+                        marked_count += 1;
+                    }
+                }
+            }
+        }
+    });
+
+    // Phase 2: Sweep
+    let mut freed_count = 0;
+    let mut promoted_count = 0;
+
+    with_arena_for_gc(|arena| {
+        let nodes: Vec<SEXP> = arena.nodes().collect();
+
+        for &obj in &nodes {
+            if obj.is_null() {
+                continue;
+            }
+            unsafe {
+                let obj_gen = (*obj).sxpinfo.gcgen();
+                let marked = (*obj).sxpinfo.mark();
+
+                if obj_gen == Generation::Young as u8 {
+                    if marked {
+                        // Survived GC — promote to old
+                        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                        (*obj).sxpinfo.set_mark(false);
+                        promoted_count += 1;
+                    } else {
+                        // Unreachable young object — free it
+                        arena.free_node(obj);
+                        freed_count += 1;
+                    }
+                } else {
+                    // Old generation — just reset mark if set
+                    if marked {
+                        (*obj).sxpinfo.set_mark(false);
+                    }
+                }
+            }
+        }
+    });
+
+    // Clear dirty cards and remembered set
     REMBERED_SET.with(|rs| rs.borrow_mut().clear());
     CARD_TABLE.with(|ct| ct.borrow_mut().clear_dirty());
+
+    (promoted_count, freed_count)
 }
 
 // ---------------------------------------------------------------------------

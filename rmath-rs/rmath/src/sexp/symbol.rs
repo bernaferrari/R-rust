@@ -12,7 +12,7 @@ use std::os::raw::c_char;
 use std::ptr;
 use std::sync::{Mutex, OnceLock};
 
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::ffi::{R_xlen_t, SexprecCore, SexprecData, SEXP, SEXPTYPE};
 
 // ---------------------------------------------------------------------------
 // Global symbol table

@@ -234,8 +234,7 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 
     // Bytecode
     if expr.typeof_() == SEXPTYPE::BCODESXP {
-        eprintln!("Warning: bytecode evaluation not yet implemented");
-        return Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) });
+        return super::bytecode::eval_bytecode(expr, env);
     }
 
     Err(format!("cannot evaluate type {:?}", expr.typeof_()))

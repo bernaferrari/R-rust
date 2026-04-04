@@ -135,6 +135,20 @@ pub fn R_ProtectCount() -> usize {
     PROTECT_STACK.with(|ps| ps.borrow().stack.len())
 }
 
+/// Iterate over all protected SEXP values on the stack.
+/// Used by the GC to mark protected objects.
+pub fn with_protected_objects<F, R>(f: F) -> R
+where
+    F: FnOnce(&[SEXP]) -> R,
+{
+    PROTECT_STACK.with(|ps| {
+        let stack = ps.borrow();
+        f(&stack.stack)
+    })
+}
+
+// ---------------------------------------------------------------------------
+// R_ProtectWithIndex — protect with an index for later unprotection
 // ---------------------------------------------------------------------------
 // R_ProtectWithIndex — protect with an index for later unprotection
 // ---------------------------------------------------------------------------

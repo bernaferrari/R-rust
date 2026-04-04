@@ -15,6 +15,7 @@ pub mod attrib_core;
 pub mod bc_eval;
 pub mod bc_stack;
 pub mod builtin;
+pub mod bytecode;
 pub mod closure;
 pub mod context;
 pub mod dispatch;

@@ -12,6 +12,7 @@
 //! - `symbol` submodule: symbol table and interning
 
 pub mod accessors;
+pub mod altrep;
 pub mod constructors;
 pub mod context;
 pub mod envir;
@@ -26,7 +27,13 @@ pub mod symbol;
 
 // Re-export commonly used types at the module level
 pub use ffi::{
-    Closxp, DOTSXP, Envsxp, FALSE, ISNAN, Listsxp, NA_INTEGER, NA_LOGICAL, NA_REAL, Primsxp,
-    Promsxp, R_FINITE, R_IsNA, R_IsNaN, R_NA_BIT_PATTERN, R_len_t, R_size_t, R_xlen_t, Rboolean,
-    Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, Symsxp, TRUE, Vecsxp,
+    Closxp, Envsxp, Listsxp, Primsxp, Promsxp, R_IsNA, R_IsNaN, R_len_t, R_size_t, R_xlen_t,
+    Rboolean, Rbyte, Rcomplex, SexprecCore, SexprecData, SxpInfo, Symsxp, Vecsxp, DOTSXP, FALSE,
+    ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_NA_BIT_PATTERN, SEXP, SEXPTYPE, TRUE,
 };
+
+pub use altrep::{
+    altrep_class, altrep_elt, altrep_length, is_altrep, AltrepBuilder, AltrepClass, AltrepData,
+    REPEAT_CLASS, SEQUENCE_CLASS,
+};
+

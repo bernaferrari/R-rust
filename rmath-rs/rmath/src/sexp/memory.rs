@@ -47,6 +47,8 @@ pub struct RArena {
     nodes: Vec<Box<SexprecCore>>,
     /// All allocated data buffers (pointer, layout).
     data_bufs: Vec<(*mut u8, Layout)>,
+    /// Free list of reclaimed SEXP pointers available for reuse.
+    free_list: Vec<SEXP>,
 }
 
 impl RArena {
@@ -55,6 +57,7 @@ impl RArena {
         RArena {
             nodes: Vec::new(),
             data_bufs: Vec::new(),
+            free_list: Vec::new(),
         }
     }
 
@@ -63,6 +66,13 @@ impl RArena {
     /// Returns a raw SEXP pointer to the allocated node.
     /// The pointer is valid for the lifetime of the arena.
     pub fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
+        if let Some(ptr) = self.free_list.pop() {
+            unsafe {
+                *ptr = SexprecCore::new(sexptype);
+            }
+            return ptr;
+        }
+
         let mut boxed = Box::new(SexprecCore::new(sexptype));
         let ptr: SEXP = &mut *boxed as *mut _;
         self.nodes.push(boxed);
@@ -186,6 +196,21 @@ impl RArena {
     pub fn node_count(&self) -> usize {
         self.nodes.len()
     }
+
+    /// Iterate over all arena nodes.
+    pub fn nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
+        self.nodes.iter().map(|b| &**b as *const _ as SEXP)
+    }
+
+    /// Free a node by adding it to the free list for reuse.
+    pub fn free_node(&mut self, ptr: SEXP) {
+        if !ptr.is_null() {
+            let addr = ptr as usize;
+            self.nodes
+                .retain(|b| &**b as *const _ as *const _ as usize != addr);
+            self.free_list.push(ptr);
+        }
+    }
 }
 
 impl Default for RArena {
@@ -233,6 +258,15 @@ pub fn reset_arena() {
     with_arena(|arena| {
         *arena = RArena::new();
     });
+}
+
+/// Access the thread-local arena for GC operations.
+/// This is identical to with_arena but named for clarity in GC context.
+pub fn with_arena_for_gc<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RArena) -> R,
+{
+    with_arena(f)
 }
 
 // ---------------------------------------------------------------------------

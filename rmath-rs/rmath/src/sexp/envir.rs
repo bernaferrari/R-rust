@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unsafe_op_in_unsafe_fn)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unsafe_op_in_unsafe_fn
+)]
 
 //! Environment operations — ports R's src/main/envir.c.
 //!
