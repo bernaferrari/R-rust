@@ -24,15 +24,15 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use crate::main::context as main_context;
-use crate::main::context::{R_Srcref, get_R_InBCInterpreter, get_R_ToplevelContext};
+use crate::main::context::{get_R_InBCInterpreter, get_R_ToplevelContext, R_Srcref};
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
 };
 use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::constructors::Rf_allocVector;
+use crate::sexp::context::ctxt_flags;
 use crate::sexp::context::R_GlobalContext;
 use crate::sexp::context::RCNTXT;
-use crate::sexp::context::ctxt_flags;
 use crate::sexp::envir::findVar;
 use crate::sexp::ffi::{NA_INTEGER, R_FINITE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -1327,55 +1327,3 @@ pub unsafe extern "C" fn R_WriteProfile(_out: c_int) {
 // ---------------------------------------------------------------------------
 // bc_check_sigint -- check for user interrupts in bytecode loop
 // ---------------------------------------------------------------------------
-
-/// Check for user interrupts during bytecode execution.
-///
-/// This is the same function that exists in missing.rs, provided here
-/// as part of the profiling module for completeness. The version in
-/// missing.rs should be preferred.
-///
-/// Ported from R's `bc_check_sigint()` in eval.c.
-#[allow(dead_code)]
-unsafe fn bc_check_sigint_local() {
-    unsafe {
-        crate::main::errors::error::R_CheckUserInterrupt();
-        crate::main::memory_main::R_RunPendingFinalizers();
-    }
-}
-
-// ---------------------------------------------------------------------------
-// BC_COUNT_DELTA and BC_CHECK_SIGINT macros (as functions)
-// ---------------------------------------------------------------------------
-
-/// Counter for bytecode interrupt checking.
-static mut evalcount: c_int = 0;
-
-/// Check interval for bytecode interrupt checking.
-const BC_COUNT_DELTA: c_int = 1023;
-
-/// Check for user interrupts in the bytecode loop (delta-based).
-///
-/// Ported from the BC_CHECK_SIGINT macro in eval.c.
-#[allow(dead_code)]
-pub unsafe fn BC_CHECK_SIGINT() {
-    unsafe {
-        evalcount += 1;
-        if evalcount > BC_COUNT_DELTA {
-            crate::eval::missing::bc_check_sigint();
-            evalcount = 0;
-        }
-    }
-}
-
-/// Check for user interrupts in the bytecode loop (loop-index based).
-///
-/// Ported from the BC_CHECK_SIGINT_LOOP macro in eval.c.
-#[allow(dead_code)]
-pub unsafe fn BC_CHECK_SIGINT_LOOP(i: c_int) {
-    unsafe {
-        if (i & BC_COUNT_DELTA) == 0 {
-            crate::eval::missing::bc_check_sigint();
-            evalcount = 0;
-        }
-    }
-}

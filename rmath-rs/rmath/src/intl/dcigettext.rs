@@ -24,23 +24,8 @@ use std::ptr;
 use super::types::*;
 
 // ---------------------------------------------------------------------------
-// Internal constants
-// ---------------------------------------------------------------------------
-
-/// Maximum depth of locale aliasing.
-const MAX_LOCALE_ALIAS_DEPTH: c_int = 10;
-
-/// Size of the message cache.
-const MSGCTRN_SIZE: usize = 256;
-
-// ---------------------------------------------------------------------------
 // Internal state
 // ---------------------------------------------------------------------------
-
-/// Cache for looked-up messages to avoid repeated catalog lookups.
-///
-/// Each entry maps (msgid, domain, category) -> translation.
-static mut _nl_msg_cache: [*mut c_char; MSGCTRN_SIZE] = [ptr::null_mut(); MSGCTRN_SIZE];
 
 /// Cache of domain data (keyed by domain binding hash).
 static mut _nl_domain_cache: [*mut loaded_l10nfile; 64] = [ptr::null_mut(); 64];

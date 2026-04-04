@@ -23,17 +23,17 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use crate::mainutils::subscript::{
-    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
+    get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex, OneIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, Rbyte, SEXP, SEXPTYPE, TRUE,
+    R_xlen_t, Rboolean, Rbyte, FALSE, NA_INTEGER, NA_LOGICAL, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::memory_ext::{CONS_NR, allocList, allocSExp};
+use crate::sexp::memory_ext::{allocList, allocSExp, CONS_NR};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -331,15 +331,23 @@ unsafe fn IS_GROWABLE(_x: SEXP) -> bool {
 
 /// Set the growable bit on an object.
 #[inline]
-unsafe fn SET_GROWABLE_BIT(_x: SEXP) {
-    // Stub: no-op since growable bit support is incomplete.
+unsafe fn SET_GROWABLE_BIT(x: SEXP) {
+    unsafe {
+        if !x.is_null() {
+            let gp = (*x).sxpinfo.gp();
+            (*x).sxpinfo.set_gp(gp | (1u16 << 5));
+        }
+    }
 }
 
 /// Set true length of a vector.
 #[inline]
-unsafe fn SET_TRUELENGTH(x: SEXP, _v: c_int) {
-    // Stub: no-op
-    let _ = x;
+unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
+    unsafe {
+        if !x.is_null() {
+            (*x).data.vecsxp.truelength = v as R_xlen_t;
+        }
+    }
 }
 
 /// Get true length of a vector.
@@ -370,9 +378,11 @@ unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
 /// Set the standard vector length (not marking as immutable).
 #[inline]
 unsafe fn SET_STDVEC_LENGTH(x: SEXP, v: R_xlen_t) {
-    // Use SET_NAMED area or directly modify - for now just set length via data
-    // The length is stored separately; this is a simplification
-    let _ = (x, v);
+    unsafe {
+        if !x.is_null() {
+            (*x).data.vecsxp.length = v;
+        }
+    }
 }
 
 /// ENSURE_NAMEDMAX: set NAMED to NAMEDMAX.
@@ -387,27 +397,56 @@ unsafe fn ENSURE_NAMEDMAX(x: SEXP) {
 
 /// Check if the call is an assignment call.
 #[inline]
-unsafe fn IS_ASSIGNMENT_CALL(_call: SEXP) -> bool {
-    // Stub: return true (conservative)
-    true
+unsafe fn IS_ASSIGNMENT_CALL(call: SEXP) -> bool {
+    unsafe {
+        if isNull(call) {
+            return true;
+        }
+        let t = TYPEOF(call);
+        t == LANGSXP || t == SYMSXP
+    }
 }
 
 /// R_FixupRHS: fix up RHS for assignment (duplicate if needed).
-unsafe fn R_FixupRHS(_x: SEXP, y: SEXP) -> SEXP {
-    // Stub: return y unchanged
-    y
+unsafe fn R_FixupRHS(x: SEXP, y: SEXP) -> SEXP {
+    unsafe {
+        if MAYBE_SHARED(y) {
+            shallow_duplicate(y)
+        } else {
+            y
+        }
+    }
 }
 
 /// PairToVectorList: convert a pairlist to a vector list.
 unsafe fn PairToVectorList(x: SEXP) -> SEXP {
-    // Stub: return x unchanged
-    x
+    unsafe {
+        let len = Rf_length(x);
+        let ans = Rf_protect(Rf_allocVector3(VECSXP, len as R_xlen_t));
+        let mut src = x;
+        let mut i: R_xlen_t = 0;
+        while !isNull(src) && i < len as R_xlen_t {
+            SET_VECTOR_ELT(ans, i, CAR(src));
+            src = CDR(src);
+            i += 1;
+        }
+        Rf_unprotect(1);
+        ans
+    }
 }
 
 /// VectorToPairList: convert a vector list to a pairlist.
 unsafe fn VectorToPairList(x: SEXP) -> SEXP {
-    // Stub: return x unchanged
-    x
+    unsafe {
+        let len = Rf_length(x);
+        let mut result = R_NilValue();
+        let mut i: R_xlen_t = len as R_xlen_t;
+        while i > 0 {
+            i -= 1;
+            result = Rf_cons(VECTOR_ELT(x, i), result);
+        }
+        result
+    }
 }
 
 /// GetOption1: get an option value by symbol.
@@ -443,8 +482,29 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 }
 
 /// copyMostAttrib: copy most attributes from src to dest.
-unsafe fn copyMostAttrib(_src: SEXP, _dest: SEXP) {
-    // Stub: no-op
+///
+/// Copies all attributes except dim, dimnames, and names (which are
+/// handled separately by EnlargeVector). Also copies the OBJECT flag
+/// and S4 object bit.
+unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
+    unsafe {
+        if isNull(src) || isNull(dest) {
+            return;
+        }
+        let src_attr = ATTRIB(src);
+        if isNull(src_attr) {
+            return;
+        }
+        let new_attr = Rf_protect(crate::mainutils::duplicate::duplicate(src_attr));
+        SET_ATTRIB(dest, new_attr);
+        SET_OBJECT(dest, OBJECT(src));
+        if IS_S4_OBJECT(src) != 0 {
+            SET_S4_OBJECT(dest);
+        } else {
+            UNSET_S4_OBJECT(dest);
+        }
+        Rf_unprotect(1);
+    }
 }
 
 /// listAppend: append pairlist s to pairlist t.
@@ -607,10 +667,23 @@ unsafe fn DispatchOrEval(
     0 // FALSE
 }
 
-/// R_getS4DataSlot: get S4 data slot (stub).
+/// R_getS4DataSlot: get S4 data slot.
+///
+/// For S4 objects, returns the `.Data` attribute which holds the
+/// underlying data. For non-S4 objects, returns the input unchanged.
 unsafe fn R_getS4DataSlot(x: SEXP, _type_: c_int) -> SEXP {
-    // Stub: return x
-    x
+    unsafe {
+        if isNull(x) || IS_S4_OBJECT(x) == 0 {
+            return x;
+        }
+        let data_sym = Rf_install(b".Data\x00".as_ptr() as *const c_char);
+        let slot = getAttrib(x, data_sym);
+        if isNull(slot) {
+            x
+        } else {
+            slot
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1954,21 +2027,33 @@ unsafe fn R_DispatchOrEvalSP(
 // ---------------------------------------------------------------------------
 
 /// Port of `errorNotSubsettable()` -- signals an error for non-subsettable types.
-unsafe fn errorNotSubsettable(_x: SEXP) {
-    // In C this is NORET (never returns)
-    // Stub: no-op for now
+unsafe fn errorNotSubsettable(x: SEXP) {
+    unsafe {
+        let t = TYPEOF(x);
+        let type_name = crate::mainutils::util_main::type2char(t);
+        let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
+        panic!("object of type '{}' is not subsettable", s);
+    }
 }
 
 /// Port of `errorMissingSubscript()` -- signals an error for missing subscripts.
-unsafe fn errorMissingSubscript(_x: SEXP) {
-    // In C this is NORET (never returns)
-    // Stub: no-op for now
+unsafe fn errorMissingSubscript(x: SEXP) {
+    unsafe {
+        let t = TYPEOF(x);
+        let type_name = crate::mainutils::util_main::type2char(t);
+        let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
+        panic!("object of type '{}' is missing a subscript", s);
+    }
 }
 
 /// Port of `errorOutOfBoundsSEXP()` -- signals an out-of-bounds error for [[<-.
-unsafe fn errorOutOfBoundsSEXP(_x: SEXP, _subscript: c_int, _sindex: SEXP) {
-    // In C this is NORET (never returns)
-    // Stub: no-op for now
+unsafe fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
+    unsafe {
+        let t = TYPEOF(x);
+        let type_name = crate::mainutils::util_main::type2char(t);
+        let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
+        panic!("subscript out of bounds: type '{}' index {}", s, subscript);
+    }
 }
 
 // ---------------------------------------------------------------------------

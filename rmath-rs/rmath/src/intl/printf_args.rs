@@ -6,7 +6,6 @@
 
 #![allow(non_snake_case)]
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 
 use super::types::*;
@@ -146,54 +145,6 @@ pub unsafe extern "C" fn printf_fetchargs(_args: *mut c_void, a: *mut arguments)
             i += 1;
         }
         0
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Helper: get argument value by type (for higher-level callers)
-// ---------------------------------------------------------------------------
-
-/// Retrieve an integer argument value from an `argument` struct.
-///
-/// Returns `None` if the argument type is not an integer type.
-#[inline]
-pub(crate) unsafe fn get_argument_as_int(arg: &argument) -> Option<c_int> {
-    unsafe {
-        match arg.type_ {
-            arg_type::TYPE_SCHAR => Some(arg.a.a_schar as c_int),
-            arg_type::TYPE_UCHAR => Some(arg.a.a_uchar as c_int),
-            arg_type::TYPE_SHORT => Some(arg.a.a_short as c_int),
-            arg_type::TYPE_USHORT => Some(arg.a.a_ushort as c_int),
-            arg_type::TYPE_INT => Some(arg.a.a_int),
-            arg_type::TYPE_CHAR => Some(arg.a.a_char),
-            _ => None,
-        }
-    }
-}
-
-/// Retrieve a string argument value from an `argument` struct.
-///
-/// Returns `None` if the argument type is not `TYPE_STRING`.
-#[inline]
-pub(crate) unsafe fn get_argument_as_string(arg: &argument) -> Option<&str> {
-    unsafe {
-        if arg.type_ == arg_type::TYPE_STRING && !arg.a.a_string.is_null() {
-            CStr::from_ptr(arg.a.a_string).to_str().ok()
-        } else {
-            None
-        }
-    }
-}
-
-/// Retrieve a pointer argument value from an `argument` struct.
-#[inline]
-pub(crate) unsafe fn get_argument_as_pointer(arg: &argument) -> Option<*mut c_void> {
-    unsafe {
-        if arg.type_ == arg_type::TYPE_POINTER {
-            Some(arg.a.a_pointer)
-        } else {
-            None
-        }
     }
 }
 

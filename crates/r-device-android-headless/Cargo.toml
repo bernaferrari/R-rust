@@ -1,0 +1,22 @@
+[package]
+name = "r-device-android-headless"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-2.0-or-later"
+description = "Pure Rust headless graphics backend for Android"
+
+[dependencies]
+resvg = "0.47.0"
+tiny-skia = "0.12.0"
+usvg = "0.47.0"
+png = "0.17.13"
+anyhow = "1.0"
+thiserror = "1.0"
+
+r-graphics-engine = { path = "../r-graphics-engine" }
+
+[target.'cfg(target_os = "android")'.dependencies]
+log = "0.4"
+
+[features]
+default = []

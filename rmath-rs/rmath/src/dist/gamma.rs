@@ -54,40 +54,6 @@ pub(crate) fn logspace_add(logx: f64, logy: f64) -> f64 {
     fmax2(logx, logy) + log1p(exp(-fabs(logx - logy)))
 }
 
-/// Compute the log of a difference from logs of terms, i.e.,
-///   log (exp (logx) - exp (logy))
-#[inline]
-pub(crate) fn logspace_sub(logx: f64, logy: f64) -> f64 {
-    logx + r_log1_exp(logy - logx)
-}
-
-/// Compute the log of a sum from logs of terms, i.e.,
-///   log (sum_i exp(logx[i]))
-#[inline]
-pub(crate) fn logspace_sum(logx: &[f64], n: usize) -> f64 {
-    if n == 0 {
-        return ML_NEGINF;
-    }
-    if n == 1 {
-        return logx[0];
-    }
-    if n == 2 {
-        return logspace_add(logx[0], logx[1]);
-    }
-    // else (n >= 3):
-    let mut mx: f64 = logx[0];
-    for i in 1..n {
-        if mx < logx[i] {
-            mx = logx[i];
-        }
-    }
-    let mut s: f64 = 0.0;
-    for i in 0..n {
-        s += exp(logx[i] - mx);
-    }
-    mx + log(s)
-}
-
 /// dpois_wrap(x_plus_1, lambda, give_log) := dpois(x_plus_1 - 1, lambda);
 /// where dpois(k, L) := exp(-L) L^k / gamma(k+1) {the usual Poisson probabilities}
 /// and dpois*(.., give_log = TRUE) := log(dpois*(..))
@@ -208,7 +174,11 @@ fn pd_upper_series(x: f64, mut y: f64, log_p: bool) -> f64 {
         }
     }
 
-    if log_p { log(sum) } else { sum }
+    if log_p {
+        log(sum)
+    } else {
+        sum
+    }
 }
 
 /// Continued fraction for calculation of

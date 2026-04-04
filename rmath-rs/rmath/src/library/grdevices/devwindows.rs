@@ -415,11 +415,19 @@ unsafe fn GArgb(color: c_int, gamma: c_double) -> c_uint {
 }
 
 fn imin2(a: c_int, b: c_int) -> c_int {
-    if a < b { a } else { b }
+    if a < b {
+        a
+    } else {
+        b
+    }
 }
 
 fn imax2(a: c_int, b: c_int) -> c_int {
-    if a > b { a } else { b }
+    if a > b {
+        a
+    } else {
+        b
+    }
 }
 
 /// Safe CStr pointer helper: returns "" if null
@@ -1532,17 +1540,3 @@ mod win_impl {
 // ===========================================================================
 
 pub use win_impl::*;
-
-// ===========================================================================
-// Remaining inline helper: WARN_SEMI_TRANS equivalent
-// ===========================================================================
-
-/// Warn about semi-transparency once per page.
-/// On non-Windows, this is a no-op since we never reach this code path.
-#[allow(dead_code)]
-unsafe fn warn_semi_trans(xd: *mut gadesc) {
-    if !xd.is_null() && (*xd).warn_trans == 0 {
-        // warning(_("semi-transparency is not supported on this device: reported only once per page"));
-        (*xd).warn_trans = 1;
-    }
-}

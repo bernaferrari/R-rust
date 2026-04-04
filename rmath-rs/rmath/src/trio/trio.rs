@@ -104,15 +104,9 @@ const FLAGS_FLOAT_G: trio_flags_t = 8388608;
 const FLAGS_QUOTE: trio_flags_t = 16777216;
 const FLAGS_WIDECHAR: trio_flags_t = 33554432;
 const FLAGS_IGNORE: trio_flags_t = 67108864;
-const FLAGS_IGNORE_PARAMETER: trio_flags_t = 134217728;
 const FLAGS_VARSIZE_PARAMETER: trio_flags_t = 268435456;
 const FLAGS_FIXED_SIZE: trio_flags_t = 536870912;
 const FLAGS_ROUNDING: trio_flags_t = FLAGS_INTMAX_T; // reuse
-const FLAGS_EXCLUDE: trio_flags_t = FLAGS_SHORT; // reuse
-
-const FLAGS_ALL_VARSIZES: trio_flags_t =
-    FLAGS_LONG | FLAGS_QUAD | FLAGS_INTMAX_T | FLAGS_PTRDIFF_T | FLAGS_SIZE_T;
-const FLAGS_ALL_SIZES: trio_flags_t = FLAGS_ALL_VARSIZES | FLAGS_SHORTSHORT | FLAGS_SHORT;
 
 // ============================================================================
 // Constants
@@ -123,7 +117,6 @@ const NO_WIDTH: c_int = 0;
 const NO_PRECISION: c_int = -1;
 const NO_SIZE: c_int = -1;
 const NO_BASE: c_int = -1;
-const MIN_BASE: c_int = 2;
 const MAX_BASE: c_int = 36;
 const BASE_BINARY: c_int = 2;
 const BASE_OCTAL: c_int = 8;
@@ -131,13 +124,8 @@ const BASE_DECIMAL: c_int = 10;
 const BASE_HEX: c_int = 16;
 
 const MAX_PARAMETERS: usize = 64;
-const MAX_CHARACTER_CLASS: usize = 257; // UCHAR_MAX + 2
 const CHAR_IDENTIFIER: c_char = b'%' as c_char;
 const CHAR_BACKSLASH: c_char = b'\\' as c_char;
-const CHAR_ADJUST: c_char = b' ' as c_char;
-const CHAR_QUOTE: c_char = b'"' as c_char;
-
-const NIL: c_char = 0;
 
 const INFINITE_LOWER: &[u8] = b"inf";
 const INFINITE_UPPER: &[u8] = b"INF";
@@ -1288,11 +1276,13 @@ fn trio_write_double<W: Write>(
 // ============================================================================
 
 unsafe fn cstr_len(s: *const c_char) -> usize {
-    let mut len = 0usize;
-    while *s.add(len) != 0i8 {
-        len += 1;
+    unsafe {
+        let mut len = 0usize;
+        while *s.add(len) != 0i8 {
+            len += 1;
+        }
+        len
     }
-    len
 }
 
 // ============================================================================
@@ -1639,20 +1629,6 @@ impl FormatArgs {
     }
     pub fn push_string(&mut self, val: *mut c_char) {
         self.args.push(FormatArg::String(val));
-    }
-
-    fn next_int(&mut self) -> i64 {
-        if self.idx < self.args.len() {
-            let val = match &self.args[self.idx] {
-                FormatArg::Int(v) => *v,
-                FormatArg::UInt(v) => *v as i64,
-                _ => 0,
-            };
-            self.idx += 1;
-            val
-        } else {
-            0
-        }
     }
 
     fn next_uint(&mut self) -> u64 {
@@ -2386,7 +2362,11 @@ fn trio_scan_process(
 }
 
 fn width_limit(width: c_int) -> usize {
-    if width <= 0 { 512 } else { width as usize }
+    if width <= 0 {
+        512
+    } else {
+        width as usize
+    }
 }
 
 // ============================================================================
@@ -2432,7 +2412,7 @@ pub unsafe fn trio_sprintf_fmt(buffer: *mut c_char, format: &str, args: &mut For
 
     let mut writer = StringWriter { buffer };
     let result = trio_format(&mut writer, format_bytes, args);
-    *buffer = 0;
+    unsafe { *buffer = 0 };
     result
 }
 
@@ -2479,7 +2459,7 @@ pub unsafe fn trio_snprintf_fmt(
         remaining: max,
     };
     let result = trio_format(&mut writer, format_bytes, args);
-    *buffer = 0;
+    unsafe { *buffer = 0 };
     result
 }
 
@@ -2489,7 +2469,7 @@ pub unsafe fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut Fo
     let input = if buffer.is_null() {
         &[] as &[u8]
     } else {
-        std::ffi::CStr::from_ptr(buffer).to_bytes()
+        unsafe { std::ffi::CStr::from_ptr(buffer).to_bytes() }
     };
     let mut input_pos = 0usize;
 
@@ -2511,9 +2491,15 @@ pub unsafe fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut Fo
 /// String match (case-insensitive wildcard matching).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn trio_string_match(string: *const c_char, pattern: *const c_char) -> c_int {
-    let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-    let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
-    if trio_match_impl(s, p) { 1 } else { 0 }
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
+        let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
+        if trio_match_impl(s, p) {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 /// String contains (substring search).
@@ -2522,9 +2508,15 @@ pub unsafe extern "C" fn trio_string_contains(
     string: *const c_char,
     substring: *const c_char,
 ) -> c_int {
-    let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-    let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
-    if s.contains(sub) { 1 } else { 0 }
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
+        let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
+        if s.contains(sub) {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 /// Case-insensitive wildcard match implementation.
@@ -2574,14 +2566,26 @@ fn trio_match_impl(string: &str, pattern: &str) -> bool {
 
 /// Wildcard string match (case-insensitive).
 pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int {
-    let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-    let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
-    if trio_match_impl(s, p) { 1 } else { 0 }
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
+        let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
+        if trio_match_impl(s, p) {
+            1
+        } else {
+            0
+        }
+    }
 }
 
 /// Check if string contains substring.
 pub unsafe fn trio_contains(string: *const c_char, substring: *const c_char) -> c_int {
-    let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
-    let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
-    if s.contains(sub) { 1 } else { 0 }
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
+        let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
+        if s.contains(sub) {
+            1
+        } else {
+            0
+        }
+    }
 }

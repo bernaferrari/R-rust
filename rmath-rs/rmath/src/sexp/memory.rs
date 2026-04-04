@@ -7,11 +7,11 @@
 //! allocation patterns where most objects are short-lived within a
 //! single R expression evaluation.
 
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{alloc, dealloc, Layout};
 use std::os::raw::c_void;
 use std::ptr::{self, NonNull};
 
-use super::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp};
+use super::ffi::{R_xlen_t, SexprecCore, SexprecData, Vecsxp, NA_INTEGER, SEXP, SEXPTYPE};
 
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE
@@ -124,11 +124,9 @@ impl RArena {
         let ptr: SEXP = &mut *boxed as *mut _;
 
         // Store truelength in the vecsxp union field
-        unsafe {
-            boxed.data = SexprecData {
-                charsxp_truelen: len,
-            };
-        }
+        boxed.data = SexprecData {
+            charsxp_truelen: len,
+        };
 
         // Allocate string data (with null terminator)
         let total_bytes = len as usize + 1;

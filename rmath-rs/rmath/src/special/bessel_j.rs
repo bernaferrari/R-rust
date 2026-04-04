@@ -20,7 +20,6 @@ use libm::*;
 // Constants from bessel.h
 // =====================================================================
 
-const NSIG_BESS: f64 = 16.0;
 const ENSIG_BESS: f64 = 1e16;
 const RTNSIG_BESS: f64 = 1e-4;
 const ENMTEN_BESS: f64 = 8.9e-308;
@@ -34,7 +33,11 @@ const VERY_SMALL_NU: f64 = f64::from_bits(0x0010_0000_0000_0000); // 2^-800
 /// Minimum of two ints (from bessel_j.c: #define min0(x, y) (((x) <= (y)) ? (x) : (y)))
 #[inline(always)]
 fn min0(x: i32, y: i32) -> i32 {
-    if x <= y { x } else { y }
+    if x <= y {
+        x
+    } else {
+        y
+    }
 }
 
 // =====================================================================

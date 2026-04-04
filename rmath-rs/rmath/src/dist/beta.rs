@@ -16,7 +16,6 @@ use libm::*;
 
 // Constants
 const M_LN2: f64 = 0.693147180559945309417232121458;
-const DBL_EPSILON: f64 = 2.220446049250313e-16;
 const DBL_MIN: f64 = 2.2250738585072014e-308;
 const DBL_MAX: f64 = 1.7976931348623157e+308;
 const DBL_MAX_EXP: i32 = 1024;
@@ -279,7 +278,11 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     let x1 = 0.5 - x + 0.5; // = 1 - x
     let (w, wc) = bratio_simplified(a, b, x, x1, log_p);
 
-    if lower_tail { w } else { wc }
+    if lower_tail {
+        w
+    } else {
+        wc
+    }
 }
 
 /// Simplified bratio: computes the incomplete beta ratio I_x(a,b)
@@ -413,7 +416,6 @@ const N_NEWTON_FREE: i32 = 4;
 
 const DBL_VERY_MIN: f64 = DBL_MIN / 4.0;
 const DBL_LOG_V_MIN: f64 = M_LN2 * ((DBL_MIN_EXP - 2) as f64);
-const DBL_1__EPS: f64 = 1.0 - DBL_EPSILON / 2.0; // 0x1.fffffffffffffp-1
 
 const FPU: f64 = 3e-308;
 const ACU_MIN: f64 = 1e-300;

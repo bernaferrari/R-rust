@@ -151,19 +151,31 @@ pub unsafe extern "C" fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg:
     let prefix_str =
         if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP.0 && LENGTH(prefix) >= 1 {
             let s = STRING_ELT(prefix, 0);
-            if !s.is_null() { CHAR(s) } else { ptr::null() }
+            if !s.is_null() {
+                CHAR(s)
+            } else {
+                ptr::null()
+            }
         } else {
             ptr::null()
         };
     let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) >= 1 {
         let s = STRING_ELT(name, 0);
-        if !s.is_null() { CHAR(s) } else { ptr::null() }
+        if !s.is_null() {
+            CHAR(s)
+        } else {
+            ptr::null()
+        }
     } else {
         ptr::null()
     };
     let pkg_str = if !pkg.is_null() && TYPEOF(pkg) == SEXPTYPE::STRSXP.0 && LENGTH(pkg) >= 1 {
         let s = STRING_ELT(pkg, 0);
-        if !s.is_null() { CHAR(s) } else { ptr::null() }
+        if !s.is_null() {
+            CHAR(s)
+        } else {
+            ptr::null()
+        }
     } else {
         ptr::null()
     };

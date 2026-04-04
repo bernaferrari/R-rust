@@ -51,7 +51,7 @@ pub(crate) struct loaded_l10nfile {
 }
 
 // ---------------------------------------------------------------------------
-// GMO file types (from gmo.h)
+// Printf argument types (from printf-args.h)
 // ---------------------------------------------------------------------------
 
 /// Magic numbers for .mo files.
@@ -60,9 +60,6 @@ pub(crate) const MO_MAGIC_SWAPPED: nls_uint32 = 0xde12_0495;
 
 /// Number of bits in the hash word (assumes unsigned long has at least 32 bits).
 pub(crate) const HASHWORDBITS: c_int = 32;
-
-/// Marker for the end of the segments[] array in sysdep_string.
-pub(crate) const SEGMENTS_END: nls_uint32 = 0xffffffff;
 
 /// Descriptor for a static string contained in a binary .mo file.
 #[repr(C)]
@@ -131,10 +128,6 @@ pub(crate) union expression_val {
 }
 
 impl expression_val {
-    pub(crate) fn new_num(n: std::os::raw::c_ulong) -> Self {
-        Self { num: n }
-    }
-
     pub(crate) unsafe fn get_num(&self) -> std::os::raw::c_ulong {
         unsafe { self.num }
     }
@@ -203,17 +196,6 @@ pub(crate) struct binding {
     /// Zero-length array placeholder for the domain name string.
     /// The actual allocation includes extra bytes after this struct.
     pub domainname: [c_char; 0],
-}
-
-// ---------------------------------------------------------------------------
-// String list (used by various intl modules)
-// ---------------------------------------------------------------------------
-
-/// A simple linked list of strings.
-#[repr(C)]
-pub(crate) struct string_list {
-    pub next: *mut string_list,
-    pub string: *mut c_char,
 }
 
 // ---------------------------------------------------------------------------
@@ -329,10 +311,6 @@ pub(crate) fn SWAP(i: nls_uint32) -> nls_uint32 {
 
 /// Thread-safety stubs (no-op in standalone mode).
 pub(crate) unsafe fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {
-    // No-op in standalone mode.
-}
-
-pub(crate) unsafe fn gl_rwlock_rdlock(_lock: &mut [u8; 0]) {
     // No-op in standalone mode.
 }
 

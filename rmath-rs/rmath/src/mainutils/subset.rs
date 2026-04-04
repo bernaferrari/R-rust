@@ -34,7 +34,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::R_findVarInFrame;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{R_xlen_t, Rboolean, FALSE, NA_INTEGER, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -365,14 +365,22 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             if v == NA_INTEGER {
                 NA_LOGICAL
             } else {
-                if v != 0 { TRUE } else { FALSE }
+                if v != 0 {
+                    TRUE
+                } else {
+                    FALSE
+                }
             }
         } else if t == SEXPTYPE::REALSXP.0 {
             let v = REAL_ELT(x, 0);
             if v.is_nan() {
                 NA_LOGICAL
             } else {
-                if v != 0.0 { TRUE } else { FALSE }
+                if v != 0.0 {
+                    TRUE
+                } else {
+                    FALSE
+                }
             }
         } else {
             NA_LOGICAL
@@ -409,14 +417,112 @@ unsafe fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// DropDims -- drop dimensions with extent 1 (stub: identity)
+// DropDims -- drop dimensions with extent 1
 // ---------------------------------------------------------------------------
 
 /// Drop dimensions of length 1 from result.
+///
+/// Walks the dim attribute and removes any dimension with extent 1,
+/// adjusting the result accordingly. If all dimensions are 1, returns
+/// a length-0 vector. If no dimensions are 1, returns input unchanged.
 unsafe fn DropDims(x: SEXP) -> SEXP {
-    // Full implementation walks dim attribute and removes extents of 1.
-    // For now, this is a placeholder that preserves the input.
-    x
+    unsafe {
+        if isNull(x) {
+            return x;
+        }
+        let dim = getAttrib(x, sym_Dim());
+        if isNull(dim) {
+            return x;
+        }
+        let ndim = LENGTH(dim);
+        if ndim < 2 {
+            return x;
+        }
+        // Count dimensions to keep
+        let mut keep_count = 0;
+        for i in 0..ndim {
+            if INTEGER_ELT(dim, i as c_int) != 1 {
+                keep_count += 1;
+            }
+        }
+        // If all dims are 1, return length-0 vector
+        if keep_count == 0 {
+            return Rf_allocVector3(TYPEOF(x), 0);
+        }
+        // If no dims to drop, return unchanged
+        if keep_count == ndim {
+            return x;
+        }
+        // Build new dim
+        let new_dim = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, keep_count as R_xlen_t));
+        let mut new_len: R_xlen_t = 1;
+        let mut j = 0;
+        for i in 0..ndim {
+            let d = INTEGER_ELT(dim, i as c_int);
+            if d != 1 {
+                *INTEGER(new_dim).add(j as usize) = d;
+                new_len *= d as R_xlen_t;
+                j += 1;
+            }
+        }
+        // Reallocate x with new dimensions
+        let new_x = Rf_protect(Rf_allocVector3(TYPEOF(x), new_len));
+        // Copy data
+        let xtype = TYPEOF(x);
+        if xtype == SEXPTYPE::INTSXP.0 || xtype == SEXPTYPE::LGLSXP.0 {
+            for i in 0..new_len {
+                *INTEGER(new_x).add(i as usize) = *INTEGER(x).add(i as usize);
+            }
+        } else if xtype == SEXPTYPE::REALSXP.0 {
+            for i in 0..new_len {
+                *REAL(new_x).add(i as usize) = *REAL(x).add(i as usize);
+            }
+        } else if xtype == SEXPTYPE::STRSXP.0 {
+            for i in 0..new_len {
+                SET_STRING_ELT(new_x, i, STRING_ELT(x, i));
+            }
+        } else if xtype == SEXPTYPE::VECSXP.0 || xtype == SEXPTYPE::EXPRSXP.0 {
+            for i in 0..new_len {
+                SET_VECTOR_ELT(new_x, i, VECTOR_ELT(x, i));
+            }
+        }
+        // Copy attributes except dim and dimnames
+        let src_attr = ATTRIB(x);
+        if !isNull(src_attr) {
+            let mut new_attr_list = R_NilValue();
+            let mut prev: SEXP = R_NilValue();
+            let mut a = src_attr;
+            while !isNull(a) {
+                let tag = TAG(a);
+                if tag == sym_Dim() || tag == sym_DimNames() {
+                    a = CDR(a);
+                    continue;
+                }
+                let new_pair =
+                    Rf_cons(crate::mainutils::duplicate::duplicate(CAR(a)), R_NilValue());
+                SETTAG(new_pair, tag);
+                if isNull(new_attr_list) {
+                    new_attr_list = new_pair;
+                } else {
+                    SETCDR(prev, new_pair);
+                }
+                prev = new_pair;
+                a = CDR(a);
+            }
+            // Add new dim
+            let dim_pair = Rf_cons(new_dim, R_NilValue());
+            SETTAG(dim_pair, sym_Dim());
+            SETCDR(prev, dim_pair);
+            SET_ATTRIB(new_x, new_attr_list);
+        } else {
+            let dim_pair = Rf_cons(new_dim, R_NilValue());
+            SETTAG(dim_pair, sym_Dim());
+            SET_ATTRIB(new_x, dim_pair);
+        }
+        SET_OBJECT(new_x, OBJECT(x));
+        Rf_unprotect(2);
+        new_x
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1234,7 +1340,11 @@ unsafe fn scalarIndex(s: SEXP) -> R_xlen_t {
             }
         } else if t == SEXPTYPE::REALSXP.0 && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
             let rval = SCALAR_DVAL(s);
-            if R_FINITE(rval) { rval as R_xlen_t } else { -1 }
+            if R_FINITE(rval) {
+                rval as R_xlen_t
+            } else {
+                -1
+            }
         } else {
             -1
         }
@@ -1298,7 +1408,11 @@ unsafe fn ExtractExactArg(args: SEXP) -> c_int {
             return 1;
         } /* Default is true as from R 2.7.0 */
         let exact = asLogical(argval);
-        if exact == NA_LOGICAL { -1 } else { exact }
+        if exact == NA_LOGICAL {
+            -1
+        } else {
+            exact
+        }
     }
 }
 
@@ -1550,7 +1664,11 @@ pub unsafe extern "C" fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho
         let pok = if exact == -1 {
             exact
         } else {
-            if exact == 0 { 1 } else { 0 }
+            if exact == 0 {
+                1
+            } else {
+                0
+            }
         };
 
         let x = CAR(args);

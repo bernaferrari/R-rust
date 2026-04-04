@@ -206,8 +206,7 @@ pub unsafe extern "C" fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
                 #[repr(C)]
                 struct HistEntry {
                     line: *mut c_char,
-                    #[allow(dead_code)]
-                    data: *mut std::ffi::c_void,
+                    _data: *mut std::ffi::c_void,
                 }
 
                 let len = history_length();

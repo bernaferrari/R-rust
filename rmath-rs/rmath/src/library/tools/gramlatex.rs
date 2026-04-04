@@ -22,48 +22,9 @@ use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::*;
 
-/* ==================== Bison parser tables (stub) ==================== */
-
-/// yytab: parser action table (stub).
-#[allow(dead_code)]
-static YYTABLE_NINF: c_int = -1;
-
-/// yylhs: left-hand-side symbols for each grammar rule.
-#[allow(dead_code)]
-static YYLHS_R: [u8; 0] = [];
-
-/// yylen: right-hand-side length for each grammar rule.
-#[allow(dead_code)]
-static YYLEN_R: [u8; 0] = [];
-
-/// yydefact: default action table.
-#[allow(dead_code)]
-static YYDEFACT: [i16; 0] = [];
-
-/// yypact: parser action table.
-#[allow(dead_code)]
-static YYPACT: [i16; 0] = [];
-
-/// yypgoto: parser goto table.
-#[allow(dead_code)]
-static YYPGOTO: [i16; 0] = [];
-
-/// yydefgoto: default goto table.
-#[allow(dead_code)]
-static YYDEFGOTO: [i16; 0] = [];
-
-/// yytable: parser table.
-#[allow(dead_code)]
-static YYTABLE: [i16; 0] = [];
-
-/// yycheck: parser check table.
-#[allow(dead_code)]
-static YYCHECK: [i16; 0] = [];
-
 /* ==================== Token types ==================== */
 
 /// LaTeX parser token types.
-#[allow(dead_code)]
 mod yytokentype {
     use std::os::raw::c_int;
     pub const EOF: c_int = 0;

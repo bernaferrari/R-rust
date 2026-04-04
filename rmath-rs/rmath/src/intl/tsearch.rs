@@ -36,9 +36,6 @@ pub(crate) enum VISIT {
     leaf = 3,
 }
 
-/// Comparison function type: returns negative, zero, or positive.
-type compar_fn_t = unsafe extern "C" fn(*const c_void, *const c_void) -> c_int;
-
 /// Action function type for tree walking.
 type action_fn_t = unsafe extern "C" fn(*const c_void, VISIT, c_int);
 

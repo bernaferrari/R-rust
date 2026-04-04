@@ -1,0 +1,1141 @@
+//! Safe wrapper types for R SEXP objects.
+//!
+//! This module provides idiomatic Rust abstractions over the raw FFI
+//! `SEXP` pointers. The [`Sexp`] type wraps raw pointers with lifetime
+//! tracking and safe accessor methods, while [`PairlistIter`] provides
+//! iteration over pairlist chains.
+//!
+//! # Design
+//!
+//! [`Sexp<'a>`] wraps a raw `SEXP` pointer with a `PhantomData` marker
+//! to track the lifetime of the underlying memory. This ensures that
+//! `Sexp` references cannot outlive the arena or session that owns the
+//! data. All element access is bounds-checked, returning `Option<T>`
+//! rather than panicking on out-of-bounds access.
+//!
+//! # Type Predicates
+//!
+//! `Sexp` provides methods like [`is_vector`](Sexp::is_vector),
+//! [`is_closure`](Sexp::is_closure), and [`is_environment`](Sexp::is_environment)
+//! to inspect the type of an R object without unsafe code.
+//!
+//! # Element Access
+//!
+//! Use the `*_elt` methods (e.g., [`integer_elt`](Sexp::integer_elt),
+//! [`real_elt`](Sexp::real_elt)) for bounds-checked access to individual
+//! elements. For bulk access, use the slice methods
+//! (e.g., [`as_integer_slice`](Sexp::as_integer_slice)) or iterators
+//! (e.g., [`iter_integer`](Sexp::iter_integer)).
+
+use std::os::raw::{c_char, c_double, c_int};
+use std::ptr;
+
+use super::ffi::{
+    R_xlen_t, Rboolean, Rbyte, Rcomplex, SexprecCore, NA_INTEGER, NA_REAL, SEXP, SEXPTYPE,
+};
+use super::globals::R_NilValue;
+
+// ---------------------------------------------------------------------------
+// Sexp — safe wrapper around SEXP
+// ---------------------------------------------------------------------------
+
+/// A safe, lifetime-tracked wrapper around an R SEXP pointer.
+///
+/// This type provides bounds-checked access to R objects while maintaining
+/// FFI compatibility through [`as_raw`](Sexp::as_raw) and
+/// [`from_raw`](Sexp::from_raw). The lifetime parameter `'a` ensures
+/// that the `Sexp` cannot outlive the memory it points to.
+///
+/// # Examples
+///
+/// ```
+/// use rmath::sexp::{Sexp, SEXPTYPE};
+/// use rmath::sexp::memory::RArena;
+///
+/// let mut arena = RArena::new();
+/// let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+/// let sexp = Sexp::from_raw(ptr).unwrap();
+/// assert_eq!(sexp.len(), 3);
+/// assert!(sexp.is_vector());
+/// ```
+///
+/// # Pointer Equality
+///
+/// `Sexp` implements `PartialEq`, `Eq`, and `Hash` based on pointer
+/// identity, not structural equality. Two `Sexp` values are equal if
+/// and only if they point to the same memory address.
+#[derive(Clone, Copy, Debug)]
+pub struct Sexp<'a> {
+    ptr: SEXP,
+    _marker: std::marker::PhantomData<&'a SexprecCore>,
+}
+
+impl<'a> Sexp<'a> {
+    /// Create a `Sexp` from a raw SEXP pointer.
+    ///
+    /// Returns `None` if the pointer is null.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use rmath::sexp::Sexp;
+    /// use std::ptr;
+    ///
+    /// assert!(Sexp::from_raw(ptr::null_mut()).is_none());
+    /// ```
+    #[inline]
+    pub fn from_raw(ptr: SEXP) -> Option<Self> {
+        if ptr.is_null() {
+            None
+        } else {
+            Some(Sexp {
+                ptr,
+                _marker: std::marker::PhantomData,
+            })
+        }
+    }
+
+    /// Create a `Sexp` from a raw pointer without null checking.
+    ///
+    /// # Safety
+    ///
+    /// The pointer must be non-null and point to a valid `SexprecCore`
+    /// that lives at least as long as `'a`.
+    #[inline]
+    pub const unsafe fn from_raw_unchecked(ptr: SEXP) -> Self {
+        Sexp {
+            ptr,
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    /// Get the underlying raw SEXP pointer.
+    ///
+    /// This is useful for passing the `Sexp` to FFI functions that
+    /// expect a raw `SEXP`.
+    #[inline]
+    pub fn as_raw(self) -> SEXP {
+        self.ptr
+    }
+
+    /// Get the type of this SEXP.
+    #[inline]
+    pub fn typeof_(self) -> SEXPTYPE {
+        unsafe { (*self.ptr).sxpinfo.type_of() }
+    }
+
+    /// Get the length of a vector SEXP.
+    ///
+    /// Returns 0 for non-vector types.
+    #[inline]
+    pub fn len(self) -> R_xlen_t {
+        if self.typeof_().is_vector_type() {
+            unsafe { (*self.ptr).vecsxp_length() }
+        } else {
+            0
+        }
+    }
+
+    /// Check if this SEXP is empty (length 0 or nil).
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.len() == 0
+    }
+
+    /// Check if this is R_NilValue.
+    #[inline]
+    pub fn is_nil(self) -> bool {
+        self.ptr == unsafe { R_NilValue() }
+    }
+
+    /// Check if this is a symbol (SYMSXP).
+    #[inline]
+    pub fn is_symbol(self) -> bool {
+        self.typeof_() == SEXPTYPE::SYMSXP
+    }
+
+    /// Check if this is a closure (CLOSXP, i.e., a user-defined function).
+    #[inline]
+    pub fn is_closure(self) -> bool {
+        self.typeof_() == SEXPTYPE::CLOSXP
+    }
+
+    /// Check if this is an environment (ENVSXP).
+    #[inline]
+    pub fn is_environment(self) -> bool {
+        self.typeof_() == SEXPTYPE::ENVSXP
+    }
+
+    /// Check if this is a pairlist (LISTSXP or LANGSXP).
+    #[inline]
+    pub fn is_pairlist(self) -> bool {
+        let t = self.typeof_();
+        t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
+    }
+
+    /// Check if this is an atomic vector.
+    ///
+    /// Atomic vectors hold primitive data directly (LGLSXP, INTSXP,
+    /// REALSXP, CPLXSXP, STRSXP, RAWSXP).
+    #[inline]
+    pub fn is_atomic(self) -> bool {
+        self.typeof_().is_atomic_type()
+    }
+
+    /// Check if this is a vector type.
+    ///
+    /// Includes all atomic vectors plus VECSXP, EXPRSXP, and RAWSXP.
+    #[inline]
+    pub fn is_vector(self) -> bool {
+        self.typeof_().is_vector_type()
+    }
+
+    // --- Vector element access with bounds checking ---
+
+    /// Get the i-th logical value with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds or the data pointer is null.
+    /// Does not check that the SEXP is actually a logical vector.
+    #[inline]
+    pub fn logical_elt(self, i: R_xlen_t) -> Option<c_int> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_int };
+        if data.is_null() {
+            return None;
+        }
+        Some(unsafe { *data.add(i as usize) })
+    }
+
+    /// Get the i-th integer value with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds or the data pointer is null.
+    #[inline]
+    pub fn integer_elt(self, i: R_xlen_t) -> Option<c_int> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_int };
+        if data.is_null() {
+            return None;
+        }
+        Some(unsafe { *data.add(i as usize) })
+    }
+
+    /// Get the i-th real (double) value with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds or the data pointer is null.
+    #[inline]
+    pub fn real_elt(self, i: R_xlen_t) -> Option<c_double> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_double };
+        if data.is_null() {
+            return None;
+        }
+        Some(unsafe { *data.add(i as usize) })
+    }
+
+    /// Get the i-th raw byte with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds or the data pointer is null.
+    #[inline]
+    pub fn raw_elt(self, i: R_xlen_t) -> Option<Rbyte> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const Rbyte };
+        if data.is_null() {
+            return None;
+        }
+        Some(unsafe { *data.add(i as usize) })
+    }
+
+    /// Get the i-th complex value with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds or the data pointer is null.
+    #[inline]
+    pub fn complex_elt(self, i: R_xlen_t) -> Option<Rcomplex> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const Rcomplex };
+        if data.is_null() {
+            return None;
+        }
+        Some(unsafe { *data.add(i as usize) })
+    }
+
+    /// Get the i-th string element (CHARSXP) with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds, the data pointer is null,
+    /// or the element itself is null.
+    #[inline]
+    pub fn string_elt(self, i: R_xlen_t) -> Option<Sexp<'a>> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const SEXP };
+        if data.is_null() {
+            return None;
+        }
+        Self::from_raw(unsafe { *data.add(i as usize) })
+    }
+
+    /// Get the i-th vector element with bounds checking.
+    ///
+    /// Returns `None` if the index is out of bounds, the data pointer is null,
+    /// or the element itself is null.
+    #[inline]
+    pub fn vector_elt(self, i: R_xlen_t) -> Option<Sexp<'a>> {
+        if i < 0 || i >= self.len() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const SEXP };
+        if data.is_null() {
+            return None;
+        }
+        Self::from_raw(unsafe { *data.add(i as usize) })
+    }
+
+    // --- Pairlist iteration ---
+
+    /// Get the CAR (value) of a pairlist element.
+    ///
+    /// Returns `None` if this is not a pairlist or the CAR is null.
+    #[inline]
+    pub fn car(self) -> Option<Sexp<'a>> {
+        if self.is_pairlist() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.carval })
+        } else {
+            None
+        }
+    }
+
+    /// Get the CDR (next cell) of a pairlist element.
+    ///
+    /// Returns `None` if this is not a pairlist or the CDR is null.
+    #[inline]
+    pub fn cdr(self) -> Option<Sexp<'a>> {
+        if self.is_pairlist() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.cdrval })
+        } else {
+            None
+        }
+    }
+
+    /// Get the TAG (name) of a pairlist element.
+    ///
+    /// Returns `None` if this is not a pairlist or the TAG is null.
+    #[inline]
+    pub fn tag(self) -> Option<Sexp<'a>> {
+        if self.is_pairlist() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.listsxp.tagval })
+        } else {
+            None
+        }
+    }
+
+    // --- Closure accessors ---
+
+    /// Get the formal parameters of a closure.
+    ///
+    /// Returns `None` if this is not a closure or the formals are null.
+    #[inline]
+    pub fn formals(self) -> Option<Sexp<'a>> {
+        if self.is_closure() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.closxp.formals })
+        } else {
+            None
+        }
+    }
+
+    /// Get the body of a closure.
+    ///
+    /// Returns `None` if this is not a closure or the body is null.
+    #[inline]
+    pub fn body(self) -> Option<Sexp<'a>> {
+        if self.is_closure() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.closxp.body })
+        } else {
+            None
+        }
+    }
+
+    /// Get the environment of a closure.
+    ///
+    /// Returns `None` if this is not a closure or the environment is null.
+    #[inline]
+    pub fn cloenv(self) -> Option<Sexp<'a>> {
+        if self.is_closure() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.closxp.env })
+        } else {
+            None
+        }
+    }
+
+    // --- Environment accessors ---
+
+    /// Get the frame of an environment.
+    ///
+    /// Returns `None` if this is not an environment or the frame is null.
+    #[inline]
+    pub fn frame(self) -> Option<Sexp<'a>> {
+        if self.is_environment() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.envsxp.frame })
+        } else {
+            None
+        }
+    }
+
+    /// Get the enclosing (parent) environment.
+    ///
+    /// Returns `None` if this is not an environment or the enclosing env is null.
+    #[inline]
+    pub fn enclos(self) -> Option<Sexp<'a>> {
+        if self.is_environment() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.envsxp.enclos })
+        } else {
+            None
+        }
+    }
+
+    // --- Attribute access ---
+
+    /// Get the attributes of this SEXP.
+    ///
+    /// Returns `None` if there are no attributes.
+    #[inline]
+    pub fn attrib(self) -> Option<Sexp<'a>> {
+        Sexp::from_raw(unsafe { (*self.ptr).attrib })
+    }
+
+    /// Check if this object has the OBJECT flag set (has a class attribute).
+    ///
+    /// S3 and S4 objects have this flag set, triggering method dispatch.
+    #[inline]
+    pub fn is_object(self) -> bool {
+        unsafe { (*self.ptr).sxpinfo.obj() }
+    }
+
+    // --- Data pointer ---
+
+    /// Get the raw data pointer for vector types.
+    ///
+    /// Returns `None` for non-vector types or if the data pointer is null.
+    /// The returned pointer points to the element data buffer (same as
+    /// R's `DATAPTR()`).
+    #[inline]
+    pub fn data_ptr(self) -> Option<*mut std::os::raw::c_void> {
+        if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
+            let ptr = unsafe { (*self.ptr).gengc_next_node as *mut std::os::raw::c_void };
+            if ptr.is_null() {
+                None
+            } else {
+                Some(ptr)
+            }
+        } else {
+            None
+        }
+    }
+}
+
+// Note: Index<usize> is intentionally NOT implemented for Sexp.
+// The Index trait requires returning &Self::Output, but Sexp elements
+// are created on-the-fly from raw pointers. Use vector_elt() and
+// string_elt() for bounds-checked element access instead.
+
+// ---------------------------------------------------------------------------
+// PartialEq/Eq/Hash — pointer equality
+// ---------------------------------------------------------------------------
+
+impl PartialEq for Sexp<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.ptr == other.ptr
+    }
+}
+
+impl Eq for Sexp<'_> {}
+
+impl std::hash::Hash for Sexp<'_> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        (self.ptr as usize).hash(state);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Display
+// ---------------------------------------------------------------------------
+
+impl std::fmt::Display for Sexp<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let t = self.typeof_();
+        write!(f, "Sexp({:?}, len={})", t.0, self.len())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mutation methods
+// ---------------------------------------------------------------------------
+
+impl<'a> Sexp<'a> {
+    /// Set the i-th logical value.
+    ///
+    /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    pub fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
+        if i < 0 || i >= self.len() {
+            return false;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *mut c_int };
+        if data.is_null() {
+            return false;
+        }
+        unsafe {
+            *data.add(i as usize) = v;
+        }
+        true
+    }
+
+    /// Set the i-th integer value.
+    ///
+    /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    pub fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
+        if i < 0 || i >= self.len() {
+            return false;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *mut c_int };
+        if data.is_null() {
+            return false;
+        }
+        unsafe {
+            *data.add(i as usize) = v;
+        }
+        true
+    }
+
+    /// Set the i-th real (double) value.
+    ///
+    /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    pub fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
+        if i < 0 || i >= self.len() {
+            return false;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *mut c_double };
+        if data.is_null() {
+            return false;
+        }
+        unsafe {
+            *data.add(i as usize) = v;
+        }
+        true
+    }
+
+    /// Set the i-th raw byte.
+    ///
+    /// Returns `false` if out of bounds, wrong type, or data pointer is null.
+    pub fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
+        if i < 0 || i >= self.len() {
+            return false;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *mut Rbyte };
+        if data.is_null() {
+            return false;
+        }
+        unsafe {
+            *data.add(i as usize) = v;
+        }
+        true
+    }
+
+    /// Set the i-th string element.
+    ///
+    /// Returns `false` if out of bounds or data pointer is null.
+    pub fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+        if i < 0 || i >= self.len() {
+            return false;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *mut SEXP };
+        if data.is_null() {
+            return false;
+        }
+        unsafe {
+            *data.add(i as usize) = v.as_raw();
+        }
+        true
+    }
+
+    /// Set the i-th vector element.
+    ///
+    /// Returns `false` if out of bounds or data pointer is null.
+    pub fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
+        if i < 0 || i >= self.len() {
+            return false;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *mut SEXP };
+        if data.is_null() {
+            return false;
+        }
+        unsafe {
+            *data.add(i as usize) = v.as_raw();
+        }
+        true
+    }
+
+    // --- Slice views ---
+
+    /// Get a slice view of the logical data.
+    ///
+    /// Returns `None` if this is not a vector type or the data pointer is null.
+    /// The slice is valid for the lifetime `'a` of the `Sexp`.
+    pub fn as_logical_slice(self) -> Option<&'a [c_int]> {
+        if !self.typeof_().is_vector_type() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_int };
+        if data.is_null() {
+            return None;
+        }
+        let len = self.len() as usize;
+        Some(unsafe { std::slice::from_raw_parts(data, len) })
+    }
+
+    /// Get a slice view of the integer data.
+    ///
+    /// Returns `None` if this is not a vector type or the data pointer is null.
+    pub fn as_integer_slice(self) -> Option<&'a [c_int]> {
+        if !self.typeof_().is_vector_type() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_int };
+        if data.is_null() {
+            return None;
+        }
+        let len = self.len() as usize;
+        Some(unsafe { std::slice::from_raw_parts(data, len) })
+    }
+
+    /// Get a slice view of the real (double) data.
+    ///
+    /// Returns `None` if this is not a vector type or the data pointer is null.
+    pub fn as_real_slice(self) -> Option<&'a [c_double]> {
+        if !self.typeof_().is_vector_type() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_double };
+        if data.is_null() {
+            return None;
+        }
+        let len = self.len() as usize;
+        Some(unsafe { std::slice::from_raw_parts(data, len) })
+    }
+
+    /// Get a slice view of the raw byte data.
+    ///
+    /// Returns `None` if this is not a vector type or the data pointer is null.
+    pub fn as_raw_slice(self) -> Option<&'a [Rbyte]> {
+        if !self.typeof_().is_vector_type() {
+            return None;
+        }
+        let data = unsafe { (*self.ptr).gengc_next_node as *const Rbyte };
+        if data.is_null() {
+            return None;
+        }
+        let len = self.len() as usize;
+        Some(unsafe { std::slice::from_raw_parts(data, len) })
+    }
+
+    // --- Iterators ---
+
+    /// Iterate over logical elements.
+    ///
+    /// # Safety
+    ///
+    /// The iterator assumes the data pointer remains valid for the lifetime
+    /// `'a` and that all elements are valid `c_int` values.
+    pub fn iter_logical(self) -> impl Iterator<Item = c_int> + 'a {
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_int };
+        let len = self.len() as usize;
+        (0..len).map(move |i| unsafe { *data.add(i) })
+    }
+
+    /// Iterate over integer elements.
+    ///
+    /// # Safety
+    ///
+    /// The iterator assumes the data pointer remains valid for the lifetime
+    /// `'a` and that all elements are valid `c_int` values.
+    pub fn iter_integer(self) -> impl Iterator<Item = c_int> + 'a {
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_int };
+        let len = self.len() as usize;
+        (0..len).map(move |i| unsafe { *data.add(i) })
+    }
+
+    /// Iterate over real (double) elements.
+    ///
+    /// # Safety
+    ///
+    /// The iterator assumes the data pointer remains valid for the lifetime
+    /// `'a` and that all elements are valid `c_double` values.
+    pub fn iter_real(self) -> impl Iterator<Item = c_double> + 'a {
+        let data = unsafe { (*self.ptr).gengc_next_node as *const c_double };
+        let len = self.len() as usize;
+        (0..len).map(move |i| unsafe { *data.add(i) })
+    }
+
+    /// Iterate over raw byte elements.
+    ///
+    /// # Safety
+    ///
+    /// The iterator assumes the data pointer remains valid for the lifetime
+    /// `'a`.
+    pub fn iter_raw(self) -> impl Iterator<Item = Rbyte> + 'a {
+        let data = unsafe { (*self.ptr).gengc_next_node as *const Rbyte };
+        let len = self.len() as usize;
+        (0..len).map(move |i| unsafe { *data.add(i) })
+    }
+
+    /// Iterate over vector elements (for VECSXP/STRSXP/EXPRSXP).
+    ///
+    /// Null elements are replaced with `R_NilValue`.
+    ///
+    /// # Safety
+    ///
+    /// The iterator assumes the data pointer remains valid for the lifetime
+    /// `'a`.
+    pub fn iter_vector(self) -> impl Iterator<Item = Sexp<'a>> + 'a {
+        let data = unsafe { (*self.ptr).gengc_next_node as *const SEXP };
+        let len = self.len() as usize;
+        (0..len).map(move |i| {
+            let ptr = unsafe { *data.add(i) };
+            Sexp::from_raw(ptr).unwrap_or_else(|| unsafe {
+                Sexp::from_raw_unchecked(super::globals::R_NilValue())
+            })
+        })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Pairlist iterator
+// ---------------------------------------------------------------------------
+
+/// An iterator over pairlist (LISTSXP/LANGSXP) elements.
+///
+/// Yields each cons cell in the chain, stopping at `R_NilValue`.
+/// Use [`Sexp::car()`] on each yielded item to access the value,
+/// and [`Sexp::tag()`] to access the tag/name.
+///
+/// # Examples
+///
+/// ```
+/// use rmath::sexp::{Sexp, PairlistIter, SEXPTYPE};
+/// use rmath::sexp::memory::RArena;
+///
+/// let mut arena = RArena::new();
+/// let list = arena.alloc_list_chain(3);
+/// let sexp = Sexp::from_raw(list).unwrap();
+/// let items: Vec<_> = PairlistIter::new(sexp).collect();
+/// assert_eq!(items.len(), 3);
+/// ```
+pub struct PairlistIter<'a> {
+    current: Option<Sexp<'a>>,
+}
+
+impl<'a> PairlistIter<'a> {
+    /// Create a new iterator starting from the given pairlist.
+    pub fn new(list: Sexp<'a>) -> Self {
+        PairlistIter {
+            current: Some(list),
+        }
+    }
+}
+
+impl<'a> Iterator for PairlistIter<'a> {
+    type Item = Sexp<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.current?;
+        if current.is_nil() {
+            self.current = None;
+            return None;
+        }
+        let item = current;
+        self.current = item.cdr();
+        Some(item)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::memory::RArena;
+
+    #[test]
+    fn test_sexp_from_raw_null() {
+        assert!(Sexp::from_raw(ptr::null_mut()).is_none());
+    }
+
+    #[test]
+    fn test_sexp_len_non_vector() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::SYMSXP);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert_eq!(sexp.len(), 0);
+        assert!(sexp.is_empty());
+        assert!(sexp.is_symbol());
+    }
+
+    #[test]
+    fn test_sexp_len_vector() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert_eq!(sexp.len(), 5);
+        assert!(!sexp.is_empty());
+        assert!(sexp.is_vector());
+    }
+
+    #[test]
+    fn test_sexp_bounds_check() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.integer_elt(5).is_none());
+        assert!(sexp.integer_elt(-1).is_none());
+        assert!(sexp.integer_elt(0).is_some());
+        assert!(sexp.integer_elt(2).is_some());
+    }
+
+    #[test]
+    fn test_pairlist_iter() {
+        let mut arena = RArena::new();
+        let list = arena.alloc_list_chain(3);
+        let sexp = Sexp::from_raw(list).unwrap();
+        let items: Vec<_> = PairlistIter::new(sexp).collect();
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn test_sexp_partial_eq() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let sexp1 = Sexp::from_raw(ptr).unwrap();
+        let sexp2 = Sexp::from_raw(ptr).unwrap();
+        assert_eq!(sexp1, sexp2);
+    }
+
+    #[test]
+    fn test_sexp_display() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let s = format!("{}", sexp);
+        assert!(s.contains("len=5"));
+    }
+
+    #[test]
+    fn test_set_integer_elt() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_integer_elt(0, 42));
+        assert!(sexp.set_integer_elt(5, 99) == false);
+        assert_eq!(sexp.integer_elt(0), Some(42));
+    }
+
+    #[test]
+    fn test_set_real_elt() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_real_elt(0, 3.14));
+        assert!(sexp.set_real_elt(5, 99.0) == false);
+        assert_eq!(sexp.real_elt(0), Some(3.14));
+    }
+
+    #[test]
+    fn test_set_raw_elt() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_raw_elt(0, 0xFF));
+        assert!(sexp.set_raw_elt(5, 0xAA) == false);
+        assert_eq!(sexp.raw_elt(0), Some(0xFF));
+    }
+
+    #[test]
+    fn test_as_integer_slice() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let slice = sexp.as_integer_slice();
+        assert!(slice.is_some());
+        assert_eq!(slice.unwrap().len(), 3);
+    }
+
+    #[test]
+    fn test_as_real_slice() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let slice = sexp.as_real_slice();
+        assert!(slice.is_some());
+        assert_eq!(slice.unwrap().len(), 4);
+    }
+
+    #[test]
+    fn test_as_raw_slice() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 5);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let slice = sexp.as_raw_slice();
+        assert!(slice.is_some());
+        assert_eq!(slice.unwrap().len(), 5);
+    }
+
+    #[test]
+    fn test_iter_integer() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let items: Vec<_> = sexp.iter_integer().collect();
+        assert_eq!(items.len(), 3);
+    }
+
+    #[test]
+    fn test_iter_real() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let items: Vec<_> = sexp.iter_real().collect();
+        assert_eq!(items.len(), 4);
+    }
+
+    #[test]
+    fn test_iter_raw() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 5);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let items: Vec<_> = sexp.iter_raw().collect();
+        assert_eq!(items.len(), 5);
+    }
+
+    #[test]
+    fn test_sexp_equality() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
+        let a = Sexp::from_raw(ptr).unwrap();
+        let b = Sexp::from_raw(ptr).unwrap();
+        assert_eq!(a, b);
+        assert_eq!(a.len(), b.len());
+    }
+
+    #[test]
+    fn test_sexp_hash() {
+        use std::collections::HashSet;
+        let mut arena = RArena::new();
+        let p1 = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let p2 = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
+        let a = Sexp::from_raw(p1).unwrap();
+        let b = Sexp::from_raw(p2).unwrap();
+        let mut set = HashSet::new();
+        set.insert(a);
+        assert!(set.contains(&a));
+        assert!(!set.contains(&b));
+    }
+
+    #[test]
+    fn test_sexp_display_len10() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 10);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        let s = format!("{}", sexp);
+        assert!(s.contains("len=10"));
+    }
+
+    #[test]
+    fn test_sexp_mutation() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert_eq!(sexp.integer_elt(0), Some(0));
+        assert!(sexp.set_integer_elt(0, 42));
+        assert!(sexp.set_integer_elt(1, -7));
+        assert!(sexp.set_integer_elt(2, 99));
+        assert_eq!(sexp.integer_elt(0), Some(42));
+        assert_eq!(sexp.integer_elt(1), Some(-7));
+        assert_eq!(sexp.integer_elt(2), Some(99));
+        assert!(!sexp.set_integer_elt(5, 0));
+        assert!(sexp.integer_elt(5).is_none());
+    }
+
+    #[test]
+    fn test_sexp_real_mutation() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_real_elt(0, 1.5));
+        assert!(sexp.set_real_elt(1, 2.5));
+        assert!(sexp.set_real_elt(2, 3.5));
+        assert_eq!(sexp.real_elt(0), Some(1.5));
+        assert_eq!(sexp.real_elt(1), Some(2.5));
+        assert_eq!(sexp.real_elt(2), Some(3.5));
+    }
+
+    #[test]
+    fn test_sexp_slice_views() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 4);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_integer_elt(0, 10));
+        assert!(sexp.set_integer_elt(1, 20));
+        assert!(sexp.set_integer_elt(2, 30));
+        assert!(sexp.set_integer_elt(3, 40));
+        let slice = sexp.as_integer_slice().unwrap();
+        assert_eq!(slice, &[10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn test_sexp_real_slice() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_real_elt(0, 1.1));
+        assert!(sexp.set_real_elt(1, 2.2));
+        assert!(sexp.set_real_elt(2, 3.3));
+        let slice = sexp.as_real_slice().unwrap();
+        assert!((slice[0] - 1.1).abs() < f64::EPSILON);
+        assert!((slice[1] - 2.2).abs() < f64::EPSILON);
+        assert!((slice[2] - 3.3).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_sexp_iterators() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        for i in 0..5 {
+            sexp.set_integer_elt(i, (i * 10) as i32);
+        }
+        let values: Vec<_> = sexp.iter_integer().collect();
+        assert_eq!(values, vec![0, 10, 20, 30, 40]);
+    }
+
+    #[test]
+    fn test_sexp_real_iterator() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        for i in 0..4 {
+            sexp.set_real_elt(i, i as f64 * 0.5);
+        }
+        let values: Vec<_> = sexp.iter_real().collect();
+        assert!((values[0] - 0.0).abs() < f64::EPSILON);
+        assert!((values[1] - 0.5).abs() < f64::EPSILON);
+        assert!((values[2] - 1.0).abs() < f64::EPSILON);
+        assert!((values[3] - 1.5).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_sexp_raw_mutation() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 4);
+        let sexp = Sexp::from_raw(ptr).unwrap();
+        assert!(sexp.set_raw_elt(0, 0xDE));
+        assert!(sexp.set_raw_elt(1, 0xAD));
+        assert!(sexp.set_raw_elt(2, 0xBE));
+        assert!(sexp.set_raw_elt(3, 0xEF));
+        let slice = sexp.as_raw_slice().unwrap();
+        assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn test_sexp_type_predicates() {
+        let mut arena = RArena::new();
+        let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
+        let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
+        let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+        let list = arena.alloc_list_chain(2);
+        let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
+
+        assert!(Sexp::from_raw(sym).unwrap().is_symbol());
+        assert!(Sexp::from_raw(closure).unwrap().is_closure());
+        assert!(Sexp::from_raw(env).unwrap().is_environment());
+        assert!(Sexp::from_raw(list).unwrap().is_pairlist());
+        assert!(Sexp::from_raw(vec).unwrap().is_vector());
+        assert!(Sexp::from_raw(vec).unwrap().is_atomic());
+    }
+
+    #[test]
+    fn test_pairlist_iter_empty() {
+        let nil = crate::sexp::globals::R_NilValue();
+        let sexp = Sexp::from_raw(nil).unwrap();
+        let items: Vec<_> = PairlistIter::new(sexp).collect();
+        assert_eq!(items.len(), 0);
+    }
+
+    #[test]
+    fn test_sexp_car_cdr_tag() {
+        let mut arena = RArena::new();
+        let car_val = arena.alloc_node(SEXPTYPE::INTSXP);
+        let tag_val = arena.alloc_node(SEXPTYPE::SYMSXP);
+        let cell = arena.cons(car_val, crate::sexp::globals::R_NilValue(), tag_val);
+        let sexp = Sexp::from_raw(cell).unwrap();
+        assert!(sexp.car().is_some());
+        assert!(sexp.cdr().is_some());
+        assert!(sexp.tag().is_some());
+        assert!(sexp.car().unwrap().is_symbol() == false);
+        assert!(sexp.tag().unwrap().is_symbol());
+    }
+
+    #[test]
+    fn test_sexp_closure_accessors() {
+        let mut arena = RArena::new();
+        let formals = arena.alloc_list_chain(1);
+        let body = arena.alloc_node(SEXPTYPE::NILSXP);
+        let env = crate::sexp::globals::R_GlobalEnv();
+        let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
+        unsafe {
+            (*closure).data.closxp.formals = formals;
+            (*closure).data.closxp.body = body;
+            (*closure).data.closxp.env = env;
+        }
+        let sexp = Sexp::from_raw(closure).unwrap();
+        assert!(sexp.is_closure());
+        assert!(sexp.formals().is_some());
+        assert!(sexp.body().is_some());
+        assert!(sexp.cloenv().is_some());
+    }
+
+    #[test]
+    fn test_sexp_environment_accessors() {
+        let mut arena = RArena::new();
+        let frame = arena.alloc_list_chain(0);
+        let enclos = crate::sexp::globals::R_EmptyEnv();
+        let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+        unsafe {
+            (*env).data.envsxp.frame = frame;
+            (*env).data.envsxp.enclos = enclos;
+            (*env).data.envsxp.hashtab = ptr::null_mut();
+        }
+        let sexp = Sexp::from_raw(env).unwrap();
+        assert!(sexp.is_environment());
+        assert!(sexp.frame().is_some());
+        assert!(sexp.enclos().is_some());
+    }
+
+    #[test]
+    fn test_sexp_slice_wrong_type() {
+        let mut arena = RArena::new();
+        let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
+        let sexp = Sexp::from_raw(sym).unwrap();
+        assert!(sexp.as_integer_slice().is_none());
+        assert!(sexp.as_real_slice().is_none());
+        assert!(sexp.as_raw_slice().is_none());
+    }
+}

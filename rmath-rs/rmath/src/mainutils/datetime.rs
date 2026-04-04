@@ -74,7 +74,11 @@ pub fn isleap(year: c_int) -> bool {
 /// Ported from `days_in_year` macro in datetime.c.
 #[inline]
 pub fn days_in_year(year: c_int) -> c_int {
-    if isleap(year) { 366 } else { 365 }
+    if isleap(year) {
+        366
+    } else {
+        365
+    }
 }
 
 /// Number of days in a month.
@@ -801,7 +805,7 @@ pub unsafe extern "C" fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: 
                 if !res.is_null() {
                     // Use tzname
                     let tzname_idx = if ctm.tm_isdst > 0 { 1 } else { 0 };
-                    let tzname_ptr = unsafe { tzname[tzname_idx] };
+                    let tzname_ptr = tzname[tzname_idx];
                     if !tzname_ptr.is_null() {
                         CStr::from_ptr(tzname_ptr).to_string_lossy().into_owned()
                     } else {
@@ -1426,7 +1430,11 @@ pub unsafe extern "C" fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _
                 if valid {
                     secs - fsecs
                 } else {
-                    if R_FINITE(secs) { NA_REAL } else { secs }
+                    if R_FINITE(secs) {
+                        NA_REAL
+                    } else {
+                        secs
+                    }
                 },
             );
 
@@ -1619,7 +1627,11 @@ pub unsafe extern "C" fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env
 /// This is the FFI-compatible version using absolute years.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_isLeapYear(year: c_int) -> c_int {
-    if isleap(year) { 1 } else { 0 }
+    if isleap(year) {
+        1
+    } else {
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1629,7 +1641,11 @@ pub unsafe extern "C" fn R_isLeapYear(year: c_int) -> c_int {
 /// FFI-compatible leap year test.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_isleap(year: c_int) -> c_int {
-    if isleap(year) { 1 } else { 0 }
+    if isleap(year) {
+        1
+    } else {
+        0
+    }
 }
 
 /// FFI-compatible days-in-year function.
@@ -1688,7 +1704,11 @@ pub unsafe extern "C" fn R_likely_strftime_overflow(tm: *const stm) -> c_int {
         if tm.is_null() {
             return 0;
         }
-        if likely_strftime_overflow(&*tm) { 1 } else { 0 }
+        if likely_strftime_overflow(&*tm) {
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -1699,7 +1719,11 @@ pub unsafe extern "C" fn R_julian2dtime(x_i: c_double, tm: *mut stm) -> c_int {
         if tm.is_null() {
             return 0;
         }
-        if julian2dtime(x_i, &mut *tm) { 1 } else { 0 }
+        if julian2dtime(x_i, &mut *tm) {
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -1719,7 +1743,11 @@ pub unsafe extern "C" fn R_dtime2julian(
 /// FFI-compatible R_ISLeapYear.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_R_ISLeapYear(year: c_int) -> c_int {
-    if R_ISLeapYear(year) { 1 } else { 0 }
+    if R_ISLeapYear(year) {
+        1
+    } else {
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------

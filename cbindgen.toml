@@ -1,0 +1,50 @@
+# cbindgen configuration for generating C headers from Rust FFI functions
+# Run: cbindgen --config cbindgen.toml --output rmath.h
+
+language = "C"
+
+[export]
+include = []
+exclude = []
+renaming_overrides_prefixing = false
+
+[export.rename]
+
+[export.body]
+
+[fn]
+rename_args = "none"
+args = "auto"
+sort_by = "none"
+
+[struct]
+rename_fields = "none"
+associated_constants_in_body = false
+derive_constructor = false
+derive_eq = false
+derive_neq = false
+derive_lt = false
+
+[enum]
+rename_variants = "none"
+derive_helper_methods = false
+derive_const_casts = false
+derive_mut_casts = false
+cast_assert_name = "assert"
+
+[macro_expansion]
+bitflags = false
+
+[defines]
+"feature = serde" = "SERDE_AVAILABLE"
+
+[parse]
+parse_deps = false
+include = ["rmath"]
+extra_bindings = []
+
+[parse.expand]
+crates = []
+all_features = false
+default_features = true
+features = []

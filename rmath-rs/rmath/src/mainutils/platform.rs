@@ -1253,25 +1253,23 @@ pub unsafe extern "C" fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: 
         };
 
         // Attempt to set locale via libc
-        let result = unsafe {
-            libc::setlocale(
-                match cat_name {
-                    "LC_ALL" => libc::LC_ALL,
-                    "LC_COLLATE" => libc::LC_COLLATE,
-                    "LC_CTYPE" => libc::LC_CTYPE,
-                    "LC_MONETARY" => libc::LC_MONETARY,
-                    "LC_NUMERIC" => libc::LC_NUMERIC,
-                    "LC_TIME" => libc::LC_TIME,
-                    "LC_MESSAGES" => libc::LC_MESSAGES,
-                    _ => libc::LC_ALL,
-                },
-                if loc_str.is_empty() {
-                    std::ptr::null()
-                } else {
-                    loc_str.as_ptr() as *const _
-                },
-            )
-        };
+        let result = libc::setlocale(
+            match cat_name {
+                "LC_ALL" => libc::LC_ALL,
+                "LC_COLLATE" => libc::LC_COLLATE,
+                "LC_CTYPE" => libc::LC_CTYPE,
+                "LC_MONETARY" => libc::LC_MONETARY,
+                "LC_NUMERIC" => libc::LC_NUMERIC,
+                "LC_TIME" => libc::LC_TIME,
+                "LC_MESSAGES" => libc::LC_MESSAGES,
+                _ => libc::LC_ALL,
+            },
+            if loc_str.is_empty() {
+                std::ptr::null()
+            } else {
+                loc_str.as_ptr() as *const _
+            },
+        );
 
         if result.is_null() {
             Rf_mkString(b"\0".as_ptr() as *const _)
@@ -1291,7 +1289,7 @@ pub unsafe extern "C" fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
-        let lc = unsafe { libc::localeconv() };
+        let lc = libc::localeconv();
         let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 7));
         let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 7));
 
@@ -1648,8 +1646,8 @@ pub unsafe extern "C" fn do_sysumask(_call: SEXP, _op: SEXP, args: SEXP, _env: S
     unsafe {
         use crate::sexp::constructors::Rf_ScalarInteger;
         // umask returns the previous mask
-        let old = unsafe { libc::umask(0) };
-        let _ = unsafe { libc::umask(old) };
+        let old = libc::umask(0);
+        let _ = libc::umask(old);
         Rf_ScalarInteger(old as c_int)
     }
 }

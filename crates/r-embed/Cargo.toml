@@ -1,0 +1,9 @@
+[package]
+name = "r-embed"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "R interpreter embedding library"
+
+[dependencies]
+thiserror = { workspace = true }

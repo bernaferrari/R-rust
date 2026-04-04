@@ -117,12 +117,20 @@ pub(crate) fn tre_isxdigit(c: tre_cint_t) -> bool {
 
 #[inline]
 pub(crate) fn tre_tolower(c: tre_cint_t) -> tre_cint_t {
-    if tre_isupper(c) { c + 32 } else { c }
+    if tre_isupper(c) {
+        c + 32
+    } else {
+        c
+    }
 }
 
 #[inline]
 pub(crate) fn tre_toupper(c: tre_cint_t) -> tre_cint_t {
-    if tre_islower(c) { c - 32 } else { c }
+    if tre_islower(c) {
+        c - 32
+    } else {
+        c
+    }
 }
 
 pub(crate) fn tre_isctype(c: tre_cint_t, class: tre_ctype_t) -> bool {
@@ -338,8 +346,8 @@ unsafe fn tre_parse_bracket_items(
     items_size: &mut c_int,
 ) -> c_int {
     unsafe {
-        let re_start = unsafe { ctx.re };
-        let re_end = unsafe { ctx.re_end };
+        let re_start = ctx.re;
+        let re_end = ctx.re_end;
         let mut re = re_start;
         let mut status: c_int = REG_OK;
         let mut i = *num_items;
@@ -409,14 +417,14 @@ unsafe fn tre_parse_bracket_items(
                         if class == 0 {
                             status = REG_ECTYPE;
                         }
-                        if status == REG_OK && unsafe { (*ctx).cur_max } == 1 {
+                        if status == REG_OK && (*ctx).cur_max == 1 {
                             status = tre_expand_ctype(
-                                unsafe { ctx.mem },
+                                ctx.mem,
                                 class,
                                 items,
                                 &mut i,
                                 &mut max_i,
-                                unsafe { (*ctx).cflags },
+                                (*ctx).cflags,
                             );
                             class = 0;
                             skip = 1;
@@ -453,7 +461,7 @@ unsafe fn tre_parse_bracket_items(
                     }
                 } else if skip == 0 {
                     status = tre_new_item(
-                        unsafe { ctx.mem },
+                        ctx.mem,
                         min as c_int,
                         max as c_int,
                         &mut i,
@@ -463,17 +471,11 @@ unsafe fn tre_parse_bracket_items(
                     if status != REG_OK {
                         break;
                     }
-                    unsafe {
-                        let lit = (**items.offset((i - 1) as isize)).obj as *mut tre_literal_t;
-                        (*lit).set_class(class);
-                    }
+                    let lit = (**items.offset((i - 1) as isize)).obj as *mut tre_literal_t;
+                    (*lit).set_class(class);
                 }
 
-                if unsafe { (*ctx).cflags } & REG_ICASE != 0
-                    && class == 0
-                    && status == REG_OK
-                    && skip == 0
-                {
+                if (*ctx).cflags & REG_ICASE != 0 && class == 0 && status == REG_OK && skip == 0 {
                     let mut m = min;
                     while m <= max {
                         if tre_islower(m) {
@@ -485,7 +487,7 @@ unsafe fn tre_parse_bracket_items(
                                 m += 1;
                             }
                             status = tre_new_item(
-                                unsafe { ctx.mem },
+                                ctx.mem,
                                 cmin as c_int,
                                 ccurr as c_int,
                                 &mut i,
@@ -501,7 +503,7 @@ unsafe fn tre_parse_bracket_items(
                                 m += 1;
                             }
                             status = tre_new_item(
-                                unsafe { ctx.mem },
+                                ctx.mem,
                                 cmin as c_int,
                                 ccurr as c_int,
                                 &mut i,
@@ -523,9 +525,7 @@ unsafe fn tre_parse_bracket_items(
         }
         *num_items = i;
         *items_size = max_i;
-        unsafe {
-            (*ctx).re = re;
-        }
+        (*ctx).re = re;
         status
     }
 }
@@ -576,11 +576,10 @@ unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast
             let arr = std::slice::from_raw_parts_mut(items, i as usize);
             for j in 1..arr.len() {
                 let key_ptr = arr[j];
-                let key_min = unsafe { &(*((*key_ptr).obj as *mut tre_literal_t)) }.code_min;
+                let key_min = (&(*((*key_ptr).obj as *mut tre_literal_t))).code_min;
                 let mut k = j as isize - 1;
                 while k >= 0 {
-                    let k_min =
-                        unsafe { &(*((*arr[k as usize]).obj as *mut tre_literal_t)) }.code_min;
+                    let k_min = (&(*((*arr[k as usize]).obj as *mut tre_literal_t))).code_min;
                     if k_min <= key_min {
                         break;
                     }
@@ -598,7 +597,7 @@ unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast
             if status != REG_OK {
                 break;
             }
-            let l = unsafe { (**items.offset(j)).obj as *mut tre_literal_t };
+            let l = (**items.offset(j)).obj as *mut tre_literal_t;
             let mut min = (*l).code_min as c_int;
             let mut max = (*l).code_max as c_int;
             let mut use_item = true;
@@ -709,7 +708,11 @@ unsafe fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_cha
             r = r.offset(1);
         }
         *regex = r;
-        if overflow != 0 { -1 } else { num }
+        if overflow != 0 {
+            -1
+        } else {
+            num
+        }
     }
 }
 
@@ -1348,8 +1351,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
                         // Check for macro expansion
                         let mut buf = [0u32; 64];
                         if ctx.re.offset(1) < ctx.re_end {
-                            let remaining_len =
-                                unsafe { ctx.re_end.offset_from(ctx.re.offset(1)) as usize };
+                            let remaining_len = ctx.re_end.offset_from(ctx.re.offset(1)) as usize;
                             let remaining =
                                 std::slice::from_raw_parts(ctx.re.offset(1), remaining_len);
                             tre_expand_macro(remaining, remaining.len(), &mut buf);

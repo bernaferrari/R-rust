@@ -1,17 +1,5 @@
 /// Bitwise comparison utilities for f64 numerical equivalence testing.
 
-/// Compare two f64 values bitwise. Returns true if identical bit patterns.
-#[allow(dead_code)]
-pub fn bits_equal(a: f64, b: f64) -> bool {
-    a.to_bits() == b.to_bits()
-}
-
-/// Check if both values are NaN (any NaN bit pattern).
-#[allow(dead_code)]
-pub fn both_nan(a: f64, b: f64) -> bool {
-    a.is_nan() && b.is_nan()
-}
-
 /// Compare two f64 values, treating all NaN bit patterns as equal.
 pub fn equiv(a: f64, b: f64) -> bool {
     if a.is_nan() && b.is_nan() {

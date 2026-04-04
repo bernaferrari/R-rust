@@ -112,50 +112,8 @@ unsafe fn putdashes(pold: *mut c_int, new_val: c_int) {
 }
 
 // =========================================================================
-// Windows-specific stubs (wininet-based functions)
+// Unix implementation
 // =========================================================================
-
-/// Stub: doneprogressbar - clean up progress bar (Windows GUI)
-#[allow(dead_code)]
-unsafe fn doneprogressbar(_data: *mut c_void) {}
-
-/// Stub: in_R_HTTPOpen2 - open HTTP connection (Windows wininet)
-#[allow(dead_code)]
-unsafe fn in_R_HTTPOpen2(
-    _url: *const c_char,
-    _agent: *const c_char,
-    _headers: *const c_char,
-    _cacheOK: c_int,
-) -> *mut c_void {
-    std::ptr::null_mut()
-}
-
-/// Stub: in_R_HTTPRead2 - read from HTTP connection (Windows wininet)
-#[allow(dead_code)]
-unsafe fn in_R_HTTPRead2(_ctx: *mut c_void, _dest: *mut c_char, _len: c_int) -> c_int {
-    0
-}
-
-/// Stub: in_R_HTTPClose2 - close HTTP connection (Windows wininet)
-#[allow(dead_code)]
-unsafe fn in_R_HTTPClose2(_ctx: *mut c_void) {}
-
-/// Stub: in_R_FTPOpen2 - open FTP connection (Windows wininet)
-#[allow(dead_code)]
-unsafe fn in_R_FTPOpen2(_url: *const c_char) -> *mut c_void {
-    std::ptr::null_mut()
-}
-
-/// Stub: in_R_newurl - create a new URL connection (Windows wininet)
-#[allow(dead_code)]
-unsafe fn in_R_newurl(
-    _description: *const c_char,
-    _mode: *const c_char,
-    _headers: SEXP,
-    _type: c_int,
-) -> *mut c_void {
-    std::ptr::null_mut()
-}
 
 // =========================================================================
 // HTTP download via raw sockets (Unix implementation)
@@ -670,7 +628,7 @@ unsafe fn http_download(
 }
 
 // =========================================================================
-// Exported R interface functions
+// Unix implementation
 // =========================================================================
 
 /// in_do_download - download.file() internal implementation.

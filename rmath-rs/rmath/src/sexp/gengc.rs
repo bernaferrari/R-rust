@@ -1,9 +1,9 @@
 //! Generational garbage collector with card marking write barriers.
 
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::{self, NonNull};
 
-use super::ffi::{SEXP, SEXPTYPE, SexprecCore, SxpInfo};
+use super::ffi::{SexprecCore, SxpInfo, SEXP, SEXPTYPE};
 
 /// Card size in bytes for the card marking table.
 pub const CARD_SIZE: usize = 512;
@@ -42,16 +42,18 @@ unsafe impl Sync for CardTable {}
 impl CardTable {
     /// Create a new card table covering the given heap range.
     pub unsafe fn new(heap_base: *mut u8, heap_size: usize) -> Self {
-        let card_count = (heap_size + CARD_SIZE - 1) / CARD_SIZE;
-        let layout = Layout::from_size_align(card_count, 64).unwrap();
-        let base = alloc(layout);
-        ptr::write_bytes(base, 0, card_count);
+        unsafe {
+            let card_count = (heap_size + CARD_SIZE - 1) / CARD_SIZE;
+            let layout = Layout::from_size_align(card_count, 64).unwrap();
+            let base = alloc(layout);
+            ptr::write_bytes(base, 0, card_count);
 
-        CardTable {
-            base,
-            size: card_count,
-            heap_base,
-            heap_end: heap_base.add(heap_size),
+            CardTable {
+                base,
+                size: card_count,
+                heap_base,
+                heap_end: heap_base.add(heap_size),
+            }
         }
     }
 
@@ -193,8 +195,10 @@ pub fn attrib_write_barrier(obj: SEXP, value: SEXP) {
 /// Promote an object from young to old generation.
 #[inline]
 pub unsafe fn promote_to_old(obj: SEXP) {
-    debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
-    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+    unsafe {
+        debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
+        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -212,7 +216,12 @@ thread_local! {
 
 /// Initialize the GC card table for the given heap range.
 pub unsafe fn init_gc_heap(heap_base: *mut u8, heap_size: usize) {
-    *CARD_TABLE.with(|ct| ct.borrow_mut()) = CardTable::new(heap_base, heap_size);
+    unsafe {
+        CARD_TABLE.with(|ct| {
+            let mut ct = ct.borrow_mut();
+            *ct = CardTable::new(heap_base, heap_size);
+        });
+    }
 }
 
 /// Run minor garbage collection on young generation.

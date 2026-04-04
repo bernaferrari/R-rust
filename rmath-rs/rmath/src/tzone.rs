@@ -275,16 +275,10 @@ fn get_tz_globals() -> &'static Mutex<TzGlobals> {
 
 // Wild abbreviation (three spaces).
 static WILDABBR: &[u8] = b"   ";
-static GMT_NAME: &[u8] = b"GMT";
 
 /// Exposed as `R_tzname` -- a pair of raw pointers to C strings.
 /// The C code declares: `extern char *R_tzname[2];`
-/// We store two raw pointers that are updated by `settzname`.
-static mut R_TZNAME: [*mut i8; 2] = [std::ptr::null_mut(), std::ptr::null_mut()];
-
-// Static buffers for the tzname pointers. These are written to by settzname.
-// In the C code, tzname[0/1] point into sp->chars. We can't easily do that
-// across Mutex boundaries, so we maintain dedicated buffers.
+static mut R_TZNAME: [*mut i8; 2] = [std::ptr::null_mut(); 2];
 static mut TZNAME_BUF0: [u8; TZ_MAX_CHARS + 1] = [0u8; TZ_MAX_CHARS + 1];
 static mut TZNAME_BUF1: [u8; TZ_MAX_CHARS + 1] = [0u8; TZ_MAX_CHARS + 1];
 
@@ -298,18 +292,8 @@ fn isleap(y: i32) -> bool {
 }
 
 #[inline(always)]
-fn isleap_sum(a: i32, b: i32) -> bool {
-    isleap((a % 400) + (b % 400))
-}
-
-#[inline(always)]
 fn is_digit(c: u8) -> bool {
     c.wrapping_sub(b'0') <= 9
-}
-
-#[inline(always)]
-fn biggest(a: usize, b: usize) -> usize {
-    if a > b { a } else { b }
 }
 
 /// Compute min/max for i64 (time_t).
@@ -501,7 +485,7 @@ fn settzname(g: &mut TzGlobals) {
 
     // Copy wildabbr into the static tzname buffers
     unsafe {
-        let buf0 = std::ptr::addr_of_mut!(TZNAME_BUF0);
+        let buf0 = std::ptr::addr_of_mut!(TZNAME_BUF1);
         let buf1 = std::ptr::addr_of_mut!(TZNAME_BUF1);
         for i in 0..TZ_MAX_CHARS + 1 {
             (*buf0)[i] = 0;
@@ -575,12 +559,10 @@ fn settzname(g: &mut TzGlobals) {
 }
 
 fn copy_to_tzname_buf(which: usize, abbr: &[u8]) {
-    let buf = unsafe {
-        if which == 0 {
-            std::ptr::addr_of_mut!(TZNAME_BUF0)
-        } else {
-            std::ptr::addr_of_mut!(TZNAME_BUF1)
-        }
+    let buf = if which == 0 {
+        std::ptr::addr_of_mut!(TZNAME_BUF0)
+    } else {
+        std::ptr::addr_of_mut!(TZNAME_BUF1)
     };
     let len = abbr.len().min(TZ_MAX_CHARS);
     unsafe {
@@ -1954,7 +1936,11 @@ fn time2sub(
         }
 
         let dir = if funcp(g, &t, offset, &mut mytm).is_none() {
-            if t > 0 { 1 } else { -1 }
+            if t > 0 {
+                1
+            } else {
+                -1
+            }
         } else {
             tmcomp(&mytm, &yourtm)
         };

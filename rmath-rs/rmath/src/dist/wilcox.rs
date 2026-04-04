@@ -14,7 +14,6 @@ use std::cell::RefCell;
 use std::os::raw::{c_double, c_int};
 
 // Constants
-const WILCOX_MAX: i32 = 50;
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
 
 // Thread-local cached workspace for cwilcox.
@@ -74,7 +73,11 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
 
     // Compute value (recursive calls happen outside the borrow)
     let val = if j == 0 {
-        if k == 0 { 1.0 } else { 0.0 }
+        if k == 0 {
+            1.0
+        } else {
+            0.0
+        }
     } else {
         cwilcox(k - j, i - 1, j) + cwilcox(k, i, j - 1)
     };

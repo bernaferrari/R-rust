@@ -303,7 +303,11 @@ pub fn pnorm5_inner(x: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) 
     let i_tail: i32 = if lower_tail { 0 } else { 1 };
     let (p, cp) = pnorm_both(x, i_tail, log_p);
 
-    if lower_tail { p } else { cp }
+    if lower_tail {
+        p
+    } else {
+        cp
+    }
 }
 
 // ---- qnorm ----
@@ -508,22 +512,6 @@ pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
 // ---- norm_rand (snorm.c) ----
 
 use std::cell::Cell;
-
-// Thread-local Box-Muller cached value.
-// Used by BOX_MULLER method (not default; INVERSION is default in standalone).
-thread_local! {
-    static BM_NORM_KEEP: Cell<u64> = Cell::new(0);
-}
-
-#[allow(dead_code)]
-fn bm_norm_keep_load() -> f64 {
-    BM_NORM_KEEP.with(|c| f64::from_bits(c.get()))
-}
-
-#[allow(dead_code)]
-fn bm_norm_keep_store(val: f64) {
-    BM_NORM_KEEP.with(|c| c.set(val.to_bits()))
-}
 
 /// norm_rand: random variate from the STANDARD normal distribution N(0,1).
 /// Uses INVERSION method (default for standalone mode).

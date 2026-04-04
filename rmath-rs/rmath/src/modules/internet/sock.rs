@@ -11,26 +11,6 @@ use libc::{size_t, socklen_t, ssize_t};
 use libc::{
     // errno access
     __error,
-    // socket constants
-    AF_INET,
-    // error
-    EINTR,
-    F_GETFD,
-    F_GETFL,
-    F_SETFD,
-    F_SETFL,
-    FD_CLOEXEC,
-    IPPROTO_TCP,
-    O_NONBLOCK,
-    SIG_DFL,
-    SIG_IGN,
-    // signal
-    SIGPIPE,
-    SO_REUSEADDR,
-    SOCK_STREAM,
-    SOL_SOCKET,
-    SOMAXCONN,
-    TCP_NODELAY,
     accept,
     bind,
     close,
@@ -50,6 +30,26 @@ use libc::{
     sockaddr_in,
     // socket functions
     socket,
+    // socket constants
+    AF_INET,
+    // error
+    EINTR,
+    FD_CLOEXEC,
+    F_GETFD,
+    F_GETFL,
+    F_SETFD,
+    F_SETFL,
+    IPPROTO_TCP,
+    O_NONBLOCK,
+    // signal
+    SIGPIPE,
+    SIG_DFL,
+    SIG_IGN,
+    SOCK_STREAM,
+    SOL_SOCKET,
+    SOMAXCONN,
+    SO_REUSEADDR,
+    TCP_NODELAY,
 };
 
 use crate::sexp::*;
@@ -119,14 +119,22 @@ pub(crate) unsafe extern "C" fn R_socket_errno() -> c_int {
 /// Signature: int R_invalid_socket(SOCKET s)
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn R_invalid_socket(s: c_int) -> c_int {
-    if s < 0 { 1 } else { 0 }
+    if s < 0 {
+        1
+    } else {
+        0
+    }
 }
 
 /// R_socket_error - check if a socket call returned an error
 /// Signature: int R_socket_error(int s)
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn R_socket_error(s: c_int) -> c_int {
-    if s < 0 { 1 } else { 0 }
+    if s < 0 {
+        1
+    } else {
+        0
+    }
 }
 
 /// R_invalid_socket_eintr - check if socket is invalid due to EINTR
@@ -196,7 +204,6 @@ pub(crate) unsafe extern "C" fn R_set_nodelay(s: c_int) -> c_int {
 // --- Internal helper (module-private, no #[no_mangle]) ---
 
 /// Sock_error - set error fields in a Sock_error_t and return -1
-#[allow(dead_code)]
 unsafe fn Sock_error(perr: *mut Sock_error_t, e: c_int, he: c_int) -> c_int {
     if !perr.is_null() {
         (*perr).error = e;

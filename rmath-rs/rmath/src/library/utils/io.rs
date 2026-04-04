@@ -42,7 +42,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 use crate::attrib_core;
 use crate::main::coerce::asLogical;
-use crate::main::duplicate::{Rf_duplicate, copyVector};
+use crate::main::duplicate::{copyVector, Rf_duplicate};
 
 /// Get errno pointer (macOS uses __error())
 #[inline]
@@ -105,24 +105,18 @@ fn NA_REAL() -> c_double {
 /* Stub extern declarations for functions not yet ported */
 unsafe extern "C" {
     /* Connection system */
-    #[allow(dead_code)]
     fn getConnection(idx: c_int) -> *mut u8; /* Rconnection — opaque */
-    #[allow(dead_code)]
     fn Rconn_fgetc(con: *mut u8) -> c_int;
-    #[allow(dead_code)]
     fn Rconn_printf(con: *mut u8, fmt: *const c_char, ...) -> c_int;
-    #[allow(dead_code)]
     fn con_pushback(con: *mut u8, close_on_disconnect: c_int, line: *const c_char);
 
     /* Console I/O */
-    #[allow(dead_code)]
     fn R_ReadConsole(
         prompt: *const c_char,
         buf: *mut c_char,
         buflen: c_int,
         addtohistory: c_int,
     ) -> c_int;
-    #[allow(dead_code)]
     fn R_ClearerrConsole();
 
     /* Character translation */
@@ -134,25 +128,18 @@ unsafe extern "C" {
     fn matchE(x: SEXP, table: SEXP, nomatch: c_int, env: SEXP) -> SEXP;
 
     /* String buffer utilities */
-    #[allow(dead_code)]
     fn R_AllocStringBuffer(bufsize: c_int, buf: *mut u8);
-    #[allow(dead_code)]
     fn R_FreeStringBuffer(buf: *mut u8);
 
     /* Print defaults */
-    #[allow(dead_code)]
     fn PrintDefaults();
-    #[allow(dead_code)]
     static mut R_print_digits: c_int;
 
     /* VMAX (R's memory pool) */
-    #[allow(dead_code)]
     fn vmaxget() -> *mut c_void;
-    #[allow(dead_code)]
     fn vmaxset(vmax: *mut c_void);
 
     /* EncodeElement for non-character types */
-    #[allow(dead_code)]
     fn EncodeElement0(
         x: SEXP,
         indx: R_xlen_t,
@@ -161,15 +148,12 @@ unsafe extern "C" {
     ) -> *const c_char;
 
     /* Check user interrupt */
-    #[allow(dead_code)]
     fn R_CheckUserInterrupt();
 
     /* streql: string equality */
-    #[allow(dead_code)]
     fn streql(a: *const c_char, b: *const c_char) -> c_int;
 
     /* btowc */
-    #[allow(dead_code)]
     fn btowc(c: c_int) -> u32; // wint_t, WEOF sentinel
 
     /* Error/warning */
@@ -265,7 +249,6 @@ unsafe fn isNAstring(buf: *const c_char, mode: c_int, d: &LocalData) -> c_int {
 }
 
 /* Strtoi — strtol wrapper returning NA_INTEGER on overflow */
-#[allow(dead_code)]
 unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
     let mut endp: *mut c_char = ptr::null_mut();
     *errno_ptr() = 0;
@@ -285,7 +268,6 @@ unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
 /* Strtod — ported from R_strtod5 in r-source/src/main/util.c
  * Handles decimal char substitution, NA/NaN/Inf, hex literals, exact mode.
  */
-#[allow(dead_code)]
 unsafe fn Strtod(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
@@ -632,7 +614,6 @@ unsafe fn Strtod(
  * Forms: "3.5", "3.5i", "3+4i", "3-4i", "i", "2i"
  * Ported from r-source/src/library/utils/src/io.c
  */
-#[allow(dead_code)]
 unsafe fn strtoc(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
@@ -687,20 +668,10 @@ unsafe fn strtoc(
     }
 }
 
-/* ConsoleGetchar — read from console.
- * Legitimate stub: requires R_ReadConsole which is not available
- * without a running R console session. Always returns EOF.
- */
-#[allow(dead_code)]
-unsafe fn ConsoleGetchar() -> c_int {
-    R_EOF_VAL
-}
-
 /* ConsoleGetcharWithPushBack — read from console with pushback.
  * Legitimate stub: requires R_ReadConsole which is not available
  * without a running R console session. Always returns EOF.
  */
-#[allow(dead_code)]
 unsafe fn ConsoleGetcharWithPushBack(_con: *mut u8) -> c_int {
     R_EOF_VAL
 }
@@ -820,19 +791,7 @@ unsafe fn scanchar(inQuote: bool, d: &mut LocalData) -> c_int {
     next
 }
 
-/* scanchar2 — read second byte for DBCS (stub) */
-#[allow(dead_code)]
-unsafe fn scanchar2(d: &mut LocalData) -> c_int {
-    if d.save != 0 {
-        let next = d.save;
-        d.save = 0;
-        return next;
-    }
-    scanchar_raw(d)
-}
-
 /* ruleout_types — determine possible types for a string */
-#[allow(dead_code)]
 unsafe fn ruleout_types(
     s: *const c_char,
     typeInfo: &mut Typecvt_Info,
@@ -882,7 +841,6 @@ unsafe fn ruleout_types(
 }
 
 /* isna — check if element at index is NA */
-#[allow(dead_code)]
 unsafe fn isna(x: SEXP, indx: R_xlen_t) -> bool {
     match TYPEOF(x) {
         tt if tt == SEXPTYPE::LGLSXP.0 => LOGICAL(x).add(indx as usize).read() == NA_LOGICAL(),
@@ -951,7 +909,6 @@ unsafe fn isVectorAtomic(x: SEXP) -> bool {
 }
 
 /// inherits — check if object has a given class
-#[allow(dead_code)]
 unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
     let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
     if isNull(klass) {

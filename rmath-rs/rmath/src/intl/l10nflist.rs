@@ -126,12 +126,6 @@ unsafe fn stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
     }
 }
 
-/// Check whether a character is a slash (Unix path separator).
-#[cfg(unix)]
-fn ISSLASH(c: c_char) -> bool {
-    c == b'/' as c_char
-}
-
 /// Check whether a path is absolute (Unix).
 #[cfg(unix)]
 unsafe fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
