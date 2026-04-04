@@ -1,4 +1,4 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables, unsafe_op_in_unsafe_fn)]
 
 //! Closure application — ports R's applyClosure from eval.c.
 //!

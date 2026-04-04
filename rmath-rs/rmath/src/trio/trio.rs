@@ -899,7 +899,7 @@ fn trio_write_string_character<W: Write>(out: &mut W, ch: u8, flags: trio_flags_
             _ => {
                 let _ = out.write(b"x");
                 if ch < 16 {
-                    let _ = out.write(&[b'0']);
+                    let _ = out.write(b"0");
                 }
                 let digit = DIGITS_LOWER[(ch / 16) as usize];
                 let digit2 = DIGITS_LOWER[(ch % 16) as usize];

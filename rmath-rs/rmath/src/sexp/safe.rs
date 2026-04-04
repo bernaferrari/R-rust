@@ -402,6 +402,82 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the hash table of an environment.
+    ///
+    /// Returns `None` if this is not an environment or the hashtab is null.
+    #[inline]
+    pub fn hashtab(self) -> Option<Sexp<'a>> {
+        if self.is_environment() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.envsxp.hashtab })
+        } else {
+            None
+        }
+    }
+
+    // --- Promise accessors ---
+
+    /// Get the value of a promise.
+    ///
+    /// Returns `None` if this is not a promise or the value is null.
+    #[inline]
+    pub fn prvalue(self) -> Option<Sexp<'a>> {
+        if self.typeof_() == SEXPTYPE::PROMSXP {
+            Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.value })
+        } else {
+            None
+        }
+    }
+
+    /// Get the code/expression of a promise.
+    ///
+    /// Returns `None` if this is not a promise or the code is null.
+    #[inline]
+    pub fn prcode(self) -> Option<Sexp<'a>> {
+        if self.typeof_() == SEXPTYPE::PROMSXP {
+            Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.expr })
+        } else {
+            None
+        }
+    }
+
+    /// Get the environment of a promise.
+    ///
+    /// Returns `None` if this is not a promise or the environment is null.
+    #[inline]
+    pub fn prenv(self) -> Option<Sexp<'a>> {
+        if self.typeof_() == SEXPTYPE::PROMSXP {
+            Sexp::from_raw(unsafe { (*self.ptr).data.promsxp.env })
+        } else {
+            None
+        }
+    }
+
+    // --- Symbol accessors ---
+
+    /// Get the value of a symbol binding.
+    ///
+    /// Returns `None` if this is not a symbol or the value is null.
+    #[inline]
+    pub fn symvalue(self) -> Option<Sexp<'a>> {
+        if self.typeof_() == SEXPTYPE::SYMSXP {
+            Sexp::from_raw(unsafe { (*self.ptr).data.symsxp.internal })
+        } else {
+            None
+        }
+    }
+
+    /// Get the print name of a symbol.
+    ///
+    /// Returns `None` if this is not a symbol or the print name is null.
+    #[inline]
+    pub fn printname(self) -> Option<Sexp<'a>> {
+        if self.typeof_() == SEXPTYPE::SYMSXP {
+            Sexp::from_raw(unsafe { (*self.ptr).data.symsxp.pname })
+        } else {
+            None
+        }
+    }
+
     // --- Attribute access ---
 
     /// Get the attributes of this SEXP.

@@ -21,6 +21,7 @@ pub mod globals;
 pub mod memory;
 pub mod memory_ext;
 pub mod protect;
+pub mod safe;
 pub mod symbol;
 
 // Re-export commonly used types at the module level
