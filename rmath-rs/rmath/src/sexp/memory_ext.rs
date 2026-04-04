@@ -10,12 +10,12 @@
 //! - allocSExp, allocFormalsList, etc.
 //! - R_alloc/vmaxget/vmaxset (transient memory from C stack)
 
-use std::alloc::{Layout, alloc, dealloc};
+use std::alloc::{alloc, dealloc, Layout};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use super::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp};
+use super::ffi::{R_xlen_t, SexprecCore, SexprecData, Vecsxp, NA_INTEGER, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory;
 
@@ -99,18 +99,38 @@ pub unsafe extern "C" fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
 // Raw cons cell (not arena-tracked)
 // ---------------------------------------------------------------------------
 
-/// Create a cons cell outside the arena (Box-based, permanent until dropped).
-///
-/// This is needed for structures that outlive the current arena scope.
+// Registry of raw cons cells allocated outside the arena.
+thread_local! {
+    static RAW_CONS: std::cell::RefCell<Vec<*mut SexprecCore>> = std::cell::RefCell::new(Vec::new());
+}
+
+/// Create a cons cell tracked for cleanup.
 pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
+    let boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
+    let ptr: SEXP = Box::into_raw(boxed);
     unsafe {
-        let boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
-        let ptr: SEXP = Box::into_raw(boxed);
         (*ptr).data.listsxp.carval = car;
         (*ptr).data.listsxp.cdrval = cdr;
         (*ptr).data.listsxp.tagval = ptr::null_mut();
-        ptr
     }
+    RAW_CONS.with(|rc| rc.borrow_mut().push(ptr));
+    ptr
+}
+
+/// Free a raw cons cell allocated by cons_raw.
+pub unsafe fn free_raw_cons(ptr: SEXP) {
+    if ptr.is_null() {
+        return;
+    }
+    RAW_CONS.with(|rc| {
+        let mut cells = rc.borrow_mut();
+        if let Some(pos) = cells.iter().position(|&p| p == ptr) {
+            cells.remove(pos);
+            unsafe {
+                let _ = Box::from_raw(ptr);
+            }
+        }
+    });
 }
 
 /// Create a cons cell that is not reference counted (CONS_NR).
@@ -136,56 +156,66 @@ pub unsafe extern "C" fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
 
 /// Create a formals list from 2 symbols.
 pub unsafe fn allocFormalsList2(sym1: SEXP, sym2: SEXP) -> SEXP {
-    unsafe {
+    memory::with_arena(|arena| {
         let cdr = if sym2.is_null() {
-            R_NilValue()
+            unsafe { R_NilValue() }
         } else {
-            let cell = cons_raw(sym2, R_NilValue());
+            let cell = arena.cons(sym2, unsafe { R_NilValue() }, ptr::null_mut());
             if !cell.is_null() {
-                (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                unsafe {
+                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
             }
             cell
         };
-        let car = cons_raw(sym1, cdr);
+        let car = arena.cons(sym1, cdr, ptr::null_mut());
         if !car.is_null() {
-            (*car).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            unsafe {
+                (*car).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
         }
         car
-    }
+    })
 }
 
 /// Create a formals list from 3 symbols.
 pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
-    unsafe {
+    memory::with_arena(|arena| {
         let c3 = if sym3.is_null() {
-            R_NilValue()
+            unsafe { R_NilValue() }
         } else {
-            let cell = cons_raw(sym3, R_NilValue());
+            let cell = arena.cons(sym3, unsafe { R_NilValue() }, ptr::null_mut());
             if !cell.is_null() {
-                (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                unsafe {
+                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
             }
             cell
         };
         let c2 = if sym2.is_null() {
             c3
         } else {
-            let cell = cons_raw(sym2, c3);
+            let cell = arena.cons(sym2, c3, ptr::null_mut());
             if !cell.is_null() {
-                (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                unsafe {
+                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
             }
             cell
         };
         let c1 = if sym1.is_null() {
             c2
         } else {
-            let cell = cons_raw(sym1, c2);
+            let cell = arena.cons(sym1, c2, ptr::null_mut());
             if !cell.is_null() {
-                (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                unsafe {
+                    (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
             }
             cell
         };
         c1
-    }
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -270,17 +300,22 @@ pub unsafe extern "C" fn vmaxget() -> *mut c_void {
 ///
 /// Frees all transient allocations made since the corresponding vmaxget().
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn vmaxset(_value: *mut c_void) {
-    unsafe {
-        VMAX.with(|vmax| {
-            let mut vmax = vmax.borrow_mut();
-            for (ptr, layout) in vmax.drain(..) {
-                if !ptr.is_null() && layout.size() > 0 {
+pub unsafe extern "C" fn vmaxset(value: *mut c_void) {
+    let mark = value as usize;
+    VMAX.with(|vmax| {
+        let mut vmax = vmax.borrow_mut();
+        let drain_start = vmax
+            .iter()
+            .position(|(ptr, _)| *ptr as usize >= mark)
+            .unwrap_or(vmax.len());
+        for (ptr, layout) in vmax.drain(drain_start..) {
+            if !ptr.is_null() && layout.size() > 0 {
+                unsafe {
                     dealloc(ptr, layout);
                 }
             }
-        });
-    }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

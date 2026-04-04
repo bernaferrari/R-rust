@@ -36,9 +36,6 @@ pub struct CardTable {
     heap_end: *mut u8,
 }
 
-unsafe impl Send for CardTable {}
-unsafe impl Sync for CardTable {}
-
 impl CardTable {
     /// Create a new card table covering the given heap range.
     pub unsafe fn new(heap_base: *mut u8, heap_size: usize) -> Self {

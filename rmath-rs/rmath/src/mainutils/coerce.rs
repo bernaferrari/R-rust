@@ -111,30 +111,13 @@ pub const WARN_RAW: c_int = 8;
 /// In R, NA_STRING is a specific CHARSXP with the NA bit set in its gp field.
 /// We use a OnceLock to create it once and reuse it.
 fn get_na_string() -> SEXP {
-    static NA_STRING_VAL: OnceLock<SexprecCore> = OnceLock::new();
+    static NA_STRING_VAL: OnceLock<usize> = OnceLock::new();
     let val = NA_STRING_VAL.get_or_init(|| {
         let mut node = SexprecCore::new_vector(SEXPTYPE::CHARSXP, 2);
-        // Mark as NA string by setting the "level" bits (gp[0..1]) to 1
-        // which is how R distinguishes NA_STRING from regular CHARSXP
         node.sxpinfo.set_gp(1);
-        node
+        Box::into_raw(Box::new(node)) as usize
     });
-    val as *const _ as SEXP
-}
-
-// ---------------------------------------------------------------------------
-// Internal helper: logical string cache
-// ---------------------------------------------------------------------------
-
-static LGL_CACHE: OnceLock<SexprecCore> = OnceLock::new();
-
-fn get_logical_cache() -> SEXP {
-    let val = LGL_CACHE.get_or_init(|| {
-        // Allocate a STRSXP of length 2 with "FALSE" and "TRUE"
-        let node = SexprecCore::new_vector(SEXPTYPE::STRSXP, 2);
-        node
-    });
-    val as *const _ as SEXP
+    *val as SEXP
 }
 
 // ---------------------------------------------------------------------------

@@ -13,6 +13,46 @@ use std::ptr;
 
 use super::ffi::SEXP;
 
+/// RAII guard for the protection stack.
+/// Automatically unprotects when dropped.
+///
+/// ```
+/// use rmath::sexp::protect::{protect, Rf_protect, Rf_unprotect};
+///
+/// let guard = protect(some_sexp);
+/// // ... do work ...
+/// // guard automatically unprotects when it goes out of scope
+/// ```
+pub struct ProtectGuard {
+    count: usize,
+}
+
+impl Drop for ProtectGuard {
+    fn drop(&mut self) {
+        unsafe {
+            Rf_unprotect(self.count as c_int);
+        }
+    }
+}
+
+/// Protect a SEXP and return an RAII guard.
+///
+/// This is the idiomatic Rust way to protect SEXP values.
+/// The guard automatically unprotects when it goes out of scope.
+pub fn protect(s: SEXP) -> ProtectGuard {
+    unsafe {
+        Rf_protect(s);
+    }
+    ProtectGuard { count: 1 }
+}
+
+/// Protect n SEXP values and return an RAII guard.
+///
+/// Use this when you need to protect multiple values at once.
+pub fn protect_n(n: usize) -> ProtectGuard {
+    ProtectGuard { count: n }
+}
+
 // ---------------------------------------------------------------------------
 // Thread-local protection stack
 // ---------------------------------------------------------------------------
@@ -63,11 +103,13 @@ pub unsafe extern "C" fn Rf_unprotect(n: c_int) {
     PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         let len = stack.stack.len();
-        let new_len = if (n as usize) > len {
-            0
-        } else {
-            len - (n as usize)
-        };
+        if (n as usize) > len {
+            panic!(
+                "Rf_unprotect: trying to unprotect {} items but only {} on stack",
+                n, len
+            );
+        }
+        let new_len = len - (n as usize);
         stack.stack.truncate(new_len);
     });
 }
@@ -112,9 +154,16 @@ pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
         stack.stack.push(s);
         stack.stack.len() - 1
     });
+    // Return index as an opaque pointer - no allocation, no leak
+    index as *mut ProtectIndex
+}
 
-    let pi = Box::new(ProtectIndex { index });
-    Box::into_raw(pi)
+/// Free a ProtectIndex returned by R_ProtectWithIndex.
+///
+/// This is a no-op - the index was just a number, not an allocation.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {
+    // No-op - the index was just a number, not an allocation
 }
 
 /// Unprotect the entry at the given index and replace it with a new value.
@@ -122,18 +171,16 @@ pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
 /// This is the equivalent of R's `R_Reprotect()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
-    unsafe {
-        if index.is_null() {
-            return;
-        }
-        let idx = (*index).index;
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            if idx < stack.stack.len() {
-                stack.stack[idx] = s;
-            }
-        });
+    if index.is_null() {
+        return;
     }
+    let idx = index as usize;
+    PROTECT_STACK.with(|ps| {
+        let mut stack = ps.borrow_mut();
+        if idx < stack.stack.len() {
+            stack.stack[idx] = s;
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -267,6 +314,45 @@ mod tests {
             PRESERVE_STACK.with(|ps| {
                 assert_eq!(ps.borrow().len(), 0);
             });
+        }
+    }
+
+    #[test]
+    fn test_protect_guard() {
+        reset_protect_stack();
+        let depth_before = R_ProtectCount();
+        {
+            let a = 0x1 as SEXP;
+            let _guard = protect(a);
+            assert_eq!(R_ProtectCount(), depth_before + 1);
+        }
+        // Guard dropped, should be back to original depth
+        assert_eq!(R_ProtectCount(), depth_before);
+    }
+
+    #[test]
+    fn test_protect_n_guard() {
+        reset_protect_stack();
+        let depth_before = R_ProtectCount();
+        {
+            unsafe {
+                Rf_protect(0x1 as SEXP);
+                Rf_protect(0x2 as SEXP);
+                Rf_protect(0x3 as SEXP);
+            }
+            let _guard = protect_n(3);
+            assert_eq!(R_ProtectCount(), depth_before + 3);
+        }
+        assert_eq!(R_ProtectCount(), depth_before);
+    }
+
+    #[test]
+    #[should_panic(expected = "trying to unprotect")]
+    fn test_over_unprotect_panics() {
+        reset_protect_stack();
+        unsafe {
+            Rf_protect(0x1 as SEXP);
+            Rf_unprotect(5); // Should panic
         }
     }
 }

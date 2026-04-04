@@ -22,7 +22,7 @@ pub const NA_LOGICAL: c_int = c_int::MIN;
 pub const R_NA_BIT_PATTERN: u64 = 0x7ff0000000001954;
 
 /// R's NA_REAL sentinel.
-pub const NA_REAL: c_double = 0.0 / 0.0;
+pub const NA_REAL: c_double = f64::from_bits(0x7FF80000000007A2);
 
 /// R's boolean type (0 = FALSE, 1 = TRUE, NA_LOGICAL = NA).
 pub type Rboolean = c_int;
@@ -352,7 +352,7 @@ impl Default for SexprecData {
 }
 
 // ---------------------------------------------------------------------------
-// SexprecCore -- the fundamental R object
+// Tests
 // ---------------------------------------------------------------------------
 
 /// The core SEXPREC structure -- the fundamental R object.
@@ -426,14 +426,6 @@ pub fn R_IsNaN(x: c_double) -> bool {
 pub fn R_FINITE(x: c_double) -> bool {
     !x.is_nan() && !x.is_infinite()
 }
-
-// ---------------------------------------------------------------------------
-// Safety: SexprecCore is used in a single-threaded R interpreter context.
-// Send/Sync impls are needed for OnceLock<SexprecCore> statics.
-// ---------------------------------------------------------------------------
-
-unsafe impl Send for SexprecCore {}
-unsafe impl Sync for SexprecCore {}
 
 // ---------------------------------------------------------------------------
 // Tests

@@ -79,7 +79,6 @@ impl RArena {
         let total_bytes = (length as usize).checked_mul(elem_size).unwrap_or(0);
 
         let mut boxed = Box::new(SexprecCore::new_vector(sexptype, length));
-        let ptr: SEXP = &mut *boxed as *mut _;
 
         // Allocate data buffer
         if total_bytes > 0 {
@@ -92,8 +91,7 @@ impl RArena {
             };
 
             if data_ptr.is_null() && layout.size() > 0 {
-                // Allocation failed
-                self.nodes.push(boxed);
+                // Allocation failed — do NOT push the Box, it will be dropped
                 return ptr::null_mut();
             }
 
@@ -105,6 +103,7 @@ impl RArena {
             }
 
             // Store data pointer in gengc_next_node (same as DATAPTR convention)
+            let ptr: SEXP = &mut *boxed as *mut _;
             unsafe {
                 (*ptr).gengc_next_node = data_ptr as SEXP;
             }
@@ -112,6 +111,7 @@ impl RArena {
             self.data_bufs.push((data_ptr, layout));
         }
 
+        let ptr: SEXP = &mut *boxed as *mut _;
         self.nodes.push(boxed);
         ptr
     }
@@ -121,7 +121,6 @@ impl RArena {
         let len = s.len() as R_xlen_t;
 
         let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
-        let ptr: SEXP = &mut *boxed as *mut _;
 
         // Store truelength in the vecsxp union field
         boxed.data = SexprecData {
@@ -134,7 +133,7 @@ impl RArena {
         let data_ptr = unsafe { alloc(layout) };
 
         if data_ptr.is_null() {
-            self.nodes.push(boxed);
+            // Do NOT push the Box — it will be dropped, avoiding a leak
             return ptr::null_mut();
         }
 
@@ -145,6 +144,7 @@ impl RArena {
         }
 
         // Store data pointer
+        let ptr: SEXP = &mut *boxed as *mut _;
         unsafe {
             (*ptr).gengc_next_node = data_ptr as SEXP;
         }
@@ -172,6 +172,14 @@ impl RArena {
             result = self.cons(ptr::null_mut(), result, ptr::null_mut());
         }
         result
+    }
+
+    /// Add an existing Box to the arena, returning a raw pointer.
+    /// The arena takes ownership of the Box.
+    pub fn add_node(&mut self, mut node: Box<SexprecCore>) -> SEXP {
+        let ptr: SEXP = &mut *node as *mut _;
+        self.nodes.push(node);
+        ptr
     }
 
     /// Get the number of nodes allocated in this arena.

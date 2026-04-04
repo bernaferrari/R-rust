@@ -321,13 +321,13 @@ pub fn xtable_key_comp(key: char, entry: &XtableT) -> std::cmp::Ordering {
 unsafe fn get_na_string() -> SEXP {
     use crate::sexp::ffi::SexprecCore;
     use std::sync::OnceLock;
-    static NA_STRING_VAL: OnceLock<SexprecCore> = OnceLock::new();
+    static NA_STRING_VAL: OnceLock<usize> = OnceLock::new();
     let val = NA_STRING_VAL.get_or_init(|| {
         let mut node = SexprecCore::new_vector(SEXPTYPE::CHARSXP, 2);
         node.sxpinfo.set_gp(1);
-        node
+        Box::into_raw(Box::new(node)) as usize
     });
-    val as *const _ as SEXP
+    *val as SEXP
 }
 
 /// Get R_BlankString -- the empty string CHARSXP.
