@@ -112,6 +112,7 @@ pub mod dist;
 pub mod dpq;
 pub mod error;
 pub mod fprec;
+pub mod global_state;
 pub mod rng;
 pub mod special;
 pub mod tzone;
