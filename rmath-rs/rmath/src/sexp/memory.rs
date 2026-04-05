@@ -21,14 +21,14 @@ use super::ffi::{R_xlen_t, SexprecCore, SexprecData, Vecsxp, NA_INTEGER, SEXP, S
 /// Returns 0 for non-vector types.
 pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
     match t.0 {
-        10 => 4,                                       // LGLSXP: c_int (4 bytes)
-        13 => 4,                                       // INTSXP: c_int (4 bytes)
-        14 => 8,                                       // REALSXP: c_double (8 bytes)
-        15 => 16,                                      // CPLXSXP: Rcomplex (16 bytes)
-        16 => std::mem::size_of::<*mut SexprecCore>(), // STRSXP: SEXP pointers
-        19 => std::mem::size_of::<*mut SexprecCore>(), // VECSXP: SEXP pointers
-        20 => std::mem::size_of::<*mut SexprecCore>(), // EXPRSXP: SEXP pointers
-        24 => 1,                                       // RAWSXP: Rbyte (1 byte)
+        10 => 4,
+        13 => 4,
+        14 => 8,
+        15 => 16,
+        16 => std::mem::size_of::<*mut SexprecCore>(),
+        19 => std::mem::size_of::<*mut SexprecCore>(),
+        20 => std::mem::size_of::<*mut SexprecCore>(),
+        24 => 1,
         _ => 0,
     }
 }
@@ -49,6 +49,8 @@ pub struct RArena {
     data_bufs: Vec<(*mut u8, Layout)>,
     /// Free list of reclaimed SEXP pointers available for reuse.
     free_list: Vec<SEXP>,
+    /// Total bytes allocated for tracking.
+    total_bytes_allocated: usize,
 }
 
 impl RArena {
@@ -58,6 +60,7 @@ impl RArena {
             nodes: Vec::new(),
             data_bufs: Vec::new(),
             free_list: Vec::new(),
+            total_bytes_allocated: 0,
         }
     }
 
@@ -75,6 +78,7 @@ impl RArena {
 
         let mut boxed = Box::new(SexprecCore::new(sexptype));
         let ptr: SEXP = &mut *boxed as *mut _;
+        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
         ptr
     }
@@ -84,16 +88,26 @@ impl RArena {
     /// For INTSXP with length n: allocates n * 4 bytes.
     /// For REALSXP with length n: allocates n * 8 bytes.
     /// For STRSXP/VECSXP with length n: allocates n * sizeof(SEXP) bytes.
+    ///
+    /// Returns null if allocation fails (OOM safety).
     pub fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
+        if length < 0 {
+            return ptr::null_mut();
+        }
+
         let elem_size = sexp_elem_size(sexptype);
-        let total_bytes = (length as usize).checked_mul(elem_size).unwrap_or(0);
+        let total_bytes = match (length as usize).checked_mul(elem_size) {
+            Some(n) => n,
+            None => return ptr::null_mut(),
+        };
 
         let mut boxed = Box::new(SexprecCore::new_vector(sexptype, length));
 
-        // Allocate data buffer
         if total_bytes > 0 {
-            let layout = Layout::from_size_align(total_bytes, std::mem::align_of::<u64>())
-                .expect("invalid layout");
+            let layout = match Layout::from_size_align(total_bytes, std::mem::align_of::<u64>()) {
+                Ok(l) => l,
+                Err(_) => return ptr::null_mut(),
+            };
             let data_ptr = if layout.size() > 0 {
                 unsafe { alloc(layout) }
             } else {
@@ -101,64 +115,67 @@ impl RArena {
             };
 
             if data_ptr.is_null() && layout.size() > 0 {
-                // Allocation failed — do NOT push the Box, it will be dropped
                 return ptr::null_mut();
             }
 
-            // Zero-initialize the data buffer
             if !data_ptr.is_null() {
                 unsafe {
                     std::ptr::write_bytes(data_ptr, 0, total_bytes);
                 }
             }
 
-            // Store data pointer in gengc_next_node (same as DATAPTR convention)
             let ptr: SEXP = &mut *boxed as *mut _;
             unsafe {
                 (*ptr).gengc_next_node = data_ptr as SEXP;
             }
 
+            self.total_bytes_allocated += total_bytes;
             self.data_bufs.push((data_ptr, layout));
         }
 
         let ptr: SEXP = &mut *boxed as *mut _;
+        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
         ptr
     }
 
     /// Allocate a CHARSXP with inline string data.
+    ///
+    /// Returns null if allocation fails (OOM safety).
     pub fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
         let len = s.len() as R_xlen_t;
 
         let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
 
-        // Store truelength in the vecsxp union field
         boxed.data = SexprecData {
             charsxp_truelen: len,
         };
 
-        // Allocate string data (with null terminator)
-        let total_bytes = len as usize + 1;
-        let layout = Layout::from_size_align(total_bytes, 1).expect("invalid layout");
+        let total_bytes = match (len as usize).checked_add(1) {
+            Some(n) => n,
+            None => return ptr::null_mut(),
+        };
+        let layout = match Layout::from_size_align(total_bytes, 1) {
+            Ok(l) => l,
+            Err(_) => return ptr::null_mut(),
+        };
         let data_ptr = unsafe { alloc(layout) };
 
         if data_ptr.is_null() {
-            // Do NOT push the Box — it will be dropped, avoiding a leak
             return ptr::null_mut();
         }
 
-        // Copy string data
         unsafe {
             std::ptr::copy_nonoverlapping(s.as_ptr(), data_ptr, s.len());
-            *data_ptr.add(s.len()) = 0; // null terminator
+            *data_ptr.add(s.len()) = 0;
         }
 
-        // Store data pointer
         let ptr: SEXP = &mut *boxed as *mut _;
         unsafe {
             (*ptr).gengc_next_node = data_ptr as SEXP;
         }
 
+        self.total_bytes_allocated += total_bytes + std::mem::size_of::<SexprecCore>();
         self.data_bufs.push((data_ptr, layout));
         self.nodes.push(boxed);
         ptr
@@ -167,6 +184,9 @@ impl RArena {
     /// Allocate a cons cell (LISTSXP).
     pub fn cons(&mut self, car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
         let ptr = self.alloc_node(SEXPTYPE::LISTSXP);
+        if ptr.is_null() {
+            return ptr::null_mut();
+        }
         unsafe {
             (*ptr).data.listsxp.carval = car;
             (*ptr).data.listsxp.cdrval = cdr;
@@ -177,9 +197,15 @@ impl RArena {
 
     /// Allocate a nil-terminated pairlist chain of n elements.
     pub fn alloc_list_chain(&mut self, n: i32) -> SEXP {
+        if n <= 0 {
+            return ptr::null_mut();
+        }
         let mut result: SEXP = ptr::null_mut();
         for _ in 0..n {
             result = self.cons(ptr::null_mut(), result, ptr::null_mut());
+            if result.is_null() {
+                return ptr::null_mut();
+            }
         }
         result
     }
@@ -188,6 +214,7 @@ impl RArena {
     /// The arena takes ownership of the Box.
     pub fn add_node(&mut self, mut node: Box<SexprecCore>) -> SEXP {
         let ptr: SEXP = &mut *node as *mut _;
+        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(node);
         ptr
     }
@@ -204,10 +231,14 @@ impl RArena {
 
     /// Free a node by adding it to the free list for reuse.
     pub fn free_node(&mut self, ptr: SEXP) {
-        if !ptr.is_null() {
-            let addr = ptr as usize;
-            self.nodes
-                .retain(|b| &**b as *const _ as *const _ as usize != addr);
+        if ptr.is_null() {
+            return;
+        }
+        let addr = ptr as usize;
+        let before = self.nodes.len();
+        self.nodes
+            .retain(|b| &**b as *const _ as *const _ as usize != addr);
+        if self.nodes.len() < before {
             self.free_list.push(ptr);
         }
     }
@@ -231,6 +262,27 @@ impl RArena {
     pub fn free_count(&self) -> usize {
         self.free_list.len()
     }
+
+    /// Get total bytes allocated by this arena.
+    pub fn total_bytes_allocated(&self) -> usize {
+        self.total_bytes_allocated
+    }
+
+    /// Verify arena invariants (debug only).
+    fn verify_invariants(&self) {
+        debug_assert!({
+            for &buf in &self.data_bufs {
+                let (ptr, layout) = buf;
+                if !ptr.is_null() {
+                    debug_assert!(layout.size() > 0);
+                }
+            }
+            for &free_ptr in &self.free_list {
+                debug_assert!(!free_ptr.is_null());
+            }
+            true
+        });
+    }
 }
 
 impl Default for RArena {
@@ -241,7 +293,6 @@ impl Default for RArena {
 
 impl Drop for RArena {
     fn drop(&mut self) {
-        // Free all data buffers
         for (ptr, layout) in &self.data_bufs {
             if !ptr.is_null() && layout.size() > 0 {
                 unsafe {
@@ -250,7 +301,7 @@ impl Drop for RArena {
             }
         }
         self.data_bufs.clear();
-        // nodes are dropped automatically via Vec<Box<...>>
+        self.free_list.clear();
     }
 }
 
@@ -326,7 +377,6 @@ mod tests {
         assert!(!ptr.is_null());
         unsafe {
             assert_eq!((*ptr).vecsxp_length(), 3);
-            // Data should be zero-initialized
             let data = (*ptr).gengc_next_node as *mut i32;
             assert_eq!(*data.add(0), 0);
             assert_eq!(*data.add(1), 0);
@@ -342,6 +392,13 @@ mod tests {
         unsafe {
             assert_eq!((*ptr).vecsxp_length(), 0);
         }
+    }
+
+    #[test]
+    fn test_arena_alloc_vector_negative_length() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, -1);
+        assert!(ptr.is_null());
     }
 
     #[test]
@@ -389,7 +446,6 @@ mod tests {
         let mut arena = RArena::new();
         let list = arena.alloc_list_chain(3);
         assert!(!list.is_null());
-        // Should be a chain of 3 cons cells ending in NULL
         unsafe {
             assert_eq!((*list).sxpinfo.type_of(), SEXPTYPE::LISTSXP);
             assert!((*list).data.listsxp.carval.is_null());
@@ -397,18 +453,30 @@ mod tests {
             assert!(!cdr1.is_null());
             let cdr2 = (*cdr1).data.listsxp.cdrval;
             assert!(!cdr2.is_null());
-            assert!((*cdr2).data.listsxp.cdrval.is_null()); // end of chain
+            assert!((*cdr2).data.listsxp.cdrval.is_null());
         }
     }
 
     #[test]
+    fn test_arena_alloc_list_chain_zero() {
+        let mut arena = RArena::new();
+        let list = arena.alloc_list_chain(0);
+        assert!(list.is_null());
+    }
+
+    #[test]
+    fn test_arena_alloc_list_chain_negative() {
+        let mut arena = RArena::new();
+        let list = arena.alloc_list_chain(-1);
+        assert!(list.is_null());
+    }
+
+    #[test]
     fn test_arena_drop() {
-        // Verify that arena cleanup doesn't crash
         let mut arena = RArena::new();
         arena.alloc_vector(SEXPTYPE::REALSXP, 100);
         arena.alloc_charsxp(b"test string");
         arena.alloc_node(SEXPTYPE::INTSXP);
-        // Drop happens here - should not panic
         drop(arena);
     }
 
@@ -459,5 +527,68 @@ mod tests {
             assert_eq!(*data.add(1), -1);
             assert_eq!(*data.add(2), NA_INTEGER);
         }
+    }
+
+    #[test]
+    fn test_arena_free_node() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        assert_eq!(arena.node_count(), 1);
+        assert_eq!(arena.free_count(), 0);
+        arena.free_node(ptr);
+        assert_eq!(arena.node_count(), 0);
+        assert_eq!(arena.free_count(), 1);
+    }
+
+    #[test]
+    fn test_arena_free_node_null() {
+        let mut arena = RArena::new();
+        arena.free_node(ptr::null_mut());
+        assert_eq!(arena.free_count(), 0);
+    }
+
+    #[test]
+    fn test_arena_free_node_reuse() {
+        let mut arena = RArena::new();
+        let ptr1 = arena.alloc_node(SEXPTYPE::INTSXP);
+        arena.free_node(ptr1);
+        let ptr2 = arena.alloc_node(SEXPTYPE::REALSXP);
+        assert_eq!(ptr1, ptr2);
+        assert_eq!(arena.node_count(), 1);
+        assert_eq!(arena.free_count(), 0);
+    }
+
+    #[test]
+    fn test_arena_fragmentation_ratio() {
+        let mut arena = RArena::new();
+        assert_eq!(arena.fragmentation_ratio(), 0.0);
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        assert_eq!(arena.fragmentation_ratio(), 0.0);
+        arena.free_node(ptr);
+        assert_eq!(arena.fragmentation_ratio(), 1.0);
+    }
+
+    #[test]
+    fn test_arena_total_bytes() {
+        let mut arena = RArena::new();
+        assert_eq!(arena.total_bytes_allocated(), 0);
+        arena.alloc_node(SEXPTYPE::INTSXP);
+        assert!(arena.total_bytes_allocated() > 0);
+    }
+
+    #[test]
+    fn test_arena_default() {
+        let arena = RArena::default();
+        assert_eq!(arena.node_count(), 0);
+        assert_eq!(arena.free_count(), 0);
+    }
+
+    #[test]
+    fn test_arena_add_node() {
+        let mut arena = RArena::new();
+        let boxed = Box::new(SexprecCore::new(SEXPTYPE::INTSXP));
+        let ptr = arena.add_node(boxed);
+        assert!(!ptr.is_null());
+        assert_eq!(arena.node_count(), 1);
     }
 }

@@ -29,8 +29,10 @@ pub struct ProtectGuard {
 
 impl Drop for ProtectGuard {
     fn drop(&mut self) {
-        unsafe {
-            Rf_unprotect(self.count as c_int);
+        if self.count > 0 {
+            unsafe {
+                Rf_unprotect(self.count as c_int);
+            }
         }
     }
 }
@@ -40,10 +42,14 @@ impl Drop for ProtectGuard {
 /// This is the idiomatic Rust way to protect SEXP values.
 /// The guard automatically unprotects when it goes out of scope.
 pub fn protect(s: SEXP) -> ProtectGuard {
-    unsafe {
-        Rf_protect(s);
+    if !s.is_null() {
+        unsafe {
+            Rf_protect(s);
+        }
     }
-    ProtectGuard { count: 1 }
+    ProtectGuard {
+        count: if s.is_null() { 0 } else { 1 },
+    }
 }
 
 /// Protect n SEXP values and return an RAII guard.
@@ -59,13 +65,13 @@ pub fn protect_n(n: usize) -> ProtectGuard {
 
 thread_local! {
     /// The thread-local protection stack.
-    static PROTECT_STACK: RefCell<ProtectStack> = RefCell::new(ProtectStack::new());
+    pub static PROTECT_STACK: RefCell<ProtectStack> = RefCell::new(ProtectStack::new());
 }
 
 /// The protection stack state.
 struct ProtectStack {
     /// Stack of protected SEXP pointers.
-    stack: Vec<SEXP>,
+    pub stack: Vec<SEXP>,
 }
 
 impl ProtectStack {
@@ -86,7 +92,11 @@ impl ProtectStack {
 pub unsafe extern "C" fn Rf_protect(s: SEXP) -> SEXP {
     if !s.is_null() {
         PROTECT_STACK.with(|ps| {
-            ps.borrow_mut().stack.push(s);
+            let mut stack = ps.borrow_mut();
+            if let Err(_) = stack.stack.try_reserve(1) {
+                return;
+            }
+            stack.stack.push(s);
         });
     }
     s
@@ -95,6 +105,11 @@ pub unsafe extern "C" fn Rf_protect(s: SEXP) -> SEXP {
 /// Unprotect the top n entries from the protection stack.
 ///
 /// This is the equivalent of R's `UNPROTECT(n)` macro.
+///
+/// # Safety
+///
+/// This function will not panic. If n exceeds the stack depth,
+/// it unprotects all entries and returns gracefully.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn Rf_unprotect(n: c_int) {
     if n <= 0 {
@@ -103,14 +118,13 @@ pub unsafe extern "C" fn Rf_unprotect(n: c_int) {
     PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         let len = stack.stack.len();
-        if (n as usize) > len {
-            panic!(
-                "Rf_unprotect: trying to unprotect {} items but only {} on stack",
-                n, len
-            );
+        let to_remove = n as usize;
+        if to_remove >= len {
+            stack.stack.clear();
+        } else {
+            let new_len = len - to_remove;
+            stack.stack.truncate(new_len);
         }
-        let new_len = len - (n as usize);
-        stack.stack.truncate(new_len);
     });
 }
 
@@ -119,9 +133,11 @@ pub unsafe extern "C" fn Rf_unprotect(n: c_int) {
 /// This is the equivalent of R's `UNPROTECT_PTR()` macro.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn Rf_unprotect_ptr(s: SEXP) {
+    if s.is_null() {
+        return;
+    }
     PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
-        // Remove the last occurrence of s from the stack
         if let Some(pos) = stack.stack.iter().rposition(|&x| x == s) {
             stack.stack.remove(pos);
         }
@@ -147,8 +163,46 @@ where
     })
 }
 
-// ---------------------------------------------------------------------------
-// R_ProtectWithIndex — protect with an index for later unprotection
+/// Update all protect stack references using the given mapping function.
+/// Used by the GC compaction phase to update moved object pointers.
+pub fn update_protect_stack_refs<F>(mut update_fn: F)
+where
+    F: FnMut(SEXP) -> SEXP,
+{
+    PROTECT_STACK.with(|ps| {
+        let mut stack = ps.borrow_mut();
+        for slot in stack.stack.iter_mut() {
+            *slot = update_fn(*slot);
+        }
+    });
+}
+
+/// Update all preserve stack references using the given mapping function.
+/// Used by the GC compaction phase to update moved object pointers.
+pub fn update_preserve_stack_refs<F>(mut update_fn: F)
+where
+    F: FnMut(SEXP) -> SEXP,
+{
+    PRESERVE_STACK.with(|ps| {
+        let mut stack = ps.borrow_mut();
+        for slot in stack.iter_mut() {
+            *slot = update_fn(*slot);
+        }
+    });
+}
+
+/// Iterate over all preserved SEXP values.
+/// Used by the GC to mark preserved objects.
+pub fn with_preserved_objects<F, R>(f: F) -> R
+where
+    F: FnOnce(&[SEXP]) -> R,
+{
+    PRESERVE_STACK.with(|ps| {
+        let stack = ps.borrow();
+        f(&stack)
+    })
+}
+
 // ---------------------------------------------------------------------------
 // R_ProtectWithIndex — protect with an index for later unprotection
 // ---------------------------------------------------------------------------
@@ -165,10 +219,16 @@ pub struct ProtectIndex {
 pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
     let index = PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
-        stack.stack.push(s);
-        stack.stack.len() - 1
+        if !s.is_null() {
+            if let Err(_) = stack.stack.try_reserve(1) {
+                return usize::MAX;
+            }
+            stack.stack.push(s);
+            stack.stack.len() - 1
+        } else {
+            usize::MAX
+        }
     });
-    // Return index as an opaque pointer - no allocation, no leak
     index as *mut ProtectIndex
 }
 
@@ -176,9 +236,7 @@ pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
 ///
 /// This is a no-op - the index was just a number, not an allocation.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {
-    // No-op - the index was just a number, not an allocation
-}
+pub unsafe extern "C" fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
 
 /// Unprotect the entry at the given index and replace it with a new value.
 ///
@@ -203,7 +261,7 @@ pub unsafe extern "C" fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
 
 thread_local! {
     /// Stack of permanently preserved objects.
-    static PRESERVE_STACK: RefCell<Vec<SEXP>> = RefCell::new(Vec::new());
+    pub static PRESERVE_STACK: RefCell<Vec<SEXP>> = RefCell::new(Vec::new());
 }
 
 /// Permanently protect an SEXP from garbage collection.
@@ -214,7 +272,11 @@ thread_local! {
 pub unsafe extern "C" fn R_PreserveObject(s: SEXP) {
     if !s.is_null() {
         PRESERVE_STACK.with(|ps| {
-            ps.borrow_mut().push(s);
+            let mut stack = ps.borrow_mut();
+            if let Err(_) = stack.try_reserve(1) {
+                return;
+            }
+            stack.push(s);
         });
     }
 }
@@ -224,6 +286,9 @@ pub unsafe extern "C" fn R_PreserveObject(s: SEXP) {
 /// This is the equivalent of R's `R_ReleaseObject()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_ReleaseObject(s: SEXP) {
+    if s.is_null() {
+        return;
+    }
     PRESERVE_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         if let Some(pos) = stack.iter().position(|&x| x == s) {
@@ -240,7 +305,6 @@ pub unsafe extern "C" fn R_ReleaseObject(s: SEXP) {
 mod tests {
     use super::*;
 
-    // Helper to reset protection stack between tests
     fn reset_protect_stack() {
         PROTECT_STACK.with(|ps| {
             ps.borrow_mut().stack.clear();
@@ -307,10 +371,29 @@ mod tests {
     }
 
     #[test]
+    fn test_unprotect_ptr_null() {
+        reset_protect_stack();
+        unsafe {
+            Rf_unprotect_ptr(ptr::null_mut());
+            assert_eq!(R_ProtectCount(), 0);
+        }
+    }
+
+    #[test]
     fn test_unprotect_negative() {
         reset_protect_stack();
         unsafe {
-            Rf_unprotect(-1); // Should be a no-op
+            Rf_unprotect(-1);
+            assert_eq!(R_ProtectCount(), 0);
+        }
+    }
+
+    #[test]
+    fn test_unprotect_exceeds_stack() {
+        reset_protect_stack();
+        unsafe {
+            Rf_protect(0x1 as SEXP);
+            Rf_unprotect(5);
             assert_eq!(R_ProtectCount(), 0);
         }
     }
@@ -332,6 +415,25 @@ mod tests {
     }
 
     #[test]
+    fn test_preserve_null() {
+        reset_protect_stack();
+        unsafe {
+            R_PreserveObject(ptr::null_mut());
+            PRESERVE_STACK.with(|ps| {
+                assert_eq!(ps.borrow().len(), 0);
+            });
+        }
+    }
+
+    #[test]
+    fn test_release_null() {
+        reset_protect_stack();
+        unsafe {
+            R_ReleaseObject(ptr::null_mut());
+        }
+    }
+
+    #[test]
     fn test_protect_guard() {
         reset_protect_stack();
         let depth_before = R_ProtectCount();
@@ -340,7 +442,17 @@ mod tests {
             let _guard = protect(a);
             assert_eq!(R_ProtectCount(), depth_before + 1);
         }
-        // Guard dropped, should be back to original depth
+        assert_eq!(R_ProtectCount(), depth_before);
+    }
+
+    #[test]
+    fn test_protect_guard_null() {
+        reset_protect_stack();
+        let depth_before = R_ProtectCount();
+        {
+            let _guard = protect(ptr::null_mut());
+            assert_eq!(R_ProtectCount(), depth_before);
+        }
         assert_eq!(R_ProtectCount(), depth_before);
     }
 
@@ -361,12 +473,126 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "trying to unprotect")]
-    fn test_over_unprotect_panics() {
+    fn test_protect_with_index() {
+        reset_protect_stack();
+        unsafe {
+            let fake = 0x1 as SEXP;
+            let idx = R_ProtectWithIndex(fake);
+            assert!(!idx.is_null());
+            assert_eq!(R_ProtectCount(), 1);
+            Rf_unprotect(1);
+            assert_eq!(R_ProtectCount(), 0);
+        }
+    }
+
+    #[test]
+    fn test_protect_with_index_null() {
+        reset_protect_stack();
+        unsafe {
+            let idx = R_ProtectWithIndex(ptr::null_mut());
+            assert!((idx as usize) == usize::MAX);
+            assert_eq!(R_ProtectCount(), 0);
+        }
+    }
+
+    #[test]
+    fn test_reprotect() {
+        reset_protect_stack();
+        unsafe {
+            let a = 0x1 as SEXP;
+            let b = 0x2 as SEXP;
+            let idx = R_ProtectWithIndex(a);
+            R_Reprotect(b, idx);
+            PROTECT_STACK.with(|ps| {
+                let stack = ps.borrow();
+                assert_eq!(stack.stack[0], b);
+            });
+            Rf_unprotect(1);
+        }
+    }
+
+    #[test]
+    fn test_reprotect_null_index() {
+        reset_protect_stack();
+        unsafe {
+            R_Reprotect(0x1 as SEXP, ptr::null_mut());
+        }
+    }
+
+    #[test]
+    fn test_free_protect_index() {
+        unsafe {
+            R_FreeProtectIndex(ptr::null_mut());
+            R_FreeProtectIndex(0x1 as *mut ProtectIndex);
+        }
+    }
+
+    #[test]
+    fn test_with_protected_objects() {
         reset_protect_stack();
         unsafe {
             Rf_protect(0x1 as SEXP);
-            Rf_unprotect(5); // Should panic
+            Rf_protect(0x2 as SEXP);
+        }
+        with_protected_objects(|objects| {
+            assert_eq!(objects.len(), 2);
+        });
+        unsafe {
+            Rf_unprotect(2);
+        }
+    }
+
+    #[test]
+    fn test_with_preserved_objects() {
+        reset_protect_stack();
+        unsafe {
+            R_PreserveObject(0x1 as SEXP);
+            R_PreserveObject(0x2 as SEXP);
+        }
+        with_preserved_objects(|objects| {
+            assert_eq!(objects.len(), 2);
+        });
+        unsafe {
+            R_ReleaseObject(0x1 as SEXP);
+            R_ReleaseObject(0x2 as SEXP);
+        }
+    }
+
+    #[test]
+    fn test_update_protect_stack_refs() {
+        reset_protect_stack();
+        unsafe {
+            Rf_protect(0x1 as SEXP);
+            Rf_protect(0x2 as SEXP);
+        }
+        update_protect_stack_refs(|ptr| {
+            if ptr as usize == 0x1 {
+                0x100 as SEXP
+            } else {
+                ptr
+            }
+        });
+        with_protected_objects(|objects| {
+            assert_eq!(objects[0] as usize, 0x100);
+            assert_eq!(objects[1] as usize, 0x2);
+        });
+        unsafe {
+            Rf_unprotect(2);
+        }
+    }
+
+    #[test]
+    fn test_update_preserve_stack_refs() {
+        reset_protect_stack();
+        unsafe {
+            R_PreserveObject(0x1 as SEXP);
+        }
+        update_preserve_stack_refs(|ptr| 0x200 as SEXP);
+        with_preserved_objects(|objects| {
+            assert_eq!(objects[0] as usize, 0x200);
+        });
+        unsafe {
+            R_ReleaseObject(0x200 as SEXP);
         }
     }
 }

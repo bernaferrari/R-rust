@@ -51,6 +51,9 @@ pub const BCnext: c_int = 37;
 pub const BCclosure: c_int = 38;
 pub const BCspecial: c_int = 39;
 pub const BCbuiltin: c_int = 40;
+pub const BCneg: c_int = 41;
+pub const BCmod: c_int = 42;
+pub const BCpow: c_int = 43;
 
 fn make_lgl(val: c_int) -> Sexp<'static> {
     with_arena(|arena| {
@@ -111,7 +114,21 @@ where
         let bv = b.integer_elt(0).unwrap_or(0);
         make_int(int_op(av, bv))
     } else {
-        make_real(0.0)
+        let av = if a.typeof_() == SEXPTYPE::REALSXP {
+            a.real_elt(0).unwrap_or(0.0)
+        } else if a.typeof_() == SEXPTYPE::INTSXP {
+            a.integer_elt(0).unwrap_or(0) as c_double
+        } else {
+            0.0
+        };
+        let bv = if b.typeof_() == SEXPTYPE::REALSXP {
+            b.real_elt(0).unwrap_or(0.0)
+        } else if b.typeof_() == SEXPTYPE::INTSXP {
+            b.integer_elt(0).unwrap_or(0) as c_double
+        } else {
+            0.0
+        };
+        make_real(real_op(av, bv))
     }
 }
 
@@ -136,7 +153,25 @@ where
             0
         }
     } else {
-        0
+        let av = if a.typeof_() == SEXPTYPE::REALSXP {
+            a.real_elt(0).unwrap_or(0.0)
+        } else if a.typeof_() == SEXPTYPE::INTSXP {
+            a.integer_elt(0).unwrap_or(0) as c_double
+        } else {
+            0.0
+        };
+        let bv = if b.typeof_() == SEXPTYPE::REALSXP {
+            b.real_elt(0).unwrap_or(0.0)
+        } else if b.typeof_() == SEXPTYPE::INTSXP {
+            b.integer_elt(0).unwrap_or(0) as c_double
+        } else {
+            0.0
+        };
+        if cmp(av, bv) {
+            1
+        } else {
+            0
+        }
     };
     make_lgl(result)
 }
@@ -186,9 +221,10 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                 let val = stack
                     .pop()
                     .ok_or_else(|| "empty stack on not".to_string())?;
-                let result = if val.typeof_() == SEXPTYPE::LGLSXP {
-                    let v = val.logical_elt(0).unwrap_or(0);
-                    if v == 0 {
+                let v = if val.typeof_() == SEXPTYPE::LGLSXP {
+                    val.logical_elt(0).unwrap_or(0)
+                } else if val.typeof_() == SEXPTYPE::INTSXP {
+                    if val.integer_elt(0).unwrap_or(0) != 0 {
                         1
                     } else {
                         0
@@ -196,7 +232,7 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                 } else {
                     0
                 };
-                stack.push(make_lgl(result));
+                stack.push(make_lgl(if v != 0 { 0 } else { 1 }));
             }
             BCadd => {
                 let b = stack
@@ -248,6 +284,52 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                     .pop()
                     .ok_or_else(|| "empty stack on div".to_string())?;
                 stack.push(apply_binary_op(a, b, |x, y| x / y, |x, y| x / y));
+            }
+            BCmod => {
+                let b = stack
+                    .pop()
+                    .ok_or_else(|| "empty stack on mod".to_string())?;
+                let a = stack
+                    .pop()
+                    .ok_or_else(|| "empty stack on mod".to_string())?;
+                if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
+                    let av = a.real_elt(0).unwrap_or(0.0);
+                    let bv = b.real_elt(0).unwrap_or(0.0);
+                    stack.push(make_real(av % bv));
+                } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
+                    let av = a.integer_elt(0).unwrap_or(0);
+                    let bv = b.integer_elt(0).unwrap_or(0);
+                    if bv != 0 {
+                        stack.push(make_int(av % bv));
+                    } else {
+                        stack.push(make_real(f64::NAN));
+                    }
+                } else {
+                    stack.push(make_real(0.0));
+                }
+            }
+            BCpow => {
+                let b = stack
+                    .pop()
+                    .ok_or_else(|| "empty stack on pow".to_string())?;
+                let a = stack
+                    .pop()
+                    .ok_or_else(|| "empty stack on pow".to_string())?;
+                let av = if a.typeof_() == SEXPTYPE::REALSXP {
+                    a.real_elt(0).unwrap_or(0.0)
+                } else if a.typeof_() == SEXPTYPE::INTSXP {
+                    a.integer_elt(0).unwrap_or(0) as c_double
+                } else {
+                    0.0
+                };
+                let bv = if b.typeof_() == SEXPTYPE::REALSXP {
+                    b.real_elt(0).unwrap_or(0.0)
+                } else if b.typeof_() == SEXPTYPE::INTSXP {
+                    b.integer_elt(0).unwrap_or(0) as c_double
+                } else {
+                    0.0
+                };
+                stack.push(make_real(av.powf(bv)));
             }
             BCeq => {
                 let b = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
@@ -364,9 +446,24 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
             BCbegin => {}
             BCif => {
                 let cond = stack.pop().ok_or_else(|| "empty stack on if".to_string())?;
-                let offset = bytecode[pc];
+                let true_offset = bytecode[pc] as usize;
                 pc += 1;
-                let _ = offset;
+                let false_offset = bytecode[pc] as usize;
+                pc += 1;
+                let is_true = if cond.typeof_() == SEXPTYPE::LGLSXP {
+                    cond.logical_elt(0).unwrap_or(0) != 0
+                } else if cond.typeof_() == SEXPTYPE::INTSXP {
+                    cond.integer_elt(0).unwrap_or(0) != 0
+                } else if cond.typeof_() == SEXPTYPE::REALSXP {
+                    cond.real_elt(0).unwrap_or(0.0) != 0.0
+                } else {
+                    true
+                };
+                if is_true {
+                    pc = true_offset;
+                } else {
+                    pc = false_offset;
+                }
             }
             BCjump => {
                 let offset = bytecode[pc] as usize;
@@ -400,6 +497,41 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                 };
                 if is_true {
                     pc = offset;
+                }
+            }
+            BCfor => {
+                let var_idx = bytecode[pc] as usize;
+                pc += 1;
+                let seq_idx = bytecode[pc] as usize;
+                pc += 1;
+                let body_offset = bytecode[pc] as usize;
+                pc += 1;
+                let end_offset = bytecode[pc] as usize;
+                pc += 1;
+
+                let var_sym = get_constant(constants, var_idx)?;
+                let seq_val = get_constant(constants, seq_idx)?;
+
+                if seq_val.typeof_() == SEXPTYPE::INTSXP || seq_val.typeof_() == SEXPTYPE::REALSXP {
+                    let len = seq_val.len();
+                    for _i in 0..len as usize {
+                        pc = body_offset;
+                    }
+                }
+                pc = end_offset;
+            }
+            BCneg => {
+                let val = stack
+                    .pop()
+                    .ok_or_else(|| "empty stack on neg".to_string())?;
+                if val.typeof_() == SEXPTYPE::REALSXP {
+                    let v = val.real_elt(0).unwrap_or(0.0);
+                    stack.push(make_real(-v));
+                } else if val.typeof_() == SEXPTYPE::INTSXP {
+                    let v = val.integer_elt(0).unwrap_or(0);
+                    stack.push(make_int(-v));
+                } else {
+                    stack.push(val);
                 }
             }
             BCclosure => {
