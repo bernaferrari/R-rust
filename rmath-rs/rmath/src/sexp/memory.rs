@@ -211,6 +211,26 @@ impl RArena {
             self.free_list.push(ptr);
         }
     }
+
+    /// Get the fragmentation ratio (freed / total capacity).
+    pub fn fragmentation_ratio(&self) -> f64 {
+        let total = self.nodes.len() + self.free_list.len();
+        if total == 0 {
+            0.0
+        } else {
+            self.free_list.len() as f64 / total as f64
+        }
+    }
+
+    /// Get mutable access to the free list for compaction operations.
+    pub fn free_list_mut(&mut self) -> &mut Vec<SEXP> {
+        &mut self.free_list
+    }
+
+    /// Get the number of free slots available for reuse.
+    pub fn free_count(&self) -> usize {
+        self.free_list.len()
+    }
 }
 
 impl Default for RArena {

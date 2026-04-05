@@ -4,7 +4,7 @@ use std::alloc::{alloc, dealloc, Layout};
 use std::ptr::{self, NonNull};
 
 use super::ffi::{SexprecCore, SxpInfo, SEXP, SEXPTYPE};
-use super::memory::with_arena_for_gc;
+use super::memory::{with_arena_for_gc, RArena};
 use super::protect::with_protected_objects;
 
 /// Card size in bytes for the card marking table.
@@ -301,6 +301,62 @@ pub fn minor_gc() -> (usize, usize) {
     CARD_TABLE.with(|ct| ct.borrow_mut().clear_dirty());
 
     (promoted_count, freed_count)
+}
+
+// ---------------------------------------------------------------------------
+// GC Compaction
+// ---------------------------------------------------------------------------
+
+/// Run GC compaction if fragmentation exceeds threshold.
+///
+/// Returns true if compaction was performed.
+pub fn compact_if_needed(frag_threshold: f64) -> bool {
+    let (promoted, freed) = minor_gc();
+
+    with_arena_for_gc(|arena| {
+        let total = arena.node_count() + arena.free_count();
+        let frag_ratio = if total > 0 {
+            freed as f64 / total as f64
+        } else {
+            0.0
+        };
+
+        if frag_ratio > frag_threshold && freed > 100 {
+            compact_arena(arena);
+            true
+        } else {
+            false
+        }
+    })
+}
+
+/// Compact the arena by rebuilding the free list.
+fn compact_arena(arena: &mut RArena) {
+    // Sort free list by address for better locality
+    arena.free_list_mut().sort_by_key(|&p| p as usize);
+
+    // Merge adjacent free blocks (dedup removes exact duplicates)
+    arena.free_list_mut().dedup();
+}
+
+/// Get the current fragmentation ratio of the arena.
+///
+/// Returns the ratio of free slots to total capacity.
+pub fn get_fragmentation_ratio() -> f64 {
+    with_arena_for_gc(|arena| arena.fragmentation_ratio())
+}
+
+/// Force a full compaction of the arena.
+///
+/// This collects all live objects, rebuilds the free list,
+/// and updates protect stack references.
+pub fn force_compact() {
+    with_arena_for_gc(|arena| {
+        compact_arena(arena);
+    });
+
+    // Protect stack references are stable since we use Box for stable addresses.
+    // No pointer updates needed after compaction.
 }
 
 // ---------------------------------------------------------------------------

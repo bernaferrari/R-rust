@@ -13,6 +13,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::safe::Sexp;
 
 // ---------------------------------------------------------------------------
 // Coercion warning flags (must match R's C defines)
@@ -45,6 +46,16 @@ pub(crate) fn get_na_string() -> SEXP {
     *val as SEXP
 }
 
+/// Safe version: get the NA_STRING sentinel as a `Sexp<'a>`.
+pub fn get_na_string_safe<'a>() -> Sexp<'a> {
+    unsafe { Sexp::from_raw_unchecked(get_na_string()) }
+}
+
+/// Check if a `Sexp` is the NA_STRING sentinel.
+pub fn is_na_string(x: Sexp) -> bool {
+    x.as_raw() == get_na_string()
+}
+
 // ---------------------------------------------------------------------------
 // Internal helper: logical string cache
 // ---------------------------------------------------------------------------
@@ -59,8 +70,142 @@ pub(crate) fn get_logical_cache() -> SEXP {
     *val as SEXP
 }
 
+/// Safe version: get the logical string cache as a `Sexp<'a>`.
+pub fn get_logical_cache_safe<'a>() -> Sexp<'a> {
+    unsafe { Sexp::from_raw_unchecked(get_logical_cache()) }
+}
+
 // ---------------------------------------------------------------------------
-// Internal helpers: xlength, type predicates
+// Safe Sexp-based type predicates
+// ---------------------------------------------------------------------------
+
+/// Check if a `Sexp` is a vector atomic type.
+#[inline]
+pub fn is_vector_atomic(x: Sexp) -> bool {
+    x.typeof_().is_atomic_type()
+}
+
+/// Check if a `Sexp` is a vector type (atomic or list).
+#[inline]
+pub fn is_vector(x: Sexp) -> bool {
+    x.typeof_().is_vector_type()
+}
+
+/// Check if a `Sexp` is a vector list type.
+#[inline]
+pub fn is_vector_list(x: Sexp) -> bool {
+    let t = x.typeof_();
+    t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
+}
+
+/// Check if a `Sexp` is real (double) and a vector.
+#[inline]
+pub fn is_real(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::REALSXP && is_vector(x)
+}
+
+/// Check if a `Sexp` is complex and a vector.
+#[inline]
+pub fn is_complex(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::CPLXSXP && is_vector(x)
+}
+
+/// Check if a `Sexp` is integer and a vector.
+#[inline]
+pub fn is_integer(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::INTSXP && is_vector(x)
+}
+
+/// Check if a `Sexp` is a function.
+#[inline]
+pub fn is_function(x: Sexp) -> bool {
+    let t = x.typeof_();
+    t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP
+}
+
+/// Check if a `Sexp` is an environment.
+#[inline]
+pub fn is_environment(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::ENVSXP
+}
+
+/// Check if a `Sexp` is a symbol.
+#[inline]
+pub fn is_symbol(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::SYMSXP
+}
+
+/// Check if a `Sexp` is a string vector.
+#[inline]
+pub fn is_string(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::STRSXP
+}
+
+/// Check if a `Sexp` is NULL/R_NilValue.
+#[inline]
+pub fn is_null(x: Sexp) -> bool {
+    x.is_nil()
+}
+
+/// Check if a `Sexp` is a list (pairlist).
+#[inline]
+pub fn is_list(x: Sexp) -> bool {
+    x.is_pairlist()
+}
+
+/// Check if a `Sexp` is a language object.
+#[inline]
+pub fn is_language(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::LANGSXP
+}
+
+/// Check if a `Sexp` is "vectorizable" (atomic vector types).
+#[inline]
+pub fn is_vectorizable(x: Sexp) -> bool {
+    matches!(
+        x.typeof_(),
+        SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::RAWSXP
+    )
+}
+
+/// Check if a `Sexp` is numeric (integer or real, but not logical).
+#[inline]
+pub fn is_numeric(x: Sexp) -> bool {
+    let t = x.typeof_();
+    (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && is_vector(x)
+}
+
+/// Check if a `Sexp` is logical.
+#[inline]
+pub fn is_logical(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::LGLSXP && is_vector(x)
+}
+
+/// Check if a `Sexp` has the OBJECT bit set.
+#[inline]
+pub fn is_object(x: Sexp) -> bool {
+    x.is_object()
+}
+
+/// Check if a `Sexp` is a new list (generic vector).
+#[inline]
+pub fn is_new_list(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::VECSXP
+}
+
+/// Check if a `Sexp` is an expression.
+#[inline]
+pub fn is_expression(x: Sexp) -> bool {
+    x.typeof_() == SEXPTYPE::EXPRSXP
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers: xlength, type predicates (raw FFI versions)
 // ---------------------------------------------------------------------------
 
 /// Get the extended length of an SEXP (handles NULL).
@@ -172,7 +317,6 @@ pub(crate) unsafe fn isNumeric(x: SEXP) -> bool {
         (t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0) && isVector(x)
     }
 }
-}
 
 /// Check if a SEXP is logical.
 #[inline]
@@ -187,7 +331,6 @@ pub(crate) unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        // S4 is stored in bit 4 of gp (level field, upper bits)
         ((*x).sxpinfo.gp() >> 4) as c_int & 1
     }
 }
@@ -254,13 +397,10 @@ pub(crate) fn R_BlankString() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Copy attributes from `from` to `to` (shallow duplicate).
-/// This matches R's SHALLOW_DUPLICATE_ATTRIB macro from coerce.c.
 pub(crate) unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
     unsafe {
         let attr_from = ATTRIB(from);
         if !isNull(attr_from) {
-            // For simplicity, copy via setAttrib for the known attribute types.
-            // In full R this does a shallow duplicate of the entire attribute list.
             let class = getAttrib(from, R_ClassSymbol());
             if !isNull(class) {
                 setAttrib(to, R_ClassSymbol(), class);
@@ -282,7 +422,6 @@ pub(crate) unsafe fn SHALLOW_DUPLICATE_ATTRIB(to: SEXP, from: SEXP) {
 }
 
 /// Clear all attributes from an SEXP, and reset object/S4 bits.
-/// This matches R's CLEAR_ATTRIB macro from coerce.c.
 pub(crate) unsafe fn CLEAR_ATTRIB(x: SEXP) {
     unsafe {
         let attr = ATTRIB(x);
@@ -292,7 +431,6 @@ pub(crate) unsafe fn CLEAR_ATTRIB(x: SEXP) {
                 SET_OBJECT(x, 0);
             }
             if IS_S4_OBJECT(x) != 0 {
-                // Clear the S4 bit (bit 4 of gp)
                 (*x).sxpinfo.set_gp((*x).sxpinfo.gp() & !(1 << 4));
             }
         }
@@ -304,11 +442,7 @@ pub(crate) unsafe fn CLEAR_ATTRIB(x: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Issue coercion warnings based on the warning flags.
-///
-/// This is the equivalent of R's `CoercionWarning()` from coerce.c.
 pub(crate) unsafe fn CoercionWarning(warn: c_int) {
-    // In a full implementation these would call R's warning() function.
-    // For now we use eprintln to avoid aborting.
     if warn & WARN_NA != 0 {
         eprintln!("Warning: NAs introduced by coercion");
     }

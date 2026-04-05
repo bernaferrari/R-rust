@@ -41,6 +41,8 @@ pub enum AltrepData {
     Deferred { expr: SEXP, env: SEXP },
     /// External data source
     External { ptr: *mut std::os::raw::c_void },
+    /// Materialized data cache (populated on first get_dataptr call)
+    Materialized { data: SEXP },
 }
 
 /// ALTREP class definition.
@@ -54,7 +56,7 @@ pub struct AltrepClass {
     pub get_elt: fn(&AltrepData, i64) -> SEXP,
     /// Get pointer to data (for bulk access)
     /// The `writable` parameter indicates if the caller intends to modify the data.
-    pub get_dataptr: fn(&AltrepData, bool) -> *mut std::os::raw::c_void,
+    pub get_dataptr: fn(&mut AltrepData, bool) -> *mut std::os::raw::c_void,
     /// Get length of the vector
     pub get_length: fn(&AltrepData) -> i64,
     /// Materialize the full vector (compute all elements)
@@ -166,10 +168,52 @@ pub static SEQUENCE_CLASS: AltrepClass = AltrepClass {
         })
     },
     get_dataptr: |data, writable| {
-        // For sequences, we need to materialize on first access
-        // Return null for now; caller should use get_elt or materialize
-        let _ = (data, writable);
-        std::ptr::null_mut()
+        let _ = writable;
+        match data {
+            AltrepData::Sequence { start, end, by } => {
+                let len = if *by == 0.0 {
+                    0
+                } else {
+                    ((*end - *start) / *by).abs() as i64 + 1
+                };
+
+                if len <= 0 {
+                    return std::ptr::null_mut();
+                }
+
+                let materialized = with_arena(|arena| {
+                    let vec = arena.alloc_vector(SEXPTYPE::REALSXP, len as R_xlen_t);
+                    if vec.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    let data_ptr = unsafe { (*vec).gengc_next_node as *mut c_double };
+                    if data_ptr.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    unsafe {
+                        for i in 0..len {
+                            *data_ptr.add(i as usize) = *start + (i as f64) * *by;
+                        }
+                    }
+                    vec
+                });
+
+                if materialized.is_null() {
+                    return std::ptr::null_mut();
+                }
+
+                *data = AltrepData::Materialized { data: materialized };
+
+                unsafe { (*materialized).gengc_next_node as *mut std::os::raw::c_void }
+            }
+            AltrepData::Materialized { data } => {
+                if data.is_null() {
+                    return std::ptr::null_mut();
+                }
+                unsafe { (*(*data)).gengc_next_node as *mut std::os::raw::c_void }
+            }
+            _ => std::ptr::null_mut(),
+        }
     },
     get_length: |data| match data {
         AltrepData::Sequence { start, end, by } => {
@@ -177,6 +221,13 @@ pub static SEQUENCE_CLASS: AltrepClass = AltrepClass {
                 0
             } else {
                 ((*end - *start) / *by).abs() as i64 + 1
+            }
+        }
+        AltrepData::Materialized { data } => {
+            if data.is_null() {
+                0
+            } else {
+                unsafe { (*(*data)).sxpinfo.gp() as i64 }
             }
         }
         _ => 0,
@@ -225,13 +276,56 @@ pub static REPEAT_CLASS: AltrepClass = AltrepClass {
         *value
     },
     get_dataptr: |data, writable| {
-        // For repeated values, we can't return a single-element buffer
-        // because the caller expects a full-length buffer. Return null.
-        let _ = (data, writable);
-        std::ptr::null_mut()
+        let _ = writable;
+        match data {
+            AltrepData::Repeat { value, length } => {
+                if *length <= 0 || value.is_null() {
+                    return std::ptr::null_mut();
+                }
+
+                let materialized = with_arena(|arena| {
+                    let vec = arena.alloc_vector(SEXPTYPE::VECSXP, *length as R_xlen_t);
+                    if vec.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    let data_ptr = unsafe { (*vec).gengc_next_node as *mut SEXP };
+                    if data_ptr.is_null() {
+                        return std::ptr::null_mut();
+                    }
+                    unsafe {
+                        for i in 0..*length {
+                            *data_ptr.add(i as usize) = *value;
+                        }
+                    }
+                    vec
+                });
+
+                if materialized.is_null() {
+                    return std::ptr::null_mut();
+                }
+
+                *data = AltrepData::Materialized { data: materialized };
+
+                unsafe { (*materialized).gengc_next_node as *mut std::os::raw::c_void }
+            }
+            AltrepData::Materialized { data } => {
+                if data.is_null() {
+                    return std::ptr::null_mut();
+                }
+                unsafe { (*(*data)).gengc_next_node as *mut std::os::raw::c_void }
+            }
+            _ => std::ptr::null_mut(),
+        }
     },
     get_length: |data| match data {
         AltrepData::Repeat { length, .. } => *length,
+        AltrepData::Materialized { data } => {
+            if data.is_null() {
+                0
+            } else {
+                unsafe { (*(*data)).sxpinfo.gp() as i64 }
+            }
+        }
         _ => 0,
     },
     materialize: |data| {
@@ -311,6 +405,25 @@ fn altrep_data(x: SEXP) -> Option<&'static AltrepData> {
     }
 }
 
+/// Get a mutable reference to the ALTREP data payload from an object.
+fn altrep_data_mut(x: SEXP) -> Option<&'static mut AltrepData> {
+    if !is_altrep(x) {
+        return None;
+    }
+    unsafe {
+        let data1 = (*x).gengc_next_node as *mut SEXP;
+        if data1.is_null() {
+            return None;
+        }
+        // data2 is stored after data1
+        let data2_ptr = data1.add(1);
+        if (*data2_ptr).is_null() {
+            return None;
+        }
+        Some(&mut *(*data2_ptr as *mut AltrepData))
+    }
+}
+
 /// Get the length of an ALTREP object.
 pub fn altrep_length(x: SEXP) -> Option<i64> {
     let class = altrep_class(x)?;
@@ -335,7 +448,7 @@ pub fn altrep_elt(x: SEXP, i: i64) -> Option<SEXP> {
 /// full vector if `writable` is true.
 pub fn altrep_dataptr(x: SEXP, writable: bool) -> Option<*mut std::os::raw::c_void> {
     let class = altrep_class(x)?;
-    let data = altrep_data(x)?;
+    let data = altrep_data_mut(x)?;
     let ptr = (class.get_dataptr)(data, writable);
     if ptr.is_null() {
         None
@@ -344,11 +457,12 @@ pub fn altrep_dataptr(x: SEXP, writable: bool) -> Option<*mut std::os::raw::c_vo
     }
 }
 
-/// Get a slice view of an ALTREP integer vector.
+/// Get a materialized integer vector from an ALTREP object.
 ///
-/// Returns `None` if the ALTREP object doesn't support bulk integer access.
-/// This materializes elements on demand into a new `Vec`.
-pub fn altrep_as_integer_slice(x: SEXP) -> Option<Vec<c_int>> {
+/// Returns `None` if the SEXP is not an ALTREP object or if
+/// materialization fails. Elements are converted to integers
+/// as needed.
+pub fn altrep_as_integer_vec(x: SEXP) -> Option<Vec<c_int>> {
     if !is_altrep(x) {
         return None;
     }
@@ -373,11 +487,12 @@ pub fn altrep_as_integer_slice(x: SEXP) -> Option<Vec<c_int>> {
     Some(result)
 }
 
-/// Get a slice view of an ALTREP real vector.
+/// Get a materialized real vector from an ALTREP object.
 ///
-/// Returns `None` if the ALTREP object doesn't support bulk real access.
-/// This materializes elements on demand into a new `Vec`.
-pub fn altrep_as_real_slice(x: SEXP) -> Option<Vec<c_double>> {
+/// Returns `None` if the SEXP is not an ALTREP object or if
+/// materialization fails. Elements are converted to reals
+/// as needed.
+pub fn altrep_as_real_vec(x: SEXP) -> Option<Vec<c_double>> {
     if !is_altrep(x) {
         return None;
     }
@@ -400,6 +515,57 @@ pub fn altrep_as_real_slice(x: SEXP) -> Option<Vec<c_double>> {
         }
     }
     Some(result)
+}
+
+/// Get a slice view of an ALTREP integer vector.
+///
+/// Returns `None` if the ALTREP object doesn't support bulk integer access.
+/// This materializes elements on demand into a new `Vec`.
+pub fn altrep_as_integer_slice(x: SEXP) -> Option<Vec<c_int>> {
+    altrep_as_integer_vec(x)
+}
+
+/// Get a slice view of an ALTREP real vector.
+///
+/// Returns `None` if the ALTREP object doesn't support bulk real access.
+/// This materializes elements on demand into a new `Vec`.
+pub fn altrep_as_real_slice(x: SEXP) -> Option<Vec<c_double>> {
+    altrep_as_real_vec(x)
+}
+
+/// Get data pointer for any SEXP, materializing ALTREP if needed.
+///
+/// For ALTREP objects, tries the ALTREP's `get_dataptr` first.
+/// If that returns null, falls back to full materialization.
+/// For regular SEXP objects, returns the internal data pointer.
+pub fn dataptr(x: SEXP) -> *mut std::os::raw::c_void {
+    if x.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    if is_altrep(x) {
+        // Try ALTREP's get_dataptr first
+        if let Some(ptr) = altrep_dataptr(x, false) {
+            if !ptr.is_null() {
+                return ptr;
+            }
+        }
+
+        // Fall back to materialization
+        if let Some(class) = altrep_class(x) {
+            if let Some(data) = altrep_data(x) {
+                let materialized = (class.materialize)(data);
+                if !materialized.is_null() {
+                    return unsafe { (*materialized).gengc_next_node as *mut std::os::raw::c_void };
+                }
+            }
+        }
+
+        return std::ptr::null_mut();
+    }
+
+    // Regular SEXP
+    unsafe { (*x).gengc_next_node as *mut std::os::raw::c_void }
 }
 
 /// Check if an ALTREP object has been materialized.
@@ -514,5 +680,20 @@ mod tests {
             by: 0.0,
         };
         assert_eq!((SEQUENCE_CLASS.get_length)(&data), 0);
+    }
+
+    #[test]
+    fn test_dataptr_null() {
+        assert!(dataptr(std::ptr::null_mut()).is_null());
+    }
+
+    #[test]
+    fn test_altrep_as_integer_vec_null() {
+        assert!(altrep_as_integer_vec(std::ptr::null_mut()).is_none());
+    }
+
+    #[test]
+    fn test_altrep_as_real_vec_null() {
+        assert!(altrep_as_real_vec(std::ptr::null_mut()).is_none());
     }
 }

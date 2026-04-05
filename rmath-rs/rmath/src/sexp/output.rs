@@ -7,6 +7,9 @@
 use std::cell::Cell;
 use std::sync::Mutex;
 
+use super::ffi::{SEXP, SEXPTYPE};
+use super::safe::Sexp;
+
 /// Captured R output.
 #[derive(Debug, Clone, Default)]
 pub struct RCapturedOutput {
@@ -59,6 +62,116 @@ pub fn capture_stderr(msg: &str) {
                 s.push_str(msg);
             }
         });
+    }
+}
+
+/// Print an R object to the captured output (or stdout if not capturing).
+///
+/// This is the Rust implementation of R's Rf_PrintValue.
+pub fn print_value(x: Sexp<'_>) {
+    let type_name = match x.typeof_() {
+        SEXPTYPE::NILSXP => "NULL",
+        SEXPTYPE::INTSXP => "integer",
+        SEXPTYPE::REALSXP => "double",
+        SEXPTYPE::LGLSXP => "logical",
+        SEXPTYPE::STRSXP => "character",
+        SEXPTYPE::VECSXP => "list",
+        SEXPTYPE::EXPRSXP => "expression",
+        SEXPTYPE::RAWSXP => "raw",
+        SEXPTYPE::CPLXSXP => "complex",
+        SEXPTYPE::SYMSXP => "symbol",
+        SEXPTYPE::CLOSXP => "closure",
+        SEXPTYPE::ENVSXP => "environment",
+        SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
+        SEXPTYPE::CHARSXP => "charsxp",
+        SEXPTYPE::PROMSXP => "promise",
+        SEXPTYPE::DOTSXP => "...",
+        SEXPTYPE::SPECIALSXP => "special",
+        SEXPTYPE::BUILTINSXP => "builtin",
+        SEXPTYPE::EXTPTRSXP => "externalptr",
+        SEXPTYPE::WEAKREFSXP => "weakref",
+        SEXPTYPE::BCODESXP => "bytecode",
+        SEXPTYPE::OBJSXP => "object",
+        _ => "unknown",
+    };
+
+    let output = format!("[{}; length={}]", type_name, x.len());
+
+    if is_capturing() {
+        capture_stdout(&output);
+        capture_stdout("\n");
+    } else {
+        println!("{}", output);
+    }
+}
+
+/// Print an R object's structure (like str()).
+pub fn print_structure(x: Sexp<'_>, indent: usize) {
+    let prefix = "  ".repeat(indent);
+
+    match x.typeof_() {
+        SEXPTYPE::INTSXP => {
+            let vals: Vec<_> = x.iter_integer().take(10).collect();
+            let suffix = if x.len() > 10 { ", ..." } else { "" };
+            let output = format!("{}int [{}]: {:?}{}", prefix, x.len(), vals, suffix);
+            if is_capturing() {
+                capture_stdout(&output);
+                capture_stdout("\n");
+            } else {
+                println!("{}", output);
+            }
+        }
+        SEXPTYPE::REALSXP => {
+            let vals: Vec<_> = x.iter_real().take(10).collect();
+            let suffix = if x.len() > 10 { ", ..." } else { "" };
+            let output = format!("{}double [{}]: {:?}{}", prefix, x.len(), vals, suffix);
+            if is_capturing() {
+                capture_stdout(&output);
+                capture_stdout("\n");
+            } else {
+                println!("{}", output);
+            }
+        }
+        SEXPTYPE::STRSXP => {
+            let output = format!("{}character [{}]", prefix, x.len());
+            if is_capturing() {
+                capture_stdout(&output);
+                capture_stdout("\n");
+            } else {
+                println!("{}", output);
+            }
+        }
+        SEXPTYPE::VECSXP => {
+            let output = format!("{}list [{}]", prefix, x.len());
+            if is_capturing() {
+                capture_stdout(&output);
+                capture_stdout("\n");
+            } else {
+                println!("{}", output);
+            }
+            for (i, elem) in x.iter_vector().take(5).enumerate() {
+                print_structure(elem, indent + 1);
+            }
+        }
+        _ => {
+            print_value(x);
+        }
+    }
+}
+
+/// FFI function: Rf_PrintValue
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn Rf_PrintValue(x: SEXP) {
+    if let Some(s) = Sexp::from_raw(x) {
+        print_value(s);
+    }
+}
+
+/// FFI function: Rf_PrintValueEnv (print with environment context)
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
+    if let Some(s) = Sexp::from_raw(x) {
+        print_value(s);
     }
 }
 
