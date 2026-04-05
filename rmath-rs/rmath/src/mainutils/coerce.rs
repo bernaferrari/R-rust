@@ -47,6 +47,7 @@ use crate::sexp::ffi::{
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::safe::Sexp;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -2066,102 +2067,45 @@ pub unsafe extern "C" fn do_asCharacterFactor(
     }
 }
 
-/// R-level coercion entry point (`as.logical`, `as.integer`, etc.).
+// ---------------------------------------------------------------------------
+// Safe wrapper functions using Sexp<'a>
+// ---------------------------------------------------------------------------
+
+/// Safe version of `do_coerce` using `Sexp<'a>`.
 ///
-/// This is the `do_asatomic()` function from coerce.c, handling
-/// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let op0 = PRIMVAL(op);
-        let mut type_: c_int = SEXPTYPE::STRSXP.0;
-
-        match op0 {
-            0 => {}                           // as.character
-            1 => type_ = SEXPTYPE::INTSXP.0,  // as.integer
-            2 => type_ = SEXPTYPE::REALSXP.0, // as.double
-            3 => type_ = SEXPTYPE::CPLXSXP.0, // as.complex
-            4 => type_ = SEXPTYPE::LGLSXP.0,  // as.logical
-            5 => type_ = SEXPTYPE::RAWSXP.0,  // as.raw
-            _ => {}
-        }
-
-        let x = CAR(args);
-        if TYPEOF(x) == type_ {
-            if isNull(ATTRIB(x)) {
-                return x;
-            }
-            // Duplicate and clear attributes
-            let ans = Rf_protect(Rf_allocVector3(type_, xlength(x)));
-            // Copy data
-            let src = DATAPTR(x);
-            let dst = DATAPTR(ans);
-            let byte_len = xlength(x) as usize
-                * match SEXPTYPE(type_) {
-                    SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
-                    SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
-                    SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-                    SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
-                    _ => std::mem::size_of::<SEXP>(),
-                };
-            if !src.is_null() && !dst.is_null() {
-                ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, byte_len);
-            }
-            CLEAR_ATTRIB(ans);
-            Rf_unprotect(1);
-            return ans;
-        }
-
-        let ans = coerceVector(x, type_);
-        CLEAR_ATTRIB(ans);
-        ans
+/// Parses the mode string from the second argument and coerces the input
+/// SEXP to the target type. Returns `Result<SEXP, String>` for error handling.
+pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, String> {
+    if mode_str.typeof_() != SEXPTYPE::STRSXP || mode_str.len() != 1 {
+        return Err("invalid 'mode' argument".to_string());
     }
-}
+    let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
+    let s = unsafe {
+        let ptr = CHAR(mode_chars.as_raw());
+        if ptr.is_null() {
+            return Err("invalid 'mode' argument".to_string());
+        }
+        CStr::from_ptr(ptr).to_str().unwrap_or("").to_string()
+    };
 
-/// R-level `as.vector()` entry point.
-///
-/// This is the `do_asvector()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    let type_: c_int = match s.as_str() {
+        "logical" => SEXPTYPE::LGLSXP.0,
+        "integer" => SEXPTYPE::INTSXP.0,
+        "double" | "numeric" => SEXPTYPE::REALSXP.0,
+        "complex" => SEXPTYPE::CPLXSXP.0,
+        "character" => SEXPTYPE::STRSXP.0,
+        "raw" => SEXPTYPE::RAWSXP.0,
+        "list" => SEXPTYPE::VECSXP.0,
+        "expression" => SEXPTYPE::EXPRSXP.0,
+        "pairlist" => SEXPTYPE::LISTSXP.0,
+        "any" => return Ok(x.as_raw()),
+        "symbol" | "name" => SEXPTYPE::SYMSXP.0,
+        _ => return Err("invalid 'mode' argument".to_string()),
+    };
+
+    let x_raw = x.as_raw();
     unsafe {
-        let x = CAR(args);
-        // For now, handle the simple case of coercing to the same type
-        // or to a specified type via the second argument
-        if args.is_null() || isNull(CDR(args)) {
-            return x;
-        }
-        let mode_str = CADR(args);
-        if !isString(mode_str) || LENGTH(mode_str) != 1 {
-            error("invalid 'mode' argument");
-        }
-
-        let mode_chars = CHAR(STRING_ELT(mode_str, 0));
-        if mode_chars.is_null() {
-            error("invalid 'mode' argument");
-        }
-        let mode = CStr::from_ptr(mode_chars).to_str().unwrap_or("");
-
-        let type_: c_int = match mode {
-            "logical" => SEXPTYPE::LGLSXP.0,
-            "integer" => SEXPTYPE::INTSXP.0,
-            "double" | "numeric" => SEXPTYPE::REALSXP.0,
-            "complex" => SEXPTYPE::CPLXSXP.0,
-            "character" => SEXPTYPE::STRSXP.0,
-            "raw" => SEXPTYPE::RAWSXP.0,
-            "list" => SEXPTYPE::VECSXP.0,
-            "expression" => SEXPTYPE::EXPRSXP.0,
-            "pairlist" => SEXPTYPE::LISTSXP.0,
-            "symbol" | "name" => SEXPTYPE::SYMSXP.0,
-            "function" => SEXPTYPE::CLOSXP.0,
-            "any" => return x,
-            _ => {
-                error("invalid 'mode' argument");
-                0 // unreachable
-            }
-        };
-
-        // If already the right type
-        if TYPEOF(x) == type_ {
+        if TYPEOF(x_raw) == type_ {
             match SEXPTYPE(type_) {
                 SEXPTYPE::LGLSXP
                 | SEXPTYPE::INTSXP
@@ -2169,11 +2113,12 @@ pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SE
                 | SEXPTYPE::CPLXSXP
                 | SEXPTYPE::STRSXP
                 | SEXPTYPE::RAWSXP => {
-                    if isNull(ATTRIB(x)) {
-                        return x;
+                    let attr = ATTRIB(x_raw);
+                    if isNull(attr) {
+                        return Ok(x_raw);
                     }
-                    let ans = Rf_protect(Rf_allocVector3(type_, xlength(x)));
-                    let src = DATAPTR(x);
+                    let ans = Rf_protect(Rf_allocVector3(type_, xlength(x_raw)));
+                    let src = DATAPTR(x_raw);
                     let dst = DATAPTR(ans);
                     let elem_size = match SEXPTYPE(type_) {
                         SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
@@ -2186,19 +2131,151 @@ pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SE
                         ptr::copy_nonoverlapping(
                             src as *const u8,
                             dst as *mut u8,
-                            xlength(x) as usize * elem_size,
+                            xlength(x_raw) as usize * elem_size,
+                        );
+                    }
+                    Rf_unprotect(1);
+                    return Ok(ans);
+                }
+                _ => return Ok(x_raw),
+            }
+        }
+
+        let ans = ascommon(ptr::null_mut(), x_raw, type_);
+        match SEXPTYPE(TYPEOF(ans)) {
+            SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::CPLXSXP
+            | SEXPTYPE::STRSXP
+            | SEXPTYPE::RAWSXP => {
+                CLEAR_ATTRIB(ans);
+            }
+            _ => {}
+        }
+        Ok(ans)
+    }
+}
+
+/// Safe version of `do_asatomic` using `Sexp<'a>`.
+///
+/// Strips attributes and returns a clean atomic vector of the target type.
+/// The `op` value selects the target type (0=character, 1=integer, 2=double,
+/// 3=complex, 4=logical, 5=raw).
+pub fn as_atomic_safe<'a>(x: Sexp<'a>, op: i32) -> Result<SEXP, String> {
+    let type_: c_int = match op {
+        0 => SEXPTYPE::STRSXP.0,
+        1 => SEXPTYPE::INTSXP.0,
+        2 => SEXPTYPE::REALSXP.0,
+        3 => SEXPTYPE::CPLXSXP.0,
+        4 => SEXPTYPE::LGLSXP.0,
+        5 => SEXPTYPE::RAWSXP.0,
+        _ => SEXPTYPE::STRSXP.0,
+    };
+
+    let x_raw = x.as_raw();
+    unsafe {
+        if TYPEOF(x_raw) == type_ {
+            if isNull(ATTRIB(x_raw)) {
+                return Ok(x_raw);
+            }
+            let ans = Rf_protect(Rf_allocVector3(type_, xlength(x_raw)));
+            let src = DATAPTR(x_raw);
+            let dst = DATAPTR(ans);
+            let byte_len = xlength(x_raw) as usize
+                * match SEXPTYPE(type_) {
+                    SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
+                    SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
+                    SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
+                    SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
+                    _ => std::mem::size_of::<SEXP>(),
+                };
+            if !src.is_null() && !dst.is_null() {
+                ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, byte_len);
+            }
+            CLEAR_ATTRIB(ans);
+            Rf_unprotect(1);
+            return Ok(ans);
+        }
+
+        let ans = coerceVector(x_raw, type_);
+        CLEAR_ATTRIB(ans);
+        Ok(ans)
+    }
+}
+
+/// Safe version of `do_asvector` using `Sexp<'a>`.
+///
+/// Coerces to a vector of the specified mode, stripping attributes for
+/// atomic types but preserving them for list/expression/pairlist types.
+pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, String> {
+    if mode_str.typeof_() != SEXPTYPE::STRSXP || mode_str.len() != 1 {
+        return Err("invalid 'mode' argument".to_string());
+    }
+    let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
+    let s = unsafe {
+        let ptr = CHAR(mode_chars.as_raw());
+        if ptr.is_null() {
+            return Err("invalid 'mode' argument".to_string());
+        }
+        CStr::from_ptr(ptr).to_str().unwrap_or("").to_string()
+    };
+
+    let type_: c_int = match s.as_str() {
+        "logical" => SEXPTYPE::LGLSXP.0,
+        "integer" => SEXPTYPE::INTSXP.0,
+        "double" | "numeric" => SEXPTYPE::REALSXP.0,
+        "complex" => SEXPTYPE::CPLXSXP.0,
+        "character" => SEXPTYPE::STRSXP.0,
+        "raw" => SEXPTYPE::RAWSXP.0,
+        "list" => SEXPTYPE::VECSXP.0,
+        "expression" => SEXPTYPE::EXPRSXP.0,
+        "pairlist" => SEXPTYPE::LISTSXP.0,
+        "symbol" | "name" => SEXPTYPE::SYMSXP.0,
+        "function" => SEXPTYPE::CLOSXP.0,
+        "any" => return Ok(x.as_raw()),
+        _ => return Err("invalid 'mode' argument".to_string()),
+    };
+
+    let x_raw = x.as_raw();
+    unsafe {
+        if TYPEOF(x_raw) == type_ {
+            match SEXPTYPE(type_) {
+                SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::RAWSXP => {
+                    if isNull(ATTRIB(x_raw)) {
+                        return Ok(x_raw);
+                    }
+                    let ans = Rf_protect(Rf_allocVector3(type_, xlength(x_raw)));
+                    let src = DATAPTR(x_raw);
+                    let dst = DATAPTR(ans);
+                    let elem_size = match SEXPTYPE(type_) {
+                        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
+                        SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
+                        SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
+                        SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
+                        _ => std::mem::size_of::<SEXP>(),
+                    };
+                    if !src.is_null() && !dst.is_null() {
+                        ptr::copy_nonoverlapping(
+                            src as *const u8,
+                            dst as *mut u8,
+                            xlength(x_raw) as usize * elem_size,
                         );
                     }
                     CLEAR_ATTRIB(ans);
                     Rf_unprotect(1);
-                    return ans;
+                    return Ok(ans);
                 }
-                _ => return x,
+                _ => return Ok(x_raw),
             }
         }
 
-        let ans = ascommon(call, x, type_);
-        // Keep attributes for list/expression/pairlist types
+        let ans = ascommon(ptr::null_mut(), x_raw, type_);
         match SEXPTYPE(TYPEOF(ans)) {
             SEXPTYPE::NILSXP
             | SEXPTYPE::LISTSXP
@@ -2209,8 +2286,210 @@ pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SE
                 CLEAR_ATTRIB(ans);
             }
         }
-        ans
+        Ok(ans)
     }
+}
+
+/// Safe version of `do_is` using `Sexp<'a>`.
+///
+/// Returns `Result<c_int, String>` where the c_int is 0 or 1 (logical value).
+/// The `op` value selects the predicate to test.
+pub fn is_type_safe<'a>(x: Sexp<'a>, op: i32) -> Result<c_int, String> {
+    let ans = match op {
+        0 => is_null_safe(x),
+        10 => (x.typeof_() == SEXPTYPE::LGLSXP) as c_int,
+        13 => (x.typeof_() == SEXPTYPE::INTSXP) as c_int,
+        14 => (x.typeof_() == SEXPTYPE::REALSXP) as c_int,
+        15 => (x.typeof_() == SEXPTYPE::CPLXSXP) as c_int,
+        16 => (x.typeof_() == SEXPTYPE::STRSXP) as c_int,
+        1 => (x.typeof_() == SEXPTYPE::SYMSXP) as c_int,
+        4 => (x.typeof_() == SEXPTYPE::ENVSXP) as c_int,
+        19 => {
+            let t = x.typeof_();
+            (t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP) as c_int
+        }
+        2 => {
+            let t = x.typeof_();
+            (t == SEXPTYPE::LISTSXP || t == SEXPTYPE::NILSXP) as c_int
+        }
+        20 => (x.typeof_() == SEXPTYPE::EXPRSXP) as c_int,
+        24 => (x.typeof_() == SEXPTYPE::RAWSXP) as c_int,
+        6 => (x.typeof_() == SEXPTYPE::LANGSXP) as c_int,
+        100 => is_numeric_safe(x),
+        101 => is_matrix_safe(x),
+        102 => is_array_safe(x),
+        300 => {
+            let t = x.typeof_();
+            (t == SEXPTYPE::SYMSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::EXPRSXP) as c_int
+        }
+        302 => is_function_safe(x),
+        200 => is_atomic_safe(x),
+        _ => 0,
+    };
+    Ok(ans)
+}
+
+/// Safe version of `do_isvector` using `Sexp<'a>`.
+///
+/// Checks whether the SEXP is a vector of the specified mode, and whether
+/// it has only a "names" attribute (no other attributes).
+pub fn is_vector_type_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<c_int, String> {
+    if mode_str.typeof_() != SEXPTYPE::STRSXP || mode_str.len() != 1 {
+        return Err("invalid 'mode' argument".to_string());
+    }
+    let mode_chars = mode_str.string_elt(0).ok_or("invalid 'mode' argument")?;
+    let s = unsafe {
+        let ptr = CHAR(mode_chars.as_raw());
+        if ptr.is_null() {
+            return Err("invalid 'mode' argument".to_string());
+        }
+        CStr::from_ptr(ptr).to_str().unwrap_or("").to_string()
+    };
+
+    let is_vec = if s == "any" {
+        x.is_vector()
+    } else if s == "numeric" {
+        is_numeric_safe(x) != 0 && is_logical_safe(x) == 0
+    } else {
+        let type_name = match x.typeof_() {
+            SEXPTYPE::LGLSXP => "logical",
+            SEXPTYPE::INTSXP => "integer",
+            SEXPTYPE::REALSXP => "double",
+            SEXPTYPE::CPLXSXP => "complex",
+            SEXPTYPE::STRSXP => "character",
+            SEXPTYPE::RAWSXP => "raw",
+            SEXPTYPE::VECSXP => "list",
+            SEXPTYPE::EXPRSXP => "expression",
+            SEXPTYPE::LISTSXP => "pairlist",
+            _ => "",
+        };
+        s == type_name || (s == "name" && type_name == "symbol")
+    };
+
+    if !is_vec {
+        return Ok(0);
+    }
+
+    // Check that only a "names" attribute is present
+    let x_raw = x.as_raw();
+    unsafe {
+        let mut a = ATTRIB(x_raw);
+        while !isNull(a) {
+            if !isNull(TAG(a)) && TAG(a) != R_NamesSymbol() {
+                return Ok(0);
+            }
+            a = CDR(a);
+        }
+    }
+    Ok(1)
+}
+
+// ---------------------------------------------------------------------------
+// Safe helper predicates
+// ---------------------------------------------------------------------------
+
+fn is_null_safe(x: Sexp) -> c_int {
+    (x.is_nil()) as c_int
+}
+
+fn is_numeric_safe(x: Sexp) -> c_int {
+    let t = x.typeof_();
+    if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && x.is_vector() {
+        1
+    } else {
+        0
+    }
+}
+
+fn is_logical_safe(x: Sexp) -> c_int {
+    (x.typeof_() == SEXPTYPE::LGLSXP && x.is_vector()) as c_int
+}
+
+fn is_function_safe(x: Sexp) -> c_int {
+    unsafe { (Rf_isFunction(x.as_raw()) != 0) as c_int }
+}
+
+fn is_matrix_safe(x: Sexp) -> c_int {
+    unsafe {
+        let dim = getAttrib(x.as_raw(), R_DimSymbol());
+        (!isNull(dim) && LENGTH(dim) == 2) as c_int
+    }
+}
+
+fn is_array_safe(x: Sexp) -> c_int {
+    unsafe { (!isNull(getAttrib(x.as_raw(), R_DimSymbol()))) as c_int }
+}
+
+fn is_atomic_safe(x: Sexp) -> c_int {
+    let t = x.typeof_();
+    (t == SEXPTYPE::CHARSXP
+        || t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::RAWSXP) as c_int
+}
+
+// ---------------------------------------------------------------------------
+// FFI entry points delegating to safe wrappers
+// ---------------------------------------------------------------------------
+
+/// R-level coercion entry point (`as.logical`, `as.integer`, etc.).
+///
+/// This is the `do_asatomic()` function from coerce.c, handling
+/// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            let op0 = PRIMVAL(op);
+            match as_atomic_safe(x, op0) {
+                Ok(result) => result,
+                Err(_) => R_NilValue(),
+            }
+        }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
+}
+
+/// R-level `as.vector()` entry point.
+///
+/// This is the `do_asvector()` function from coerce.c.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            if args_s.cdr().is_none() {
+                return x.as_raw();
+            }
+            let mode_str = match args_s.cdr().unwrap().car() {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            match as_vector_safe(x, mode_str) {
+                Ok(result) => result,
+                Err(_) => R_NilValue(),
+            }
+        }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
 /// R-level `typeof()` entry point.
@@ -2258,107 +2537,24 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// is.logical, is.integer, is.double, is.complex, is.character, etc.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let ans = Rf_protect(Rf_ScalarLogical(0));
-        let pa = LOGICAL(ans);
-
-        match PRIMVAL(op) {
-            0 => {
-                // is.null
-                *pa = isNull(x) as c_int;
-            }
-            10 => {
-                // is.logical
-                *pa = (TYPEOF(x) == SEXPTYPE::LGLSXP.0) as c_int;
-            }
-            13 => {
-                // is.integer
-                *pa = (TYPEOF(x) == SEXPTYPE::INTSXP.0) as c_int;
-            }
-            14 => {
-                // is.double
-                *pa = (TYPEOF(x) == SEXPTYPE::REALSXP.0) as c_int;
-            }
-            15 => {
-                // is.complex
-                *pa = (TYPEOF(x) == SEXPTYPE::CPLXSXP.0) as c_int;
-            }
-            16 => {
-                // is.character
-                *pa = (TYPEOF(x) == SEXPTYPE::STRSXP.0) as c_int;
-            }
-            1 => {
-                // is.symbol / is.name
-                *pa = (TYPEOF(x) == SEXPTYPE::SYMSXP.0) as c_int;
-            }
-            4 => {
-                // is.environment
-                *pa = (TYPEOF(x) == SEXPTYPE::ENVSXP.0) as c_int;
-            }
-            19 => {
-                // is.list
-                *pa =
-                    (TYPEOF(x) == SEXPTYPE::VECSXP.0 || TYPEOF(x) == SEXPTYPE::LISTSXP.0) as c_int;
-            }
-            2 => {
-                // is.pairlist
-                *pa =
-                    (TYPEOF(x) == SEXPTYPE::LISTSXP.0 || TYPEOF(x) == SEXPTYPE::NILSXP.0) as c_int;
-            }
-            20 => {
-                // is.expression
-                *pa = (TYPEOF(x) == SEXPTYPE::EXPRSXP.0) as c_int;
-            }
-            24 => {
-                // is.raw
-                *pa = (TYPEOF(x) == SEXPTYPE::RAWSXP.0) as c_int;
-            }
-            6 => {
-                // is.call
-                *pa = (TYPEOF(x) == SEXPTYPE::LANGSXP.0) as c_int;
-            }
-            100 => {
-                // is.numeric
-                *pa = (isNumeric(x) && !isLogical(x)) as c_int;
-            }
-            101 => {
-                // is.matrix
-                *pa = isMatrix(x) as c_int;
-            }
-            102 => {
-                // is.array
-                *pa = isArray(x) as c_int;
-            }
-            300 => {
-                // is.language
-                *pa = (TYPEOF(x) == SEXPTYPE::SYMSXP.0
-                    || TYPEOF(x) == SEXPTYPE::LANGSXP.0
-                    || TYPEOF(x) == SEXPTYPE::EXPRSXP.0) as c_int;
-            }
-            302 => {
-                // is.function
-                *pa = isFunction(x) as c_int;
-            }
-            200 => {
-                // is.atomic
-                let t = TYPEOF(x);
-                *pa = (t == SEXPTYPE::CHARSXP.0
-                    || t == SEXPTYPE::LGLSXP.0
-                    || t == SEXPTYPE::INTSXP.0
-                    || t == SEXPTYPE::REALSXP.0
-                    || t == SEXPTYPE::CPLXSXP.0
-                    || t == SEXPTYPE::STRSXP.0
-                    || t == SEXPTYPE::RAWSXP.0) as c_int;
-            }
-            _ => {
-                *pa = 0;
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return Rf_ScalarLogical(0),
+            };
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return Rf_ScalarLogical(0),
+            };
+            let op0 = PRIMVAL(op);
+            match is_type_safe(x, op0) {
+                Ok(result) => Rf_ScalarLogical(result),
+                Err(_) => Rf_ScalarLogical(0),
             }
         }
-
-        Rf_unprotect(1);
-        ans
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { Rf_ScalarLogical(0) })
 }
 
 /// R-level `is.vector()` entry point.
@@ -2366,63 +2562,30 @@ pub unsafe extern "C" fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) ->
 /// This is the `do_isvector()` function from coerce.c.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        let mode_arg = CADR(args);
-        let ans = Rf_protect(Rf_ScalarLogical(0));
-        let pa = LOGICAL(ans);
-
-        if !isString(mode_arg) || LENGTH(mode_arg) != 1 {
-            error("invalid 'mode' argument");
-        }
-
-        let mode_chars = CHAR(STRING_ELT(mode_arg, 0));
-        let mode = if mode_chars.is_null() {
-            ""
-        } else {
-            CStr::from_ptr(mode_chars).to_str().unwrap_or("")
-        };
-
-        let is_vec = if mode == "any" {
-            isVector(x)
-        } else if mode == "numeric" {
-            isNumeric(x) && !isLogical(x)
-        } else {
-            // Check if the type name matches
-            let type_name = match SEXPTYPE(TYPEOF(x)) {
-                SEXPTYPE::LGLSXP => "logical",
-                SEXPTYPE::INTSXP => "integer",
-                SEXPTYPE::REALSXP => "double",
-                SEXPTYPE::CPLXSXP => "complex",
-                SEXPTYPE::STRSXP => "character",
-                SEXPTYPE::RAWSXP => "raw",
-                SEXPTYPE::VECSXP => "list",
-                SEXPTYPE::EXPRSXP => "expression",
-                SEXPTYPE::LISTSXP => "pairlist",
-                _ => "",
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return Rf_ScalarLogical(0),
             };
-            mode == type_name || (mode == "name" && type_name == "symbol")
-        };
-
-        if is_vec {
-            // Check that only a "names" attribute is present
-            let mut has_non_name_attr = false;
-            let mut a = ATTRIB(x);
-            while !isNull(a) {
-                if !isNull(TAG(a)) && TAG(a) != R_NamesSymbol() {
-                    has_non_name_attr = true;
-                    break;
-                }
-                a = CDR(a);
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return Rf_ScalarLogical(0),
+            };
+            let mode_arg = match args_s.cdr() {
+                Some(s) => match s.car() {
+                    Some(s) => s,
+                    None => return Rf_ScalarLogical(0),
+                },
+                None => return Rf_ScalarLogical(0),
+            };
+            match is_vector_type_safe(x, mode_arg) {
+                Ok(result) => Rf_ScalarLogical(result),
+                Err(_) => Rf_ScalarLogical(0),
             }
-            *pa = (!has_non_name_attr) as c_int;
-        } else {
-            *pa = 0;
         }
-
-        Rf_unprotect(1);
-        ans
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { Rf_ScalarLogical(0) })
 }
 
 /// R-level `is.na()` entry point.
@@ -2694,92 +2857,30 @@ pub unsafe extern "C" fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env:
 /// behavior for `as.vector()`, `as.expression()`, `as.list()`, etc.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        if args.is_null() || isNull(CDR(args)) {
-            return x;
-        }
-        let mode_str = CADR(args);
-        if !isString(mode_str) || LENGTH(mode_str) != 1 {
-            error("invalid 'mode' argument");
-        }
-
-        let mode_chars = CHAR(STRING_ELT(mode_str, 0));
-        if mode_chars.is_null() {
-            error("invalid 'mode' argument");
-        }
-        let mode = CStr::from_ptr(mode_chars).to_str().unwrap_or("");
-
-        let type_: c_int = match mode {
-            "logical" => SEXPTYPE::LGLSXP.0,
-            "integer" => SEXPTYPE::INTSXP.0,
-            "double" | "numeric" => SEXPTYPE::REALSXP.0,
-            "complex" => SEXPTYPE::CPLXSXP.0,
-            "character" => SEXPTYPE::STRSXP.0,
-            "raw" => SEXPTYPE::RAWSXP.0,
-            "list" => SEXPTYPE::VECSXP.0,
-            "expression" => SEXPTYPE::EXPRSXP.0,
-            "pairlist" => SEXPTYPE::LISTSXP.0,
-            "any" => return x,
-            "symbol" | "name" => SEXPTYPE::SYMSXP.0,
-            _ => {
-                error("invalid 'mode' argument");
-                0 // unreachable
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            if args_s.cdr().is_none() {
+                return x.as_raw();
             }
-        };
-
-        if TYPEOF(x) == type_ {
-            // Same type: strip attributes for atomic types
-            match SEXPTYPE(type_) {
-                SEXPTYPE::LGLSXP
-                | SEXPTYPE::INTSXP
-                | SEXPTYPE::REALSXP
-                | SEXPTYPE::CPLXSXP
-                | SEXPTYPE::STRSXP
-                | SEXPTYPE::RAWSXP => {
-                    if isNull(ATTRIB(x)) {
-                        return x;
-                    }
-                    let ans = Rf_protect(Rf_allocVector3(type_, xlength(x)));
-                    // Copy data
-                    let src = DATAPTR(x);
-                    let dst = DATAPTR(ans);
-                    let elem_size = match SEXPTYPE(type_) {
-                        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<c_int>(),
-                        SEXPTYPE::REALSXP => std::mem::size_of::<c_double>(),
-                        SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
-                        SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
-                        _ => std::mem::size_of::<SEXP>(),
-                    };
-                    if !src.is_null() && !dst.is_null() {
-                        ptr::copy_nonoverlapping(
-                            src as *const u8,
-                            dst as *mut u8,
-                            xlength(x) as usize * elem_size,
-                        );
-                    }
-                    Rf_unprotect(1);
-                    return ans;
-                }
-                _ => return x,
+            let mode_str = match args_s.cdr().unwrap().car() {
+                Some(s) => s,
+                None => return R_NilValue(),
+            };
+            match coerce_vector_safe(x, mode_str) {
+                Ok(result) => result,
+                Err(_) => R_NilValue(),
             }
         }
-
-        let ans = ascommon(call, x, type_);
-        // Clear attributes for atomic types (matching R's behavior)
-        match SEXPTYPE(TYPEOF(ans)) {
-            SEXPTYPE::LGLSXP
-            | SEXPTYPE::INTSXP
-            | SEXPTYPE::REALSXP
-            | SEXPTYPE::CPLXSXP
-            | SEXPTYPE::STRSXP
-            | SEXPTYPE::RAWSXP => {
-                CLEAR_ATTRIB(ans);
-            }
-            _ => {}
-        }
-        ans
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------

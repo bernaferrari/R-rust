@@ -24,6 +24,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
+use crate::sexp::safe::Sexp;
 
 /// Copy a string using memmove (handles overlapping regions).
 pub fn mystrcpy(dest: &mut [u8], src: &[u8]) {
@@ -456,8 +457,127 @@ unsafe fn r_nchar(
 }
 
 // ---------------------------------------------------------------------------
+// Safe wrapper helpers for CHARSXP byte operations
+// ---------------------------------------------------------------------------
+
+/// Read a CHARSXP as a byte slice.
+unsafe fn charsxp_bytes(s: SEXP) -> &'static [u8] {
+    unsafe {
+        if s.is_null() {
+            return &[];
+        }
+        let p = CHAR(s);
+        if p.is_null() {
+            return &[];
+        }
+        std::ffi::CStr::from_ptr(p).to_bytes()
+    }
+}
+
+/// Create a CHARSXP from a byte slice.
+unsafe fn make_charsxp(bytes: &[u8]) -> SEXP {
+    unsafe {
+        if bytes.is_empty() {
+            return Rf_mkCharLen(c"".as_ptr(), 0);
+        }
+        let cs = std::ffi::CString::new(bytes).unwrap();
+        Rf_mkCharLen(cs.as_ptr(), bytes.len() as c_int)
+    }
+}
+
+// ---------------------------------------------------------------------------
 // do_chartr — character translation
 // ---------------------------------------------------------------------------
+
+/// Safe version of character translation using `Sexp<'a>`.
+///
+/// Translate characters in `x`: replace characters in `old` with corresponding
+/// characters in `new`.
+pub fn chartr_safe<'a>(
+    x: Sexp<'a>,
+    old: Sexp<'a>,
+    new: Sexp<'a>,
+) -> Result<SEXP, String> {
+    let na = unsafe { get_na_string() };
+
+    if old.typeof_() != SEXPTYPE::STRSXP {
+        return Err("invalid 'old' argument".into());
+    }
+    if old.len() < 1 {
+        return Err("invalid 'old' argument".into());
+    }
+    let old_first = old.string_elt(0).ok_or("invalid 'old' argument")?;
+    if old_first.as_raw() == na {
+        return Err("invalid 'old' argument".into());
+    }
+
+    if new.typeof_() != SEXPTYPE::STRSXP {
+        return Err("invalid 'new' argument".into());
+    }
+    if new.len() < 1 {
+        return Err("invalid 'new' argument".into());
+    }
+    let new_first = new.string_elt(0).ok_or("invalid 'new' argument")?;
+    if new_first.as_raw() == na {
+        return Err("invalid 'new' argument".into());
+    }
+
+    if x.typeof_() != SEXPTYPE::STRSXP {
+        return Err("invalid 'x' argument".into());
+    }
+
+    // Build byte-level translation table (256 entries, identity by default)
+    let mut xtable: [u8; 256] = {
+        let mut t = [0u8; 256];
+        for i in 0..256usize {
+            t[i] = i as u8;
+        }
+        t
+    };
+
+    // Parse old spec
+    let old_bytes = unsafe { charsxp_bytes(old_first.as_raw()) };
+    let old_spec = tr_build_spec(old_bytes);
+    // Parse new spec
+    let new_bytes = unsafe { charsxp_bytes(new_first.as_raw()) };
+    let new_spec = tr_build_spec(new_bytes);
+
+    // Walk both specs and build the translation table
+    let mut old_p = old_spec;
+    let mut new_p = new_spec;
+    loop {
+        let c_old = tr_get_next_char(&mut old_p);
+        let c_new = tr_get_next_char(&mut new_p);
+        if c_old == 0 {
+            break;
+        }
+        if c_new == 0 {
+            return Err("'old' is longer than 'new'".into());
+        }
+        xtable[c_old as usize] = c_new;
+    }
+
+    let n = x.len() as c_int;
+    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n)) };
+
+    for i in 0..x.len() {
+        let el = x.string_elt(i).ok_or("missing string element")?;
+        if el.as_raw() == na {
+            unsafe { SET_STRING_ELT(y, i, na) };
+        } else {
+            let xi_bytes = unsafe { charsxp_bytes(el.as_raw()) };
+            let mut buf: Vec<u8> = xi_bytes.to_vec();
+            for b in buf.iter_mut() {
+                *b = xtable[*b as usize];
+            }
+            let ch = unsafe { make_charsxp(&buf) };
+            unsafe { SET_STRING_ELT(y, i, ch) };
+        }
+    }
+
+    unsafe { Rf_unprotect(1) };
+    Ok(y)
+}
 
 /// Translate characters in `x`: replace characters in `old` with corresponding
 /// characters in `new`.
@@ -466,96 +586,50 @@ unsafe fn r_nchar(
 /// For this port we use the byte-level (non-MBCS) path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let na = get_na_string();
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let old = match args_s.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let args2 = match args_s.cdr() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let new = match args2.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let args3 = match args2.cdr() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let x = match args3.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-        let old = CAR(args);
-        let args = CDR(args);
-        let new = CAR(args);
-        let args = CDR(args);
-        let x = CAR(args);
-
-        let n = XLENGTH(x) as c_int;
-
-        // Validate old
-        if TYPEOF(old) != SEXPTYPE::STRSXP.0 || LENGTH(old) < 1 || STRING_ELT(old, 0) == na {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'old' argument".to_string(),
-            });
-        }
-
-        // Validate new
-        if TYPEOF(new) != SEXPTYPE::STRSXP.0 || LENGTH(new) < 1 || STRING_ELT(new, 0) == na {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'new' argument".to_string(),
-            });
-        }
-
-        // Validate x
-        if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'x' argument".to_string(),
-            });
-        }
-
-        // Build byte-level translation table (256 entries, identity by default)
-        let mut xtable: [u8; 256] = [0u8; 256];
-        for i in 0..256usize {
-            xtable[i] = i as u8;
-        }
-
-        // Parse old spec
-        let old_str = CHAR(STRING_ELT(old, 0));
-        let old_spec = tr_build_spec(std::ffi::CStr::from_ptr(old_str).to_bytes());
-        // Parse new spec
-        let new_str = CHAR(STRING_ELT(new, 0));
-        let new_spec = tr_build_spec(std::ffi::CStr::from_ptr(new_str).to_bytes());
-
-        // Walk both specs and build the translation table
-        let mut old_p = old_spec;
-        let mut new_p = new_spec;
-        loop {
-            let c_old = tr_get_next_char(&mut old_p);
-            let c_new = tr_get_next_char(&mut new_p);
-            if c_old == 0 {
-                break;
-            }
-            if c_new == 0 {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "'old' is longer than 'new'".to_string(),
-                });
-            }
-            xtable[c_old as usize] = c_new;
-        }
-
-        let y = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
-
-        for i in 0..n as R_xlen_t {
-            let el = STRING_ELT(x, i);
-            if el == na {
-                SET_STRING_ELT(y, i, na);
-            } else {
-                let xi = CHAR(el);
-                let xi_bytes = std::ffi::CStr::from_ptr(xi).to_bytes();
-                let mut buf: Vec<u8> = xi_bytes.to_vec();
-                for b in buf.iter_mut() {
-                    *b = xtable[*b as usize];
-                }
-                // Null-terminate for mkCharLen
-                let cs = std::ffi::CString::new(buf.clone()).unwrap();
-                let ch = Rf_mkCharLen(cs.as_ptr(), buf.len() as c_int);
-                SET_STRING_ELT(y, i, ch);
+            match chartr_safe(x, old, new) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
             }
         }
-
-        Rf_unprotect(1);
-        y
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------
 // do_toupper — convert to uppercase
 // ---------------------------------------------------------------------------
+
+/// Safe version of toupper using `Sexp<'a>`.
+pub fn toupper_safe<'a>(x: Sexp<'a>) -> Result<SEXP, String> {
+    case_transform_safe(x, true)
+}
 
 /// Convert characters in a character vector to uppercase.
 ///
@@ -563,12 +637,34 @@ pub unsafe extern "C" fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// For this port we use the byte-level (non-MBCS) path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { do_toupper_inner(args, true) }
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+
+            match toupper_safe(x) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
+            }
+        }
+    }))
+    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------
 // do_tolower — convert to lowercase
 // ---------------------------------------------------------------------------
+
+/// Safe version of tolower using `Sexp<'a>`.
+pub fn tolower_safe<'a>(x: Sexp<'a>) -> Result<SEXP, String> {
+    case_transform_safe(x, false)
+}
 
 /// Convert characters in a character vector to lowercase.
 ///
@@ -576,53 +672,135 @@ pub unsafe extern "C" fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 /// For this port we use the byte-level (non-MBCS) path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { do_toupper_inner(args, false) }
-}
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-/// Shared implementation for do_toupper and do_tolower.
-unsafe fn do_toupper_inner(args: SEXP, upper: bool) -> SEXP {
-    unsafe {
-        let na = get_na_string();
-        let x = CAR(args);
-
-        if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "non-character argument".to_string(),
-            });
-        }
-
-        let n = XLENGTH(x);
-        let y = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int));
-
-        for i in 0..n {
-            let el = STRING_ELT(x, i);
-            if el == na {
-                SET_STRING_ELT(y, i, na);
-            } else {
-                let xi = CHAR(el);
-                let xi_bytes = std::ffi::CStr::from_ptr(xi).to_bytes();
-                let mut buf: Vec<u8> = xi_bytes.to_vec();
-                for b in buf.iter_mut() {
-                    if upper {
-                        *b = (*b as char).to_ascii_uppercase() as u8;
-                    } else {
-                        *b = (*b as char).to_ascii_lowercase() as u8;
-                    }
-                }
-                let cs = std::ffi::CString::new(buf.clone()).unwrap();
-                let ch = Rf_mkCharLen(cs.as_ptr(), buf.len() as c_int);
-                SET_STRING_ELT(y, i, ch);
+            match tolower_safe(x) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
             }
         }
+    }))
+    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
+}
 
-        Rf_unprotect(1);
-        y
+/// Shared safe implementation for toupper and tolower.
+fn case_transform_safe<'a>(x: Sexp<'a>, upper: bool) -> Result<SEXP, String> {
+    let na = unsafe { get_na_string() };
+
+    if x.typeof_() != SEXPTYPE::STRSXP {
+        return Err("non-character argument".into());
     }
+
+    let n = x.len();
+    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int)) };
+
+    for i in 0..n {
+        let el = x.string_elt(i).ok_or("missing string element")?;
+        if el.as_raw() == na {
+            unsafe { SET_STRING_ELT(y, i, na) };
+        } else {
+            let xi_bytes = unsafe { charsxp_bytes(el.as_raw()) };
+            let mut buf: Vec<u8> = xi_bytes.to_vec();
+            for b in buf.iter_mut() {
+                if upper {
+                    *b = (*b as char).to_ascii_uppercase() as u8;
+                } else {
+                    *b = (*b as char).to_ascii_lowercase() as u8;
+                }
+            }
+            let ch = unsafe { make_charsxp(&buf) };
+            unsafe { SET_STRING_ELT(y, i, ch) };
+        }
+    }
+
+    unsafe { Rf_unprotect(1) };
+    Ok(y)
 }
 
 // ---------------------------------------------------------------------------
 // do_nchar — character counting
 // ---------------------------------------------------------------------------
+
+/// Enum for nchar type argument.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum NcharType {
+    Bytes,
+    Chars,
+    Width,
+}
+
+/// Safe version of nchar using `Sexp<'a>`.
+pub fn nchar_safe<'a>(
+    x: Sexp<'a>,
+    type_: NcharType,
+    allow_na: bool,
+    keep_na: bool,
+) -> Result<SEXP, String> {
+    let na = unsafe { get_na_string() };
+
+    if x.typeof_() != SEXPTYPE::STRSXP {
+        return Err("'nchar' requires a character vector".into());
+    }
+
+    let type_code = match type_ {
+        NcharType::Bytes => "bytes",
+        NcharType::Chars => "chars",
+        NcharType::Width => "width",
+    };
+
+    let len = x.len();
+    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, len as c_int)) };
+
+    for i in 0..len {
+        let sxi = x.string_elt(i).ok_or("missing string element")?;
+        if sxi.as_raw() == na {
+            let val = if keep_na {
+                crate::sexp::ffi::NA_INTEGER
+            } else {
+                2 // NA string length
+            };
+            unsafe {
+                let s_data = INTEGER(s);
+                *s_data.add(i as usize) = val;
+            }
+        } else {
+            let res = unsafe { r_nchar(sxi.as_raw(), type_code, allow_na, keep_na, i) };
+            if res == -1 {
+                return Err(format!("invalid multibyte string, element {}", i + 1));
+            } else if res == -2 {
+                let msg = if type_code == "chars" {
+                    format!(
+                        "number of characters is not computable in \"bytes\" encoding, element {}",
+                        i + 1
+                    )
+                } else {
+                    format!(
+                        "width is not computable in \"bytes\" encoding, element {}",
+                        i + 1
+                    )
+                };
+                return Err(msg);
+            } else {
+                unsafe {
+                    let s_data = INTEGER(s);
+                    *s_data.add(i as usize) = res;
+                }
+            }
+        }
+    }
+
+    unsafe { Rf_unprotect(1) };
+    Ok(s)
+}
 
 /// Count the number of characters in each element of a character vector.
 ///
@@ -630,113 +808,176 @@ unsafe fn do_toupper_inner(args: SEXP, upper: bool) -> SEXP {
 /// Supports type = "bytes", "chars", "width".
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let na = get_na_string();
-        let x_arg = CAR(args);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-        // Coerce to STRSXP if needed (simplified: just check it's a string)
-        let x = if TYPEOF(x_arg) == SEXPTYPE::STRSXP.0 {
-            x_arg
-        } else {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "'nchar' requires a character vector".to_string(),
-            });
-        };
+            let x_arg = match args_s.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-        let len = XLENGTH(x);
+            // Parse type argument (second arg)
+            let args2 = match args_s.cdr() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let stype = match args2.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-        // Parse type argument (second arg)
-        let stype = CADR(args);
-        if TYPEOF(stype) != SEXPTYPE::STRSXP.0 || LENGTH(stype) != 1 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'type' argument".to_string(),
-            });
-        }
-        let type_char = STRING_ELT(stype, 0);
-        let type_str = std::ffi::CStr::from_ptr(CHAR(type_char)).to_string_lossy();
-        let type_str_trimmed = type_str.trim();
+            let type_ = if stype.typeof_() != SEXPTYPE::STRSXP || stype.len() != 1 {
+                return crate::sexp::globals::R_NilValue();
+            };
+            let type_char = match stype.string_elt(0) {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let type_str = std::ffi::CStr::from_ptr(CHAR(type_char.as_raw())).to_string_lossy();
+            let type_str_trimmed = type_str.trim();
 
-        let type_code: &str = if type_str_trimmed.starts_with("bytes") {
-            "bytes"
-        } else if type_str_trimmed.starts_with("chars") {
-            "chars"
-        } else if type_str_trimmed.starts_with("width") {
-            "width"
-        } else {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid 'type' argument".to_string(),
-            });
-        };
-
-        // Parse allowNA (third arg)
-        let allow_na_val = as_logical(CADDR(args));
-        let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
-            false
-        } else {
-            allow_na_val != 0
-        };
-
-        // Parse keepNA (fourth arg, optional)
-        let nargs = crate::sexp::constructors::Rf_length(args);
-        let keep_na: bool;
-        if nargs >= 4 {
-            let keep_na_val = as_logical(CADDDR(args));
-            if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
-                keep_na = type_code != "width";
+            let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
+                NcharType::Bytes
+            } else if type_str_trimmed.starts_with("chars") {
+                NcharType::Chars
+            } else if type_str_trimmed.starts_with("width") {
+                NcharType::Width
             } else {
-                keep_na = keep_na_val != 0;
-            }
-        } else {
-            keep_na = type_code != "width";
-        }
+                return crate::sexp::globals::R_NilValue();
+            };
 
-        let s = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, len as c_int));
-        let s_data = INTEGER(s);
+            // Parse allowNA (third arg)
+            let args3 = match args2.cdr() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let allow_na_val = as_logical(args3.car().map(|s| s.as_raw()).unwrap_or_else(|| crate::sexp::globals::R_NilValue()));
+            let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
+                false
+            } else {
+                allow_na_val != 0
+            };
 
-        for i in 0..len {
-            let sxi = STRING_ELT(x, i);
-            if sxi == na {
-                if keep_na {
-                    *s_data.add(i as usize) = crate::sexp::ffi::NA_INTEGER;
+            // Parse keepNA (fourth arg, optional)
+            let nargs = crate::sexp::constructors::Rf_length(args);
+            let keep_na: bool;
+            if nargs >= 4 {
+                let args4 = match args3.cdr() {
+                    Some(s) => s,
+                    None => return crate::sexp::globals::R_NilValue(),
+                };
+                let keep_na_val = as_logical(args4.car().map(|s| s.as_raw()).unwrap_or_else(|| crate::sexp::globals::R_NilValue()));
+                if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
+                    keep_na = type_code != NcharType::Width;
                 } else {
-                    *s_data.add(i as usize) = 2; // NA string length
+                    keep_na = keep_na_val != 0;
                 }
             } else {
-                let res = r_nchar(sxi, type_code, allow_na, keep_na, i);
-                if res == -1 {
-                    std::panic::panic_any(crate::sexp::context::RError {
-                        message: format!("invalid multibyte string, element {}", i + 1),
-                    });
-                } else if res == -2 {
-                    if type_code == "chars" {
-                        std::panic::panic_any(crate::sexp::context::RError {
-                            message: format!(
-                                "number of characters is not computable in \"bytes\" encoding, element {}",
-                                i + 1
-                            ),
-                        });
-                    } else {
-                        std::panic::panic_any(crate::sexp::context::RError {
-                            message: format!(
-                                "width is not computable in \"bytes\" encoding, element {}",
-                                i + 1
-                            ),
-                        });
-                    }
-                } else {
-                    *s_data.add(i as usize) = res;
-                }
+                keep_na = type_code != NcharType::Width;
+            }
+
+            match nchar_safe(x_arg, type_code, allow_na, keep_na) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
             }
         }
-
-        Rf_unprotect(1);
-        s
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------
 // do_substr — substring extraction
 // ---------------------------------------------------------------------------
+
+/// Safe version of substr using `Sexp<'a>`.
+pub fn substr_safe<'a>(
+    x: Sexp<'a>,
+    starts: Sexp<'a>,
+    stops: Option<Sexp<'a>>,
+) -> Result<SEXP, String> {
+    let na = unsafe { get_na_string() };
+    let blank = unsafe { blank_string() };
+
+    if x.typeof_() != SEXPTYPE::STRSXP {
+        return Err("extracting substrings from a non-character object".into());
+    }
+
+    let len = x.len();
+
+    if starts.typeof_() != SEXPTYPE::INTSXP || starts.len() == 0 {
+        return Err("invalid substring arguments".into());
+    }
+
+    if let Some(ref stops) = stops {
+        if stops.typeof_() != SEXPTYPE::INTSXP || stops.len() == 0 {
+            return Err("invalid substring arguments".into());
+        }
+    }
+
+    let k = starts.len();
+    let l_val = stops.as_ref().map(|s| s.len()).unwrap_or(1);
+
+    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, len as c_int)) };
+
+    for i in 0..len {
+        let start = starts.integer_elt((i as R_xlen_t) % k).unwrap_or(crate::sexp::ffi::NA_INTEGER);
+        let stop = stops
+            .as_ref()
+            .and_then(|s| s.integer_elt((i as R_xlen_t) % l_val))
+            .unwrap_or(c_int::MAX);
+
+        let el = x.string_elt(i).ok_or("missing string element")?;
+
+        if el.as_raw() == na
+            || start == crate::sexp::ffi::NA_INTEGER
+            || stop == crate::sexp::ffi::NA_INTEGER
+        {
+            unsafe { SET_STRING_ELT(s, i, na) };
+            continue;
+        }
+
+        let ss_bytes = unsafe { charsxp_bytes(el.as_raw()) };
+        let slen = ss_bytes.len() as c_int;
+
+        let mut start = start;
+
+        if start < 1 {
+            start = 1;
+        }
+
+        if start > stop {
+            unsafe { SET_STRING_ELT(s, i, blank) };
+        } else {
+            let from = (start - 1) as usize;
+            let to = (stop - 1) as usize;
+
+            let rfrom: usize;
+            let rlen: usize;
+
+            if to < ss_bytes.len() {
+                rfrom = from;
+                rlen = to - from + 1;
+            } else if from < ss_bytes.len() {
+                rfrom = from;
+                rlen = ss_bytes.len() - from;
+            } else {
+                unsafe { SET_STRING_ELT(s, i, blank) };
+                continue;
+            }
+
+            let substr_bytes = &ss_bytes[rfrom..rfrom + rlen];
+            let ch = unsafe { make_charsxp(substr_bytes) };
+            unsafe { SET_STRING_ELT(s, i, ch) };
+        }
+    }
+
+    unsafe { Rf_unprotect(1) };
+    Ok(s)
+}
 
 /// Extract substrings from a character vector.
 ///
@@ -744,103 +985,40 @@ pub unsafe extern "C" fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 /// For this port we use the byte-level (non-MBCS) path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let na = get_na_string();
-        let blank = blank_string();
-
-        let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "extracting substrings from a non-character object".to_string(),
-            });
-        }
-        let len = XLENGTH(x);
-
-        let s = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, len as c_int));
-
-        if len > 0 {
-            let sa = CADR(args); // start positions
-            let so = CADDR(args); // stop positions
-
-            let k = LENGTH(sa);
-            let l_val = if so == R_NilValue() { 1 } else { LENGTH(so) };
-
-            if TYPEOF(sa) != SEXPTYPE::INTSXP.0
-                || k == 0
-                || (so != R_NilValue() && (TYPEOF(so) != SEXPTYPE::INTSXP.0 || l_val == 0))
-            {
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "invalid substring arguments".to_string(),
-                });
-            }
-
-            let starts = INTEGER(sa);
-            let stops: *const c_int = if so == R_NilValue() {
-                // Use a very large stop value (effectively "end of string")
-                static MAX_STOP: c_int = c_int::MAX;
-                &MAX_STOP
-            } else {
-                INTEGER(so)
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        unsafe {
+            let args_s = match Sexp::from_raw(args) {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
             };
 
-            for i in 0..len {
-                let start = *starts.add((i as c_int % k) as usize);
-                let stop = *stops.add((i as c_int % l_val) as usize);
-                let el = STRING_ELT(x, i);
+            let x = match args_s.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-                if el == na
-                    || start == crate::sexp::ffi::NA_INTEGER
-                    || stop == crate::sexp::ffi::NA_INTEGER
-                {
-                    SET_STRING_ELT(s, i, na);
-                    continue;
-                }
+            let args2 = match args_s.cdr() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let sa = match args2.car() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
 
-                let ss = CHAR(el);
-                let ss_bytes = std::ffi::CStr::from_ptr(ss).to_bytes();
-                let slen = ss_bytes.len() as c_int;
+            let args3 = match args2.cdr() {
+                Some(s) => s,
+                None => return crate::sexp::globals::R_NilValue(),
+            };
+            let so = args3.car();
 
-                let mut start = start;
-                let stop = stop;
-
-                if start < 1 {
-                    start = 1;
-                }
-
-                if start > stop {
-                    SET_STRING_ELT(s, i, blank);
-                } else {
-                    // Byte-level substring (non-MBCS path)
-                    // R's 1-based indexing
-                    let from = (start - 1) as usize;
-                    let to = (stop - 1) as usize;
-
-                    let rfrom: usize;
-                    let rlen: usize;
-
-                    if to < ss_bytes.len() {
-                        rfrom = from;
-                        rlen = to - from + 1;
-                    } else if from < ss_bytes.len() {
-                        rfrom = from;
-                        rlen = ss_bytes.len() - from;
-                    } else {
-                        // start is beyond the string length
-                        SET_STRING_ELT(s, i, blank);
-                        continue;
-                    }
-
-                    let substr_bytes = &ss_bytes[rfrom..rfrom + rlen];
-                    let cs = std::ffi::CString::new(substr_bytes).unwrap();
-                    let ch = Rf_mkCharLen(cs.as_ptr(), substr_bytes.len() as c_int);
-                    SET_STRING_ELT(s, i, ch);
-                }
+            match substr_safe(x, sa, so) {
+                Ok(result) => result,
+                Err(_) => crate::sexp::globals::R_NilValue(),
             }
         }
-
-        Rf_unprotect(1);
-        s
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------
