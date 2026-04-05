@@ -23,8 +23,7 @@ use std::ptr;
 ///
 /// NOTE: This is a compatibility stub. In practice, Rust code should use
 /// `Vec::with_capacity(size)` or stack arrays instead.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn alloca(size: usize) -> *mut c_void {
+pub(crate) unsafe fn alloca(size: usize) -> *mut c_void {
     unsafe {
         if size == 0 {
             return ptr::null_mut();

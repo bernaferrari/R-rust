@@ -23,9 +23,10 @@
 //!     .build();
 //! ```
 
+use std::os::raw::c_double;
 use std::os::raw::c_int;
 
-use super::ffi::{SexprecCore, SexprecData, SEXP, SEXPTYPE};
+use super::ffi::{R_xlen_t, SexprecCore, SexprecData, SEXP, SEXPTYPE};
 use super::memory::with_arena;
 
 /// ALTREP data payload types.
@@ -144,9 +145,23 @@ impl Default for AltrepBuilder {
 pub static SEQUENCE_CLASS: AltrepClass = AltrepClass {
     name: "sequence",
     get_elt: |data, i| {
-        // Returns the i-th element of the sequence
-        // This is a stub — in a full implementation, would create a REALSXP
-        std::ptr::null_mut()
+        let AltrepData::Sequence { start, end: _, by } = data else {
+            return std::ptr::null_mut();
+        };
+        with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+            if vec.is_null() {
+                return std::ptr::null_mut();
+            }
+            let data_ptr = unsafe { (*vec).gengc_next_node as *mut c_double };
+            if data_ptr.is_null() {
+                return std::ptr::null_mut();
+            }
+            unsafe {
+                *data_ptr = *start + (i as f64) * *by;
+            }
+            vec
+        })
     },
     get_dataptr: |_data| std::ptr::null_mut(),
     get_length: |data| match data {
@@ -159,25 +174,80 @@ pub static SEQUENCE_CLASS: AltrepClass = AltrepClass {
         }
         _ => 0,
     },
-    materialize: |_data| {
-        // Materialize the sequence into a REALSXP vector
-        std::ptr::null_mut()
+    materialize: |data| {
+        let AltrepData::Sequence { start, end, by } = data else {
+            return std::ptr::null_mut();
+        };
+
+        let len = if *by == 0.0 {
+            0
+        } else {
+            ((*end - *start) / *by).abs() as i64 + 1
+        };
+
+        if len <= 0 {
+            return std::ptr::null_mut();
+        }
+
+        with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::REALSXP, len as R_xlen_t);
+            if vec.is_null() {
+                return std::ptr::null_mut();
+            }
+            let data_ptr = unsafe { (*vec).gengc_next_node as *mut c_double };
+            if data_ptr.is_null() {
+                return std::ptr::null_mut();
+            }
+            unsafe {
+                for i in 0..len {
+                    *data_ptr.add(i as usize) = *start + (i as f64) * *by;
+                }
+            }
+            vec
+        })
     },
 };
 
 /// ALTREP class for repeated values.
 pub static REPEAT_CLASS: AltrepClass = AltrepClass {
     name: "repeat",
-    get_elt: |data, _i| match data {
-        AltrepData::Repeat { value, .. } => *value,
-        _ => std::ptr::null_mut(),
+    get_elt: |data, _i| {
+        let AltrepData::Repeat { value, .. } = data else {
+            return std::ptr::null_mut();
+        };
+        *value
     },
     get_dataptr: |_data| std::ptr::null_mut(),
     get_length: |data| match data {
         AltrepData::Repeat { length, .. } => *length,
         _ => 0,
     },
-    materialize: |_data| std::ptr::null_mut(),
+    materialize: |data| {
+        let AltrepData::Repeat { value, length } = data else {
+            return std::ptr::null_mut();
+        };
+
+        if *length <= 0 || value.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::VECSXP, *length as R_xlen_t);
+            if vec.is_null() {
+                return std::ptr::null_mut();
+            }
+            let data_ptr = unsafe { (*vec).gengc_next_node as *mut SEXP };
+            if data_ptr.is_null() {
+                return std::ptr::null_mut();
+            }
+            unsafe {
+                for i in 0..*length {
+                    *data_ptr.add(i as usize) = *value;
+                }
+            }
+            vec
+        })
+    },
 };
 
 // ---------------------------------------------------------------------------

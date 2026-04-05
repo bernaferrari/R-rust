@@ -83,7 +83,7 @@ pub(crate) unsafe fn isVector(x: SEXP) -> bool {
 
 /// Check if an SEXP is a vector list type.
 #[inline]
-pub unsafe extern "C" fn isVectorList(x: SEXP) -> bool {
+pub(crate) unsafe fn isVectorList(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
         t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0
@@ -92,19 +92,19 @@ pub unsafe extern "C" fn isVectorList(x: SEXP) -> bool {
 
 /// Check if a SEXP is real (double) and a vector.
 #[inline]
-pub unsafe extern "C" fn isReal(x: SEXP) -> bool {
+pub(crate) unsafe fn isReal(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::REALSXP.0 && isVector(x) }
 }
 
 /// Check if a SEXP is complex and a vector.
 #[inline]
-pub unsafe extern "C" fn isComplex(x: SEXP) -> bool {
+pub(crate) unsafe fn isComplex(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::CPLXSXP.0 && isVector(x) }
 }
 
 /// Check if a SEXP is integer and a vector.
 #[inline]
-pub unsafe extern "C" fn isInteger(x: SEXP) -> bool {
+pub(crate) unsafe fn isInteger(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::INTSXP.0 && isVector(x) }
 }
 
@@ -166,16 +166,17 @@ pub(crate) unsafe fn isVectorizable(x: SEXP) -> bool {
 
 /// Check if a SEXP is numeric (integer or real, but not logical).
 #[inline]
-pub unsafe extern "C" fn isNumeric(x: SEXP) -> bool {
+pub(crate) unsafe fn isNumeric(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
         (t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0) && isVector(x)
     }
 }
+}
 
 /// Check if a SEXP is logical.
 #[inline]
-pub unsafe extern "C" fn isLogical(x: SEXP) -> bool {
+pub(crate) unsafe fn isLogical(x: SEXP) -> bool {
     unsafe { TYPEOF(x) == SEXPTYPE::LGLSXP.0 && isVector(x) }
 }
 
@@ -305,8 +306,7 @@ pub(crate) unsafe fn CLEAR_ATTRIB(x: SEXP) {
 /// Issue coercion warnings based on the warning flags.
 ///
 /// This is the equivalent of R's `CoercionWarning()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CoercionWarning(warn: c_int) {
+pub(crate) unsafe fn CoercionWarning(warn: c_int) {
     // In a full implementation these would call R's warning() function.
     // For now we use eprintln to avoid aborting.
     if warn & WARN_NA != 0 {

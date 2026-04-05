@@ -28,11 +28,120 @@ use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{set_R_Visible, R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::Rf_protect;
+use crate::sexp::safe::{PairlistIter, Sexp};
 
 use super::eval::Rf_eval;
 
 // ---------------------------------------------------------------------------
-// applyClosure — the main closure application function
+// Safe closure application — the primary internal implementation
+// ---------------------------------------------------------------------------
+
+/// Safe closure application using Sexp<'a>.
+///
+/// This is the idiomatic Rust API for applying R closures.
+/// It extracts formals, body, and environment from the closure,
+/// matches arguments to formals, creates a new evaluation environment,
+/// and evaluates the body.
+pub fn apply_closure_safe<'a>(
+    closure: Sexp<'a>,
+    args: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Sexp<'a>, String> {
+    if !closure.is_closure() {
+        return Err("not a closure".to_string());
+    }
+
+    let formals = closure.formals().ok_or("closure has no formals")?;
+    let body = closure.body().ok_or("closure has no body")?;
+    let cloenv = closure.cloenv().ok_or("closure has no environment")?;
+
+    // Match arguments to formals
+    let matched = match_args_safe(formals, args)?;
+
+    // Create new environment with matched arguments
+    let new_env = create_env_safe(matched, cloenv)?;
+
+    // Bind the matched arguments into the new environment
+    if let Some(frame) = new_env.frame() {
+        for cell in PairlistIter::new(frame) {
+            if let Some(sym) = cell.tag() {
+                if let Some(val) = cell.car() {
+                    unsafe {
+                        defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
+                    }
+                }
+            }
+        }
+    }
+
+    // Add missing arguments
+    unsafe {
+        addMissingVarsToNewEnv(formals.as_raw(), args.as_raw(), new_env.as_raw());
+    }
+
+    // Evaluate body in new environment
+    crate::eval::eval::eval_safe(body, new_env)
+}
+
+/// Safe argument matching using Sexp<'a> and PairlistIter.
+///
+/// Matches actual arguments to formal parameters, building a new
+/// pairlist with the matched values.
+pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    if formals.is_nil() {
+        return Ok(args);
+    }
+
+    crate::sexp::memory::with_arena(|arena| {
+        let mut result: SEXP = ptr::null_mut();
+        let mut tail: SEXP = ptr::null_mut();
+
+        let mut formal_iter = PairlistIter::new(formals);
+        let mut arg_iter = PairlistIter::new(args);
+
+        for formal in &mut formal_iter {
+            let arg = arg_iter.next();
+            let tag = formal.tag();
+
+            let val = if let Some(ref a) = arg {
+                a.car()
+                    .unwrap_or_else(|| unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
+            } else {
+                unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
+            };
+
+            let cell = arena.cons(
+                val.as_raw(),
+                ptr::null_mut(),
+                tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut()),
+            );
+
+            if result.is_null() {
+                result = cell;
+                tail = cell;
+            } else {
+                unsafe {
+                    (*tail).data.listsxp.cdrval = cell;
+                }
+                tail = cell;
+            }
+        }
+
+        Ok(unsafe { Sexp::from_raw_unchecked(result) })
+    })
+}
+
+/// Safe environment creation.
+///
+/// Creates a new environment with the given bindings as its frame
+/// and the given parent as its enclosing environment.
+pub fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    let env = unsafe { NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut()) };
+    Sexp::from_raw(env).ok_or("failed to create environment".to_string())
+}
+
+// ---------------------------------------------------------------------------
+// FFI closure functions — thin shims delegating to safe versions
 // ---------------------------------------------------------------------------
 
 /// Apply a closure to arguments.
@@ -54,56 +163,26 @@ pub unsafe extern "C" fn applyClosure(
     suppliedenv: SEXP,
     _R_verbose: c_int,
 ) -> SEXP {
-    unsafe {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
             return R_NilValue();
         }
 
-        let formals = FORMALS(op);
-        let body = BODY(op);
-        let cloenv = CLOENV(op);
-
-        // Match arguments to formals
-        let matched = matchArgs(formals, arglist, call);
-        Rf_protect(matched);
-
-        // Create new evaluation environment
-        let newrho = NewEnvironment(matched, cloenv, ptr::null_mut());
-        Rf_protect(newrho);
-
-        // Bind the matched arguments into the new environment
-        let mut a = matched;
-        while !a.is_null() && a != R_NilValue() {
-            let sym = crate::sexp::accessors::TAG(a);
-            if !sym.is_null() {
-                let val = CAR(a);
-                defineVar(sym, val, newrho);
+        match (
+            Sexp::from_raw(op),
+            Sexp::from_raw(arglist),
+            Sexp::from_raw(rho),
+        ) {
+            (Some(closure), Some(args), Some(env)) => {
+                match apply_closure_safe(closure, args, env) {
+                    Ok(result) => result.as_raw(),
+                    Err(_) => R_NilValue(),
+                }
             }
-            a = CDR(a);
+            _ => R_NilValue(),
         }
-
-        // Add missing arguments
-        addMissingVarsToNewEnv(formals, arglist, newrho);
-
-        // Set up a context for the closure call
-        let _ctxt = Rf_begincontext(
-            ctxt_flags::CTXT_FUNCTION,
-            call,
-            newrho,
-            0, // sysparent (C-level, not used in Rust port)
-            None,
-            op,
-            arglist,
-        );
-
-        // Evaluate the body
-        let result = Rf_eval(body, newrho);
-
-        // End context
-        Rf_endcontext(_ctxt);
-
-        result
-    }
+    }))
+    .unwrap_or_else(|_| R_NilValue())
 }
 
 // ---------------------------------------------------------------------------
@@ -114,30 +193,57 @@ pub unsafe extern "C" fn applyClosure(
 ///
 /// This is a helper that separates environment creation from body evaluation.
 pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let formals = FORMALS(op);
-        let cloenv = CLOENV(op);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        match (
+            Sexp::from_raw(op),
+            Sexp::from_raw(arglist),
+            Sexp::from_raw(rho),
+        ) {
+            (Some(closure), Some(args), Some(env)) => {
+                if !closure.is_closure() {
+                    return R_NilValue();
+                }
 
-        let matched = matchArgs(formals, arglist, ptr::null_mut());
-        Rf_protect(matched);
+                let formals = match closure.formals() {
+                    Some(f) => f,
+                    None => return R_NilValue(),
+                };
+                let cloenv = match closure.cloenv() {
+                    Some(e) => e,
+                    None => return R_NilValue(),
+                };
 
-        let newrho = NewEnvironment(matched, cloenv, ptr::null_mut());
-        Rf_protect(newrho);
+                let matched = match match_args_safe(formals, args) {
+                    Ok(m) => m,
+                    Err(_) => return R_NilValue(),
+                };
 
-        // Bind arguments
-        let mut a = matched;
-        while !a.is_null() && a != R_NilValue() {
-            let sym = crate::sexp::accessors::TAG(a);
-            if !sym.is_null() {
-                defineVar(sym, CAR(a), newrho);
+                let new_env = match create_env_safe(matched, cloenv) {
+                    Ok(e) => e,
+                    Err(_) => return R_NilValue(),
+                };
+
+                // Bind arguments
+                if let Some(frame) = new_env.frame() {
+                    for cell in PairlistIter::new(frame) {
+                        if let Some(sym) = cell.tag() {
+                            if let Some(val) = cell.car() {
+                                defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
+                            }
+                        }
+                    }
+                }
+
+                unsafe {
+                    addMissingVarsToNewEnv(formals.as_raw(), args.as_raw(), new_env.as_raw());
+                }
+
+                new_env.as_raw()
             }
-            a = CDR(a);
+            _ => R_NilValue(),
         }
-
-        addMissingVarsToNewEnv(formals, arglist, newrho);
-
-        newrho
-    }
+    }))
+    .unwrap_or_else(|_| R_NilValue())
 }
 
 // ---------------------------------------------------------------------------
@@ -152,26 +258,29 @@ pub unsafe fn R_execClosure(
     arglist: SEXP,
     rho: SEXP,
 ) -> Result<SEXP, crate::sexp::context::RError> {
-    unsafe {
-        let newrho = make_applyClosure_env(op, arglist, rho);
-        let body = BODY(op);
+    let newrho = make_applyClosure_env(op, arglist, rho);
+    if newrho.is_null() || newrho == R_NilValue() {
+        return Err(crate::sexp::context::RError {
+            message: "failed to create closure environment".to_string(),
+        });
+    }
 
-        // Use catch_unwind for error recovery
-        let result =
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, newrho)));
+    let body = BODY(op);
 
-        match result {
-            Ok(val) => Ok(val),
-            Err(payload) => {
-                if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
-                    Err(crate::sexp::context::RError {
-                        message: err.message.clone(),
-                    })
-                } else {
-                    Err(crate::sexp::context::RError {
-                        message: "unknown error".to_string(),
-                    })
-                }
+    // Use catch_unwind for error recovery
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, newrho)));
+
+    match result {
+        Ok(val) => Ok(val),
+        Err(payload) => {
+            if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
+                Err(crate::sexp::context::RError {
+                    message: err.message.clone(),
+                })
+            } else {
+                Err(crate::sexp::context::RError {
+                    message: "unknown error".to_string(),
+                })
             }
         }
     }

@@ -23,7 +23,7 @@ pub const CHAR_HASH_MASK: u32 = CHAR_HASH_SIZE - 1;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_ScalarLogical;
-use crate::sexp::ffi::{FALSE, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{R_xlen_t, Rboolean, FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use std::os::raw::{c_char, c_int};
 
@@ -38,8 +38,7 @@ use std::os::raw::{c_char, c_int};
 ///
 /// # Safety
 /// `s` must point to at least `len` valid bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn char_hash(s: *const u8, len: std::os::raw::c_int) -> u32 {
+pub(crate) unsafe fn char_hash(s: *const u8, len: std::os::raw::c_int) -> u32 {
     unsafe {
         let mut h: u32 = 5381;
         for i in 0..len as isize {
@@ -354,7 +353,11 @@ pub unsafe extern "C" fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             let v = CAR(rest4);
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE { 0 } else { 1 }
+                if lv == FALSE {
+                    0
+                } else {
+                    1
+                }
             } else {
                 1
             }
@@ -470,7 +473,11 @@ pub unsafe extern "C" fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
             let v = CAR(rest4);
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE { 0 } else { 1 }
+                if lv == FALSE {
+                    0
+                } else {
+                    1
+                }
             } else {
                 1
             }
@@ -532,7 +539,11 @@ pub unsafe extern "C" fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
             let v = CAR(rest);
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE { 0 } else { 1 }
+                if lv == FALSE {
+                    0
+                } else {
+                    1
+                }
             } else {
                 1
             }
@@ -900,7 +911,11 @@ pub unsafe extern "C" fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
             let v = CAR(CDR(rest));
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE { 0 } else { 1 }
+                if lv == FALSE {
+                    0
+                } else {
+                    1
+                }
             } else {
                 1
             }
