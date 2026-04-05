@@ -778,8 +778,7 @@ pub unsafe extern "C" fn R_grep_fixed(
 ///
 /// Port of grep.c:do_grep. Handles fixed=TRUE with native matching,
 /// and ERE regex for extended=TRUE (the default).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = env;
         checkArity(op, args);
@@ -965,8 +964,7 @@ fn match_str(
 /// SEXP do_gsub(SEXP call, SEXP op, SEXP args, SEXP env)
 ///
 /// Port of grep.c:do_gsub. PRIMVAL(op) == 0 for sub(), != 0 for gsub().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = env;
         checkArity(op, args);
@@ -1086,8 +1084,7 @@ pub unsafe extern "C" fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 ///
 /// Port of grep.c:do_regexpr. Returns a vector of match positions,
 /// with match.length attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);
@@ -1198,8 +1195,7 @@ pub unsafe extern "C" fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 ///
 /// Port of grep.c:do_regexec. Returns match positions for the overall match
 /// and up to 9 capture groups.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);
@@ -1308,8 +1304,7 @@ pub unsafe extern "C" fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 /// SEXP do_grepraw(SEXP call, SEXP op, SEXP args, SEXP env)
 ///
 /// Port of grep.c:do_grepraw. Performs fixed-byte matching on raw vectors.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);

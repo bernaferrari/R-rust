@@ -30,7 +30,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{
-    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE,
+    R_xlen_t, FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -40,8 +40,7 @@ use crate::sexp::symbol::Rf_install;
 // nargs() — number of arguments supplied to the current function
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // In a full implementation, this would inspect the current call.
         // For now, return 0 (no args tracked in this stub interpreter).
@@ -54,7 +53,7 @@ pub unsafe extern "C" fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_missing(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_missing(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut sym = CAR(args);
         // Allow string argument: missing("x")
@@ -78,8 +77,7 @@ pub unsafe extern "C" fn do_missing(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // Recall — recursive call to the current function
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Recall(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_Recall(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Cannot implement without full evaluation context
         eprintln!("Warning: Recall not fully implemented");
@@ -91,8 +89,7 @@ pub unsafe extern "C" fn do_Recall(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP
 // on.exit(expr, add) — register expression to evaluate on exit
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Simplified: just store the expression (no real cleanup mechanism)
         R_NilValue()
@@ -104,7 +101,7 @@ pub unsafe extern "C" fn do_on_exit(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_forceAndCall(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_forceAndCall(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Warning: forceAndCall not fully implemented");
         R_NilValue()
@@ -115,8 +112,7 @@ pub unsafe extern "C" fn do_forceAndCall(_call: SEXP, _op: SEXP, args: SEXP, _en
 // declare(name, expr) — declare a variable (no-op in this port)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_declare(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_declare(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -124,8 +120,7 @@ pub unsafe extern "C" fn do_declare(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 // quote(expr) — return its argument unevaluated
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe { CAR(args) }
 }
 
@@ -133,8 +128,7 @@ pub unsafe extern "C" fn do_quote(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 // substitute(expr, env) — substitute variables in an expression
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Simplified: just return the expression as-is
         CAR(args)
@@ -145,8 +139,7 @@ pub unsafe extern "C" fn do_substitute(_call: SEXP, _op: SEXP, args: SEXP, _env:
 // call(name, ...) — construct a function call
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_call_fn(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_call_fn(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let name = CAR(args);
         let dots = CDR(args);
@@ -162,7 +155,7 @@ pub unsafe extern "C" fn do_call_fn(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Simplified: evaluate first arg, try to match against named alternatives
         let expr = CAR(args);
@@ -259,8 +252,7 @@ pub unsafe extern "C" fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP
 // browser — interactive debugger (no-op)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Non-interactive: no-op
         R_NilValue()
@@ -271,13 +263,11 @@ pub unsafe extern "C" fn do_browser(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 // .primTrace(name) / .primUntrace(name) — trace/untrace primitives
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_primTrace(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_primTrace(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_primUntrace(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_primUntrace(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -285,24 +275,21 @@ pub unsafe extern "C" fn do_primUntrace(_call: SEXP, _op: SEXP, _args: SEXP, _en
 // undebug(fun) / isdebugged(fun) / debugonce(fun)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_undebug(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_undebug(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _fun = CAR(args);
         Rf_ScalarLogical(FALSE)
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isdebugged(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isdebugged(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _fun = CAR(args);
         Rf_ScalarLogical(FALSE)
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_debugonce(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_debugonce(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _fun = CAR(args);
         Rf_ScalarLogical(FALSE)
@@ -313,8 +300,7 @@ pub unsafe extern "C" fn do_debugonce(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 // delayedAssign(x, value, env, assign.env)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_delayedAssign(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_delayedAssign(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -322,8 +308,7 @@ pub unsafe extern "C" fn do_delayedAssign(_call: SEXP, _op: SEXP, _args: SEXP, _
 // makeLazy(name, value, env) — create a lazy binding
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_makeLazy(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_makeLazy(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -331,8 +316,7 @@ pub unsafe extern "C" fn do_makeLazy(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 // ...elt(i) — extract the i-th element from ...
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dot_elt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_dot_elt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let idx = CAR(args);
         let i = if TYPEOF(idx) == SEXPTYPE::INTSXP.0 {
@@ -374,8 +358,7 @@ pub unsafe extern "C" fn do_dot_elt(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // ...length() — number of arguments in ...
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dot_length(_call: SEXP, _op: SEXP, _args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dot_length(_call: SEXP, _op: SEXP, _args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let dots_sym = Rf_install(b"...\0".as_ptr() as *const c_char);
         let dots_val = crate::sexp::envir::findVar(dots_sym, env);
@@ -397,8 +380,7 @@ pub unsafe extern "C" fn do_dot_length(_call: SEXP, _op: SEXP, _args: SEXP, env:
 // ...names() — names of ... arguments
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dot_names(_call: SEXP, _op: SEXP, _args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dot_names(_call: SEXP, _op: SEXP, _args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let dots_sym = Rf_install(b"...\0".as_ptr() as *const c_char);
         let dots_val = crate::sexp::envir::findVar(dots_sym, env);
@@ -439,8 +421,7 @@ pub unsafe extern "C" fn do_dot_names(_call: SEXP, _op: SEXP, _args: SEXP, env: 
 // length(x) <- value — set the length of an object
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_length_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_length_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let value = CADR(args);
@@ -518,8 +499,7 @@ pub unsafe extern "C" fn do_length_assign(_call: SEXP, _op: SEXP, args: SEXP, _e
 // .cache_class(x, class) / .class2(x)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cache_class(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cache_class(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(_args);
         // Just return x unchanged
@@ -527,8 +507,7 @@ pub unsafe extern "C" fn do_cache_class(_call: SEXP, _op: SEXP, _args: SEXP, _en
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let cl = crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol());
@@ -543,8 +522,7 @@ pub unsafe extern "C" fn do_class2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 // @<-  (slot assignment)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_at_assign(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_at_assign(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // S4 slot assignment — simplified stub
         R_NilValue()
@@ -555,8 +533,7 @@ pub unsafe extern "C" fn do_at_assign(_call: SEXP, _op: SEXP, _args: SEXP, _env:
 // vector(mode, length) — create a vector
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_vector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_vector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let mode_arg = CAR(args);
         let length_arg = CADR(args);
@@ -618,8 +595,7 @@ pub unsafe extern "C" fn do_vector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 // get0(x, envir, mode, inherits) — get with default NULL
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let sym_arg = CAR(args);
         let _envir = CADR(args);
@@ -659,8 +635,7 @@ pub unsafe extern "C" fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) 
 // mget(x, envir, mode, ifnotfound)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let _envir = CADR(args);
@@ -696,8 +671,7 @@ pub unsafe extern "C" fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) 
 // list2env(x, envir) — convert a list to an environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let envir_arg = CADR(args);
@@ -739,8 +713,7 @@ pub unsafe extern "C" fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // new.env(hash, parent, size) — create a new environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _hash = CAR(args);
         let parent = CADR(args);
@@ -763,13 +736,7 @@ pub unsafe extern "C" fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // environment<- (fun, value) — set function environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_environment_assign(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_environment_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let fun = CAR(args);
         let value = CADR(args);
@@ -786,8 +753,7 @@ pub unsafe extern "C" fn do_environment_assign(
 // pos.to.env(pos) — convert position to environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let pos = CAR(args);
         let pos_val = asInteger(pos);
@@ -810,13 +776,7 @@ pub unsafe extern "C" fn do_pos_to_env(_call: SEXP, _op: SEXP, args: SEXP, _env:
 // storage.mode<- (x, value) — change storage mode
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_storage_mode_assign(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_storage_mode_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mode = CADR(args);
@@ -850,8 +810,7 @@ pub unsafe extern "C" fn do_storage_mode_assign(
 // Version() — return R version info
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Version(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_Version(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let n = 7i32;
         let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
@@ -890,8 +849,7 @@ pub unsafe extern "C" fn do_Version(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 // internalsID() — return R internals version
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_internalsID(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_internalsID(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_mkString(CString::new("R 4.4.0").unwrap().as_ptr()) }
 }
 
@@ -899,13 +857,7 @@ pub unsafe extern "C" fn do_internalsID(_call: SEXP, _op: SEXP, _args: SEXP, _en
 // memory.profile() — return memory usage by type
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_memory_profile(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_memory_profile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Return integer vector with approximate counts by type
         let ntypes = 25i32;
@@ -923,8 +875,7 @@ pub unsafe extern "C" fn do_memory_profile(
 // builtins() — return names of built-in functions
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _internal = CAR(args);
         // Return a character vector of builtin names
@@ -964,8 +915,7 @@ pub unsafe extern "C" fn do_builtins(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // vhash(x) — hash a vector (internal use)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_vhash(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_vhash(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Simplified: return 0
         Rf_ScalarInteger(0)
@@ -976,8 +926,7 @@ pub unsafe extern "C" fn do_vhash(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 // setFileTime(path, time) — set file modification time
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setFileTime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setFileTime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let path_arg = CAR(args);
         let _time_arg = CADR(args);
@@ -1005,8 +954,7 @@ pub unsafe extern "C" fn do_setFileTime(_call: SEXP, _op: SEXP, args: SEXP, _env
 // sample2 — internal sampling (no replacement)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sample2(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sample2(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1015,7 +963,7 @@ pub unsafe extern "C" fn do_sample2(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let a = args;
         let mut sep = " ";
@@ -1080,8 +1028,7 @@ pub unsafe extern "C" fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 // do.call(fun, args, envir) — call a function with a list of arguments
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let fun = CAR(args);
         let mut call_args = CADR(args);
@@ -1131,8 +1078,7 @@ pub unsafe extern "C" fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, env: SEX
 // str2lang(text) — convert a string to a language object
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let text = CAR(args);
         if TYPEOF(text) != SEXPTYPE::STRSXP.0 || LENGTH(text) < 1 {
@@ -1149,8 +1095,7 @@ pub unsafe extern "C" fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // str2expression(text) — convert strings to expression
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_str2expression(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_str2expression(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let text = CAR(args);
         if TYPEOF(text) != SEXPTYPE::STRSXP.0 {
@@ -1176,8 +1121,7 @@ pub unsafe extern "C" fn do_str2expression(_call: SEXP, _op: SEXP, args: SEXP, _
 // substr<- (x, start, stop) <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_substr_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_substr_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let start = CADR(args);
@@ -1278,8 +1222,7 @@ pub unsafe extern "C" fn do_substr_assign(_call: SEXP, _op: SEXP, args: SEXP, _e
 // strsplit(x, split, fixed, perl, useBytes) — split strings
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let split_arg = CADR(args);
@@ -1340,8 +1283,7 @@ pub unsafe extern "C" fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // agrepl(pattern, x, max.distance, ...) — approximate grep (logical)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Simplified: fall back to exact matching (no fuzzy)
         let pat = CAR(args);
@@ -1378,8 +1320,7 @@ pub unsafe extern "C" fn do_agrepl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 // xtfrm(x) — transform for sorting
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let t = TYPEOF(x);
@@ -1451,13 +1392,7 @@ pub unsafe extern "C" fn do_xtfrm(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 // as.function.default(x) — coerce to function
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_as_function_default(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_as_function_default(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::CLOSXP.0
@@ -1487,8 +1422,7 @@ pub unsafe extern "C" fn do_as_function_default(
 // :: and ::: — namespace access
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_double_colon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_double_colon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _ns = CAR(args);
         let name = CADR(args);
@@ -1502,8 +1436,7 @@ pub unsafe extern "C" fn do_double_colon(_call: SEXP, _op: SEXP, args: SEXP, _en
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_triple_colon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_triple_colon(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _ns = CAR(args);
         let name = CADR(args);
@@ -1522,76 +1455,49 @@ pub unsafe extern "C" fn do_triple_colon(_call: SEXP, _op: SEXP, args: SEXP, _en
 //                     .Call.graphics, .External.graphics
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_C(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_foreign_C(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Error: .C() not available in this port");
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_Fortran(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_foreign_Fortran(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Error: .Fortran() not available in this port");
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_Call(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_foreign_Call(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Error: .Call() not available in this port");
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_External(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_foreign_External(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Error: .External() not available in this port");
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_External2(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_foreign_External2(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Error: .External2() not available in this port");
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_Call_graphics(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_foreign_Call_graphics(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         eprintln!("Error: .Call.graphics() not available in this port");
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_foreign_External_graphics(
+pub unsafe fn do_foreign_External_graphics(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -1607,8 +1513,7 @@ pub unsafe extern "C" fn do_foreign_External_graphics(
 // eapply(env, FUN, ...) — apply FUN to each element of an environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_eapply(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_eapply(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let env_arg = CAR(args);
         let _fun = CADR(args);
@@ -1660,8 +1565,7 @@ pub unsafe extern "C" fn do_eapply(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 // quit(save, status, runLast) — exit R
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     std::process::exit(0);
 }
 
@@ -1669,8 +1573,7 @@ pub unsafe extern "C" fn do_quit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP
 // readline(prompt) — read a line from the terminal
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readline(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readline(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _prompt = CAR(args);
         // Non-interactive: return empty string
@@ -1682,8 +1585,7 @@ pub unsafe extern "C" fn do_readline(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // system(command, intern, ...) — execute a system command
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let cmd = CAR(args);
         let intern = CADR(args);
@@ -1746,8 +1648,7 @@ pub unsafe extern "C" fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 // parse(text, n, srcfile, keep.source) — parse R code
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_parse_fn(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_parse_fn(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Simplified: return empty expression
         Rf_allocVector(SEXPTYPE::EXPRSXP.0, 0)
@@ -1758,8 +1659,7 @@ pub unsafe extern "C" fn do_parse_fn(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // eval(expr, envir) — evaluate an expression
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_eval_fn(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_eval_fn(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let eval_env = if CDR(args) != R_NilValue() && CADR(args) != R_NilValue() {
@@ -1776,8 +1676,7 @@ pub unsafe extern "C" fn do_eval_fn(_call: SEXP, _op: SEXP, args: SEXP, env: SEX
 // sort(x, decreasing, na.last, method) — sort a vector
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let decreasing = CADR(args);
@@ -1866,8 +1765,7 @@ pub unsafe extern "C" fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 // order(..., na.last, decreasing) — return a permutation vector
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let _decreasing = CADR(args);
@@ -1919,8 +1817,7 @@ pub unsafe extern "C" fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 // inspect(x) — inspect an object
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_inspect(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_inspect(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         // Print basic info about the object
@@ -1933,8 +1830,7 @@ pub unsafe extern "C" fn do_inspect(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // match.call(call, fun, expand.dots) — match a call to a function's formals
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_match_call(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_match_call(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let call = CAR(args);
         // Simplified: just return the call as-is
@@ -1946,8 +1842,7 @@ pub unsafe extern "C" fn do_match_call(_call: SEXP, _op: SEXP, args: SEXP, _env:
 // polyroot(z) — find zeros of a polynomial
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_polyroot_fn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_polyroot_fn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Delegate to the full polyroot implementation
         crate::main::polyroot::do_polyroot(call, op, args, env)
@@ -1958,13 +1853,7 @@ pub unsafe extern "C" fn do_polyroot_fn(call: SEXP, op: SEXP, args: SEXP, env: S
 // compareNumericVersion(a, b) — compare R version strings
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_compareNumericVersion(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_compareNumericVersion(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let a = CAR(args);
         let b = CADR(args);
@@ -2010,8 +1899,7 @@ pub unsafe extern "C" fn do_compareNumericVersion(
 // .addGlobHands(handlers) — add global handlers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addGlobHands(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_addGlobHands(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2019,13 +1907,7 @@ pub unsafe extern "C" fn do_addGlobHands(_call: SEXP, _op: SEXP, _args: SEXP, _e
 // C_tryCatchHelper — tryCatch C helper
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_C_tryCatchHelper(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_C_tryCatchHelper(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2033,13 +1915,7 @@ pub unsafe extern "C" fn do_C_tryCatchHelper(
 // getNamespaceValue(ns, name) — get value from namespace
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getNamespaceValue(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_getNamespaceValue(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _ns = CAR(args);
         let name = CADR(args);
@@ -2058,8 +1934,7 @@ pub unsafe extern "C" fn do_getNamespaceValue(
 // $ — dollar access (implemented in subset.rs as do_subset3)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dollar(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dollar(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Delegate to subset module's dollar implementation
         crate::main::subset::do_subset3(_call, _op, args, env)
@@ -2070,8 +1945,7 @@ pub unsafe extern "C" fn do_dollar(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP
 // @ — slot access (S4, simplified)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_at(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_at(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let obj = CAR(args);
         let name = CADR(args);
@@ -2112,8 +1986,7 @@ pub unsafe extern "C" fn do_at(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// Implement :: operator (namespace access).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_colon2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_colon2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let pkg_name = CAR(args);
         let sym_name = CADR(args);
@@ -2156,8 +2029,7 @@ pub unsafe extern "C" fn do_colon2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 // ---------------------------------------------------------------------------
 
 /// Implement ::: operator (internal namespace access).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_colon3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_colon3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Same as :: for now — full implementation needs namespace registry
         do_colon2(call, op, args, env)
@@ -2169,8 +2041,7 @@ pub unsafe extern "C" fn do_colon3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 // ---------------------------------------------------------------------------
 
 /// Implement ...elt(n) — access the nth element of ... (varargs).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dotsElt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dotsElt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let which = CAR(args);
         let n = crate::main::coerce::asInteger(which);
@@ -2211,8 +2082,7 @@ pub unsafe extern "C" fn do_dotsElt(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// Implement ...length() — return the number of ... arguments.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dotsLength(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dotsLength(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let dots_sym = crate::sexp::symbol::R_DotsSymbol();
         let dots_val = crate::sexp::envir::R_findVar(dots_sym, env);
@@ -2237,8 +2107,7 @@ pub unsafe extern "C" fn do_dotsLength(call: SEXP, op: SEXP, args: SEXP, env: SE
 // ---------------------------------------------------------------------------
 
 /// Implement ...names() — return the names of ... arguments.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dotsNames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dotsNames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let dots_sym = crate::sexp::symbol::R_DotsSymbol();
         let dots_val = crate::sexp::envir::R_findVar(dots_sym, env);
@@ -2288,8 +2157,7 @@ pub unsafe extern "C" fn do_dotsNames(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 /// Implement do.call(func, args, quote = FALSE).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_docall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_docall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let fun = CAR(args);
         let call_args = CADR(args);
@@ -2350,7 +2218,7 @@ pub unsafe extern "C" fn do_docall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 
 /// Implement new.env(hash=TRUE, size=29L, parent=parent.frame()).
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_newenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_newenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _hash = if CAR(args) != R_NilValue() {
             crate::main::coerce::asLogical(CAR(args))
@@ -2384,7 +2252,7 @@ pub unsafe extern "C" fn do_newenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 
 /// Implement length<- assignment.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let target = CAR(args);
         let new_len = crate::main::coerce::asInteger(CADR(args));
@@ -2463,7 +2331,7 @@ pub unsafe extern "C" fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, env: SE
 
 /// Implement vector(mode, length).
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_makevector(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_makevector(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mode_arg = CAR(args);
         let len_arg = CADR(args);
@@ -2511,7 +2379,7 @@ pub unsafe extern "C" fn do_makevector(call: SEXP, op: SEXP, args: SEXP, env: SE
 
 /// Implement list(...) — create a list from its arguments.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_makelist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_makelist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Evaluate all arguments
         let evaled = crate::eval::dispatch::evalList(args, env, call, 0);
@@ -2552,8 +2420,7 @@ pub unsafe extern "C" fn do_makelist(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 /// Implement match.call(call, expand.dots = FALSE).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_matchcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_matchcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Simplified: just return the call expression
         let target = CAR(args);
@@ -2567,8 +2434,7 @@ pub unsafe extern "C" fn do_matchcall(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 /// Implement make.names(names, allow_ = TRUE).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_makenames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_makenames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let names_arg = CAR(args);
         let names_val = crate::eval::eval::Rf_eval(names_arg, env);
@@ -2635,8 +2501,7 @@ pub unsafe extern "C" fn do_makenames(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 /// Implement make.unique(names, sep = ".").
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_makeunique(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_makeunique(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let names_arg = CAR(args);
         let names_val = crate::eval::eval::Rf_eval(names_arg, env);
@@ -2697,8 +2562,7 @@ pub unsafe extern "C" fn do_makeunique(call: SEXP, op: SEXP, args: SEXP, env: SE
 // ---------------------------------------------------------------------------
 
 /// Implement substr(x, start, stop) <- value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_substrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_substrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let target = CAR(args);
         let start_arg = CADR(args);
@@ -2796,8 +2660,7 @@ pub unsafe extern "C" fn do_substrgets(call: SEXP, op: SEXP, args: SEXP, env: SE
 // ---------------------------------------------------------------------------
 
 /// Implement returnValue() (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_returnValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_returnValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2807,7 +2670,7 @@ pub unsafe extern "C" fn do_returnValue(call: SEXP, op: SEXP, args: SEXP, env: S
 
 /// Implement parent.frame(n = 1).
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2817,7 +2680,7 @@ pub unsafe extern "C" fn do_parentframe(call: SEXP, op: SEXP, args: SEXP, env: S
 
 /// Implement browserText(), browserCondition(), browserSetDebug() (stubs).
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2826,8 +2689,7 @@ pub unsafe extern "C" fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, env: SE
 // ---------------------------------------------------------------------------
 
 /// Implement is.loaded(name) (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isloaded(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_isloaded(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         Rf_ScalarLogical(0) // FALSE
     }
@@ -2838,8 +2700,7 @@ pub unsafe extern "C" fn do_isloaded(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 /// Implement is.unsorted(x, na.rm = FALSE, strictly = FALSE).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isunsorted(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_isunsorted(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let na_rm = if CADR(args) != R_NilValue() {
@@ -2924,23 +2785,19 @@ pub unsafe extern "C" fn do_isunsorted(call: SEXP, op: SEXP, args: SEXP, env: SE
 // do_sorted_fpass, do_address, do_named, do_refcnt (stubs)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sorted_fpass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_sorted_fpass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_address(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_address(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_named(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_named(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_refcnt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_refcnt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2948,8 +2805,7 @@ pub unsafe extern "C" fn do_refcnt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 // do_pos2env — pos.to.env(pos)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pos2env(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_pos2env(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let pos = CAR(args);
         let pos_val = crate::eval::eval::Rf_eval(pos, env);
@@ -2974,8 +2830,7 @@ pub unsafe extern "C" fn do_pos2env(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // do_env2list — as.list(env, all.names = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_env2list(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_env2list(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let target = CAR(args);
         let env_val = crate::eval::eval::Rf_eval(target, env);
@@ -3035,7 +2890,7 @@ pub unsafe extern "C" fn do_env2list(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_envirName(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_envirName(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         Rf_ScalarString(crate::sexp::constructors::Rf_mkChar(
             b"<environment>\0".as_ptr() as *const c_char,
@@ -3048,7 +2903,7 @@ pub unsafe extern "C" fn do_envirName(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Simplified: evaluate RHS, set CLOENV of function
         let target = CAR(args);
@@ -3071,7 +2926,6 @@ pub unsafe extern "C" fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // do_debugOnOff (stub)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_debugOnOff(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_debugOnOff(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }

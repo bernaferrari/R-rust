@@ -30,8 +30,7 @@ const DDVAL_MASK: u16 = 1 << 10;
 ///
 /// This is equivalent to R's `mkPRIMSXP(offset, eval)`. If `eval` is nonzero,
 /// creates a BUILTINSXP; otherwise creates a SPECIALSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mkPRIMSXP(offset: c_int, eval: c_int) -> SEXP {
+pub unsafe fn mkPRIMSXP(offset: c_int, eval: c_int) -> SEXP {
     unsafe {
         let sexptype = if eval != 0 {
             SEXPTYPE::BUILTINSXP
@@ -53,8 +52,7 @@ pub unsafe extern "C" fn mkPRIMSXP(offset: c_int, eval: c_int) -> SEXP {
 ///
 /// This is equivalent to R's `mkCLOSXP(formals, body, rho)`.
 /// If `rho` is R_NilValue, the global environment is used instead.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mkCLOSXP(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn mkCLOSXP(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let c = with_arena(|arena| arena.alloc_node(SEXPTYPE::CLOSXP));
 
@@ -147,8 +145,7 @@ unsafe fn isDDName(name: SEXP) -> c_int {
 ///
 /// This is equivalent to R's `mkSYMSXP(name, value)`.
 /// If the name is a double-dot name (e.g., "..1"), the DDVAL bit is set.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mkSYMSXP(name: SEXP, value: SEXP) -> SEXP {
+pub unsafe fn mkSYMSXP(name: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let ddval = isDDName(name);
         let c = with_arena(|arena| arena.alloc_node(SEXPTYPE::SYMSXP));

@@ -81,8 +81,7 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
 ///
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || which.is_null() {
             return R_NilValue();
@@ -113,8 +112,7 @@ pub unsafe extern "C" fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
 /// Set an attribute on an object.
 ///
 /// This is the equivalent of R's `setAttrib()` from attrib.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         if x.is_null() || which.is_null() {
             return;
@@ -178,8 +176,7 @@ pub unsafe extern "C" fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
 /// Check if an object is an S4 object (has a "class" attribute).
 ///
 /// This is the equivalent of R's `isObject()` macro.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isObject(x: SEXP) -> c_int {
+pub unsafe fn isObject(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;

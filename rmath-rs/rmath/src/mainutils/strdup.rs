@@ -12,8 +12,7 @@ use std::ptr;
 ///
 /// This is the standard `strdup` implementation from R's src/main/strdup.c.
 /// The caller is responsible for freeing the returned pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn strdup(str: *const c_char) -> *mut c_char {
+pub unsafe fn strdup(str: *const c_char) -> *mut c_char {
     unsafe {
         if str.is_null() {
             return ptr::null_mut();

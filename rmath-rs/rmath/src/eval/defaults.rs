@@ -88,8 +88,7 @@ pub unsafe extern "C" fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: S
 /// `do_subassign_dflt(call, op, args, rho)` - `[<-` default method.
 ///
 /// Defined in subassign.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::main::subassign::do_subassign_dflt(call, op, args, rho) }
 }
 

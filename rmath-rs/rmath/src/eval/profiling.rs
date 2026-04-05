@@ -1052,8 +1052,7 @@ unsafe fn R_InitProfiling(
 /// When called with an empty filename, stops profiling.
 ///
 /// Ported from R's `do_Rprof()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // BC profiling check
         if bc_profiling != 0 {
@@ -1148,8 +1147,7 @@ pub unsafe extern "C" fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEX
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofmem()` function for memory profiling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1158,8 +1156,7 @@ pub unsafe extern "C" fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofaddr()` function for address profiling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1168,8 +1165,7 @@ pub unsafe extern "C" fn do_Rprofaddr(call: SEXP, op: SEXP, args: SEXP, rho: SEX
 // ---------------------------------------------------------------------------
 
 /// Implement the `gcprof()` function for GC profiling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1211,8 +1207,7 @@ unsafe fn dobcprof_null(_sig: c_int) {
 /// Sets up the profiling timer and initializes opcode counts.
 ///
 /// Ported from R's `do_bcprofstart()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let dinterval: c_double = 0.02;
         let interval: c_int = (1e6 * dinterval + 0.5) as c_int;
@@ -1260,8 +1255,7 @@ pub unsafe extern "C" fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: S
 /// Disables the profiling timer.
 ///
 /// Ported from R's `do_bcprofstop()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if bc_profiling == 0 {
             // Not byte code profiling
@@ -1295,8 +1289,7 @@ pub unsafe extern "C" fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SE
 /// Returns an integer vector of opcode counts.
 ///
 /// Ported from R's `do_bcprofcounts()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let val = Rf_allocVector(SEXPTYPE::INTSXP.0, OPCOUNT as c_int);
         if val.is_null() {

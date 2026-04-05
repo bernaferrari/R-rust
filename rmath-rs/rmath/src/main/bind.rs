@@ -1295,8 +1295,7 @@ unsafe fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> SEXP 
 
 /// Look up `names[i]`; return the CHARSXP if it is non-empty, otherwise
 /// `R_NilValue`.  Also used in coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ItemName(names: SEXP, i: R_xlen_t) -> SEXP {
+pub unsafe fn ItemName(names: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if names.is_null() || names == R_NilValue() {
             return R_NilValue();
@@ -1637,8 +1636,7 @@ unsafe fn ans_flags_to_mode(flags: c_int) -> SEXPTYPE {
 // ---------------------------------------------------------------------------
 
 /// R's `c()` builtin.  Attempts method dispatch; falls back to `do_c_dflt`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1660,8 +1658,7 @@ pub unsafe extern "C" fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// Default implementation of `c()` when no S3/S4 method is found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut usenames: bool = true;
         let mut recurse: bool = false;
@@ -1775,8 +1772,7 @@ pub unsafe extern "C" fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 // ---------------------------------------------------------------------------
 
 /// R's `unlist()` builtin.  Attempts method dispatch; falls back to default.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1973,8 +1969,7 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 ///
 /// `PRIMVAL(op) == 1` selects `cbind`, otherwise `rbind`.
 /// This is a special `.Internal`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // The first argument is "deparse.level". Evaluate it.
         // missing(deparse.level): we skip this check since we don't have R_missing.
@@ -2093,8 +2088,7 @@ pub unsafe extern "C" fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 // ---------------------------------------------------------------------------
 
 /// Stub for the `cbind` internal helper.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { do_bind(call, op, args, env) }
 }
 
@@ -2103,8 +2097,7 @@ pub unsafe extern "C" fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// Stub for the `rbind` internal helper.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { do_bind(call, op, args, env) }
 }
 

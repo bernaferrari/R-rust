@@ -18,14 +18,12 @@ static mut DefaultFileName: *mut std::os::raw::c_char = ptr::null_mut();
 static mut EdFileUsed: c_int = 0;
 
 /// Initialize the edit subsystem.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitEd() {
+pub unsafe fn InitEd() {
     // Stub: no temp file management needed
 }
 
 /// Clean up the edit subsystem.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CleanEd() {
+pub unsafe fn CleanEd() {
     // Stub: no temp file to clean
 }
 
@@ -37,8 +35,7 @@ pub unsafe extern "C" fn CleanEd() {
 /// - Invokes the system editor
 /// - Re-parses the edited file
 /// - Returns the result
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_edit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_edit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // Stub: return R_NilValue
         R_NilValue()

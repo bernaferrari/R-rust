@@ -450,8 +450,7 @@ pub unsafe extern "C" fn R_InitConnections() {
 // do_file — file(description, open = "", mode = "r", raw = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -548,8 +547,7 @@ fn open_file_conn(
 // do_pipe — pipe(description, open = "", encoding = "")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -613,8 +611,7 @@ pub unsafe extern "C" fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: S
 // do_url — url(description, open = "", mode = "r", blocking = TRUE, encoding = "", method = "default", headers = NULL)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -699,8 +696,7 @@ pub unsafe extern "C" fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
 // do_fifo — fifo(description, open, mode)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -736,8 +732,7 @@ pub unsafe extern "C" fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: S
 // do_gzfile — gzfile(description, open = "", compression = 6)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -792,8 +787,7 @@ pub unsafe extern "C" fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env:
 // do_bzfile — bzfile(description, open, compression)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -846,8 +840,7 @@ pub unsafe extern "C" fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env:
 // do_xzfile — xzfile(description, open, compression)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scmd = CAR(args);
         args = CDR(args);
@@ -900,8 +893,7 @@ pub unsafe extern "C" fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env:
 // do_open — open(con, open = "", blocking = TRUE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
@@ -996,8 +988,7 @@ pub unsafe extern "C" fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: S
 // do_close — close(con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1072,8 +1063,7 @@ fn close_connection_inner(conn: &mut RConn) {
 // do_isopen — isOpen(con, rw = "")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
@@ -1108,8 +1098,7 @@ pub unsafe extern "C" fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env:
 // do_isincomplete — isIncomplete(con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1130,8 +1119,7 @@ pub unsafe extern "C" fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _en
 // do_isatty — isatty(con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
 
@@ -1139,8 +1127,7 @@ pub unsafe extern "C" fn do_isatty(_call: SEXP, _op: SEXP, _args: SEXP, _env: SE
 // do_readLines — readLines(con, n = -1, ok = TRUE, warn = TRUE, encoding = "", skipNul = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
@@ -1306,8 +1293,7 @@ pub unsafe extern "C" fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _e
 // do_writeLines — writeLines(text, con, sep = "\n", useBytes = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let text = CAR(args);
         args = CDR(args);
@@ -1403,8 +1389,7 @@ pub unsafe extern "C" fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _
 // do_seek — seek(con, where = NA, origin = "start", rw = "")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
@@ -1488,8 +1473,7 @@ pub unsafe extern "C" fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: S
 // do_flush — flush(con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1514,13 +1498,11 @@ pub unsafe extern "C" fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 // do_readTable / do_writeTable
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1528,8 +1510,7 @@ pub unsafe extern "C" fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env
 // do_rawConnection — rawConnection(raw, open = "rb")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rawConnection(
+pub unsafe fn do_rawConnection(
     _call: SEXP,
     _op: SEXP,
     mut args: SEXP,
@@ -1601,8 +1582,7 @@ pub unsafe extern "C" fn do_rawConnection(
 // do_textConnection — textConnection(object, open = "r", local = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_textConnection(
+pub unsafe fn do_textConnection(
     _call: SEXP,
     _op: SEXP,
     mut args: SEXP,
@@ -1673,8 +1653,7 @@ pub unsafe extern "C" fn do_textConnection(
 // do_textConnectionValue — textConnectionValue(con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_textConnectionValue(
+pub unsafe fn do_textConnectionValue(
     _call: SEXP,
     _op: SEXP,
     args: SEXP,
@@ -1714,8 +1693,7 @@ pub unsafe extern "C" fn do_textConnectionValue(
 // do_sockConnection — stub
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sockConnection(
+pub unsafe fn do_sockConnection(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -1728,8 +1706,7 @@ pub unsafe extern "C" fn do_sockConnection(
 // do_serverSocket — stub
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1737,8 +1714,7 @@ pub unsafe extern "C" fn do_serverSocket(_call: SEXP, _op: SEXP, _args: SEXP, _e
 // do_download — stub
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1746,8 +1722,7 @@ pub unsafe extern "C" fn do_download(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 // do_getConnection — getConnection(n)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sn = CAR(args);
         let n = as_integer(sn) as usize;
@@ -1772,8 +1747,7 @@ pub unsafe extern "C" fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _e
 // do_showConnections — showConnections(all = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_showConnections(
+pub unsafe fn do_showConnections(
     _call: SEXP,
     _op: SEXP,
     args: SEXP,
@@ -1815,8 +1789,7 @@ pub unsafe extern "C" fn do_showConnections(
 // do_sumConnection — stub
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sumConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sumConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1824,8 +1797,7 @@ pub unsafe extern "C" fn do_sumConnection(_call: SEXP, _op: SEXP, _args: SEXP, _
 // do_sink — sink(number = NULL, close.on.exit = FALSE, type = "output", split = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sn = CAR(args);
         args = CDR(args);
@@ -1881,8 +1853,7 @@ pub unsafe extern "C" fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: S
 // do_sinkNumber — sink.number(type = "output")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let errcon = check_logical_arg(CAR(args), "type");
         let sink = SINK_STATE.lock().unwrap();
@@ -1898,8 +1869,7 @@ pub unsafe extern "C" fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env:
 // do_pushBack — pushBack(data, con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1907,8 +1877,7 @@ pub unsafe extern "C" fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 // do_pushBackLength — pushBackLength(con)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pushBackLength(
+pub unsafe fn do_pushBackLength(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -1921,8 +1890,7 @@ pub unsafe extern "C" fn do_pushBackLength(
 // do_readBin — readBin(con, what, n, size = NA, signed = TRUE, swap = 0)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
         args = CDR(args);
@@ -2222,8 +2190,7 @@ pub unsafe extern "C" fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env
 // do_writeBin — writeBin(object, con, size = NA, swap = 0, useBytes = FALSE)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let object = CAR(args);
         args = CDR(args);

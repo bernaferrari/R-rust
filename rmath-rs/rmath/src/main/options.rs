@@ -334,8 +334,7 @@ unsafe fn char_is_empty(s: *const c_char) -> bool {
 // ---------------------------------------------------------------------------
 
 /// Clamp a printing width value to the valid range [R_MIN_WIDTH_OPT, R_MAX_WIDTH_OPT].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fixup_width(w: c_int) -> c_int {
+pub unsafe fn fixup_width(w: c_int) -> c_int {
     if w == c_int::MIN || w < R_MIN_WIDTH_OPT || w > R_MAX_WIDTH_OPT {
         80
     } else {
@@ -344,8 +343,7 @@ pub unsafe extern "C" fn fixup_width(w: c_int) -> c_int {
 }
 
 /// Clamp a printing digits value to the valid range [R_MIN_DIGITS_OPT, R_MAX_DIGITS_OPT].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fixup_digits(d: c_int) -> c_int {
+pub unsafe fn fixup_digits(d: c_int) -> c_int {
     if d == c_int::MIN || d < R_MIN_DIGITS_OPT || d > R_MAX_DIGITS_OPT {
         7
     } else {
@@ -354,8 +352,7 @@ pub unsafe extern "C" fn fixup_digits(d: c_int) -> c_int {
 }
 
 /// Clamp a scipen value to the valid range [R_MIN_SCIPEN_OPT, R_MAX_SCIPEN_OPT].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fixup_scipen(d: c_int) -> c_int {
+pub unsafe fn fixup_scipen(d: c_int) -> c_int {
     if d == c_int::MIN || d < R_MIN_SCIPEN_OPT || d > R_MAX_SCIPEN_OPT {
         if d == c_int::MIN {
             0
@@ -370,8 +367,7 @@ pub unsafe extern "C" fn fixup_scipen(d: c_int) -> c_int {
 }
 
 /// Clamp a deparse.cutoff value: must be positive.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fixup_deparse_cutoff(w: c_int) -> c_int {
+pub unsafe fn fixup_deparse_cutoff(w: c_int) -> c_int {
     if w == c_int::MIN || w <= 0 { 60 } else { w }
 }
 
@@ -458,8 +454,7 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
 
 /// Get the value of a single option by tag (SEXP symbol).
 /// This is the primary lookup used throughout R's C code (e.g. GetOption1(install("width"))).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetOption1(tag: SEXP) -> SEXP {
+pub unsafe fn GetOption1(tag: SEXP) -> SEXP {
     unsafe {
         if tag.is_null() {
             return R_NilValue();
@@ -481,8 +476,7 @@ pub unsafe extern "C" fn GetOption1(tag: SEXP) -> SEXP {
 /// Get the value of an option by its string name.
 /// Convenience wrapper used by C code that has the name as a C string.
 /// Returns R_NilValue if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetOption(name: *const c_char) -> SEXP {
+pub unsafe fn GetOption(name: *const c_char) -> SEXP {
     unsafe {
         if name.is_null() {
             return R_NilValue();
@@ -526,8 +520,7 @@ pub unsafe extern "C" fn R_Options() -> SEXP {
 
 /// Find a tagged item in the options (equivalent to C's FindTaggedItem).
 /// Returns R_NilValue if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
+pub unsafe fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
     unsafe {
         // In our implementation, we use the HashMap directly.
         // This function is kept for FFI compatibility.
@@ -604,8 +597,7 @@ pub unsafe extern "C" fn R_SetOption(tag: SEXP, value: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get the current printing width from options.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetOptionWidth() -> c_int {
+pub unsafe fn GetOptionWidth() -> c_int {
     unsafe {
         let width_sym = Rf_install(CString::new("width").unwrap().as_ptr());
         let val = GetOptionByName("width");
@@ -640,8 +632,7 @@ pub unsafe extern "C" fn R_SetOptionWidth(w: c_int) -> c_int {
 }
 
 /// Get the current printing digits from options.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetOptionDigits() -> c_int {
+pub unsafe fn GetOptionDigits() -> c_int {
     unsafe {
         let val = GetOptionByName("digits");
         if val == R_NilValue() {
@@ -652,8 +643,7 @@ pub unsafe extern "C" fn GetOptionDigits() -> c_int {
 }
 
 /// Get the deparse.cutoff option.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetOptionCutoff() -> c_int {
+pub unsafe fn GetOptionCutoff() -> c_int {
     unsafe {
         let val = GetOptionByName("deparse.cutoff");
         if val == R_NilValue() {
@@ -725,8 +715,7 @@ pub unsafe extern "C" fn Rf_GetOptionDeviceAsk() -> Rboolean {
 // ---------------------------------------------------------------------------
 
 /// Initialize the default options list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitOptions() {
+pub unsafe fn InitOptions() {
     unsafe {
         let mut table = get_options_table().lock().unwrap();
         if table.initialized {
@@ -918,8 +907,7 @@ unsafe fn check_TRUE_FALSE(arg: SEXP, chname: *const c_char) {
 // do_getOption -- C-level entry for getOption(name)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -945,8 +933,7 @@ pub unsafe extern "C" fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: S
 // do_options -- C-level entry for options(...)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 

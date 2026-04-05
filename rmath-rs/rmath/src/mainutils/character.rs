@@ -584,8 +584,7 @@ pub fn chartr_safe<'a>(
 ///
 /// This is the Rust port of R's `do_chartr` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -635,8 +634,7 @@ pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 ///
 /// This is the Rust port of R's `do_tolower`/`do_toupper` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -670,8 +668,7 @@ pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 ///
 /// This is the Rust port of R's `do_tolower` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -806,8 +803,7 @@ pub fn nchar_safe(
 ///
 /// This is the Rust port of R's `do_nchar` from character.c.
 /// Supports type = "bytes", "chars", "width".
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -983,8 +979,7 @@ pub fn substr_safe<'a>(
 ///
 /// This is the Rust port of R's `do_substr` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {

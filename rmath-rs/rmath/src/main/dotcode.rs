@@ -17,14 +17,14 @@ use std::ptr;
 
 use crate::main::coerce::helpers::R_BlankString;
 use crate::main::coerce::vector::asLogical;
-use crate::main::errors::{Rf_error, Rf_warning, Rf_warningcall1, errorcall};
+use crate::main::errors::{errorcall, Rf_error, Rf_warning, Rf_warningcall1};
 use crate::main::memory_main::R_ExternalPtrAddr;
 use crate::main::memory_main::R_ExternalPtrTag;
 use crate::main::sysutils::translateChar;
 use crate::sexp::accessors::*;
-use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
+use crate::sexp::attrib_core::{getAttrib, setAttrib, R_NamesSymbol};
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
 use crate::sexp::protect::*;
@@ -546,7 +546,7 @@ unsafe fn resolveNativeRoutine(
 // ===========================================================================
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_isloaded(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isloaded(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let nargs = length(args);
         if nargs < 1 {
@@ -921,8 +921,7 @@ unsafe fn call_dotcall_generic(
 // do_dotcall -- .Call(name, ...)
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dotcall(call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dotcall(call: SEXP, _op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ofun: DL_FUNC = None;
         let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
@@ -982,8 +981,7 @@ pub unsafe extern "C" fn do_dotcall(call: SEXP, _op: SEXP, mut args: SEXP, env: 
 // do_External -- .External(name, ...)
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_External(call: SEXP, op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_External(call: SEXP, op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ofun: DL_FUNC = None;
         let mut symbol = R_RegisteredNativeSymbol::new(R_EXTERNAL_SYM);
@@ -1032,8 +1030,7 @@ pub unsafe extern "C" fn do_External(call: SEXP, op: SEXP, mut args: SEXP, env: 
 // do_Externalgr -- .External.graphics(name, ...)
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Externalgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_Externalgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // TODO: Full implementation requires GEcurrentDevice(), recordGraphics, etc.
         do_External(call, op, args, env)
@@ -1044,8 +1041,7 @@ pub unsafe extern "C" fn do_Externalgr(call: SEXP, op: SEXP, args: SEXP, env: SE
 // do_dotcallgr -- .Call.graphics(name, ...)
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // TODO: Full implementation requires GEcurrentDevice(), recordGraphics, etc.
         do_dotcall(call, op, args, env)
@@ -1056,8 +1052,7 @@ pub unsafe extern "C" fn do_dotcallgr(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // do_dotCode -- .C() and .Fortran()
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dotCode(call: SEXP, op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dotCode(call: SEXP, op: SEXP, mut args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut fun: DL_FUNC = None;
         let mut naok: c_int = 0;

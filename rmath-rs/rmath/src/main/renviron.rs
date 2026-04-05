@@ -280,8 +280,7 @@ unsafe fn Renviron_error(msg: *const c_char) {
 
 /// Process a Renviron file.
 /// Returns 1 on success, 0 if file could not be opened.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn process_Renviron(filename: *const c_char) -> c_int {
+pub unsafe fn process_Renviron(filename: *const c_char) -> c_int {
     unsafe {
         if filename.is_null() {
             return 0;
@@ -389,8 +388,7 @@ pub unsafe extern "C" fn process_Renviron(filename: *const c_char) -> c_int {
 }
 
 /// Process system Renviron: R_HOME/etc/Renviron.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn process_system_Renviron() {
+pub unsafe fn process_system_Renviron() {
     unsafe {
         // This is a simplified version — the full version reads R_HOME
         // For now, try the common location
@@ -401,8 +399,7 @@ pub unsafe extern "C" fn process_system_Renviron() {
 }
 
 /// Process site Renviron.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn process_site_Renviron() {
+pub unsafe fn process_site_Renviron() {
     unsafe {
         if let Ok(p) = std::env::var("R_ENVIRON") {
             if !p.is_empty() {
@@ -417,8 +414,7 @@ pub unsafe extern "C" fn process_site_Renviron() {
 }
 
 /// Process user Renviron.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn process_user_Renviron() {
+pub unsafe fn process_user_Renviron() {
     unsafe {
         if let Ok(s) = std::env::var("R_ENVIRON_USER") {
             if !s.is_empty() {
@@ -437,8 +433,7 @@ pub unsafe extern "C" fn process_user_Renviron() {
 }
 
 /// R .Internal interface for readEnviron.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readEnviron(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_readEnviron(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::STRSXP.0 || LENGTH(x) != 1 {

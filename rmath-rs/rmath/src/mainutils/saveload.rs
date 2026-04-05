@@ -253,8 +253,7 @@ pub fn InDoubleAscii(reader: &mut impl BufRead) -> io::Result<f64> {
 // ---------------------------------------------------------------------------
 
 /// Stub for `do_save` — requires SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_save(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_save(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::*;
         use crate::sexp::globals::R_NilValue;
@@ -266,8 +265,7 @@ pub unsafe extern "C" fn do_save(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP
 }
 
 /// Stub for `do_load` — requires SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_load(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_load(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::globals::R_NilValue;
 

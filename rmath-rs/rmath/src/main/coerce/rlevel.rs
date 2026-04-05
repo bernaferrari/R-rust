@@ -28,8 +28,7 @@ use super::vector::{asLogical2, ascommon, coerceVector};
 
 /// Coerce to Rboolean (c_int), erroring on NA_LOGICAL.
 /// This matches R's asRboolean() from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asRbool(x: SEXP, call: SEXP) -> c_int {
+pub unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
     unsafe {
         let ans = asLogical2(x, 1, call);
         if ans == NA_LOGICAL {
@@ -41,8 +40,7 @@ pub unsafe extern "C" fn asRbool(x: SEXP, call: SEXP) -> c_int {
 
 /// Coerce to bool, erroring on NA_LOGICAL.
 /// This matches R's asBool() from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asBool(x: SEXP) -> c_int {
+pub unsafe fn asBool(x: SEXP) -> c_int {
     unsafe {
         let ans = asLogical2(x, 1, R_NilValue());
         if ans == NA_LOGICAL {
@@ -59,8 +57,7 @@ pub unsafe extern "C" fn asBool(x: SEXP) -> c_int {
 /// Convert a factor to a character vector using its levels.
 ///
 /// This is R's `asCharacterFactor()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asCharacterFactor(x: SEXP) -> SEXP {
+pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
     unsafe {
         let n = xlength(x);
         let labels = getAttrib(x, R_LevelsSymbol());
@@ -91,8 +88,7 @@ pub unsafe extern "C" fn asCharacterFactor(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R-level `as.character()` for factors (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asCharacterFactor(
+pub unsafe fn do_asCharacterFactor(
     _call: SEXP,
     _op: SEXP,
     args: SEXP,
@@ -108,8 +104,7 @@ pub unsafe extern "C" fn do_asCharacterFactor(
 ///
 /// This is the `do_asatomic()` function from coerce.c, handling
 /// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let op0 = PRIMVAL(op);
         let mut type_: c_int = SEXPTYPE::STRSXP.0;
@@ -159,8 +154,7 @@ pub unsafe extern "C" fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEX
 /// R-level `as.vector()` entry point.
 ///
 /// This is the `do_asvector()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         // For now, handle the simple case of coercing to the same type
@@ -294,8 +288,7 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 ///
 /// This is the `do_is()` function from coerce.c, implementing is.null,
 /// is.logical, is.integer, is.double, is.complex, is.character, etc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let ans = Rf_protect(Rf_ScalarLogical(0));
@@ -402,8 +395,7 @@ pub unsafe extern "C" fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) ->
 /// R-level `is.vector()` entry point.
 ///
 /// This is the `do_isvector()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let mode_arg = CADR(args);
@@ -466,8 +458,7 @@ pub unsafe extern "C" fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 /// R-level `is.na()` entry point.
 ///
 /// This is the `do_isna()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -541,8 +532,7 @@ pub unsafe extern "C" fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 /// R-level `is.nan()` entry point.
 ///
 /// This is the `do_isnan()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -595,8 +585,7 @@ pub unsafe extern "C" fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 /// R-level `is.finite()` entry point.
 ///
 /// This is the `do_isfinite()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -657,8 +646,7 @@ pub unsafe extern "C" fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 /// R-level `is.infinite()` entry point.
 ///
 /// This is the `do_isinfinite()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -735,8 +723,7 @@ pub unsafe extern "C" fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env:
 ///
 /// This dispatches to `ascommon` for the actual coercion, matching R's
 /// behavior for `as.vector()`, `as.expression()`, `as.list()`, etc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if args.is_null() || isNull(CDR(args)) {
@@ -835,8 +822,7 @@ pub unsafe extern "C" fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 /// Uses the FunTab offset field to determine the target SEXPTYPE:
 ///   0 -> STRSXP, 1 -> INTSXP, 2 -> REALSXP, 3 -> CPLXSXP,
 ///   4 -> LGLSXP, 5 -> RAWSXP
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ascoerce(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_ascoerce(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _ = call;
         if args.is_null() {

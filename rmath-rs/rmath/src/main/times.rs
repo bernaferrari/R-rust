@@ -74,8 +74,7 @@ pub fn TimeToSeed() -> c_uint {
 ///
 /// Ported from R's do_systime() in times.c.
 /// Returns the current system time as seconds since the Unix epoch.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_systime() -> f64 {
+pub unsafe fn do_systime() -> f64 {
     match SystemTime::now().duration_since(SystemTime::UNIX_EPOCH) {
         Ok(dur) => {
             let secs = dur.as_secs() as f64;

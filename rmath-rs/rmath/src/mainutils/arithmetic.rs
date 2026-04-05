@@ -541,8 +541,7 @@ unsafe fn complex_math1_impl(sa: SEXP, f_real: fn(f64) -> f64, f_imag: fn(f64) -
 ///   30: cosh, 31: sinh, 32: tanh, 33: acosh, 34: asinh, 35: atanh,
 ///   40: lgamma, 41: gamma, 42: digamma, 43: trigamma,
 ///   47: cospi, 48: sinpi, 49: tanpi
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_math1(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_math1(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
         let sa = CAR(args);
@@ -660,8 +659,7 @@ unsafe fn math2_impl(sa: SEXP, sb: SEXP, f: fn(f64, f64) -> f64) -> SEXP {
 ///   0: atan2
 ///   10001: round (fround)
 ///   10004: signif (fprec)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_math2(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_math2(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
 
@@ -1185,8 +1183,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
 ///   1: + (OP_ADD), 2: - (OP_SUB), 3: * (OP_MUL),
 ///   4: / (OP_DIV), 5: ^ (OP_POW),
 ///   6: %% (OP_MOD), 7: %/% (OP_INTDIV)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
 

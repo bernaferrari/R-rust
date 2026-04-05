@@ -261,7 +261,11 @@ pub fn Rexp(x: f64) -> f64 {
 /// Helper: returns x for very small arguments, otherwise applies f.
 #[inline]
 fn f_x_x(x: f64, f: fn(f64) -> f64, m: f64) -> f64 {
-    if x.abs() <= m { x } else { f(x) }
+    if x.abs() <= m {
+        x
+    } else {
+        f(x)
+    }
 }
 
 /// exp(x) - 1 with improved accuracy for small x.
@@ -362,7 +366,11 @@ unsafe fn no_references(x: SEXP) -> bool {
 /// Integer-to-double conversion respecting NA_INTEGER.
 #[inline]
 fn r_integer_to_double(x: c_int) -> f64 {
-    if x == NA_INTEGER { NA_REAL } else { x as f64 }
+    if x == NA_INTEGER {
+        NA_REAL
+    } else {
+        x as f64
+    }
 }
 
 // ---- math1 helpers ----
@@ -540,7 +548,7 @@ unsafe fn complex_math1_impl(sa: SEXP, f_real: fn(f64) -> f64, f_imag: fn(f64) -
 ///   40: lgamma, 41: gamma, 42: digamma, 43: trigamma,
 ///   47: cospi, 48: sinpi, 49: tanpi
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_math1(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_math1(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
         let sa = CAR(args);
@@ -663,8 +671,7 @@ unsafe fn math2_impl(sa: SEXP, sb: SEXP, f: fn(f64, f64) -> f64) -> SEXP {
 ///   0: atan2
 ///   10001: round (fround)
 ///   10004: signif (fprec)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_math2(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_math2(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
 
@@ -706,7 +713,11 @@ unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n = if n1 == 0 || n2 == 0 {
             0
         } else {
-            if n1 > n2 { n1 } else { n2 }
+            if n1 > n2 {
+                n1
+            } else {
+                n2
+            }
         };
 
         // DIV and POW produce REALSXP
@@ -972,7 +983,11 @@ unsafe fn complex_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n = if n1 == 0 || n2 == 0 {
             0
         } else {
-            if n1 > n2 { n1 } else { n2 }
+            if n1 > n2 {
+                n1
+            } else {
+                n2
+            }
         };
 
         let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
@@ -1188,8 +1203,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
 ///   1: + (OP_ADD), 2: - (OP_SUB), 3: * (OP_MUL),
 ///   4: / (OP_DIV), 5: ^ (OP_POW),
 ///   6: %% (OP_MOD), 7: %/% (OP_INTDIV)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
 
@@ -1365,8 +1379,7 @@ unsafe fn coerce_logical_to_int(x: SEXP) -> SEXP {
 /// Port of R's do_Math2 from arithmetic.c.
 /// round(x, digits=0) rounds to `digits` decimal places.
 /// signif(x, digits=6) rounds to `digits` significant figures.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Math2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_Math2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::CADR;
 
@@ -1471,8 +1484,7 @@ pub unsafe extern "C" fn do_Math2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 /// Implement log(x, base=exp(1)).
 ///
 /// Port of R's do_log from arithmetic.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_log(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_log(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::CADR;
 
@@ -1491,7 +1503,11 @@ pub unsafe extern "C" fn do_log(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
                 *REAL(sb)
             } else if TYPEOF(sb) == SEXPTYPE::INTSXP.0 {
                 let v = *INTEGER(sb);
-                if v == NA_INTEGER { f64::NAN } else { v as f64 }
+                if v == NA_INTEGER {
+                    f64::NAN
+                } else {
+                    v as f64
+                }
             } else {
                 std::f64::consts::E
             };
@@ -1577,8 +1593,7 @@ pub unsafe extern "C" fn do_log(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Implement log10() and log2().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_log1arg(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_log1arg(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op);
         let sa = CAR(args);
@@ -1598,8 +1613,7 @@ pub unsafe extern "C" fn do_log1arg(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// Implement abs(x).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_abs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_abs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let sa = CAR(args);
         math1_ari_impl(sa, libm::fabs, 0.0, 0.0)
@@ -1611,8 +1625,7 @@ pub unsafe extern "C" fn do_abs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Implement trunc(x).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_trunc(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_trunc(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let sa = CAR(args);
         math1_impl(sa, libm::trunc)
@@ -1627,8 +1640,7 @@ pub unsafe extern "C" fn do_trunc(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 ///
 /// Port of R's do_math3 from arithmetic.c.
 /// Dispatches via PRIMVAL(op) to the appropriate distribution function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_math3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_math3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADDR, CADR};
 
@@ -1655,8 +1667,7 @@ pub unsafe extern "C" fn do_math3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// Implement four-argument math functions.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_math4(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_math4(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // Similar to do_math3 — full implementation requires nmath integration
         R_NilValue()

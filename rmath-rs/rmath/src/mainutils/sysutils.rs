@@ -170,8 +170,7 @@ pub fn R_Interactive() -> bool {
 /// .Internal(Sys.getenv(x, unset))
 /// If x has length 0, returns all environment variables.
 /// Otherwise, looks up each name in x, returning the value or `unset` if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -228,8 +227,7 @@ pub unsafe extern "C" fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 /// Sys.setenv() — set environment variables.
 ///
 /// .Internal(Sys.setenv(nm, val))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -265,8 +263,7 @@ pub unsafe extern "C" fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP
 /// Sys.unsetenv() — unset environment variables.
 ///
 /// .Internal(Sys.unsetenv(nm))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -292,14 +289,12 @@ pub unsafe extern "C" fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SE
 }
 
 /// interactive() — check if R is in interactive mode.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_interactive(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarLogical(if R_Interactive() { TRUE } else { FALSE }) }
 }
 
 /// tempdir() — return the temporary directory path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let _check = CAR(args);
@@ -312,8 +307,7 @@ pub unsafe extern "C" fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 /// tempfile() — generate temporary file names.
 ///
 /// .Internal(tempfile(pattern, tempdir, fileext))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
 
@@ -451,8 +445,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
 }
 
 /// Sys.sysenv() — return the system environment variables.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Return all environment variables as a named character vector
         let vars: Vec<(String, String)> = std::env::vars().collect();

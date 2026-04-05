@@ -136,8 +136,7 @@ pub unsafe fn free_raw_cons(ptr: SEXP) {
 /// Create a cons cell that is not reference counted (CONS_NR).
 ///
 /// This is the equivalent of R's `CONS_NR()` macro.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
+pub unsafe fn CONS_NR(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let cell = arena.cons(car, cdr, ptr::null_mut());

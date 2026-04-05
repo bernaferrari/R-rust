@@ -160,8 +160,7 @@ pub unsafe extern "C" fn R_GetParseContextBuf() -> *mut u8 {
 /// This is the equivalent of R's `getParseContext()` from source.c.
 /// It reads the circular `R_ParseContext` buffer backwards from
 /// `R_ParseContextLast`, collects the text, and splits it into lines.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getParseContext() -> SEXP {
+pub unsafe fn getParseContext() -> SEXP {
     unsafe {
         let last = PARSE_CONTEXT_SIZE as usize;
         let mut context = [0u8; (PARSE_CONTEXT_SIZE as usize) + 1];
@@ -371,8 +370,7 @@ unsafe fn tabExpand(strings: SEXP) -> SEXP {
 /// and context lines from the parse buffer, then calls `Rf_error`.
 ///
 /// This function does NOT return (it panics via `Rf_error`).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn parseError(_call: SEXP, linenum: c_int) {
+pub unsafe fn parseError(_call: SEXP, linenum: c_int) {
     unsafe {
         let context = Rf_protect(tabExpand(getParseContext()));
         let len = Rf_length(context);
@@ -508,8 +506,7 @@ unsafe fn Rf_error_cstr(msg: &str) {
 /// - R connection infrastructure (getConnection, R_ParseConn)
 /// - The Bison parser grammar (R_ParseVector, R_ParseBuffer)
 /// - Encoding handling (known_to_be_latin1, known_to_be_utf8)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_parse(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_parse(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Stub: return empty expression vector
         Rf_allocVector(SEXPTYPE::EXPRSXP.0, 0)

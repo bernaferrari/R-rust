@@ -184,8 +184,7 @@ unsafe fn ensure_internet() -> bool {
 }
 
 /// Rdownload -- .Internal(download(args))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rdownload(args: SEXP) -> SEXP {
+pub unsafe fn Rdownload(args: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
             if let Some(ref func) = (*ptr).download {
@@ -249,8 +248,7 @@ pub unsafe extern "C" fn R_newservsock(port: c_int) -> Rconnection {
 }
 
 /// extR_HTTPDCreate -- create an HTTP daemon.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn extR_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
+pub unsafe fn extR_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
     unsafe {
         if ensure_internet() {
             if let Some(ref func) = (*ptr).HTTPDCreate {
@@ -263,8 +261,7 @@ pub unsafe extern "C" fn extR_HTTPDCreate(ip: *const c_char, port: c_int) -> c_i
 }
 
 /// extR_HTTPDStop -- stop the HTTP daemon.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn extR_HTTPDStop() {
+pub unsafe fn extR_HTTPDStop() {
     unsafe {
         if ensure_internet() {
             if let Some(ref func) = (*ptr).HTTPDStop {
@@ -277,8 +274,7 @@ pub unsafe extern "C" fn extR_HTTPDStop() {
 }
 
 /// Rsockconnect -- connect to a socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsockconnect(sport: SEXP, shost: SEXP) -> SEXP {
+pub unsafe fn Rsockconnect(sport: SEXP, shost: SEXP) -> SEXP {
     unsafe {
         if LENGTH(sport) != 1 {
             Rf_error(b"invalid 'socket' argument\0".as_ptr() as *const c_char);
@@ -297,8 +293,7 @@ pub unsafe extern "C" fn Rsockconnect(sport: SEXP, shost: SEXP) -> SEXP {
 }
 
 /// Rsockread -- read from a socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsockread(ssock: SEXP, smaxlen: SEXP) -> SEXP {
+pub unsafe fn Rsockread(ssock: SEXP, smaxlen: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
             Rf_error(b"invalid 'socket' argument\0".as_ptr() as *const c_char);
@@ -331,8 +326,7 @@ pub unsafe extern "C" fn Rsockread(ssock: SEXP, smaxlen: SEXP) -> SEXP {
 }
 
 /// Rsockclose -- close a socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsockclose(ssock: SEXP) -> SEXP {
+pub unsafe fn Rsockclose(ssock: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
             Rf_error(b"invalid 'socket' argument\0".as_ptr() as *const c_char);
@@ -352,8 +346,7 @@ pub unsafe extern "C" fn Rsockclose(ssock: SEXP) -> SEXP {
 }
 
 /// Rsockopen -- open a socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsockopen(sport: SEXP) -> SEXP {
+pub unsafe fn Rsockopen(sport: SEXP) -> SEXP {
     unsafe {
         if LENGTH(sport) != 1 {
             Rf_error(b"invalid 'port' argument\0".as_ptr() as *const c_char);
@@ -370,8 +363,7 @@ pub unsafe extern "C" fn Rsockopen(sport: SEXP) -> SEXP {
 }
 
 /// Rsocklisten -- listen on a socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsocklisten(ssock: SEXP) -> SEXP {
+pub unsafe fn Rsocklisten(ssock: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
             Rf_error(b"invalid 'socket' argument\0".as_ptr() as *const c_char);
@@ -403,8 +395,7 @@ pub unsafe extern "C" fn Rsocklisten(ssock: SEXP) -> SEXP {
 }
 
 /// Rsockwrite -- write to a socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsockwrite(ssock: SEXP, sstring: SEXP) -> SEXP {
+pub unsafe fn Rsockwrite(ssock: SEXP, sstring: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
             Rf_error(b"invalid 'socket' argument\0".as_ptr() as *const c_char);
@@ -429,8 +420,7 @@ pub unsafe extern "C" fn Rsockwrite(ssock: SEXP, sstring: SEXP) -> SEXP {
 }
 
 /// Rsockselect -- select on sockets.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsockselect(
+pub unsafe fn Rsockselect(
     nsock: c_int,
     insockfd: *mut c_int,
     ready: *mut c_int,
@@ -449,8 +439,7 @@ pub unsafe extern "C" fn Rsockselect(
 }
 
 /// do_curlVersion -- .Internal(curlVersion(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
             if let Some(ref func) = (*ptr).curlVersion {
@@ -462,8 +451,7 @@ pub unsafe extern "C" fn do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: S
 }
 
 /// do_curlGetHeaders -- .Internal(curlGetHeaders(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
             if let Some(ref func) = (*ptr).curlGetHeaders {
@@ -475,8 +463,7 @@ pub unsafe extern "C" fn do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho
 }
 
 /// do_curlDownload -- .Internal(curlDownload(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
             if let Some(ref func) = (*ptr).curlDownload {

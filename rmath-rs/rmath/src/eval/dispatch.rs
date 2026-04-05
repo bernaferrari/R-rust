@@ -440,8 +440,7 @@ pub unsafe extern "C" fn R_forceAndCall(
 /// This is the equivalent of R's `DispatchOrEval()` in eval.c.
 /// Returns 1 if a method was dispatched (result in *ans), 0 if not
 /// (evaluated args in *ans).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn DispatchOrEval(
+pub unsafe fn DispatchOrEval(
     call: SEXP,
     op: SEXP,
     generic: *const c_char,

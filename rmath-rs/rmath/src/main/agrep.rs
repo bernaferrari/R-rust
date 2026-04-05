@@ -68,8 +68,7 @@ pub unsafe extern "C" fn R_agrep(
 ///   4. Sets approximate matching parameters via amatch_regaparams()
 ///   5. Matches each element via tre_regaexec/tre_regaexecb/tre_regawexec
 ///   6. Returns logical vector (agrepl) or matched values/indices (agrep)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_agrep(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_agrep(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     ptr::null_mut()
 }
 
@@ -86,8 +85,7 @@ pub unsafe extern "C" fn do_agrep(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 ///   3. Optionally returns insertion/deletion/substitution counts and
 ///      transformation strings
 ///   4. Returns a distance matrix (REALSXP) with optional attributes
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_adist(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_adist(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     ptr::null_mut()
 }
 
@@ -104,7 +102,6 @@ pub unsafe extern "C" fn do_adist(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 ///   3. Returns a list of integer vectors with match positions and
 ///      "match.length" attribute
 ///   4. Non-matches return c(-1, -1)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_aregexec(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_aregexec(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     ptr::null_mut()
 }

@@ -98,8 +98,7 @@ pub unsafe extern "C" fn R_GE_checkVersionOrDie(version: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Destroy a graphics device description, freeing all associated resources.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdestroyDevDesc(dd: *mut c_void) {
+pub unsafe fn GEdestroyDevDesc(dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -108,8 +107,7 @@ pub unsafe extern "C" fn GEdestroyDevDesc(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Return the system-specific state for a graphics system.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
+pub unsafe fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -118,8 +116,7 @@ pub unsafe extern "C" fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_
 // ---------------------------------------------------------------------------
 
 /// Register all current graphics systems with a new device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEregisterWithDevice(dd: *mut c_void) {
+pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -128,8 +125,7 @@ pub unsafe extern "C" fn GEregisterWithDevice(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Register a new graphics system with the engine.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEregisterSystem(
+pub unsafe fn GEregisterSystem(
     cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
     systemRegisterIndex: *mut c_int,
 ) {
@@ -141,8 +137,7 @@ pub unsafe extern "C" fn GEregisterSystem(
 // ---------------------------------------------------------------------------
 
 /// Unregister a graphics system from the engine.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEunregisterSystem(registerIndex: c_int) {
+pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
     // Stub: no-op
 }
 
@@ -151,8 +146,7 @@ pub unsafe extern "C" fn GEunregisterSystem(registerIndex: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Handle a graphics event, forwarding to all registered systems.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
+pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -161,50 +155,42 @@ pub unsafe extern "C" fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEX
 // ---------------------------------------------------------------------------
 
 /// Convert X coordinate from device units to the specified unit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert X coordinate from the specified unit to device units.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert Y coordinate from device units to the specified unit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert Y coordinate from the specified unit to device units.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert width from device units to the specified unit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert width from the specified unit to device units.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert height from device units to the specified unit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
 /// Convert height from the specified unit to device units.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     value
 }
 
@@ -213,26 +199,22 @@ pub unsafe extern "C" fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c
 // ---------------------------------------------------------------------------
 
 /// Parse a line end specification from an R SEXP value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
+pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
     GE_ROUND_CAP
 }
 
 /// Convert a line end code to an R string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LENDget(lend: c_int) -> SEXP {
+pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Parse a line join specification from an R SEXP value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
+pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
     GE_ROUND_JOIN
 }
 
 /// Convert a line join code to an R string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LJOINget(ljoin: c_int) -> SEXP {
+pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -241,8 +223,7 @@ pub unsafe extern "C" fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the clipping rectangle on the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GESetClip(
+pub unsafe fn GESetClip(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -257,8 +238,7 @@ pub unsafe extern "C" fn GESetClip(
 // ---------------------------------------------------------------------------
 
 /// Draw a line segment on the device, with clipping.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GELine(
+pub unsafe fn GELine(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -274,8 +254,7 @@ pub unsafe extern "C" fn GELine(
 // ---------------------------------------------------------------------------
 
 /// Draw a polyline on the device, with clipping.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPolyline(
+pub unsafe fn GEPolyline(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -290,8 +269,7 @@ pub unsafe extern "C" fn GEPolyline(
 // ---------------------------------------------------------------------------
 
 /// Draw a filled polygon on the device, with clipping.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPolygon(
+pub unsafe fn GEPolygon(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -306,8 +284,7 @@ pub unsafe extern "C" fn GEPolygon(
 // ---------------------------------------------------------------------------
 
 /// Draw a circle on the device, with clipping.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GECircle(
+pub unsafe fn GECircle(
     x: c_double,
     y: c_double,
     radius: c_double,
@@ -322,8 +299,7 @@ pub unsafe extern "C" fn GECircle(
 // ---------------------------------------------------------------------------
 
 /// Draw a rectangle on the device, with clipping.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GERect(
+pub unsafe fn GERect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -339,8 +315,7 @@ pub unsafe extern "C" fn GERect(
 // ---------------------------------------------------------------------------
 
 /// Draw a multi-polygon path on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPath(
+pub unsafe fn GEPath(
     x: *mut c_double,
     y: *mut c_double,
     npoly: c_int,
@@ -357,8 +332,7 @@ pub unsafe extern "C" fn GEPath(
 // ---------------------------------------------------------------------------
 
 /// Draw a raster image on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GERaster(
+pub unsafe fn GERaster(
     raster: *mut c_uint,
     w: c_int,
     h: c_int,
@@ -379,8 +353,7 @@ pub unsafe extern "C" fn GERaster(
 // ---------------------------------------------------------------------------
 
 /// Capture the current device contents as a raster image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GECap(dd: *mut c_void) -> SEXP {
+pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -389,8 +362,7 @@ pub unsafe extern "C" fn GECap(dd: *mut c_void) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Draw text on the device, with clipping and rotation support.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEText(
+pub unsafe fn GEText(
     x: c_double,
     y: c_double,
     str: *const c_char,
@@ -409,8 +381,7 @@ pub unsafe extern "C" fn GEText(
 // ---------------------------------------------------------------------------
 
 /// Draw an X-spline (smooth curve through control points) on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEXspline(
+pub unsafe fn GEXspline(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -429,8 +400,7 @@ pub unsafe extern "C" fn GEXspline(
 // ---------------------------------------------------------------------------
 
 /// Set the graphics mode on a device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEMode(mode: c_int, dd: *mut c_void) {
+pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -439,8 +409,7 @@ pub unsafe extern "C" fn GEMode(mode: c_int, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Draw a plotting symbol on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GESymbol(
+pub unsafe fn GESymbol(
     x: c_double,
     y: c_double,
     pch: c_int,
@@ -456,8 +425,7 @@ pub unsafe extern "C" fn GESymbol(
 // ---------------------------------------------------------------------------
 
 /// Calculate pretty axis tick positions (wrapper around R_pretty).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
+pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     // Stub: no-op -- in full implementation, calls R_pretty()
 }
 
@@ -466,8 +434,7 @@ pub unsafe extern "C" fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *m
 // ---------------------------------------------------------------------------
 
 /// Get metric information (ascent, descent, width) for a character.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEMetricInfo(
+pub unsafe fn GEMetricInfo(
     c: c_int,
     gc: *const c_void,
     ascent: *mut c_double,
@@ -494,8 +461,7 @@ pub unsafe extern "C" fn GEMetricInfo(
 // ---------------------------------------------------------------------------
 
 /// Get the width of a string in device coordinates.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStrWidth(
+pub unsafe fn GEStrWidth(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -509,8 +475,7 @@ pub unsafe extern "C" fn GEStrWidth(
 // ---------------------------------------------------------------------------
 
 /// Get the height of a string in device coordinates.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStrHeight(
+pub unsafe fn GEStrHeight(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -524,8 +489,7 @@ pub unsafe extern "C" fn GEStrHeight(
 // ---------------------------------------------------------------------------
 
 /// Get metric information for a string (ascent, descent, width).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStrMetric(
+pub unsafe fn GEStrMetric(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -553,8 +517,7 @@ pub unsafe extern "C" fn GEStrMetric(
 // ---------------------------------------------------------------------------
 
 /// Start a new page on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GENewPage(gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -563,14 +526,12 @@ pub unsafe extern "C" fn GENewPage(gc: *const c_void, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Check whether a device has received output from any graphics system.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdeviceDirty(dd: *mut c_void) -> c_int {
+pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     0 // FALSE
 }
 
 /// Mark a device as having received output.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdirtyDevice(dd: *mut c_void) {
+pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -584,8 +545,7 @@ pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Check whether all registered graphics systems are in a valid state.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcheckState(dd: *mut c_void) -> c_int {
+pub unsafe fn GEcheckState(dd: *mut c_void) -> c_int {
     1 // TRUE
 }
 
@@ -594,8 +554,7 @@ pub unsafe extern "C" fn GEcheckState(dd: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Check whether graphics operations should be recorded for replay.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
+pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
     0 // FALSE
 }
 
@@ -604,8 +563,7 @@ pub unsafe extern "C" fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Record a graphics operation for display list replay.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
+pub unsafe fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -614,8 +572,7 @@ pub unsafe extern "C" fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut
 // ---------------------------------------------------------------------------
 
 /// Initialize the display list for a device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEinitDisplayList(dd: *mut c_void) {
+pub unsafe fn GEinitDisplayList(dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -624,8 +581,7 @@ pub unsafe extern "C" fn GEinitDisplayList(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Replay the display list on a device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEplayDisplayList(dd: *mut c_void) {
+pub unsafe fn GEplayDisplayList(dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -634,8 +590,7 @@ pub unsafe extern "C" fn GEplayDisplayList(dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// Copy the display list from one device to another.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcopyDisplayList(fromDevice: c_int) {
+pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
     // Stub: no-op
 }
 
@@ -644,8 +599,7 @@ pub unsafe extern "C" fn GEcopyDisplayList(fromDevice: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Create a snapshot of the current display, including graphics system state.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
+pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -654,8 +608,7 @@ pub unsafe extern "C" fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Recreate a saved display from a snapshot.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
+pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -664,14 +617,12 @@ pub unsafe extern "C" fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// recordPlot() -- R internal entry point.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// replayPlot() -- R internal entry point.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -680,8 +631,7 @@ pub unsafe extern "C" fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: 
 // ---------------------------------------------------------------------------
 
 /// .Internal(recordGraphics(...)) -- R internal entry point.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -690,8 +640,7 @@ pub unsafe extern "C" fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env
 // ---------------------------------------------------------------------------
 
 /// Reset graphics state on error/interrupt.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEonExit() {
+pub unsafe fn GEonExit() {
     // Stub: no-op
 }
 
@@ -700,8 +649,7 @@ pub unsafe extern "C" fn GEonExit() {
 // ---------------------------------------------------------------------------
 
 /// Convert a single-character string SEXP to a pch integer code.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEstring_to_pch(pch: SEXP) -> c_int {
+pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
     -2147483647 - 1 // NA_INTEGER
 }
 
@@ -710,14 +658,12 @@ pub unsafe extern "C" fn GEstring_to_pch(pch: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Parse a line type specification from an R SEXP value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
+pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
     LTY_SOLID as c_uint
 }
 
 /// Convert a line type code to an R string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LTYget(lty: c_uint) -> SEXP {
+pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -823,20 +769,17 @@ pub unsafe extern "C" fn R_GE_rasterRotate(
 // ---------------------------------------------------------------------------
 
 /// Stroke (outline) a path on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
     // Stub: no-op
 }
 
 /// Fill a path on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     // Stub: no-op
 }
 
 /// Fill and stroke a path on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     // Stub: no-op
 }
 
@@ -976,8 +919,7 @@ pub unsafe extern "C" fn R_GE_glyphFontVarFormatted(
 // ---------------------------------------------------------------------------
 
 /// Draw glyph(s) on the device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEGlyph(
+pub unsafe fn GEGlyph(
     n: c_int,
     glyphs: *const c_int,
     x: *const c_double,

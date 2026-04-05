@@ -27,8 +27,7 @@ use crate::sexp::globals::R_NilValue;
 ///
 /// Ported from R's `GetRowNames` in array.c.
 /// Returns `VECTOR_ELT(dimnames, 0)` if dimnames is a VECSXP, else R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetRowNames(_dimnames: SEXP) -> SEXP {
+pub unsafe fn GetRowNames(_dimnames: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -36,8 +35,7 @@ pub unsafe extern "C" fn GetRowNames(_dimnames: SEXP) -> SEXP {
 ///
 /// Ported from R's `GetColNames` in array.c.
 /// Returns `VECTOR_ELT(dimnames, 1)` if dimnames is a VECSXP, else R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetColNames(_dimnames: SEXP) -> SEXP {
+pub unsafe fn GetColNames(_dimnames: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -49,8 +47,7 @@ pub unsafe extern "C" fn GetColNames(_dimnames: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_matrix` in array.c (line 82).
 /// Creates a matrix from the given data, dimensions, and byrow flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_matrix(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -61,8 +58,7 @@ pub unsafe extern "C" fn do_matrix(_call: SEXP, _op: SEXP, _args: SEXP, _env: SE
 /// Allocate a 2-dimensional array (matrix) of the given type and dimensions.
 ///
 /// Ported from R's `allocMatrix` in array.c (line 221).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn allocMatrix(_mode: c_int, _nrow: c_int, _ncol: c_int) -> SEXP {
+pub unsafe fn allocMatrix(_mode: c_int, _nrow: c_int, _ncol: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -73,8 +69,7 @@ pub unsafe extern "C" fn allocMatrix(_mode: c_int, _nrow: c_int, _ncol: c_int) -
 /// Allocate a 3-dimensional array.
 ///
 /// Ported from R's `alloc3DArray` in array.c (line 255).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn alloc3DArray(
+pub unsafe fn alloc3DArray(
     _mode: c_int,
     _nrow: c_int,
     _ncol: c_int,
@@ -90,8 +85,7 @@ pub unsafe extern "C" fn alloc3DArray(
 /// Allocate a general array with dimensions given by the integer vector `dims`.
 ///
 /// Ported from R's `allocArray` in array.c (line 281).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn allocArray(_mode: c_int, _dims: SEXP) -> SEXP {
+pub unsafe fn allocArray(_mode: c_int, _dims: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -115,8 +109,7 @@ pub(crate) unsafe fn DropDims(_x: SEXP) -> SEXP {
 /// `.Internal(drop(x))` -- drop redundant dimensions from an array/matrix.
 ///
 /// Ported from R's `do_drop` in array.c (line 430).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_drop(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_drop(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -160,8 +153,7 @@ pub(crate) unsafe fn dispatch_xlength(_x: SEXP, _call: SEXP, _rho: SEXP) -> usiz
 /// `lengths(x, use.names)` -- return a vector of the lengths of elements.
 ///
 /// Ported from R's `do_lengths` in array.c (line 536).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_lengths(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -173,8 +165,7 @@ pub unsafe extern "C" fn do_lengths(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 ///
 /// Ported from R's `do_rowscols` in array.c (line 597).
 /// PRIMVAL(op) == 1 for row(), == 2 for col().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rowscols(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_rowscols(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -186,8 +177,7 @@ pub unsafe extern "C" fn do_rowscols(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 ///
 /// Ported from R's `do_matprod` in array.c (line 1250).
 /// PRIMVAL(op) == 0 for `%*%`, == 1 for `crossprod`, == 2 for `tcrossprod`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_matprod(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_matprod(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -198,8 +188,7 @@ pub unsafe extern "C" fn do_matprod(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 /// `t(x)` -- transpose a matrix.
 ///
 /// Ported from R's `do_transpose` in array.c (line 1569).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_transpose(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -210,8 +199,7 @@ pub unsafe extern "C" fn do_transpose(_call: SEXP, _op: SEXP, _args: SEXP, _env:
 /// `aperm(a, perm, resize = TRUE)` -- array transposition by permutation.
 ///
 /// Ported from R's `do_aperm` in array.c (line 1704).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_aperm(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_aperm(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -223,8 +211,7 @@ pub unsafe extern "C" fn do_aperm(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 ///
 /// Ported from R's `do_colsum` in array.c (line 1894).
 /// PRIMVAL(op): 0 = colSums, 1 = colMeans, 2 = rowSums, 3 = rowMeans.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_colsum(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_colsum(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -235,8 +222,7 @@ pub unsafe extern "C" fn do_colsum(_call: SEXP, _op: SEXP, _args: SEXP, _env: SE
 /// `array(data, dim, dimnames)` -- create a multi-dimensional array.
 ///
 /// Ported from R's `do_array` in array.c (line 2145).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_array(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_array(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -247,8 +233,7 @@ pub unsafe extern "C" fn do_array(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 /// `diag(x, nrow, ncol)` -- extract or construct a diagonal matrix.
 ///
 /// Ported from R's `do_diag` in array.c (line 2259).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_diag(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_diag(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -259,8 +244,7 @@ pub unsafe extern "C" fn do_diag(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP
 /// `backsolve(r, b, k, upper.tri, transpose)` -- solve triangular systems.
 ///
 /// Ported from R's `do_backsolve` in array.c (line 2357).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_backsolve(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_backsolve(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -271,8 +255,7 @@ pub unsafe extern "C" fn do_backsolve(_call: SEXP, _op: SEXP, _args: SEXP, _env:
 /// `max.col(m, ties.method)` -- find maximum position per row.
 ///
 /// Ported from R's `do_maxcol` in array.c (line 2403).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_maxcol(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_maxcol(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -283,8 +266,7 @@ pub unsafe extern "C" fn do_maxcol(_call: SEXP, _op: SEXP, _args: SEXP, _env: SE
 /// `asplit(x, m)` -- split an array into a list of sub-arrays.
 ///
 /// Ported from R's `do_asplit` in array.c (line 2433).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 

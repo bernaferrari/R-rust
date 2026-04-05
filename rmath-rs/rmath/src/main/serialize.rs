@@ -789,8 +789,7 @@ unsafe fn ReadItemInternal(
 // defaultSerializeVersion
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn defaultSerializeVersion() -> c_int {
+pub unsafe fn defaultSerializeVersion() -> c_int {
     R_DEFAULT_SERIALIZE_VERSION
 }
 
@@ -1168,8 +1167,7 @@ unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun:
 // do_serialize (dispatch for serialize/unserialize builtins)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1198,8 +1196,7 @@ pub unsafe extern "C" fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // do_serializeToConn
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1226,8 +1223,7 @@ pub unsafe extern "C" fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, en
 // do_unserializeFromConn
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unserializeFromConn(
+pub unsafe fn do_unserializeFromConn(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -1257,23 +1253,19 @@ pub unsafe extern "C" fn do_unserializeFromConn(
 // Lazy-load database functions
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_lazyLoadDBinsertValue(
+pub unsafe fn do_lazyLoadDBinsertValue(
     call: SEXP,
     op: SEXP,
     args: SEXP,

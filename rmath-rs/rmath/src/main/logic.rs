@@ -480,8 +480,7 @@ unsafe fn binary_logic_raw(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 ///
 /// `PRIMVAL(op)` determines the operation for binary case: 1 = &, 2 = |.
 /// For unary `!`, the PRIMVAL is 3 but the operation is determined by arity.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let arg1 = CAR(args);
 
@@ -564,8 +563,7 @@ pub unsafe extern "C" fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) 
 /// - `TRUE || NA` = TRUE
 /// - `FALSE || NA` = NA
 /// - `NA || NA` = NA
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_logic2(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op); // 1 = &&, 2 = ||
 
@@ -709,8 +707,7 @@ unsafe fn coerce_scalar_to_logical(x: SEXP, _call: SEXP) -> c_int {
 ///
 /// The `na.rm` argument (third argument, if present and TRUE) causes NAs
 /// to be skipped.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_logic3(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_logic3(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let code = primval(op); // 1 = all, 2 = any
 

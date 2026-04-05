@@ -765,8 +765,7 @@ unsafe fn cat_printsep(sep: SEXP, ntot: c_int) {
 
 /// Convert a scalar SEXP to a vector size (R_xlen_t).
 /// Returns -999 on error (caller should check).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asVecSize(x: SEXP) -> R_xlen_t {
+pub unsafe fn asVecSize(x: SEXP) -> R_xlen_t {
     unsafe {
         if isVectorAtomic(x) && LENGTH(x) >= 1 {
             let t = TYPEOF(x);
@@ -810,8 +809,7 @@ pub unsafe extern "C" fn asVecSize(x: SEXP) -> R_xlen_t {
 // do_delayed -- delayedAssign()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_delayed(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_delayed(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut name = R_NilValue();
         let expr: SEXP;
@@ -853,8 +851,7 @@ pub unsafe extern "C" fn do_delayed(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // do_makelazy -- .Internal(makeLazy(...))
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_makelazy(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_makelazy(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let names: SEXP;
         let values: SEXP;
@@ -903,8 +900,7 @@ pub unsafe extern "C" fn do_makelazy(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 
 static mut do_onexit_formals: SEXP = ptr::null_mut();
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let code: SEXP;
         let mut addit: c_int = FALSE;
@@ -980,7 +976,7 @@ pub unsafe extern "C" fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_args(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_args(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let s: SEXP;
 
@@ -1050,7 +1046,7 @@ pub unsafe extern "C" fn do_args(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_formals(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_formals(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) == SEXPTYPE::CLOSXP.0 {
@@ -1073,7 +1069,7 @@ pub unsafe extern "C" fn do_formals(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_body(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_body(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) == SEXPTYPE::CLOSXP.0 {
@@ -1096,7 +1092,7 @@ pub unsafe extern "C" fn do_body(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_bodyCode(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_bodyCode(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) == SEXPTYPE::CLOSXP.0 {
@@ -1113,8 +1109,7 @@ pub unsafe extern "C" fn do_bodyCode(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // do_envir -- environment()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_envir(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_envir(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) == SEXPTYPE::CLOSXP.0 {
@@ -1138,7 +1133,7 @@ pub unsafe extern "C" fn do_envir(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let mut s = CAR(args);
@@ -1183,7 +1178,7 @@ pub unsafe extern "C" fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, rho: SEX
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_newenv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_newenv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut enclos: SEXP;
         let hash: c_int;
@@ -1221,8 +1216,7 @@ pub unsafe extern "C" fn do_newenv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 // do_parentenv -- parent.env()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_parentenv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_parentenv(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let mut arg = CAR(args);
@@ -1244,8 +1238,7 @@ pub unsafe extern "C" fn do_parentenv(call: SEXP, op: SEXP, args: SEXP, rho: SEX
 // do_parentenvgets -- parent.env<- ()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_parentenvgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_parentenvgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1287,8 +1280,7 @@ pub unsafe extern "C" fn do_parentenvgets(call: SEXP, op: SEXP, args: SEXP, rho:
 // do_envirName -- environmentName()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_envirName(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_envirName(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut env = CAR(args);
         let mut ans = Rf_protect(mkString(""));
@@ -1324,8 +1316,7 @@ pub unsafe extern "C" fn do_envirName(call: SEXP, op: SEXP, args: SEXP, rho: SEX
 // do_cat -- cat()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cat(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_cat(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ci: cat_info = std::mem::zeroed();
         let objs: SEXP;
@@ -1525,7 +1516,7 @@ pub unsafe extern "C" fn do_cat(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_makelist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_makelist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = 0;
         let mut havenames: c_int = FALSE;
@@ -1578,7 +1569,7 @@ pub unsafe extern "C" fn do_makelist(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_expression(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_expression(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut named: c_int = 0;
         let n = length(args);
@@ -1619,7 +1610,7 @@ pub unsafe extern "C" fn do_expression(call: SEXP, op: SEXP, args: SEXP, rho: SE
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_makevector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_makevector(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let len: R_xlen_t;
         let mut s: SEXP;
@@ -1692,8 +1683,7 @@ pub unsafe extern "C" fn do_makevector(call: SEXP, op: SEXP, args: SEXP, rho: SE
 // xlengthgets -- set length of a vector or list
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
+pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
     unsafe {
         let lenx: R_xlen_t;
         let rval: SEXP;
@@ -1825,8 +1815,7 @@ pub unsafe extern "C" fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
 // lengthgets -- older version using R_len_t
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lengthgets(x: SEXP, len: c_int) -> SEXP {
+pub unsafe fn lengthgets(x: SEXP, len: c_int) -> SEXP {
     unsafe { xlengthgets(x, len as R_xlen_t) }
 }
 
@@ -1835,7 +1824,7 @@ pub unsafe extern "C" fn lengthgets(x: SEXP, len: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         check1arg(args, call, c"x".as_ptr());
@@ -1924,7 +1913,7 @@ unsafe fn setDflt(arg: SEXP, dflt: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_switch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_switch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let nargs = length(args);
         let argval: c_int;

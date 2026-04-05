@@ -772,8 +772,7 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
 ///
 /// `.Internal(unique(x, incomparables, fromLast, nmax))`
 /// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::from_raw(args) {
             Some(s) => s,
@@ -794,8 +793,7 @@ pub unsafe extern "C" fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// Implementation of R's `duplicated()` builtin.
 ///
 /// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::from_raw(args) {
             Some(s) => s,
@@ -817,8 +815,7 @@ pub unsafe extern "C" fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env:
 ///
 /// `.Internal(any(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 2 in the C source.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::from_raw(args) {
             Some(s) => s,
@@ -836,8 +833,7 @@ pub unsafe extern "C" fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 ///
 /// `.Internal(all(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 1 in the C source.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
         let args_s = match Sexp::from_raw(args) {
             Some(s) => s,

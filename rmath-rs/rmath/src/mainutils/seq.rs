@@ -476,8 +476,7 @@ unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
 // do_colon: `:` primitive
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_colon(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -1152,8 +1151,7 @@ unsafe fn rep4(x: SEXP, times: SEXP, len: R_xlen_t, each: R_xlen_t, nt: R_xlen_t
 // do_rep_int: .Internal(rep.int(x, times))
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -1256,8 +1254,7 @@ pub unsafe extern "C" fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // do_rep_len: .Internal(rep_len(x, length.out))
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -1376,8 +1373,7 @@ pub unsafe extern "C" fn do_rep_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // do_rep: rep() primitive
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         let mut ans: SEXP = ptr::null_mut();
@@ -1566,8 +1562,7 @@ pub unsafe extern "C" fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 // do_seq: seq.int() primitive
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         let mut ans: SEXP = R_NilValue();
@@ -1902,8 +1897,7 @@ pub unsafe extern "C" fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 // do_seq_along: seq_along()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
         checkArity(op, args);
@@ -1922,8 +1916,7 @@ pub unsafe extern "C" fn do_seq_along(call: SEXP, op: SEXP, args: SEXP, rho: SEX
 // do_seq_len: seq_len()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = rho;
         checkArity(op, args);
@@ -1957,8 +1950,7 @@ pub unsafe extern "C" fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // do_sequence: sequence()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
         checkArity(op, args);

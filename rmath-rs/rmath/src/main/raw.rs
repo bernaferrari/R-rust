@@ -97,8 +97,7 @@ unsafe fn mkCharLenCE(s: *const c_char, len: c_int, _enc: c_int) -> SEXP {
 ///
 /// Returns the number of bytes consumed (1-4), 0 for a null terminator,
 /// -1 for an invalid sequence, or -2 for an incomplete (truncated) sequence.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
+pub unsafe fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
     let byte = *s as u8 as u32;
 
     if byte == 0 {
@@ -169,8 +168,7 @@ pub unsafe extern "C" fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
 /// If `s` is null, no bytes are written (but the length is still computed).
 ///
 /// Returns the number of bytes written (1-4), or 0 for a null codepoint.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn inttomb(s: *mut c_char, wc: c_int) -> usize {
+pub unsafe fn inttomb(s: *mut c_char, wc: c_int) -> usize {
     let mut cvalue: u32 = wc as u32;
     let mut buf: [c_char; 10] = [0; 10];
     let b = if !s.is_null() { s } else { buf.as_mut_ptr() };
@@ -202,8 +200,7 @@ pub unsafe extern "C" fn inttomb(s: *mut c_char, wc: c_int) -> usize {
 // ---------------------------------------------------------------------------
 
 /// Convert a character string to a raw vector (byte level, ignores encoding).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = CAR(args);
     if !isString(x) || LENGTH(x) == 0 {
         // error: argument must be a character vector of length 1
@@ -231,8 +228,7 @@ pub unsafe extern "C" fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Convert a raw vector to a character string.
 /// If multiple=TRUE, returns a character vector with one element per byte.
 /// Otherwise, returns a single string (stripping trailing NULs).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = CAR(args);
     if TYPEOF(x) != SEXPTYPE::RAWSXP.0 {
         return R_NilValue();
@@ -285,8 +281,7 @@ pub unsafe extern "C" fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 
 /// Shift raw vector elements left or right by n bits.
 /// Positive n shifts left, negative n shifts right.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = CAR(args);
     let shift = crate::main::coerce::asInteger(CADR(args));
 
@@ -320,8 +315,7 @@ pub unsafe extern "C" fn do_rawShift(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // ---------------------------------------------------------------------------
 
 /// Expand each byte of a raw vector into 8 individual bits.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = CAR(args);
     if TYPEOF(x) != SEXPTYPE::RAWSXP.0 {
         return R_NilValue();
@@ -350,8 +344,7 @@ pub unsafe extern "C" fn do_rawToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 // ---------------------------------------------------------------------------
 
 /// Expand each integer into 32 individual bits.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(CAR(args), SEXPTYPE::INTSXP.0));
     if !isInteger(x) {
         Rf_unprotect(1);
@@ -382,8 +375,7 @@ pub unsafe extern "C" fn do_intToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 
 /// Split each double into two 32-bit integers.
 /// Returns an integer vector of length 2 * length(x).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
     let n = XLENGTH(x);
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 2 * n as c_int));
@@ -420,8 +412,7 @@ pub unsafe extern "C" fn do_numToInts(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 // ---------------------------------------------------------------------------
 
 /// Split each double into 64 individual bits.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
     let n = XLENGTH(x);
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP.0, 64 * n as c_int));
@@ -449,8 +440,7 @@ pub unsafe extern "C" fn do_numToBits(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Pack bits into raw, integer, or double vectors.
 /// type="raw" packs 8 bits per byte, type="integer" packs 32 bits per int,
 /// type="double" (numeric) packs 64 bits per double.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = CAR(args);
     let stype = CADR(args);
 
@@ -599,8 +589,7 @@ pub unsafe extern "C" fn do_packBits(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // ---------------------------------------------------------------------------
 
 /// Convert a UTF-8 string to a vector of integer codepoints.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = CAR(args);
     if !isString(x) || LENGTH(x) == 0 {
         return R_NilValue();
@@ -647,8 +636,7 @@ pub unsafe extern "C" fn do_utf8ToInt(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Convert integer codepoints to a UTF-8 string.
 /// If multiple=TRUE, returns a character vector with one string per codepoint.
 /// If allow_surrogate_pairs=TRUE, handles UTF-16 surrogate pairs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_intToUtf8(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(CAR(args), SEXPTYPE::INTSXP.0));
     if !isInteger(x) {
         Rf_unprotect(1);

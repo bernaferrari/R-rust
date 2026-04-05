@@ -157,8 +157,7 @@ pub(crate) fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut std::o
 }
 
 /// Report an error with a call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn errorcall(call: SEXP, format: *const c_char) {
+pub unsafe fn errorcall(call: SEXP, format: *const c_char) {
     verrorcall_dflt(call, format, ptr::null_mut());
 }
 
@@ -246,8 +245,7 @@ pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
 }
 
 /// Report an error with a call and pre-formatted message buffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn errorcall_cpy(call: SEXP, format: *const c_char) {
+pub unsafe fn errorcall_cpy(call: SEXP, format: *const c_char) {
     unsafe {
         let mut buf = vec![0u8; BUFSIZE + 1];
         if !format.is_null() {
@@ -284,8 +282,7 @@ pub fn Rf_error_unimplemented(name: &str) {
 }
 
 /// UNIMPLEMENTED -- called from C when a feature is not yet ported.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn UNIMPLEMENTED(s: *const c_char) {
+pub unsafe fn UNIMPLEMENTED(s: *const c_char) {
     unsafe {
         let name = if s.is_null() {
             "unknown"
@@ -300,8 +297,7 @@ pub unsafe extern "C" fn UNIMPLEMENTED(s: *const c_char) {
 }
 
 /// WrongArgCount -- incorrect number of arguments error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn WrongArgCount(s: *const c_char) {
+pub unsafe fn WrongArgCount(s: *const c_char) {
     unsafe {
         let name = if s.is_null() {
             "unknown"
@@ -432,8 +428,7 @@ pub unsafe extern "C" fn R_CheckUserInterrupt() {
 // ---------------------------------------------------------------------------
 
 /// Jump to the top-level context.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn jump_to_top_ex(
+pub unsafe fn jump_to_top_ex(
     _swap: c_int,
     _eval: c_int,
     _print: c_int,
@@ -451,24 +446,21 @@ pub unsafe extern "C" fn jump_to_top_ex(
 }
 
 /// Handle interrupt signal.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn onintr() {
+pub unsafe fn onintr() {
     unsafe {
         jump_to_top_ex(1, 1, 0, 0, 0);
     }
 }
 
 /// Handle interrupt signal without resume option.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn onintrNoResume() {
+pub unsafe fn onintrNoResume() {
     unsafe {
         jump_to_top_ex(0, 1, 0, 0, 0);
     }
 }
 
 /// jump_to_toplevel -- jump to top level without traceback, user error handler.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn jump_to_toplevel() {
+pub unsafe fn jump_to_toplevel() {
     unsafe {
         jump_to_top_ex(0, 0, 1, 1, 1);
     }
@@ -529,8 +521,7 @@ pub unsafe extern "C" fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *
 // ---------------------------------------------------------------------------
 
 /// do_stop -- R's stop() function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -563,8 +554,7 @@ pub unsafe extern "C" fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 // ---------------------------------------------------------------------------
 
 /// do_geterrmessage -- geterrmessage().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let msg = super::R_GetErrorBuf();
@@ -573,8 +563,7 @@ pub unsafe extern "C" fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env:
 }
 
 /// do_seterrmessage -- seterrmessage().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let msg = CAR(args);
@@ -595,8 +584,7 @@ pub unsafe extern "C" fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env:
 // ---------------------------------------------------------------------------
 
 /// do_interruptsSuspended -- get/set interrupts suspended flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_interruptsSuspended(
+pub unsafe fn do_interruptsSuspended(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -618,8 +606,7 @@ pub unsafe extern "C" fn do_interruptsSuspended(
 // ---------------------------------------------------------------------------
 
 /// ErrorMessage -- look up an error message from the database and call errorcall.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
+pub unsafe fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
     unsafe {
         use super::error_codes;
         let messages = [

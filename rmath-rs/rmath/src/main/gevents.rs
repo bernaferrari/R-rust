@@ -338,8 +338,7 @@ unsafe fn haveListeningDev() -> bool {
 // ---------------------------------------------------------------------------
 
 /// Set the event environment for a graphics device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setGraphicsEventEnv(
+pub unsafe fn do_setGraphicsEventEnv(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -406,8 +405,7 @@ pub unsafe extern "C" fn do_setGraphicsEventEnv(
 // ---------------------------------------------------------------------------
 
 /// Get the event environment for a graphics device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getGraphicsEventEnv(
+pub unsafe fn do_getGraphicsEventEnv(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -441,8 +439,7 @@ pub unsafe extern "C" fn do_getGraphicsEventEnv(
 // ---------------------------------------------------------------------------
 
 /// Get a graphics event from the event loop.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut result: SEXP = R_NilValue();
         let prompt: SEXP;
@@ -573,8 +570,7 @@ pub unsafe extern "C" fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, e
 // ---------------------------------------------------------------------------
 
 /// Process a mouse event. Used by devWindows.c and cairoDevice.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doMouseEvent(
+pub unsafe fn doMouseEvent(
     dd: pDevDesc,
     event: c_int,
     buttons: c_int,
@@ -643,8 +639,7 @@ pub unsafe extern "C" fn doMouseEvent(
 // ---------------------------------------------------------------------------
 
 /// Process a keyboard event. Used by devWindows.c and cairoDevice.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doKeybd(dd: pDevDesc, rkey: c_int, keyname_ptr: *const c_char) {
+pub unsafe fn doKeybd(dd: pDevDesc, rkey: c_int, keyname_ptr: *const c_char) {
     unsafe {
         (*dd).gettingEvent = 0; /* avoid recursive calls */
 
@@ -690,8 +685,7 @@ pub unsafe extern "C" fn doKeybd(dd: pDevDesc, rkey: c_int, keyname_ptr: *const 
 
 /// Process an idle event (background processing hook).
 /// Copy-modified from doKeybd -- Frederick Eaton 12 Jun 2016
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doIdle(dd: pDevDesc) {
+pub unsafe fn doIdle(dd: pDevDesc) {
     unsafe {
         (*dd).gettingEvent = 0; /* avoid recursive calls */
 
@@ -729,8 +723,7 @@ pub unsafe extern "C" fn doIdle(dd: pDevDesc) {
 // ---------------------------------------------------------------------------
 
 /// Returns TRUE if the device has an idle handler set.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doesIdle(dd: pDevDesc) -> c_int {
+pub unsafe fn doesIdle(dd: pDevDesc) -> c_int {
     unsafe {
         let sym = Rf_install(idleHandler());
         let handler = R_findVar(sym, (*dd).eventEnv);

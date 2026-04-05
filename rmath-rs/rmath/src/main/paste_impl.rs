@@ -594,8 +594,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 
 /// .Internal(paste (args, sep, collapse, recycle0))
 /// .Internal(paste0(args,      collapse, recycle0))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let collapse: SEXP;
         let sep: SEXP;
@@ -914,8 +913,7 @@ pub unsafe extern "C" fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// .Internal(filepath(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1038,8 +1036,7 @@ pub unsafe extern "C" fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEX
 
 /// format.default(x, trim, digits, nsmall, width, justify, na.encode,
 ///                scientific, decimal.mark)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         PrintDefaults();
@@ -1367,8 +1364,7 @@ pub unsafe extern "C" fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 ///   e = {0:2}.   0: Fixpoint; 1,2: exponential with 2/3 digit expon.
 ///
 /// for complex: 2 x 3 integers for (Re, Im)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 

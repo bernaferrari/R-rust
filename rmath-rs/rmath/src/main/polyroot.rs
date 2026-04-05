@@ -761,8 +761,7 @@ unsafe fn R_cpolyroot(
 /// polyroot() SEXP interface.
 ///
 /// Ported from lines 798-865 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_polyroot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_polyroot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let z = CAR(args);
 
     // coerce to complex

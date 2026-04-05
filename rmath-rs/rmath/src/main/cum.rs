@@ -305,8 +305,7 @@ pub fn icummin_int(x: &[c_int], s: &mut [c_int]) {
 /// - For complex: uses complex cumsum
 /// - For integer/logical: tries integer cumsum with overflow detection
 /// - Otherwise: coerces to double and uses double cumsum
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
         if s.is_null() || s == R_NilValue() {
@@ -392,8 +391,7 @@ pub unsafe extern "C" fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// - For complex: uses complex cumprod
 /// - For integer/logical: coerces to double first (R excludes cumprod from integer path)
 /// - Otherwise: coerces to double and uses double cumprod
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
         if s.is_null() || s == R_NilValue() {
@@ -443,8 +441,7 @@ pub unsafe extern "C" fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 /// - For complex: error (not defined for complex)
 /// - For integer/logical: uses integer cummax (initialized to NA_INTEGER)
 /// - Otherwise: coerces to double and uses double cummax
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
         if s.is_null() || s == R_NilValue() {
@@ -516,8 +513,7 @@ pub unsafe extern "C" fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// - For complex: error (not defined for complex)
 /// - For integer/logical: uses integer cummin (initialized to NA_INTEGER)
 /// - Otherwise: coerces to double and uses double cummin
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
         if s.is_null() || s == R_NilValue() {

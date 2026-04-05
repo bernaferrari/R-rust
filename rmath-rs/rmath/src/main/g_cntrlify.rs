@@ -640,8 +640,7 @@ unsafe extern "C" {
 // _controlify: converts a label string into annotated unsigned shorts
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _controlify(
+pub unsafe fn _controlify(
     dd: pGEDevDesc,
     src: *const c_uchar,
     typeface: c_int,

@@ -236,8 +236,7 @@ unsafe fn c_strcspn(s: *const c_char, reject: *const c_char) -> usize {
 ///
 /// # Safety
 /// `str` must be a valid NUL-terminated C string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sprintf_findspec(str: *const c_char) -> *const c_char {
+pub unsafe fn sprintf_findspec(str: *const c_char) -> *const c_char {
     unsafe {
         if str.is_null() {
             return str;
@@ -278,8 +277,7 @@ pub unsafe extern "C" fn sprintf_findspec(str: *const c_char) -> *const c_char {
 ///
 /// # Safety
 /// Both `fmt` and `pattern` must be valid NUL-terminated C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sprintf_checkfmt(fmt: *const c_char, pattern: *const c_char) -> bool {
+pub unsafe fn sprintf_checkfmt(fmt: *const c_char, pattern: *const c_char) -> bool {
     unsafe {
         if fmt.is_null() || pattern.is_null() {
             return true; // error
@@ -380,8 +378,7 @@ unsafe fn c_strcat(dest: *mut c_char, src: *const c_char) {
 //   - Automatic type coercion on first use (real->int for %d, any->double for %f, etc.)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let mut nargs: c_int = 0;
         let mut nfmt: c_int = 0;

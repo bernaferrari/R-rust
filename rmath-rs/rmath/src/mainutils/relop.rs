@@ -85,8 +85,7 @@ pub unsafe fn error_stub(_format: *const c_char) {}
 pub unsafe fn warningcall_stub(_call: SEXP, _format: *const c_char) {}
 
 /// Seql (string equality) -- checks if two CHARSXP are equal.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Seql(x: SEXP, y: SEXP) -> c_int {
+pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
     unsafe {
         if x == y {
             return 1;
@@ -104,14 +103,12 @@ pub unsafe extern "C" fn Seql(x: SEXP, y: SEXP) -> c_int {
 }
 
 /// Stub for NO_REFERENCES -- returns 0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NO_REFERENCES(_x: SEXP) -> c_int {
+pub unsafe fn NO_REFERENCES(_x: SEXP) -> c_int {
     0
 }
 
 /// isTs -- returns 1 if x has a tsp attribute (time series).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isTs(x: SEXP) -> c_int {
+pub unsafe fn isTs(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -122,8 +119,7 @@ pub unsafe extern "C" fn isTs(x: SEXP) -> c_int {
 }
 
 /// isArray -- returns 1 if x has a dim attribute (array).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isArray(x: SEXP) -> c_int {
+pub unsafe fn isArray(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -134,8 +130,7 @@ pub unsafe extern "C" fn isArray(x: SEXP) -> c_int {
 }
 
 /// isNumeric -- returns 1 if x is numeric (integer or real, not logical).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isNumeric(x: SEXP) -> c_int {
+pub unsafe fn isNumeric(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -150,8 +145,7 @@ pub unsafe extern "C" fn isNumeric(x: SEXP) -> c_int {
 }
 
 /// deparse1line_ex -- deparses an expression to a single-line string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
+pub unsafe fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
     unsafe {
         // deparse1line_ex is the "exact" variant that doesn't abbreviate
         crate::mainutils::deparse::deparse1line(x, abbreviate != 0)
@@ -159,12 +153,10 @@ pub unsafe extern "C" fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int
 }
 
 /// Stub for checkArity -- does nothing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn checkArity(_op: SEXP, _args: SEXP) {}
+pub unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
 
 /// PRIMVAL -- extracts the internal offset from a builtin/special.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PRIMVAL(op: SEXP) -> c_int {
+pub unsafe fn PRIMVAL(op: SEXP) -> c_int {
     unsafe {
         if op.is_null() {
             return 0;
@@ -179,8 +171,7 @@ pub unsafe extern "C" fn PRIMVAL(op: SEXP) -> c_int {
 }
 
 /// PRIMNAME -- returns the name of a builtin/special as a C string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PRIMNAME(op: SEXP) -> *const c_char {
+pub unsafe fn PRIMNAME(op: SEXP) -> *const c_char {
     unsafe {
         if op.is_null() {
             static EMPTY: [c_char; 1] = [0];
@@ -215,36 +206,30 @@ pub(crate) unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
 }
 
 /// Stub for conformable -- returns 1 (conformable).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn conformable(_a: SEXP, _b: SEXP) -> c_int {
+pub unsafe fn conformable(_a: SEXP, _b: SEXP) -> c_int {
     1
 }
 
 /// Stub for UNIMPLEMENTED_TYPE -- does nothing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn UNIMPLEMENTED_TYPE(_s: *const c_char, _x: SEXP) {}
+pub unsafe fn UNIMPLEMENTED_TYPE(_s: *const c_char, _x: SEXP) {}
 
 /// Stub for COMPLEX_RO -- returns DATAPTR as const Rcomplex pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn COMPLEX_RO(x: SEXP) -> *const Rcomplex {
+pub unsafe fn COMPLEX_RO(x: SEXP) -> *const Rcomplex {
     unsafe { DATAPTR(x) as *const Rcomplex }
 }
 
 /// Stub for INTEGER_RO -- returns DATAPTR as const int pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn INTEGER_RO(x: SEXP) -> *const c_int {
+pub unsafe fn INTEGER_RO(x: SEXP) -> *const c_int {
     unsafe { DATAPTR(x) as *const c_int }
 }
 
 /// Stub for RAW_RO -- returns DATAPTR as const Rbyte pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RAW_RO(x: SEXP) -> *const Rbyte {
+pub unsafe fn RAW_RO(x: SEXP) -> *const Rbyte {
     unsafe { DATAPTR(x) as *const Rbyte }
 }
 
 /// Stub for isNull -- matches R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isNull(x: SEXP) -> c_int {
+pub unsafe fn isNull(x: SEXP) -> c_int {
     unsafe { (x == R_NilValue()) as c_int }
 }
 
@@ -271,8 +256,7 @@ pub unsafe extern "C" fn isSymbol(x: SEXP) -> c_int {
 }
 
 /// Stub for isPairList -- check if SEXP is LISTSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isPairList(x: SEXP) -> c_int {
+pub unsafe fn isPairList(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -282,8 +266,7 @@ pub unsafe extern "C" fn isPairList(x: SEXP) -> c_int {
 }
 
 /// Stub for isVectorList -- check if SEXP is VECSXP or EXPRSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isVectorList(x: SEXP) -> c_int {
+pub unsafe fn isVectorList(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -349,8 +332,7 @@ pub unsafe extern "C" fn isLogical(x: SEXP) -> c_int {
 }
 
 /// Stub for IS_SIMPLE_SCALAR -- check if SEXP is a simple (no attribs) scalar.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
+pub unsafe fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -368,8 +350,7 @@ pub unsafe extern "C" fn ScalarLogical(x: c_int) -> SEXP {
 }
 
 /// NA_STRING -- returns the NA string CHARSXP sentinel.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NA_STRING() -> SEXP {
+pub unsafe fn NA_STRING() -> SEXP {
     unsafe {
         // Use a CHARSXP with the NA bit set (gp=1)
         let s = Rf_mkChar(b"NA\x00".as_ptr() as *const c_char);
@@ -511,8 +492,7 @@ where
 ///
 /// Checks for group dispatch via `DispatchGroup`, then delegates to
 /// `do_relop_dflt` for the default implementation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
         let arg1 = CAR(args);
@@ -706,8 +686,7 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
 ///
 /// Handles fast paths for simple scalars, then delegates to type-specific
 /// comparison functions.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> SEXP {
+pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> SEXP {
     unsafe {
         // Fast path: handle simple scalar cases
         if IS_SIMPLE_SCALAR(x, SEXPTYPE::INTSXP.0) != 0 {
@@ -1449,8 +1428,7 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Entry point for bitwise operators dispatched from R's internal mechanism.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, env);
         let a = CAR(args);

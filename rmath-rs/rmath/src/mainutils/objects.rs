@@ -778,8 +778,7 @@ unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
 
 /// Look up the class name in the methods package table of S3 classes.
 /// Returns FALSE when methods package is not loaded.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isBasicClass(_ss: *const c_char) -> c_int {
+pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
     // Full implementation requires R_MethodsNamespace and .S3MethodsClasses
     FALSE
 }
@@ -814,8 +813,7 @@ unsafe fn addS3Var(vars: SEXP, name: SEXP, value: SEXP) -> SEXP {
 
 /// Create the full list of S3 dispatch variables:
 /// .Generic, .Class, .Method, .GenericCallEnv, .GenericDefEnv, .Group
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn createS3Vars(
+pub unsafe fn createS3Vars(
     dotGeneric: SEXP,
     dotGroup: SEXP,
     dotClass: SEXP,
@@ -1058,8 +1056,7 @@ pub unsafe extern "C" fn R_LookupMethod(
 /// Core S3 method dispatch: iterate through class vector to find a matching
 /// method, dispatching to it if found. Returns 1 if a method was dispatched,
 /// 0 if no method was found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn usemethod(
+pub unsafe fn usemethod(
     generic: *const c_char,
     obj: SEXP,
     call: SEXP,
@@ -1143,8 +1140,7 @@ pub unsafe extern "C" fn usemethod(
 
 /// R's UseMethod() primitive. This is a SPECIALSXP that implements the
 /// full UseMethod dispatch protocol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // UseMethod takes two arguments: generic and (optionally) object
         let generic_arg = CAR(args);
@@ -1268,8 +1264,7 @@ pub unsafe extern "C" fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SE
 
 /// Read the S3 dispatch variables (.Generic, .Group, .Class, .Method,
 /// .GenericCallEnv, .GenericDefEnv) from the method's evaluation frame.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn readS3VarsFromFrame(
+pub unsafe fn readS3VarsFromFrame(
     frame: SEXP,
     generic: *mut SEXP,
     group: *mut SEXP,
@@ -1318,8 +1313,7 @@ pub unsafe extern "C" fn readS3VarsFromFrame(
 /// R's NextMethod() function, called via .Internal.
 ///
 /// Implements the NextMethod protocol for S3 dispatch.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let cptr = R_GlobalContext();
         if cptr.is_null() {
@@ -1642,8 +1636,7 @@ unsafe fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
 
 /// Version of inherits() that supports S4 inheritance and implicit classes.
 /// Returns TRUE/FALSE as c_int.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn inherits2(x: SEXP, what: *const c_char) -> c_int {
+pub unsafe fn inherits2(x: SEXP, what: *const c_char) -> c_int {
     unsafe {
         if x.is_null() || what.is_null() {
             return FALSE;
@@ -1750,8 +1743,7 @@ unsafe fn nameOfClass(what: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's inherits(x, what, which = FALSE) primitive.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -1828,8 +1820,7 @@ unsafe fn do_isobject(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R's oldClass() function. Gets/sets the class attribute directly.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -1859,8 +1850,7 @@ pub unsafe extern "C" fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 /// Internal function to get the dispatch environment.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // proc.dest is used internally for debugging; simplified
         R_NilValue()
@@ -1872,8 +1862,7 @@ pub unsafe extern "C" fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 // ---------------------------------------------------------------------------
 
 /// R's isS4() function. Returns TRUE if the object has the S4 bit set.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return Rf_ScalarLogical(FALSE);
@@ -1888,8 +1877,7 @@ pub unsafe extern "C" fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// R's asS4() function. Sets or unsets the S4 object bit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -1945,8 +1933,7 @@ pub unsafe extern "C" fn R_S4_method_dispatch(
 
 /// setClass() is an R-level function from the methods package.
 /// This C entry point is not normally used directly.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // setClass is defined in R, not C
         R_NilValue()
@@ -1958,8 +1945,7 @@ pub unsafe extern "C" fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 // ---------------------------------------------------------------------------
 
 /// setRefClass() is an R-level function from the methods package.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2036,8 +2022,7 @@ pub unsafe extern "C" fn R_set_standardGeneric_ptr(
 }
 
 /// Check whether S4 methods dispatch is currently enabled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isMethodsDispatchOn() -> c_int {
+pub unsafe fn isMethodsDispatchOn() -> c_int {
     unsafe {
         match R_STANDARD_GENERIC_PTR {
             None => FALSE,
@@ -2047,8 +2032,7 @@ pub unsafe extern "C" fn isMethodsDispatchOn() -> c_int {
 }
 
 /// do_S4on -- primitive for .isMethodsDispatchOn()
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() || args == R_NilValue() || length(args) == 0 {
             return Rf_ScalarLogical(isMethodsDispatchOn());
@@ -2067,8 +2051,7 @@ unsafe fn dispatchNonGeneric(_name: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
 }
 
 /// do_standardGeneric -- standardGeneric() .Internal
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -2101,8 +2084,7 @@ pub unsafe extern "C" fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, e
 // ---------------------------------------------------------------------------
 
 /// Set or query the primitive method table for a given operation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_set_prim_method(
+pub unsafe fn do_set_prim_method(
     op: SEXP,
     code_string: *const c_char,
     fundef: SEXP,
@@ -2346,8 +2328,7 @@ pub unsafe extern "C" fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isS4(s: SEXP) -> c_int {
+pub unsafe fn isS4(s: SEXP) -> c_int {
     unsafe {
         if s.is_null() {
             return FALSE;
@@ -2356,8 +2337,7 @@ pub unsafe extern "C" fn isS4(s: SEXP) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
+pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
     unsafe {
         if s.is_null() {
             return s;
@@ -2409,8 +2389,7 @@ pub unsafe extern "C" fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
 // do_setS4Object -- internal .setS4Object()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -2449,8 +2428,7 @@ pub unsafe extern "C" fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env
 
 /// Find a method for a generic function given an object's class.
 /// Returns the method SEXP and the class index via out parameters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn findmethod(
+pub unsafe fn findmethod(
     call: SEXP,
     op: SEXP,
     obj: SEXP,
@@ -2503,8 +2481,7 @@ pub unsafe extern "C" fn findmethod(
 
 /// Group dispatch for Ops, Math, Summary, and Complex groups.
 /// Returns 1 if dispatch occurred, 0 otherwise.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn DispatchGroup(
+pub unsafe fn DispatchGroup(
     s: SEXP,
     code: *const c_char,
     call: SEXP,

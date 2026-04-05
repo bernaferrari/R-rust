@@ -47,8 +47,7 @@ fn Rexp10(x: c_double) -> c_double {
 ///
 /// Used in GScale() (../library/graphics/src/graphics.c) and
 /// in ../library/grDevices/src/axis_scales.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GAxisPars(
+pub unsafe fn GAxisPars(
     min: *mut c_double,
     max: *mut c_double,
     n: *mut c_int,
@@ -171,8 +170,7 @@ unsafe fn GLPretty(ul: *mut c_double, uh: *mut c_double, n: *mut c_int) {
 
 /// GPretty -- compute "pretty" axis label positions.
 /// Delegates to GEPretty (in engine.c, calling R_pretty()).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
+pub unsafe fn GPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     unsafe {
         GEPretty(lo, up, ndiv);
     }

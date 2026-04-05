@@ -523,8 +523,7 @@ fn i_qsort_impl(v: &mut [c_int], mut I: Option<&mut &mut [c_int]>, i: usize, j: 
 // ---------------------------------------------------------------------------
 
 /// R's `.Internal(qsort(x))` — in-place quicksort of a numeric vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qsort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_qsort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::*;
 
@@ -680,8 +679,7 @@ pub unsafe extern "C" fn R_orderVector1(
 /// Check if a vector is sorted (from sort.c).
 ///
 /// Returns 1 if unsorted, 0 if sorted.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isUnsorted(x: *mut c_void, strictly: c_int) -> c_int {
+pub unsafe fn isUnsorted(x: *mut c_void, strictly: c_int) -> c_int {
     let data = x as *const f64;
     // We don't know the length here without SEXP, so just check adjacent pairs
     // This is a simplified implementation

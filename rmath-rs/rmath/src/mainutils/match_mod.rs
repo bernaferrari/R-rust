@@ -307,8 +307,7 @@ unsafe fn Seql_local(a: SEXP, b: SEXP) -> c_int {
 ///
 /// # Safety
 /// `f` and `t` must be valid null-terminated C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn psmatch(f: *const c_char, t: *const c_char, exact: c_int) -> c_int {
+pub unsafe fn psmatch(f: *const c_char, t: *const c_char, exact: c_int) -> c_int {
     unsafe {
         if f.is_null() || t.is_null() {
             return 0;
@@ -451,8 +450,7 @@ pub unsafe extern "C" fn R_pmatch(
 /// Returns FALSE (0) otherwise.
 ///
 /// Used in subscript.c and subassign.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
+pub unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
     unsafe {
         // "" or NA string matches nothing
         if isNA_STRING(s) || isNA_STRING(t) {
@@ -507,8 +505,7 @@ unsafe fn charFromSexp(s: SEXP) -> SEXP {
 ///
 /// # Safety
 /// `formal` and `tag` must be valid SEXP pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pmatch(formal: SEXP, tag: SEXP, exact: c_int) -> c_int {
+pub unsafe fn pmatch(formal: SEXP, tag: SEXP, exact: c_int) -> c_int {
     unsafe {
         let f = charFromSexp(formal);
         let t = charFromSexp(tag);
@@ -565,22 +562,19 @@ unsafe fn matchPar_int(tag: *const c_char, list: *mut SEXP, exact: c_int) -> SEX
 }
 
 /// matchPar — partial matching version of matchPar_int.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchPar(tag: *const c_char, list: *mut SEXP) -> SEXP {
+pub unsafe fn matchPar(tag: *const c_char, list: *mut SEXP) -> SEXP {
     unsafe { matchPar_int(tag, list, FALSE) }
 }
 
 /// matchArg — destructively extract a named list element matching tag (a symbol).
 /// Uses partial matching.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchArg(tag: SEXP, list: *mut SEXP) -> SEXP {
+pub unsafe fn matchArg(tag: SEXP, list: *mut SEXP) -> SEXP {
     unsafe { matchPar(CHAR(PRINTNAME(tag)), list) }
 }
 
 /// matchArgExact — destructively extract a named list element matching tag (a symbol).
 /// Uses exact matching.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP {
+pub unsafe fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP {
     unsafe { matchPar_int(CHAR(PRINTNAME(tag)), list, TRUE) }
 }
 
@@ -822,8 +816,7 @@ pub(crate) unsafe fn matchArgs_NR_local(formals: SEXP, supplied: SEXP, call: SEX
 /// matchArgs_RC — wrapper around matchArgs_NR that enables reference counting.
 ///
 /// Use this if the result might escape into R.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let args = matchArgs_NR_local(formals, supplied, call);
         // In full R, this would enable reference counting on the arglist.
@@ -875,8 +868,7 @@ unsafe fn patchArgument(supplied_slot: SEXP, name: SEXP, farg: *mut i32, cloenv:
 
 /// patchArgsByActuals — patch promargs to be promises for the respective actuals
 /// in the given environment. Used by NextMethod.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
+pub unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
     unsafe {
         let mut farg_i: c_int;
         let mut f: SEXP;
@@ -1001,8 +993,7 @@ pub unsafe extern "C" fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloen
 //
 // .Internal(match(x, table, nomatch, incomparables))
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1106,8 +1097,7 @@ pub unsafe extern "C" fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 //
 // .Internal(pmatch(x, table, nomatch, duplicates.ok))
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_pmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1275,8 +1265,7 @@ pub unsafe extern "C" fn do_pmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 //   j = unique exact match at position j
 //   j = unique partial match at position j (if no exact match)
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_charmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_charmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 

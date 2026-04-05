@@ -889,8 +889,7 @@ pub(crate) unsafe fn GetRNGstate() {
 }
 
 /// Copy seeds out to .Random.seed.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PutRNGstate() {
+pub unsafe fn PutRNGstate() {
     unsafe {
         let (rng_kind, n01_kind, sample_kind, len_seed, seeds_vec) = RNG.with(|rc| {
             let rng = rc.borrow();
@@ -1338,8 +1337,7 @@ unsafe fn PRIMVAL_local(op: SEXP) -> c_int {
 
 /// R's .Internal interface for 1-parameter distributions:
 /// rchisq, rexp, rgeom, rpois, rt, rsignrank
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1432,8 +1430,7 @@ pub unsafe extern "C" fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEX
 /// R's .Internal interface for 2-parameter distributions:
 /// rbeta, rbinom, rcauchy, rf, rgamma, rlnorm, rlogis, rnbinom, rnorm, runif,
 /// rweibull, rwilcox, rnchisq, rnbinom_mu
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1644,8 +1641,7 @@ pub unsafe extern "C" fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEX
 
 /// R's .Internal interface for 3-parameter distributions:
 /// rhyper
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1726,8 +1722,7 @@ pub unsafe extern "C" fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEX
 // do_RNGkind -- R's RNGkind() function
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         GetRNGstate();
@@ -1803,8 +1798,7 @@ pub unsafe extern "C" fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEX
 // do_setseed -- R's set.seed() function
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1883,8 +1877,7 @@ pub unsafe extern "C" fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEX
 // do_sample -- R's sample() function
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -2131,16 +2124,14 @@ pub fn SampleNoReplace_r(n: usize, nans: usize) -> Vec<c_int> {
 // S compatibility stubs
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn seed_in(ignored: *mut std::os::raw::c_long) {
+pub unsafe fn seed_in(ignored: *mut std::os::raw::c_long) {
     unsafe {
         let _ = ignored;
         GetRNGstate();
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn seed_out(ignored: *mut std::os::raw::c_long) {
+pub unsafe fn seed_out(ignored: *mut std::os::raw::c_long) {
     unsafe {
         let _ = ignored;
         PutRNGstate();

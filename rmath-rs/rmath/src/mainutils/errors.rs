@@ -693,8 +693,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
 /// For formatted errors, use `Rf_errorcall1()` or pre-format before calling.
 ///
 /// It does not return — it panics with an RError payload.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn errorcall(call: SEXP, format: *const c_char) {
+pub unsafe fn errorcall(call: SEXP, format: *const c_char) {
     unsafe {
         verrorcall_dflt(call, format, ptr::null_mut());
     }
@@ -754,8 +753,7 @@ pub unsafe fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]
 
 /// Report an error with a call and pre-formatted message buffer.
 /// Matches C's `errorcall_cpy()` — copies all data before doing anything else.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn errorcall_cpy(call: SEXP, format: *const c_char) {
+pub unsafe fn errorcall_cpy(call: SEXP, format: *const c_char) {
     unsafe {
         let mut buf = vec![0u8; BUFSIZE + 1];
         if !format.is_null() {
@@ -802,8 +800,7 @@ pub fn Rf_error_unimplemented(name: &str) {
 
 /// UNIMPLEMENTED — called from C when a feature is not yet ported.
 /// Matches C: `void UNIMPLEMENTED(const char *s) { error("unimplemented feature in %s", s); }`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn UNIMPLEMENTED(s: *const c_char) {
+pub unsafe fn UNIMPLEMENTED(s: *const c_char) {
     unsafe {
         let name = if s.is_null() {
             "unknown"
@@ -819,8 +816,7 @@ pub unsafe extern "C" fn UNIMPLEMENTED(s: *const c_char) {
 
 /// WrongArgCount — incorrect number of arguments error.
 /// Matches C: `void WrongArgCount(const char *s) { error("incorrect number of arguments to \"%s\"", s); }`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn WrongArgCount(s: *const c_char) {
+pub unsafe fn WrongArgCount(s: *const c_char) {
     unsafe {
         let name = if s.is_null() {
             "unknown"
@@ -986,16 +982,14 @@ unsafe fn setup_warnings() {
 ///
 /// This is the equivalent of R's `warningcall()`.
 /// Unlike errors, warnings do not terminate execution.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn warningcall(call: SEXP, format: *const c_char) {
+pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
     unsafe {
         vwarningcall_dflt(call, format, ptr::null_mut());
     }
 }
 
 /// Issue an immediate warning (bypass collection).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn warningcall_immediate(call: SEXP, format: *const c_char) {
+pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
     unsafe {
         let prev = IMMEDIATE_WARNING.load(Ordering::Relaxed);
         IMMEDIATE_WARNING.store(true, Ordering::Relaxed);
@@ -1105,8 +1099,7 @@ pub unsafe extern "C" fn Rf_message_append(format: *const c_char, append: c_int)
 
 /// do_message — R's message() builtin.
 /// Ported from errors.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1276,8 +1269,7 @@ pub unsafe extern "C" fn R_CheckUserInterrupt() {
 
 /// Jump to the top-level context.
 /// In C, this uses longjmp. In Rust, we panic with RError.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn jump_to_top_ex(
+pub unsafe fn jump_to_top_ex(
     _swap: c_int,
     _eval: c_int,
     _print: c_int,
@@ -1298,16 +1290,14 @@ pub unsafe extern "C" fn jump_to_top_ex(
 }
 
 /// Handle interrupt signal.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn onintr() {
+pub unsafe fn onintr() {
     unsafe {
         jump_to_top_ex(1, 1, 0, 0, 0);
     }
 }
 
 /// Handle interrupt signal without resume option.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn onintrNoResume() {
+pub unsafe fn onintrNoResume() {
     unsafe {
         jump_to_top_ex(0, 1, 0, 0, 0);
     }
@@ -1319,8 +1309,7 @@ pub unsafe extern "C" fn onintrNoResume() {
 
 /// do_stop — R's stop() function.
 /// Ported from errors.c do_stop().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1354,8 +1343,7 @@ pub unsafe extern "C" fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 
 /// do_warning — R's warning() function.
 /// Ported from errors.c do_warning().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1403,8 +1391,7 @@ pub unsafe extern "C" fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 }
 
 /// do_geterrmessage — geterrmessage().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let msg = R_GetErrorBuf();
@@ -1413,8 +1400,7 @@ pub unsafe extern "C" fn do_geterrmessage(call: SEXP, op: SEXP, args: SEXP, env:
 }
 
 /// do_seterrmessage — seterrmessage().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let msg = CAR(args);
@@ -1431,8 +1417,7 @@ pub unsafe extern "C" fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env:
 }
 
 /// do_printDeferredWarnings — print deferred warnings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_printDeferredWarnings(
+pub unsafe fn do_printDeferredWarnings(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -1446,8 +1431,7 @@ pub unsafe extern "C" fn do_printDeferredWarnings(
 }
 
 /// do_interruptsSuspended — get/set interrupts suspended flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_interruptsSuspended(
+pub unsafe fn do_interruptsSuspended(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -1602,8 +1586,7 @@ pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
 }
 
 /// do_traceback — traceback().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let skip = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
@@ -1642,8 +1625,7 @@ pub mod warning_codes {
 
 /// ErrorMessage — look up an error message from the database and call errorcall.
 /// Matches C: `void ErrorMessage(SEXP call, int which_error, ...)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
+pub unsafe fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char) {
     unsafe {
         let messages = [
             "invalid number of arguments",
@@ -1675,8 +1657,7 @@ pub unsafe extern "C" fn ErrorMessage(call: SEXP, which_error: c_int, format: *c
 
 /// WarningMessage — look up a warning message from the database and call warningcall.
 /// Matches C: `void WarningMessage(SEXP call, R_WARNING which_warn, ...)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
+pub unsafe fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
     unsafe {
         let messages = [
             "NAs introduced by coercion",
@@ -1701,8 +1682,7 @@ pub unsafe extern "C" fn WarningMessage(call: SEXP, which_warn: c_int, format: *
 // ---------------------------------------------------------------------------
 
 /// do_gettext — R's gettext() function (simplified, no i18n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // Simplified: just return the string as-is (no translation)
         let string = CADR(args);
@@ -1714,8 +1694,7 @@ pub unsafe extern "C" fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 }
 
 /// do_ngettext — R's ngettext() function (simplified, no i18n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let n = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
@@ -1812,8 +1791,7 @@ pub unsafe fn CLEAR_ENTRY_TARGET_ENVIR(e: SEXP) {
 pub const RESULT_SIZE: usize = 4;
 
 /// do_addCondHands — add condition handlers to the stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1853,8 +1831,7 @@ pub unsafe extern "C" fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: 
 }
 
 /// do_resetCondHands — reset condition handlers to a previous state.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let old = CAR(args);
@@ -1870,8 +1847,7 @@ pub unsafe extern "C" fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho
 // ---------------------------------------------------------------------------
 
 /// do_getRestart — get a restart from the restart stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let mut i = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
@@ -1908,8 +1884,7 @@ pub unsafe extern "C" fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SE
 }
 
 /// do_addRestart — add a restart to the restart stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let r = CAR(args);
@@ -1925,8 +1900,7 @@ pub unsafe extern "C" fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SE
 }
 
 /// do_invokeRestart — invoke a restart.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let r = CAR(args);
@@ -1946,8 +1920,7 @@ pub unsafe extern "C" fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho:
 }
 
 /// do_addTryHandlers — add tryCatch handlers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         // Simplified: mark the current context as a try context
@@ -1960,8 +1933,7 @@ pub unsafe extern "C" fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho
 // ---------------------------------------------------------------------------
 
 /// do_signalCondition — signal a condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         // Simplified: for now just return nil
@@ -1970,8 +1942,7 @@ pub unsafe extern "C" fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rh
 }
 
 /// do_dfltWarn — default warning handler.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP.0 || LENGTH(CAR(args)) != 1 {
@@ -1985,8 +1956,7 @@ pub unsafe extern "C" fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 }
 
 /// do_dfltStop — default error handler.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP.0 || LENGTH(CAR(args)) != 1 {
@@ -2278,8 +2248,7 @@ pub fn R_Expressions_keep() {
 /// or try/browser frames.
 ///
 /// Matches C's `void jump_to_toplevel(void)`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn jump_to_toplevel() {
+pub unsafe fn jump_to_toplevel() {
     unsafe {
         jump_to_top_ex(0, 0, 1, 1, 1);
     }
@@ -2684,8 +2653,7 @@ pub unsafe fn R_PrintDeferredWarnings() {
 }
 
 /// do_bindtextdomain — R's bindtextdomain() function (simplified, no i18n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         // Simplified: no i18n support, return TRUE for null args, nil otherwise

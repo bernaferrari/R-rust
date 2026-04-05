@@ -224,8 +224,7 @@ pub unsafe extern "C" fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_si
 ///
 /// Returns a static string.  `x` is the logical value (NA_LOGICAL for NA),
 /// `w` is the minimum field width.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
+pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -282,8 +281,7 @@ pub unsafe extern "C" fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 ///
 /// Returns a static string.  `x` is the integer value (NA_INTEGER for NA),
 /// `w` is the minimum field width.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
+pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -355,8 +353,7 @@ fn format_number_fixed(x: f64, prec: usize) -> String {
 /// `dec` is the decimal separator string (typically ".").
 ///
 /// Returns a pointer to a static buffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeReal0(
+pub unsafe fn EncodeReal0(
     x: f64,
     w: c_int,
     d: c_int,
@@ -450,8 +447,7 @@ pub unsafe extern "C" fn EncodeReal0(
 // ---------------------------------------------------------------------------
 
 /// Encode a real value for printing (single-char decimal separator variant).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeReal(
+pub unsafe fn EncodeReal(
     x: f64,
     w: c_int,
     d: c_int,
@@ -471,8 +467,7 @@ pub unsafe extern "C" fn EncodeReal(
 /// Encode a real value, dropping trailing zeros after the decimal point.
 ///
 /// Otherwise behaves identically to `EncodeReal0`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeRealDrop0(
+pub unsafe fn EncodeRealDrop0(
     x: f64,
     w: c_int,
     d: c_int,
@@ -585,8 +580,7 @@ pub unsafe extern "C" fn EncodeRealDrop0(
 ///
 /// This is used in specific contexts where the `#` flag ensures a decimal
 /// point is always present.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char {
+pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -646,8 +640,7 @@ pub unsafe extern "C" fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *c
 /// `wr`, `dr`, `er` are width, digits, scientific flag for the real part.
 /// `wi`, `di`, `ei` are width, digits, scientific flag for the imaginary part.
 /// `dec` is the decimal separator string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeComplex(
+pub unsafe fn EncodeComplex(
     x: Rcomplex,
     wr: c_int,
     dr: c_int,
@@ -722,8 +715,7 @@ pub unsafe extern "C" fn EncodeComplex(
 // ---------------------------------------------------------------------------
 
 /// Encode a raw byte as a two-digit hex string with optional prefix.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
+pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -763,8 +755,7 @@ pub unsafe extern "C" fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_
 ///
 /// This counts the number of columns needed when the string is printed
 /// with escape sequences (e.g., `\n` counts as 2 columns).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstrwid(
+pub unsafe fn Rstrwid(
     str: *const c_char,
     slen: c_int,
     ienc: c_int,
@@ -838,8 +829,7 @@ pub unsafe extern "C" fn Rstrwid(
 /// Returns the number of decimal digits in `n`.
 /// Note: `IndexWidth` is also defined in format.rs (c_int variant).
 /// This version uses R_xlen_t for wider range.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
+pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
     if n <= 0 {
         return 1;
     }
@@ -851,8 +841,7 @@ pub unsafe extern "C" fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Encode an environment SEXP for display.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeEnvironment(_x: SEXP) -> *const c_char {
+pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
     static BUF: LazyLock<Mutex<[u8; 1000]>> = LazyLock::new(|| Mutex::new([0u8; 1000]));
     let mut buf = BUF.lock().unwrap();
     let s = "<environment: 0x0>";
@@ -863,8 +852,7 @@ pub unsafe extern "C" fn EncodeEnvironment(_x: SEXP) -> *const c_char {
 }
 
 /// Encode an external pointer SEXP for display.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeExtptr(_x: SEXP) -> *const c_char {
+pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
     static BUF: LazyLock<Mutex<[u8; 1000]>> = LazyLock::new(|| Mutex::new([0u8; 1000]));
     let mut buf = BUF.lock().unwrap();
     let s = "<pointer: 0x0>";
@@ -878,8 +866,7 @@ pub unsafe extern "C" fn EncodeExtptr(_x: SEXP) -> *const c_char {
 ///
 /// Uses `formatReal` to determine optimal formatting, then creates a CHARSXP
 /// via `Rf_mkChar`. Returns R_NilValue (NA_STRING equivalent) for NA values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
+pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
     unsafe {
         // Check for NA
         if x.to_bits() == R_NA_BIT_PATTERN {
@@ -905,8 +892,7 @@ pub unsafe extern "C" fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
 /// Compute the escaped display width of a CHARSXP.
 ///
 /// Delegates to `Rstrwid` with the CHARSXP's character data and length.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
+pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
     unsafe {
         if s.is_null() {
             return 0;
@@ -935,8 +921,7 @@ pub enum Rprt_adj {
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// thread-local buffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeString(
+pub unsafe fn EncodeString(
     s: SEXP,
     w: c_int,
     quote: c_int,
@@ -1090,8 +1075,7 @@ pub unsafe extern "C" fn EncodeString(
 ///
 /// Dispatches on TYPEOF(x) to the appropriate encode function.
 /// The `cdec` parameter is the decimal separator character.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeElement(
+pub unsafe fn EncodeElement(
     x: SEXP,
     indx: c_int,
     quote: c_int,
@@ -1113,8 +1097,7 @@ pub unsafe extern "C" fn EncodeElement(
 /// Dispatches on TYPEOF(x) to the appropriate encode function.
 /// Uses `formatReal`/`formatLogical`/`formatInteger`/`formatComplex`/`formatString`
 /// to determine optimal widths, then calls the corresponding Encode function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeElement0(
+pub unsafe fn EncodeElement0(
     x: SEXP,
     indx: R_xlen_t,
     quote: c_int,
@@ -1193,8 +1176,7 @@ pub unsafe extern "C" fn EncodeElement0(
 /// Simple wrapper around `EncodeString` with width=0, quote=0, left-justified.
 /// Note: the returned pointer points to an internal buffer that is overwritten
 /// by subsequent calls to EncodeChar/EncodeString.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeChar(x: SEXP) -> *const c_char {
+pub unsafe fn EncodeChar(x: SEXP) -> *const c_char {
     unsafe { EncodeString(x, 0, 0, Rprt_adj::left) }
 }
 
@@ -1226,8 +1208,7 @@ pub unsafe extern "C" fn Rprintf(format: *const c_char, _args: *mut c_void) {
 /// Rvprintf: varargs variant of Rprintf.
 ///
 /// Simplified implementation: writes the format string directly to stdout.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rvprintf(format: *const c_char, _arg: *mut c_void) {
+pub unsafe fn Rvprintf(format: *const c_char, _arg: *mut c_void) {
     unsafe {
         if format.is_null() {
             return;
@@ -1246,8 +1227,7 @@ pub unsafe extern "C" fn Rvprintf(format: *const c_char, _arg: *mut c_void) {
 /// REvprintf: varargs variant of REprintf (to stderr).
 ///
 /// Simplified implementation: writes the format string directly to stderr.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn REvprintf(format: *const c_char, _arg: *mut c_void) {
+pub unsafe fn REvprintf(format: *const c_char, _arg: *mut c_void) {
     unsafe {
         if format.is_null() {
             return;
@@ -1265,8 +1245,7 @@ pub unsafe extern "C" fn REvprintf(format: *const c_char, _arg: *mut c_void) {
 ///
 /// Returns the number of characters written (length of the format string).
 /// Simplified: does not process variadic arguments.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn REvprintf_internal(format: *const c_char, _arg: *mut c_void) -> c_int {
+pub unsafe fn REvprintf_internal(format: *const c_char, _arg: *mut c_void) -> c_int {
     unsafe {
         if format.is_null() {
             return 0;
@@ -1287,8 +1266,7 @@ pub unsafe extern "C" fn REvprintf_internal(format: *const c_char, _arg: *mut c_
 ///
 /// Writes the format string to stdout. Returns the number of characters written.
 /// Simplified: does not process variadic arguments.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rcons_vprintf(format: *const c_char, _arg: *mut c_void) -> c_int {
+pub unsafe fn Rcons_vprintf(format: *const c_char, _arg: *mut c_void) -> c_int {
     unsafe {
         if format.is_null() {
             return 0;
@@ -1308,8 +1286,7 @@ pub unsafe extern "C" fn Rcons_vprintf(format: *const c_char, _arg: *mut c_void)
 /// Print a vector index label.
 ///
 /// Prints `[i]` with left-padding to width `w`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn VectorIndex(i: R_xlen_t, w: c_int) {
+pub unsafe fn VectorIndex(i: R_xlen_t, w: c_int) {
     unsafe {
         let iw = IndexWidth_xlen(i);
         let total_label_width = iw + 2; // "[i]" = 2 brackets + digits

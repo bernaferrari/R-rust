@@ -25,19 +25,16 @@ pub unsafe extern "C" fn R_RunningAsMainProgram() -> c_int {
 }
 
 /// FORTRAN compatibility stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn MAIN_(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
+pub unsafe fn MAIN_(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
     0
 }
 
 /// FORTRAN compatibility stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn MAIN__(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
+pub unsafe fn MAIN__(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
     0
 }
 
 /// FORTRAN compatibility stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn __main(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
+pub unsafe fn __main(_ac: c_int, _av: *mut *mut std::os::raw::c_char) -> c_int {
     0
 }

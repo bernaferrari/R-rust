@@ -49,8 +49,7 @@ pub const NO_COMCHAR: c_int = 100000;
 ///
 /// In the original C code this is `R_INLINE` and also handles the Win32
 /// non-MBCS locale case.  This port exposes it as a regular function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rspace(c: std::os::raw::c_uint) -> bool {
+pub unsafe fn Rspace(c: std::os::raw::c_uint) -> bool {
     if c == b' ' as std::os::raw::c_uint
         || c == b'\t' as std::os::raw::c_uint
         || c == b'\n' as std::os::raw::c_uint
@@ -77,8 +76,7 @@ pub unsafe extern "C" fn Rspace(c: std::os::raw::c_uint) -> bool {
 /// Note: this implementation uses Rust's `from_str_radix` which returns
 /// `i32` directly, so 64-bit overflow cannot occur.  We still check for
 /// trailing characters to match R semantics.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
+pub unsafe fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
     unsafe {
         if nptr.is_null() {
             return NA_INTEGER;
@@ -145,8 +143,7 @@ pub unsafe extern "C" fn Strtoi(nptr: *const c_char, base: c_int) -> c_int {
 /// This is a simplified port of R's `Strtod` / `R_strtod4`.  The full
 /// implementation would handle the `decchar` override (e.g. comma as
 /// decimal separator) and NaN/Inf variants.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Strtod(
+pub unsafe fn Strtod(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     decchar: c_char,
@@ -206,8 +203,7 @@ pub unsafe extern "C" fn Strtod(
 ///
 /// Returns the parsed `Rcomplex`.  If the string cannot be parsed, both
 /// real and imaginary parts are set to 0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn strtoc(
+pub unsafe fn strtoc(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
     treat_as_na: bool,
@@ -291,8 +287,7 @@ fn find_complex_separator(s: &str) -> Option<usize> {
 ///
 /// Skips leading whitespace, then reads exactly two hex digits.
 /// Returns 0 on failure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn strtoraw(
+pub unsafe fn strtoraw(
     nptr: *const c_char,
     endptr: *mut *mut c_char,
 ) -> std::os::raw::c_uchar {
@@ -341,8 +336,7 @@ pub unsafe extern "C" fn strtoraw(
 /// In the full R implementation this reads data from a connection, parsing
 /// fields according to `what`, `sep`, `dec`, quote/comment rules, etc.
 /// It depends on R connections, SEXP allocation, and many internal helpers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     std::ptr::null_mut()
 }
 
@@ -355,7 +349,6 @@ pub unsafe extern "C" fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// In the full R implementation this reads a line from the interactive
 /// console, stripping leading and trailing whitespace.  It depends on
 /// `R_ReadConsole`, `R_Interactive`, and SEXP string creation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     std::ptr::null_mut()
 }

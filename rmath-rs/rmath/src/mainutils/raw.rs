@@ -18,8 +18,7 @@ static utf8_table2: [c_int; 4] = [0, 0xc0, 0xe0, 0xf0];
 ///
 /// Returns the number of bytes consumed (1-4), 0 for a null terminator,
 /// -1 for an invalid sequence, or -2 for an incomplete (truncated) sequence.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
+pub unsafe fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
     unsafe {
         let byte = *s as u8 as u32;
 
@@ -90,8 +89,7 @@ pub unsafe extern "C" fn mbrtoint(w: *mut c_int, s: *const c_char) -> c_int {
 /// If `s` is null, no bytes are written (but the length is still computed).
 ///
 /// Returns the number of bytes written (1-4), or 0 for a null codepoint.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn inttomb(s: *mut c_char, wc: c_int) -> usize {
+pub unsafe fn inttomb(s: *mut c_char, wc: c_int) -> usize {
     unsafe {
         let mut cvalue: u32 = wc as u32;
         let mut buf: [c_char; 10] = [0; 10];

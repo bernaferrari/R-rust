@@ -279,8 +279,7 @@ unsafe fn printLogicalVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // printIntegerVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
+pub unsafe fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: c_int) {
     unsafe {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
@@ -329,8 +328,7 @@ pub unsafe extern "C" fn printIntegerVector(x: *const c_int, n: R_xlen_t, indx: 
 // printRealVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
+pub unsafe fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int) {
     unsafe {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
@@ -383,8 +381,7 @@ pub unsafe extern "C" fn printRealVector(x: *const f64, n: R_xlen_t, indx: c_int
 // printComplexVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
+pub unsafe fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, indx: c_int) {
     unsafe {
         let rp = get_R_PrintData();
         let mut wr: c_int = 0;
@@ -451,8 +448,7 @@ pub unsafe extern "C" fn printComplexVector(x: *const Rcomplex, n: R_xlen_t, ind
 // printRawVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
+pub unsafe fn printRawVector(x: *const u8, n: R_xlen_t, indx: c_int) {
     unsafe {
         let rp = get_R_PrintData();
         let mut w: c_int = 0;
@@ -636,8 +632,7 @@ unsafe fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // printVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printVector(x: SEXP, indx: c_int, quote: c_int) {
+pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
     unsafe {
         if x.is_null() {
             return;
@@ -1066,8 +1061,7 @@ unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 // printNamedVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printNamedVector(
+pub unsafe fn printNamedVector(
     x: SEXP,
     names: SEXP,
     quote: c_int,
@@ -1136,8 +1130,7 @@ pub unsafe extern "C" fn printNamedVector(
 // PrintWarnings -- delegates to errors.rs real implementation.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PrintWarnings() {
+pub unsafe fn PrintWarnings() {
     crate::main::errors::PrintWarnings();
 }
 
@@ -1145,8 +1138,7 @@ pub unsafe extern "C" fn PrintWarnings() {
 // type2str_nowarn
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn type2str_nowarn(stype: c_int) -> *const c_char {
+pub unsafe fn type2str_nowarn(stype: c_int) -> *const c_char {
     match stype {
         0 => b"NULL\0".as_ptr() as *const c_char,
         1 => b"symbol\0".as_ptr() as *const c_char,
@@ -1180,8 +1172,7 @@ pub unsafe extern "C" fn type2str_nowarn(stype: c_int) -> *const c_char {
 // GetMatrixDimnames
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetMatrixDimnames(
+pub unsafe fn GetMatrixDimnames(
     x: SEXP,
     rl: *mut SEXP,
     cl: *mut SEXP,

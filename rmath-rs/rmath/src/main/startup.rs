@@ -56,8 +56,7 @@ const Min_Vsize: usize = 262_144;
 // ---------------------------------------------------------------------------
 
 /// Get the workspace file name.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn get_workspace_name() -> *const c_char {
+pub unsafe fn get_workspace_name() -> *const c_char {
     static WORKSPACE_NAME: &[u8] = b".RData\0";
     WORKSPACE_NAME.as_ptr() as *const c_char
 }

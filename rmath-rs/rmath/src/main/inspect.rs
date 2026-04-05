@@ -97,8 +97,7 @@ fn sexptype2char(s: i32) -> &'static str {
 ///
 /// Returns the type of the object as a character string.
 /// Ported from R's typeof() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let s = CAR(args);
@@ -167,8 +166,7 @@ pub unsafe extern "C" fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 ///
 /// Marks the value as invisible for auto-printing.
 /// Ported from R's invisible() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let x = CAR(args);
@@ -184,8 +182,7 @@ pub unsafe extern "C" fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// do_isnull — R's is.null() function.
 ///
 /// Ported from R's isnull() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isnull(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isnull(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let s = CAR(args);
@@ -206,8 +203,7 @@ pub unsafe extern "C" fn do_isnull(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// Returns the length of an object. For vectors, this is the number of elements.
 /// For pairlists, this is the number of pairs. For NULL, returns 0.
 /// Ported from R's length() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let mut s = CAR(args);
@@ -271,8 +267,7 @@ pub unsafe extern "C" fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 ///
 /// Returns the body of a function.
 /// Ported from R's body() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let s = CAR(args);
@@ -301,8 +296,7 @@ pub unsafe extern "C" fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 ///
 /// Returns the arguments (promise objects) from the matching call.
 /// Ported from R's args() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_args(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_args(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
 
@@ -332,8 +326,7 @@ pub unsafe extern "C" fn do_args(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -
 ///
 /// Returns the environment of a function or other object.
 /// Ported from R's environment() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let s = CAR(args);
@@ -361,8 +354,7 @@ pub unsafe extern "C" fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _env
 ///
 /// Compactly displays the internal structure of an R object.
 /// Ported from R's str() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -413,8 +405,7 @@ pub unsafe extern "C" fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 ///
 /// Returns the names attribute of an object.
 /// Ported from R's names() in attrib.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_names(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_names(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -439,8 +430,7 @@ pub unsafe extern "C" fn do_names(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP)
 ///
 /// Returns the dimensions of an object.
 /// Ported from R's dim() in attrib.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dim(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_dim(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -465,8 +455,7 @@ pub unsafe extern "C" fn do_dim(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -
 ///
 /// Returns the dimnames attribute of an object.
 /// Ported from R's dimnames() in attrib.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dimnames(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_dimnames(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -487,8 +476,7 @@ pub unsafe extern "C" fn do_dimnames(_call: SEXP, op: SEXP, args: SEXP, _env: SE
 ///
 /// Returns all attributes of an object.
 /// Ported from R's attributes() in attrib.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attributes(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_attributes(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -509,8 +497,7 @@ pub unsafe extern "C" fn do_attributes(_call: SEXP, op: SEXP, args: SEXP, _env: 
 ///
 /// Returns the class of an object as a character vector.
 /// Ported from R's classname() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -546,8 +533,7 @@ pub unsafe extern "C" fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: S
 ///
 /// Returns the levels of a factor.
 /// Ported from R's levels() in attrib.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_levels(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_levels(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -568,8 +554,7 @@ pub unsafe extern "C" fn do_levels(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP
 ///
 /// Returns a compact display of the structure of an arbitrary R object.
 /// Ported from R's structure() in inspect.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
@@ -604,8 +589,7 @@ pub unsafe extern "C" fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: S
 // ---------------------------------------------------------------------------
 
 /// do_strformat — internal str() format control (no-op).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_strformat(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_strformat(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         R_NilValue()
@@ -617,8 +601,7 @@ pub unsafe extern "C" fn do_strformat(_call: SEXP, op: SEXP, args: SEXP, _env: S
 // ---------------------------------------------------------------------------
 
 /// list(...) constructs a list from its arguments.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(args);
         let s = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n));
@@ -637,8 +620,7 @@ pub unsafe extern "C" fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// expression(...) constructs an expression from its arguments.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(args);
         let s = Rf_protect(Rf_allocVector(SEXPTYPE::EXPRSXP.0, n));
@@ -656,8 +638,7 @@ pub unsafe extern "C" fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _env:
 // do_emptyenv — return the empty environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_emptyenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_emptyenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_EmptyEnv() }
 }
 
@@ -665,8 +646,7 @@ pub unsafe extern "C" fn do_emptyenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 // do_baseenv — return the base environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_baseenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_baseenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_BaseEnv() }
 }
 
@@ -674,8 +654,7 @@ pub unsafe extern "C" fn do_baseenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 // do_globalenv — return the global environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_GlobalEnv() }
 }
 
@@ -683,8 +662,7 @@ pub unsafe extern "C" fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _env:
 // do_withVisible — wrap result with visibility flag
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_withVisible(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_withVisible(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let s = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
@@ -714,15 +692,13 @@ pub unsafe extern "C" fn do_withVisible(_call: SEXP, _op: SEXP, args: SEXP, _env
 // do_enc2native / do_enc2utf8 — encoding conversion stubs
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_enc2native(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         CAR(args) // no-op in our UTF-8 implementation
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         CAR(args) // no-op in our UTF-8 implementation
     }
@@ -732,8 +708,7 @@ pub unsafe extern "C" fn do_enc2utf8(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 // do_as_call — convert to call (LANGSXP)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_as_call(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_as_call(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::LANGSXP.0 {
@@ -751,8 +726,7 @@ pub unsafe extern "C" fn do_as_call(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // do_as_environment — convert to environment
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_as_environment(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) == SEXPTYPE::ENVSXP.0 {

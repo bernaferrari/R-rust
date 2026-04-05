@@ -1042,8 +1042,7 @@ unsafe fn InitMmapRealClass(_dll: *mut c_void) {
 }
 
 /// do_mmap_file -- .Internal(mmap(file, type, ptrOK, wrtOK, serOK))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_mmap_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_mmap_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let _file = CAR(args);
     let _stype = CADR(args);
     let _sptrOK = CADDR(args);
@@ -1056,8 +1055,7 @@ pub unsafe extern "C" fn do_mmap_file(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 }
 
 /// do_munmap_file -- .Internal(munmap(x))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_munmap_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_munmap_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     let _x = CAR(args);
     R_NilValue()
 }
@@ -1487,8 +1485,7 @@ unsafe fn wrap_meta(x: SEXP, srt: c_int, no_na: c_int) -> SEXP {
 }
 
 /// do_wrap_meta -- .Internal(wrap_meta(x, srt, no_na))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     // checkArity(op, args);
     let x = CAR(args);
     // int srt = asInteger(CADR(args));
@@ -1505,8 +1502,7 @@ pub unsafe extern "C" fn R_tryWrap(x: SEXP) -> SEXP {
 }
 
 /// do_tryWrap -- .Internal(tryWrap(x))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tryWrap(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tryWrap(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     // checkArity(op, args);
     let x = CAR(args);
     R_tryWrap(x)

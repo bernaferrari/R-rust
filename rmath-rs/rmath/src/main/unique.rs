@@ -447,8 +447,7 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
 ///
 /// `.Internal(unique(x, incomparables, fromLast, nmax))`
 /// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         // incomp = CADR(args) -- we skip incomparables support (same as empty incomparables)
@@ -555,8 +554,7 @@ pub unsafe extern "C" fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// Implementation of R's `duplicated()` builtin.
 ///
 /// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         // fromLast = CADDR(args) -- skip, default FALSE
@@ -615,8 +613,7 @@ unsafe fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
 ///
 /// `.Internal(any(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 2 in the C source.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Walk through the args list. For a simple implementation,
         // we process the first logical vector argument.
@@ -709,8 +706,7 @@ pub unsafe extern "C" fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 ///
 /// `.Internal(all(..., na.rm = FALSE))`
 /// PRIMVAL(op) == 1 in the C source.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let mut val: i32 = 1; // TRUE (default for empty all())
         let mut has_na = false;
@@ -797,8 +793,7 @@ pub unsafe extern "C" fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 // ---------------------------------------------------------------------------
 
 /// which() returns the indices where a logical vector is TRUE.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::*;
 
@@ -861,8 +856,7 @@ pub unsafe extern "C" fn do_which(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 // ---------------------------------------------------------------------------
 
 /// anyNA() returns TRUE if any element is NA.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_anyNA(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_anyNA(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::CHAR;
         use crate::sexp::constructors::Rf_ScalarLogical;
@@ -906,8 +900,7 @@ pub unsafe extern "C" fn do_anyNA(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 // ---------------------------------------------------------------------------
 
 /// anyDuplicated(x) returns the index of the first duplicated element.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::*;
 
@@ -940,8 +933,7 @@ pub unsafe extern "C" fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _e
 
 /// pmin() and pmax() return the parallel min/max of input vectors.
 /// Uses offset: 0 for pmax, 1 for pmin.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pminmax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_pminmax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::*;
 
@@ -1033,8 +1025,7 @@ pub unsafe extern "C" fn do_pminmax(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // ---------------------------------------------------------------------------
 
 /// which.min(x) and which.max(x) return the index of the min/max element.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_which_min(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_which_min(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::*;
 
@@ -1075,8 +1066,7 @@ pub unsafe extern "C" fn do_which_min(_call: SEXP, _op: SEXP, args: SEXP, _env: 
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_which_max(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_which_max(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::*;
 

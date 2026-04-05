@@ -16,8 +16,7 @@ use crate::sexp::globals::R_NilValue;
 /// This is the equivalent of R's `do_parse()` from source.c.
 ///
 /// .Internal( parse(file, n, text, prompt, srcfile, encoding) )
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_parse(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_parse(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // Stub: return empty expression vector
         R_NilValue()
@@ -25,14 +24,12 @@ pub unsafe extern "C" fn do_parse(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEX
 }
 
 /// Parse error handler (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn parseError(_call: SEXP, _linenum: c_int) {
+pub unsafe fn parseError(_call: SEXP, _linenum: c_int) {
     // Stub: does nothing (error handling is via panic)
 }
 
 /// Get the parse context (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getParseContext() -> SEXP {
+pub unsafe fn getParseContext() -> SEXP {
     unsafe { R_NilValue() }
 }
 

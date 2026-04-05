@@ -99,54 +99,44 @@ pub unsafe extern "C" fn R_altrep_inspect(_x: SEXP, _pre: c_int, _deep: c_int) -
 // ---------------------------------------------------------------------------
 
 /// ALTINTEGER_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTINTEGER_ELT(_x: SEXP, _i: R_xlen_t) -> c_int {
+pub unsafe fn ALTINTEGER_ELT(_x: SEXP, _i: R_xlen_t) -> c_int {
     NA_INTEGER
 }
 
 /// ALTINTEGER_SET_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTINTEGER_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: c_int) {}
+pub unsafe fn ALTINTEGER_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: c_int) {}
 
 /// ALTREAL_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTREAL_ELT(_x: SEXP, _i: R_xlen_t) -> f64 {
+pub unsafe fn ALTREAL_ELT(_x: SEXP, _i: R_xlen_t) -> f64 {
     crate::sexp::ffi::NA_REAL
 }
 
 /// ALTREAL_SET_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTREAL_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: f64) {}
+pub unsafe fn ALTREAL_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: f64) {}
 
 /// ALTLOGICAL_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTLOGICAL_ELT(_x: SEXP, _i: R_xlen_t) -> c_int {
+pub unsafe fn ALTLOGICAL_ELT(_x: SEXP, _i: R_xlen_t) -> c_int {
     crate::sexp::ffi::NA_LOGICAL
 }
 
 /// ALTLOGICAL_SET_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTLOGICAL_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: c_int) {}
+pub unsafe fn ALTLOGICAL_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: c_int) {}
 
 /// ALTRAW_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTRAW_ELT(_x: SEXP, _i: R_xlen_t) -> u8 {
+pub unsafe fn ALTRAW_ELT(_x: SEXP, _i: R_xlen_t) -> u8 {
     0
 }
 
 /// ALTRAW_SET_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTRAW_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: u8) {}
+pub unsafe fn ALTRAW_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: u8) {}
 
 /// ALTSTRING_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTSTRING_ELT(_x: SEXP, _i: R_xlen_t) -> SEXP {
+pub unsafe fn ALTSTRING_ELT(_x: SEXP, _i: R_xlen_t) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// ALTSTRING_SET_ELT stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ALTSTRING_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: SEXP) {}
+pub unsafe fn ALTSTRING_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: SEXP) {}
 
 // ---------------------------------------------------------------------------
 // ALTREP finalizer (stub)

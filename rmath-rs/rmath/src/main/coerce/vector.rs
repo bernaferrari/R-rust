@@ -739,8 +739,7 @@ pub(crate) unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
 /// This is the main entry point for type coercion in R, equivalent to
 /// R's `coerceVector()` from coerce.c. It dispatches to the appropriate
 /// type-specific coercion function based on the source and target types.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
+pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
     unsafe {
         if v.is_null() {
             return ptr::null_mut();
@@ -834,16 +833,14 @@ pub unsafe extern "C" fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
 ///
 /// This is R's `asLogical()` from coerce.c. Returns NA_LOGICAL for
 /// empty vectors, and dispatches based on the vector's type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asLogical(x: SEXP) -> c_int {
+pub unsafe fn asLogical(x: SEXP) -> c_int {
     unsafe { asLogical2(x, 0, R_NilValue()) }
 }
 
 /// Convert the first element of a vector to a logical value, with length checking.
 ///
 /// This is R's `asLogical2()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
+pub unsafe fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -880,8 +877,7 @@ pub unsafe extern "C" fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_
 /// Convert the first element of a vector to an integer value.
 ///
 /// This is R's `asInteger()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asInteger(x: SEXP) -> c_int {
+pub unsafe fn asInteger(x: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -918,8 +914,7 @@ pub unsafe extern "C" fn asInteger(x: SEXP) -> c_int {
 /// Convert the first element of a vector to a real (double) value.
 ///
 /// This is R's `asReal()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asReal(x: SEXP) -> c_double {
+pub unsafe fn asReal(x: SEXP) -> c_double {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -955,8 +950,7 @@ pub unsafe extern "C" fn asReal(x: SEXP) -> c_double {
 /// Convert the first element of a vector to a complex value.
 ///
 /// This is R's `asComplex()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asComplex(x: SEXP) -> Rcomplex {
+pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
     unsafe {
         let mut warn: c_int = 0;
         let mut z = Rcomplex {
@@ -1007,8 +1001,7 @@ pub unsafe extern "C" fn asComplex(x: SEXP) -> Rcomplex {
 ///
 /// This follows the same pattern as asInteger/asReal, returning 0 for
 /// out-of-range or NA values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asRaw(x: SEXP) -> Rbyte {
+pub unsafe fn asRaw(x: SEXP) -> Rbyte {
     unsafe {
         if isVectorAtomic(x) && xlength(x) >= 1 {
             let val = asInteger(x);

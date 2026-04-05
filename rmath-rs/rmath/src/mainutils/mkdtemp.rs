@@ -20,8 +20,7 @@ const TMP_MAX: u32 = 238328;
 /// with mode 0700.
 ///
 /// Returns the pointer to `template` on success, or null on failure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mkdtemp(template: *mut c_char) -> *mut c_char {
+pub unsafe fn mkdtemp(template: *mut c_char) -> *mut c_char {
     unsafe {
         if template.is_null() {
             return ptr::null_mut();

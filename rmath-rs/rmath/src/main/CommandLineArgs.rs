@@ -134,8 +134,7 @@ pub unsafe extern "C" fn R_set_command_line_arguments(argc: c_int, argv: *mut *m
 /// # Safety
 /// - `call`, `op`, `args`, `env` are SEXP pointers following R's calling
 ///   convention. Only `args` is checked for arity.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = call;
         let _ = op;

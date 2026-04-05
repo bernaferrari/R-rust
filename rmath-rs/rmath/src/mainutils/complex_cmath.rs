@@ -478,8 +478,7 @@ pub fn z_atan2(r: &mut Rcomplex, csn: &Rcomplex, ccs: &Rcomplex) {
 /// Unary + and - on complex vectors.
 ///
 /// Ported from lines 75-98 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn complex_unary(code: c_int, s1: SEXP, _call: SEXP) -> SEXP {
+pub unsafe fn complex_unary(code: c_int, s1: SEXP, _call: SEXP) -> SEXP {
     unsafe {
         match code {
             0 => {
@@ -511,8 +510,7 @@ pub unsafe extern "C" fn complex_unary(code: c_int, s1: SEXP, _call: SEXP) -> SE
 /// Binary +, -, *, /, ^ on complex vectors.
 ///
 /// Ported from lines 172-243 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
+pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
     unsafe {
         let n1 = XLENGTH(s1);
         let n2 = XLENGTH(s2);
@@ -632,8 +630,7 @@ pub unsafe extern "C" fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP
 /// Re, Im, Mod, Arg, Conj functions.
 ///
 /// Ported from lines 245-356 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -792,8 +789,7 @@ pub unsafe extern "C" fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Complex math functions of one argument: log, sqrt, exp, cos, sin, tan, etc.
 ///
 /// Ported from lines 612-657 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn complex_math1(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn complex_math1(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -853,8 +849,7 @@ pub unsafe extern "C" fn complex_math1(_call: SEXP, _op: SEXP, args: SEXP, _env:
 /// Complex math functions of two arguments: atan2, round, log, signif.
 ///
 /// Ported from lines 700-755 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn complex_math2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn complex_math2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -956,8 +951,7 @@ pub unsafe extern "C" fn complex_math2(_call: SEXP, _op: SEXP, args: SEXP, _env:
 /// complex(length, real, imag) constructor.
 ///
 /// Ported from lines 757-793 of complex.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();

@@ -16,8 +16,7 @@ use std::os::raw::{c_char, c_int};
 ///
 /// This uses ASCII-only case folding, matching the original R implementation
 /// which uses `isupper`/`tolower` from ctype.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int {
+pub unsafe fn strncasecmp(s1: *const c_char, s2: *const c_char, n: usize) -> c_int {
     unsafe {
         if s1.is_null() || s2.is_null() {
             if s1.is_null() && s2.is_null() {

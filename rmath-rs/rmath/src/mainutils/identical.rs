@@ -122,8 +122,7 @@ unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
 /// - `NE_BIT_NA_NUM_BIT` (3): Full bitwise comparison for all values.
 ///
 /// Returns 1 if x != y, 0 if x == y (under the chosen strictness).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn neWithNaN(x: f64, y: f64, str: c_int) -> c_int {
+pub unsafe fn neWithNaN(x: f64, y: f64, str: c_int) -> c_int {
     // Single-NA modes: treat R's NA specially
     match str {
         NE_SINGLE_NA_NUM_EQ | NE_SINGLE_NA_NUM_BIT => {
@@ -527,8 +526,7 @@ pub unsafe extern "C" fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
 ///
 /// Arguments: x, y, num.eq, single.NA, attrib.as.set,
 ///            ignore.bytecode, ignore.environment, ignore.srcref, extptr.as.ref
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADDDR, CADDR, CADR, CDDDR};
         use crate::sexp::constructors::Rf_ScalarLogical;

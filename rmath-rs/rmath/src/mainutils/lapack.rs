@@ -36,8 +36,7 @@ pub unsafe extern "C" fn R_setLapackRoutines(_routines: *const c_void) -> *const
 // ---------------------------------------------------------------------------
 
 /// .Internal(lapack(...)) -- dispatch to the LAPACK module.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_lapack(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_lapack(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         // LAPACK module not loaded in the Rust port

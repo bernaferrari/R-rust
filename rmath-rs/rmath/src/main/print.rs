@@ -435,8 +435,7 @@ pub(crate) unsafe fn CHAR_OR_NULL(x: SEXP) -> *const c_char {
 // PrintInit
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
+pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
     unsafe {
         let d = data as *mut R_PrintData;
         if d.is_null() {
@@ -477,8 +476,7 @@ pub unsafe extern "C" fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
 // PrintDefaults
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PrintDefaults() {
+pub unsafe fn PrintDefaults() {
     unsafe {
         let env = R_GlobalEnv();
         PrintInit(
@@ -1400,8 +1398,7 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
 // PrintValueRec
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
+pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
     unsafe {
         let data = _data as *const R_PrintData;
         if data.is_null() {
@@ -1638,8 +1635,7 @@ pub unsafe extern "C" fn R_PV(s: SEXP) {
 // CustomPrintValue
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CustomPrintValue(s: SEXP, env: SEXP) {
+pub unsafe fn CustomPrintValue(s: SEXP, env: SEXP) {
     unsafe {
         tagbuf_clear();
 
@@ -1653,8 +1649,7 @@ pub unsafe extern "C" fn CustomPrintValue(s: SEXP, env: SEXP) {
 // do_printdefault
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if Rf_isNull(args) != 0 {
             return ptr::null_mut();
@@ -1842,8 +1837,7 @@ pub unsafe extern "C" fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: 
 // do_prmatrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut a = args;
         let x = CAR(a);
@@ -1899,8 +1893,7 @@ pub unsafe extern "C" fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
 // do_unclass
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if !x.is_null() {
@@ -1932,8 +1925,7 @@ pub unsafe extern "C" fn isEnvironment(x: SEXP) -> c_int {
 // inherits (public, #[unsafe(no_mangle)])
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn inherits(x: SEXP, class: SEXP, _pkg: SEXP) -> c_int {
+pub unsafe fn inherits(x: SEXP, class: SEXP, _pkg: SEXP) -> c_int {
     unsafe {
         if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP.0 || LENGTH(class) < 1 {
             return 0;

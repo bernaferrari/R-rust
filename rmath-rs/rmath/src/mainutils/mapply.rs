@@ -27,8 +27,7 @@ unsafe fn SET_TAG(x: SEXP, y: SEXP) {
 /// `mapply(FUN, ..., MoreArgs)` — apply a function to multiple lists/vectors.
 ///
 /// Port of R's `do_mapply` from src/main/mapply.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // --- Extract FUN, dots, MoreArgs ---
         let fun = CAR(args);

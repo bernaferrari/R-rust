@@ -176,8 +176,7 @@ static UTF8_TABLE4: [u8; 64] = [
 ///
 /// Port of R's `utf8clen` from util.c.
 /// This allows through 8-bit chars 10xxxxxx, which are invalid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn utf8clen(c: c_char) -> c_int {
+pub unsafe fn utf8clen(c: c_char) -> c_int {
     let byte = c as u8;
     if (byte & 0xC0) != 0xC0 {
         return 1;
@@ -226,8 +225,7 @@ pub unsafe extern "C" fn Rf_utf8toucs32(high: u32, s: *const c_char) -> R_wchar_
 /// If `wc` is null, the result is discarded but the byte count is returned.
 ///
 /// Port of R's `utf8toucs` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn utf8toucs(wc: *mut u32, s: *const c_char) -> usize {
+pub unsafe fn utf8toucs(wc: *mut u32, s: *const c_char) -> usize {
     unsafe {
         let byte = *s as u8;
         let mut local: u32 = 0;
@@ -341,8 +339,7 @@ fn is_high_surrogate(w: u32) -> bool {
 /// Returns the number of wide characters written (not including terminator).
 ///
 /// Port of R's `utf8towcs` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn utf8towcs(wc: *mut u32, s: *const c_char, n: usize) -> usize {
+pub unsafe fn utf8towcs(wc: *mut u32, s: *const c_char, n: usize) -> usize {
     unsafe {
         let mut res: isize = 0;
         let mut t = s;
@@ -402,8 +399,7 @@ pub unsafe extern "C" fn utf8towcs(wc: *mut u32, s: *const c_char, n: usize) -> 
 /// Convert a UTF-8 string to a UCS-4 (R_wchar_t) string.
 ///
 /// Port of R's `utf8towcs4` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn utf8towcs4(wc: *mut R_wchar_t, s: *const c_char, n: usize) -> usize {
+pub unsafe fn utf8towcs4(wc: *mut R_wchar_t, s: *const c_char, n: usize) -> usize {
     unsafe {
         let mut res: isize = 0;
         let mut t = s;
@@ -465,8 +461,7 @@ static UTF8_TABLE2: [u8; 6] = [0, 0xc0, 0xe0, 0xf0, 0xf8, 0xfc];
 /// Returns the number of bytes written (not including the null terminator).
 ///
 /// Port of R's static `Rwcrtomb32` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rwcrtomb32(s: *mut c_char, mut cvalue: R_wchar_t, n: usize) -> usize {
+pub unsafe fn Rwcrtomb32(s: *mut c_char, mut cvalue: R_wchar_t, n: usize) -> usize {
     unsafe {
         if n == 0 {
             return 0;
@@ -523,8 +518,7 @@ fn is_surrogate_pair(high: u32, low: u32) -> bool {
 /// still null-terminated.
 ///
 /// Port of R's `wcstoutf8` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn wcstoutf8(s: *mut c_char, wc: *const u32, n: usize) -> usize {
+pub unsafe fn wcstoutf8(s: *mut c_char, wc: *const u32, n: usize) -> usize {
     unsafe {
         if n == 0 {
             return 0;
@@ -574,8 +568,7 @@ pub unsafe extern "C" fn wcstoutf8(s: *mut c_char, wc: *const u32, n: usize) -> 
 /// Convert a UCS-4 (R_wchar_t) string to UTF-8.
 ///
 /// Port of R's `wcs4toutf8` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn wcs4toutf8(s: *mut c_char, wc: *const R_wchar_t, n: usize) -> usize {
+pub unsafe fn wcs4toutf8(s: *mut c_char, wc: *const R_wchar_t, n: usize) -> usize {
     unsafe {
         if n == 0 {
             return 0;
@@ -619,8 +612,7 @@ static FALSENAMES: [&str; 5] = ["F", "False", "FALSE", "false", ""];
 /// Check if a string matches one of R's recognized "true" names.
 ///
 /// Port of R's `StringTrue` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringTrue(name: *const c_char) -> Rboolean {
+pub unsafe fn StringTrue(name: *const c_char) -> Rboolean {
     unsafe {
         if name.is_null() {
             return FALSE;
@@ -638,8 +630,7 @@ pub unsafe extern "C" fn StringTrue(name: *const c_char) -> Rboolean {
 /// Check if a string matches one of R's recognized "false" names.
 ///
 /// Port of R's `StringFalse` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringFalse(name: *const c_char) -> Rboolean {
+pub unsafe fn StringFalse(name: *const c_char) -> Rboolean {
     unsafe {
         if name.is_null() {
             return FALSE;
@@ -1145,8 +1136,7 @@ pub unsafe extern "C" fn R_atof(str: *const c_char) -> c_double {
 ///
 /// Port of R's `Rstrdup` from util.c. Uses `malloc` and calls `error()`
 /// (panics in Rust) on allocation failure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstrdup(s: *const c_char) -> *mut c_char {
+pub unsafe fn Rstrdup(s: *const c_char) -> *mut c_char {
     unsafe {
         let nb = libc_strlen(s) + 1;
         let cpy = libc_malloc(nb);
@@ -1261,8 +1251,7 @@ pub unsafe fn bincode_impl(
 ///
 /// Equivalent of R's `nrows()` from util.c.
 /// Uses the "dim" attribute: returns dims[0].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nrows(s: *const c_void) -> c_int {
+pub unsafe fn nrows(s: *const c_void) -> c_int {
     unsafe {
         let x = s as SEXP;
         if x.is_null() || x == R_NilValue() {
@@ -1280,8 +1269,7 @@ pub unsafe extern "C" fn nrows(s: *const c_void) -> c_int {
 ///
 /// Equivalent of R's `ncols()` from util.c.
 /// Uses the "dim" attribute: returns dims[1] if ndim >= 2, else 1.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ncols(s: *const c_void) -> c_int {
+pub unsafe fn ncols(s: *const c_void) -> c_int {
     unsafe {
         let x = s as SEXP;
         if x.is_null() || x == R_NilValue() {
@@ -1304,8 +1292,7 @@ pub unsafe extern "C" fn ncols(s: *const c_void) -> c_int {
 /// Equivalent of R's `asChar()` from util.c.
 /// For SYMSXP, returns PRINTNAME(s). For CHARSXP, returns its data.
 /// For STRSXP of length 1, returns STRING_ELT(x, 0).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asChar(x: *const c_void) -> *const c_void {
+pub unsafe fn asChar(x: *const c_void) -> *const c_void {
     unsafe {
         let s = x as SEXP;
         if s.is_null() || s == R_NilValue() {
@@ -1332,8 +1319,7 @@ pub unsafe extern "C" fn asChar(x: *const c_void) -> *const c_void {
 /// Check if an object inherits from "ordered" class.
 ///
 /// Equivalent of R's `isUnordered()` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isUnordered(s: *const c_void) -> Rboolean {
+pub unsafe fn isUnordered(s: *const c_void) -> Rboolean {
     unsafe {
         let x = s as SEXP;
         if x.is_null() || x == R_NilValue() {
@@ -1366,8 +1352,7 @@ pub unsafe extern "C" fn isUnordered(s: *const c_void) -> Rboolean {
 /// Check if an object inherits from "ordered" class.
 ///
 /// Equivalent of R's `isOrdered()` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isOrdered(s: *const c_void) -> Rboolean {
+pub unsafe fn isOrdered(s: *const c_void) -> Rboolean {
     unsafe {
         let x = s as SEXP;
         if x.is_null() || x == R_NilValue() {
@@ -1422,8 +1407,7 @@ pub unsafe extern "C" fn R_isTRUE(x: *const c_void) -> Rboolean {
 /// Convert a type name string to SEXPTYPE integer value.
 ///
 /// Equivalent of R's `str2type()` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn str2type(s: *const c_char) -> c_int {
+pub unsafe fn str2type(s: *const c_char) -> c_int {
     unsafe {
         if s.is_null() {
             return -1;
@@ -1449,8 +1433,7 @@ pub unsafe extern "C" fn str2type(s: *const c_char) -> c_int {
 /// Convert a SEXPTYPE integer to its character name.
 ///
 /// Equivalent of R's `type2char()` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn type2char(t: c_int) -> *const c_char {
+pub unsafe fn type2char(t: c_int) -> *const c_char {
     match t {
         0 => b"NULL\0".as_ptr() as *const c_char,
         1 => b"symbol\0".as_ptr() as *const c_char,
@@ -1482,8 +1465,7 @@ pub unsafe extern "C" fn type2char(t: c_int) -> *const c_char {
 
 /// Stub: `isBlankString` depends on mbcslocale global.
 /// This simplified version only does ASCII whitespace checking.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isBlankString(s: *const c_char) -> Rboolean {
+pub unsafe fn isBlankString(s: *const c_char) -> Rboolean {
     unsafe {
         if s.is_null() {
             return TRUE;
@@ -1502,8 +1484,7 @@ pub unsafe extern "C" fn isBlankString(s: *const c_char) -> Rboolean {
 /// Check if a CHARSXP contains only whitespace.
 ///
 /// Equivalent of R's `StringBlank()` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringBlank(x: *const c_void) -> Rboolean {
+pub unsafe fn StringBlank(x: *const c_void) -> Rboolean {
     unsafe {
         let s = x as SEXP;
         if s.is_null() || s == R_NilValue() {
@@ -1518,16 +1499,14 @@ pub unsafe extern "C" fn StringBlank(x: *const c_void) -> Rboolean {
 }
 
 /// Stub: `mbcsValid` depends on locale.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mbcsValid(_str: *const c_char) -> Rboolean {
+pub unsafe fn mbcsValid(_str: *const c_char) -> Rboolean {
     TRUE
 }
 
 /// Check if a byte string is valid UTF-8.
 ///
 /// Equivalent of R's `utf8Valid()` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn utf8Valid(str: *const c_char) -> Rboolean {
+pub unsafe fn utf8Valid(str: *const c_char) -> Rboolean {
     unsafe {
         if str.is_null() {
             return TRUE;
@@ -1562,8 +1541,7 @@ pub unsafe extern "C" fn utf8Valid(str: *const c_char) -> Rboolean {
 }
 
 /// Stub: `markKnown` depends on SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn markKnown(_s: *const c_char, _ref: *const c_void) -> *const c_void {
+pub unsafe fn markKnown(_s: *const c_char, _ref: *const c_void) -> *const c_void {
     ptr::null()
 }
 
@@ -1571,8 +1549,7 @@ pub unsafe extern "C" fn markKnown(_s: *const c_char, _ref: *const c_void) -> *c
 ///
 /// Simplified version that handles ASCII and basic UTF-8.
 /// For enc=1 (CE_NATIVE), uses platform bytes. For enc=2 (CE_UTF8), parses UTF-8.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mbcsToUcs2(
+pub unsafe fn mbcsToUcs2(
     in_: *const c_char,
     out: *mut u16,
     nout: c_int,

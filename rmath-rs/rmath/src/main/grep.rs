@@ -781,8 +781,7 @@ pub unsafe extern "C" fn R_grep_fixed(
 ///
 /// Port of grep.c:do_grep. Handles fixed=TRUE with native matching,
 /// and ERE regex for extended=TRUE (the default).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = env;
         checkArity(op, args);
@@ -968,8 +967,7 @@ fn match_str(
 /// SEXP do_gsub(SEXP call, SEXP op, SEXP args, SEXP env)
 ///
 /// Port of grep.c:do_gsub. PRIMVAL(op) == 0 for sub(), != 0 for gsub().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = env;
         checkArity(op, args);
@@ -1089,8 +1087,7 @@ pub unsafe extern "C" fn do_gsub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 ///
 /// Port of grep.c:do_regexpr. Returns a vector of match positions,
 /// with match.length attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);
@@ -1201,8 +1198,7 @@ pub unsafe extern "C" fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 ///
 /// Port of grep.c:do_regexec. Returns match positions for the overall match
 /// and up to 9 capture groups.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);
@@ -1311,8 +1307,7 @@ pub unsafe extern "C" fn do_regexec(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 /// SEXP do_grepraw(SEXP call, SEXP op, SEXP args, SEXP env)
 ///
 /// Port of grep.c:do_grepraw. Performs fixed-byte matching on raw vectors.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);
@@ -1415,8 +1410,7 @@ pub unsafe extern "C" fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) ->
 
 /// grepl() is like grep() but returns a logical vector.
 /// Delegates to do_grep which already handles PRIMVAL(op) != 0 for grepl mode.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_grepl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_grepl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // do_grep checks PRIMVAL(op) != 0 to return logical vector
         do_grep(call, op, args, env)
@@ -1428,8 +1422,7 @@ pub unsafe extern "C" fn do_grepl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
 // ---------------------------------------------------------------------------
 
 /// sub() replaces the first match. Delegates to do_gsub with global=false.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_sub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // do_gsub checks PRIMVAL(op) != 0 for gsub vs sub
         do_gsub(call, op, args, env)
@@ -1441,8 +1434,7 @@ pub unsafe extern "C" fn do_sub(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// gregexpr() returns a list of match position vectors, one per text element.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gregexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_gregexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (op, env);
         checkArity(op, args);
@@ -1577,8 +1569,7 @@ pub unsafe extern "C" fn do_gregexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 /// Query PCRE configuration. Returns a named integer vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_pcre_config(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // We don't use PCRE, so return empty integer vector
         allocVector(SEXPTYPE::INTSXP.0, 0)

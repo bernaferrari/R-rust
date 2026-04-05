@@ -687,8 +687,7 @@ fn do_chartr_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 ///
 /// This is the Rust port of R's `do_chartr` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_chartr_safe(s) {
@@ -708,8 +707,7 @@ pub unsafe extern "C" fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 ///
 /// This is the Rust port of R's `do_tolower`/`do_toupper` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_toupper_lower_safe(s, true) {
@@ -729,8 +727,7 @@ pub unsafe extern "C" fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 ///
 /// This is the Rust port of R's `do_tolower` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_toupper_lower_safe(s, false) {
@@ -795,8 +792,7 @@ fn do_toupper_lower_safe<'a>(args: Sexp<'a>, upper: bool) -> Result<Sexp<'a>, St
 ///
 /// This is the Rust port of R's `do_nchar` from character.c.
 /// Supports type = "bytes", "chars", "width".
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_nchar_safe(s) {
@@ -925,8 +921,7 @@ fn do_nchar_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 ///
 /// This is the Rust port of R's `do_substr` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_substr_safe(s) {
@@ -1047,8 +1042,7 @@ fn do_substr_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 
 /// Test if elements of a character vector have non-zero length.
 /// nzchar(x) returns TRUE for each element with nchar > 0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_nzchar_safe(s) {
@@ -1127,8 +1121,7 @@ fn do_nzchar_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Check if strings start with a given prefix.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_startswith_safe(s) {
@@ -1211,8 +1204,7 @@ fn do_startswith_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 }
 
 /// Check if strings end with a given suffix.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_endswith_safe(s) {
@@ -1299,8 +1291,7 @@ fn do_endswith_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Convert strings to integers using a given base.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_strtoi(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_strtoi(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_strtoi_safe(s) {
@@ -1372,8 +1363,7 @@ fn do_strtoi_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Repeat strings a given number of times.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_strrep(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_strrep_safe(s) {
@@ -1442,8 +1432,7 @@ fn do_strrep_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Trim strings to a given display width.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_strtrim_safe(s) {
@@ -1514,8 +1503,7 @@ fn do_strtrim_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Check if elements of a character vector are valid UTF-8.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_validUTF8(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_validutf8_safe(s) {
@@ -1572,8 +1560,7 @@ fn do_validutf8_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Check if strings are valid in the native encoding (always true in our UTF-8 impl).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_validEnc(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_validenc_safe(s) {
@@ -1621,8 +1608,7 @@ fn do_validenc_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Encode character strings for display (quote escaping).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_encodeString(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_encodestring_safe(s) {
@@ -1714,8 +1700,7 @@ fn do_encodestring_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Make character strings syntactically valid R names.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_makeNames(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_makeNames(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_makenames_safe(s) {
@@ -1821,8 +1806,7 @@ fn do_makenames_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Make character strings unique by appending .1, .2, etc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_makeUnique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_makeUnique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_makeunique_safe(s) {
@@ -1911,8 +1895,7 @@ fn do_makeunique_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
 // ---------------------------------------------------------------------------
 
 /// Abbreviate strings to a minimum length that is still unique.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_abbreviate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         match Sexp::from_raw(args) {
             Some(s) => match do_abbreviate_safe(s) {

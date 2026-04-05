@@ -63,8 +63,7 @@ static mut R_PRINT: RPrint = RPrint {
 /// # Safety
 /// This mutates a global.  Do not call concurrently with any formatting
 /// functions that read `R_print`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn format_set_R_print(p: RPrint) -> RPrint {
+pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
     unsafe {
         let old = R_PRINT;
         R_PRINT = p;
@@ -76,8 +75,7 @@ pub unsafe extern "C" fn format_set_R_print(p: RPrint) -> RPrint {
 ///
 /// # Safety
 /// Must not be called concurrently with `format_set_R_print`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn format_get_R_print() -> RPrint {
+pub unsafe fn format_get_R_print() -> RPrint {
     unsafe { R_PRINT }
 }
 
@@ -104,8 +102,7 @@ unsafe extern "C" {
 
 /// Return the number of decimal digits in `x` (x >= 0).
 /// Equivalent to `(int) floor(log10((double) x)) + 1` but faster.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IndexWidth(mut x: c_int) -> c_int {
+pub unsafe fn IndexWidth(mut x: c_int) -> c_int {
     if x < 0 {
         x = -x;
     }
@@ -162,8 +159,7 @@ const R_DEC_MIN_EXPONENT: c_int = -307;
 
 /// Compute 10^n for integer n using the lookup table when possible.
 /// Falls back to `pow` for out-of-range exponents.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn format_Rexp10(n: c_int) -> c_double {
+pub unsafe fn format_Rexp10(n: c_int) -> c_double {
     let n_abs = if n < 0 { -n } else { n };
     if n_abs <= KP_MAX {
         if n >= 0 {
@@ -190,8 +186,7 @@ const NB: usize = 1000;
 ///
 /// This is the fallback path when `R_print.digits >= DBL_DIG + 1` (i.e.
 /// >= 16 for IEEE 754 double).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn format_via_sprintf(
+pub unsafe fn format_via_sprintf(
     r: c_double,
     d: c_int,
     kpower: *mut c_int,
@@ -250,8 +245,7 @@ fn snprintf(buf: &mut [i8], buf_size: usize, fmt: *const i8, precision: usize, v
 
 /// Determine the scientific representation parameters for a finite
 /// non-zero double.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn format_scientific(
+pub unsafe fn format_scientific(
     x: *const c_double,
     neg: *mut c_int,
     kpower: *mut c_int,
@@ -365,8 +359,7 @@ pub unsafe extern "C" fn format_scientific(
 // formatRaw  -- field width for raw bytes (always 2: "00".."ff")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if !fieldwidth.is_null() {
             *fieldwidth = 2;
@@ -378,8 +371,7 @@ pub unsafe extern "C" fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: 
 // formatRawS  -- SEXP variant (also always 2)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if !fieldwidth.is_null() {
             *fieldwidth = 2;
@@ -394,8 +386,7 @@ pub unsafe extern "C" fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_i
 // Ported from C: iterates SEXP array, calls Rstrlen for display width.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatString(
+pub unsafe fn formatString(
     x: *const SEXP,
     n: R_xlen_t,
     fieldwidth: *mut c_int,
@@ -431,8 +422,7 @@ pub unsafe extern "C" fn formatString(
 // Ported from C: uses STRING_ELT to access elements.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
+pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
 
@@ -463,8 +453,7 @@ pub unsafe extern "C" fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_
 // Ported from C: TRUE -> width 4, FALSE -> width 5, NA -> na_width.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             if !fieldwidth.is_null() {
@@ -503,8 +492,7 @@ pub unsafe extern "C" fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth:
 // ALTREP support; we use the direct accessor path.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if fieldwidth.is_null() {
             return;
@@ -529,8 +517,7 @@ pub unsafe extern "C" fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c
 // FORMATINT_RETLOGIC to compute the required field width.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             if !fieldwidth.is_null() {
@@ -585,8 +572,7 @@ pub unsafe extern "C" fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth:
 // ALTINTEGER_MIN/MAX). We use the simpler direct path via INTEGER().
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         *fieldwidth = 1;
         if x.is_null() || n == 0 {
@@ -618,8 +604,7 @@ pub unsafe extern "C" fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c
 /// * `d`      - [out] decimal digits to use
 /// * `e`      - [out] exponent width (0 = fixed format, 1 = 2-digit exp, 2 = 3-digit)
 /// * `nsmall` - minimum number of decimal digits in fixed format
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatReal(
+pub unsafe fn formatReal(
     x: *const c_double,
     n: R_xlen_t,
     w: *mut c_int,
@@ -766,8 +751,7 @@ pub unsafe extern "C" fn formatReal(
 // ALTREP support; we use the direct accessor path.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRealS(
+pub unsafe fn formatRealS(
     x: SEXP,
     n: R_xlen_t,
     w: *mut c_int,
@@ -815,8 +799,7 @@ pub unsafe extern "C" fn formatRealS(
 /// Compute format parameters for an array of complex numbers.
 ///
 /// Treats Re and Im parts independently via `formatReal`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatComplex(
+pub unsafe fn formatComplex(
     x: *const Rcomplex,
     n: R_xlen_t,
     wr: *mut c_int,
@@ -905,8 +888,7 @@ pub unsafe extern "C" fn formatComplex(
 // ALTREP support; we use the direct accessor path.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatComplexS(
+pub unsafe fn formatComplexS(
     x: SEXP,
     n: R_xlen_t,
     wr: *mut c_int,

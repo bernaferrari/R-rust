@@ -147,8 +147,7 @@ pub unsafe extern "C" fn LEVELS(x: SEXP) -> c_int {
 }
 
 /// Set the LEVELS field.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SETLEVELS(x: SEXP, v: c_int) {
+pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
     unsafe {
         if !x.is_null() {
             let gp = ((*x).sxpinfo.gp() & !0x03) | ((v as u16) & 0x03);
@@ -158,8 +157,7 @@ pub unsafe extern "C" fn SETLEVELS(x: SEXP, v: c_int) {
 }
 
 /// Get the scalar flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
+pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -272,8 +270,7 @@ pub unsafe extern "C" fn TAG(x: SEXP) -> SEXP {
 }
 
 /// Set the CAR of a cons cell.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SETCAR(x: SEXP, y: SEXP) {
+pub unsafe fn SETCAR(x: SEXP, y: SEXP) {
     unsafe {
         if !x.is_null() {
             super::gengc::list_write_barrier(x, 0, y);
@@ -283,8 +280,7 @@ pub unsafe extern "C" fn SETCAR(x: SEXP, y: SEXP) {
 }
 
 /// Set the CDR of a cons cell.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SETCDR(x: SEXP, y: SEXP) {
+pub unsafe fn SETCDR(x: SEXP, y: SEXP) {
     unsafe {
         if !x.is_null() {
             super::gengc::list_write_barrier(x, 1, y);
@@ -294,8 +290,7 @@ pub unsafe extern "C" fn SETCDR(x: SEXP, y: SEXP) {
 }
 
 /// Set the TAG of a cons cell.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SETTAG(x: SEXP, y: SEXP) {
+pub unsafe fn SETTAG(x: SEXP, y: SEXP) {
     unsafe {
         if !x.is_null() {
             super::gengc::list_write_barrier(x, 2, y);

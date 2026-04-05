@@ -2558,8 +2558,7 @@ unsafe fn deparse1WithCutoff(
 ///
 /// This is the equivalent of R's `do_deparse()` from deparse.c.
 /// It converts an R expression to a character vector representation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, rho);
         let mut args = args;
@@ -2606,8 +2605,7 @@ pub unsafe extern "C" fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 /// Writes a deparsed representation of an R object to a file or connection.
 ///
 /// Stubbed: requires connection handling infrastructure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dput(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dput(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2620,8 +2618,7 @@ pub unsafe extern "C" fn do_dput(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP
 /// Writes deparsed representations of named R objects to a file or connection.
 ///
 /// Stubbed: requires connection handling infrastructure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dump(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_dump(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 

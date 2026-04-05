@@ -78,8 +78,7 @@ static mut debugging_state: c_int = TRUE;
 //   3 = debugonce()    SET_RSTEP(x, 1)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
         let s = CAR(args);
@@ -124,8 +123,7 @@ pub unsafe extern "C" fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 //   1 = .primUntrace    SET_RTRACE(x, 0)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
         let s = CAR(args);
@@ -156,8 +154,7 @@ pub unsafe extern "C" fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 // Returns ScalarLogical of the previous state.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, rho);
         let s = CAR(args);
@@ -214,8 +211,7 @@ pub unsafe extern "C" fn R_current_trace_state() -> c_int {
 // do_tracemem — stub (memory profiling not compiled in)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, rho);
         Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
@@ -227,8 +223,7 @@ pub unsafe extern "C" fn do_tracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // do_untracemem — stub (memory profiling not compiled in)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, rho);
         Rf_error(c"R was not compiled with support for memory profiling".as_ptr() as *const _);
@@ -240,8 +235,7 @@ pub unsafe extern "C" fn do_untracemem(call: SEXP, op: SEXP, args: SEXP, rho: SE
 // do_retracemem — no-op, returns invisible R_NilValue
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, args, rho);
         set_R_Visible(FALSE);
@@ -253,8 +247,7 @@ pub unsafe extern "C" fn do_retracemem(call: SEXP, op: SEXP, args: SEXP, rho: SE
 // memtrace_report — no-op stub for memory tracing
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_void) {
+pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_void) {
     let _ = (old, new);
 }
 

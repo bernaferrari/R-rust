@@ -28,8 +28,7 @@ static mut EdFileUsed: c_int = 0;
 /// Initialize the edit subsystem — creates the default temp file name.
 ///
 /// Port of: attribute_hidden void InitEd(void)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitEd() {
+pub unsafe fn InitEd() {
     // Create a temp file name for the edit buffer
     let tmpdir = std::env::var("R_SESSION_TMPDIR")
         .or_else(|_| std::env::var("TMPDIR"))
@@ -59,8 +58,7 @@ pub unsafe extern "C" fn InitEd() {
 /// Clean up the edit subsystem — removes the temp file if it was used.
 ///
 /// Port of: void CleanEd(void)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CleanEd() {
+pub unsafe fn CleanEd() {
     if EdFileUsed != 0 && !DefaultFileName.is_null() {
         libc::unlink(DefaultFileName);
     }
@@ -154,8 +152,7 @@ pub(crate) unsafe fn R_EditFile(filename: *const c_char) -> c_int {
 /// - Returns the result
 ///
 /// Port of: attribute_hidden SEXP do_edit(SEXP call, SEXP op, SEXP args, SEXP rho)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     // Full implementation requires:
     // 1. Deparsing (deparse1) — needs the evaluator
     // 2. File I/O (write deparsed text, read edited text)

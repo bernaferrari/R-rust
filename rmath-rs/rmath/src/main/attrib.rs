@@ -1006,8 +1006,7 @@ unsafe fn setAttrib_full(vec: SEXP, name: SEXP, val: SEXP) -> SEXP {
 // copyMostAttrib — copy most attributes (skip names, dim, dimnames)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyMostAttrib(inp: SEXP, ans: SEXP) {
+pub unsafe fn copyMostAttrib(inp: SEXP, ans: SEXP) {
     if isNull(ans) || ans == R_NilValue() {
         Rf_error("attempt to set an attribute on NULL");
     }
@@ -1033,8 +1032,7 @@ pub unsafe extern "C" fn copyMostAttrib(inp: SEXP, ans: SEXP) {
 // copyMostAttribNoTs — copy most attributes, skip ts
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyMostAttribNoTs(inp: SEXP, ans: SEXP) {
+pub unsafe fn copyMostAttribNoTs(inp: SEXP, ans: SEXP) {
     let mut is_object = OBJECT(inp);
     let mut is_s4_object = IS_S4_OBJECT(inp);
 
@@ -1111,8 +1109,7 @@ unsafe fn badtsp(_k: c_int) {
 // tspgets — set tsp attribute
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tspgets(vec: SEXP, val: SEXP) -> SEXP {
+pub unsafe fn tspgets(vec: SEXP, val: SEXP) -> SEXP {
     if isNull(vec) || vec == R_NilValue() {
         Rf_error("attempt to set an attribute on NULL");
     }
@@ -1414,8 +1411,7 @@ unsafe fn type2str_nowarn(t: c_int) -> SEXP {
 // InitS3DefaultTypes — initialize default class table
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitS3DefaultTypes() {
+pub unsafe fn InitS3DefaultTypes() {
     // Stub — in the full implementation this would pre-allocate default classes
     // for all SEXPTYPEs. We skip the heavy initialization.
 }
@@ -1491,8 +1487,7 @@ pub unsafe extern "C" fn R_class(x: SEXP) -> SEXP {
 // namesgets — set names attribute (internal)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn namesgets(vec: SEXP, val: SEXP) -> SEXP {
+pub unsafe fn namesgets(vec: SEXP, val: SEXP) -> SEXP {
     if isList(val) {
         let rval = allocVector(SEXPTYPE::STRSXP.0, length(vec));
         let mut i: c_int = 0;
@@ -1571,8 +1566,7 @@ unsafe fn as_char_simpl(val1: SEXP) -> SEXP {
 // dimnamesgets — set dimnames attribute (internal)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dimnamesgets(vec: SEXP, val: SEXP) -> SEXP {
+pub unsafe fn dimnamesgets(vec: SEXP, val: SEXP) -> SEXP {
     if !isArray(vec) && !isList(vec) {
         Rf_error("'dimnames' applied to non-array");
     }
@@ -1646,8 +1640,7 @@ pub unsafe extern "C" fn dimnamesgets(vec: SEXP, val: SEXP) -> SEXP {
 // dimgets — set dim attribute (internal, full implementation)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
+pub unsafe fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
     if !isVector(vec) && !isList(vec) {
         Rf_error("invalid first argument, must be vector (list or atomic)");
     }
@@ -1685,8 +1678,7 @@ pub unsafe extern "C" fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
 // do_dimgets — dim(x) <- value (exported, called from R)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -1721,8 +1713,7 @@ pub unsafe extern "C" fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // do_dimnamesgets — dimnames(x) <- value (exported, called from R)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -1738,8 +1729,7 @@ pub unsafe extern "C" fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: 
 // do_levelsgets — levels(x) <- value (exported, called from R)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -1755,8 +1745,7 @@ pub unsafe extern "C" fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SE
 // do_tsp — tsp(x)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) == 1 {
         let x = CAR(args);
@@ -1769,8 +1758,7 @@ pub unsafe extern "C" fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // do_tspgets — tsp(x) <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -1784,8 +1772,7 @@ pub unsafe extern "C" fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // do_comment — comment(x)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) >= 1 {
         let x = CAR(args);
@@ -1798,8 +1785,7 @@ pub unsafe extern "C" fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // do_commentgets — comment(x) <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -1815,8 +1801,7 @@ pub unsafe extern "C" fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: S
 // do_attr — attr(x, which)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
 
     let nargs = Rf_length(args);
@@ -1903,8 +1888,7 @@ pub unsafe extern "C" fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 // do_attrgets — attr(x, which) <- value / obj @ name <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 3 {
         return R_NilValue();
@@ -1921,8 +1905,7 @@ pub unsafe extern "C" fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // do_attributesgets — attributes(x) <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -1995,8 +1978,7 @@ pub unsafe extern "C" fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env
 // do_classgets — oldClass(x) <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -2014,8 +1996,7 @@ pub unsafe extern "C" fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // do_namesgets — names(x) <- value
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 2 {
         return R_NilValue();
@@ -2031,8 +2012,7 @@ pub unsafe extern "C" fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // do_isobject — is.object(x)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     if Rf_length(args) < 1 {
         return R_NilValue();
@@ -2108,8 +2088,7 @@ pub unsafe extern "C" fn R_getAttributes(x: SEXP) -> SEXP {
 // do_shortRowNames — .Internal(shortRowNames(x, type))
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_shortRowNames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_shortRowNames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, env);
     checkArity(op, args);
     let s = getAttrib0(CAR(args), R_RowNamesSymbol());
@@ -2137,8 +2116,7 @@ pub unsafe extern "C" fn do_shortRowNames(call: SEXP, op: SEXP, args: SEXP, env:
 // do_copyDFattr — .Internal(copyDFattr(in, out))
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_copyDFattr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_copyDFattr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, env);
     checkArity(op, args);
     let inp = CAR(args);
@@ -2209,8 +2187,7 @@ unsafe fn GetMatrixDimnames(
 // GetArrayDimnames — get array dimnames
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetArrayDimnames(x: SEXP) -> SEXP {
+pub unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {
     crate::attrib_core::getAttrib(x, R_DimNamesSymbol())
 }
 
@@ -2218,8 +2195,7 @@ pub unsafe extern "C" fn GetArrayDimnames(x: SEXP) -> SEXP {
 // S3Class — get .S3Class attribute
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn S3Class(obj: SEXP) -> SEXP {
+pub unsafe fn S3Class(obj: SEXP) -> SEXP {
     if s_dot_S3Class.is_null() {
         init_slot_handling();
     }
@@ -2326,8 +2302,7 @@ pub unsafe extern "C" fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) ->
 // do_AT — @ operator
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_AT(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_AT(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
     checkArity(op, args);
     if Rf_length(args) < 2 {

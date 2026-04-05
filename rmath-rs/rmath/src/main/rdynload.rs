@@ -307,8 +307,7 @@ static mut CEntryTable: SEXP = ptr::null_mut();
 // ---------------------------------------------------------------------------
 
 /// Initialize the dynamic loading subsystem.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitDynload() {
+pub unsafe fn InitDynload() {
     unsafe {
         initLoadedDLL();
         let which = addDLL(
@@ -1398,8 +1397,7 @@ unsafe fn R_registerSymbolEptr(_eptr: SEXP, _einfo: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// .Internal(dynload(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let buf = [0i8; 2 * R_PATH_MAX];
         checkArity(op, args);
@@ -1419,8 +1417,7 @@ pub unsafe extern "C" fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 }
 
 /// .Internal(dynunload(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let buf = [0i8; 2 * R_PATH_MAX];
         checkArity(op, args);
@@ -1463,8 +1460,7 @@ pub unsafe extern "C" fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
 }
 
 /// do_getSymbolInfo: .Internal(getNativeSymbolInfo(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         ptr::null_mut() // TODO: return R_getSymbolInfo(CAR(args), CADR(args), CADDR(args))
@@ -1472,8 +1468,7 @@ pub unsafe extern "C" fn do_getSymbolInfo(call: SEXP, op: SEXP, args: SEXP, env:
 }
 
 /// do_getDllTable: .Internal(getLoadedDLLs())
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         R_getDllTable()
@@ -1481,8 +1476,7 @@ pub unsafe extern "C" fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: S
 }
 
 /// do_getRegisteredRoutines: .Internal(getRegisteredRoutines(...))
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getRegisteredRoutines(
+pub unsafe fn do_getRegisteredRoutines(
     call: SEXP,
     op: SEXP,
     args: SEXP,

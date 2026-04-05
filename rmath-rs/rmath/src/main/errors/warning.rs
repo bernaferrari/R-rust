@@ -172,14 +172,12 @@ pub(crate) fn setup_warnings() {
 // ---------------------------------------------------------------------------
 
 /// Issue a warning with call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn warningcall(call: SEXP, format: *const c_char) {
+pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
     vwarningcall_dflt(call, format, ptr::null_mut());
 }
 
 /// Issue an immediate warning (bypass collection).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn warningcall_immediate(call: SEXP, format: *const c_char) {
+pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
     let prev = IMMEDIATE_WARNING.load(Ordering::Relaxed);
     IMMEDIATE_WARNING.store(true, Ordering::Relaxed);
     vwarningcall_dflt(call, format, ptr::null_mut());
@@ -273,8 +271,7 @@ pub unsafe extern "C" fn Rf_message_append(format: *const c_char, append: c_int)
 // ---------------------------------------------------------------------------
 
 /// do_message -- R's message() builtin.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -380,8 +377,7 @@ pub fn PrintWarnings() {
 // ---------------------------------------------------------------------------
 
 /// do_warning -- R's warning() function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -432,8 +428,7 @@ pub unsafe extern "C" fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // ---------------------------------------------------------------------------
 
 /// WarningMessage -- look up a warning message from the database and call warningcall.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
+pub unsafe fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_char) {
     unsafe {
         let messages = [
             "NAs introduced by coercion",
@@ -604,8 +599,7 @@ pub fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
 // ---------------------------------------------------------------------------
 
 /// do_printDeferredWarnings -- print deferred warnings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_printDeferredWarnings(
+pub unsafe fn do_printDeferredWarnings(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -642,8 +636,7 @@ pub unsafe extern "C" fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// do_gettext -- R's gettext() function (simplified, no i18n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let string = CADR(args);
         if isNull(string) != 0 || LENGTH(string) == 0 {
@@ -654,8 +647,7 @@ pub unsafe extern "C" fn do_gettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 }
 
 /// do_ngettext -- R's ngettext() function (simplified, no i18n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let n = if isInteger(CAR(args)) != 0 && LENGTH(CAR(args)) >= 1 {
@@ -679,8 +671,7 @@ pub unsafe extern "C" fn do_ngettext(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // ---------------------------------------------------------------------------
 
 /// do_bindtextdomain -- R's bindtextdomain() function (simplified, no i18n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         if isNull(CAR(args)) != 0 && isNull(CADR(args)) != 0 {

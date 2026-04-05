@@ -994,8 +994,7 @@ unsafe fn complex_mean_sexp(x: SEXP) -> SEXP {
 /// `do_summary` provides a variety of data summaries.
 ///
 /// op (PRIMVAL): 0 = sum, 1 = mean, 2 = min, 3 = max, 4 = prod
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1391,8 +1390,7 @@ pub unsafe extern "C" fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 
 /// `do_range` implements `range(...)` which finds min and max.
 /// It delegates to range.default via applyClosure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let args = Rf_protect(fixup_NaRm(args));
 
@@ -1418,8 +1416,7 @@ pub unsafe extern "C" fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) 
 /// `do_mean` implements `mean.default(x)`.
 /// Note: mean is typically dispatched via do_summary when PRIMVAL(op) == 1,
 /// but this provides a standalone entry point.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         match TYPEOF(x) {

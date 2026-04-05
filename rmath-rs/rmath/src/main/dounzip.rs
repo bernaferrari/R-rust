@@ -1384,8 +1384,7 @@ pub fn unzCloseCurrentFile(s: &mut unz64_s) -> c_int {
 
 /// Stub: Runzip - R's .External interface for unzipping files
 /// TODO: Implement when R SEXP infrastructure is connected
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Runzip(args: *mut c_void) -> *mut c_void {
+pub unsafe fn Runzip(args: *mut c_void) -> *mut c_void {
     ptr::null_mut()
 }
 

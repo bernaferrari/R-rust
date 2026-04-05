@@ -170,8 +170,7 @@ pub(crate) unsafe fn resetTimeLimits() {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn checkTimeLimits() {
+pub unsafe fn checkTimeLimits() {
     // Stub
 }
 
@@ -286,8 +285,7 @@ pub unsafe extern "C" fn R_Parse1File(
 // setup_Rmainloop — setup before mainloop (stub)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setup_Rmainloop() {
+pub unsafe fn setup_Rmainloop() {
     // Stub
 }
 

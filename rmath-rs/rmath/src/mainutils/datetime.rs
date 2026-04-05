@@ -765,8 +765,7 @@ unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
 /// Convert a POSIXct numeric vector to a POSIXlt list.
 ///
 /// Ported from `do_asPOSIXlt()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // x = CAR(args) should be a REALSXP (POSIXct)
         let x = CAR(args);
@@ -841,8 +840,7 @@ pub unsafe extern "C" fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Convert a POSIXlt list to a POSIXct numeric vector.
 ///
 /// Ported from `do_asPOSIXct()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));
 
@@ -920,8 +918,7 @@ pub unsafe extern "C" fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Format a POSIXlt object as a character string using strftime.
 ///
 /// Ported from `do_formatPOSIXlt()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));
 
@@ -1068,8 +1065,7 @@ pub unsafe extern "C" fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _e
 ///
 /// Uses libc's `strptime` to parse the input string and returns a POSIXlt
 /// object. Ported from `do_strptime()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
@@ -1219,8 +1215,7 @@ pub unsafe extern "C" fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 /// Convert a Date (numeric days since epoch) to a POSIXlt list in UTC.
 ///
 /// Ported from `do_D2POSIXlt()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));
         if TYPEOF(x) != SEXPTYPE::REALSXP.0 {
@@ -1267,8 +1262,7 @@ pub unsafe extern "C" fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Convert a POSIXlt list to a Date (numeric days since epoch).
 ///
 /// Ported from `do_POSIXlt2D()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));
         if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
@@ -1340,8 +1334,7 @@ pub unsafe extern "C" fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: 
 /// Balance (validate and normalize) a POSIXlt object.
 ///
 /// Ported from `do_balancePOSIXlt()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
@@ -1467,8 +1460,7 @@ pub unsafe extern "C" fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _
 /// Return the current system time as a POSIXct scalar (seconds since epoch).
 ///
 /// Ported from `Sys.time()` in datetime.c / platform.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_Sys_time(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let t = libc::time(std::ptr::null_mut());
         let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, 1);
@@ -1485,8 +1477,7 @@ pub unsafe extern "C" fn do_Sys_time(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 ///
 /// Returns a difftime object (numeric with "units" attribute).
 /// Ported from the R difftime() logic.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let time1 = CADR(args); // second arg in pairlist
         let time2 = CADDR(args); // third arg
@@ -1552,8 +1543,7 @@ pub unsafe extern "C" fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 /// Construct a POSIXct from date/time components.
 ///
 /// Ported from `ISOdatetime()` in datetime.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let year = CAR(args);
         let month = CADR(args);

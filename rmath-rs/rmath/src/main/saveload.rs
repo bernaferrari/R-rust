@@ -264,8 +264,7 @@ pub unsafe extern "C" fn R_ReadMagic(fp: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Port of: static int defaultSaveVersion(void)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn defaultSaveVersion() -> c_int {
+pub unsafe fn defaultSaveVersion() -> c_int {
     static mut DFLT: c_int = -1;
 
     unsafe {
@@ -1752,8 +1751,7 @@ pub unsafe extern "C" fn R_LoadFromFile(fp: *mut c_void, startup: c_int) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden SEXP do_savefile(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_savefile(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_savefile(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe extern "C" {
         fn RC_fopen(path: SEXP, mode: *const c_char, warn: c_int) -> *mut c_void;
         fn fclose(fp: *mut c_void) -> c_int;
@@ -1796,8 +1794,7 @@ pub unsafe extern "C" fn do_savefile(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 }
 
 /// Port of: attribute_hidden SEXP do_loadfile(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_loadfile(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_loadfile(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe extern "C" {
         fn RC_fopen(path: SEXP, mode: *const c_char, warn: c_int) -> *mut c_void;
         fn fclose(fp: *mut c_void) -> c_int;
@@ -1837,8 +1834,7 @@ pub unsafe extern "C" fn do_loadfile(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden SEXP do_save(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_save(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_save(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe extern "C" {
         fn RC_fopen(path: SEXP, mode: *const c_char, warn: c_int) -> *mut c_void;
         fn fclose(fp: *mut c_void) -> c_int;
@@ -2007,8 +2003,7 @@ unsafe fn R_LoadSavedData(fp: *mut c_void, aenv: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden SEXP do_load(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_load(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_load(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe extern "C" {
         fn RC_fopen(path: SEXP, mode: *const c_char, warn: c_int) -> *mut c_void;
         fn fclose(fp: *mut c_void) -> c_int;
@@ -2194,16 +2189,14 @@ pub unsafe extern "C" fn R_RestoreGlobalEnvFromFile(name: *const c_char, quiet: 
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden SEXP do_saveToConn(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_saveToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_saveToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     // Connection-based save -- stub implementation
     // Full implementation requires Rconnection infrastructure
     R_NilValue()
 }
 
 /// Port of: attribute_hidden SEXP do_loadFromConn2(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_loadFromConn2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_loadFromConn2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     // Connection-based load -- stub implementation
     // Full implementation requires Rconnection infrastructure
     R_NilValue()

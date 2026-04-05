@@ -683,8 +683,7 @@ unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
 ///
 /// This allocates the result and transfers elements from `x` to `result`
 /// according to integer or real subscripts in `indx`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if isNull(x) {
             return x;
@@ -1463,8 +1462,7 @@ unsafe fn R_DispatchOrEvalSP(
 // ---------------------------------------------------------------------------
 
 /// The `[` subset operator -- the most general form of subsetting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -1494,8 +1492,7 @@ pub unsafe extern "C" fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 // ---------------------------------------------------------------------------
 
 /// Default method for `[`. Handles vector, matrix, and array subsetting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (op, rho);
         Rf_protect(args);
@@ -1621,8 +1618,7 @@ pub unsafe extern "C" fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: S
 // ---------------------------------------------------------------------------
 
 /// The `[[` subset operator. Designed to be fast for extracting single elements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -1653,8 +1649,7 @@ pub unsafe extern "C" fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 
 /// Default method for `[[`. Handles vector indexing, matrix/array indexing,
 /// pair-list indexing, and environment subsetting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         Rf_protect(args);
 
@@ -1933,8 +1928,7 @@ pub unsafe extern "C" fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho
 
 /// Dispatch the `[[` operator on an object. If `x` is an object, uses
 /// `do_subset2`; otherwise extracts the element directly.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if isObject(x) {
             /* Would call do_subset2 with list2(x, ScalarReal(i+1)) */
@@ -1957,8 +1951,7 @@ pub unsafe extern "C" fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho:
 
 /// Fix up arguments for the `$` operator. Translates the second argument
 /// (a symbol or string) into a single-element character vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fixSubset3Args(
+pub unsafe fn fixSubset3Args(
     call: SEXP,
     args: SEXP,
     env: SEXP,
@@ -2003,8 +1996,7 @@ pub unsafe extern "C" fn fixSubset3Args(
 
 /// The `$` subset operator. Evaluates only the first argument; the second
 /// is a symbol to be matched, not evaluated.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
         let _ = op;
@@ -2173,8 +2165,7 @@ pub unsafe extern "C" fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEX
 /// The `[<-` assignment operator.
 ///
 /// Dispatches to the appropriate method or falls through to default.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -2204,8 +2195,7 @@ pub unsafe extern "C" fn do_subassign(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 /// The `[[<-` assignment operator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 
@@ -2235,8 +2225,7 @@ pub unsafe extern "C" fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, env: SE
 // ---------------------------------------------------------------------------
 
 /// The `$<-` assignment operator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let mut ans: SEXP = ptr::null_mut();
 

@@ -38,8 +38,7 @@ use std::os::raw::{c_char, c_int};
 ///
 /// # Safety
 /// `s` must point to at least `len` valid bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn char_hash(s: *const u8, len: std::os::raw::c_int) -> u32 {
+pub unsafe fn char_hash(s: *const u8, len: std::os::raw::c_int) -> u32 {
     unsafe {
         let mut h: u32 = 5381;
         for i in 0..len as isize {
@@ -275,8 +274,7 @@ unsafe fn R_lsInternal3(env: SEXP, all: c_int, sorted: c_int) -> SEXP {
 ///
 /// Port of R's `do_ls` from envir.c.
 /// `.Internal(ls(envir, all.names, sorted))`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::constructors::Rf_allocVector;
 
@@ -311,8 +309,7 @@ pub unsafe extern "C" fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 /// - envir is an environment
 /// - mode checking is done for common types
 /// - inherits controls parent environment search
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::envir::R_findVarInFrame;
         use crate::sexp::symbol::Rf_install;
@@ -422,8 +419,7 @@ pub unsafe extern "C" fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 ///
 /// Port of R's `do_assign` from envir.c.
 /// `.Internal(assign(x, value, envir, inherits))`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::envir::{defineVar, setVar};
         use crate::sexp::protect::Rf_protect;
@@ -492,8 +488,7 @@ pub unsafe extern "C" fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 ///
 /// Port of R's `do_remove` from envir.c.
 /// `.Internal(remove(list, envir, inherits))`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::symbol::Rf_install;
 
@@ -574,8 +569,7 @@ pub unsafe extern "C" fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 ///
 /// Creates a new environment from the list/environment's bindings and
 /// inserts it into the search path at position `pos`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::envir::defineVar;
         use crate::sexp::memory_ext::allocSExp;
@@ -694,8 +688,7 @@ pub unsafe extern "C" fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// `detach(name, pos = 2, unload = FALSE, character.only = FALSE)`
 ///
 /// Removes the environment at position `pos` from the search list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::protect::Rf_protect;
         use crate::sexp::protect::Rf_unprotect;
@@ -777,8 +770,7 @@ pub unsafe extern "C" fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 /// Port of R's `do_search` from envir.c.
 /// Returns a STRSXP with the names of all environments on the search path,
 /// from .GlobalEnv to package:base.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::attrib_core::getAttrib;
         use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
@@ -856,8 +848,7 @@ pub unsafe extern "C" fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SE
 ///
 /// Equivalent of R's `do_exists()` from envir.c.
 /// `exists(x, envir, mode, inherits)` -> logical
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::envir::R_findVarInFrame;
         use crate::sexp::symbol::Rf_install;

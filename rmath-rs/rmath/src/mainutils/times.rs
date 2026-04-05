@@ -76,7 +76,6 @@ pub fn TimeToSeed() -> c_uint {
 /// It is provided here as a `#[unsafe(no_mangle)]` extern "C" stub returning 0.0
 /// so that downstream C code linking against this library can resolve the
 /// symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_systime() -> f64 {
+pub unsafe fn do_systime() -> f64 {
     0.0
 }

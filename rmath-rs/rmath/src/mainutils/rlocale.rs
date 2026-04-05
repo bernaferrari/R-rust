@@ -563,8 +563,7 @@ static Ri18n_wctype_func: &[Ri18n_wctype_func_l] = &[
 ///
 /// # Safety
 /// The caller must ensure `c` is a valid Unicode code point.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
+pub unsafe fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
     // This quickly gives one for printing ASCII characters
     if c > 0x1F && c < 0x7F {
         return 1;
@@ -593,8 +592,7 @@ pub unsafe extern "C" fn Ri18n_wcwidth(c: R_wchar_t) -> c_int {
 /// `wc` must point to a valid null-terminated wide-character string,
 /// or `n` must specify a valid length. The caller must ensure the
 /// pointer is valid for reads up to `n` elements or until a null terminator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ri18n_wcswidth(wc: *const c_int, n: usize) -> c_int {
+pub unsafe fn Ri18n_wcswidth(wc: *const c_int, n: usize) -> c_int {
     unsafe {
         if wc.is_null() {
             return 0;
@@ -648,8 +646,7 @@ pub unsafe extern "C" fn Ri18n_wcswidth(wc: *const c_int, n: usize) -> c_int {
 ///
 /// If `wc` has a defined uppercase mapping, returns that mapping.
 /// Otherwise returns `wc` unchanged.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ri18n_towupper(wc: R_wchar_t) -> R_wchar_t {
+pub unsafe fn Ri18n_towupper(wc: R_wchar_t) -> R_wchar_t {
     let res = tlsearch(wc, table_toupper, table_toupper.len() as c_int);
     if res >= 0 { res } else { wc }
 }
@@ -658,8 +655,7 @@ pub unsafe extern "C" fn Ri18n_towupper(wc: R_wchar_t) -> R_wchar_t {
 ///
 /// If `wc` has a defined lowercase mapping, returns that mapping.
 /// Otherwise returns `wc` unchanged.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ri18n_towlower(wc: R_wchar_t) -> R_wchar_t {
+pub unsafe fn Ri18n_towlower(wc: R_wchar_t) -> R_wchar_t {
     let res = tlsearch(wc, table_tolower, table_tolower.len() as c_int);
     if res >= 0 { res } else { wc }
 }
@@ -677,8 +673,7 @@ pub unsafe extern "C" fn Ri18n_towlower(wc: R_wchar_t) -> R_wchar_t {
 ///
 /// # Safety
 /// `name` must point to a valid null-terminated C string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ri18n_wctype(name: *const u8) -> c_uint {
+pub unsafe fn Ri18n_wctype(name: *const u8) -> c_uint {
     unsafe {
         if name.is_null() {
             return 0;
@@ -704,8 +699,7 @@ pub unsafe extern "C" fn Ri18n_wctype(name: *const u8) -> c_uint {
 ///
 /// `desc` should be a value returned by `Ri18n_wctype`.
 /// Returns non-zero if the character matches, 0 otherwise.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Ri18n_iswctype(wc: wint_t, desc: c_uint) -> c_int {
+pub unsafe fn Ri18n_iswctype(wc: wint_t, desc: c_uint) -> c_int {
     Ri18n_iswctype_internal(wc, desc)
 }
 

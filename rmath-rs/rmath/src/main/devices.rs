@@ -112,8 +112,7 @@ unsafe fn R_DevicesSymbol() -> SEXP {
 
 /// Returns true if there are no active (non-null) devices.
 /// Used in grid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NoDevices() -> c_int {
+pub unsafe fn NoDevices() -> c_int {
     unsafe {
         if R_NumDevices == 1 || R_CurrentDevice == 0 {
             TRUE
@@ -124,15 +123,13 @@ pub unsafe extern "C" fn NoDevices() -> c_int {
 }
 
 /// Returns the number of devices (including null device).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NumDevices() -> c_int {
+pub unsafe fn NumDevices() -> c_int {
     unsafe { R_NumDevices }
 }
 
 /// Get the current device descriptor. If there are no active devices,
 /// try to start the default device from options.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcurrentDevice() -> pGEDevDesc {
+pub unsafe fn GEcurrentDevice() -> pGEDevDesc {
     unsafe {
         if NoDevices() != 0 {
             let device_sym = Rf_install(b"device\0".as_ptr() as *const c_char);
@@ -182,8 +179,7 @@ pub unsafe extern "C" fn GEcurrentDevice() -> pGEDevDesc {
 }
 
 /// Get device by index.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEgetDevice(i: c_int) -> pGEDevDesc {
+pub unsafe fn GEgetDevice(i: c_int) -> pGEDevDesc {
     unsafe {
         *ptr::addr_of_mut!(R_Devices)
             .cast::<pGEDevDesc>()
@@ -192,8 +188,7 @@ pub unsafe extern "C" fn GEgetDevice(i: c_int) -> pGEDevDesc {
 }
 
 /// Get the current device number.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn curDevice() -> c_int {
+pub unsafe fn curDevice() -> c_int {
     unsafe { R_CurrentDevice }
 }
 
@@ -202,8 +197,7 @@ pub unsafe extern "C" fn curDevice() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Find the next active device after `from`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nextDevice(from: c_int) -> c_int {
+pub unsafe fn nextDevice(from: c_int) -> c_int {
     unsafe {
         if R_NumDevices == 1 {
             return 0;
@@ -230,8 +224,7 @@ pub unsafe extern "C" fn nextDevice(from: c_int) -> c_int {
 }
 
 /// Find the previous active device before `from`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn prevDevice(from: c_int) -> c_int {
+pub unsafe fn prevDevice(from: c_int) -> c_int {
     unsafe {
         if R_NumDevices == 1 {
             return 0;
@@ -264,8 +257,7 @@ pub unsafe extern "C" fn prevDevice(from: c_int) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Find device number given a pGEDevDesc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdeviceNumber(dd: pGEDevDesc) -> c_int {
+pub unsafe fn GEdeviceNumber(dd: pGEDevDesc) -> c_int {
     unsafe {
         let mut i: c_int = 1;
         while i < R_MaxDevices {
@@ -283,8 +275,7 @@ pub unsafe extern "C" fn GEdeviceNumber(dd: pGEDevDesc) -> c_int {
 }
 
 /// Find device number given a pDevDesc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ndevNumber(dd: pDevDesc) -> c_int {
+pub unsafe fn ndevNumber(dd: pDevDesc) -> c_int {
     unsafe {
         let mut i: c_int = 1;
         while i < R_MaxDevices {
@@ -305,8 +296,7 @@ pub unsafe extern "C" fn ndevNumber(dd: pDevDesc) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Select a device as the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn selectDevice(devNum: c_int) -> c_int {
+pub unsafe fn selectDevice(devNum: c_int) -> c_int {
     unsafe {
         if devNum >= 0 && devNum < R_MaxDevices {
             let gdd_slot = *ptr::addr_of_mut!(R_Devices)
@@ -438,8 +428,7 @@ unsafe fn removeDevice(devNum: c_int, findNext: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Kill a device given its GEDevDesc pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEkillDevice(gdd: pGEDevDesc) {
+pub unsafe fn GEkillDevice(gdd: pGEDevDesc) {
     unsafe {
         let lock: c_int = if !gdd.is_null() { (*gdd).lock } else { FALSE };
         if lock != 0 {
@@ -451,8 +440,7 @@ pub unsafe extern "C" fn GEkillDevice(gdd: pGEDevDesc) {
 }
 
 /// Kill a device given its device number.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn killDevice(devNum: c_int) {
+pub unsafe fn killDevice(devNum: c_int) {
     unsafe {
         if devNum > 0 && devNum < R_MaxDevices {
             let gdd_slot = *ptr::addr_of_mut!(R_Devices)
@@ -479,8 +467,7 @@ pub unsafe extern "C" fn killDevice(devNum: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Shut down all graphics devices at end of session.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn KillAllDevices() {
+pub unsafe fn KillAllDevices() {
     unsafe {
         let mut i: c_int = R_MaxDevices - 1;
         while i > 0 {
@@ -502,8 +489,7 @@ pub unsafe extern "C" fn KillAllDevices() {
 
 /// A common construction in some graphics devices:
 /// map a pDevDesc to its corresponding pGEDevDesc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn desc2GEDesc(dd: pDevDesc) -> pGEDevDesc {
+pub unsafe fn desc2GEDesc(dd: pDevDesc) -> pGEDevDesc {
     unsafe {
         let mut i: c_int = 1;
         while i < R_MaxDevices {
@@ -706,8 +692,7 @@ unsafe extern "C" fn noopGlyph(
 // ---------------------------------------------------------------------------
 
 /// Allocate and initialise a DevDesc with defaults.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcreateDD() -> pDevDesc {
+pub unsafe fn GEcreateDD() -> pDevDesc {
     unsafe {
         let dd = libc::calloc(1, std::mem::size_of::<DevDesc>()) as pDevDesc;
         if dd.is_null() {
@@ -805,8 +790,7 @@ pub unsafe extern "C" fn GEcreateDD() -> pDevDesc {
 }
 
 /// Free a DevDesc allocated by GEcreateDD.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEfreeDD(dd: pDevDesc) {
+pub unsafe fn GEfreeDD(dd: pDevDesc) {
     unsafe {
         if !dd.is_null() {
             libc::free(dd as *mut c_void);
@@ -842,8 +826,7 @@ pub unsafe extern "C" fn R_CheckDeviceAvailableBool() -> c_int {
 // GEaddDevice
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEaddDevice(gdd: pGEDevDesc) {
+pub unsafe fn GEaddDevice(gdd: pGEDevDesc) {
     unsafe {
         let mut i: c_int = 1;
         let mut appnd: c_int = FALSE;
@@ -928,8 +911,7 @@ pub unsafe extern "C" fn GEaddDevice(gdd: pGEDevDesc) {
 // GEaddDevice2 / GEaddDevice2f
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEaddDevice2(gdd: pGEDevDesc, name: *const c_char) {
+pub unsafe fn GEaddDevice2(gdd: pGEDevDesc, name: *const c_char) {
     unsafe {
         defineVar(R_DeviceSymbol(), Rf_mkString(name), R_BaseEnv());
         GEaddDevice(gdd);
@@ -937,8 +919,7 @@ pub unsafe extern "C" fn GEaddDevice2(gdd: pGEDevDesc, name: *const c_char) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEaddDevice2f(gdd: pGEDevDesc, name: *const c_char, file: *const c_char) {
+pub unsafe fn GEaddDevice2f(gdd: pGEDevDesc, name: *const c_char, file: *const c_char) {
     unsafe {
         let f = Rf_protect(Rf_mkString(name));
         if !file.is_null() {
@@ -957,8 +938,7 @@ pub unsafe extern "C" fn GEaddDevice2f(gdd: pGEDevDesc, name: *const c_char, fil
 // ---------------------------------------------------------------------------
 
 /// Create a GEDevDesc wrapping a pDevDesc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcreateDevDesc(dev: pDevDesc) -> pGEDevDesc {
+pub unsafe fn GEcreateDevDesc(dev: pDevDesc) -> pGEDevDesc {
     unsafe {
         let gdd = libc::calloc(1, std::mem::size_of::<GEDevDesc>()) as pGEDevDesc;
         if gdd.is_null() {
@@ -997,8 +977,7 @@ pub unsafe extern "C" fn GEcreateDevDesc(dev: pDevDesc) -> pGEDevDesc {
 // ---------------------------------------------------------------------------
 
 /// Initialise the graphics device system. Called at R startup.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitGraphics() {
+pub unsafe fn InitGraphics() {
     unsafe {
         ptr::write(
             ptr::addr_of_mut!(R_Devices).cast::<pGEDevDesc>().add(0),
@@ -1029,8 +1008,7 @@ pub unsafe extern "C" fn InitGraphics() {
 // ---------------------------------------------------------------------------
 
 /// Prompt the user to confirm a new frame (in interactive mode).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NewFrameConfirm(dd: pDevDesc) {
+pub unsafe fn NewFrameConfirm(dd: pDevDesc) {
     unsafe {
         use crate::main::main::R_Interactive;
         if R_Interactive() == 0 {

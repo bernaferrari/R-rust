@@ -508,8 +508,7 @@ unsafe fn registerOne(dd: pGEDevDesc, systemNumber: c_int, cb: GEcallback) {
 // GEdestroyDevDesc
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdestroyDevDesc(dd: *mut c_void) {
+pub unsafe fn GEdestroyDevDesc(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -528,8 +527,7 @@ pub unsafe extern "C" fn GEdestroyDevDesc(dd: *mut c_void) {
 // GEsystemState
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
+pub unsafe fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
     if dd.is_null() || index < 0 || index >= MAX_GRAPHICS_SYSTEMS {
         return ptr::null_mut();
     }
@@ -545,8 +543,7 @@ pub unsafe extern "C" fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_
 // GEregisterWithDevice
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEregisterWithDevice(dd: *mut c_void) {
+pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -564,8 +561,7 @@ pub unsafe extern "C" fn GEregisterWithDevice(dd: *mut c_void) {
 // GEregisterSystem
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEregisterSystem(
+pub unsafe fn GEregisterSystem(
     cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
     systemRegisterIndex: *mut c_int,
 ) {
@@ -598,8 +594,7 @@ pub unsafe extern "C" fn GEregisterSystem(
 // GEunregisterSystem
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEunregisterSystem(registerIndex: c_int) {
+pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
     if registerIndex < 0 {
         return;
     }
@@ -618,8 +613,7 @@ pub unsafe extern "C" fn GEunregisterSystem(registerIndex: c_int) {
 // GEhandleEvent
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
+pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
     for i in 0..MAX_GRAPHICS_SYSTEMS {
         let idx = i as usize;
         if !registeredSystems[idx].is_null() {
@@ -652,8 +646,7 @@ unsafe fn dev_ptr(dd: *mut c_void) -> Option<*mut DevDesc> {
     Some((*gdd).dev)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match to {
@@ -690,8 +683,7 @@ pub unsafe extern "C" fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         // Fall-through switch (C uses fall-through intentionally)
@@ -727,8 +719,7 @@ pub unsafe extern "C" fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match to {
@@ -765,8 +756,7 @@ pub unsafe extern "C" fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match from {
@@ -799,8 +789,7 @@ pub unsafe extern "C" fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match to {
@@ -824,8 +813,7 @@ pub unsafe extern "C" fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match from {
@@ -858,8 +846,7 @@ pub unsafe extern "C" fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match to {
@@ -883,8 +870,7 @@ pub unsafe extern "C" fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
         match from {
@@ -941,15 +927,13 @@ static LINEEND_TABLE: [LineEND; 3] = [
     },
 ];
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
+pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
     // Stub: return default round cap
     // Full implementation parses SEXP string/integer/real
     GE_ROUND_CAP
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LENDget(lend: c_int) -> SEXP {
+pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
     // Stub: return nil
     R_NilValue()
 }
@@ -974,13 +958,11 @@ static LINEJOIN_TABLE: [LineJOIN; 3] = [
     },
 ];
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
+pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
     GE_ROUND_JOIN
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LJOINget(ljoin: c_int) -> SEXP {
+pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
     R_NilValue()
 }
 
@@ -988,8 +970,7 @@ pub unsafe extern "C" fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // GESetClip
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GESetClip(
+pub unsafe fn GESetClip(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -1040,8 +1021,7 @@ pub unsafe extern "C" fn GESetClip(
 // GELine
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GELine(
+pub unsafe fn GELine(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -1060,8 +1040,7 @@ pub unsafe extern "C" fn GELine(
 // GEPolyline
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPolyline(
+pub unsafe fn GEPolyline(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -1079,8 +1058,7 @@ pub unsafe extern "C" fn GEPolyline(
 // GEPolygon
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPolygon(
+pub unsafe fn GEPolygon(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -1098,8 +1076,7 @@ pub unsafe extern "C" fn GEPolygon(
 // GECircle
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GECircle(
+pub unsafe fn GECircle(
     x: c_double,
     y: c_double,
     radius: c_double,
@@ -1120,8 +1097,7 @@ pub unsafe extern "C" fn GECircle(
 // GERect
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GERect(
+pub unsafe fn GERect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -1140,8 +1116,7 @@ pub unsafe extern "C" fn GERect(
 // GEPath
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPath(
+pub unsafe fn GEPath(
     x: *mut c_double,
     y: *mut c_double,
     npoly: c_int,
@@ -1163,8 +1138,7 @@ pub unsafe extern "C" fn GEPath(
 // GERaster
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GERaster(
+pub unsafe fn GERaster(
     raster: *mut c_uint,
     w: c_int,
     h: c_int,
@@ -1202,8 +1176,7 @@ pub unsafe extern "C" fn GERaster(
 // GECap
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GECap(dd: *mut c_void) -> SEXP {
+pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
     if let Some(d) = dev_ptr(dd) {
         if let Some(cap_fn) = (*d).cap {
             return cap_fn(d);
@@ -1216,8 +1189,7 @@ pub unsafe extern "C" fn GECap(dd: *mut c_void) -> SEXP {
 // GEText
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEText(
+pub unsafe fn GEText(
     x: c_double,
     y: c_double,
     str: *const c_char,
@@ -1243,8 +1215,7 @@ pub unsafe extern "C" fn GEText(
 // GEXspline
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEXspline(
+pub unsafe fn GEXspline(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -1263,8 +1234,7 @@ pub unsafe extern "C" fn GEXspline(
 // GEMode
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEMode(mode: c_int, dd: *mut c_void) {
+pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         if let Some(mode_fn) = (*d).mode {
             mode_fn(mode, d);
@@ -1284,8 +1254,7 @@ const TRC0: c_double = 1.55512030155621416073;
 const TRC1: c_double = 1.34677368708859836060;
 const TRC2: c_double = 0.77756015077810708036;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GESymbol(
+pub unsafe fn GESymbol(
     x: c_double,
     y: c_double,
     pch: c_int,
@@ -1324,8 +1293,7 @@ pub unsafe extern "C" fn GESymbol(
 // GEPretty
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
+pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     // Stub: R_pretty is in appl/pretty.c, not yet ported
     // For now, just do basic pretty axis calculation
     if lo.is_null() || up.is_null() || ndiv.is_null() {
@@ -1350,8 +1318,7 @@ pub unsafe extern "C" fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *m
 // GEMetricInfo
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEMetricInfo(
+pub unsafe fn GEMetricInfo(
     c: c_int,
     gc: *const c_void,
     ascent: *mut c_double,
@@ -1380,8 +1347,7 @@ pub unsafe extern "C" fn GEMetricInfo(
 // GEStrWidth
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStrWidth(
+pub unsafe fn GEStrWidth(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1405,8 +1371,7 @@ pub unsafe extern "C" fn GEStrWidth(
 // GEStrHeight
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStrHeight(
+pub unsafe fn GEStrHeight(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1437,8 +1402,7 @@ pub unsafe extern "C" fn GEStrHeight(
 // GEStrMetric
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStrMetric(
+pub unsafe fn GEStrMetric(
     str: *const c_char,
     enc: c_int,
     gc: *const c_void,
@@ -1461,8 +1425,7 @@ pub unsafe extern "C" fn GEStrMetric(
 // GENewPage
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GENewPage(gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         let gdd = dd as pGEDevDesc;
         (*gdd).appending = 0;
@@ -1476,8 +1439,7 @@ pub unsafe extern "C" fn GENewPage(gc: *const c_void, dd: *mut c_void) {
 // GEdeviceDirty / GEdirtyDevice / GEcleanDevice
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdeviceDirty(dd: *mut c_void) -> c_int {
+pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
@@ -1485,8 +1447,7 @@ pub unsafe extern "C" fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     (*gdd).dirty
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEdirtyDevice(dd: *mut c_void) {
+pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
     if !dd.is_null() {
         let gdd = dd as pGEDevDesc;
         (*gdd).dirty = 1;
@@ -1504,8 +1465,7 @@ pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
 // GEcheckState
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcheckState(dd: *mut c_void) -> c_int {
+pub unsafe fn GEcheckState(dd: *mut c_void) -> c_int {
     1 // TRUE -- stub, always returns valid
 }
 
@@ -1513,8 +1473,7 @@ pub unsafe extern "C" fn GEcheckState(dd: *mut c_void) -> c_int {
 // GErecording
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
+pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
     if dd.is_null() || call == R_NilValue() {
         return 0;
     }
@@ -1526,8 +1485,7 @@ pub unsafe extern "C" fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
 // GErecordGraphicOperation
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
+pub unsafe fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
     // Stub: display list recording requires SEXP allocation (CONS, list2, etc.)
 }
 
@@ -1535,8 +1493,7 @@ pub unsafe extern "C" fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut
 // GEinitDisplayList
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEinitDisplayList(dd: *mut c_void) {
+pub unsafe fn GEinitDisplayList(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
@@ -1550,8 +1507,7 @@ pub unsafe extern "C" fn GEinitDisplayList(dd: *mut c_void) {
 // GEplayDisplayList
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEplayDisplayList(dd: *mut c_void) {
+pub unsafe fn GEplayDisplayList(dd: *mut c_void) {
     // Stub: display list replay requires SEXP evaluation infrastructure
 }
 
@@ -1559,8 +1515,7 @@ pub unsafe extern "C" fn GEplayDisplayList(dd: *mut c_void) {
 // GEcopyDisplayList
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcopyDisplayList(fromDevice: c_int) {
+pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
     // Stub: requires GEcurrentDevice, GEgetDevice, display list copy
 }
 
@@ -1568,8 +1523,7 @@ pub unsafe extern "C" fn GEcopyDisplayList(fromDevice: c_int) {
 // GEcreateSnapshot
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
+pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
     R_NilValue()
 }
 
@@ -1577,8 +1531,7 @@ pub unsafe extern "C" fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
 // GEplaySnapshot
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
+pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
     // Stub: requires display list duplication and replay
 }
 
@@ -1586,13 +1539,11 @@ pub unsafe extern "C" fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
 // do_getSnapshot / do_playSnapshot
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -1600,8 +1551,7 @@ pub unsafe extern "C" fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: 
 // do_recordGraphics
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -1609,8 +1559,7 @@ pub unsafe extern "C" fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env
 // GEonExit
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEonExit() {
+pub unsafe fn GEonExit() {
     // Stub: requires iterating over all devices to reset recording
 }
 
@@ -1618,8 +1567,7 @@ pub unsafe extern "C" fn GEonExit() {
 // GEstring_to_pch
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEstring_to_pch(pch: SEXP) -> c_int {
+pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
     c_int::MIN // NA_INTEGER
 }
 
@@ -1663,13 +1611,11 @@ static LINETYPE_TABLE: [LineTYPE; 7] = [
     },
 ];
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
+pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
     LTY_SOLID
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GE_LTYget(lty: c_uint) -> SEXP {
+pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
     R_NilValue()
 }
 
@@ -1999,8 +1945,7 @@ pub unsafe extern "C" fn R_GE_rasterRotate(
 // Path drawing (GEgroup API)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         if (*d).deviceVersion >= R_GE_group {
             if let Some(stroke_fn) = (*d).stroke {
@@ -2010,8 +1955,7 @@ pub unsafe extern "C" fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         if (*d).deviceVersion >= R_GE_group {
             if let Some(fill_fn) = (*d).fill {
@@ -2021,8 +1965,7 @@ pub unsafe extern "C" fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: 
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         if (*d).deviceVersion >= R_GE_group {
             if let Some(fs_fn) = (*d).fillStroke {
@@ -2147,8 +2090,7 @@ pub unsafe extern "C" fn R_GE_glyphFontVarFormatted(
 // GEGlyph
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEGlyph(
+pub unsafe fn GEGlyph(
     n: c_int,
     glyphs: *const c_int,
     x: *const c_double,

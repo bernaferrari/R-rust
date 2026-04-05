@@ -101,8 +101,7 @@ pub const RESULT_SIZE: usize = 4;
 // ---------------------------------------------------------------------------
 
 /// do_addCondHands -- add condition handlers to the stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::R_HANDLER_STACK;
         checkArity(op, args);
@@ -143,8 +142,7 @@ pub unsafe extern "C" fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: 
 }
 
 /// do_resetCondHands -- reset condition handlers to a previous state.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::R_HANDLER_STACK;
         checkArity(op, args);
@@ -161,8 +159,7 @@ pub unsafe extern "C" fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho
 // ---------------------------------------------------------------------------
 
 /// do_getRestart -- get a restart from the restart stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::R_RESTART_STACK;
         use super::format::{isInteger, setAttrib_wrap};
@@ -200,8 +197,7 @@ pub unsafe extern "C" fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SE
 }
 
 /// do_addRestart -- add a restart to the restart stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::R_RESTART_STACK;
         checkArity(op, args);
@@ -218,8 +214,7 @@ pub unsafe extern "C" fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SE
 }
 
 /// do_invokeRestart -- invoke a restart.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::R_RESTART_STACK;
         use super::format::isNull;
@@ -240,8 +235,7 @@ pub unsafe extern "C" fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho:
 }
 
 /// do_addTryHandlers -- add tryCatch handlers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         globals::R_NilValue()
@@ -253,8 +247,7 @@ pub unsafe extern "C" fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho
 // ---------------------------------------------------------------------------
 
 /// do_signalCondition -- signal a condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         globals::R_NilValue()
@@ -262,8 +255,7 @@ pub unsafe extern "C" fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rh
 }
 
 /// do_dfltWarn -- default warning handler.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::format::translateChar;
         checkArity(op, args);
@@ -278,8 +270,7 @@ pub unsafe extern "C" fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 }
 
 /// do_dfltStop -- default error handler.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::format::translateChar;
         checkArity(op, args);
@@ -814,8 +805,7 @@ pub unsafe extern "C" fn R_InitConditions() {
 // ---------------------------------------------------------------------------
 
 /// do_traceback -- traceback().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_traceback(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         use super::format::{checkArity, isInteger};
         checkArity(op, args);

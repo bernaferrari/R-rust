@@ -864,8 +864,7 @@ pub unsafe fn framedepth(_cptr: *mut sexp_context::RCNTXT) -> c_int {
     unsafe { ctx_framedepth() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn framedepth_c(cptr: *mut sexp_context::RCNTXT) -> c_int {
+pub unsafe fn framedepth_c(cptr: *mut sexp_context::RCNTXT) -> c_int {
     unsafe { framedepth(cptr) }
 }
 
@@ -1005,8 +1004,7 @@ pub unsafe fn countContexts(ctxttype: c_int, browser: c_int) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn countContexts_c(ctxttype: c_int, browser: c_int) -> c_int {
+pub unsafe fn countContexts_c(ctxttype: c_int, browser: c_int) -> c_int {
     unsafe { countContexts(ctxttype, browser) }
 }
 
@@ -1158,8 +1156,7 @@ pub unsafe fn getLexicalContext(rho: SEXP) -> *mut sexp_context::RCNTXT {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getLexicalContext_c(rho: SEXP) -> *mut sexp_context::RCNTXT {
+pub unsafe fn getLexicalContext_c(rho: SEXP) -> *mut sexp_context::RCNTXT {
     unsafe { getLexicalContext(rho) }
 }
 
@@ -1178,8 +1175,7 @@ pub unsafe fn getLexicalCall(rho: SEXP) -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getLexicalCall_c(rho: SEXP) -> SEXP {
+pub unsafe fn getLexicalCall_c(rho: SEXP) -> SEXP {
     unsafe { getLexicalCall(rho) }
 }
 
@@ -1187,8 +1183,7 @@ pub unsafe extern "C" fn getLexicalCall_c(rho: SEXP) -> SEXP {
 // do_sys
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = -1;
         checkArity(op, args);
@@ -1319,8 +1314,7 @@ pub unsafe extern "C" fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -
 // do_parentframe
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_parentframe(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_parentframe(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let n = asInteger(CAR(args));

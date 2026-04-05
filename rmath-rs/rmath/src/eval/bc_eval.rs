@@ -158,8 +158,7 @@ pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
 /// Evaluate a BCODESXP.
 ///
 /// This is the equivalent of R's `bcEval()` from eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP.0 {
             return R_NilValue();

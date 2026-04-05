@@ -187,8 +187,7 @@ pub unsafe extern "C" fn R_fopen(filename: *const c_char, mode: *const c_char) -
 /// fopen wrapper for SEXP filenames (Unix version).
 ///
 /// Ported from R's `RC_fopen`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RC_fopen(
+pub unsafe fn RC_fopen(
     fn_: SEXP,
     mode: *const c_char,
     expand: Rboolean,
@@ -305,8 +304,7 @@ pub fn R_Interactive() -> bool {
 /// interactive() -- check if R is in interactive mode.
 ///
 /// Ported from R's `do_interactive`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_interactive(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_interactive(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
     Rf_ScalarLogical(if R_Interactive() { TRUE } else { FALSE })
 }
@@ -381,8 +379,7 @@ pub unsafe extern "C" fn R_reInitTempDir(die_on_fail: c_int) {
 }
 
 /// Initialize temp directory (dies on failure).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitTempDir() {
+pub unsafe fn InitTempDir() {
     R_reInitTempDir(1);
 }
 
@@ -395,8 +392,7 @@ pub unsafe extern "C" fn R_TempDir_get() -> *mut c_char {
 /// tempdir() -- return the temporary directory path.
 ///
 /// Ported from R's `do_tempdir`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tempdir(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tempdir(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
     let _check = CAR(args);
     let td = unsafe { R_TempDir_get() };
@@ -492,8 +488,7 @@ pub unsafe extern "C" fn R_free_tmpnam(name: *mut c_char) {
 /// tempfile() -- generate temporary file names.
 ///
 /// Ported from R's `do_tempfile`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tempfile(_call: SEXP, op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_tempfile(_call: SEXP, op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
 
     let pattern = CAR(args);
@@ -542,8 +537,7 @@ pub unsafe extern "C" fn do_tempfile(_call: SEXP, op: SEXP, mut args: SEXP, _env
 /// Sys.getenv() -- get environment variables.
 ///
 /// Ported from R's `do_getenv` (Unix version).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_getenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_getenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
 
     let x = CAR(args);
@@ -594,8 +588,7 @@ pub unsafe extern "C" fn do_getenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP
 /// Sys.setenv() -- set environment variables.
 ///
 /// Ported from R's `do_setenv`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
 
     let nm = CAR(args);
@@ -625,8 +618,7 @@ pub unsafe extern "C" fn do_setenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP
 /// Sys.unsetenv() -- unset environment variables.
 ///
 /// Ported from R's `do_unsetenv`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
 
     let nm = CAR(args);
@@ -654,8 +646,7 @@ pub unsafe extern "C" fn do_unsetenv(_call: SEXP, op: SEXP, args: SEXP, _env: SE
 // ---------------------------------------------------------------------------
 
 /// Sys.sysenv() -- return the system environment variables.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     let vars: Vec<(String, String)> = std::env::vars().collect();
     let n = vars.len();
     let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, n as R_xlen_t));
@@ -690,8 +681,7 @@ static mut elapsedLimit2: c_double = -1.0;
 /// Reset time limits based on current time and limit values.
 ///
 /// Ported from R's `resetTimeLimits`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn resetTimeLimits() {
+pub unsafe fn resetTimeLimits() {
     let mut data: [c_double; 5] = [0.0; 5];
     unsafe { R_getProcTime(data.as_mut_ptr()) };
 
@@ -720,8 +710,7 @@ pub unsafe extern "C" fn resetTimeLimits() {
 /// setTimeLimit() -- set CPU and elapsed time limits.
 ///
 /// Ported from R's `do_setTimeLimit`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_setTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     checkArity(op, args);
     let cpu = unsafe { asReal(CAR(args)) };
     let elapsed = unsafe { asReal(CADR(args)) };
@@ -756,8 +745,7 @@ pub unsafe extern "C" fn do_setTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho
 /// setSessionTimeLimit() -- set session time limits.
 ///
 /// Ported from R's `do_setSessionTimeLimit`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_setSessionTimeLimit(
+pub unsafe fn do_setSessionTimeLimit(
     _call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -843,8 +831,7 @@ pub unsafe extern "C" fn R_CheckTimeLimits() {
 /// proc.time() -- return process times.
 ///
 /// Ported from R's `do_proctime`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_proctime(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_proctime(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
     let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, 5));
     let nm = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 5));
@@ -930,8 +917,7 @@ pub(crate) unsafe fn do_sysinfo_main(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
 /// Sys.glob() -- expand paths with glob (Unix version).
 ///
 /// Ported from R's `do_glob`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_glob(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_glob(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
     let x = CAR(args);
     if !isString(x) {
@@ -1053,8 +1039,7 @@ enum nttype_t {
 ///
 /// Ported from R's `getCharCE`.
 /// CE_NATIVE=0, CE_UTF8=1, CE_LATIN1=2, CE_BYTES=3
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getCharCE(x: SEXP) -> c_int {
+pub unsafe fn getCharCE(x: SEXP) -> c_int {
     if IS_UTF8(x) {
         1
     } else if IS_LATIN1(x) {
@@ -1069,16 +1054,14 @@ pub unsafe extern "C" fn getCharCE(x: SEXP) -> c_int {
 /// Check if a CHARSXP is ASCII.
 ///
 /// Ported from R's `charIsASCII`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn charIsASCII(x: SEXP) -> Rboolean {
+pub unsafe fn charIsASCII(x: SEXP) -> Rboolean {
     if IS_ASCII(x) { TRUE } else { FALSE }
 }
 
 /// Check if a CHARSXP is UTF-8.
 ///
 /// Ported from R's `charIsUTF8`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn charIsUTF8(x: SEXP) -> Rboolean {
+pub unsafe fn charIsUTF8(x: SEXP) -> Rboolean {
     if IS_ASCII(x) || IS_UTF8(x) {
         return TRUE;
     }
@@ -1091,8 +1074,7 @@ pub unsafe extern "C" fn charIsUTF8(x: SEXP) -> Rboolean {
 /// Check if a CHARSXP is Latin-1.
 ///
 /// Ported from R's `charIsLatin1`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn charIsLatin1(x: SEXP) -> Rboolean {
+pub unsafe fn charIsLatin1(x: SEXP) -> Rboolean {
     if IS_ASCII(x) || IS_LATIN1(x) {
         return TRUE;
     }
@@ -1125,8 +1107,7 @@ unsafe fn needsTranslation(x: SEXP) -> nttype_t {
 /// Translate a CHARSXP to a C string in native encoding.
 ///
 /// Ported from R's `translateChar`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn translateChar(x: SEXP) -> *const c_char {
+pub unsafe fn translateChar(x: SEXP) -> *const c_char {
     if x.is_null() || x == R_NilValue() {
         return b"\0".as_ptr() as *const c_char;
     }
@@ -1140,8 +1121,7 @@ pub unsafe extern "C" fn translateChar(x: SEXP) -> *const c_char {
 /// Translate a CHARSXP to a C string in native encoding (for file paths).
 ///
 /// Ported from R's `translateCharFP`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn translateCharFP(x: SEXP) -> *const c_char {
+pub unsafe fn translateCharFP(x: SEXP) -> *const c_char {
     if x.is_null() || x == R_NilValue() {
         return b"\0".as_ptr() as *const c_char;
     }
@@ -1155,8 +1135,7 @@ pub unsafe extern "C" fn translateCharFP(x: SEXP) -> *const c_char {
 /// Translate a CHARSXP to UTF-8.
 ///
 /// Ported from R's `translateCharUTF8`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn translateCharUTF8(x: SEXP) -> *const c_char {
+pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
     if x.is_null() || x == R_NilValue() {
         return b"\0".as_ptr() as *const c_char;
     }
@@ -1166,16 +1145,14 @@ pub unsafe extern "C" fn translateCharUTF8(x: SEXP) -> *const c_char {
 /// Variant of translateCharFP that returns NULL on failure.
 ///
 /// Ported from R's `translateCharFP2`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn translateCharFP2(x: SEXP) -> *const c_char {
+pub unsafe fn translateCharFP2(x: SEXP) -> *const c_char {
     translateCharFP(x)
 }
 
 /// Install a translated character as a symbol.
 ///
 /// Ported from R's `installTrChar`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn installTrChar(x: SEXP) -> SEXP {
+pub unsafe fn installTrChar(x: SEXP) -> SEXP {
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
@@ -1198,8 +1175,7 @@ pub(crate) unsafe fn Rf_installChar_sexp(x: SEXP) -> SEXP {
 /// Install a character without translation.
 ///
 /// Ported from R's `installNoTrChar`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn installNoTrChar(x: SEXP) -> SEXP {
+pub unsafe fn installNoTrChar(x: SEXP) -> SEXP {
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
@@ -1213,8 +1189,7 @@ pub unsafe extern "C" fn installNoTrChar(x: SEXP) -> SEXP {
 /// Translate a CHARSXP, allowing bytes encoding.
 ///
 /// Ported from R's `translateChar0`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn translateChar0(x: SEXP) -> *const c_char {
+pub unsafe fn translateChar0(x: SEXP) -> *const c_char {
     if x.is_null() || x == R_NilValue() {
         return b"\0".as_ptr() as *const c_char;
     }
@@ -1231,8 +1206,7 @@ pub unsafe extern "C" fn translateChar0(x: SEXP) -> *const c_char {
 /// Re-encode a character string.
 ///
 /// Ported from R's `reEnc`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn reEnc(
+pub unsafe fn reEnc(
     x: *const c_char,
     _ce_in: c_int,
     _ce_out: c_int,
@@ -1244,8 +1218,7 @@ pub unsafe extern "C" fn reEnc(
 /// Re-encode using arbitrary iconv encodings.
 ///
 /// Ported from R's `reEnc3`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn reEnc3(
+pub unsafe fn reEnc3(
     x: *const c_char,
     _fromcode: *const c_char,
     _tocode: *const c_char,
@@ -1261,8 +1234,7 @@ pub unsafe extern "C" fn reEnc3(
 /// Convert a Unicode code point to a multibyte string.
 ///
 /// Ported from R's `ucstomb`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ucstomb(s: *mut c_char, wc: c_uint) -> usize {
+pub unsafe fn ucstomb(s: *mut c_char, wc: c_uint) -> usize {
     if wc == 0 {
         if !s.is_null() {
             unsafe { *s = 0 };
@@ -1276,8 +1248,7 @@ pub unsafe extern "C" fn ucstomb(s: *mut c_char, wc: c_uint) -> usize {
 /// Convert a Unicode code point to UTF-8.
 ///
 /// Ported from R's `ucstoutf8`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ucstoutf8(s: *mut c_char, wc: c_uint) -> usize {
+pub unsafe fn ucstoutf8(s: *mut c_char, wc: c_uint) -> usize {
     if wc == 0 {
         if !s.is_null() {
             unsafe { *s = 0 };
@@ -1318,8 +1289,7 @@ pub unsafe extern "C" fn ucstoutf8(s: *mut c_char, wc: c_uint) -> usize {
 /// Convert a multibyte character to a Unicode code point.
 ///
 /// Ported from R's `mbtoucs`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mbtoucs(wc: *mut c_uint, s: *const c_char, _n: usize) -> usize {
+pub unsafe fn mbtoucs(wc: *mut c_uint, s: *const c_char, _n: usize) -> usize {
     if s.is_null() || unsafe { *s } == 0 {
         if !wc.is_null() {
             unsafe { *wc = 0 };
@@ -1380,8 +1350,7 @@ pub unsafe extern "C" fn mbtoucs(wc: *mut c_uint, s: *const c_char, _n: usize) -
 /// Open an iconv conversion descriptor.
 ///
 /// Ported from R's `Riconv_open`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Riconv_open(
+pub unsafe fn Riconv_open(
     tocode: *const c_char,
     fromcode: *const c_char,
 ) -> *mut c_void {
@@ -1425,8 +1394,7 @@ pub unsafe extern "C" fn Riconv_open(
 /// Perform iconv conversion.
 ///
 /// Ported from R's `Riconv`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Riconv(
+pub unsafe fn Riconv(
     cd: *mut c_void,
     inbuf: *mut *const c_char,
     inbytesleft: *mut usize,
@@ -1447,14 +1415,12 @@ pub unsafe extern "C" fn Riconv(
 /// Close an iconv conversion descriptor.
 ///
 /// Ported from R's `Riconv_close`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Riconv_close(cd: *mut c_void) -> c_int {
+pub unsafe fn Riconv_close(cd: *mut c_void) -> c_int {
     unsafe { libc::iconv_close(cd as libc::iconv_t) }
 }
 
 /// Invalidate cached encoding conversions.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn invalidate_cached_recodings() {
+pub unsafe fn invalidate_cached_recodings() {
     // No-op in stub implementation
 }
 
@@ -1465,8 +1431,7 @@ pub unsafe extern "C" fn invalidate_cached_recodings() {
 /// iconv(x, from, to, sub, mark) -- convert character encoding.
 ///
 /// Ported from R's `do_iconv`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_iconv(_call: SEXP, op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_iconv(_call: SEXP, op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     checkArity(op, args);
     let x = CAR(args);
 

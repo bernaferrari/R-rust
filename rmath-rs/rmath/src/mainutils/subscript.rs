@@ -50,8 +50,7 @@ const NINTERRUPT: R_xlen_t = 10_000_000;
 
 /// Stub: report an out-of-bounds error. In full R this would call
 /// R_makeOutOfBoundsError / R_signalErrorCondition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ECALL_OutOfBounds(
+pub unsafe fn ECALL_OutOfBounds(
     _x: SEXP,
     _subscript: c_int,
     _index: R_xlen_t,
@@ -61,14 +60,12 @@ pub unsafe extern "C" fn ECALL_OutOfBounds(
 }
 
 /// Stub: report a missing subscript error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ECALL_MissingSubs(_call: SEXP) {
+pub unsafe fn ECALL_MissingSubs(_call: SEXP) {
     // Full implementation requires R's condition/error infrastructure.
 }
 
 /// Stub: report an out-of-bounds error for character subscripts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ECALL_OutOfBoundsCHAR(
+pub unsafe fn ECALL_OutOfBoundsCHAR(
     _x: SEXP,
     _subscript: c_int,
     _sindex: SEXP,
@@ -115,8 +112,7 @@ unsafe fn integerOneIndex(i: c_int, len: R_xlen_t, _call: SEXP) -> R_xlen_t {
 /// Returns the 0-based index, or `nx` if no match found (for string/symbol
 /// subscripts, meaning "append at end"). Sets `*newname` when a string
 /// subscript is provided.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn OneIndex(
+pub unsafe fn OneIndex(
     x: SEXP,
     s: SEXP,
     nx: R_xlen_t,
@@ -263,8 +259,7 @@ pub unsafe extern "C" fn OneIndex(
 /// - `len` is the length of the object or dimension
 /// - `pos` is len-1 or -1 for `[[`, -1 for `[[<-`
 /// - `pok` is "partial ok" (1 = allow, -1 = warn and allow, 0 = no)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn get1index(
+pub unsafe fn get1index(
     s: SEXP,
     names: SEXP,
     len: R_xlen_t,
@@ -405,8 +400,7 @@ pub unsafe extern "C" fn get1index(
 ///
 /// `x` is a list or pairlist, indexed recursively from level `start` to
 /// `stop-1`. For `[[<-` it needs to duplicate if substructure might be shared.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn vectorIndex(
+pub unsafe fn vectorIndex(
     x: SEXP,
     thesub: SEXP,
     start: c_int,
@@ -474,8 +468,7 @@ pub unsafe extern "C" fn vectorIndex(
 /// with n columns. Returns a vector of 1-based linear indices.
 ///
 /// Negative indices are not allowed. Zero/NA propagates to the result.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
+pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
     unsafe {
         let nrs = LENGTH(s);
         let ndim = LENGTH(dims);
@@ -601,8 +594,7 @@ pub unsafe extern "C" fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) 
 /// For the case `x[i]` where `x` is an n-way array and `i` is a character
 /// matrix with n columns, this matches column values against dimnames of `x`.
 /// Unmatched entries result in an out-of-bounds error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> SEXP {
+pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> SEXP {
     unsafe {
         // Get dimensions of the subscript matrix
         let s_dim = crate::eval::attrib_core::getAttrib(s, crate::eval::attrib_core::R_DimSymbol());
@@ -1092,8 +1084,7 @@ unsafe fn stringSubscript(
 ///
 /// This is the internal implementation used by `[i,j,...]` and `[<-...`.
 /// The public API is `arraySubscript`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn int_arraySubscript(
+pub unsafe fn int_arraySubscript(
     dim: c_int,
     s: SEXP,
     dims: SEXP,
@@ -1151,8 +1142,7 @@ pub unsafe extern "C" fn int_arraySubscript(
 ///
 /// This is used by packages arules, cba, proxy, and seriation.
 /// Delegates to `int_arraySubscript` with `call = R_NilValue`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn arraySubscript(
+pub unsafe fn arraySubscript(
     dim: c_int,
     s: SEXP,
     dims: SEXP,
@@ -1179,8 +1169,7 @@ pub unsafe extern "C" fn arraySubscript(
 ///
 /// If `*stretch` is 0 on entry, the vector `x` cannot be stretched.
 /// Otherwise, `*stretch` returns the new required length for `x`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn makeSubscript(
+pub unsafe fn makeSubscript(
     x: SEXP,
     s: SEXP,
     stretch: *mut R_xlen_t,

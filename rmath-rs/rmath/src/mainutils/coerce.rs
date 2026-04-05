@@ -349,8 +349,7 @@ unsafe fn CLEAR_ATTRIB(x: SEXP) {
 /// Issue coercion warnings based on the warning flags.
 ///
 /// This is the equivalent of R's `CoercionWarning()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CoercionWarning(warn: c_int) {
+pub unsafe fn CoercionWarning(warn: c_int) {
     // In a full implementation these would call R's warning() function.
     // For now we use eprintln to avoid aborting.
     if warn & WARN_NA != 0 {
@@ -374,8 +373,7 @@ pub unsafe extern "C" fn CoercionWarning(warn: c_int) {
 /// Convert integer to logical.
 ///
 /// Returns `NA_LOGICAL` if `x` is `NA_INTEGER`, otherwise 1 if non-zero, 0 if zero.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn LogicalFromInteger(x: c_int, _warn: *mut c_int) -> c_int {
+pub unsafe fn LogicalFromInteger(x: c_int, _warn: *mut c_int) -> c_int {
     if x == NA_INTEGER {
         NA_LOGICAL
     } else if x != 0 {
@@ -388,8 +386,7 @@ pub unsafe extern "C" fn LogicalFromInteger(x: c_int, _warn: *mut c_int) -> c_in
 /// Convert real to logical.
 ///
 /// Returns `NA_LOGICAL` if `x` is NaN, otherwise 1 if non-zero, 0 if zero.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn LogicalFromReal(x: c_double, _warn: *mut c_int) -> c_int {
+pub unsafe fn LogicalFromReal(x: c_double, _warn: *mut c_int) -> c_int {
     if ISNAN(x) {
         NA_LOGICAL
     } else if x != 0.0 {
@@ -402,8 +399,7 @@ pub unsafe extern "C" fn LogicalFromReal(x: c_double, _warn: *mut c_int) -> c_in
 /// Convert complex to logical.
 ///
 /// Returns `NA_LOGICAL` if either part is NaN, otherwise 1 if non-zero, 0 if zero.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c_int {
+pub unsafe fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c_int {
     if ISNAN(x.r) || ISNAN(x.i) {
         NA_LOGICAL
     } else if x.r != 0.0 || x.i != 0.0 {
@@ -417,8 +413,7 @@ pub unsafe extern "C" fn LogicalFromComplex(x: Rcomplex, _warn: *mut c_int) -> c
 ///
 /// Returns 1 for "TRUE"/"T" (case-insensitive), 0 for "FALSE"/"F",
 /// NA_LOGICAL for NA_STRING or unrecognized strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
+pub unsafe fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int {
     unsafe {
         if x.is_null() || x == R_NaString() {
             return NA_LOGICAL;
@@ -445,8 +440,7 @@ pub unsafe extern "C" fn LogicalFromString(x: SEXP, _warn: *mut c_int) -> c_int 
 /// Convert logical to integer.
 ///
 /// Returns `NA_INTEGER` if `x` is `NA_LOGICAL`, otherwise passes through.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_int {
+pub unsafe fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_int {
     if x == NA_LOGICAL { NA_INTEGER } else { x }
 }
 
@@ -454,8 +448,7 @@ pub unsafe extern "C" fn IntegerFromLogical(x: c_int, _warn: *mut c_int) -> c_in
 ///
 /// Returns `NA_INTEGER` if `x` is NaN or outside `INT_MIN..INT_MAX` range.
 /// Sets `WARN_INT_NA` flag in `warn` on overflow.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
+pub unsafe fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int {
     unsafe {
         if ISNAN(x) {
             NA_INTEGER
@@ -475,8 +468,7 @@ pub unsafe extern "C" fn IntegerFromReal(x: c_double, warn: *mut c_int) -> c_int
 /// Returns `NA_INTEGER` if real part is NaN or out of range.
 /// Sets `WARN_IMAG` if imaginary part is non-zero.
 /// Sets `WARN_INT_NA` on overflow.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
+pub unsafe fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_int {
     unsafe {
         if ISNAN(x.r) || ISNAN(x.i) {
             NA_INTEGER
@@ -498,8 +490,7 @@ pub unsafe extern "C" fn IntegerFromComplex(x: Rcomplex, warn: *mut c_int) -> c_
 ///
 /// Parses the string as a double, then converts to integer with overflow checking.
 /// Returns NA_INTEGER for NA_STRING, blank strings, or unparseable strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
+pub unsafe fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
     unsafe {
         if x.is_null() || x == R_NaString() {
             return NA_INTEGER;
@@ -567,8 +558,7 @@ pub unsafe extern "C" fn IntegerFromString(x: SEXP, warn: *mut c_int) -> c_int {
 /// Convert logical to real.
 ///
 /// Returns `NA_REAL` if `x` is `NA_LOGICAL`, otherwise passes through.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RealFromLogical(x: c_int, _warn: *mut c_int) -> c_double {
+pub unsafe fn RealFromLogical(x: c_int, _warn: *mut c_int) -> c_double {
     if x == NA_LOGICAL {
         NA_REAL
     } else {
@@ -579,8 +569,7 @@ pub unsafe extern "C" fn RealFromLogical(x: c_int, _warn: *mut c_int) -> c_doubl
 /// Convert integer to real.
 ///
 /// Returns `NA_REAL` if `x` is `NA_INTEGER`, otherwise passes through.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_double {
+pub unsafe fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_double {
     if x == NA_INTEGER {
         NA_REAL
     } else {
@@ -592,8 +581,7 @@ pub unsafe extern "C" fn RealFromInteger(x: c_int, _warn: *mut c_int) -> c_doubl
 ///
 /// Returns `NA_REAL` if either part is NaN.
 /// Sets `WARN_IMAG` if imaginary part is non-zero.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
+pub unsafe fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_double {
     unsafe {
         if ISNAN(x.r) || ISNAN(x.i) {
             NA_REAL
@@ -610,8 +598,7 @@ pub unsafe extern "C" fn RealFromComplex(x: Rcomplex, warn: *mut c_int) -> c_dou
 ///
 /// Parses the string as a double. Returns NA_REAL for NA_STRING,
 /// blank strings, or unparseable strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
+pub unsafe fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
     unsafe {
         if x.is_null() || x == R_NaString() {
             return NA_REAL;
@@ -669,8 +656,7 @@ pub unsafe extern "C" fn RealFromString(x: SEXP, warn: *mut c_int) -> c_double {
 /// Convert logical to complex.
 ///
 /// Returns `Rcomplex { r: NA_REAL, i: 0.0 }` if `x` is `NA_LOGICAL`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ComplexFromLogical(x: c_int, _warn: *mut c_int) -> Rcomplex {
+pub unsafe fn ComplexFromLogical(x: c_int, _warn: *mut c_int) -> Rcomplex {
     if x == NA_LOGICAL {
         Rcomplex { r: NA_REAL, i: 0.0 }
     } else {
@@ -684,8 +670,7 @@ pub unsafe extern "C" fn ComplexFromLogical(x: c_int, _warn: *mut c_int) -> Rcom
 /// Convert integer to complex.
 ///
 /// Returns `Rcomplex { r: NA_REAL, i: 0.0 }` if `x` is `NA_INTEGER`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcomplex {
+pub unsafe fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcomplex {
     if x == NA_INTEGER {
         Rcomplex { r: NA_REAL, i: 0.0 }
     } else {
@@ -700,8 +685,7 @@ pub unsafe extern "C" fn ComplexFromInteger(x: c_int, _warn: *mut c_int) -> Rcom
 ///
 /// Returns `Rcomplex { r: NA_REAL, i: NA_REAL }` if `x` is R's NA (specific bit pattern).
 /// For other values (including non-NA NaN), passes through with `i = 0.0`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
+pub unsafe fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcomplex {
     if R_IsNA(x) {
         Rcomplex {
             r: NA_REAL,
@@ -716,8 +700,7 @@ pub unsafe extern "C" fn ComplexFromReal(x: c_double, _warn: *mut c_int) -> Rcom
 ///
 /// Parses strings like "3", "2i", "3+2i", "3-2i".
 /// Returns `Rcomplex { r: NA_REAL, i: NA_REAL }` for invalid input.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex {
+pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex {
     unsafe {
         if s.is_null() {
             return Rcomplex {
@@ -792,8 +775,7 @@ pub unsafe extern "C" fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) 
 /// Convert string (CHARSXP/STRSXP element) to complex.
 ///
 /// Faithfully ports R's ComplexFromString from coerce.c which uses R_strtod.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
+pub unsafe fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomplex {
     unsafe {
         let mut z = Rcomplex {
             r: NA_REAL,
@@ -905,8 +887,7 @@ pub unsafe extern "C" fn ComplexFromString(x: SEXP, warn: *mut c_int) -> Rcomple
 /// Convert logical to string (CHARSXP).
 ///
 /// Returns "FALSE" for 0, "TRUE" for 1, NA_STRING for NA_LOGICAL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringFromLogical(x: c_int) -> SEXP {
+pub unsafe fn StringFromLogical(x: c_int) -> SEXP {
     unsafe {
         if x == NA_LOGICAL {
             return R_NaString();
@@ -922,8 +903,7 @@ pub unsafe extern "C" fn StringFromLogical(x: c_int) -> SEXP {
 /// Convert integer to string (CHARSXP).
 ///
 /// Returns NA_STRING for NA_INTEGER, otherwise the decimal representation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
+pub unsafe fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
     unsafe {
         if x == NA_INTEGER {
             return R_NaString();
@@ -957,8 +937,7 @@ pub(crate) unsafe fn StringFromReal_impl(x: c_double, _warn: *mut c_int) -> SEXP
 /// Convert complex to string (CHARSXP).
 ///
 /// Returns NA_STRING if either part is R's NA. Otherwise formats as "r+i" or "r-i".
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
+pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
     unsafe {
         if R_IsNA(x.r) || R_IsNA(x.i) {
             return R_NaString();
@@ -976,8 +955,7 @@ pub unsafe extern "C" fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SE
 /// Convert raw byte to string (CHARSXP).
 ///
 /// Formats as two-digit hexadecimal, e.g. 255 -> "ff".
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
+pub unsafe fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
     unsafe {
         let s = format!("{:02x}", x);
         let cstr = std::ffi::CString::new(s).unwrap();
@@ -1702,8 +1680,7 @@ unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
 /// This is the main entry point for type coercion in R, equivalent to
 /// R's `coerceVector()` from coerce.c. It dispatches to the appropriate
 /// type-specific coercion function based on the source and target types.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
+pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
     unsafe {
         if v.is_null() {
             return ptr::null_mut();
@@ -1797,16 +1774,14 @@ pub unsafe extern "C" fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
 ///
 /// This is R's `asLogical()` from coerce.c. Returns NA_LOGICAL for
 /// empty vectors, and dispatches based on the vector's type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asLogical(x: SEXP) -> c_int {
+pub unsafe fn asLogical(x: SEXP) -> c_int {
     unsafe { asLogical2(x, 0, R_NilValue()) }
 }
 
 /// Convert the first element of a vector to a logical value, with length checking.
 ///
 /// This is R's `asLogical2()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
+pub unsafe fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -1843,8 +1818,7 @@ pub unsafe extern "C" fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_
 /// Convert the first element of a vector to an integer value.
 ///
 /// This is R's `asInteger()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asInteger(x: SEXP) -> c_int {
+pub unsafe fn asInteger(x: SEXP) -> c_int {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -1881,8 +1855,7 @@ pub unsafe extern "C" fn asInteger(x: SEXP) -> c_int {
 /// Convert the first element of a vector to a real (double) value.
 ///
 /// This is R's `asReal()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asReal(x: SEXP) -> c_double {
+pub unsafe fn asReal(x: SEXP) -> c_double {
     unsafe {
         let mut warn: c_int = 0;
 
@@ -1918,8 +1891,7 @@ pub unsafe extern "C" fn asReal(x: SEXP) -> c_double {
 /// Convert the first element of a vector to a complex value.
 ///
 /// This is R's `asComplex()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asComplex(x: SEXP) -> Rcomplex {
+pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
     unsafe {
         let mut warn: c_int = 0;
         let mut z = Rcomplex {
@@ -1971,8 +1943,7 @@ pub unsafe extern "C" fn asComplex(x: SEXP) -> Rcomplex {
 ///
 /// This follows the same pattern as asInteger/asReal, returning 0 for
 /// out-of-range or NA values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asRaw(x: SEXP) -> Rbyte {
+pub unsafe fn asRaw(x: SEXP) -> Rbyte {
     unsafe {
         if isVectorAtomic(x) && xlength(x) >= 1 {
             let val = asInteger(x);
@@ -1991,8 +1962,7 @@ pub unsafe extern "C" fn asRaw(x: SEXP) -> Rbyte {
 
 /// Coerce to Rboolean (c_int), erroring on NA_LOGICAL.
 /// This matches R's asRboolean() from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asRbool(x: SEXP, call: SEXP) -> c_int {
+pub unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
     unsafe {
         let ans = asLogical2(x, 1, call);
         if ans == NA_LOGICAL {
@@ -2004,8 +1974,7 @@ pub unsafe extern "C" fn asRbool(x: SEXP, call: SEXP) -> c_int {
 
 /// Coerce to bool, erroring on NA_LOGICAL.
 /// This matches R's asBool() from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asBool(x: SEXP) -> c_int {
+pub unsafe fn asBool(x: SEXP) -> c_int {
     unsafe {
         let ans = asLogical2(x, 1, R_NilValue());
         if ans == NA_LOGICAL {
@@ -2022,8 +1991,7 @@ pub unsafe extern "C" fn asBool(x: SEXP) -> c_int {
 /// Convert a factor to a character vector using its levels.
 ///
 /// This is R's `asCharacterFactor()` from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asCharacterFactor(x: SEXP) -> SEXP {
+pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
     unsafe {
         let n = xlength(x);
         let labels = getAttrib(x, R_LevelsSymbol());
@@ -2054,8 +2022,7 @@ pub unsafe extern "C" fn asCharacterFactor(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R-level `as.character()` for factors (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asCharacterFactor(
+pub unsafe fn do_asCharacterFactor(
     _call: SEXP,
     _op: SEXP,
     args: SEXP,
@@ -2439,8 +2406,7 @@ fn is_atomic_safe(x: Sexp) -> c_int {
 ///
 /// This is the `do_asatomic()` function from coerce.c, handling
 /// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -2464,8 +2430,7 @@ pub unsafe extern "C" fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEX
 /// R-level `as.vector()` entry point.
 ///
 /// This is the `do_asvector()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -2535,8 +2500,7 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 ///
 /// This is the `do_is()` function from coerce.c, implementing is.null,
 /// is.logical, is.integer, is.double, is.complex, is.character, etc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -2560,8 +2524,7 @@ pub unsafe extern "C" fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) ->
 /// R-level `is.vector()` entry point.
 ///
 /// This is the `do_isvector()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {
@@ -2591,8 +2554,7 @@ pub unsafe extern "C" fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 /// R-level `is.na()` entry point.
 ///
 /// This is the `do_isna()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -2666,8 +2628,7 @@ pub unsafe extern "C" fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
 /// R-level `is.nan()` entry point.
 ///
 /// This is the `do_isnan()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -2720,8 +2681,7 @@ pub unsafe extern "C" fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP
 /// R-level `is.finite()` entry point.
 ///
 /// This is the `do_isfinite()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -2782,8 +2742,7 @@ pub unsafe extern "C" fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 /// R-level `is.infinite()` entry point.
 ///
 /// This is the `do_isinfinite()` function from coerce.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
@@ -2855,8 +2814,7 @@ pub unsafe extern "C" fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env:
 ///
 /// This dispatches to `ascommon` for the actual coercion, matching R's
 /// behavior for `as.vector()`, `as.expression()`, `as.list()`, etc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
             let args_s = match Sexp::from_raw(args) {

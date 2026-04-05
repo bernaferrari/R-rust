@@ -267,8 +267,7 @@ pub unsafe fn R_chk_memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
 /// Convert a SEXPTYPE to its string name.
 ///
 /// This is the equivalent of R's `sexptype2char()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sexptype2char(type_: SEXPTYPE) -> *const c_char {
+pub unsafe fn sexptype2char(type_: SEXPTYPE) -> *const c_char {
     let val = type_.0;
     match val {
         0 => b"NILSXP\0".as_ptr() as *const c_char,      // NILSXP
@@ -946,16 +945,14 @@ pub unsafe fn R_signal_unprotect_error() {
 /// Initialize R's memory subsystem.
 ///
 /// This is the equivalent of R's `InitMemory()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitMemory() {
+pub unsafe fn InitMemory() {
     // No-op stub. The real implementation sets up GC heaps, R_NilValue, etc.
 }
 
 /// Reset the protection stack.
 ///
 /// This is the equivalent of R's `initStack()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn initStack() {
+pub unsafe fn initStack() {
     // No-op stub.
 }
 

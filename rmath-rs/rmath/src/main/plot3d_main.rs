@@ -301,8 +301,7 @@ unsafe extern "C" {
 
 /// GEcontourLines -- given nx x values, ny y values, nx*ny z values,
 /// and nl cut-values in z, produce a list of contour lines.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEcontourLines(
+pub unsafe fn GEcontourLines(
     x: *const c_double,
     nx: c_int,
     y: *const c_double,
@@ -410,8 +409,7 @@ pub unsafe extern "C" fn GEcontourLines(
 
 /// do_contourLines -- .Internal(contourLines(x, y, z, levels))
 /// This is for contourLines() in package grDevices.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let c: SEXP;
         let x: SEXP;

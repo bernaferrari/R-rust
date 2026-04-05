@@ -390,8 +390,7 @@ unsafe fn checkArgIsSymbol(x: SEXP) -> SEXP {
 // a closure wrapper, so X and FUN are symbols bound to promises in rho.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -468,8 +467,7 @@ pub unsafe extern "C" fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // This is a special .Internal with unevaluated arguments.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -917,8 +915,7 @@ pub(crate) unsafe fn do_one(
 // otherwise a new list is returned.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_rapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
@@ -1033,8 +1030,7 @@ pub(crate) unsafe fn islistfactor_recursive(x: SEXP) -> c_int {
 // factor. If `recursive` is FALSE, only the top-level elements are checked.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_islistfactor(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_islistfactor(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 

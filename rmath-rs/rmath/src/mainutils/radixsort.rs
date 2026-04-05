@@ -963,8 +963,7 @@ pub unsafe fn get_newo() -> *mut c_int {
 ///
 /// Currently supports INTSXP and LGLSXP vectors.
 /// REALSXP and STRSXP are not yet implemented.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = -1;
         let mut narg: c_int = 0;
@@ -1533,8 +1532,7 @@ pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 /// - `x` must point to at least `n` valid f64 values (read-only for the
 ///   caller, but internally modified and restored).
 /// - `o` must point to at least `n` valid i32 values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
     unsafe {
         if n <= 1 {
             if n == 1 {
@@ -1669,8 +1667,7 @@ pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
 ///
 /// Requires CHARSXP access infrastructure to read string data.
 /// Currently returns null — needs full CHARSXP/STRING_ELT support.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
+pub unsafe fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -1678,8 +1675,7 @@ pub unsafe extern "C" fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) 
 ///
 /// Requires CHARSXP access infrastructure.
 /// Currently returns null — needs full CHARSXP/STRING_ELT support.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn csort(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
+pub unsafe fn csort(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -1687,8 +1683,7 @@ pub unsafe extern "C" fn csort(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *m
 ///
 /// Requires CHARSXP access infrastructure.
 /// Currently returns null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
+pub unsafe fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -1696,8 +1691,7 @@ pub unsafe extern "C" fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
 ///
 /// Requires CHARSXP access infrastructure.
 /// Currently returns null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cgroup(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
+pub unsafe fn cgroup(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -1705,8 +1699,7 @@ pub unsafe extern "C" fn cgroup(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *
 ///
 /// Requires CHARSXP access infrastructure.
 /// Currently returns 0 (unsorted).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn csorted(_x: *mut c_void, _n: c_int) -> c_int {
+pub unsafe fn csorted(_x: *mut c_void, _n: c_int) -> c_int {
     0
 }
 

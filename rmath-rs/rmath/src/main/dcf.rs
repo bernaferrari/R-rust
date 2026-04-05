@@ -144,8 +144,7 @@ unsafe fn copy_matrix_byrow(dest: SEXP, src: SEXP, src_nrow: c_int, src_ncol: c_
 /// 3. Handles continuation lines (indented with whitespace)
 /// 4. Handles field folding (collapsing whitespace-only continuation lines)
 /// 5. Returns a character matrix with field names as column names
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         // --- Extract arguments ---
         // args is a pairlist: (file, fields, fold_excludes)

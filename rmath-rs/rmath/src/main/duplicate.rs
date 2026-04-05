@@ -579,8 +579,7 @@ unsafe fn duplicate1(s: SEXP, deep: c_int) -> SEXP {
 }
 
 /// Deep duplicate an SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn duplicate(s: SEXP) -> SEXP {
+pub unsafe fn duplicate(s: SEXP) -> SEXP {
     unsafe { duplicate1(s, 1) }
 }
 
@@ -591,15 +590,13 @@ pub unsafe extern "C" fn Rf_duplicate(s: SEXP) -> SEXP {
 }
 
 /// Shallow duplicate an SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn shallow_duplicate(s: SEXP) -> SEXP {
+pub unsafe fn shallow_duplicate(s: SEXP) -> SEXP {
     unsafe { duplicate1(s, 0) }
 }
 
 /// Lazy duplicate: just set NAMEDMAX on the input.
 /// Returns the input unchanged (no copy is made).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lazy_duplicate(s: SEXP) -> SEXP {
+pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {
     unsafe {
         if s.is_null() {
             return s;
@@ -746,8 +743,7 @@ unsafe fn duplicate_list(s: SEXP, deep: c_int) -> SEXP {
 ///
 /// Both vectors must have the same type. The source `t` is recycled
 /// into the destination `s` if it is shorter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyVector(s: SEXP, t: SEXP) {
+pub unsafe fn copyVector(s: SEXP, t: SEXP) {
     unsafe {
         let sT = TYPEOF(s);
         let tT = TYPEOF(t);
@@ -791,8 +787,7 @@ pub unsafe extern "C" fn copyVector(s: SEXP, t: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Copy list matrix contents (legacy function).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
+pub unsafe fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
     unsafe {
         let nr = nrows(s);
         let nc = ncols(s);
@@ -848,8 +843,7 @@ unsafe fn VECTOR_ELT_LD(x: SEXP, i: R_xlen_t) -> SEXP {
 ///
 /// If `byrow` is nonzero, fills by rows; otherwise fills by columns
 /// (which is equivalent to copyVector).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyMatrix(s: SEXP, t: SEXP, byrow: c_int) {
+pub unsafe fn copyMatrix(s: SEXP, t: SEXP, byrow: c_int) {
     unsafe {
         let nr = nrows(s) as R_xlen_t;
         let nc = ncols(s) as R_xlen_t;
@@ -907,8 +901,7 @@ pub unsafe extern "C" fn copyMatrix(s: SEXP, t: SEXP, byrow: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Copy complex data with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyComplexWithRecycle(
+pub unsafe fn xcopyComplexWithRecycle(
     dst: *mut Rcomplex,
     src: *const Rcomplex,
     dstart: R_xlen_t,
@@ -944,8 +937,7 @@ pub unsafe extern "C" fn xcopyComplexWithRecycle(
 }
 
 /// Copy integer data with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyIntegerWithRecycle(
+pub unsafe fn xcopyIntegerWithRecycle(
     dst: *mut c_int,
     src: *const c_int,
     dstart: R_xlen_t,
@@ -981,8 +973,7 @@ pub unsafe extern "C" fn xcopyIntegerWithRecycle(
 }
 
 /// Copy logical data with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyLogicalWithRecycle(
+pub unsafe fn xcopyLogicalWithRecycle(
     dst: *mut c_int,
     src: *const c_int,
     dstart: R_xlen_t,
@@ -995,8 +986,7 @@ pub unsafe extern "C" fn xcopyLogicalWithRecycle(
 }
 
 /// Copy raw data with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyRawWithRecycle(
+pub unsafe fn xcopyRawWithRecycle(
     dst: *mut Rbyte,
     src: *const Rbyte,
     dstart: R_xlen_t,
@@ -1032,8 +1022,7 @@ pub unsafe extern "C" fn xcopyRawWithRecycle(
 }
 
 /// Copy real (double) data with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyRealWithRecycle(
+pub unsafe fn xcopyRealWithRecycle(
     dst: *mut c_double,
     src: *const c_double,
     dstart: R_xlen_t,
@@ -1069,8 +1058,7 @@ pub unsafe extern "C" fn xcopyRealWithRecycle(
 }
 
 /// Copy string vector elements with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyStringWithRecycle(
+pub unsafe fn xcopyStringWithRecycle(
     dst: SEXP,
     src: SEXP,
     dstart: R_xlen_t,
@@ -1106,8 +1094,7 @@ pub unsafe extern "C" fn xcopyStringWithRecycle(
 }
 
 /// Copy generic vector elements with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xcopyVectorWithRecycle(
+pub unsafe fn xcopyVectorWithRecycle(
     dst: SEXP,
     src: SEXP,
     dstart: R_xlen_t,
@@ -1147,8 +1134,7 @@ pub unsafe extern "C" fn xcopyVectorWithRecycle(
 // ---------------------------------------------------------------------------
 
 /// Fill complex matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillComplexMatrixWithRecycle(
+pub unsafe fn xfillComplexMatrixWithRecycle(
     dst: *mut Rcomplex,
     src: *mut Rcomplex,
     dstart: R_xlen_t,
@@ -1165,8 +1151,7 @@ pub unsafe extern "C" fn xfillComplexMatrixWithRecycle(
 }
 
 /// Fill integer matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillIntegerMatrixWithRecycle(
+pub unsafe fn xfillIntegerMatrixWithRecycle(
     dst: *mut c_int,
     src: *mut c_int,
     dstart: R_xlen_t,
@@ -1183,8 +1168,7 @@ pub unsafe extern "C" fn xfillIntegerMatrixWithRecycle(
 }
 
 /// Fill logical matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillLogicalMatrixWithRecycle(
+pub unsafe fn xfillLogicalMatrixWithRecycle(
     dst: *mut c_int,
     src: *mut c_int,
     dstart: R_xlen_t,
@@ -1199,8 +1183,7 @@ pub unsafe extern "C" fn xfillLogicalMatrixWithRecycle(
 }
 
 /// Fill raw matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillRawMatrixWithRecycle(
+pub unsafe fn xfillRawMatrixWithRecycle(
     dst: *mut Rbyte,
     src: *mut Rbyte,
     dstart: R_xlen_t,
@@ -1217,8 +1200,7 @@ pub unsafe extern "C" fn xfillRawMatrixWithRecycle(
 }
 
 /// Fill real matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillRealMatrixWithRecycle(
+pub unsafe fn xfillRealMatrixWithRecycle(
     dst: *mut c_double,
     src: *mut c_double,
     dstart: R_xlen_t,
@@ -1235,8 +1217,7 @@ pub unsafe extern "C" fn xfillRealMatrixWithRecycle(
 }
 
 /// Fill string matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillStringMatrixWithRecycle(
+pub unsafe fn xfillStringMatrixWithRecycle(
     dst: SEXP,
     src: SEXP,
     dstart: R_xlen_t,
@@ -1253,8 +1234,7 @@ pub unsafe extern "C" fn xfillStringMatrixWithRecycle(
 }
 
 /// Fill generic vector matrix with recycling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xfillVectorMatrixWithRecycle(
+pub unsafe fn xfillVectorMatrixWithRecycle(
     dst: SEXP,
     src: SEXP,
     dstart: R_xlen_t,

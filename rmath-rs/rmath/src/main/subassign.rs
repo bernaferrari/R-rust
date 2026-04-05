@@ -20,12 +20,12 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::main::subscript::{
-    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
+    get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex, OneIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::envir::defineVar;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{R_xlen_t, FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory_ext::{allocList, allocSExp};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -327,7 +327,11 @@ unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
 unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
     unsafe {
         let tl = TRUELENGTH(x);
-        if tl >= 0 { tl as R_xlen_t } else { XLENGTH(x) }
+        if tl >= 0 {
+            tl as R_xlen_t
+        } else {
+            XLENGTH(x)
+        }
     }
 }
 
@@ -2025,7 +2029,7 @@ unsafe fn do_subassign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// Port of `do_subassign_dflt()` -- default `[<-` implementation.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = op;
         Rf_protect(args);
@@ -2143,8 +2147,7 @@ unsafe fn do_subassign2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Port of `do_subassign2_dflt()` -- default `[[<-` implementation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = op;
         use crate::attrib_core::R_DimNamesSymbol;
@@ -2730,20 +2733,17 @@ pub unsafe extern "C" fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val
 // ---------------------------------------------------------------------------
 
 /// Port of `SubassignTypeSym()` -- used by the byte code compiler.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SubassignTypeSym() -> SEXP {
+pub unsafe fn SubassignTypeSym() -> SEXP {
     unsafe { Rf_install(std::ffi::CString::new("SubassignTypeSym").unwrap().as_ptr()) }
 }
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SubassignDotsNames(_call: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn SubassignDotsNames(_call: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Port of `GetSubassignSxpVec()` -- used by the byte code interpreter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
+pub unsafe fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
     unsafe {
         if isNull(x) || isNull(indx) {
             return R_NilValue();
@@ -2761,8 +2761,7 @@ pub unsafe extern "C" fn GetSubassignSxpVec(x: SEXP, indx: SEXP) -> SEXP {
 }
 
 /// Port of `var_assign()` -- handles variable assignment in the interpreter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn var_assign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn var_assign(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { do_subassign(call, op, args, rho) }
 }
 

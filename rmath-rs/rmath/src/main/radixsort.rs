@@ -960,8 +960,7 @@ pub unsafe fn get_newo() -> *mut c_int {
 ///
 /// Currently supports INTSXP and LGLSXP vectors.
 /// REALSXP and STRSXP are not yet implemented.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut n: c_int = -1;
         let mut narg: c_int = 0;
@@ -1551,8 +1550,7 @@ pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 /// - `x` must point to at least `n` valid f64 values (read-only for the
 ///   caller, but internally modified and restored).
 /// - `o` must point to at least `n` valid i32 values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
     unsafe {
         if n <= 1 {
             if n == 1 {
@@ -1687,8 +1685,7 @@ pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
 ///
 /// Requires CHARSXP access infrastructure to read string data.
 /// Currently returns null — needs full CHARSXP/STRING_ELT support.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
+pub unsafe fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -1697,8 +1694,7 @@ pub unsafe extern "C" fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) 
 /// `x` is an array of CHARSXP pointers (DATAPTR of a STRSXP).
 /// `o` is the order vector (1-based indices).
 /// Uses insertion sort for small n, MSD radix sort for larger.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn csort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+pub unsafe fn csort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
     unsafe {
         let xs = x as *mut SEXP;
 
@@ -1804,8 +1800,7 @@ pub unsafe extern "C" fn csort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut 
 /// Pre-processing for character sort — translate CHARSXP to byte offsets.
 ///
 /// This is a no-op preparation step. The actual sorting happens in csort.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
+pub unsafe fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
     // Pre-processing is handled inside csort
     ptr::null_mut()
 }
@@ -1814,8 +1809,7 @@ pub unsafe extern "C" fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
 ///
 /// When sortStr==FALSE, groups strings by identity (pointer equality
 /// for interned strings) in first-appearance order.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cgroup(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+pub unsafe fn cgroup(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
     unsafe {
         let xs = x as *mut SEXP;
 
@@ -1891,8 +1885,7 @@ pub unsafe extern "C" fn cgroup(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut
 /// - `-1` if sorted in strictly opposite direction
 /// - `-2` if nalast==0 and all NA
 /// - `0` if unsorted
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn csorted(x: *mut c_void, n: c_int) -> c_int {
+pub unsafe fn csorted(x: *mut c_void, n: c_int) -> c_int {
     unsafe {
         let xs = x as *mut SEXP;
 

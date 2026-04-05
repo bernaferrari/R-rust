@@ -4526,8 +4526,7 @@ pub unsafe extern "C" fn R_Primitive(primname: *const c_char) -> SEXP {
 
 /// Implementation of .Primitive()
 /// Looks up a primitive function by name and returns it as a SPECIALSXP or BUILTINSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let name = CAR(args);
         // Check that name is a single string
@@ -4566,8 +4565,7 @@ pub unsafe extern "C" fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: S
 // ---------------------------------------------------------------------------
 
 /// Convert a function name to its index in R_FunTab, or NA_INTEGER if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn StrToInternal(s: *const c_char) -> c_int {
+pub unsafe fn StrToInternal(s: *const c_char) -> c_int {
     unsafe {
         if s.is_null() {
             return NA_INTEGER;
@@ -4710,8 +4708,7 @@ unsafe impl Sync for DDVALSymbolsInner {}
 static DDVAL_SYMBOLS: std::sync::OnceLock<DDVALSymbolsInner> = std::sync::OnceLock::new();
 
 /// Get or create a DDVAL symbol for index n.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn installDDVAL(n: c_int) -> SEXP {
+pub unsafe fn installDDVAL(n: c_int) -> SEXP {
     unsafe {
         let symbols = DDVAL_SYMBOLS.get_or_init(|| {
             let mut v: Vec<SEXP> = Vec::with_capacity(N_DDVAL_SYMBOLS);
@@ -4824,8 +4821,7 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
 
 /// Implementation of .Internal()
 /// Looks up an internal function and dispatches to its C implementation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
         // s must be a pairlist
@@ -4905,8 +4901,7 @@ pub unsafe extern "C" fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEX
 
 /// Implementation of the ~ operator.
 /// Creates a formula object with class "formula" and .Environment attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if !call.is_null() && OBJECT(call) != 0 {
             duplicate(call)
@@ -4935,8 +4930,7 @@ pub unsafe extern "C" fn do_tilde(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP)
 
 /// Get the name of a primitive function.
 /// For use in packages.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getPRIMNAME(object: SEXP) -> *const c_char {
+pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
     unsafe {
         if object.is_null() {
             return ptr::null();

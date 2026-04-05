@@ -148,8 +148,7 @@ unsafe fn namewalk(s: SEXP, d: &mut NameWalkData) {
 // ---------------------------------------------------------------------------
 
 /// Also does all.vars with functions=FALSE.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_allnames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_allnames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, env);
         checkArity(op, args);

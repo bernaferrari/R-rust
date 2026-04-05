@@ -99,8 +99,7 @@ impl AccuracyInfo {
 // ---------------------------------------------------------------------------
 
 /// Initialize the `.Machine` variable in the given environment.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Init_R_Machine(_rho: SEXP) {
+pub unsafe fn Init_R_Machine(_rho: SEXP) {
     unsafe {
         // Call machar to determine machine characteristics
         let info = std::ptr::addr_of_mut!(R_AccuracyInfo);

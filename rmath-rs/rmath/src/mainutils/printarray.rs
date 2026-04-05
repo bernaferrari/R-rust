@@ -1061,8 +1061,7 @@ unsafe fn print_raw_matrix(
 // printMatrix -- main matrix printer (#[unsafe(no_mangle)] export)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printMatrix(
+pub unsafe fn printMatrix(
     x: SEXP,
     offset: c_int,
     dim: SEXP,
@@ -1155,8 +1154,7 @@ pub unsafe extern "C" fn printMatrix(
 // printArray -- print an n-dimensional array (#[unsafe(no_mangle)] export)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printArray(
+pub unsafe fn printArray(
     x: SEXP,
     dim: SEXP,
     quote: c_int,
@@ -1327,8 +1325,7 @@ pub unsafe extern "C" fn printArray(
 // formatLogicalMatrix -- compute column widths for logical matrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatLogicalMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
+pub unsafe fn formatLogicalMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             return;
@@ -1359,8 +1356,7 @@ pub unsafe extern "C" fn formatLogicalMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int
 // formatIntegerMatrix -- compute column widths for integer matrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
+pub unsafe fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             return;
@@ -1391,8 +1387,7 @@ pub unsafe extern "C" fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int
 // formatRealMatrix -- compute column widths for real matrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRealMatrix(
+pub unsafe fn formatRealMatrix(
     x: SEXP,
     n: R_xlen_t,
     w: *mut c_int,
@@ -1441,8 +1436,7 @@ pub unsafe extern "C" fn formatRealMatrix(
 // formatComplexMatrix -- compute column widths for complex matrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatComplexMatrix(
+pub unsafe fn formatComplexMatrix(
     x: SEXP,
     n: R_xlen_t,
     wr: *mut c_int,
@@ -1516,8 +1510,7 @@ pub unsafe extern "C" fn formatComplexMatrix(
 // formatStringMatrix -- compute column widths for string matrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatStringMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, quote: c_int) {
+pub unsafe fn formatStringMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, quote: c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             return;
@@ -1556,8 +1549,7 @@ pub unsafe extern "C" fn formatStringMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int,
 // formatRawMatrix -- compute column widths for raw matrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRawMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
+pub unsafe fn formatRawMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             return;

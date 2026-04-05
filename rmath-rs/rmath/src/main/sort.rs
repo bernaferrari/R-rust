@@ -246,8 +246,7 @@ pub unsafe extern "C" fn R_csort(x: *mut Rcomplex, n: c_int) {
 /// # Safety
 /// `x` must point to at least `n` valid `f64` values.
 /// `indx` must point to at least `n` valid `c_int` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rsort_with_index(x: *mut f64, indx: *mut c_int, n: c_int) {
+pub unsafe fn rsort_with_index(x: *mut f64, indx: *mut c_int, n: c_int) {
     unsafe {
         if n <= 1 {
             return;
@@ -292,8 +291,7 @@ pub unsafe extern "C" fn rsort_with_index(x: *mut f64, indx: *mut c_int, n: c_in
 /// # Safety
 /// `a` must point to at least `n` valid `f64` values.
 /// `ib` must point to at least `n` valid `c_int` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn revsort(a: *mut f64, ib: *mut c_int, n: c_int) {
+pub unsafe fn revsort(a: *mut f64, ib: *mut c_int, n: c_int) {
     unsafe {
         if n <= 1 {
             return;
@@ -375,8 +373,7 @@ pub unsafe extern "C" fn revsort(a: *mut f64, ib: *mut c_int, n: c_int) {
 ///
 /// # Safety
 /// `x` must point to at least `n` valid `c_int` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn iPsort(x: *mut c_int, n: c_int, k: c_int) {
+pub unsafe fn iPsort(x: *mut c_int, n: c_int, k: c_int) {
     unsafe {
         let mut lo: i64 = 0;
         let mut hi: i64 = (n - 1) as i64;
@@ -419,8 +416,7 @@ pub unsafe extern "C" fn iPsort(x: *mut c_int, n: c_int, k: c_int) {
 ///
 /// # Safety
 /// `x` must point to at least `n` valid `f64` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rPsort(x: *mut f64, n: c_int, k: c_int) {
+pub unsafe fn rPsort(x: *mut f64, n: c_int, k: c_int) {
     unsafe {
         let mut lo: i64 = 0;
         let mut hi: i64 = (n - 1) as i64;
@@ -463,8 +459,7 @@ pub unsafe extern "C" fn rPsort(x: *mut f64, n: c_int, k: c_int) {
 ///
 /// # Safety
 /// `x` must point to at least `n` valid `Rcomplex` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cPsort(x: *mut Rcomplex, n: c_int, k: c_int) {
+pub unsafe fn cPsort(x: *mut Rcomplex, n: c_int, k: c_int) {
     unsafe {
         let mut lo: i64 = 0;
         let mut hi: i64 = (n - 1) as i64;

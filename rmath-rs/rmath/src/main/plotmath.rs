@@ -3983,8 +3983,7 @@ unsafe fn RenderOffsetElement(
 // R API Functions
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEExpressionWidth(
+pub unsafe fn GEExpressionWidth(
     expr: SEXP,
     gc: *const R_GE_gcontext,
     dd: *mut GEDevDesc,
@@ -4008,8 +4007,7 @@ pub unsafe extern "C" fn GEExpressionWidth(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEExpressionHeight(
+pub unsafe fn GEExpressionHeight(
     expr: SEXP,
     gc: *const R_GE_gcontext,
     dd: *mut GEDevDesc,
@@ -4034,8 +4032,7 @@ pub unsafe extern "C" fn GEExpressionHeight(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEExpressionMetric(
+pub unsafe fn GEExpressionMetric(
     expr: SEXP,
     gc: *const R_GE_gcontext,
     ascent: *mut c_double,
@@ -4070,8 +4067,7 @@ pub unsafe extern "C" fn GEExpressionMetric(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GEMathText(
+pub unsafe fn GEMathText(
     x: c_double,
     y: c_double,
     expr: SEXP,

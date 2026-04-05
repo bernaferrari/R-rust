@@ -34,8 +34,7 @@ use crate::sexp::globals::R_NilValue;
 // ---------------------------------------------------------------------------
 
 /// Set the dim attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -53,8 +52,7 @@ pub unsafe extern "C" fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// Set the dimnames attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -72,8 +70,7 @@ pub unsafe extern "C" fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: 
 // ---------------------------------------------------------------------------
 
 /// Set the levels attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -91,8 +88,7 @@ pub unsafe extern "C" fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SE
 // ---------------------------------------------------------------------------
 
 /// Get or set the tsp (time series parameters) attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
@@ -110,8 +106,7 @@ pub unsafe extern "C" fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// Set the tsp attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -129,8 +124,7 @@ pub unsafe extern "C" fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// Get or set the comment attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
@@ -151,8 +145,7 @@ pub unsafe extern "C" fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // ---------------------------------------------------------------------------
 
 /// Set the comment attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -172,8 +165,7 @@ pub unsafe extern "C" fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: S
 // ---------------------------------------------------------------------------
 
 /// Get or set a single attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
@@ -198,8 +190,7 @@ pub unsafe extern "C" fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 // ---------------------------------------------------------------------------
 
 /// Set a single attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 3 {
@@ -218,8 +209,7 @@ pub unsafe extern "C" fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 /// Set all attributes of an object (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -234,8 +224,7 @@ pub unsafe extern "C" fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env
 // ---------------------------------------------------------------------------
 
 /// Set the class attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -252,8 +241,7 @@ pub unsafe extern "C" fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 /// Set the names attribute (internal).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
@@ -271,8 +259,7 @@ pub unsafe extern "C" fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEX
 // ---------------------------------------------------------------------------
 
 /// Check if an object has an explicit class attribute.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 1 {
@@ -343,8 +330,7 @@ pub unsafe extern "C" fn R_getAttributes(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Internal helper to set dim attribute with validation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
+pub unsafe fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
     unsafe {
         if val.is_null() || val == R_NilValue() {
             return vec;

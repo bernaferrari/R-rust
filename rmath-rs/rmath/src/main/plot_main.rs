@@ -69,8 +69,7 @@ unsafe fn GET_REAL(x: SEXP, i: usize) -> c_double {
 /// i.e., the vector of tick mark locations, when none has been specified.
 ///
 /// This is used in graphics and grid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CreateAtVector(
+pub unsafe fn CreateAtVector(
     axp: *mut c_double,
     usr: *const c_double,
     nint: c_int,

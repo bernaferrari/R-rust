@@ -66,8 +66,7 @@ static mut ptr_savePalette: Option<F4> = None;
 /// # Safety
 /// All four function pointers must be valid (non-null) and must remain valid
 /// for as long as they may be called through this module.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rg_set_col_ptrs(
+pub unsafe fn Rg_set_col_ptrs(
     f1: Option<F1>,
     f2: Option<F2>,
     f3: Option<F3>,
@@ -92,8 +91,7 @@ pub unsafe extern "C" fn Rg_set_col_ptrs(
 ///
 /// # Safety
 /// `ptr_col2name` must have been set via `Rg_set_col_ptrs`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn col2name(col: std::os::raw::c_uint) -> *const c_char {
+pub unsafe fn col2name(col: std::os::raw::c_uint) -> *const c_char {
     unsafe {
         match ptr_col2name {
             Some(f) => f(col),
@@ -124,8 +122,7 @@ pub unsafe extern "C" fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint 
 ///
 /// # Safety
 /// `ptr_savePalette` must have been set via `Rg_set_col_ptrs`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn savePalette(save: c_int) {
+pub unsafe fn savePalette(save: c_int) {
     unsafe {
         match ptr_savePalette {
             Some(f) => f(save),
@@ -148,8 +145,7 @@ pub unsafe extern "C" fn savePalette(save: c_int) {
 /// # Safety
 /// This is a stub that always returns 0.  The real implementation requires
 /// the full R runtime and `SEXP` support.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RGBpar3(
+pub unsafe fn RGBpar3(
     _x: *mut c_void,
     _i: c_int,
     _bg: std::os::raw::c_uint,
@@ -167,7 +163,6 @@ pub unsafe extern "C" fn RGBpar3(
 /// # Safety
 /// This is a stub that always returns 0.  The real implementation requires
 /// the full R runtime and `SEXP` support.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RGBpar(_x: *mut c_void, _i: c_int) -> std::os::raw::c_uint {
+pub unsafe fn RGBpar(_x: *mut c_void, _i: c_int) -> std::os::raw::c_uint {
     0
 }

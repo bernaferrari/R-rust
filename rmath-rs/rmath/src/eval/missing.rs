@@ -122,8 +122,7 @@ pub unsafe fn VectorToPairListNamed(x: SEXP) -> SEXP {
 ///
 /// Ported from R's `DispatchAnyOrEval()` in eval.c. Used by c() and
 /// previously by [. Differs in that all arguments are evaluated immediately.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn DispatchAnyOrEval(
+pub unsafe fn DispatchAnyOrEval(
     call: SEXP,
     op: SEXP,
     generic: *const c_char,
@@ -339,8 +338,7 @@ unsafe fn tryAssignDispatch(
 ///
 /// Ported from R's `SrcrefPrompt()` in eval.c. If a valid srcref is
 /// available, prints the filename and line number.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
+pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
     unsafe {
         if srcref.is_null() || srcref == R_NilValue() {
             if !prefix.is_null() {
@@ -801,8 +799,7 @@ pub unsafe extern "C" fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho
 ///
 /// Ported from R's `do_eval()` in eval.c. Evaluates an expression in
 /// the specified environment.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
         let mut env = CADR(args);
