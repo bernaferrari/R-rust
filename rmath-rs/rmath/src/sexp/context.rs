@@ -13,7 +13,7 @@ use std::os::raw::c_int;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::ffi::{SexprecCore, SEXP, SEXPTYPE};
+use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 
 // ---------------------------------------------------------------------------
 // Context type constants (from Defn.h CTXT_* defines)

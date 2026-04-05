@@ -928,11 +928,7 @@ fn bfrac(a: f64, b: f64, x: f64, y: f64, lambda: f64, eps: f64, log_p: bool) -> 
         }
     }
 
-    if log_p {
-        brc + log(r)
-    } else {
-        brc * r
-    }
+    if log_p { brc + log(r) } else { brc * r }
 }
 
 fn brcomp(a: f64, b: f64, x: f64, y: f64, log_p: bool) -> f64 {
@@ -1027,11 +1023,7 @@ fn brcomp(a: f64, b: f64, x: f64, y: f64, log_p: bool) -> f64 {
         let y0: f64;
         let apb = a + b;
         let lambda = if apb.is_finite() {
-            if a <= b {
-                a - apb * x
-            } else {
-                apb * y - b
-            }
+            if a <= b { a - apb * x } else { apb * y - b }
         } else {
             a * y - b * x
         };
@@ -1165,14 +1157,10 @@ fn brcmp1(mu: i32, a: f64, b: f64, x: f64, y: f64, give_log: bool) -> f64 {
     } else {
         // PROCEDURE FOR A >= 8 AND B >= 8
         let const__ = 0.398942280401433_f64; // == 1/sqrt(2*pi);
-                                             // L100:
+        // L100:
         let apb = a + b;
         let lambda = if apb.is_finite() {
-            if a <= b {
-                a - apb * x
-            } else {
-                apb * y - b
-            }
+            if a <= b { a - apb * x } else { apb * y - b }
         } else {
             a * y - b * x
         };
@@ -1255,11 +1243,7 @@ fn bgrat(a: f64, b: f64, x: f64, y: f64, w: &mut f64, eps: f64, ierr: &mut i32, 
             exp(*w - log_u)
         }
     } else {
-        if *w == 0.0 {
-            0.0
-        } else {
-            exp(log(*w) - log_u)
-        }
+        if *w == 0.0 { 0.0 } else { exp(log(*w) - log_u) }
     };
 
     let q_r = grat_r(b, z, log_r, eps);
@@ -1720,11 +1704,7 @@ fn erf__(x: f64) -> f64 {
     let bot = (((s[0] * t + s[1]) * t + s[2]) * t + s[3]) * t + 1.0;
     let t = (c - top / (x2 * bot)) / ax;
     let r_val = 0.5 - exp(-x2) * t + 0.5;
-    if x < 0.0 {
-        -r_val
-    } else {
-        r_val
-    }
+    if x < 0.0 { -r_val } else { r_val }
 }
 
 fn erfc1(ind: i32, x: f64) -> f64 {
@@ -2311,11 +2291,7 @@ fn algdiv(a: f64, b: f64) -> f64 {
     // COMBINE THE RESULTS
     let u = d * alnrel(a / b);
     let v = a * (log(b) - 1.0);
-    if u > v {
-        w - v - u
-    } else {
-        w - u - v
-    }
+    if u > v { w - v - u } else { w - u - v }
 }
 
 fn gamln(a: f64) -> f64 {

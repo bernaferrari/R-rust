@@ -433,12 +433,8 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                     } else if len - pos < bt_len {
                         result = 1;
                     } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
-                        result = libc_memcmp(
-                            string as *const u8,
-                            so as usize,
-                            str_byte.sub(1),
-                            bt_len,
-                        );
+                        result =
+                            libc_memcmp(string as *const u8, so as usize, str_byte.sub(1), bt_len);
                     } else {
                         result = 1;
                     }

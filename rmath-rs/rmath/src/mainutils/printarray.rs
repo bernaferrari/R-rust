@@ -1154,13 +1154,7 @@ pub unsafe fn printMatrix(
 // printArray -- print an n-dimensional array (#[unsafe(no_mangle)] export)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn printArray(
-    x: SEXP,
-    dim: SEXP,
-    quote: c_int,
-    right: c_int,
-    dimnames: SEXP,
-) {
+pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP) {
     unsafe {
         if x.is_null() || dim.is_null() {
             return;
@@ -1387,13 +1381,7 @@ pub unsafe fn formatIntegerMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int) {
 // formatRealMatrix -- compute column widths for real matrix
 // ---------------------------------------------------------------------------
 
-pub unsafe fn formatRealMatrix(
-    x: SEXP,
-    n: R_xlen_t,
-    w: *mut c_int,
-    d: *mut c_int,
-    e: *mut c_int,
-) {
+pub unsafe fn formatRealMatrix(x: SEXP, n: R_xlen_t, w: *mut c_int, d: *mut c_int, e: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             return;

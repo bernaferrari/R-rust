@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 /* md5.c - Functions to compute MD5 message digest of files or memory blocks
    according to the definition of MD5 in RFC 1321 from April 1992.

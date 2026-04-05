@@ -493,11 +493,7 @@ unsafe fn make_charsxp(bytes: &[u8]) -> SEXP {
 ///
 /// Translate characters in `x`: replace characters in `old` with corresponding
 /// characters in `new`.
-pub fn chartr_safe<'a>(
-    x: Sexp<'a>,
-    old: Sexp<'a>,
-    new: Sexp<'a>,
-) -> Result<SEXP, String> {
+pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
     if old.typeof_() != SEXPTYPE::STRSXP {
@@ -585,37 +581,35 @@ pub fn chartr_safe<'a>(
 /// This is the Rust port of R's `do_chartr` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        unsafe {
-            let args_s = match Sexp::from_raw(args) {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let old = match args_s.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let args2 = match args_s.cdr() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let new = match args2.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let args3 = match args2.cdr() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let x = match args3.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let old = match args_s.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let args2 = match args_s.cdr() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let new = match args2.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let args3 = match args2.cdr() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let x = match args3.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
 
-            match chartr_safe(x, old, new) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
+        match chartr_safe(x, old, new) {
+            Ok(result) => result,
+            Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
@@ -635,21 +629,19 @@ pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 /// This is the Rust port of R's `do_tolower`/`do_toupper` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        unsafe {
-            let args_s = match Sexp::from_raw(args) {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let x = match args_s.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let x = match args_s.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
 
-            match toupper_safe(x) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
+        match toupper_safe(x) {
+            Ok(result) => result,
+            Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
@@ -669,21 +661,19 @@ pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 /// This is the Rust port of R's `do_tolower` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        unsafe {
-            let args_s = match Sexp::from_raw(args) {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let x = match args_s.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let x = match args_s.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
 
-            match tolower_safe(x) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
+        match tolower_safe(x) {
+            Ok(result) => result,
+            Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })
@@ -851,7 +841,12 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 Some(s) => s,
                 None => return crate::sexp::globals::R_NilValue(),
             };
-            let allow_na_val = as_logical(args3.car().map(|s| s.as_raw()).unwrap_or_else(|| crate::sexp::globals::R_NilValue()));
+            let allow_na_val = as_logical(
+                args3
+                    .car()
+                    .map(|s| s.as_raw())
+                    .unwrap_or_else(|| crate::sexp::globals::R_NilValue()),
+            );
             let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
                 false
             } else {
@@ -866,7 +861,12 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     Some(s) => s,
                     None => return crate::sexp::globals::R_NilValue(),
                 };
-                let keep_na_val = as_logical(args4.car().map(|s| s.as_raw()).unwrap_or_else(|| crate::sexp::globals::R_NilValue()));
+                let keep_na_val = as_logical(
+                    args4
+                        .car()
+                        .map(|s| s.as_raw())
+                        .unwrap_or_else(|| crate::sexp::globals::R_NilValue()),
+                );
                 if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
                     keep_na = type_code != NcharType::Width;
                 } else {
@@ -920,7 +920,9 @@ pub fn substr_safe<'a>(
     let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, len as c_int)) };
 
     for i in 0..len {
-        let start = starts.integer_elt((i as R_xlen_t) % k).unwrap_or(crate::sexp::ffi::NA_INTEGER);
+        let start = starts
+            .integer_elt((i as R_xlen_t) % k)
+            .unwrap_or(crate::sexp::ffi::NA_INTEGER);
         let stop = stops
             .as_ref()
             .and_then(|s| s.integer_elt((i as R_xlen_t) % l_val))
@@ -980,37 +982,35 @@ pub fn substr_safe<'a>(
 /// This is the Rust port of R's `do_substr` from character.c.
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        unsafe {
-            let args_s = match Sexp::from_raw(args) {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
 
-            let x = match args_s.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
+        let x = match args_s.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
 
-            let args2 = match args_s.cdr() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let sa = match args2.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
+        let args2 = match args_s.cdr() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let sa = match args2.car() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
 
-            let args3 = match args2.cdr() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let so = args3.car();
+        let args3 = match args2.cdr() {
+            Some(s) => s,
+            None => return crate::sexp::globals::R_NilValue(),
+        };
+        let so = args3.car();
 
-            match substr_safe(x, sa, so) {
-                Ok(result) => result,
-                Err(_) => crate::sexp::globals::R_NilValue(),
-            }
+        match substr_safe(x, sa, so) {
+            Ok(result) => result,
+            Err(_) => crate::sexp::globals::R_NilValue(),
         }
     }))
     .unwrap_or_else(|_| unsafe { crate::sexp::globals::R_NilValue() })

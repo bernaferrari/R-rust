@@ -57,11 +57,7 @@ pub fn dnbeta_inner(x: f64, a: f64, b: f64, ncp: f64, log_p: bool) -> f64 {
         0_i32
     } else {
         d_val = ceil(d + sqrt(d_val));
-        if d_val > 0.0 {
-            d_val as i32
-        } else {
-            0
-        }
+        if d_val > 0.0 { d_val as i32 } else { 0 }
     };
 
     // Starting "middle term" -- first look at its log scale
@@ -119,6 +115,7 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
     let itrmax = 10000_i32;
 
     if ncp < 0.0 || a <= 0.0 || b <= 0.0 {
+        #[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
         return 0.0_f64 / 0.0_f64; // NaN
     }
 
@@ -186,11 +183,7 @@ fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: 
 
     if lower_tail {
         if log_p {
-            if ans > 0.0 {
-                log(ans)
-            } else {
-                ML_NEGINF
-            }
+            if ans > 0.0 { log(ans) } else { ML_NEGINF }
         } else {
             ans
         }
@@ -201,11 +194,7 @@ fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: 
         if ans > 1.0 {
             return if log_p { r_d_lexp(0.0, true) } else { 0.0 };
         }
-        if log_p {
-            log1p(-ans)
-        } else {
-            1.0 - ans
-        }
+        if log_p { log1p(-ans) } else { 1.0 - ans }
     }
 }
 

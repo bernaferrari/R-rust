@@ -383,6 +383,7 @@ unsafe fn fmt_do(
                         }
                     }
                     // Back up one so the label: switch consumes 'Y'
+                    #[allow(clippy::implicit_saturating_sub)]
                     if idx > 0 {
                         idx -= 1;
                     }

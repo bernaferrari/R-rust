@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001--2025  The R Core Team.
@@ -1318,7 +1316,10 @@ pub unsafe extern "C" fn La_qr_cmplx(ain: SEXP) -> SEXP {
 
     let qraux = Rf_protect(Rf_allocVector(CPLXSXP_C, min_mn as c_int));
     for i in 0..min_mn as usize {
-        *COMPLEX(qraux).add(i) = std::mem::transmute::<LapRcomplex, Rcomplex>(*tau.add(i));
+        *COMPLEX(qraux).add(i) = {
+            // SAFETY: LapRcomplex and Rcomplex have identical layouts: #[repr(C)] struct { r: f64, i: f64 }
+            std::mem::transmute::<LapRcomplex, Rcomplex>(*tau.add(i))
+        };
     }
 
     let pivot = Rf_protect(Rf_allocVector(INTSXP_C, n as c_int));
@@ -1782,8 +1783,10 @@ pub unsafe extern "C" fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
     ));
     for j in 0..nrhs as usize {
         for i in 0..k as usize {
-            *COMPLEX(ans).add(i + j * k as usize) =
-                std::mem::transmute::<LapRcomplex, Rcomplex>(b_copy[i + j * m as usize]);
+            *COMPLEX(ans).add(i + j * k as usize) = {
+                // SAFETY: LapRcomplex and Rcomplex have identical #[repr(C)] layouts
+                std::mem::transmute::<LapRcomplex, Rcomplex>(b_copy[i + j * m as usize])
+            };
         }
     }
 

@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 //! B-spline basis evaluation and spline value computation.
 //!

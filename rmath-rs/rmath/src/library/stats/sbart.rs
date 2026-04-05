@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 //! Cubic B-spline smoother (sbart).
 //! Port of r-source/src/library/stats/src/sbart.c

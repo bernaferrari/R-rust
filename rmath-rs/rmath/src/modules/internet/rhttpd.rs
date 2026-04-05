@@ -20,6 +20,7 @@ use crate::sexp::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::*;
+use core::alloc::{Layout, alloc, dealloc};
 use core::ffi::{c_char, c_int, c_long, c_uint, c_void};
 use libc::{
     AF_INET, FILE, INADDR_ANY, IPPROTO_TCP, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET, accept, bind,
@@ -197,7 +198,50 @@ unsafe fn first_init() {
 // Buffer management
 // ============================================================
 
-/// Free buffers starting from the tail
+/// Free a C string allocated by alloc_c_string. Null-safe.
+unsafe fn free_c_string(s: *mut c_char) {
+    if s.is_null() {
+        return;
+    }
+    let len = libc::strlen(s) + 1;
+    let layout = Layout::from_size_align_unchecked(len, 1);
+    dealloc(s as *mut u8, layout);
+}
+
+/// Duplicate a C string using std::alloc instead of libc::strdup.
+unsafe fn alloc_c_string(s: *const c_char) -> *mut c_char {
+    if s.is_null() {
+        return std::ptr::null_mut();
+    }
+    let len = libc::strlen(s) + 1;
+    let layout = Layout::from_size_align_unchecked(len, 1);
+    let dst = alloc(layout) as *mut c_char;
+    if !dst.is_null() {
+        libc::memcpy(dst as *mut c_void, s as *const c_void, len);
+    }
+    dst
+}
+
+/// Allocate `size` bytes of raw memory using std::alloc instead of libc::malloc.
+unsafe fn alloc_raw(size: size_t) -> *mut c_void {
+    if size == 0 {
+        return std::ptr::null_mut();
+    }
+    let layout = Layout::from_size_align_unchecked(size as usize, 1);
+    alloc(layout) as *mut c_void
+}
+
+/// Free memory allocated by alloc_raw.
+unsafe fn free_raw(p: *mut c_void, size: size_t) {
+    if p.is_null() || size == 0 {
+        return;
+    }
+    let layout = Layout::from_size_align_unchecked(size as usize, 1);
+    dealloc(p as *mut u8, layout);
+}
+
+/// Free buffers starting from the tail.
+/// Safety: buf must have been allocated by alloc_buffer (via std::alloc).
 unsafe fn free_buffer(buf: *mut Buffer) {
     if buf.is_null() {
         return;
@@ -205,13 +249,21 @@ unsafe fn free_buffer(buf: *mut Buffer) {
     if !(*buf).prev.is_null() {
         free_buffer((*buf).prev);
     }
-    libc::free(buf as *mut c_void);
+    // SAFETY: buf was allocated by alloc_buffer with this same layout.
+    let size = (*buf).size as usize;
+    let layout = Layout::from_size_align_unchecked(
+        core::mem::size_of::<Buffer>() + size,
+        core::mem::align_of::<Buffer>(),
+    );
+    dealloc(buf as *mut u8, layout);
 }
 
-/// Allocate a new buffer
+/// Allocate a new buffer with `size` bytes of data space after the Buffer header.
+/// Uses std::alloc instead of libc::malloc to avoid libc allocator dependency.
 unsafe fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
-    let buf =
-        libc::malloc(core::mem::size_of::<Buffer>() as size_t + size as size_t) as *mut Buffer;
+    let total_size = core::mem::size_of::<Buffer>() + size as usize;
+    let layout = Layout::from_size_align_unchecked(total_size, core::mem::align_of::<Buffer>());
+    let buf = alloc(layout) as *mut Buffer;
     if buf.is_null() {
         return buf;
     }
@@ -269,18 +321,12 @@ unsafe fn finalize_worker(c: *mut HttpdConn) {
         removeInputHandler(R_InputHandlers(), (*c).ih);
         (*c).ih = std::ptr::null_mut();
     }
-    if !(*c).url.is_null() {
-        libc::free((*c).url as *mut c_void);
-        (*c).url = std::ptr::null_mut();
-    }
-    if !(*c).body.is_null() {
-        libc::free((*c).body as *mut c_void);
-        (*c).body = std::ptr::null_mut();
-    }
-    if !(*c).content_type.is_null() {
-        libc::free((*c).content_type as *mut c_void);
-        (*c).content_type = std::ptr::null_mut();
-    }
+    free_c_string((*c).url);
+    (*c).url = std::ptr::null_mut();
+    free_c_string((*c).body);
+    (*c).body = std::ptr::null_mut();
+    free_c_string((*c).content_type);
+    (*c).content_type = std::ptr::null_mut();
     if !(*c).headers.is_null() {
         free_buffer((*c).headers);
         (*c).headers = std::ptr::null_mut();
@@ -303,7 +349,8 @@ unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
     }
     // No more space - finalize and free
     finalize_worker(c);
-    libc::free(c as *mut c_void);
+    let layout = Layout::new::<HttpdConn>();
+    dealloc(c as *mut u8, layout);
     -1
 }
 
@@ -324,7 +371,8 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
         }
         i += 1;
     }
-    libc::free(c as *mut c_void);
+    let layout = Layout::new::<HttpdConn>();
+    dealloc(c as *mut u8, layout);
 }
 
 // ============================================================
@@ -815,29 +863,19 @@ unsafe extern "C" fn process_request_(ptr: *mut c_void) {
                 );
                 send_response((*c).sock, buf.as_ptr(), libc::strlen(buf.as_ptr()));
                 if (*c).method != METHOD_HEAD {
-                    let fbuf = libc::malloc(32768) as *mut c_char;
-                    if !fbuf.is_null() {
-                        let mut remaining = fsz as size_t;
-                        while remaining > 0 && libc::feof(f) == 0 {
-                            let rd = if remaining > 32768 { 32768 } else { remaining };
-                            if libc::fread(fbuf as *mut c_void, 1, rd, f) != rd {
-                                libc::free(fbuf as *mut c_void);
-                                Rf_unprotect(7);
-                                (*c).attr |= CONNECTION_CLOSE;
-                                libc::fclose(f);
-                                vmaxset(vmax);
-                                return;
-                            }
-                            send_response((*c).sock, fbuf, rd);
-                            remaining -= rd;
+                    let mut fbuf = vec![0u8; 32768];
+                    let mut remaining = fsz as size_t;
+                    while remaining > 0 && libc::feof(f) == 0 {
+                        let rd = if remaining > 32768 { 32768 } else { remaining };
+                        if libc::fread(fbuf.as_mut_ptr() as *mut c_void, 1, rd, f) != rd {
+                            Rf_unprotect(7);
+                            (*c).attr |= CONNECTION_CLOSE;
+                            libc::fclose(f);
+                            vmaxset(vmax);
+                            return;
                         }
-                        libc::free(fbuf as *mut c_void);
-                    } else {
-                        Rf_unprotect(7);
-                        (*c).attr |= CONNECTION_CLOSE;
-                        libc::fclose(f);
-                        vmaxset(vmax);
-                        return;
+                        send_response((*c).sock, fbuf.as_ptr() as *const c_char, rd);
+                        remaining -= rd;
                     }
                 }
                 libc::fclose(f);
@@ -934,14 +972,18 @@ unsafe fn process_request(c: *mut HttpdConn) {
 
 /// Remove . and (most) .. from "p" following RFC 3986, 5.2.4.
 unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
-    let inbuf = libc::strdup(p);
-    let mut inp = inbuf;
+    let in_len = libc::strlen(p);
+    let mut inp_buf = Vec::with_capacity(in_len + 1);
+    libc::memcpy(
+        inp_buf.as_mut_ptr() as *mut c_void,
+        p as *const c_void,
+        in_len + 1,
+    );
+    inp_buf.set_len(in_len + 1);
+    let mut inp = inp_buf.as_mut_ptr();
 
-    let outbuf = libc::malloc(libc::strlen(inbuf) + 1) as *mut c_char;
-    if outbuf.is_null() {
-        Rf_error(b"allocation error in remove_dot_segments\0".as_ptr() as *const c_char);
-        unreachable!();
-    }
+    let mut out_buf = vec![0i8; in_len + 1];
+    let outbuf = out_buf.as_mut_ptr();
     let mut out = outbuf;
     *out = 0;
 
@@ -1016,8 +1058,17 @@ unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
         *out = 0;
     }
 
-    libc::free(inbuf as *mut c_void);
-    outbuf
+    inp_buf.set_len(0); // prevent double-free of Vec data
+    let len = libc::strlen(out_buf.as_ptr() as *const c_char) + 1;
+    let layout = Layout::from_size_align_unchecked(len, 1);
+    let result = alloc(layout) as *mut c_char;
+    libc::memcpy(
+        result as *mut c_void,
+        out_buf.as_ptr() as *const c_void,
+        len,
+    );
+    out_buf.set_len(0); // prevent Vec from freeing
+    result
 }
 
 // ============================================================
@@ -1026,18 +1077,12 @@ unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
 
 /// Reset a worker so it can process a new request (keep-alive)
 unsafe fn reset_worker(c: *mut HttpdConn) {
-    if !(*c).url.is_null() {
-        libc::free((*c).url as *mut c_void);
-        (*c).url = std::ptr::null_mut();
-    }
-    if !(*c).body.is_null() {
-        libc::free((*c).body as *mut c_void);
-        (*c).body = std::ptr::null_mut();
-    }
-    if !(*c).content_type.is_null() {
-        libc::free((*c).content_type as *mut c_void);
-        (*c).content_type = std::ptr::null_mut();
-    }
+    free_c_string((*c).url);
+    (*c).url = std::ptr::null_mut();
+    free_c_string((*c).body);
+    (*c).body = std::ptr::null_mut();
+    free_c_string((*c).content_type);
+    (*c).content_type = std::ptr::null_mut();
     if !(*c).headers.is_null() {
         free_buffer((*c).headers);
         (*c).headers = std::ptr::null_mut();
@@ -1107,7 +1152,7 @@ unsafe extern "C" fn worker_input_handler(data: *mut c_void) {
                         remove_worker(c);
                         return;
                     }
-                    let body = libc::malloc((*c).content_length as size_t + 1) as *mut c_char;
+                    let body = alloc_raw((*c).content_length as size_t + 1) as *mut c_char;
                     if body.is_null() {
                         send_http_response(c, b" 413 Request Entity Too Large (request body too big)\r\nConnection: close\r\n\r\n\0".as_ptr() as *const c_char);
                         remove_worker(c);
@@ -1395,10 +1440,8 @@ unsafe extern "C" fn worker_input_handler(data: *mut c_void) {
                                     l = l.offset(1);
                                 }
                                 (*c).attr |= CONTENT_TYPE;
-                                if !(*c).content_type.is_null() {
-                                    libc::free((*c).content_type as *mut c_void);
-                                }
-                                (*c).content_type = libc::strdup(k);
+                                free_c_string((*c).content_type);
+                                (*c).content_type = alloc_c_string(k);
                                 if libc::strncmp(
                                     k,
                                     b"application/x-www-form-urlencoded\0".as_ptr()
@@ -1547,11 +1590,7 @@ unsafe extern "C" fn srv_input_handler(_data: *mut c_void) {
     if cl_sock == INVALID_SOCKET {
         return;
     }
-    let c = libc::calloc(1, core::mem::size_of::<HttpdConn>()) as *mut HttpdConn;
-    if c.is_null() {
-        Rf_error(b"allocation error in srv_input_handler\0".as_ptr() as *const c_char);
-        unreachable!();
-    }
+    let c = Box::into_raw(Box::new(unsafe { std::mem::zeroed::<HttpdConn>() }));
     (*c).sock = cl_sock;
     (*c).peer = peer_sa.sin_addr;
 

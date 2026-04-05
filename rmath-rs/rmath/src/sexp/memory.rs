@@ -7,11 +7,11 @@
 //! allocation patterns where most objects are short-lived within a
 //! single R expression evaluation.
 
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::os::raw::c_void;
 use std::ptr::{self, NonNull};
 
-use super::ffi::{R_xlen_t, SexprecCore, SexprecData, Vecsxp, NA_INTEGER, SEXP, SEXPTYPE};
+use super::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp};
 
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE

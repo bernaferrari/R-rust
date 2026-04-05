@@ -186,12 +186,7 @@ const NB: usize = 1000;
 ///
 /// This is the fallback path when `R_print.digits >= DBL_DIG + 1` (i.e.
 /// >= 16 for IEEE 754 double).
-pub unsafe fn format_via_sprintf(
-    r: c_double,
-    d: c_int,
-    kpower: *mut c_int,
-    nsig: *mut c_int,
-) {
+pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
     unsafe {
         let mut buff = [0i8; NB];
         let d = d as usize;
@@ -386,12 +381,7 @@ pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
 // Ported from C: iterates SEXP array, calls Rstrlen for display width.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn formatString(
-    x: *const SEXP,
-    n: R_xlen_t,
-    fieldwidth: *mut c_int,
-    quote: c_int,
-) {
+pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
 

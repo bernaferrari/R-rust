@@ -3,10 +3,10 @@
 //! This crate provides high-level, safe bindings to the R interpreter
 //! for use from Kotlin (Android), Swift (iOS), and Python.
 
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{
-    atomic::{AtomicBool, AtomicU64, Ordering},
     Arc, Mutex,
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 use std::thread;
 
@@ -107,6 +107,16 @@ fn spawn_worker(
     cancelled: Arc<AtomicBool>,
 ) {
     thread::spawn(move || {
+        let mut session = match r_embed::RSession::new() {
+            Ok(s) => s,
+            Err(e) => {
+                if let Some(cb) = callback.lock().unwrap().as_ref() {
+                    cb.on_error(format!("init failed: {e}"));
+                }
+                return;
+            }
+        };
+
         while let Ok(cmd) = cmd_rx.recv() {
             if cancelled.load(Ordering::SeqCst) {
                 cancelled.store(false, Ordering::SeqCst);
@@ -115,12 +125,17 @@ fn spawn_worker(
 
             match cmd {
                 SessionCommand::Eval { code, reply } => {
-                    // In a full implementation, this would call into rmath
-                    let output = format!("Evaluated: {}", code);
-                    let result = Ok(output.clone());
+                    let result = session
+                        .eval(&code)
+                        .map_err(|e| RError::EvalError(e.to_string()));
 
                     if let Some(cb) = callback.lock().unwrap().as_ref() {
-                        cb.on_eval_complete(EvalResult { output });
+                        match &result {
+                            Ok(output) => cb.on_eval_complete(EvalResult {
+                                output: output.clone(),
+                            }),
+                            Err(e) => cb.on_error(e.to_string()),
+                        }
                     }
 
                     let _ = reply.send(result);
@@ -130,13 +145,14 @@ fn spawn_worker(
                     height,
                     reply,
                 } => {
-                    // In a full implementation, this would render via r-graphics-engine
-                    let pixels = vec![0u8; (width * height * 4) as usize];
-                    let result = Ok(PlotResult {
-                        width,
-                        height,
-                        pixels,
-                    });
+                    let result = session
+                        .render_with_dimensions("", width, height)
+                        .map(|pixels| PlotResult {
+                            width,
+                            height,
+                            pixels,
+                        })
+                        .map_err(|e| RError::RenderError(e.to_string()));
 
                     if let Some(cb) = callback.lock().unwrap().as_ref() {
                         if let Ok(plot) = &result {
@@ -150,6 +166,7 @@ fn spawn_worker(
                     cancelled.store(true, Ordering::SeqCst);
                 }
                 SessionCommand::Shutdown => {
+                    session.close();
                     break;
                 }
             }

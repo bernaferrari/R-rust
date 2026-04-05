@@ -240,7 +240,7 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// Returns the formal arguments of a function.
 /// Ported from R's formals() in inspect.c.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
         let s = CAR(args);

@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported to Rust from fft.c

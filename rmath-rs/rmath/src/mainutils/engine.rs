@@ -223,13 +223,7 @@ pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Set the clipping rectangle on the current device.
-pub unsafe fn GESetClip(
-    x1: c_double,
-    y1: c_double,
-    x2: c_double,
-    y2: c_double,
-    dd: *mut c_void,
-) {
+pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     // Stub: no-op
 }
 

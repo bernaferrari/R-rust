@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 //! Quartz PDF device module (qdPDF.c)
 //!
 //! Provides QuartzPDF_DeviceCreate for macOS PDF output using CoreGraphics.

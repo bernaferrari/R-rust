@@ -33,11 +33,7 @@ const VERY_SMALL_NU: f64 = f64::from_bits(0x0010_0000_0000_0000); // 2^-800
 /// Minimum of two ints (from bessel_j.c: #define min0(x, y) (((x) <= (y)) ? (x) : (y)))
 #[inline(always)]
 fn min0(x: i32, y: i32) -> i32 {
-    if x <= y {
-        x
-    } else {
-        y
-    }
+    if x <= y { x } else { y }
 }
 
 // =====================================================================

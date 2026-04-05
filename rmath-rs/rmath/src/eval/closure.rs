@@ -17,15 +17,15 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    Rf_isNull, BODY, CADDR, CAR, CDDR, CDR, CLOENV, FORMALS, LENGTH, SETCAR, SETCDR, SETTAG,
-    SET_CLOENV, SET_NAMED, TAG, TYPEOF,
+    BODY, CADDR, CAR, CDDR, CDR, CLOENV, FORMALS, LENGTH, Rf_isNull, SET_CLOENV, SET_NAMED, SETCAR,
+    SETCDR, SETTAG, TAG, TYPEOF,
 };
-use crate::sexp::context::{ctxt_flags, Rf_begincontext, Rf_endcontext};
+use crate::sexp::context::{Rf_begincontext, Rf_endcontext, ctxt_flags};
 use crate::sexp::envir::{
-    addMissingVarsToNewEnv, defineVar, forcePromise, matchArgs, CheckFormals,
+    CheckFormals, addMissingVarsToNewEnv, defineVar, forcePromise, matchArgs,
 };
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{set_R_Visible, R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
+use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, set_R_Visible};
 use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::safe::{PairlistIter, Sexp};

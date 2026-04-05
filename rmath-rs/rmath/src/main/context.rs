@@ -1013,7 +1013,7 @@ pub unsafe fn countContexts_c(ctxttype: c_int, browser: c_int) -> c_int {
 // ---------------------------------------------------------------------------
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_sysbrowser(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sysbrowser(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let mut rval = R_NilValue();
         checkArity(op, args);

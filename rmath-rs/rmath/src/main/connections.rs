@@ -221,7 +221,10 @@ fn next_connection() -> usize {
             return i;
         }
     }
-    panic!("all connections are in use");
+    crate::main::errors::Rf_error(
+        b"all connections are in use\0".as_ptr() as *const std::os::raw::c_char
+    );
+    unreachable!()
 }
 
 /// Get a connection by index. Returns a reference to the connection.
@@ -229,7 +232,10 @@ fn get_connection(n: usize) -> std::sync::MutexGuard<'static, Vec<Option<Box<RCo
     init_connections_table();
     let table = CONNECTIONS.lock().unwrap();
     if n >= table.len() || table[n].is_none() {
-        panic!("invalid connection");
+        crate::main::errors::Rf_error(
+            b"invalid connection\0".as_ptr() as *const std::os::raw::c_char
+        );
+        unreachable!()
     }
     table
 }
@@ -239,7 +245,10 @@ fn get_connection_mut(n: usize) {
     init_connections_table();
     let mut _table = CONNECTIONS.lock().unwrap();
     if n >= _table.len() || _table[n].is_none() {
-        panic!("invalid connection");
+        crate::main::errors::Rf_error(
+            b"invalid connection\0".as_ptr() as *const std::os::raw::c_char
+        );
+        unreachable!()
     }
     // The caller should use the table directly for mutation
 }
@@ -1510,12 +1519,7 @@ pub unsafe fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> 
 // do_rawConnection — rawConnection(raw, open = "rb")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rawConnection(
-    _call: SEXP,
-    _op: SEXP,
-    mut args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sfile = CAR(args);
         args = CDR(args);
@@ -1582,12 +1586,7 @@ pub unsafe fn do_rawConnection(
 // do_textConnection — textConnection(object, open = "r", local = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnection(
-    _call: SEXP,
-    _op: SEXP,
-    mut args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sfile = CAR(args);
         args = CDR(args);
@@ -1653,12 +1652,7 @@ pub unsafe fn do_textConnection(
 // do_textConnectionValue — textConnectionValue(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnectionValue(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1693,12 +1687,7 @@ pub unsafe fn do_textConnectionValue(
 // do_sockConnection — stub
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sockConnection(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1747,12 +1736,7 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 // do_showConnections — showConnections(all = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_showConnections(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _all = check_logical_arg(CAR(args), "all");
 
@@ -1877,12 +1861,7 @@ pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 // do_pushBackLength — pushBackLength(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pushBackLength(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_pushBackLength(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarInteger(0) }
 }
 

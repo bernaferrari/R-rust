@@ -1552,12 +1552,7 @@ pub unsafe fn markKnown(_s: *const c_char, _ref: *const c_void) -> *const c_void
 ///
 /// Simplified version that handles ASCII and basic UTF-8.
 /// For enc=1 (CE_NATIVE), uses platform bytes. For enc=2 (CE_UTF8), parses UTF-8.
-pub unsafe fn mbcsToUcs2(
-    in_: *const c_char,
-    out: *mut u16,
-    nout: c_int,
-    enc: c_int,
-) -> usize {
+pub unsafe fn mbcsToUcs2(in_: *const c_char, out: *mut u16, nout: c_int, enc: c_int) -> usize {
     unsafe {
         if in_.is_null() || out.is_null() || nout <= 0 {
             return 0;

@@ -10,7 +10,7 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{Rf_isNull, CADR, CAR, CDDR, CDR, PRIMOFFSET, SET_PRIMOFFSET, TYPEOF};
+use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, PRIMOFFSET, Rf_isNull, SET_PRIMOFFSET, TYPEOF};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory;

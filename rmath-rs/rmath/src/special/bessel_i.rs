@@ -1,7 +1,6 @@
 #![allow(
     unused_assignments,
     clippy::neg_cmp_op_on_partial_ord,
-    clippy::assigning_mutate_iter,
     clippy::mut_range_bound
 )]
 // Ported from R's nmath/bessel_i.c
@@ -37,11 +36,7 @@ const XLRG_BESS_IJ: f64 = 1e5;
 /// Minimum of two ints
 #[inline(always)]
 fn min0(x: i32, y: i32) -> i32 {
-    if x <= y {
-        x
-    } else {
-        y
-    }
+    if x <= y { x } else { y }
 }
 
 // =====================================================================

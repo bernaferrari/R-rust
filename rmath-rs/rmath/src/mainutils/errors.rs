@@ -942,6 +942,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
                     let names = CAR(ATTRIB(warnings_ptr));
                     if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP.0 {
                         // Append traceback if requested
+                        #[allow(clippy::implicit_clone)]
                         let mut msg_to_store = fmt_str.to_string();
                         if R_SHOW_WARN_CALLS.load(Ordering::Relaxed)
                             && !call.is_null()
@@ -1417,12 +1418,7 @@ pub unsafe fn do_seterrmessage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> S
 }
 
 /// do_printDeferredWarnings — print deferred warnings.
-pub unsafe fn do_printDeferredWarnings(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         R_PrintDeferredWarnings();
@@ -1431,12 +1427,7 @@ pub unsafe fn do_printDeferredWarnings(
 }
 
 /// do_interruptsSuspended — get/set interrupts suspended flag.
-pub unsafe fn do_interruptsSuspended(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let orig = R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed);
         if !args.is_null() && isNull(args) == 0 {

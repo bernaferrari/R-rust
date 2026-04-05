@@ -368,9 +368,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
 
                             if (*reach_next_i).state == (*tnfa).final_
                                 && (match_eo == -1
-                                    || (num_tags > 0
-                                        && *(*reach_next_i).tags
-                                            <= *match_tags))
+                                    || (num_tags > 0 && *(*reach_next_i).tags <= *match_tags))
                             {
                                 match_eo = pos;
                                 new_match = 1;

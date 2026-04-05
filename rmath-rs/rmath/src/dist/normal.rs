@@ -315,11 +315,7 @@ pub fn pnorm5_inner(x: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) 
     let i_tail: i32 = if lower_tail { 0 } else { 1 };
     let (p, cp) = pnorm_both(x, i_tail, log_p);
 
-    if lower_tail {
-        p
-    } else {
-        cp
-    }
+    if lower_tail { p } else { cp }
 }
 
 // ---- qnorm ----

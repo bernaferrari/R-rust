@@ -932,6 +932,7 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 // do_open — open(con, open = "", blocking = TRUE)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::assigning_clones)]
 pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
@@ -1549,12 +1550,7 @@ pub unsafe fn do_writeTable(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> 
 // do_rawConnection — rawConnection(raw, open = "rb")
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_rawConnection(
-    _call: SEXP,
-    _op: SEXP,
-    mut args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sfile = CAR(args);
         args = CDR(args);
@@ -1621,12 +1617,7 @@ pub unsafe fn do_rawConnection(
 // do_textConnection — textConnection(object, open = "r", local = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnection(
-    _call: SEXP,
-    _op: SEXP,
-    mut args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let sfile = CAR(args);
         args = CDR(args);
@@ -1692,12 +1683,7 @@ pub unsafe fn do_textConnection(
 // do_textConnectionValue — textConnectionValue(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_textConnectionValue(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let scon = CAR(args);
 
@@ -1732,12 +1718,7 @@ pub unsafe fn do_textConnectionValue(
 // do_sockConnection — stub
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_sockConnection(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_sockConnection(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1786,12 +1767,7 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 // do_showConnections — showConnections(all = FALSE)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_showConnections(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let _all = check_logical_arg(CAR(args), "all");
 
@@ -1916,12 +1892,7 @@ pub unsafe fn do_pushBack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 // do_pushBackLength — pushBackLength(con)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_pushBackLength(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_pushBackLength(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_ScalarInteger(0) }
 }
 

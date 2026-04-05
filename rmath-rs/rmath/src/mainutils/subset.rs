@@ -34,7 +34,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::R_findVarInFrame;
-use crate::sexp::ffi::{R_xlen_t, Rboolean, FALSE, NA_INTEGER, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -365,22 +365,14 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             if v == NA_INTEGER {
                 NA_LOGICAL
             } else {
-                if v != 0 {
-                    TRUE
-                } else {
-                    FALSE
-                }
+                if v != 0 { TRUE } else { FALSE }
             }
         } else if t == SEXPTYPE::REALSXP.0 {
             let v = REAL_ELT(x, 0);
             if v.is_nan() {
                 NA_LOGICAL
             } else {
-                if v != 0.0 {
-                    TRUE
-                } else {
-                    FALSE
-                }
+                if v != 0.0 { TRUE } else { FALSE }
             }
         } else {
             NA_LOGICAL
@@ -1339,11 +1331,7 @@ unsafe fn scalarIndex(s: SEXP) -> R_xlen_t {
             }
         } else if t == SEXPTYPE::REALSXP.0 && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
             let rval = SCALAR_DVAL(s);
-            if R_FINITE(rval) {
-                rval as R_xlen_t
-            } else {
-                -1
-            }
+            if R_FINITE(rval) { rval as R_xlen_t } else { -1 }
         } else {
             -1
         }
@@ -1407,11 +1395,7 @@ unsafe fn ExtractExactArg(args: SEXP) -> c_int {
             return 1;
         } /* Default is true as from R 2.7.0 */
         let exact = asLogical(argval);
-        if exact == NA_LOGICAL {
-            -1
-        } else {
-            exact
-        }
+        if exact == NA_LOGICAL { -1 } else { exact }
     }
 }
 
@@ -1659,11 +1643,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         let pok = if exact == -1 {
             exact
         } else {
-            if exact == 0 {
-                1
-            } else {
-                0
-            }
+            if exact == 0 { 1 } else { 0 }
         };
 
         let x = CAR(args);
@@ -1951,12 +1931,7 @@ pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> S
 
 /// Fix up arguments for the `$` operator. Translates the second argument
 /// (a symbol or string) into a single-element character vector.
-pub unsafe fn fixSubset3Args(
-    call: SEXP,
-    args: SEXP,
-    env: SEXP,
-    syminp: *mut SEXP,
-) -> SEXP {
+pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEXP) -> SEXP {
     unsafe {
         let input = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
         let mut nlist = CADR(args);

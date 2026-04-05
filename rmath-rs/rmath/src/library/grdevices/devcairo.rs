@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 //! Cairo graphics device module (devCairo.c, 94 lines)
 //!
 //! Provides Cairo device initialization by dynamically loading the

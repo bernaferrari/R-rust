@@ -26,7 +26,7 @@
 use std::os::raw::c_double;
 use std::os::raw::c_int;
 
-use super::ffi::{R_xlen_t, SexprecCore, SexprecData, SEXP, SEXPTYPE};
+use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 use super::memory::with_arena;
 use super::safe::Sexp;
 
@@ -450,11 +450,7 @@ pub fn altrep_dataptr(x: SEXP, writable: bool) -> Option<*mut std::os::raw::c_vo
     let class = altrep_class(x)?;
     let data = altrep_data_mut(x)?;
     let ptr = (class.get_dataptr)(data, writable);
-    if ptr.is_null() {
-        None
-    } else {
-        Some(ptr)
-    }
+    if ptr.is_null() { None } else { Some(ptr) }
 }
 
 /// Get a materialized integer vector from an ALTREP object.

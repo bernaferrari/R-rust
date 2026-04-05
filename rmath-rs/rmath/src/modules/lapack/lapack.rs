@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001--2025  The R Core Team.
@@ -17,6 +15,8 @@
  *        real LAPACK calls.
  */
 
+use crate::main::errors::Rf_error1;
+use core::ffi::c_char;
 use std::ptr;
 
 /// Rcomplex: a pair of doubles for complex numbers (matches R's Rcomplex)
@@ -451,23 +451,41 @@ unsafe extern "C" {
 /// - 'E' -> 'F' (Euclidean/Frobenius alias)
 /// - 'M', 'O', 'I', 'F' pass through
 ///
-/// Returns the normalized character or panics on invalid input.
+/// Returns the normalized character or calls Rf_error on invalid input.
 pub(crate) fn La_norm_type(typstr: &str) -> u8 {
     if typstr.len() != 1 {
-        panic!(
+        let msg = format!(
             "argument type[1]='{}' must be a character string of string length 1",
             typstr
         );
+        let cmsg = std::ffi::CString::new(msg).unwrap();
+        unsafe {
+            Rf_error1(
+                b"invalid argument\0".as_ptr() as *const c_char,
+                cmsg.as_ptr(),
+            )
+        };
+        unreachable!()
     }
     let typup = typstr.as_bytes()[0].to_ascii_uppercase();
     match typup {
         b'1' => b'O', // alias
         b'E' => b'F', // alias
         b'M' | b'O' | b'I' | b'F' => typup,
-        _ => panic!(
-            "argument type[1]='{}' must be one of 'M','1','O','I','F' or 'E'",
-            typstr
-        ),
+        _ => {
+            let msg = format!(
+                "argument type[1]='{}' must be one of 'M','1','O','I','F' or 'E'",
+                typstr
+            );
+            let cmsg = std::ffi::CString::new(msg).unwrap();
+            unsafe {
+                Rf_error1(
+                    b"invalid argument\0".as_ptr() as *const c_char,
+                    cmsg.as_ptr(),
+                )
+            };
+            unreachable!()
+        }
     }
 }
 
@@ -477,22 +495,40 @@ pub(crate) fn La_norm_type(typstr: &str) -> u8 {
 /// - '1' -> 'O'
 /// - 'O' or 'I' pass through
 ///
-/// Returns 'O' or 'I', or panics on invalid input.
+/// Returns 'O' or 'I', or calls Rf_error on invalid input.
 pub(crate) fn La_rcond_type(typstr: &str) -> u8 {
     if typstr.len() != 1 {
-        panic!(
+        let msg = format!(
             "argument type[1]='{}' must be a character string of string length 1",
             typstr
         );
+        let cmsg = std::ffi::CString::new(msg).unwrap();
+        unsafe {
+            Rf_error1(
+                b"invalid argument\0".as_ptr() as *const c_char,
+                cmsg.as_ptr(),
+            )
+        };
+        unreachable!()
     }
     let typup = typstr.as_bytes()[0].to_ascii_uppercase();
     match typup {
         b'1' => b'O', // alias
         b'O' | b'I' => typup,
-        _ => panic!(
-            "argument type[1]='{}' must be one of '1','O', or 'I'",
-            typstr
-        ),
+        _ => {
+            let msg = format!(
+                "argument type[1]='{}' must be one of '1','O', or 'I'",
+                typstr
+            );
+            let cmsg = std::ffi::CString::new(msg).unwrap();
+            unsafe {
+                Rf_error1(
+                    b"invalid argument\0".as_ptr() as *const c_char,
+                    cmsg.as_ptr(),
+                )
+            };
+            unreachable!()
+        }
     }
 }
 
@@ -501,18 +537,36 @@ pub(crate) fn La_rcond_type(typstr: &str) -> u8 {
 /// Converts single-character uplo specification to uppercase:
 /// - 'U' or 'L' pass through
 ///
-/// Returns 'U' or 'L', or panics on invalid input.
+/// Returns 'U' or 'L', or calls Rf_error on invalid input.
 pub(crate) fn La_valid_uplo(uplostr: &str) -> u8 {
     if uplostr.len() != 1 {
-        panic!(
+        let msg = format!(
             "argument type[1]='{}' must be a character string of string length 1",
             uplostr
         );
+        let cmsg = std::ffi::CString::new(msg).unwrap();
+        unsafe {
+            Rf_error1(
+                b"invalid argument\0".as_ptr() as *const c_char,
+                cmsg.as_ptr(),
+            )
+        };
+        unreachable!()
     }
     let uplo = uplostr.as_bytes()[0].to_ascii_uppercase();
     match uplo {
         b'U' | b'L' => uplo,
-        _ => panic!("argument type[1]='{}' must be 'U' or 'L'", uplostr),
+        _ => {
+            let msg = format!("argument type[1]='{}' must be 'U' or 'L'", uplostr);
+            let cmsg = std::ffi::CString::new(msg).unwrap();
+            unsafe {
+                Rf_error1(
+                    b"invalid argument\0".as_ptr() as *const c_char,
+                    cmsg.as_ptr(),
+                )
+            };
+            unreachable!()
+        }
     }
 }
 

@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001-3 Paul Murrell

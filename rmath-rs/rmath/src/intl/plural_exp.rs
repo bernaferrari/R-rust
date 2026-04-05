@@ -208,11 +208,7 @@ unsafe fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
 
             expression_operator::lnot => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
-                if left == 0 {
-                    1
-                } else {
-                    0
-                }
+                if left == 0 { 1 } else { 0 }
             }
 
             expression_operator::mult => {
@@ -224,21 +220,13 @@ unsafe fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
             expression_operator::divide => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if right == 0 {
-                    0
-                } else {
-                    left / right
-                }
+                if right == 0 { 0 } else { left / right }
             }
 
             expression_operator::module => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if right == 0 {
-                    0
-                } else {
-                    left % right
-                }
+                if right == 0 { 0 } else { left % right }
             }
 
             expression_operator::plus => {
@@ -256,81 +244,49 @@ unsafe fn plural_eval_internal(pexp: *const expression, n: c_ulong) -> c_ulong {
             expression_operator::less_than => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left < right {
-                    1
-                } else {
-                    0
-                }
+                if left < right { 1 } else { 0 }
             }
 
             expression_operator::greater_than => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left > right {
-                    1
-                } else {
-                    0
-                }
+                if left > right { 1 } else { 0 }
             }
 
             expression_operator::less_or_equal => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left <= right {
-                    1
-                } else {
-                    0
-                }
+                if left <= right { 1 } else { 0 }
             }
 
             expression_operator::greater_or_equal => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left >= right {
-                    1
-                } else {
-                    0
-                }
+                if left >= right { 1 } else { 0 }
             }
 
             expression_operator::equal => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left == right {
-                    1
-                } else {
-                    0
-                }
+                if left == right { 1 } else { 0 }
             }
 
             expression_operator::not_equal => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left != right {
-                    1
-                } else {
-                    0
-                }
+                if left != right { 1 } else { 0 }
             }
 
             expression_operator::land => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left != 0 && right != 0 {
-                    1
-                } else {
-                    0
-                }
+                if left != 0 && right != 0 { 1 } else { 0 }
             }
 
             expression_operator::lor => {
                 let left = plural_eval_internal(exp.val.get_args()[0], n);
                 let right = plural_eval_internal(exp.val.get_args()[1], n);
-                if left != 0 || right != 0 {
-                    1
-                } else {
-                    0
-                }
+                if left != 0 || right != 0 { 1 } else { 0 }
             }
 
             expression_operator::qmop => {

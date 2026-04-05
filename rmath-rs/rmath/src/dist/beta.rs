@@ -275,11 +275,7 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     let x1 = 0.5 - x + 0.5; // = 1 - x
     let (w, wc) = bratio_simplified(a, b, x, x1, log_p);
 
-    if lower_tail {
-        w
-    } else {
-        wc
-    }
+    if lower_tail { w } else { wc }
 }
 
 /// Simplified bratio: computes the incomplete beta ratio I_x(a,b)

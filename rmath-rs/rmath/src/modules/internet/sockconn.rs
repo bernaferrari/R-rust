@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-
 // Port of R's modules/internet/sockconn.c (309 lines)
 // Socket connections: Rconnection creation for socket and server socket connections.
 // Implements sock_open, sock_close, servsock_close, sock_read_helper,
@@ -10,8 +8,9 @@
 // structs) is stored in con->private.
 
 use crate::sexp::*;
+use core::alloc::{Layout, alloc, dealloc};
 use core::ffi::{c_char, c_int, c_void};
-use libc::{FD_SETSIZE, free, malloc, size_t, snprintf, ssize_t, strcpy, strlen};
+use libc::{FD_SETSIZE, size_t, snprintf, ssize_t, strcpy, strlen};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -154,6 +153,44 @@ unsafe extern "C" {
     fn R_set_nodelay(s: c_int) -> c_int;
     fn REprintf(format: *const i8);
     fn R_alloc(size: usize, nelem: usize) -> *mut c_void;
+}
+
+// ---------------------------------------------------------------------------
+// Internal allocation helpers (using std::alloc instead of libc::malloc/free)
+// ---------------------------------------------------------------------------
+
+unsafe fn alloc_c_string(len: usize) -> *mut c_char {
+    if len == 0 {
+        return std::ptr::null_mut();
+    }
+    let layout = Layout::from_size_align_unchecked(len, 1);
+    alloc(layout) as *mut c_char
+}
+
+unsafe fn free_c_string(p: *mut c_char) {
+    if p.is_null() {
+        return;
+    }
+    let len = strlen(p) + 1;
+    let layout = Layout::from_size_align_unchecked(len, 1);
+    dealloc(p as *mut u8, layout);
+}
+
+unsafe fn alloc_boxed<T>() -> *mut T {
+    let layout = Layout::new::<T>();
+    let ptr = alloc(layout) as *mut T;
+    if !ptr.is_null() {
+        core::ptr::write_bytes(ptr as *mut u8, 0, layout.size());
+    }
+    ptr
+}
+
+unsafe fn free_boxed<T>(p: *mut T) {
+    if p.is_null() {
+        return;
+    }
+    let layout = Layout::new::<T>();
+    dealloc(p as *mut u8, layout);
 }
 
 // ---------------------------------------------------------------------------
@@ -329,11 +366,11 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
 
         // Update description: "<-hostname:port"
         if !(*con).description.is_null() {
-            free((*con).description as *mut c_void);
+            free_c_string((*con).description);
         }
         let buf_len = strlen(buf.as_ptr());
-        let sz = buf_len + 10; // "<-" prefix + ":" + port digits + null
-        (*con).description = malloc(sz) as *mut c_char;
+        let sz = buf_len + 10;
+        (*con).description = alloc_c_string(sz);
         if (*con).description.is_null() {
             REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const i8);
             return R_FALSE;
@@ -604,17 +641,16 @@ pub(crate) unsafe extern "C" fn in_R_newsock(
     options: c_int,
 ) -> Rconnection {
     // Allocate the Rconn struct
-    let new = malloc(core::mem::size_of::<Rconn>()) as Rconnection;
+    let new = alloc_boxed::<Rconn>();
     if new.is_null() {
         REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
-    core::ptr::write_bytes(new as *mut u8, 0, core::mem::size_of::<Rconn>());
 
     // Allocate class name
-    (*new).class = malloc(10) as *mut c_char; // strlen("sockconn") + 1 = 9
+    (*new).class = alloc_c_string(10);
     if (*new).class.is_null() {
-        free(new as *mut c_void);
+        free_boxed(new);
         REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
@@ -623,10 +659,10 @@ pub(crate) unsafe extern "C" fn in_R_newsock(
     // Allocate description
     let host_len = if host.is_null() { 0 } else { strlen(host) };
     let desc_size = host_len + 10;
-    (*new).description = malloc(desc_size) as *mut c_char;
+    (*new).description = alloc_c_string(desc_size);
     if (*new).description.is_null() {
-        free((*new).class as *mut c_void);
-        free(new as *mut c_void);
+        free_c_string((*new).class);
+        free_boxed(new);
         REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
@@ -649,15 +685,14 @@ pub(crate) unsafe extern "C" fn in_R_newsock(
     (*new).write_fn = Some(sock_write);
 
     // Allocate private data (sockconn struct)
-    let priv_data = malloc(core::mem::size_of::<sockconn>()) as Rsockconn;
+    let priv_data = alloc_boxed::<sockconn>();
     if priv_data.is_null() {
-        free((*new).description as *mut c_void);
-        free((*new).class as *mut c_void);
-        free(new as *mut c_void);
+        free_c_string((*new).description);
+        free_c_string((*new).class);
+        free_boxed(new);
         REprintf(b"allocation of socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
-    core::ptr::write_bytes(priv_data as *mut u8, 0, core::mem::size_of::<sockconn>());
 
     (*priv_data).port = port;
     (*priv_data).server = server;
@@ -682,27 +717,26 @@ pub(crate) unsafe extern "C" fn in_R_newsock(
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn in_R_newservsock(port: c_int) -> Rconnection {
     // Allocate the Rconn struct
-    let new = malloc(core::mem::size_of::<Rconn>()) as Rconnection;
+    let new = alloc_boxed::<Rconn>();
     if new.is_null() {
         REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
-    core::ptr::write_bytes(new as *mut u8, 0, core::mem::size_of::<Rconn>());
 
     // Allocate class name
-    (*new).class = malloc(14) as *mut c_char; // strlen("servsockconn") + 1 = 13
+    (*new).class = alloc_c_string(14);
     if (*new).class.is_null() {
-        free(new as *mut c_void);
+        free_boxed(new);
         REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
     strcpy((*new).class, b"servsockconn\0".as_ptr() as *const c_char);
 
     // Allocate description
-    (*new).description = malloc(16) as *mut c_char; // strlen("localhost") + 10 = 19
+    (*new).description = alloc_c_string(16);
     if (*new).description.is_null() {
-        free((*new).class as *mut c_void);
-        free(new as *mut c_void);
+        free_c_string((*new).class);
+        free_boxed(new);
         REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
@@ -720,29 +754,24 @@ pub(crate) unsafe extern "C" fn in_R_newservsock(port: c_int) -> Rconnection {
     (*new).close = Some(servsock_close_trampoline);
 
     // Allocate private data (servsockconn struct)
-    let priv_data = malloc(core::mem::size_of::<servsockconn>()) as Rservsockconn;
+    let priv_data = alloc_boxed::<servsockconn>();
     if priv_data.is_null() {
-        free((*new).description as *mut c_void);
-        free((*new).class as *mut c_void);
-        free(new as *mut c_void);
+        free_c_string((*new).description);
+        free_c_string((*new).class);
+        free_boxed(new);
         REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }
-    core::ptr::write_bytes(
-        priv_data as *mut u8,
-        0,
-        core::mem::size_of::<servsockconn>(),
-    );
 
     (*priv_data).port = port;
 
     // socket(), bind(), listen()
     let sock = R_SockOpen(port);
     if sock < 0 {
-        free(priv_data as *mut c_void);
-        free((*new).description as *mut c_void);
-        free((*new).class as *mut c_void);
-        free(new as *mut c_void);
+        free_boxed(priv_data);
+        free_c_string((*new).description);
+        free_c_string((*new).class);
+        free_boxed(new);
         REprintf(
             b"creation of server socket failed: port cannot be opened\n\0".as_ptr() as *const i8,
         );
@@ -752,10 +781,10 @@ pub(crate) unsafe extern "C" fn in_R_newservsock(port: c_int) -> Rconnection {
     // Check FD_SETSIZE
     if sock as usize >= FD_SETSIZE as usize {
         R_SockClose(sock);
-        free(priv_data as *mut c_void);
-        free((*new).description as *mut c_void);
-        free((*new).class as *mut c_void);
-        free(new as *mut c_void);
+        free_boxed(priv_data);
+        free_c_string((*new).description);
+        free_c_string((*new).class);
+        free_boxed(new);
         REprintf(b"file descriptor is too large for select()\n\0".as_ptr() as *const i8);
         return core::ptr::null_mut();
     }

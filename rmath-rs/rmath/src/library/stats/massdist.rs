@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 //! Mass distribution for density estimation.
 //! Port of r-source/src/library/stats/src/massdist.c

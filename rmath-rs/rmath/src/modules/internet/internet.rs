@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 // Port of R's modules/internet/internet.c (737 lines)
 // Internet connection interface - download.file(), url(), socket connections

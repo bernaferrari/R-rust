@@ -61,7 +61,8 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
     let cached = W_CACHE.with(|cache| {
         let cache = cache.borrow();
         if let Some(entry) = cache.get(&(i, j))
-            && entry.len() > k as usize && entry[k as usize] >= 0.0
+            && entry.len() > k as usize
+            && entry[k as usize] >= 0.0
         {
             return Some(entry[k as usize]);
         }
@@ -73,11 +74,7 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
 
     // Compute value (recursive calls happen outside the borrow)
     let val = if j == 0 {
-        if k == 0 {
-            1.0
-        } else {
-            0.0
-        }
+        if k == 0 { 1.0 } else { 0.0 }
     } else {
         cwilcox(k - j, i - 1, j) + cwilcox(k, i, j - 1)
     };

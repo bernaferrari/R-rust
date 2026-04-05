@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 // Port of R's modules/internet/Rsock.c (705 lines)
 // R socket interface: Sock_open/listen/connect/close/read/write for R level

@@ -9,10 +9,10 @@
 
 use std::os::raw::c_int;
 use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
-use super::ffi::{SexprecCore, SexprecData, SxpInfo, SEXP, SEXPTYPE};
+use super::ffi::{SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo};
 
 // ---------------------------------------------------------------------------
 // Sentinel singletons (storing as usize to avoid Send requirement)

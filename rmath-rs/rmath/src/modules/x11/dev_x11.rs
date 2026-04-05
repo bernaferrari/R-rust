@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 //! X11 graphics device driver (devX11.c)
 //!

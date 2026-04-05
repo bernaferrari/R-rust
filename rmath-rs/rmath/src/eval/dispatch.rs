@@ -16,16 +16,16 @@
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{getAttrib, isObject, setAttrib, R_ClassSymbol};
+use crate::eval::attrib_core::{R_ClassSymbol, getAttrib, isObject, setAttrib};
 use crate::sexp::accessors::{
-    Rf_isNull, CADR, CAR, CDR, CHAR, LENGTH, NAMED, OBJECT, PRINTNAME, SETCAR, SETCDR, SETTAG,
-    SET_NAMED, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF,
+    CADR, CAR, CDR, CHAR, LENGTH, NAMED, OBJECT, PRINTNAME, Rf_isNull, SET_NAMED, SET_STRING_ELT,
+    SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
-use crate::sexp::envir::{defineVar, forcePromise, R_findVar, R_findVarInFrame};
-use crate::sexp::ffi::{R_xlen_t, FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{set_R_Visible, R_BaseEnv, R_MissingArg, R_NilValue, R_UnboundValue};
-use crate::sexp::memory_ext::{mkPROMISE, vmaxget, vmaxset, NewEnvironment, CONS_NR};
+use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar, forcePromise};
+use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
+use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::R_DotsSymbol;
 
@@ -238,11 +238,7 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
         if a.is_null() || b.is_null() {
             return FALSE;
         }
-        if libc::strcmp(a, b) == 0 {
-            TRUE
-        } else {
-            FALSE
-        }
+        if libc::strcmp(a, b) == 0 { TRUE } else { FALSE }
     }
 }
 

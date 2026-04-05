@@ -35,7 +35,8 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
         // Check LC_ALL first.
         if let Ok(val) = env::var("LC_ALL")
             && let Ok(cstr) = CString::new(val.as_str())
-            && let Ok(layout) = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
+            && let Ok(layout) =
+                std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
         {
             let ptr = std::alloc::alloc(layout) as *mut c_char;
             if !ptr.is_null() {
@@ -62,7 +63,8 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
 
         if let Ok(val) = env::var(cat_name)
             && let Ok(cstr) = CString::new(val.as_str())
-            && let Ok(layout) = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
+            && let Ok(layout) =
+                std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
         {
             let ptr = std::alloc::alloc(layout) as *mut c_char;
             if !ptr.is_null() {
@@ -78,7 +80,8 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
         // Check LANG.
         if let Ok(val) = env::var("LANG")
             && let Ok(cstr) = CString::new(val.as_str())
-            && let Ok(layout) = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
+            && let Ok(layout) =
+                std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
         {
             let ptr = std::alloc::alloc(layout) as *mut c_char;
             if !ptr.is_null() {
@@ -105,7 +108,8 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
 
         if let Ok(val) = env::var(cat_name)
             && let Ok(cstr) = CString::new(val.as_str())
-            && let Ok(layout) = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
+            && let Ok(layout) =
+                std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
         {
             let ptr = std::alloc::alloc(layout) as *mut c_char;
             if !ptr.is_null() {
@@ -121,7 +125,8 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
         // Check LANG.
         if let Ok(val) = env::var("LANG")
             && let Ok(cstr) = CString::new(val.as_str())
-            && let Ok(layout) = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
+            && let Ok(layout) =
+                std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
         {
             let ptr = std::alloc::alloc(layout) as *mut c_char;
             if !ptr.is_null() {

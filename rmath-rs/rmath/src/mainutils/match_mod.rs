@@ -20,9 +20,9 @@ use std::ptr;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{R_xlen_t, FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::*;
-use crate::sexp::memory_ext::{allocList, mkPROMISE, CONS_NR};
+use crate::sexp::memory_ext::{CONS_NR, allocList, mkPROMISE};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::R_DotsSymbol;
 
@@ -85,11 +85,7 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
         if s1.is_null() || s2.is_null() {
             return if s1.is_null() && s2.is_null() { 1 } else { 0 };
         }
-        if libc::strcmp(s1, s2) == 0 {
-            1
-        } else {
-            0
-        }
+        if libc::strcmp(s1, s2) == 0 { 1 } else { 0 }
     }
 }
 

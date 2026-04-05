@@ -66,12 +66,7 @@ static mut ptr_savePalette: Option<F4> = None;
 /// # Safety
 /// All four function pointers must be valid (non-null) and must remain valid
 /// for as long as they may be called through this module.
-pub unsafe fn Rg_set_col_ptrs(
-    f1: Option<F1>,
-    f2: Option<F2>,
-    f3: Option<F3>,
-    f4: Option<F4>,
-) {
+pub unsafe fn Rg_set_col_ptrs(f1: Option<F1>, f2: Option<F2>, f3: Option<F3>, f4: Option<F4>) {
     unsafe {
         ptr_RGBpar3 = f1;
         ptr_col2name = f2;

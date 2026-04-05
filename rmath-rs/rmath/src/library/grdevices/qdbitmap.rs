@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 //! Quartz bitmap device module (qdBitmap.c)
 //!
 //! Provides QuartzBitmap_DeviceCreate for macOS bitmap output using CoreGraphics.

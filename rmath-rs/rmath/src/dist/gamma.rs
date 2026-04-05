@@ -175,11 +175,7 @@ fn pd_upper_series(x: f64, mut y: f64, log_p: bool) -> f64 {
         }
     }
 
-    if log_p {
-        log(sum)
-    } else {
-        sum
-    }
+    if log_p { log(sum) } else { sum }
 }
 
 /// Continued fraction for calculation of

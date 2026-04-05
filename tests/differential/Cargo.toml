@@ -1,0 +1,14 @@
+[package]
+name = "rport-differential-tests"
+version = "0.1.0"
+edition = "2024"
+description = "Differential tests comparing rport (rmath) output against stock R reference values"
+
+[workspace]
+
+[[bin]]
+name = "rport-differential-tests"
+path = "src/main.rs"
+
+[dependencies]
+rmath = { path = "../../rmath-rs/rmath" }

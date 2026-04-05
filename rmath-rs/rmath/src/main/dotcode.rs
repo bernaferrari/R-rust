@@ -17,14 +17,14 @@ use std::ptr;
 
 use crate::main::coerce::helpers::R_BlankString;
 use crate::main::coerce::vector::asLogical;
-use crate::main::errors::{errorcall, Rf_error, Rf_warning, Rf_warningcall1};
+use crate::main::errors::{Rf_error, Rf_warning, Rf_warningcall1, errorcall};
 use crate::main::memory_main::R_ExternalPtrAddr;
 use crate::main::memory_main::R_ExternalPtrTag;
 use crate::main::sysutils::translateChar;
 use crate::sexp::accessors::*;
-use crate::sexp::attrib_core::{getAttrib, setAttrib, R_NamesSymbol};
+use crate::sexp::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{R_xlen_t, NA_INTEGER, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
 use crate::sexp::protect::*;
@@ -203,6 +203,9 @@ unsafe fn checkValidSymbolId(
             if R_ExternalPtrTag(op) == native_symbol {
                 let addr = R_ExternalPtrAddr(op);
                 if !addr.is_null() {
+                    // SAFETY: addr is a function pointer obtained from R_ExternalPtrAddr,
+                    // stored as *mut c_void by R's external pointer API. Converting back to
+                    // a function pointer via transmute_copy is the standard pattern for .C/.Call.
                     *fun = Some(std::mem::transmute_copy(&addr));
                 }
             } else if R_ExternalPtrTag(op) == registered_native_symbol {
@@ -599,6 +602,10 @@ pub unsafe extern "C" fn R_doDotCall(
             return check_retval(call, R_NilValue());
         }
 
+        // SAFETY: `fun` is a function pointer obtained from R_ExternalPtrAddr (native symbol)
+        // or from .Call/.External registration. Transmuting to the correct arity signature
+        // is safe because the caller (R's .Call/.External interface) guarantees the arity
+        // matches nargs. All signatures are `unsafe extern "C" fn(...) -> SEXP`.
         let retval: SEXP = match nargs {
             0 => {
                 let f: unsafe extern "C" fn() -> SEXP = std::mem::transmute(fun);
@@ -1014,9 +1021,13 @@ pub unsafe fn do_External(call: SEXP, op: SEXP, mut args: SEXP, env: SEXP) -> SE
         };
 
         let retval = if PRIMVAL(op) == 1 {
+            // SAFETY: ofun is a registered .External function pointer; PRIMVAL==1 means
+            // it expects (call, op, args, env) signature.
             let f: unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP = std::mem::transmute(ofun);
             f(call, op, args, env)
         } else {
+            // SAFETY: ofun is a registered .External function pointer; PRIMVAL!=1 means
+            // it expects the simple (args) signature.
             let f: unsafe extern "C" fn(SEXP) -> SEXP = std::mem::transmute(ofun);
             f(args)
         };

@@ -7,3 +7,4 @@ description = "R interpreter embedding library"
 
 [dependencies]
 thiserror = { workspace = true }
+rmath = { path = "../../rmath-rs/rmath" }

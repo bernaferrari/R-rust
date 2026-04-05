@@ -12,12 +12,12 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    Rf_isNull, CADDR, CADR, CAR, CDDR, CDR, INTEGER, LENGTH, LOGICAL, REAL, TYPEOF,
+    CADDR, CADR, CAR, CDDR, CDR, INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, TYPEOF,
 };
 use crate::sexp::constructors::*;
-use crate::sexp::envir::{defineVar, forcePromise, matchArgs, R_findVar, R_findVarInFrame};
+use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar, forcePromise, matchArgs};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{set_R_Visible, R_MissingArg, R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
 use crate::sexp::memory_ext::NewEnvironment;
 
 use super::bc_stack::R_bcstack_t;

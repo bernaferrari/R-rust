@@ -117,26 +117,22 @@ pub(crate) fn tre_isxdigit(c: tre_cint_t) -> bool {
 
 #[inline]
 pub(crate) fn tre_tolower(c: tre_cint_t) -> tre_cint_t {
-    if tre_isupper(c) {
-        c + 32
-    } else {
-        c
-    }
+    if tre_isupper(c) { c + 32 } else { c }
 }
 
 #[inline]
 pub(crate) fn tre_toupper(c: tre_cint_t) -> tre_cint_t {
-    if tre_islower(c) {
-        c - 32
-    } else {
-        c
-    }
+    if tre_islower(c) { c - 32 } else { c }
 }
 
 pub(crate) fn tre_isctype(c: tre_cint_t, class: tre_ctype_t) -> bool {
     if class == 0 {
         return false;
     }
+    // SAFETY: `class` is a tre_ctype_t (usize) that was created by tre_ctype()
+    // below, which stores a fn pointer cast to usize. Casting back to the
+    // original fn pointer type is safe because tre_ctype only stores
+    // `fn(tre_cint_t) -> bool` function pointers.
     let f: fn(tre_cint_t) -> bool = unsafe { std::mem::transmute(class) };
     f(c)
 }
@@ -183,6 +179,9 @@ fn tre_ctype(name: &str) -> tre_ctype_t {
         _ => return 0,
     };
     match func {
+        // SAFETY: fn pointer -> *const () -> usize roundtrip. tre_ctype_t is usize,
+        // used as an opaque handle. The roundtrip is lossless on all supported platforms
+        // (fn pointers fit in usize).
         Some(f) => unsafe { std::mem::transmute(f as *const ()) },
         None => 0,
     }
@@ -369,30 +368,18 @@ unsafe fn tre_parse_bracket_items(
                 let mut class: tre_ctype_t = 0;
                 let mut skip: c_int = 0;
 
-                if re.add(2) < re_end
-                    && *re.add(1) == CHAR_MINUS
-                    && *re.add(2) != CHAR_RBRACKET
-                {
+                if re.add(2) < re_end && *re.add(1) == CHAR_MINUS && *re.add(2) != CHAR_RBRACKET {
                     min = *re;
                     max = *re.add(2);
                     re = re.add(3);
                     if min > max {
                         status = REG_ERANGE;
                     }
-                } else if re.add(1) < re_end
-                    && *re == CHAR_LBRACKET
-                    && *re.add(1) == CHAR_PERIOD
-                {
+                } else if re.add(1) < re_end && *re == CHAR_LBRACKET && *re.add(1) == CHAR_PERIOD {
                     status = REG_ECOLLATE;
-                } else if re.add(1) < re_end
-                    && *re == CHAR_LBRACKET
-                    && *re.add(1) == CHAR_EQUAL
-                {
+                } else if re.add(1) < re_end && *re == CHAR_LBRACKET && *re.add(1) == CHAR_EQUAL {
                     status = REG_ECOLLATE;
-                } else if re.add(1) < re_end
-                    && *re == CHAR_LBRACKET
-                    && *re.add(1) == CHAR_COLON
-                {
+                } else if re.add(1) < re_end && *re == CHAR_LBRACKET && *re.add(1) == CHAR_COLON {
                     let mut endptr = re.add(2);
                     while endptr < re_end && *endptr != CHAR_COLON {
                         endptr = endptr.add(1);
@@ -708,11 +695,7 @@ unsafe fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_cha
             r = r.add(1);
         }
         *regex = r;
-        if overflow != 0 {
-            -1
-        } else {
-            num
-        }
+        if overflow != 0 { -1 } else { num }
     }
 }
 

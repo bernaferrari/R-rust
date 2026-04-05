@@ -13,7 +13,7 @@
  *   rpc/xdr.h   - XDR struct and function declarations
  */
 
-use std::ffi::{c_int, c_uint, c_void, CStr};
+use std::ffi::{CStr, c_int, c_uint, c_void};
 use std::fs::File;
 use std::io::{Read as IoRead, Seek as IoSeek, SeekFrom, Write as IoWrite};
 use std::ptr;
@@ -554,6 +554,7 @@ pub unsafe extern "C" fn xdr_opaque(xdrs: *mut XdrC, cp: *mut c_void, cnt: c_uin
         }
 
         // Round byte count up to full XDR units
+        #[allow(clippy::manual_is_multiple_of)]
         let rndup = if cnt % BYTES_PER_XDR_UNIT as u32 != 0 {
             BYTES_PER_XDR_UNIT as u32 - (cnt % BYTES_PER_XDR_UNIT as u32)
         } else {

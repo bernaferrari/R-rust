@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-
 //! Port of R's src/main/engine.c -- R Graphics Engine.
 //!
 //! Original source: src/main/engine.c (~4,017 lines)
@@ -578,9 +576,8 @@ pub unsafe fn GEregisterSystem(
         *systemRegisterIndex += 1;
     }
     // Store the registration info
-    // The C API passes *mut c_void but GESystemDesc stores *mut GEDevDesc.
-    // They have the same ABI, so we transmute the function pointer.
-    let idx = *systemRegisterIndex as usize;
+    // SAFETY: C API passes *mut c_void but GESystemDesc stores *mut GEDevDesc.
+    // They have the same ABI (both are raw pointers), so transmuting the function pointer is safe.
     let cb_typed: GEcallback = std::mem::transmute(cb);
     let gesd = Box::new(GESystemDesc {
         systemSpecific: ptr::null_mut(),
@@ -970,13 +967,7 @@ pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // GESetClip
 // ---------------------------------------------------------------------------
 
-pub unsafe fn GESetClip(
-    x1: c_double,
-    y1: c_double,
-    x2: c_double,
-    y2: c_double,
-    dd: *mut c_void,
-) {
+pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         let dx1 = (*d).left;
         let dx2 = (*d).right;

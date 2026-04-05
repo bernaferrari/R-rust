@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 /* SHA256 implementation.
  *  R : A Computer Language for Statistical Data Analysis

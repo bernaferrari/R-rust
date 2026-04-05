@@ -3,369 +3,182 @@
 //! This crate provides a drop-in replacement for R's libRmath.a,
 //! implementing statistical math functions with C-compatible FFI.
 
+// C-to-Rust translation conventions (R's nmath library uses C naming)
 #![allow(non_upper_case_globals)]
 #![allow(non_snake_case)]
+// Enable all clippy lints including pedantic
 #![warn(clippy::all)]
 #![warn(clippy::pedantic)]
-#![allow(clippy::module_name_repetitions)]
+// --- Pervasive C-port patterns (organized by category) ---
+//
+// This crate is a direct C-to-Rust translation of R's nmath statistical
+// library. The following allows suppress lints that fire hundreds/thousands
+// of times due to inherent C coding patterns. Safety/correctness lints
+// (unwrap_used, transmutes, eq_op, etc.) are intentionally NOT suppressed.
+
+// Numeric casts: pervasive in C math code (f64/i32/i64/usize interop)
 #![allow(clippy::cast_possible_truncation)]
 #![allow(clippy::cast_possible_wrap)]
 #![allow(clippy::cast_sign_loss)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::too_many_lines)]
-#![allow(clippy::similar_names)]
-#![allow(clippy::must_use_candidate)]
-#![allow(clippy::missing_const_for_fn)]
-#![allow(clippy::doc_markdown)]
-#![allow(clippy::struct_excessive_bools)]
-#![allow(clippy::fn_params_excessive_bools)]
-#![allow(clippy::unreadable_literal)]
-#![allow(clippy::many_single_char_names)]
-#![allow(clippy::redundant_else)]
-#![allow(clippy::unnested_or_patterns)]
-#![allow(clippy::collapsible_else_if)]
-#![allow(clippy::bool_comparison)]
-#![allow(clippy::redundant_closure)]
 #![allow(clippy::cast_precision_loss)]
 #![allow(clippy::cast_lossless)]
-#![allow(clippy::inline_always)]
-#![allow(clippy::wildcard_imports)]
-#![allow(clippy::too_many_arguments)]
+#![allow(clippy::cast_ptr_alignment)]
+#![allow(clippy::unnecessary_cast)]
+#![allow(clippy::bool_to_int_with_if)]
+// Pointer operations: inherent to C FFI and memory allocation patterns
 #![allow(clippy::ptr_as_ptr)]
 #![allow(clippy::ptr_cast_constness)]
 #![allow(clippy::ref_as_ptr)]
-#![allow(clippy::mut_from_ref)]
-#![allow(clippy::transmute_ptr_to_ptr)]
-#![allow(clippy::manual_range_contains)]
+#![allow(clippy::borrow_as_ptr)]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+#![allow(clippy::ptr_eq)]
+// Math code style: single-char variables, precise constants, float comparisons
+#![allow(clippy::many_single_char_names)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::unreadable_literal)]
+#![allow(clippy::excessive_precision)]
 #![allow(clippy::float_cmp)]
-#![allow(clippy::float_cmp_const)]
-#![allow(clippy::explicit_auto_deref)]
-#![allow(clippy::explicit_iter_loop)]
-#![allow(clippy::implicit_saturating_sub)]
-#![allow(clippy::manual_clamp)]
-#![allow(clippy::manual_is_multiple_of)]
-#![allow(clippy::manual_midpoint)]
-#![allow(clippy::manual_let_else)]
-#![allow(clippy::map_unwrap_or)]
-#![allow(clippy::match_like_matches_macro)]
-#![allow(clippy::match_same_arms)]
-#![allow(clippy::match_wildcard_for_single_variants)]
+#![allow(clippy::approx_constant)]
+// Documentation: C code doesn't follow Rust doc conventions
+#![allow(clippy::doc_markdown)]
+#![allow(clippy::missing_panics_doc)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_safety_doc)]
+// C control flow idioms: direct translations from C if/else/match patterns
 #![allow(clippy::needless_return)]
-#![allow(clippy::needless_bool)]
+#![allow(clippy::redundant_else)]
+#![allow(clippy::collapsible_else_if)]
+#![allow(clippy::if_not_else)]
+#![allow(clippy::comparison_chain)]
+#![allow(clippy::match_same_arms)]
+#![allow(clippy::single_match_else)]
+#![allow(clippy::match_wildcard_for_single_variants)]
+#![allow(clippy::match_bool)]
+#![allow(clippy::manual_range_contains)]
+#![allow(clippy::manual_clamp)]
+#![allow(clippy::manual_midpoint)]
+#![allow(clippy::manual_swap)]
+#![allow(clippy::manual_let_else)]
+#![allow(clippy::manual_assert)]
+#![allow(clippy::manual_c_str_literals)]
+#![allow(clippy::let_and_return)]
 #![allow(clippy::nonminimal_bool)]
+#![allow(clippy::unnested_or_patterns)]
 #![allow(clippy::range_plus_one)]
 #![allow(clippy::range_minus_one)]
-#![allow(clippy::redundant_field_names)]
-#![allow(clippy::redundant_clone)]
-#![allow(clippy::return_self_not_must_use)]
-#![allow(clippy::single_match)]
-#![allow(clippy::single_match_else)]
-#![allow(clippy::str_to_string)]
-#![allow(clippy::useless_format)]
-#![allow(clippy::borrow_as_ptr)]
-#![allow(clippy::as_ptr_cast_mut)]
-#![allow(clippy::fn_to_numeric_cast_any)]
-#![allow(clippy::identity_op)]
-#![allow(clippy::eq_op)]
-#![allow(clippy::self_assignment)]
-#![allow(clippy::erasing_op)]
-#![allow(clippy::zero_divided_by_zero)]
-#![allow(clippy::approx_constant)]
-#![allow(clippy::excessive_precision)]
-#![allow(clippy::pub_underscore_fields)]
-#![allow(clippy::struct_field_names)]
-#![allow(clippy::items_after_statements)]
-#![allow(clippy::field_reassign_with_default)]
-#![allow(clippy::get_first)]
-#![allow(clippy::into_iter_on_ref)]
-#![allow(clippy::iter_cloned_collect)]
-#![allow(clippy::len_without_is_empty)]
-#![allow(clippy::manual_strip)]
-#![allow(clippy::missing_safety_doc)]
-#![allow(clippy::mut_mut)]
-#![allow(clippy::needless_late_init)]
-#![allow(clippy::needless_range_loop)]
-#![allow(clippy::new_without_default)]
-#![allow(clippy::option_if_let_else)]
-#![allow(clippy::partialeq_to_none)]
-#![allow(clippy::significant_drop_tightening)]
-#![allow(clippy::stable_sort_primitive)]
-#![allow(clippy::unnecessary_wraps)]
-#![allow(clippy::useless_conversion)]
-#![allow(clippy::while_let_on_iterator)]
-#![allow(clippy::comparison_chain)]
-#![allow(clippy::if_not_else)]
-#![allow(clippy::match_bool)]
-#![allow(clippy::needless_pass_by_value)]
-#![allow(clippy::trivially_copy_pass_by_ref)]
-#![allow(clippy::used_underscore_binding)]
-#![allow(clippy::wildcard_enum_match_arm)]
-#![allow(clippy::default_trait_access)]
-#![allow(clippy::from_over_into)]
-#![allow(clippy::implicit_clone)]
-#![allow(clippy::inefficient_to_string)]
-#![allow(clippy::large_types_passed_by_value)]
-#![allow(clippy::manual_assert)]
-#![allow(clippy::manual_is_variant_and)]
-#![allow(clippy::match_wild_err_arm)]
-#![allow(clippy::naive_bytecount)]
-#![allow(clippy::needless_continue)]
-#![allow(clippy::option_option)]
+#![allow(clippy::neg_cmp_op_on_partial_ord)]
+// C expression/closure patterns
 #![allow(clippy::redundant_closure_for_method_calls)]
-#![allow(clippy::ref_binding_to_reference)]
-#![allow(clippy::same_functions_in_if_condition)]
-#![allow(clippy::semicolon_if_nothing_returned)]
-#![allow(clippy::should_panic_without_expect)]
-#![allow(clippy::single_char_pattern)]
-#![allow(clippy::string_add_assign)]
-#![allow(clippy::suboptimal_flops)]
-#![allow(clippy::trait_duplication_in_bounds)]
-#![allow(clippy::transmute_undefined_repr)]
-#![allow(clippy::type_complexity)]
-#![allow(clippy::unnecessary_box_returns)]
-#![allow(clippy::unused_async)]
-#![allow(clippy::unused_self)]
-#![allow(clippy::upper_case_acronyms)]
-#![allow(clippy::use_self)]
-#![allow(clippy::uninlined_format_args)]
-#![allow(clippy::bool_to_int_with_if)]
-#![allow(clippy::manual_swap)]
-#![allow(clippy::literal_string_with_formatting_args)]
-#![allow(clippy::unnecessary_mut_passed)]
-#![allow(clippy::ptr_arg)]
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
-#![allow(clippy::needless_arbitrary_self_type)]
-#![allow(clippy::manual_is_ascii_check)]
-#![allow(clippy::ref_patterns)]
-#![allow(clippy::min_max)]
-#![allow(clippy::cmp_owned)]
-#![allow(clippy::cast_ptr_alignment)]
-#![allow(clippy::useless_attribute)]
-#![allow(clippy::needless_update)]
-#![allow(clippy::let_and_return)]
-#![allow(clippy::assigning_clones)]
-#![allow(clippy::needless_collect)]
-#![allow(clippy::bind_instead_of_map)]
-#![allow(clippy::ptr_eq)]
-#![allow(clippy::manual_slice_size_calculation)]
-#![allow(clippy::len_zero)]
-#![allow(clippy::empty_loop)]
-#![allow(clippy::map_clone)]
-#![allow(clippy::redundant_closure_call)]
-#![allow(clippy::needless_borrow)]
-#![allow(clippy::needless_borrows_for_generic_args)]
-#![allow(clippy::explicit_counter_loop)]
-#![allow(clippy::iter_skip_next)]
-#![allow(clippy::iter_next_slice)]
-#![allow(clippy::manual_find_map)]
-#![allow(clippy::map_flatten)]
-#![allow(clippy::flat_map_option)]
-#![allow(clippy::filter_map_identity)]
-#![allow(clippy::filter_map_next)]
-#![allow(clippy::from_iter_instead_of_collect)]
-#![allow(clippy::manual_filter)]
-#![allow(clippy::manual_find)]
-#![allow(clippy::manual_ok_or)]
-#![allow(clippy::manual_while_let_some)]
-#![allow(clippy::map_collect_result_unit)]
-#![allow(clippy::needless_option_as_deref)]
-#![allow(clippy::needless_option_take)]
-#![allow(clippy::no_effect)]
-#![allow(clippy::no_effect_underscore_binding)]
-#![allow(clippy::or_fun_call)]
-#![allow(clippy::redundant_pattern_matching)]
-#![allow(clippy::result_map_or_into_option)]
-#![allow(clippy::search_is_some)]
-#![allow(clippy::single_char_add_str)]
-#![allow(clippy::single_component_path_imports)]
-#![allow(clippy::skip_while_next)]
-#![allow(clippy::string_lit_chars_any)]
-#![allow(clippy::unnecessary_fold)]
-#![allow(clippy::unnecessary_lazy_evaluations)]
-#![allow(clippy::unnecessary_literal_unwrap)]
+#![allow(clippy::map_unwrap_or)]
+#![allow(clippy::unnecessary_wraps)]
 #![allow(clippy::unnecessary_map_or)]
-#![allow(clippy::unnecessary_min_or_max)]
-#![allow(clippy::unnecessary_operation)]
-#![allow(clippy::unnecessary_result_map_or_else)]
-#![allow(clippy::unused_enumerate_index)]
-#![allow(clippy::useless_asref)]
-#![allow(clippy::vec_init_then_push)]
-#![allow(clippy::zst_offset)]
-#![allow(clippy::needless_parens_on_range_literals)]
-#![allow(clippy::range_zip_with_len)]
-#![allow(clippy::redundant_slicing)]
-#![allow(clippy::transmute_null_to_fn)]
-#![allow(clippy::transmutes_expressible_as_ptr_casts)]
-#![allow(clippy::unnecessary_cast)]
-#![allow(clippy::modulo_one)]
-#![allow(clippy::needless_lifetimes)]
-#![allow(clippy::redundant_static_lifetimes)]
-#![allow(clippy::explicit_deref_methods)]
-#![allow(clippy::iter_overeager_cloned)]
-#![allow(clippy::manual_c_str_literals)]
-#![allow(clippy::manual_is_power_of_two)]
-#![allow(clippy::manual_next_back)]
-#![allow(clippy::manual_split_once)]
-#![allow(clippy::map_err_ignore)]
-#![allow(clippy::match_ref_pats)]
-#![allow(clippy::needless_character_iteration)]
-#![allow(clippy::needless_ifs)]
-#![allow(clippy::needless_splitn)]
-#![allow(clippy::option_map_unit_fn)]
-#![allow(clippy::partialeq_ne_impl)]
-#![allow(clippy::print_literal)]
-#![allow(clippy::ptr_offset_with_cast)]
-#![allow(clippy::result_filter_map)]
-#![allow(clippy::result_map_unit_fn)]
-#![allow(clippy::same_item_push)]
-#![allow(clippy::seek_from_current)]
-#![allow(clippy::seek_to_start_instead_of_rewind)]
-#![allow(clippy::string_slice)]
-#![allow(clippy::suspicious_operation_groupings)]
-#![allow(clippy::transmute_ptr_to_ref)]
-#![allow(clippy::try_err)]
-#![allow(clippy::unnecessary_fallible_conversions)]
-#![allow(clippy::unnecessary_filter_map)]
-#![allow(clippy::unnecessary_find_map)]
-#![allow(clippy::unnecessary_join)]
-#![allow(clippy::unnecessary_map_on_constructor)]
-#![allow(clippy::unnecessary_owned_empty_strings)]
-#![allow(clippy::unnecessary_semicolon)]
-#![allow(clippy::unused_peekable)]
-#![allow(clippy::unused_rounding)]
-#![allow(clippy::useless_concat)]
-#![allow(clippy::useless_nonzero_new_unchecked)]
-#![allow(clippy::useless_vec)]
-#![allow(clippy::while_let_loop)]
-#![allow(clippy::write_literal)]
-#![allow(clippy::write_with_newline)]
-#![allow(clippy::zero_sized_map_values)]
-#![allow(clippy::empty_docs)]
-#![allow(clippy::redundant_locals)]
-#![allow(clippy::redundant_pub_crate)]
-#![allow(clippy::ref_option_ref)]
-#![allow(clippy::rest_pat_in_fully_bound_structs)]
-#![allow(clippy::self_named_constructors)]
-#![allow(clippy::semicolon_inside_block)]
-#![allow(clippy::semicolon_outside_block)]
-#![allow(clippy::shadow_reuse)]
-#![allow(clippy::shadow_same)]
-#![allow(clippy::shadow_unrelated)]
-#![allow(clippy::should_implement_trait)]
-#![allow(clippy::single_call_fn)]
-#![allow(clippy::single_char_lifetime_names)]
-#![allow(clippy::single_element_loop)]
-#![allow(clippy::size_of_in_element_count)]
-#![allow(clippy::size_of_ref)]
-#![allow(clippy::slow_vector_initialization)]
-#![allow(clippy::string_add)]
-#![allow(clippy::string_extend_chars)]
-#![allow(clippy::string_lit_as_bytes)]
-#![allow(clippy::strlen_on_c_strings)]
-#![allow(clippy::suspicious_arithmetic_impl)]
-#![allow(clippy::suspicious_command_arg_space)]
-#![allow(clippy::suspicious_doc_comments)]
-#![allow(clippy::suspicious_map)]
-#![allow(clippy::suspicious_splitn)]
-#![allow(clippy::suspicious_to_owned)]
-#![allow(clippy::suspicious_unary_op_formatting)]
-#![allow(clippy::suspicious_xor_used_as_pow)]
-#![allow(clippy::swap_ptr_to_ref)]
-#![allow(clippy::temporary_assignment)]
-#![allow(clippy::too_long_first_doc_paragraph)]
-#![allow(clippy::toplevel_ref_arg)]
-#![allow(clippy::trailing_empty_array)]
-#![allow(unnecessary_transmutes)]
-#![allow(clippy::tuple_array_conversions)]
-#![allow(clippy::type_repetition_in_bounds)]
-#![allow(clippy::unchecked_time_subtraction)]
-#![allow(clippy::undocumented_unsafe_blocks)]
-#![allow(clippy::uninhabited_references)]
-#![allow(clippy::unit_arg)]
-#![allow(clippy::unit_cmp)]
-#![allow(clippy::unit_hash)]
-#![allow(clippy::unit_return_expecting_ord)]
-#![allow(clippy::unnecessary_literal_bound)]
-#![allow(clippy::unnecessary_sort_by)]
-#![allow(clippy::unnecessary_struct_initialization)]
-#![allow(clippy::unnecessary_to_owned)]
-#![allow(clippy::unneeded_field_pattern)]
-#![allow(clippy::unneeded_struct_pattern)]
-#![allow(clippy::unneeded_wildcard_pattern)]
-#![allow(clippy::unsafe_derive_deserialize)]
-#![allow(clippy::unsafe_removed_from_name)]
-#![allow(clippy::unseparated_literal_suffix)]
-#![allow(clippy::unused_format_specs)]
-#![allow(clippy::unused_result_ok)]
-#![allow(clippy::unused_trait_names)]
+// Naming and structure: C conventions don't follow Rust idioms
+#![allow(clippy::wildcard_imports)]
+#![allow(clippy::must_use_candidate)]
+#![allow(clippy::used_underscore_binding)]
 #![allow(clippy::used_underscore_items)]
-#![allow(clippy::useless_transmute)]
-#![allow(clippy::vec_box)]
-#![allow(clippy::vec_resize_to_zero)]
-#![allow(clippy::verbose_bit_mask)]
-#![allow(clippy::verbose_file_reads)]
-#![allow(clippy::while_float)]
-#![allow(clippy::while_immutable_condition)]
-#![allow(clippy::wildcard_dependencies)]
-#![allow(clippy::wildcard_in_or_patterns)]
-#![allow(clippy::writeln_empty_string)]
-#![allow(clippy::wrong_self_convention)]
-#![allow(clippy::wrong_transmute)]
-#![allow(clippy::zero_ptr)]
-#![allow(clippy::zero_repeat_side_effects)]
-#![allow(clippy::mutable_key_type)]
-#![allow(clippy::needless_raw_string_hashes)]
-#![allow(clippy::nonstandard_macro_braces)]
-#![allow(clippy::option_env_unwrap)]
-#![allow(clippy::panic_in_result_fn)]
-#![allow(clippy::partial_pub_fields)]
-#![allow(clippy::path_buf_push_overwrite)]
-#![allow(clippy::path_ends_with_ext)]
-#![allow(clippy::possible_missing_comma)]
-#![allow(clippy::precedence_bits)]
-#![allow(clippy::pub_use)]
-#![allow(clippy::redundant_type_annotations)]
-#![allow(clippy::renamed_function_params)]
-#![allow(clippy::return_and_then)]
-#![allow(clippy::single_range_in_vec_init)]
-#![allow(clippy::tests_outside_test_module)]
-#![allow(clippy::to_string_trait_impl)]
-#![allow(clippy::trivial_regex)]
-#![allow(clippy::unconditional_recursion)]
-#![allow(clippy::unnecessary_clippy_cfg)]
-#![allow(clippy::unnecessary_get_then_check)]
-#![allow(clippy::unused_io_amount)]
-#![allow(clippy::unwrap_in_result)]
-#![allow(clippy::unwrap_used)]
+#![allow(clippy::upper_case_acronyms)]
+#![allow(clippy::struct_field_names)]
+#![allow(clippy::pub_underscore_fields)]
+#![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::fn_params_excessive_bools)]
+#![allow(clippy::new_without_default)]
 #![allow(clippy::missing_const_for_thread_local)]
+// Function size: C translation produces long functions with many params
+#![allow(clippy::too_many_lines)]
+#![allow(clippy::too_many_arguments)]
+#![allow(clippy::inline_always)]
+// Miscellaneous pervasive C-port patterns
+#![allow(clippy::uninlined_format_args)]
+#![allow(clippy::semicolon_if_nothing_returned)]
+#![allow(clippy::items_after_statements)]
+#![allow(clippy::explicit_iter_loop)]
+#![allow(clippy::needless_range_loop)]
+#![allow(clippy::needless_late_init)]
+#![allow(clippy::mut_mut)]
+#![allow(clippy::needless_borrow)]
+#![allow(clippy::trivially_copy_pass_by_ref)]
+#![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::no_effect_underscore_binding)]
+#![allow(clippy::redundant_locals)]
+#![allow(clippy::needless_lifetimes)]
+#![allow(clippy::needless_continue)]
+#![allow(clippy::print_literal)]
 #![allow(unknown_lints)]
 
+pub mod appl;
 pub mod constants;
+pub mod dist;
 pub mod dpq;
 pub mod error;
-pub mod rng;
-pub mod utils;
-pub mod special;
-pub mod dist;
 pub mod fprec;
-pub mod appl;
-pub mod xdr;
+pub mod rng;
+pub mod special;
 pub mod tzone;
 #[allow(unused_variables, unused_assignments, unused_mut)]
 pub mod tzone_strftime;
+pub mod utils;
+pub mod xdr;
 
-pub mod trio;
-pub mod intl;
-#[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_assignments, non_camel_case_types, clippy::all)]
-pub mod tre;
-#[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_assignments, non_camel_case_types, clippy::all)]
-pub mod graphapp;
-#[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_assignments, non_camel_case_types, clippy::all)]
-pub mod sexp;
-#[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_assignments, non_camel_case_types, clippy::all)]
-pub mod mainutils;
-#[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_assignments, non_camel_case_types, clippy::all)]
-pub mod unix;
-#[allow(dead_code, unused_imports, unused_variables, unused_mut, unused_assignments, non_camel_case_types, clippy::all)]
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types,
+    clippy::all
+)]
 pub mod eval;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types,
+    clippy::all
+)]
+pub mod graphapp;
+pub mod intl;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types,
+    clippy::all
+)]
+pub mod mainutils;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types,
+    clippy::all
+)]
+pub mod sexp;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types,
+    clippy::all
+)]
+pub mod tre;
+pub mod trio;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types,
+    clippy::all
+)]
+pub mod unix;

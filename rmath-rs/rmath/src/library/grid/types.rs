@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 //! Grid package shared types (equivalent to grid.h).
 //!

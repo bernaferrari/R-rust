@@ -1042,6 +1042,7 @@ unsafe fn allocVector(type_: c_int, len: c_int) -> SEXP {
 }
 #[inline(always)]
 unsafe fn allocSExp(type_: c_int) -> SEXP {
+    // SAFETY: SEXPTYPE is #[repr(transparent)] over c_int, so this is a no-op transmute
     r_allocSExp(std::mem::transmute::<c_int, SEXPTYPE>(type_))
 }
 #[inline(always)]

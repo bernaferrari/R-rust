@@ -665,6 +665,9 @@ unsafe fn AddDLL(
             if let Some(dlsym_fn) = (*R_osDynSymbol_ptr).dlsym_fn {
                 let func = dlsym_fn(info, tmp.as_ptr());
                 if let Some(func_raw) = func {
+                    // SAFETY: func_raw is a symbol resolved via dlsym, expected to be
+                    // `unsafe extern "C" fn(*mut DllInfo)`. The shared library contract
+                    // guarantees this signature for R_init_<pkg>.
                     f = Some(std::mem::transmute(func_raw));
                 }
             }
@@ -679,6 +682,7 @@ unsafe fn AddDLL(
                 if let Some(dlsym_fn) = (*R_osDynSymbol_ptr).dlsym_fn {
                     let func = dlsym_fn(info, tmp.as_ptr());
                     if let Some(func_raw) = func {
+                        // SAFETY: Same as above - dlsym-resolved R_init_<pkg> symbol
                         f = Some(std::mem::transmute(func_raw));
                     }
                 }
@@ -1030,6 +1034,8 @@ unsafe fn R_callDLLUnload(dllInfo: *mut DllInfo) {
 
         let f = R_dlsym(dllInfo, buf.as_ptr(), &mut symbol);
         if let Some(unload_fn) = f {
+            // SAFETY: unload_fn is resolved via R_dlsym and is expected to be
+            // a DllInfoUnloadCall (void (*)(DllInfo *)) per the R registration API.
             let typed_fn: DllInfoUnloadCall = std::mem::transmute(unload_fn);
             if let Some(call) = typed_fn {
                 call(dllInfo);
@@ -1476,12 +1482,7 @@ pub unsafe fn do_getDllTable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 }
 
 /// do_getRegisteredRoutines: .Internal(getRegisteredRoutines(...))
-pub unsafe fn do_getRegisteredRoutines(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         ptr::null_mut() // TODO: return R_getRegisteredRoutines(CAR(args))

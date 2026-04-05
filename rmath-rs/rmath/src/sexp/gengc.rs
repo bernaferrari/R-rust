@@ -11,12 +11,12 @@
 //! - Thread safety — no data races, proper synchronization
 //! - Deterministic behavior — same input always produces same output
 
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::collections::HashMap;
 use std::ptr;
 
-use super::ffi::{SexprecCore, SxpInfo, SEXP, SEXPTYPE};
-use super::memory::{with_arena_for_gc, RArena};
+use super::ffi::{SEXP, SEXPTYPE, SexprecCore, SxpInfo};
+use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
     update_preserve_stack_refs, update_protect_stack_refs, with_preserved_objects,
     with_protected_objects,
@@ -197,20 +197,31 @@ pub struct CardTable {
 }
 
 impl CardTable {
-    pub unsafe fn new(heap_base: *mut u8, heap_size: usize) -> Self { unsafe {
-        if heap_base.is_null() || heap_size == 0 {
-            return CardTable {
-                base: ptr::null_mut(),
-                size: 0,
-                heap_base,
-                heap_end: heap_base,
-            };
-        }
+    pub unsafe fn new(heap_base: *mut u8, heap_size: usize) -> Self {
+        unsafe {
+            if heap_base.is_null() || heap_size == 0 {
+                return CardTable {
+                    base: ptr::null_mut(),
+                    size: 0,
+                    heap_base,
+                    heap_end: heap_base,
+                };
+            }
 
-        let card_count = (heap_size + CARD_SIZE - 1) / CARD_SIZE;
-        let layout = match Layout::from_size_align(card_count, 64) {
-            Ok(l) => l,
-            Err(_) => {
+            let card_count = (heap_size + CARD_SIZE - 1) / CARD_SIZE;
+            let layout = match Layout::from_size_align(card_count, 64) {
+                Ok(l) => l,
+                Err(_) => {
+                    return CardTable {
+                        base: ptr::null_mut(),
+                        size: 0,
+                        heap_base,
+                        heap_end: heap_base.add(heap_size),
+                    };
+                }
+            };
+            let base = alloc(layout);
+            if base.is_null() {
                 return CardTable {
                     base: ptr::null_mut(),
                     size: 0,
@@ -218,25 +229,16 @@ impl CardTable {
                     heap_end: heap_base.add(heap_size),
                 };
             }
-        };
-        let base = alloc(layout);
-        if base.is_null() {
-            return CardTable {
-                base: ptr::null_mut(),
-                size: 0,
+            ptr::write_bytes(base, 0, card_count);
+
+            CardTable {
+                base,
+                size: card_count,
                 heap_base,
                 heap_end: heap_base.add(heap_size),
-            };
+            }
         }
-        ptr::write_bytes(base, 0, card_count);
-
-        CardTable {
-            base,
-            size: card_count,
-            heap_base,
-            heap_end: heap_base.add(heap_size),
-        }
-    }}
+    }
 
     #[inline]
     pub fn card_index(&self, obj: SEXP) -> usize {
@@ -389,13 +391,15 @@ pub fn attrib_write_barrier(obj: SEXP, value: SEXP) {
 // ---------------------------------------------------------------------------
 
 #[inline]
-pub unsafe fn promote_to_old(obj: SEXP) { unsafe {
-    if obj.is_null() {
-        return;
+pub unsafe fn promote_to_old(obj: SEXP) {
+    unsafe {
+        if obj.is_null() {
+            return;
+        }
+        debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
+        (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
     }
-    debug_assert!((*obj).sxpinfo.gcgen() == Generation::Young as u8);
-    (*obj).sxpinfo.set_gcgen(Generation::Old as u8);
-}}
+}
 
 // ---------------------------------------------------------------------------
 // Thread Local GC State
@@ -409,15 +413,17 @@ thread_local! {
     static REMBERED_SET: std::cell::RefCell<RememberedSet> = std::cell::RefCell::new(RememberedSet::default());
 }
 
-pub unsafe fn init_gc_heap(heap_base: *mut u8, heap_size: usize) { unsafe {
-    if heap_base.is_null() || heap_size == 0 {
-        return;
+pub unsafe fn init_gc_heap(heap_base: *mut u8, heap_size: usize) {
+    unsafe {
+        if heap_base.is_null() || heap_size == 0 {
+            return;
+        }
+        CARD_TABLE.with(|ct| {
+            let mut ct = ct.borrow_mut();
+            *ct = CardTable::new(heap_base, heap_size);
+        });
     }
-    CARD_TABLE.with(|ct| {
-        let mut ct = ct.borrow_mut();
-        *ct = CardTable::new(heap_base, heap_size);
-    });
-}}
+}
 
 // ---------------------------------------------------------------------------
 // Reference Updating

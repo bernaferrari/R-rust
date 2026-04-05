@@ -30,7 +30,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{
-    R_xlen_t, FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, SEXP, SEXPTYPE, TRUE,
+    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -2300,6 +2300,7 @@ pub unsafe fn do_lengthgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             let copy_len = if new_len < n { new_len } else { n };
             if copy_len > 0 {
                 let elem_size =
+                // SAFETY: SEXPTYPE is #[repr(transparent)] over c_int
                     crate::sexp::memory::sexp_elem_size(std::mem::transmute::<c_int, SEXPTYPE>(t));
                 if elem_size > 0 {
                     let src = (*val).gengc_next_node;

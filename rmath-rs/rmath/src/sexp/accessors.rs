@@ -9,7 +9,7 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use super::ffi::{
-    R_xlen_t, Rcomplex, SexprecCore, SexprecData, NA_INTEGER, NA_REAL, SEXP, SEXPTYPE,
+    NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData,
 };
 
 // ---------------------------------------------------------------------------

@@ -10,12 +10,12 @@
 //! - allocSExp, allocFormalsList, etc.
 //! - R_alloc/vmaxget/vmaxset (transient memory from C stack)
 
-use std::alloc::{alloc, dealloc, Layout};
+use std::alloc::{Layout, alloc, dealloc};
 use std::ffi::CString;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use super::ffi::{R_xlen_t, SexprecCore, SexprecData, Vecsxp, NA_INTEGER, SEXP, SEXPTYPE};
+use super::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp};
 use super::globals::R_NilValue;
 use super::memory;
 

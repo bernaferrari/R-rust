@@ -1224,12 +1224,7 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 // do_unserializeFromConn
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_unserializeFromConn(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1266,12 +1261,7 @@ pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
     unsafe { R_NilValue() }
 }
 
-pub unsafe fn do_lazyLoadDBinsertValue(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 

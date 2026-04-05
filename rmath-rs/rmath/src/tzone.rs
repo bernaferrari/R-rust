@@ -323,6 +323,7 @@ static YEAR_LENGTHS: [i32; 2] = [DAYSPERNYEAR, DAYSPERLYEAR];
 
 fn detzcode(codep: &[u8]) -> i32 {
     let mut result: i32 = (codep[0] & 0x7f) as i32;
+    #[allow(clippy::identity_op)]
     for i in 1..4 {
         result = (result << 8) | (codep[i] & 0xff) as i32;
     }
@@ -337,6 +338,7 @@ fn detzcode(codep: &[u8]) -> i32 {
 
 fn detzcode64(codep: &[u8]) -> i64 {
     let mut result: i64 = (codep[0] & 0x7f) as i64;
+    #[allow(clippy::identity_op)]
     for i in 1..8 {
         result = (result << 8) | (codep[i] & 0xff) as i64;
     }
@@ -603,7 +605,7 @@ fn tzload(name: Option<&str>, sp: &mut state, doextend: bool) -> i32 {
         }
     }
 
-    // Strip leading ':'
+    #[allow(clippy::manual_strip)]
     let name_stripped = if name_ref.starts_with(':') {
         &name_ref[1..]
     } else {
@@ -1848,9 +1850,7 @@ fn time2sub(
     let mut yourtm = *tmp;
     let mut mytm = stm::default();
 
-    if do_norm_secs
-        && normalize_overflow(&mut yourtm.tm_min, &mut yourtm.tm_sec, SECSPERMIN)
-    {
+    if do_norm_secs && normalize_overflow(&mut yourtm.tm_min, &mut yourtm.tm_sec, SECSPERMIN) {
         return WRONG;
     }
     if normalize_overflow(&mut yourtm.tm_hour, &mut yourtm.tm_min, MINSPERHOUR) {
@@ -1933,11 +1933,7 @@ fn time2sub(
         }
 
         let dir = if funcp(g, &t, offset, &mut mytm).is_none() {
-            if t > 0 {
-                1
-            } else {
-                -1
-            }
+            if t > 0 { 1 } else { -1 }
         } else {
             tmcomp(&mytm, &yourtm)
         };

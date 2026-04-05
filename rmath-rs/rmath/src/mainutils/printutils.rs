@@ -450,13 +450,7 @@ pub unsafe fn EncodeReal0(
 // ---------------------------------------------------------------------------
 
 /// Encode a real value for printing (single-char decimal separator variant).
-pub unsafe fn EncodeReal(
-    x: f64,
-    w: c_int,
-    d: c_int,
-    e: c_int,
-    cdec: c_char,
-) -> *const c_char {
+pub unsafe fn EncodeReal(x: f64, w: c_int, d: c_int, e: c_int, cdec: c_char) -> *const c_char {
     unsafe {
         let dec_buf = [cdec as u8, 0u8];
         EncodeReal0(x, w, d, e, dec_buf.as_ptr() as *const c_char)
@@ -758,12 +752,7 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
 ///
 /// This counts the number of columns needed when the string is printed
 /// with escape sequences (e.g., `\n` counts as 2 columns).
-pub unsafe fn Rstrwid(
-    str: *const c_char,
-    slen: c_int,
-    ienc: c_int,
-    quote: c_int,
-) -> c_int {
+pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int) -> c_int {
     unsafe {
         if str.is_null() || slen <= 0 {
             return 0;
@@ -924,12 +913,7 @@ pub enum Rprt_adj {
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// thread-local buffer.
-pub unsafe fn EncodeString(
-    s: SEXP,
-    w: c_int,
-    quote: c_int,
-    justify: Rprt_adj,
-) -> *const c_char {
+pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
         static BUFFER: LazyLock<Mutex<Vec<u8>>> =
             LazyLock::new(|| Mutex::new(Vec::with_capacity(BUFSIZE)));
@@ -1078,12 +1062,7 @@ pub unsafe fn EncodeString(
 ///
 /// Dispatches on TYPEOF(x) to the appropriate encode function.
 /// The `cdec` parameter is the decimal separator character.
-pub unsafe fn EncodeElement(
-    x: SEXP,
-    indx: c_int,
-    quote: c_int,
-    cdec: c_char,
-) -> *const c_char {
+pub unsafe fn EncodeElement(x: SEXP, indx: c_int, quote: c_int, cdec: c_char) -> *const c_char {
     unsafe {
         let dec_buf = [cdec as u8, 0u8];
         EncodeElement0(

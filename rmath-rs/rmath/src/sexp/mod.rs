@@ -28,17 +28,17 @@ pub mod symbol;
 
 // Re-export commonly used types at the module level
 pub use ffi::{
-    Closxp, Envsxp, Listsxp, Primsxp, Promsxp, R_IsNA, R_IsNaN, R_len_t, R_size_t, R_xlen_t,
-    Rboolean, Rbyte, Rcomplex, SexprecCore, SexprecData, SxpInfo, Symsxp, Vecsxp, DOTSXP, FALSE,
-    ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_NA_BIT_PATTERN, SEXP, SEXPTYPE, TRUE,
+    Closxp, DOTSXP, Envsxp, FALSE, ISNAN, Listsxp, NA_INTEGER, NA_LOGICAL, NA_REAL, Primsxp,
+    Promsxp, R_FINITE, R_IsNA, R_IsNaN, R_NA_BIT_PATTERN, R_len_t, R_size_t, R_xlen_t, Rboolean,
+    Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo, Symsxp, TRUE, Vecsxp,
 };
 
 pub use altrep::{
-    altrep_as_integer_slice, altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt,
-    altrep_length, force_materialization, is_altrep, is_materialized, AltrepBuilder, AltrepClass,
-    AltrepData, REPEAT_CLASS, SEQUENCE_CLASS,
+    AltrepBuilder, AltrepClass, AltrepData, REPEAT_CLASS, SEQUENCE_CLASS, altrep_as_integer_slice,
+    altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt, altrep_length,
+    force_materialization, is_altrep, is_materialized,
 };
 
 pub use output::{
-    capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture, RCapturedOutput,
+    RCapturedOutput, capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture,
 };

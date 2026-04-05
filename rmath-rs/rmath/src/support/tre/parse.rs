@@ -125,6 +125,8 @@ pub(crate) fn tre_isctype(c: tre_cint_t, class: tre_ctype_t) -> bool {
     if class == 0 {
         return false;
     }
+    // SAFETY: `class` is a tre_ctype_t (usize) created by tre_ctype(),
+    // which stores fn(tre_cint_t) -> bool pointers cast to usize.
     let f: fn(tre_cint_t) -> bool = unsafe { std::mem::transmute(class) };
     f(c)
 }
@@ -171,6 +173,7 @@ fn tre_ctype(name: &str) -> tre_ctype_t {
         _ => return 0,
     };
     match func {
+        // SAFETY: fn pointer -> *const () -> usize roundtrip. Lossless on supported platforms.
         Some(f) => unsafe { std::mem::transmute(f as *const ()) },
         None => 0,
     }

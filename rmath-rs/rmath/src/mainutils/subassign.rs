@@ -23,17 +23,17 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use crate::mainutils::subscript::{
-    get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex, OneIndex,
+    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{
-    R_xlen_t, Rboolean, Rbyte, FALSE, NA_INTEGER, NA_LOGICAL, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, Rbyte, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::memory_ext::{allocList, allocSExp, CONS_NR};
+use crate::sexp::memory_ext::{CONS_NR, allocList, allocSExp};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -678,11 +678,7 @@ unsafe fn R_getS4DataSlot(x: SEXP, _type_: c_int) -> SEXP {
         }
         let data_sym = Rf_install(b".Data\x00".as_ptr() as *const c_char);
         let slot = getAttrib(x, data_sym);
-        if isNull(slot) {
-            x
-        } else {
-            slot
-        }
+        if isNull(slot) { x } else { slot }
     }
 }
 
@@ -2032,7 +2028,13 @@ unsafe fn errorNotSubsettable(x: SEXP) {
         let t = TYPEOF(x);
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
-        panic!("object of type '{}' is not subsettable", s);
+        let msg = format!("object of type '{}' is not subsettable", s);
+        let cmsg = std::ffi::CString::new(msg).unwrap();
+        crate::mainutils::errors::Rf_error1(
+            b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
+            cmsg.as_ptr(),
+        );
+        unreachable!()
     }
 }
 
@@ -2042,7 +2044,13 @@ unsafe fn errorMissingSubscript(x: SEXP) {
         let t = TYPEOF(x);
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
-        panic!("object of type '{}' is missing a subscript", s);
+        let msg = format!("object of type '{}' is missing a subscript", s);
+        let cmsg = std::ffi::CString::new(msg).unwrap();
+        crate::mainutils::errors::Rf_error1(
+            b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
+            cmsg.as_ptr(),
+        );
+        unreachable!()
     }
 }
 
@@ -2052,7 +2060,13 @@ unsafe fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
         let t = TYPEOF(x);
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
-        panic!("subscript out of bounds: type '{}' index {}", s, subscript);
+        let msg = format!("subscript out of bounds: type '{}' index {}", s, subscript);
+        let cmsg = std::ffi::CString::new(msg).unwrap();
+        crate::mainutils::errors::Rf_error1(
+            b"subscript out of bounds\0".as_ptr() as *const core::ffi::c_char,
+            cmsg.as_ptr(),
+        );
+        unreachable!()
     }
 }
 

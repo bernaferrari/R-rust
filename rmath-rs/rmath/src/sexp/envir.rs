@@ -23,7 +23,7 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use super::accessors::{CHAR, PRINTNAME, SETCAR, SETCDR, SETTAG, SET_FRAME, SET_PRVALUE};
+use super::accessors::{CHAR, PRINTNAME, SET_FRAME, SET_PRVALUE, SETCAR, SETCDR, SETTAG};
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};

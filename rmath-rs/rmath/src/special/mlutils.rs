@@ -12,21 +12,13 @@ fn isfinite(x: f64) -> bool {
 /// Check if a double is finite (for standalone mode).
 #[unsafe(no_mangle)]
 pub extern "C" fn R_finite(x: f64) -> i32 {
-    if isfinite(x) {
-        1
-    } else {
-        0
-    }
+    if isfinite(x) { 1 } else { 0 }
 }
 
 /// Check if a double is NaN (C++ compatibility function).
 #[unsafe(no_mangle)]
 pub extern "C" fn R_isnancpp(x: f64) -> i32 {
-    if isnan(x) {
-        1
-    } else {
-        0
-    }
+    if isnan(x) { 1 } else { 0 }
 }
 
 /// Internal: fmod-like function matching R's internal myfmod.

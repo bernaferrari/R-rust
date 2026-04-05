@@ -232,6 +232,7 @@ fn trio_get_position(format: &[u8], offset: &mut usize) -> c_int {
 // ============================================================================
 
 fn trio_is_qualifier(ch: u8) -> bool {
+    #[allow(clippy::match_like_matches_macro)]
     match ch {
         b'0'..=b'9'
         | b'+'
@@ -2358,11 +2359,7 @@ fn trio_scan_process(
 }
 
 fn width_limit(width: c_int) -> usize {
-    if width <= 0 {
-        512
-    } else {
-        width as usize
-    }
+    if width <= 0 { 512 } else { width as usize }
 }
 
 // ============================================================================
@@ -2490,11 +2487,7 @@ pub unsafe extern "C" fn trio_string_match(string: *const c_char, pattern: *cons
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
-        if trio_match_impl(s, p) {
-            1
-        } else {
-            0
-        }
+        if trio_match_impl(s, p) { 1 } else { 0 }
     }
 }
 
@@ -2507,11 +2500,7 @@ pub unsafe extern "C" fn trio_string_contains(
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
-        if s.contains(sub) {
-            1
-        } else {
-            0
-        }
+        if s.contains(sub) { 1 } else { 0 }
     }
 }
 
@@ -2543,6 +2532,7 @@ fn trio_match_impl(string: &str, pattern: &str) -> bool {
             let rest_of_pattern: String = p.collect();
             loop {
                 let remaining: String = s.clone().collect();
+                #[allow(clippy::single_match)]
                 match trio_match_impl(&remaining, &rest_of_pattern) {
                     true => return true,
                     false => {}
@@ -2565,11 +2555,7 @@ pub unsafe fn trio_match(string: *const c_char, pattern: *const c_char) -> c_int
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
-        if trio_match_impl(s, p) {
-            1
-        } else {
-            0
-        }
+        if trio_match_impl(s, p) { 1 } else { 0 }
     }
 }
 
@@ -2578,10 +2564,6 @@ pub unsafe fn trio_contains(string: *const c_char, substring: *const c_char) -> 
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");
-        if s.contains(sub) {
-            1
-        } else {
-            0
-        }
+        if s.contains(sub) { 1 } else { 0 }
     }
 }

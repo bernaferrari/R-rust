@@ -31,9 +31,9 @@ use std::ptr;
 
 use crate::mainutils::errors::R_MissingArgError;
 use crate::sexp::accessors::{CAR, CDR, PRIMOFFSET, TYPEOF};
-use crate::sexp::envir::{findFun, forcePromise, R_findVar};
+use crate::sexp::envir::{R_findVar, findFun, forcePromise};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{set_R_Visible, R_EvalDepth, R_MissingArg, R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{R_EvalDepth, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::safe::{PairlistIter, Sexp};

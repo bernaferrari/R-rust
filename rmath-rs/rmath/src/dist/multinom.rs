@@ -22,6 +22,7 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
     }
     if n < 0 {
         ml_warning(ME_DOMAIN, "rmultinom");
+        #[allow(clippy::len_zero)]
         if rn.len() > 0 {
             rn[0] = -1.0;
         }

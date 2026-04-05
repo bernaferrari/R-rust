@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 
 //! Port of R's src/library/grid/src/register.c -- grid package routine registration.
 //!

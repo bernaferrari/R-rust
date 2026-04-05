@@ -24,7 +24,7 @@ use crate::sexp::accessors::{
     TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector3};
-use crate::sexp::ffi::{R_xlen_t, Rcomplex, NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -145,11 +145,7 @@ struct HashData {
 unsafe fn lhash(x: SEXP, indx: R_xlen_t, _d: &HashData) -> usize {
     unsafe {
         let xi = LOGICAL_ELT(x, indx as c_int);
-        if xi == NA_LOGICAL {
-            2
-        } else {
-            xi as usize
-        }
+        if xi == NA_LOGICAL { 2 } else { xi as usize }
     }
 }
 
@@ -1344,6 +1340,31 @@ mod tests {
                 std::ptr::null_mut(),
             );
             assert_eq!(XLENGTH(dup), 0);
+        }
+    }
+
+    unsafe fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
+        let px = LOGICAL(x);
+        let mut has_na = false;
+
+        for i in 0..n {
+            let xi = *px.add(i as usize);
+            if !na_rm && xi == NA_LOGICAL {
+                has_na = true;
+            } else {
+                if xi == 1 && op == 2 {
+                    return 1;
+                }
+                if xi == 0 && op == 1 {
+                    return 0;
+                }
+            }
+        }
+
+        if op == 2 {
+            if has_na { NA_LOGICAL } else { 0 }
+        } else {
+            if has_na { NA_LOGICAL } else { 1 }
         }
     }
 

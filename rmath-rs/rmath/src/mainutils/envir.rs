@@ -23,7 +23,7 @@ pub const CHAR_HASH_MASK: u32 = CHAR_HASH_SIZE - 1;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_ScalarLogical;
-use crate::sexp::ffi::{R_xlen_t, Rboolean, FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use std::os::raw::{c_char, c_int};
 
@@ -351,11 +351,7 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let v = CAR(rest4);
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE {
-                    0
-                } else {
-                    1
-                }
+                if lv == FALSE { 0 } else { 1 }
             } else {
                 1
             }
@@ -470,11 +466,7 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             let v = CAR(rest4);
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE {
-                    0
-                } else {
-                    1
-                }
+                if lv == FALSE { 0 } else { 1 }
             } else {
                 1
             }
@@ -535,11 +527,7 @@ pub unsafe fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             let v = CAR(rest);
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE {
-                    0
-                } else {
-                    1
-                }
+                if lv == FALSE { 0 } else { 1 }
             } else {
                 1
             }
@@ -903,11 +891,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             let v = CAR(CDR(rest));
             if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
                 let lv = *LOGICAL(v);
-                if lv == FALSE {
-                    0
-                } else {
-                    1
-                }
+                if lv == FALSE { 0 } else { 1 }
             } else {
                 1
             }

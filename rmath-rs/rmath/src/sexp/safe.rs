@@ -31,7 +31,7 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use super::ffi::{
-    R_xlen_t, Rboolean, Rbyte, Rcomplex, SexprecCore, NA_INTEGER, NA_REAL, SEXP, SEXPTYPE,
+    NA_INTEGER, NA_REAL, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore,
 };
 use super::globals::R_NilValue;
 
@@ -507,11 +507,7 @@ impl<'a> Sexp<'a> {
     pub fn data_ptr(self) -> Option<*mut std::os::raw::c_void> {
         if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
             let ptr = unsafe { (*self.ptr).gengc_next_node as *mut std::os::raw::c_void };
-            if ptr.is_null() {
-                None
-            } else {
-                Some(ptr)
-            }
+            if ptr.is_null() { None } else { Some(ptr) }
         } else {
             None
         }
@@ -1149,7 +1145,7 @@ mod tests {
 
     #[test]
     fn test_pairlist_iter_empty() {
-        let nil = crate::sexp::globals::R_NilValue();
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
         let sexp = Sexp::from_raw(nil).unwrap();
         let items: Vec<_> = PairlistIter::new(sexp).collect();
         assert_eq!(items.len(), 0);
@@ -1160,7 +1156,11 @@ mod tests {
         let mut arena = RArena::new();
         let car_val = arena.alloc_node(SEXPTYPE::INTSXP);
         let tag_val = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let cell = arena.cons(car_val, crate::sexp::globals::R_NilValue(), tag_val);
+        let cell = arena.cons(
+            car_val,
+            unsafe { crate::sexp::globals::R_NilValue() },
+            tag_val,
+        );
         let sexp = Sexp::from_raw(cell).unwrap();
         assert!(sexp.car().is_some());
         assert!(sexp.cdr().is_some());
@@ -1174,7 +1174,7 @@ mod tests {
         let mut arena = RArena::new();
         let formals = arena.alloc_list_chain(1);
         let body = arena.alloc_node(SEXPTYPE::NILSXP);
-        let env = crate::sexp::globals::R_GlobalEnv();
+        let env = unsafe { crate::sexp::globals::R_GlobalEnv() };
         let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
         unsafe {
             (*closure).data.closxp.formals = formals;
@@ -1192,7 +1192,7 @@ mod tests {
     fn test_sexp_environment_accessors() {
         let mut arena = RArena::new();
         let frame = arena.alloc_list_chain(0);
-        let enclos = crate::sexp::globals::R_EmptyEnv();
+        let enclos = unsafe { crate::sexp::globals::R_EmptyEnv() };
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
             (*env).data.envsxp.frame = frame;

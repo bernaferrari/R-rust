@@ -1065,12 +1065,7 @@ unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 // printNamedVector -- exported
 // ---------------------------------------------------------------------------
 
-pub unsafe fn printNamedVector(
-    x: SEXP,
-    names: SEXP,
-    quote: c_int,
-    title: *const c_char,
-) {
+pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const c_char) {
     unsafe {
         if !title.is_null() {
             let s = std::ffi::CStr::from_ptr(title).to_str().unwrap_or("");

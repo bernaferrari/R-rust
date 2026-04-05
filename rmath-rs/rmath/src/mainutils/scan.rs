@@ -287,10 +287,7 @@ fn find_complex_separator(s: &str) -> Option<usize> {
 ///
 /// Skips leading whitespace, then reads exactly two hex digits.
 /// Returns 0 on failure.
-pub unsafe fn strtoraw(
-    nptr: *const c_char,
-    endptr: *mut *mut c_char,
-) -> std::os::raw::c_uchar {
+pub unsafe fn strtoraw(nptr: *const c_char, endptr: *mut *mut c_char) -> std::os::raw::c_uchar {
     unsafe {
         if nptr.is_null() {
             return 0;

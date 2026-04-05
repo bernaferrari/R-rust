@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-
 // Port of R's modules/internet/libcurl.c (1420 lines)
 // libcurl FFI wrapper for HTTP/FTP downloads and URL connections
 
@@ -1403,7 +1401,8 @@ pub(crate) unsafe extern "C" fn in_newCurlUrl(
 
     // Allocate a minimal Curlconn-like structure
     let buf_size: size_t = 16 * CURL_MAX_WRITE_SIZE;
-    let buf = libc::malloc(buf_size);
+    let layout = std::alloc::Layout::from_size_align(buf_size, 1).unwrap();
+    let buf = std::alloc::alloc(layout);
     if buf.is_null() {
         Rf_error(b"allocation of url connection failed\0".as_ptr() as *const c_char);
     }
@@ -1417,7 +1416,7 @@ pub(crate) unsafe extern "C" fn in_newCurlUrl(
             if !hdr_list.is_null() {
                 curl_slist_free_all(hdr_list);
             }
-            libc::free(buf);
+            std::alloc::dealloc(buf, layout);
             Rf_error(b"allocation of url connection failed\0".as_ptr() as *const c_char);
         }
         hdr_list = tmp;
@@ -1427,7 +1426,7 @@ pub(crate) unsafe extern "C" fn in_newCurlUrl(
     // In a full implementation, this would be a Rconnection with Curlconn private data
     // For now, we return null as the connection system requires Rconn struct
     if !buf.is_null() {
-        libc::free(buf);
+        std::alloc::dealloc(buf, layout);
     }
     if !hdr_list.is_null() {
         curl_slist_free_all(hdr_list);

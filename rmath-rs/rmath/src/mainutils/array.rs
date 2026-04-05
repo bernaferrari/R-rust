@@ -69,12 +69,7 @@ pub unsafe fn allocMatrix(_mode: c_int, _nrow: c_int, _ncol: c_int) -> SEXP {
 /// Allocate a 3-dimensional array.
 ///
 /// Ported from R's `alloc3DArray` in array.c (line 255).
-pub unsafe fn alloc3DArray(
-    _mode: c_int,
-    _nrow: c_int,
-    _ncol: c_int,
-    _nface: c_int,
-) -> SEXP {
+pub unsafe fn alloc3DArray(_mode: c_int, _nrow: c_int, _ncol: c_int, _nface: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 
