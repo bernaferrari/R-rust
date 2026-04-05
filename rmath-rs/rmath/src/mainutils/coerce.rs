@@ -2162,7 +2162,7 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
 /// Strips attributes and returns a clean atomic vector of the target type.
 /// The `op` value selects the target type (0=character, 1=integer, 2=double,
 /// 3=complex, 4=logical, 5=raw).
-pub fn as_atomic_safe<'a>(x: Sexp<'a>, op: i32) -> Result<SEXP, String> {
+pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
     let type_: c_int = match op {
         0 => SEXPTYPE::STRSXP.0,
         1 => SEXPTYPE::INTSXP.0,
@@ -2294,7 +2294,7 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
 ///
 /// Returns `Result<c_int, String>` where the c_int is 0 or 1 (logical value).
 /// The `op` value selects the predicate to test.
-pub fn is_type_safe<'a>(x: Sexp<'a>, op: i32) -> Result<c_int, String> {
+pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
     let ans = match op {
         0 => is_null_safe(x),
         10 => (x.typeof_() == SEXPTYPE::LGLSXP) as c_int,

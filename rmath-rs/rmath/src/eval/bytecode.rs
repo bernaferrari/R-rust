@@ -419,7 +419,7 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
         .ok_or_else(|| "empty stack at end of bytecode".to_string())
 }
 
-fn get_constant<'a>(constants: Option<Sexp<'a>>, idx: usize) -> Result<Sexp<'a>, String> {
+fn get_constant(constants: Option<Sexp<'_>>, idx: usize) -> Result<Sexp<'_>, String> {
     match constants {
         Some(c) => c
             .vector_elt(idx as i64)

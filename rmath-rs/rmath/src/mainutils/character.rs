@@ -627,7 +627,7 @@ pub unsafe extern "C" fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
 // ---------------------------------------------------------------------------
 
 /// Safe version of toupper using `Sexp<'a>`.
-pub fn toupper_safe<'a>(x: Sexp<'a>) -> Result<SEXP, String> {
+pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
     case_transform_safe(x, true)
 }
 
@@ -662,7 +662,7 @@ pub unsafe extern "C" fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 // ---------------------------------------------------------------------------
 
 /// Safe version of tolower using `Sexp<'a>`.
-pub fn tolower_safe<'a>(x: Sexp<'a>) -> Result<SEXP, String> {
+pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
     case_transform_safe(x, false)
 }
 
@@ -693,7 +693,7 @@ pub unsafe extern "C" fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SE
 }
 
 /// Shared safe implementation for toupper and tolower.
-fn case_transform_safe<'a>(x: Sexp<'a>, upper: bool) -> Result<SEXP, String> {
+fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
     let na = unsafe { get_na_string() };
 
     if x.typeof_() != SEXPTYPE::STRSXP {
@@ -739,8 +739,8 @@ pub enum NcharType {
 }
 
 /// Safe version of nchar using `Sexp<'a>`.
-pub fn nchar_safe<'a>(
-    x: Sexp<'a>,
+pub fn nchar_safe(
+    x: Sexp<'_>,
     type_: NcharType,
     allow_na: bool,
     keep_na: bool,

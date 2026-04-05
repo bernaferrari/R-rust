@@ -449,7 +449,7 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
 /// Safe wrapper for `duplicated_impl` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` on success, `Err` on invalid input.
-fn duplicated_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
+fn duplicated_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
     if !x.is_vector() {
         return Err("duplicated requires a vector");
     }
@@ -467,7 +467,7 @@ fn duplicated_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SE
 /// Safe wrapper for `unique` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` with unique elements on success.
-fn unique_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
+fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
     if !x.is_vector() {
         return Err("unique requires a vector");
     }
@@ -595,7 +595,7 @@ fn check_values_safe(x: Sexp<'_>, op: i32, na_rm: bool) -> Result<i32, &'static 
 /// Safe wrapper for `any` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` with a scalar logical result.
-fn any_safe<'a>(args: Sexp<'a>) -> Result<SEXP, &'static str> {
+fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
     let mut val: i32 = 0;
     let mut has_na = false;
     let mut na_rm = false;
@@ -681,7 +681,7 @@ fn any_safe<'a>(args: Sexp<'a>) -> Result<SEXP, &'static str> {
 /// Safe wrapper for `all` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` with a scalar logical result.
-fn all_safe<'a>(args: Sexp<'a>) -> Result<SEXP, &'static str> {
+fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
     let mut val: i32 = 1;
     let mut has_na = false;
     let mut na_rm = false;
