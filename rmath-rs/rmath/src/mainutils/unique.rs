@@ -1,5 +1,4 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
@@ -16,6 +15,7 @@
 //!   cplx_eq (complex equality with NA/NaN handling)
 
 use crate::sexp::ffi::SEXP;
+use crate::sexp::safe::Sexp;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
@@ -24,7 +24,7 @@ use crate::sexp::accessors::{
     TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector3};
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, Rcomplex, NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -145,7 +145,11 @@ struct HashData {
 unsafe fn lhash(x: SEXP, indx: R_xlen_t, _d: &HashData) -> usize {
     unsafe {
         let xi = LOGICAL_ELT(x, indx as c_int);
-        if xi == NA_LOGICAL { 2 } else { xi as usize }
+        if xi == NA_LOGICAL {
+            2
+        } else {
+            xi as usize
+        }
     }
 }
 
@@ -439,7 +443,329 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// do_unique
+// Safe wrapper functions using Sexp<'a>
+// ---------------------------------------------------------------------------
+
+/// Safe wrapper for `duplicated_impl` using `Sexp<'a>`.
+///
+/// Returns `Ok(SEXP)` on success, `Err` on invalid input.
+fn duplicated_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
+    if !x.is_vector() {
+        return Err("duplicated requires a vector");
+    }
+    let n = x.len();
+    if n == 0 {
+        return Ok(unsafe { Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0) });
+    }
+    if n == 1 {
+        return Ok(unsafe { Rf_ScalarLogical(0) });
+    }
+    let raw = x.as_raw();
+    Ok(unsafe { duplicated_impl(raw, from_last, nmax_arg) })
+}
+
+/// Safe wrapper for `unique` using `Sexp<'a>`.
+///
+/// Returns `Ok(SEXP)` with unique elements on success.
+fn unique_safe<'a>(x: Sexp<'a>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'static str> {
+    if !x.is_vector() {
+        return Err("unique requires a vector");
+    }
+    let n = x.len();
+    if n == 0 {
+        return Ok(unsafe { Rf_allocVector3(TYPEOF(x.as_raw()), 0) });
+    }
+
+    let raw = x.as_raw();
+    let xtype = unsafe { TYPEOF(raw) };
+
+    let dup = unsafe { duplicated_impl(raw, from_last, nmax_arg) };
+    unsafe { Rf_protect(dup) };
+
+    let mut k: R_xlen_t = 0;
+    for i in 0..n {
+        if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+            k += 1;
+        }
+    }
+
+    let ans = unsafe { Rf_allocVector3(xtype, k) };
+    unsafe { Rf_protect(ans) };
+
+    let mut ki: R_xlen_t = 0;
+
+    match xtype {
+        t if t == SEXPTYPE::LGLSXP.0 => {
+            let a = unsafe { LOGICAL(ans) };
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { *a.add(ki as usize) = LOGICAL_ELT(raw, i as c_int) };
+                    ki += 1;
+                }
+            }
+        }
+        t if t == SEXPTYPE::INTSXP.0 => {
+            let a = unsafe { INTEGER(ans) };
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { *a.add(ki as usize) = INTEGER_ELT(raw, i as c_int) };
+                    ki += 1;
+                }
+            }
+        }
+        t if t == SEXPTYPE::REALSXP.0 => {
+            let a = unsafe { REAL(ans) };
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { *a.add(ki as usize) = REAL_ELT(raw, i as c_int) };
+                    ki += 1;
+                }
+            }
+        }
+        t if t == SEXPTYPE::CPLXSXP.0 => {
+            let a = unsafe { COMPLEX(ans) };
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { *a.add(ki as usize) = COMPLEX_ELT(raw, i as c_int) };
+                    ki += 1;
+                }
+            }
+        }
+        t if t == SEXPTYPE::STRSXP.0 => {
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { SET_STRING_ELT(ans, ki, STRING_ELT(raw, i)) };
+                    ki += 1;
+                }
+            }
+        }
+        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { SET_VECTOR_ELT(ans, ki, VECTOR_ELT(raw, i)) };
+                    ki += 1;
+                }
+            }
+        }
+        t if t == SEXPTYPE::RAWSXP.0 => {
+            let a = unsafe { RAW(ans) };
+            for i in 0..n {
+                if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
+                    unsafe { *a.add(ki as usize) = RAW_ELT(raw, i as c_int) };
+                    ki += 1;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    unsafe { Rf_unprotect(2) };
+    Ok(ans)
+}
+
+/// Check values in a logical vector for any/all semantics (safe version).
+///
+/// Returns `TRUE`, `FALSE`, or `NA_LOGICAL`.
+/// `op`: 1 = all, 2 = any
+fn check_values_safe(x: Sexp<'_>, op: i32, na_rm: bool) -> Result<i32, &'static str> {
+    let n = x.len();
+    let mut has_na = false;
+
+    for i in 0..n {
+        let xi = x.logical_elt(i).ok_or("invalid logical element")?;
+        if !na_rm && xi == NA_LOGICAL {
+            has_na = true;
+        } else {
+            if xi == 1 && op == 2 {
+                return Ok(1); // TRUE
+            }
+            if xi == 0 && op == 1 {
+                return Ok(0); // FALSE
+            }
+        }
+    }
+
+    if op == 2 {
+        Ok(if has_na { NA_LOGICAL } else { 0 })
+    } else {
+        Ok(if has_na { NA_LOGICAL } else { 1 })
+    }
+}
+
+/// Safe wrapper for `any` using `Sexp<'a>`.
+///
+/// Returns `Ok(SEXP)` with a scalar logical result.
+fn any_safe<'a>(args: Sexp<'a>) -> Result<SEXP, &'static str> {
+    let mut val: i32 = 0;
+    let mut has_na = false;
+    let mut na_rm = false;
+
+    // First pass: look for na.rm argument
+    let mut arg_list = Some(args);
+    while let Some(current) = arg_list {
+        if current.is_nil() {
+            break;
+        }
+        if let Some(tag) = current.tag() {
+            if let Some(pname) = tag.printname() {
+                if let Some(name_bytes) = pname.data_ptr() {
+                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+                    if name_str.to_bytes() == b"na.rm" {
+                        if let Some(na_val) = current.car() {
+                            if let Some(nrm) = na_val.logical_elt(0) {
+                                na_rm = nrm == 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        arg_list = current.cdr();
+    }
+
+    // Process non-na.rm arguments
+    let mut s = Some(args);
+    while let Some(current) = s {
+        if current.is_nil() {
+            break;
+        }
+
+        // Skip na.rm argument
+        let skip = if let Some(tag) = current.tag() {
+            if let Some(pname) = tag.printname() {
+                if let Some(name_bytes) = pname.data_ptr() {
+                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+                    name_str.to_bytes() == b"na.rm"
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if skip {
+            s = current.cdr();
+            continue;
+        }
+
+        if let Some(t) = current.car() {
+            let n = t.len();
+            if n > 0 {
+                let cv = check_values_safe(t, 2, na_rm)?;
+                if cv != NA_LOGICAL {
+                    if cv == 1 {
+                        val = 1;
+                        has_na = false;
+                        break;
+                    }
+                } else {
+                    has_na = true;
+                }
+                val = cv;
+            }
+        }
+
+        s = current.cdr();
+    }
+
+    if has_na {
+        Ok(unsafe { Rf_ScalarLogical(NA_LOGICAL) })
+    } else {
+        Ok(unsafe { Rf_ScalarLogical(val) })
+    }
+}
+
+/// Safe wrapper for `all` using `Sexp<'a>`.
+///
+/// Returns `Ok(SEXP)` with a scalar logical result.
+fn all_safe<'a>(args: Sexp<'a>) -> Result<SEXP, &'static str> {
+    let mut val: i32 = 1;
+    let mut has_na = false;
+    let mut na_rm = false;
+
+    // First pass: look for na.rm argument
+    let mut arg_list = Some(args);
+    while let Some(current) = arg_list {
+        if current.is_nil() {
+            break;
+        }
+        if let Some(tag) = current.tag() {
+            if let Some(pname) = tag.printname() {
+                if let Some(name_bytes) = pname.data_ptr() {
+                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+                    if name_str.to_bytes() == b"na.rm" {
+                        if let Some(na_val) = current.car() {
+                            if let Some(nrm) = na_val.logical_elt(0) {
+                                na_rm = nrm == 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        arg_list = current.cdr();
+    }
+
+    // Process non-na.rm arguments
+    let mut s = Some(args);
+    while let Some(current) = s {
+        if current.is_nil() {
+            break;
+        }
+
+        // Skip na.rm argument
+        let skip = if let Some(tag) = current.tag() {
+            if let Some(pname) = tag.printname() {
+                if let Some(name_bytes) = pname.data_ptr() {
+                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+                    name_str.to_bytes() == b"na.rm"
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if skip {
+            s = current.cdr();
+            continue;
+        }
+
+        if let Some(t) = current.car() {
+            let n = t.len();
+            if n > 0 {
+                let cv = check_values_safe(t, 1, na_rm)?;
+                if cv != NA_LOGICAL {
+                    if cv == 0 {
+                        has_na = false;
+                        val = 0;
+                        break;
+                    }
+                } else {
+                    has_na = true;
+                }
+                val = cv;
+            }
+        }
+
+        s = current.cdr();
+    }
+
+    if has_na {
+        Ok(unsafe { Rf_ScalarLogical(NA_LOGICAL) })
+    } else {
+        Ok(unsafe { Rf_ScalarLogical(val) })
+    }
+}
+
+// ---------------------------------------------------------------------------
+// FFI functions with catch_unwind delegation
 // ---------------------------------------------------------------------------
 
 /// Implementation of R's `unique()` builtin.
@@ -448,166 +774,43 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
 /// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        // incomp = CADR(args) -- we skip incomparables support (same as empty incomparables)
-        // fromLast = CADDR(args) -- skip, default FALSE
-        // nmax = CADDDR(args) -- skip, default NA_INTEGER
-
-        let n = XLENGTH(x);
-        if n == 0 {
-            return Rf_allocVector3(TYPEOF(x), 0);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return R_NilValue(),
+        };
+        let x = match args_s.car() {
+            Some(s) => s,
+            None => return R_NilValue(),
+        };
+        match unique_safe(x, false, NA_INTEGER) {
+            Ok(result) => result,
+            Err(_) => R_NilValue(),
         }
-
-        // Get duplicated flags
-        let dup = duplicated_impl(x, false, NA_INTEGER);
-        Rf_protect(dup);
-
-        // Count unique entries
-        let mut k: R_xlen_t = 0;
-        for i in 0..n {
-            if *LOGICAL(dup).add(i as usize) == 0 {
-                k += 1;
-            }
-        }
-
-        let ans = Rf_allocVector3(TYPEOF(x), k);
-        Rf_protect(ans);
-
-        let xtype = TYPEOF(x);
-        let mut ki: R_xlen_t = 0;
-
-        match xtype {
-            t if t == SEXPTYPE::LGLSXP.0 => {
-                let a = LOGICAL(ans);
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        *a.add(ki as usize) = LOGICAL_ELT(x, i as c_int);
-                        ki += 1;
-                    }
-                }
-            }
-            t if t == SEXPTYPE::INTSXP.0 => {
-                let a = INTEGER(ans);
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        *a.add(ki as usize) = INTEGER_ELT(x, i as c_int);
-                        ki += 1;
-                    }
-                }
-            }
-            t if t == SEXPTYPE::REALSXP.0 => {
-                let a = REAL(ans);
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        *a.add(ki as usize) = REAL_ELT(x, i as c_int);
-                        ki += 1;
-                    }
-                }
-            }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
-                let a = COMPLEX(ans);
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        *a.add(ki as usize) = COMPLEX_ELT(x, i as c_int);
-                        ki += 1;
-                    }
-                }
-            }
-            t if t == SEXPTYPE::STRSXP.0 => {
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        SET_STRING_ELT(ans, ki, STRING_ELT(x, i));
-                        ki += 1;
-                    }
-                }
-            }
-            t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        SET_VECTOR_ELT(ans, ki, VECTOR_ELT(x, i));
-                        ki += 1;
-                    }
-                }
-            }
-            t if t == SEXPTYPE::RAWSXP.0 => {
-                let a = RAW(ans);
-                for i in 0..n {
-                    if *LOGICAL(dup).add(i as usize) == 0 {
-                        *a.add(ki as usize) = RAW_ELT(x, i as c_int);
-                        ki += 1;
-                    }
-                }
-            }
-            _ => {}
-        }
-
-        Rf_unprotect(2);
-        ans
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
-
-// ---------------------------------------------------------------------------
-// do_duplicated
-// ---------------------------------------------------------------------------
 
 /// Implementation of R's `duplicated()` builtin.
 ///
 /// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let x = CAR(args);
-        // fromLast = CADDR(args) -- skip, default FALSE
-        // nmax = CADDDR(args) -- skip, default NA_INTEGER
-
-        let n = XLENGTH(x);
-        if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return R_NilValue(),
+        };
+        let x = match args_s.car() {
+            Some(s) => s,
+            None => return R_NilValue(),
+        };
+        match duplicated_safe(x, false, NA_INTEGER) {
+            Ok(result) => result,
+            Err(_) => R_NilValue(),
         }
-
-        duplicated_impl(x, false, NA_INTEGER)
-    }
-}
-
-// ---------------------------------------------------------------------------
-// do_any / do_all (ported from R's src/main/logic.c do_logic3)
-// ---------------------------------------------------------------------------
-
-/// Check values in a logical vector for any/all semantics.
-///
-/// Returns TRUE, FALSE, or NA_LOGICAL.
-/// `op`: 1 = all, 2 = any
-/// `na_rm`: if true, skip NA values.
-unsafe fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
-    unsafe {
-        let px = LOGICAL(x);
-        let mut has_na = false;
-
-        for i in 0..n {
-            let xi = *px.add(i as usize);
-            if !na_rm && xi == NA_LOGICAL {
-                has_na = true;
-            } else {
-                if xi == 1 && op == 2 {
-                    // TRUE && _OP_ANY
-                    return 1; // TRUE
-                }
-                if xi == 0 && op == 1 {
-                    // FALSE && _OP_ALL
-                    return 0; // FALSE
-                }
-            }
-        }
-
-        if op == 2 {
-            // _OP_ANY
-            if has_na { NA_LOGICAL } else { 0 } // FALSE
-        } else {
-            // _OP_ALL
-            if has_na { NA_LOGICAL } else { 1 } // TRUE
-        }
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
 /// Implementation of R's `any()` builtin.
@@ -616,92 +819,17 @@ unsafe fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
 /// PRIMVAL(op) == 2 in the C source.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        // Walk through the args list. For a simple implementation,
-        // we process the first logical vector argument.
-        // na.rm is typically the last named argument.
-
-        let mut s = args;
-        let mut val: i32 = 0; // FALSE (default for empty any())
-        let mut has_na = false;
-        let mut na_rm = false;
-
-        // First pass: look for na.rm argument
-        let mut arg_list = args;
-        let mut na_rm_sexp: SEXP = std::ptr::null_mut();
-        while !arg_list.is_null() && arg_list != R_NilValue() {
-            let t = CAR(arg_list);
-            // Check TAG for na.rm
-            let tag = crate::sexp::accessors::TAG(arg_list);
-            if !tag.is_null() {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let name_bytes = crate::sexp::accessors::CHAR(pname);
-                    if !name_bytes.is_null() {
-                        let name_str = std::ffi::CStr::from_ptr(name_bytes);
-                        if name_str.to_bytes() == b"na.rm" {
-                            na_rm_sexp = t;
-                        }
-                    }
-                }
-            }
-            arg_list = CDR(arg_list);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return R_NilValue(),
+        };
+        match any_safe(args_s) {
+            Ok(result) => result,
+            Err(_) => R_NilValue(),
         }
-
-        if !na_rm_sexp.is_null() {
-            let nrm = LOGICAL_ELT(na_rm_sexp, 0);
-            na_rm = nrm == 1;
-        }
-
-        // Process non-na.rm arguments
-        s = args;
-        while !s.is_null() && s != R_NilValue() {
-            let t = CAR(s);
-            let tag = crate::sexp::accessors::TAG(s);
-            let is_named = !tag.is_null();
-
-            // Skip na.rm argument
-            if is_named {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let name_bytes = crate::sexp::accessors::CHAR(pname);
-                    if !name_bytes.is_null() {
-                        let name_str = std::ffi::CStr::from_ptr(name_bytes);
-                        if name_str.to_bytes() == b"na.rm" {
-                            s = CDR(s);
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            let n = XLENGTH(t);
-            if n == 0 {
-                s = CDR(s);
-                continue;
-            }
-
-            let cv = check_values(2, na_rm, t, n); // _OP_ANY = 2
-            if cv != NA_LOGICAL {
-                if cv == 1 {
-                    // any found TRUE
-                    val = 1;
-                    has_na = false;
-                    break;
-                }
-            } else {
-                has_na = true;
-            }
-            val = cv;
-            s = CDR(s);
-        }
-
-        if has_na {
-            Rf_ScalarLogical(NA_LOGICAL)
-        } else {
-            Rf_ScalarLogical(val)
-        }
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
 /// Implementation of R's `all()` builtin.
@@ -710,85 +838,17 @@ pub unsafe extern "C" fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 /// PRIMVAL(op) == 1 in the C source.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let mut val: i32 = 1; // TRUE (default for empty all())
-        let mut has_na = false;
-        let mut na_rm = false;
-
-        // First pass: look for na.rm argument
-        let mut arg_list = args;
-        let mut na_rm_sexp: SEXP = std::ptr::null_mut();
-        while !arg_list.is_null() && arg_list != R_NilValue() {
-            let tag = crate::sexp::accessors::TAG(arg_list);
-            if !tag.is_null() {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let name_bytes = crate::sexp::accessors::CHAR(pname);
-                    if !name_bytes.is_null() {
-                        let name_str = std::ffi::CStr::from_ptr(name_bytes);
-                        if name_str.to_bytes() == b"na.rm" {
-                            na_rm_sexp = CAR(arg_list);
-                        }
-                    }
-                }
-            }
-            arg_list = CDR(arg_list);
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let args_s = match Sexp::from_raw(args) {
+            Some(s) => s,
+            None => return R_NilValue(),
+        };
+        match all_safe(args_s) {
+            Ok(result) => result,
+            Err(_) => R_NilValue(),
         }
-
-        if !na_rm_sexp.is_null() {
-            let nrm = LOGICAL_ELT(na_rm_sexp, 0);
-            na_rm = nrm == 1;
-        }
-
-        // Process non-na.rm arguments
-        let mut s = args;
-        while !s.is_null() && s != R_NilValue() {
-            let t = CAR(s);
-            let tag = crate::sexp::accessors::TAG(s);
-            let is_named = !tag.is_null();
-
-            // Skip na.rm argument
-            if is_named {
-                let pname = crate::sexp::accessors::PRINTNAME(tag);
-                if !pname.is_null() {
-                    let name_bytes = crate::sexp::accessors::CHAR(pname);
-                    if !name_bytes.is_null() {
-                        let name_str = std::ffi::CStr::from_ptr(name_bytes);
-                        if name_str.to_bytes() == b"na.rm" {
-                            s = CDR(s);
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            let n = XLENGTH(t);
-            if n == 0 {
-                s = CDR(s);
-                continue;
-            }
-
-            let cv = check_values(1, na_rm, t, n); // _OP_ALL = 1
-            if cv != NA_LOGICAL {
-                if cv == 0 {
-                    // all found FALSE
-                    has_na = false;
-                    val = 0;
-                    break;
-                }
-            } else {
-                has_na = true;
-            }
-            val = cv;
-            s = CDR(s);
-        }
-
-        if has_na {
-            Rf_ScalarLogical(NA_LOGICAL)
-        } else {
-            Rf_ScalarLogical(val)
-        }
-    }
+    }))
+    .unwrap_or_else(|_| unsafe { R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------
