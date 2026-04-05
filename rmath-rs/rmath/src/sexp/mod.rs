@@ -21,6 +21,7 @@ pub mod gengc;
 pub mod globals;
 pub mod memory;
 pub mod memory_ext;
+pub mod output;
 pub mod protect;
 pub mod safe;
 pub mod symbol;
@@ -36,4 +37,8 @@ pub use altrep::{
     altrep_as_integer_slice, altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt,
     altrep_length, force_materialization, is_altrep, is_materialized, AltrepBuilder, AltrepClass,
     AltrepData, REPEAT_CLASS, SEQUENCE_CLASS,
+};
+
+pub use output::{
+    capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture, RCapturedOutput,
 };
