@@ -28,6 +28,7 @@ use std::os::raw::c_int;
 
 use super::ffi::{R_xlen_t, SexprecCore, SexprecData, SEXP, SEXPTYPE};
 use super::memory::with_arena;
+use super::safe::Sexp;
 
 /// ALTREP data payload types.
 #[derive(Debug)]
@@ -52,7 +53,8 @@ pub struct AltrepClass {
     /// Get element at index (0-based)
     pub get_elt: fn(&AltrepData, i64) -> SEXP,
     /// Get pointer to data (for bulk access)
-    pub get_dataptr: fn(&AltrepData) -> *mut std::os::raw::c_void,
+    /// The `writable` parameter indicates if the caller intends to modify the data.
+    pub get_dataptr: fn(&AltrepData, bool) -> *mut std::os::raw::c_void,
     /// Get length of the vector
     pub get_length: fn(&AltrepData) -> i64,
     /// Materialize the full vector (compute all elements)
@@ -163,7 +165,12 @@ pub static SEQUENCE_CLASS: AltrepClass = AltrepClass {
             vec
         })
     },
-    get_dataptr: |_data| std::ptr::null_mut(),
+    get_dataptr: |data, writable| {
+        // For sequences, we need to materialize on first access
+        // Return null for now; caller should use get_elt or materialize
+        let _ = (data, writable);
+        std::ptr::null_mut()
+    },
     get_length: |data| match data {
         AltrepData::Sequence { start, end, by } => {
             if *by == 0.0 {
@@ -217,7 +224,12 @@ pub static REPEAT_CLASS: AltrepClass = AltrepClass {
         };
         *value
     },
-    get_dataptr: |_data| std::ptr::null_mut(),
+    get_dataptr: |data, writable| {
+        // For repeated values, we can't return a single-element buffer
+        // because the caller expects a full-length buffer. Return null.
+        let _ = (data, writable);
+        std::ptr::null_mut()
+    },
     get_length: |data| match data {
         AltrepData::Repeat { length, .. } => *length,
         _ => 0,
@@ -280,18 +292,144 @@ pub fn altrep_class(x: SEXP) -> Option<&'static AltrepClass> {
     }
 }
 
+/// Get the ALTREP data payload from an object.
+fn altrep_data(x: SEXP) -> Option<&'static AltrepData> {
+    if !is_altrep(x) {
+        return None;
+    }
+    unsafe {
+        let data1 = (*x).gengc_next_node as *mut SEXP;
+        if data1.is_null() {
+            return None;
+        }
+        // data2 is stored after data1
+        let data2_ptr = data1.add(1);
+        if (*data2_ptr).is_null() {
+            return None;
+        }
+        Some(&*(*data2_ptr as *const AltrepData))
+    }
+}
+
 /// Get the length of an ALTREP object.
 pub fn altrep_length(x: SEXP) -> Option<i64> {
     let class = altrep_class(x)?;
-    // Would need to access data2 — simplified for now
-    None
+    let data = altrep_data(x)?;
+    Some((class.get_length)(data))
 }
 
 /// Get a single element from an ALTREP object.
 pub fn altrep_elt(x: SEXP, i: i64) -> Option<SEXP> {
     let class = altrep_class(x)?;
-    // Would need to access data2 — simplified for now
-    None
+    let data = altrep_data(x)?;
+    Some((class.get_elt)(data, i))
+}
+
+/// Get a mutable pointer to the data buffer of an ALTREP object.
+///
+/// Returns `None` if the ALTREP object doesn't support bulk access
+/// (i.e., `get_dataptr` returns null).
+///
+/// The `writable` parameter indicates whether the caller intends to
+/// modify the data. Some ALTREP implementations may materialize the
+/// full vector if `writable` is true.
+pub fn altrep_dataptr(x: SEXP, writable: bool) -> Option<*mut std::os::raw::c_void> {
+    let class = altrep_class(x)?;
+    let data = altrep_data(x)?;
+    let ptr = (class.get_dataptr)(data, writable);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(ptr)
+    }
+}
+
+/// Get a slice view of an ALTREP integer vector.
+///
+/// Returns `None` if the ALTREP object doesn't support bulk integer access.
+/// This materializes elements on demand into a new `Vec`.
+pub fn altrep_as_integer_slice(x: SEXP) -> Option<Vec<c_int>> {
+    if !is_altrep(x) {
+        return None;
+    }
+    let len = altrep_length(x)?;
+    let mut result = Vec::with_capacity(len as usize);
+    for i in 0..len {
+        let elt = altrep_elt(x, i)?;
+        if elt.is_null() {
+            return None;
+        }
+        let sexp = Sexp::from_raw(elt)?;
+        match sexp.typeof_() {
+            SEXPTYPE::INTSXP => {
+                result.push(sexp.integer_elt(0).unwrap_or(0));
+            }
+            SEXPTYPE::REALSXP => {
+                result.push(sexp.real_elt(0).unwrap_or(0.0) as c_int);
+            }
+            _ => return None,
+        }
+    }
+    Some(result)
+}
+
+/// Get a slice view of an ALTREP real vector.
+///
+/// Returns `None` if the ALTREP object doesn't support bulk real access.
+/// This materializes elements on demand into a new `Vec`.
+pub fn altrep_as_real_slice(x: SEXP) -> Option<Vec<c_double>> {
+    if !is_altrep(x) {
+        return None;
+    }
+    let len = altrep_length(x)?;
+    let mut result = Vec::with_capacity(len as usize);
+    for i in 0..len {
+        let elt = altrep_elt(x, i)?;
+        if elt.is_null() {
+            return None;
+        }
+        let sexp = Sexp::from_raw(elt)?;
+        match sexp.typeof_() {
+            SEXPTYPE::REALSXP => {
+                result.push(sexp.real_elt(0).unwrap_or(0.0));
+            }
+            SEXPTYPE::INTSXP => {
+                result.push(sexp.integer_elt(0).unwrap_or(0) as c_double);
+            }
+            _ => return None,
+        }
+    }
+    Some(result)
+}
+
+/// Check if an ALTREP object has been materialized.
+///
+/// Returns `false` for null pointers and non-ALTREP objects.
+pub fn is_materialized(x: SEXP) -> bool {
+    if x.is_null() || !is_altrep(x) {
+        return false;
+    }
+    unsafe {
+        // In R, materialized ALTREP has the data2 field set to the materialized vector
+        let data2 = (*x).data.vecsxp.truelength;
+        data2 != 0
+    }
+}
+
+/// Force materialization of an ALTREP object.
+///
+/// Returns the original SEXP if it is null or not an ALTREP object.
+/// For ALTREP objects, calls the `materialize` method to compute all elements.
+pub fn force_materialization(x: SEXP) -> SEXP {
+    if x.is_null() || !is_altrep(x) {
+        return x;
+    }
+    if let Some(class) = altrep_class(x) {
+        if let Some(data) = altrep_data(x) {
+            return (class.materialize)(data);
+        }
+    }
+    x
 }
 
 // ---------------------------------------------------------------------------
@@ -355,7 +493,7 @@ mod tests {
             end: 100.0,
             by: 1.0,
         };
-        assert_eq!(SEQUENCE_CLASS.get_length(&data), 100);
+        assert_eq!((SEQUENCE_CLASS.get_length)(&data), 100);
     }
 
     #[test]
@@ -365,7 +503,7 @@ mod tests {
             end: 1.0,
             by: -1.0,
         };
-        assert_eq!(SEQUENCE_CLASS.get_length(&data), 100);
+        assert_eq!((SEQUENCE_CLASS.get_length)(&data), 100);
     }
 
     #[test]
@@ -375,6 +513,6 @@ mod tests {
             end: 100.0,
             by: 0.0,
         };
-        assert_eq!(SEQUENCE_CLASS.get_length(&data), 0);
+        assert_eq!((SEQUENCE_CLASS.get_length)(&data), 0);
     }
 }

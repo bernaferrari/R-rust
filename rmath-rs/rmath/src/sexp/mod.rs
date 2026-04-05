@@ -33,7 +33,7 @@ pub use ffi::{
 };
 
 pub use altrep::{
-    altrep_class, altrep_elt, altrep_length, is_altrep, AltrepBuilder, AltrepClass, AltrepData,
-    REPEAT_CLASS, SEQUENCE_CLASS,
+    altrep_as_integer_slice, altrep_as_real_slice, altrep_class, altrep_dataptr, altrep_elt,
+    altrep_length, force_materialization, is_altrep, is_materialized, AltrepBuilder, AltrepClass,
+    AltrepData, REPEAT_CLASS, SEQUENCE_CLASS,
 };
-
