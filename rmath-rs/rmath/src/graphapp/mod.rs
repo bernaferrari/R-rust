@@ -16,6 +16,7 @@ pub mod drawing;
 pub mod drawtext;
 pub mod events;
 pub mod fonts;
+pub mod framebuffer;
 pub mod gbuttons;
 pub mod gdraw;
 pub mod image;
