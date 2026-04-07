@@ -5,6 +5,7 @@
 //! Provides locale2charset() which maps locale strings to encoding names.
 //! On macOS, all real locales without encoding are UTF-8.
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 
 // ---------------------------------------------------------------------------
@@ -78,7 +79,7 @@ static KNOWN: &[(&[u8], &[u8])] = &[
 /// * The appropriate encoding name otherwise
 pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std::os::raw::c_char {
     unsafe {
-        static mut CHARSET_BUF: [u8; 128] = [0; 128];
+        thread_local! { static CHARSET_BUF: RefCell<[u8; 128]> = RefCell::new([0; 128]); }
 
         let locale_str = if locale.is_null() || {
             let s = CStr::from_ptr(locale).to_str().unwrap_or("");
@@ -130,11 +131,13 @@ pub unsafe fn locale2charset(locale: *const std::os::raw::c_char) -> *const std:
         if enc_lower.starts_with(b"cp-") {
             let cp_num = &enc[3..];
             let result = format!("CP{}", cp_num);
-            let buf = std::ptr::addr_of_mut!(CHARSET_BUF) as *mut u8;
-            let bytes = result.as_bytes();
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
-            *buf.add(result.len()) = 0;
-            return buf.cast::<std::os::raw::c_char>();
+            CHARSET_BUF.with(|v| {
+                let mut buf = v.borrow_mut();
+                let bytes = result.as_bytes();
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
+                buf[result.len()] = 0;
+            });
+            return CHARSET_BUF.with(|v| v.borrow().as_ptr()) as *const std::os::raw::c_char;
         }
 
         // Fallback for euc encoding based on language

@@ -8,10 +8,9 @@
 //! single R expression evaluation.
 
 use std::alloc::{Layout, alloc, dealloc};
-use std::os::raw::c_void;
-use std::ptr::{self, NonNull};
+use std::ptr::{self};
 
-use super::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp};
+use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE
@@ -44,6 +43,7 @@ pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
 /// is freed at once when dropped.
 pub struct RArena {
     /// All allocated node pointers (Box<SexprecCore> for stable addresses).
+    #[allow(clippy::vec_box)]
     nodes: Vec<Box<SexprecCore>>,
     /// All allocated data buffers (pointer, layout).
     data_bufs: Vec<(*mut u8, Layout)>,
@@ -346,6 +346,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::ffi::*;
+
     use super::*;
 
     #[test]

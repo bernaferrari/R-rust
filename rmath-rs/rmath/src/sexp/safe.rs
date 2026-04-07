@@ -27,12 +27,9 @@
 //! (e.g., [`as_integer_slice`](Sexp::as_integer_slice)) or iterators
 //! (e.g., [`iter_integer`](Sexp::iter_integer)).
 
-use std::os::raw::{c_char, c_double, c_int};
-use std::ptr;
+use std::os::raw::{c_double, c_int};
 
-use super::ffi::{
-    NA_INTEGER, NA_REAL, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore,
-};
+use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -54,7 +51,7 @@ use super::globals::R_NilValue;
 ///
 /// let mut arena = RArena::new();
 /// let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-/// let sexp = Sexp::from_raw(ptr).unwrap();
+/// let sexp = Sexp::from_raw(ptr).expect("from_raw returned None");
 /// assert_eq!(sexp.len(), 3);
 /// assert!(sexp.is_vector());
 /// ```
@@ -146,6 +143,40 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn is_nil(self) -> bool {
         self.ptr == unsafe { R_NilValue() }
+    }
+
+    /// Convert to a boolean value.
+    ///
+    /// Returns true for non-NULL values, or the actual boolean/logical value
+    /// for LGLSXP/INTSXP types.
+    pub fn to_bool(self) -> bool {
+        if self.is_nil() {
+            return false;
+        }
+        match self.typeof_() {
+            SEXPTYPE::LGLSXP => self.logical_elt(0).unwrap_or(0) != 0,
+            SEXPTYPE::INTSXP => self.integer_elt(0).unwrap_or(0) != 0,
+            SEXPTYPE::REALSXP => self.real_elt(0).unwrap_or(0.0) != 0.0,
+            _ => true,
+        }
+    }
+
+    /// Convert to an f64 value.
+    ///
+    /// Returns 0.0 for non-numeric types.
+    pub fn as_f64(self) -> f64 {
+        match self.typeof_() {
+            SEXPTYPE::REALSXP => self.real_elt(0).unwrap_or(0.0),
+            SEXPTYPE::INTSXP => self.integer_elt(0).unwrap_or(0) as f64,
+            SEXPTYPE::LGLSXP => self.logical_elt(0).unwrap_or(0) as f64,
+            _ => 0.0,
+        }
+    }
+
+    /// Check if this is a null value (R_NilValue).
+    #[inline]
+    pub fn is_null_value(self) -> bool {
+        self.is_nil()
     }
 
     /// Check if this is a symbol (SYMSXP).
@@ -806,7 +837,7 @@ impl<'a> Sexp<'a> {
 ///
 /// let mut arena = RArena::new();
 /// let list = arena.alloc_list_chain(3);
-/// let sexp = Sexp::from_raw(list).unwrap();
+/// let sexp = Sexp::from_raw(list).expect("from_raw returned None");
 /// let items: Vec<_> = PairlistIter::new(sexp).collect();
 /// assert_eq!(items.len(), 3);
 /// ```
@@ -844,6 +875,8 @@ impl<'a> Iterator for PairlistIter<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
     use crate::sexp::memory::RArena;
 

@@ -9,102 +9,102 @@ use std::ptr;
 use super::types::*;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn apperror(errstr: *const c_char) { /* TODO */
+pub unsafe extern "C" fn apperror(_errstr: *const c_char) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn askok(info: *const c_char) { /* TODO */
+pub unsafe extern "C" fn askok(_info: *const c_char) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn askokcancel(question: *const c_char) -> c_int {
+pub unsafe extern "C" fn askokcancel(_question: *const c_char) -> c_int {
     CANCEL
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn askyesno(question: *const c_char) -> c_int {
+pub unsafe extern "C" fn askyesno(_question: *const c_char) -> c_int {
     CANCEL
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn askyesnocancel(question: *const c_char) -> c_int {
+pub unsafe extern "C" fn askyesnocancel(_question: *const c_char) -> c_int {
     CANCEL
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askstring(
-    question: *const c_char,
-    default_string: *const c_char,
+    _question: *const c_char,
+    _default_string: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askpassword(
-    question: *const c_char,
-    default_string: *const c_char,
+    _question: *const c_char,
+    _default_string: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askfilename(
-    title: *const c_char,
-    default_name: *const c_char,
+    _title: *const c_char,
+    _default_name: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askfilenamewithdir(
-    title: *const c_char,
-    default_name: *const c_char,
-    dir: *const c_char,
+    _title: *const c_char,
+    _default_name: *const c_char,
+    _dir: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askfilesave(
-    title: *const c_char,
-    default_name: *const c_char,
+    _title: *const c_char,
+    _default_name: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn askUserPass(title: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn askUserPass(_title: *const c_char) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setuserfilter(filter: *const c_char) { /* TODO */
+pub unsafe extern "C" fn setuserfilter(_filter: *const c_char) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askchangedir() { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askcdstring(
-    question: *const c_char,
-    default_string: *const c_char,
+    _question: *const c_char,
+    _default_string: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askfilesavewithdir(
-    title: *const c_char,
-    default_name: *const c_char,
-    dir: *const c_char,
+    _title: *const c_char,
+    _default_name: *const c_char,
+    _dir: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn askfilenames(
-    title: *const c_char,
-    default_name: *const c_char,
-    multi: c_int,
-    filters: *const c_char,
-    filterindex: c_int,
-    strbuf: *mut c_char,
-    bufsize: c_int,
-    dir: *const c_char,
+    _title: *const c_char,
+    _default_name: *const c_char,
+    _multi: c_int,
+    _filters: *const c_char,
+    _filterindex: c_int,
+    _strbuf: *mut c_char,
+    _bufsize: c_int,
+    _dir: *const c_char,
 ) -> *mut c_char {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn countFilenames(strbuf: *const c_char) -> c_int {
+pub unsafe extern "C" fn countFilenames(_strbuf: *const c_char) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn myMessageBox(obj: object, text: *const c_char, typ: c_int) {
+pub unsafe extern "C" fn myMessageBox(_obj: object, _text: *const c_char, _typ: c_int) {
     /* TODO */
 }

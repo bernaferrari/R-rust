@@ -5,12 +5,12 @@
 //! These are the Rust equivalents of R's allocVector, cons, allocList, etc.
 //! They use the thread-local arena allocator for memory management.
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use super::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
+use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
-use super::memory::{self, RArena};
+use super::memory::{self};
 
 // ---------------------------------------------------------------------------
 // FFI-compatible constructor functions

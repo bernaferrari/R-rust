@@ -1,8 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's quicksort implementation.
 //!
@@ -22,9 +20,7 @@ use crate::sexp::ffi::{NA_INTEGER, SEXP};
 // NaN / NA utilities
 // ---------------------------------------------------------------------------
 
-/// R_isnancpp is provided by crate::special::mlutils; re-export for local use.
-use crate::special::mlutils::R_isnancpp;
-
+// R_isnancpp is provided by crate::special::mlutils; re-export for local use.
 // ---------------------------------------------------------------------------
 // NA-aware comparison utilities  (ported from sort.c)
 // ---------------------------------------------------------------------------
@@ -218,13 +214,13 @@ fn r_qsort_impl(v: &mut [f64], mut I: Option<&mut &mut [c_int]>, i: usize, j: us
                     }
                 }
 
-                let mut tt: c_int;
+                let tt: c_int;
                 if let Some(ref mut I_ref) = I {
                     tt = (**I_ref)[l - 1];
                 } else {
                     tt = 0;
                 }
-                let mut vtt = v[l - 1];
+                let vtt = v[l - 1];
 
                 loop {
                     k += 1;
@@ -416,13 +412,13 @@ fn i_qsort_impl(v: &mut [c_int], mut I: Option<&mut &mut [c_int]>, i: usize, j: 
                     }
                 }
 
-                let mut tt: c_int;
+                let tt: c_int;
                 if let Some(ref mut I_ref) = I {
                     tt = (**I_ref)[l - 1];
                 } else {
                     tt = 0;
                 }
-                let mut vtt = v[l - 1];
+                let vtt = v[l - 1];
 
                 loop {
                     k += 1;
@@ -533,7 +529,6 @@ fn i_qsort_impl(v: &mut [c_int], mut I: Option<&mut &mut [c_int]>, i: usize, j: 
 pub unsafe fn do_qsort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::*;
-        use crate::sexp::globals::R_NilValue;
 
         let x = crate::sexp::accessors::CAR(args);
         if x.is_null() {
@@ -582,7 +577,7 @@ pub unsafe extern "C" fn R_orderVector(
         }
 
         let nalast = nalast != 0;
-        let nrev = decreasing.abs() as usize; // number of keys to reverse
+        let nrev = decreasing.unsigned_abs() as usize; // number of keys to reverse
 
         // Initialize indx to 0..n-1
         for i in 0..n {
@@ -745,6 +740,8 @@ pub unsafe extern "C" fn R_qsort_c(v: *mut f64, ii: usize, jj: usize) {
 
 #[cfg(test)]
 mod tests {
+    use crate::special::mlutils::*;
+
     use super::*;
 
     #[test]

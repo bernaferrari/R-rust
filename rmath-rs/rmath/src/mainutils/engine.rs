@@ -9,6 +9,7 @@
 //! All functions are stubs returning safe defaults until the full graphics
 //! subsystem is implemented.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
 
@@ -72,7 +73,7 @@ pub const R_TRANWHITE: c_uint = 0x00FFFFFF;
 // Number of registered graphics systems (mutable static)
 // ---------------------------------------------------------------------------
 
-static mut numGraphicsSystems: c_int = 0;
+thread_local! { static numGraphicsSystems: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // R_GE_getVersion / R_GE_checkVersionOrDie

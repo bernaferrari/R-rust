@@ -280,7 +280,7 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
             SEXPTYPE::OBJSXP => "object",
             _ => "unknown",
         };
-        Rf_mkString(std::ffi::CString::new(type_name).unwrap().as_ptr())
+        Rf_mkString(std::ffi::CString::new(type_name).expect("CString::new failed: contains null byte").as_ptr())
     }
 }
 

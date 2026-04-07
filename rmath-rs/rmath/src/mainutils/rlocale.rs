@@ -12,7 +12,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-use std::os::raw::{c_int, c_uint, c_void};
+use std::os::raw::{c_int, c_uint};
 
 // -----------------------------------------------------------------------
 // Type aliases

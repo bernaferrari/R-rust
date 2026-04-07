@@ -5,6 +5,7 @@
 
 #![allow(non_snake_case)]
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -15,11 +16,12 @@ use super::types::*;
 // Lock stub
 // ---------------------------------------------------------------------------
 
-/// Stub for the global state lock. In standalone mode this is a no-op.
-static mut _nl_state_lock: [u8; 0] = [];
+thread_local! { static _nl_state_lock: RefCell<[u8; 0]> = RefCell::new([]); }
 
-unsafe fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {}
-unsafe fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {}
+#[allow(dead_code)]
+fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {}
+#[allow(dead_code)]
+fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {}
 
 // ---------------------------------------------------------------------------
 // Internal helper
@@ -50,10 +52,10 @@ unsafe fn set_binding_values(
             return;
         }
 
-        gl_rwlock_wrlock(&mut *std::ptr::addr_of_mut!(_nl_state_lock));
+        crate::intl::types::nl_state_lock_wrlock();
 
         let mut modified: c_int = 0;
-        let mut binding: *mut binding = _nl_domain_bindings;
+        let mut binding: *mut binding = _nl_domain_bindings.with(|v| v.get());
 
         // Walk the sorted linked list looking for an existing binding.
         while !binding.is_null() {
@@ -78,13 +80,9 @@ unsafe fn set_binding_values(
                 } else {
                     let result = (*binding).dirname;
                     if libc_strcmp(dirname, result) != 0 {
-                        let new_result = if libc_strcmp(
-                            dirname,
-                            (*std::ptr::addr_of!(_nl_default_dirname)).as_ptr(),
-                        ) == 0
+                        let new_result = if libc_strcmp(dirname, _nl_default_dirname.as_ptr()) == 0
                         {
-                            (*std::ptr::addr_of_mut!(_nl_default_dirname)).as_mut_ptr()
-                                as *mut c_char
+                            _nl_default_dirname.as_ptr() as *mut c_char
                         } else {
                             c_strdup(dirname)
                         };
@@ -228,18 +226,16 @@ unsafe fn set_binding_values(
                 }
 
                 // --- Enqueue the new binding in sorted order ---
-                if (*std::ptr::addr_of!(_nl_domain_bindings)).is_null()
+                if _nl_domain_bindings.with(|v| v.get()).is_null()
                     || libc_strcmp(
                         domainname,
-                        (*(*std::ptr::addr_of!(_nl_domain_bindings)))
-                            .domainname
-                            .as_ptr(),
+                        (*_nl_domain_bindings.with(|v| v.get())).domainname.as_ptr(),
                     ) < 0
                 {
-                    (*new_binding).next = _nl_domain_bindings;
-                    _nl_domain_bindings = new_binding;
+                    (*new_binding).next = _nl_domain_bindings.with(|v| v.get());
+                    _nl_domain_bindings.with(|v| v.set(new_binding));
                 } else {
-                    let mut cur = _nl_domain_bindings;
+                    let mut cur = _nl_domain_bindings.with(|v| v.get());
                     while !(*cur).next.is_null()
                         && libc_strcmp(domainname, (*(*cur).next).domainname.as_ptr()) > 0
                     {
@@ -255,10 +251,10 @@ unsafe fn set_binding_values(
 
         // If we modified any binding, flush the caches.
         if modified != 0 {
-            _nl_msg_cat_cntr += 1;
+            _nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
         }
 
-        gl_rwlock_unlock(&mut *std::ptr::addr_of_mut!(_nl_state_lock));
+        crate::intl::types::nl_state_lock_unlock();
     }
 }
 

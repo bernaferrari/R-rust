@@ -206,7 +206,7 @@ unsafe fn isFactor(x: SEXP) -> c_int {
         let klass = getAttrib(x, R_ClassSymbol());
         if klass.is_null() || klass == R_NilValue() {
             // No class attribute; check for "levels" attribute (old-style factor)
-            let levels_sym = Rf_install(CString::new("levels").unwrap().as_ptr());
+            let levels_sym = Rf_install(CString::new("levels").expect("CString::new failed: contains null byte").as_ptr());
             let levels = getAttrib(x, levels_sym);
             if !levels.is_null() && levels != R_NilValue() {
                 return 1;
@@ -240,7 +240,7 @@ unsafe fn isFactor(x: SEXP) -> c_int {
 unsafe fn R_typeToChar_local(x: SEXP) -> *const c_char {
     unsafe {
         if x.is_null() {
-            return CString::new("NULL").unwrap().into_raw();
+            return CString::new("NULL").expect("CString::new failed: contains null byte").into_raw();
         }
         let t = TYPEOF(x);
         let name = match t {
@@ -270,7 +270,7 @@ unsafe fn R_typeToChar_local(x: SEXP) -> *const c_char {
             25 => "S4",
             _ => "unknown",
         };
-        CString::new(name).unwrap().into_raw()
+        CString::new(name).expect("CString::new failed: contains null byte").into_raw()
     }
 }
 
@@ -409,7 +409,7 @@ pub unsafe fn do_lapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Build call: FUN(X[[<ind>]], ...)
-        let isym = Rf_install(CString::new("i").unwrap().as_ptr());
+        let isym = Rf_install(CString::new("i").expect("CString::new failed: contains null byte").as_ptr());
         let tmp = Rf_protect(Rf_lang3(crate::sexp::symbol::R_Bracket2Symbol(), X, isym));
         let R_fcall = Rf_protect(Rf_lang3(FUN, tmp, crate::sexp::symbol::R_DotsSymbol()));
         MARK_NOT_MUTABLE(R_fcall);
@@ -544,7 +544,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Build call: FUN(XX[[<ind>]], ...)
-        let isym = Rf_install(CString::new("i").unwrap().as_ptr());
+        let isym = Rf_install(CString::new("i").expect("CString::new failed: contains null byte").as_ptr());
         let ind = Rf_protect(Rf_allocVector(
             if realIndx {
                 SEXPTYPE::REALSXP.0
@@ -888,7 +888,7 @@ pub(crate) unsafe fn do_one(
 
         if matched {
             // Build and evaluate call: FUN(X, ...)
-            let Xsym = Rf_install(CString::new("X").unwrap().as_ptr());
+            let Xsym = Rf_install(CString::new("X").expect("CString::new failed: contains null byte").as_ptr());
             defineVar(Xsym, x, rho);
             INCREMENT_NAMED(x);
 

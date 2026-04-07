@@ -5,10 +5,8 @@
 //! Implements `R_GE_clipPathFillRule` for interrogating gradient SEXPs.
 
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
-use crate::sexp::accessors::{ATTRIB, INTEGER};
-use crate::sexp::constructors::Rf_allocVector;
+use crate::sexp::accessors::INTEGER;
 use crate::sexp::ffi::SEXP;
 
 // ---------------------------------------------------------------------------
@@ -49,6 +47,8 @@ pub unsafe extern "C" fn R_GE_clipPathFillRule(path: SEXP) -> c_int {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

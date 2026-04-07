@@ -11,6 +11,7 @@
  * Port of R's src/main/xspline.c (549 lines)
  */
 
+use std::cell::Cell;
 use std::os::raw::{c_double, c_int, c_long};
 
 use crate::main::engine::{GE_INCHES, GE_NDC, pGEDevDesc};
@@ -34,41 +35,39 @@ const MAX_SPLINE_STEP: c_double = 0.2;
 // ---------------------------------------------------------------------------
 
 /// Current number of points accumulated
-static mut npoints: c_int = 0;
+thread_local! { static npoints: Cell<c_int> = Cell::new(0); }
 /// Current capacity of the point arrays
-static mut max_points: c_int = 0;
+thread_local! { static max_points: Cell<c_int> = Cell::new(0); }
 /// Array of x-coordinates (in 1200ppi space, later converted to device)
-static mut xpoints: *mut c_double = std::ptr::null_mut();
+thread_local! { static xpoints: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
 /// Array of y-coordinates (in 1200ppi space, later converted to device)
-static mut ypoints: *mut c_double = std::ptr::null_mut();
+thread_local! { static ypoints: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Public accessors (used by engine.c after calling compute_*_spline)
 // ---------------------------------------------------------------------------
 
 /// Returns the number of points computed by the last spline computation.
-pub unsafe fn xspline_npoints() -> c_int {
-    unsafe { npoints }
+pub fn xspline_npoints() -> c_int {
+    npoints.with(|v| v.get())
 }
 
 /// Returns the x-coordinates array from the last spline computation.
-pub unsafe fn xspline_xpoints() -> *mut c_double {
-    unsafe { xpoints }
+pub fn xspline_xpoints() -> *mut c_double {
+    xpoints.with(|v| v.get())
 }
 
 /// Returns the y-coordinates array from the last spline computation.
-pub unsafe fn xspline_ypoints() -> *mut c_double {
-    unsafe { ypoints }
+pub fn xspline_ypoints() -> *mut c_double {
+    ypoints.with(|v| v.get())
 }
 
 /// Reset the spline point state.
-pub unsafe fn xspline_reset() {
-    unsafe {
-        npoints = 0;
-        max_points = 0;
-        xpoints = std::ptr::null_mut();
-        ypoints = std::ptr::null_mut();
-    }
+pub fn xspline_reset() {
+    npoints.with(|v| v.set(0));
+    max_points.with(|v| v.set(0));
+    xpoints.with(|v| v.set(std::ptr::null_mut()));
+    ypoints.with(|v| v.set(std::ptr::null_mut()));
 }
 
 // ---------------------------------------------------------------------------
@@ -153,15 +152,16 @@ fn positive_s2_influence(k: c_double, t: c_double, s2: c_double) -> (c_double, c
 unsafe fn add_point(x: c_double, y: c_double, dd: pGEDevDesc) {
     unsafe {
         let dd_void = dd as *mut std::ffi::c_void;
-        if npoints >= max_points {
-            let tmp_n = max_points + 200;
+        if npoints.with(|v| v.get()) >= max_points.with(|v| v.get()) {
+            let cur_max = max_points.with(|v| v.get());
+            let tmp_n = cur_max + 200;
             // Too many points, error out
             if tmp_n > MAXNUMPTS {
                 crate::main::errors::Rf_error(c"add_point - reached MAXNUMPTS".as_ptr() as *const _);
             }
             let tmp_px: *mut c_double;
             let tmp_py: *mut c_double;
-            if max_points == 0 {
+            if cur_max == 0 {
                 tmp_px = crate::sexp::memory_ext::R_alloc(
                     std::mem::size_of::<c_double>(),
                     tmp_n as usize,
@@ -171,16 +171,18 @@ unsafe fn add_point(x: c_double, y: c_double, dd: pGEDevDesc) {
                     tmp_n as usize,
                 ) as *mut c_double;
             } else {
+                let cur_xp = xpoints.with(|v| v.get());
+                let cur_yp = ypoints.with(|v| v.get());
                 tmp_px = crate::main::memory_main::S_realloc(
-                    xpoints as *mut i8,
+                    cur_xp as *mut i8,
                     tmp_n as c_long,
-                    max_points as c_long,
+                    cur_max as c_long,
                     std::mem::size_of::<c_double>() as c_int,
                 ) as *mut c_double;
                 tmp_py = crate::main::memory_main::S_realloc(
-                    ypoints as *mut i8,
+                    cur_yp as *mut i8,
                     tmp_n as c_long,
-                    max_points as c_long,
+                    cur_max as c_long,
                     std::mem::size_of::<c_double>() as c_int,
                 ) as *mut c_double;
             }
@@ -189,25 +191,28 @@ unsafe fn add_point(x: c_double, y: c_double, dd: pGEDevDesc) {
                     c"insufficient memory to allocate point array".as_ptr() as *const _,
                 );
             }
-            xpoints = tmp_px;
-            ypoints = tmp_py;
-            max_points = tmp_n;
+            xpoints.with(|v| v.set(tmp_px));
+            ypoints.with(|v| v.set(tmp_py));
+            max_points.with(|v| v.set(tmp_n));
         }
         // Ignore identical points
-        if npoints > 0
-            && !xpoints.is_null()
-            && !ypoints.is_null()
-            && *xpoints.add((npoints - 1) as usize) == x
-            && *ypoints.add((npoints - 1) as usize) == y
+        let cur_npoints = npoints.with(|v| v.get());
+        let xp = xpoints.with(|v| v.get());
+        let yp = ypoints.with(|v| v.get());
+        if cur_npoints > 0
+            && !xp.is_null()
+            && !yp.is_null()
+            && *xp.add((cur_npoints - 1) as usize) == x
+            && *yp.add((cur_npoints - 1) as usize) == y
         {
             return;
         }
         // Convert back from 1200ppi to DEVICE coordinates
-        *xpoints.add(npoints as usize) =
+        *xp.add(cur_npoints as usize) =
             crate::main::engine::toDeviceX(x / 1200.0, GE_INCHES, dd_void);
-        *ypoints.add(npoints as usize) =
+        *yp.add(cur_npoints as usize) =
             crate::main::engine::toDeviceY(y / 1200.0, GE_INCHES, dd_void);
-        npoints = npoints + 1;
+        npoints.with(|v| v.set(v.get() + 1));
     }
 }
 
@@ -254,7 +259,7 @@ fn point_computing(
 
 /// Compute the step size for drawing a spline segment.
 /// This determines how finely to tessellate the curve.
-unsafe fn step_computing(
+fn step_computing(
     k: c_int,
     px: &[c_double; 4],
     py: &[c_double; 4],
@@ -263,126 +268,124 @@ unsafe fn step_computing(
     precision: c_double,
     dd: pGEDevDesc,
 ) -> c_double {
-    unsafe {
-        let k_f = k as c_double;
-        let dd_void = dd as *mut std::ffi::c_void;
+    let k_f = k as c_double;
+    let dd_void = dd as *mut std::ffi::c_void;
 
-        // Only one step in case of linear segment
-        if s1 == 0.0 && s2 == 0.0 {
-            return 1.0;
-        }
+    // Only one step in case of linear segment
+    if s1 == 0.0 && s2 == 0.0 {
+        return 1.0;
+    }
 
-        // Compute coordinates of the origin
-        let (xstart, ystart) = if s1 > 0.0 {
-            let a_blend = if s2 < 0.0 {
-                let (a0, a2) = positive_s1_influence(k_f, 0.0, s1);
-                let (a1, a3) = negative_s2_influence(0.0, s2);
-                [a0, a1, a2, a3]
-            } else {
-                let (a0, a2) = positive_s1_influence(k_f, 0.0, s1);
-                let (a1, a3) = positive_s2_influence(k_f, 0.0, s2);
-                [a0, a1, a2, a3]
-            };
-            point_computing(&a_blend, px, py)
+    // Compute coordinates of the origin
+    let (xstart, ystart) = if s1 > 0.0 {
+        let a_blend = if s2 < 0.0 {
+            let (a0, a2) = positive_s1_influence(k_f, 0.0, s1);
+            let (a1, a3) = negative_s2_influence(0.0, s2);
+            [a0, a1, a2, a3]
         } else {
-            (px[1], py[1])
+            let (a0, a2) = positive_s1_influence(k_f, 0.0, s1);
+            let (a1, a3) = positive_s2_influence(k_f, 0.0, s2);
+            [a0, a1, a2, a3]
         };
+        point_computing(&a_blend, px, py)
+    } else {
+        (px[1], py[1])
+    };
 
-        // Compute coordinates of the extremity
-        let (xend, yend) = if s2 > 0.0 {
-            let a_blend = if s1 < 0.0 {
-                let (a0, a2) = negative_s1_influence(1.0, s1);
-                let (a1, a3) = positive_s2_influence(k_f, 1.0, s2);
-                [a0, a1, a2, a3]
-            } else {
-                let (a0, a2) = positive_s1_influence(k_f, 1.0, s1);
-                let (a1, a3) = positive_s2_influence(k_f, 1.0, s2);
-                [a0, a1, a2, a3]
-            };
-            point_computing(&a_blend, px, py)
+    // Compute coordinates of the extremity
+    let (xend, yend) = if s2 > 0.0 {
+        let a_blend = if s1 < 0.0 {
+            let (a0, a2) = negative_s1_influence(1.0, s1);
+            let (a1, a3) = positive_s2_influence(k_f, 1.0, s2);
+            [a0, a1, a2, a3]
         } else {
-            (px[2], py[2])
+            let (a0, a2) = positive_s1_influence(k_f, 1.0, s1);
+            let (a1, a3) = positive_s2_influence(k_f, 1.0, s2);
+            [a0, a1, a2, a3]
         };
+        point_computing(&a_blend, px, py)
+    } else {
+        (px[2], py[2])
+    };
 
-        // Compute coordinates of the middle
-        let (xmid, ymid) = if s2 > 0.0 {
-            let a_blend = if s1 < 0.0 {
-                let (a0, a2) = negative_s1_influence(0.5, s1);
-                let (a1, a3) = positive_s2_influence(k_f, 0.5, s2);
-                [a0, a1, a2, a3]
-            } else {
-                let (a0, a2) = positive_s1_influence(k_f, 0.5, s1);
-                let (a1, a3) = positive_s2_influence(k_f, 0.5, s2);
-                [a0, a1, a2, a3]
-            };
-            point_computing(&a_blend, px, py)
-        } else if s1 < 0.0 {
+    // Compute coordinates of the middle
+    let (xmid, ymid) = if s2 > 0.0 {
+        let a_blend = if s1 < 0.0 {
             let (a0, a2) = negative_s1_influence(0.5, s1);
-            let (a1, a3) = negative_s2_influence(0.5, s2);
-            let a_blend = [a0, a1, a2, a3];
-            point_computing(&a_blend, px, py)
+            let (a1, a3) = positive_s2_influence(k_f, 0.5, s2);
+            [a0, a1, a2, a3]
         } else {
             let (a0, a2) = positive_s1_influence(k_f, 0.5, s1);
-            let (a1, a3) = negative_s2_influence(0.5, s2);
-            let a_blend = [a0, a1, a2, a3];
-            point_computing(&a_blend, px, py)
+            let (a1, a3) = positive_s2_influence(k_f, 0.5, s2);
+            [a0, a1, a2, a3]
         };
+        point_computing(&a_blend, px, py)
+    } else if s1 < 0.0 {
+        let (a0, a2) = negative_s1_influence(0.5, s1);
+        let (a1, a3) = negative_s2_influence(0.5, s2);
+        let a_blend = [a0, a1, a2, a3];
+        point_computing(&a_blend, px, py)
+    } else {
+        let (a0, a2) = positive_s1_influence(k_f, 0.5, s1);
+        let (a1, a3) = negative_s2_influence(0.5, s2);
+        let a_blend = [a0, a1, a2, a3];
+        point_computing(&a_blend, px, py)
+    };
 
-        let xv1 = xstart - xmid;
-        let yv1 = ystart - ymid;
-        let xv2 = xend - xmid;
-        let yv2 = yend - ymid;
+    let xv1 = xstart - xmid;
+    let yv1 = ystart - ymid;
+    let xv2 = xend - xmid;
+    let yv2 = yend - ymid;
 
-        let scal_prod = xv1 * xv2 + yv1 * yv2;
-        let sides_length_prod = ((xv1 * xv1 + yv1 * yv1) * (xv2 * xv2 + yv2 * yv2)).sqrt();
+    let scal_prod = xv1 * xv2 + yv1 * yv2;
+    let sides_length_prod = ((xv1 * xv1 + yv1 * yv1) * (xv2 * xv2 + yv2 * yv2)).sqrt();
 
-        // Compute cosine of origin-middle-extremity angle, which approximates
-        // the curve of the spline segment
-        let angle_cos = if sides_length_prod == 0.0 {
-            0.0
-        } else {
-            scal_prod / sides_length_prod
-        };
+    // Compute cosine of origin-middle-extremity angle, which approximates
+    // the curve of the spline segment
+    let angle_cos = if sides_length_prod == 0.0 {
+        0.0
+    } else {
+        scal_prod / sides_length_prod
+    };
 
-        let xlength = xend - xstart;
-        let ylength = yend - ystart;
-        let mut start_to_end_dist = (xlength * xlength + ylength * ylength).sqrt();
+    let xlength = xend - xstart;
+    let ylength = yend - ystart;
+    let mut start_to_end_dist = (xlength * xlength + ylength * ylength).sqrt();
 
-        // It is possible for origin and extremity to be very remote indeed
-        // (if the control points are located WAY off the device).
-        // Limit the start_to_end_dist to the length of the diagonal of the device.
-        let devWidth = crate::main::engine::fromDeviceWidth(
-            crate::main::engine::toDeviceWidth(1.0, GE_NDC, dd_void),
-            GE_INCHES,
-            dd_void,
-        ) * 1200.0;
-        let devHeight = crate::main::engine::fromDeviceHeight(
-            crate::main::engine::toDeviceHeight(1.0, GE_NDC, dd_void),
-            GE_INCHES,
-            dd_void,
-        ) * 1200.0;
-        let devDiag = (devWidth * devWidth + devHeight * devHeight).sqrt();
-        if start_to_end_dist > devDiag {
-            start_to_end_dist = devDiag;
-        }
+    // It is possible for origin and extremity to be very remote indeed
+    // (if the control points are located WAY off the device).
+    // Limit the start_to_end_dist to the length of the diagonal of the device.
+    let devWidth = crate::main::engine::fromDeviceWidth(
+        crate::main::engine::toDeviceWidth(1.0, GE_NDC, dd_void),
+        GE_INCHES,
+        dd_void,
+    ) * 1200.0;
+    let devHeight = crate::main::engine::fromDeviceHeight(
+        crate::main::engine::toDeviceHeight(1.0, GE_NDC, dd_void),
+        GE_INCHES,
+        dd_void,
+    ) * 1200.0;
+    let devDiag = (devWidth * devWidth + devHeight * devHeight).sqrt();
+    if start_to_end_dist > devDiag {
+        start_to_end_dist = devDiag;
+    }
 
-        // More steps if segment's origin and extremity are remote
-        let mut number_of_steps = start_to_end_dist.sqrt() / 2.0;
+    // More steps if segment's origin and extremity are remote
+    let mut number_of_steps = start_to_end_dist.sqrt() / 2.0;
 
-        // More steps if the curve is high
-        number_of_steps += ((1.0 + angle_cos) * 10.0) as c_int as c_double;
+    // More steps if the curve is high
+    number_of_steps += ((1.0 + angle_cos) * 10.0) as c_int as c_double;
 
-        let step = if number_of_steps == 0.0 {
-            1.0
-        } else {
-            precision / number_of_steps
-        };
+    let step = if number_of_steps == 0.0 {
+        1.0
+    } else {
+        precision / number_of_steps
+    };
 
-        if step > MAX_SPLINE_STEP || step == 0.0 {
-            MAX_SPLINE_STEP
-        } else {
-            step
-        }
+    if step > MAX_SPLINE_STEP || step == 0.0 {
+        MAX_SPLINE_STEP
+    } else {
+        step
     }
 }
 
@@ -594,10 +597,10 @@ pub unsafe fn compute_open_spline(
         let mut py = [0.0, 0.0, 0.0, 0.0];
         let mut ps = [0.0, 0.0, 0.0, 0.0];
 
-        npoints = 0;
-        max_points = 0;
-        xpoints = std::ptr::null_mut();
-        ypoints = std::ptr::null_mut();
+        npoints.with(|v| v.set(0));
+        max_points.with(|v| v.set(0));
+        xpoints.with(|v| v.set(std::ptr::null_mut()));
+        ypoints.with(|v| v.set(std::ptr::null_mut()));
 
         if rep_ends && n < 2 {
             crate::main::errors::Rf_error(
@@ -678,10 +681,10 @@ pub unsafe fn compute_closed_spline(
         let mut py = [0.0, 0.0, 0.0, 0.0];
         let mut ps = [0.0, 0.0, 0.0, 0.0];
 
-        npoints = 0;
-        max_points = 0;
-        xpoints = std::ptr::null_mut();
-        ypoints = std::ptr::null_mut();
+        npoints.with(|v| v.set(0));
+        max_points.with(|v| v.set(0));
+        xpoints.with(|v| v.set(std::ptr::null_mut()));
+        ypoints.with(|v| v.set(std::ptr::null_mut()));
 
         if n < 3 {
             crate::main::errors::Rf_error(

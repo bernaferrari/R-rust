@@ -6,13 +6,13 @@
 //! Ported from drawing.c - provides line, rectangle, ellipse, polygon drawing,
 //! pixel operations, and bitmap transfer functions.
 
+use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::ptr;
 
 use super::types::*;
 
-/// Global drawing state. Initialized in context.rs.
-static mut CURRENT_DRAWSTATE: drawstruct = drawstruct {
+thread_local! { static CURRENT_DRAWSTATE: RefCell<drawstruct> = RefCell::new(drawstruct {
     dest: ptr::null_mut(),
     hue: Black,
     mode: GA_S,
@@ -20,107 +20,114 @@ static mut CURRENT_DRAWSTATE: drawstruct = drawstruct {
     linewidth: 1,
     fnt: ptr::null_mut(),
     crsr: ptr::null_mut(),
-};
+}); }
+
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
 
 /// Get a reference to the global drawstate.
 pub unsafe fn get_current_drawstate() -> &'static drawstruct {
-    unsafe { &*std::ptr::addr_of!(CURRENT_DRAWSTATE) }
+    unsafe { CURRENT_DRAWSTATE.with(|v| &*v.as_ptr()) }
 }
 
 /// Get a mutable reference to the global drawstate.
-pub unsafe fn get_current_drawstate_mut() -> &'static mut drawstruct {
-    unsafe { &mut *std::ptr::addr_of_mut!(CURRENT_DRAWSTATE) }
+pub unsafe fn get_current_drawstate_mut() -> MutPtr<drawstruct> {
+    MutPtr(CURRENT_DRAWSTATE.with(|v| v.as_ptr() as *mut drawstruct))
 }
 
 /// Set the current RGB colour.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setrgb(c: rgb) {
-    unsafe {
-        CURRENT_DRAWSTATE.hue = c;
-    }
+pub extern "C" fn setrgb(c: rgb) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().hue = c);
 }
 
 /// Get the current drawing destination.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentdrawing() -> drawing {
-    unsafe { CURRENT_DRAWSTATE.dest }
+pub extern "C" fn currentdrawing() -> drawing {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().dest)
 }
 
 /// Get the current RGB colour.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentrgb() -> rgb {
-    unsafe { CURRENT_DRAWSTATE.hue }
+pub extern "C" fn currentrgb() -> rgb {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().hue)
 }
 
 /// Get the current drawing mode.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentmode() -> c_int {
-    unsafe { CURRENT_DRAWSTATE.mode }
+pub extern "C" fn currentmode() -> c_int {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().mode)
 }
 
 /// Get the current drawing point.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentpoint() -> point {
-    unsafe { CURRENT_DRAWSTATE.p }
+pub extern "C" fn currentpoint() -> point {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().p)
 }
 
 /// Get the current line width.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentlinewidth() -> c_int {
-    unsafe { CURRENT_DRAWSTATE.linewidth }
+pub extern "C" fn currentlinewidth() -> c_int {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().linewidth)
 }
 
 /// Get the current font.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentfont() -> font {
-    unsafe { CURRENT_DRAWSTATE.fnt }
+pub extern "C" fn currentfont() -> font {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().fnt)
 }
 
 /// Get the current cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentcursor() -> cursor {
-    unsafe { CURRENT_DRAWSTATE.crsr }
+pub extern "C" fn currentcursor() -> cursor {
+    CURRENT_DRAWSTATE.with(|v| v.borrow().crsr)
 }
 
 /// Set the drawing mode.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setdrawmode(mode: c_int) {
-    unsafe {
-        CURRENT_DRAWSTATE.mode = mode;
-    }
+pub extern "C" fn setdrawmode(mode: c_int) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().mode = mode);
 }
 
 /// Set the line width.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setlinewidth(width: c_int) {
-    unsafe {
-        CURRENT_DRAWSTATE.linewidth = width;
-    }
+pub extern "C" fn setlinewidth(width: c_int) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().linewidth = width);
 }
 
 /// Move the current drawing point.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn moveto(p: point) {
-    unsafe {
-        CURRENT_DRAWSTATE.p = p;
-    }
+pub extern "C" fn moveto(p: point) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().p = p);
 }
 
 /// Draw a line from the current point to the given point.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn lineto(p: point) {
-    unsafe {
-        drawline(CURRENT_DRAWSTATE.p, p);
-        CURRENT_DRAWSTATE.p = p;
-    }
+pub extern "C" fn lineto(p: point) {
+    CURRENT_DRAWSTATE.with(|v| {
+        let ds = v.borrow_mut();
+        drawline(ds.p, p);
+    });
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().p = p);
 }
 
 /// Draw a single point.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn drawpoint(p: point) {
-    unsafe {
-        setpixel(p, CURRENT_DRAWSTATE.hue);
-    }
+pub extern "C" fn drawpoint(p: point) {
+    CURRENT_DRAWSTATE.with(|v| setpixel(p, v.borrow().hue));
 }
 
 /// Draw a line between two points.
@@ -167,10 +174,8 @@ pub unsafe extern "C" fn fillellipse(_r: rect) {
 
 /// Old fillellipse using platform Ellipse function.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn oldfillellipse(r: rect) {
-    unsafe {
-        fillellipse(r);
-    }
+pub extern "C" fn oldfillellipse(r: rect) {
+    fillellipse(r);
 }
 
 /// Draw a rounded rectangle outline.
@@ -218,20 +223,18 @@ pub unsafe extern "C" fn strrect(_f: font, _s: *const std::os::raw::c_char) -> r
 
 /// Get the size of a string with the given font.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
-    unsafe {
-        let r = strrect(f, s);
-        point {
-            x: r.width,
-            y: r.height,
-        }
+pub extern "C" fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
+    let r = strrect(f, s);
+    point {
+        x: r.width,
+        y: r.height,
     }
 }
 
 /// Get the width of a string with the given font.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
-    unsafe { strrect(f, s).width }
+pub extern "C" fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
+    strrect(f, s).width
 }
 
 /// Get a pixel colour.
@@ -326,7 +329,7 @@ pub unsafe extern "C" fn copydrawstate() -> drawstate {
     unsafe {
         let ds = super::memory::memalloc(std::mem::size_of::<drawstruct>() as i64) as drawstate;
         if !ds.is_null() {
-            *ds = (*std::ptr::addr_of!(CURRENT_DRAWSTATE)).clone();
+            *ds = CURRENT_DRAWSTATE.with(|v| v.borrow().clone());
         }
         ds
     }
@@ -334,42 +337,37 @@ pub unsafe extern "C" fn copydrawstate() -> drawstate {
 
 /// Set the draw state.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setdrawstate(saved: drawstate) {
-    unsafe {
-        if !saved.is_null() {
-            CURRENT_DRAWSTATE = (*saved).clone();
-        }
+pub extern "C" fn setdrawstate(saved: drawstate) {
+    if !saved.is_null() {
+        CURRENT_DRAWSTATE.with(|v| *v.borrow_mut() = (*saved).clone());
     }
 }
 
 /// Restore a draw state (alias for setdrawstate).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn restoredrawstate(saved: drawstate) {
-    unsafe {
-        setdrawstate(saved);
-    }
+pub extern "C" fn restoredrawstate(saved: drawstate) {
+    setdrawstate(saved);
 }
 
 /// Reset the draw state to defaults.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn resetdrawstate() {
-    unsafe {
-        CURRENT_DRAWSTATE.dest = ptr::null_mut();
-        CURRENT_DRAWSTATE.hue = Black;
-        CURRENT_DRAWSTATE.mode = GA_S;
-        CURRENT_DRAWSTATE.p = point { x: 0, y: 0 };
-        CURRENT_DRAWSTATE.linewidth = 1;
-        CURRENT_DRAWSTATE.fnt = ptr::null_mut();
-        CURRENT_DRAWSTATE.crsr = ptr::null_mut();
-    }
+pub extern "C" fn resetdrawstate() {
+    CURRENT_DRAWSTATE.with(|v| {
+        let mut ds = v.borrow_mut();
+        ds.dest = ptr::null_mut();
+        ds.hue = Black;
+        ds.mode = GA_S;
+        ds.p = point { x: 0, y: 0 };
+        ds.linewidth = 1;
+        ds.fnt = ptr::null_mut();
+        ds.crsr = ptr::null_mut();
+    });
 }
 
 /// Set the draw destination.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn drawto(dest: drawing) {
-    unsafe {
-        CURRENT_DRAWSTATE.dest = dest;
-    }
+pub extern "C" fn drawto(dest: drawing) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().dest = dest);
 }
 
 /// Add a control to the current window.
@@ -380,18 +378,14 @@ pub unsafe extern "C" fn addto(_dest: control) {
 
 /// Set the current cursor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setcursor(c: cursor) {
-    unsafe {
-        CURRENT_DRAWSTATE.crsr = c;
-    }
+pub extern "C" fn setcursor(c: cursor) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().crsr = c);
 }
 
 /// Set the current font.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setfont(f: font) {
-    unsafe {
-        CURRENT_DRAWSTATE.fnt = f;
-    }
+pub extern "C" fn setfont(f: font) {
+    CURRENT_DRAWSTATE.with(|v| v.borrow_mut().fnt = f);
 }
 
 /// Set the caret.

@@ -740,8 +740,8 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
             let imag_str = &str[pos + 1..];
 
             // Imaginary part should end with 'i'
-            let imag_body = if imag_str.ends_with('i') {
-                &imag_str[..imag_str.len() - 1]
+            let imag_body = if let Some(stripped) = imag_str.strip_suffix('i') {
+                stripped
             } else {
                 imag_str
             };
@@ -749,9 +749,8 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
             if let (Ok(r), Ok(i)) = (real_str.parse::<f64>(), imag_body.parse::<f64>()) {
                 return Rcomplex { r, i: sign * i };
             }
-        } else if str.ends_with('i') {
+        } else if let Some(body) = str.strip_suffix('i') {
             // Pure imaginary: "3i"
-            let body = &str[..str.len() - 1];
             if let Ok(i) = body.parse::<f64>() {
                 return Rcomplex { r: 0.0, i };
             }
@@ -910,7 +909,7 @@ pub unsafe fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
         }
         // Format integer as string
         let s = format!("{}", x);
-        let cstr = std::ffi::CString::new(s).unwrap();
+        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -929,7 +928,7 @@ pub(crate) unsafe fn StringFromReal_impl(x: c_double, _warn: *mut c_int) -> SEXP
         }
         // Use 17 significant digits for round-trip safety (matches R's DBL_DIG + 2)
         let s = format!("{:.17e}", x);
-        let cstr = std::ffi::CString::new(s).unwrap();
+        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -947,7 +946,7 @@ pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
         } else {
             format!("{:.17e}{:.17e}i", x.r, x.i)
         };
-        let cstr = std::ffi::CString::new(s).unwrap();
+        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -958,7 +957,7 @@ pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
 pub unsafe fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
     unsafe {
         let s = format!("{:02x}", x);
-        let cstr = std::ffi::CString::new(s).unwrap();
+        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -1110,7 +1109,7 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
         let vtype = TYPEOF(v);
         for i in 0..n {
             let ii = i as c_int;
-            let mut tmp: c_int = match vtype {
+            let tmp: c_int = match vtype {
                 t if t == SEXPTYPE::LGLSXP.0 => {
                     let val = IntegerFromLogical(LOGICAL_ELT(v, ii), &mut warn);
                     if val == NA_INTEGER {
@@ -2436,7 +2435,7 @@ pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         if args_s.cdr().is_none() {
             return x.as_raw();
         }
-        let mode_str = match args_s.cdr().unwrap().car() {
+        let mode_str = match args_s.cdr().expect("unwrap on None/Err").car() {
             Some(s) => s,
             None => return R_NilValue(),
         };
@@ -2483,7 +2482,11 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
             SEXPTYPE::OBJSXP => "object",
             _ => "unknown",
         };
-        Rf_mkString(std::ffi::CString::new(type_name).unwrap().as_ptr())
+        Rf_mkString(
+            std::ffi::CString::new(type_name)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
     }
 }
 
@@ -2814,7 +2817,7 @@ pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if args_s.cdr().is_none() {
             return x.as_raw();
         }
-        let mode_str = match args_s.cdr().unwrap().car() {
+        let mode_str = match args_s.cdr().expect("unwrap on None/Err").car() {
             Some(s) => s,
             None => return R_NilValue(),
         };

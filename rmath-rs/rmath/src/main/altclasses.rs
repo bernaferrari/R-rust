@@ -19,6 +19,7 @@
 //! - wrap_integer/wrap_logical/wrap_real/wrap_complex/wrap_raw/wrap_string/wrap_list:
 //!   attribute and meta data wrappers
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
@@ -67,19 +68,18 @@ const NMETA: usize = 2;
 /// Opaque ALTREP class descriptor.
 type R_altrep_class_t = *mut c_void;
 
-/// Global class objects (stubs -- all NULL since ALTREP class registration is stubbed).
-static mut R_compact_intseq_class: R_altrep_class_t = ptr::null_mut();
-static mut R_compact_realseq_class: R_altrep_class_t = ptr::null_mut();
-static mut R_deferred_string_class: R_altrep_class_t = ptr::null_mut();
-static mut mmap_integer_class: R_altrep_class_t = ptr::null_mut();
-static mut mmap_real_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_integer_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_logical_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_real_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_complex_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_raw_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_string_class: R_altrep_class_t = ptr::null_mut();
-static mut wrap_list_class: R_altrep_class_t = ptr::null_mut();
+thread_local! { static R_compact_intseq_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static R_compact_realseq_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static R_deferred_string_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static mmap_integer_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static mmap_real_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_integer_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_logical_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_real_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_complex_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_raw_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_string_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static wrap_list_class: Cell<R_altrep_class_t> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Helper macros (ported from C preprocessor macros)
@@ -751,14 +751,13 @@ pub unsafe extern "C" fn R_compact_intrange(n1: R_xlen_t, n2: R_xlen_t) -> SEXP 
 // ===========================================================================
 
 /// R_OutDecSym -- cached symbol for "OutDec"
-static mut R_OutDecSym: SEXP = ptr::null_mut();
+thread_local! { static R_OutDecSym: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /// Deferred string state OUTDEC getter
 unsafe fn DEFERRED_STRING_OUTDEC(_x: SEXP) -> *const c_char {
-    if R_OutDecSym.is_null() {
-        R_OutDecSym = ptr::null_mut();
+    if R_OutDecSym.with(|v| v.get()).is_null() {
+        R_OutDecSym.with(|v| v.set(ptr::null_mut()));
     }
-    // Default "."
     b".\0".as_ptr() as *const c_char
 }
 
@@ -1068,19 +1067,19 @@ pub unsafe fn do_munmap_file(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
 unsafe fn make_wrapper(x: SEXP, meta: SEXP) -> SEXP {
     let dtype = TYPEOF(x);
     let _cls: R_altrep_class_t = if dtype == SEXPTYPE::INTSXP.0 {
-        wrap_integer_class
+        wrap_integer_class.with(|v| v.get())
     } else if dtype == SEXPTYPE::LGLSXP.0 {
-        wrap_logical_class
+        wrap_logical_class.with(|v| v.get())
     } else if dtype == SEXPTYPE::REALSXP.0 {
-        wrap_real_class
+        wrap_real_class.with(|v| v.get())
     } else if dtype == SEXPTYPE::CPLXSXP.0 {
-        wrap_complex_class
+        wrap_complex_class.with(|v| v.get())
     } else if dtype == SEXPTYPE::RAWSXP.0 {
-        wrap_raw_class
+        wrap_raw_class.with(|v| v.get())
     } else if dtype == SEXPTYPE::STRSXP.0 {
-        wrap_string_class
+        wrap_string_class.with(|v| v.get())
     } else if dtype == SEXPTYPE::VECSXP.0 {
-        wrap_list_class
+        wrap_list_class.with(|v| v.get())
     } else {
         return R_NilValue();
     };

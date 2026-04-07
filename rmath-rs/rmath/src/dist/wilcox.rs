@@ -97,6 +97,7 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
 // dwilcox
 // =====================================================================
 
+#[must_use]
 pub fn dwilcox_inner(x: f64, m: f64, n: f64, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(m) || isnan(n) {
@@ -133,6 +134,7 @@ pub fn dwilcox_inner(x: f64, m: f64, n: f64, log_p: bool) -> f64 {
 // pwilcox
 // =====================================================================
 
+#[must_use]
 pub fn pwilcox_inner(q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(q) || isnan(m) || isnan(n) {
@@ -184,6 +186,7 @@ pub fn pwilcox_inner(q: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f
 // qwilcox
 // =====================================================================
 
+#[must_use]
 pub fn qwilcox_inner(x: f64, m: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(m) || isnan(n) {
@@ -300,6 +303,7 @@ fn r_unif_index(dn: i32) -> i32 {
     }
 }
 
+#[must_use]
 pub fn rwilcox_inner(m: f64, n: f64) -> f64 {
     // IEEE_754
     if isnan(m) || isnan(n) {
@@ -334,11 +338,13 @@ pub fn rwilcox_inner(m: f64, n: f64) -> f64 {
 // FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
     dwilcox_inner(x, m, n, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
     dwilcox_inner(x, m, n, give_log != 0)
@@ -388,11 +394,13 @@ pub extern "C" fn qwilcox(
     qwilcox_inner(p, m, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rwilcox(m: c_double, n: c_double) -> c_double {
     rwilcox_inner(m, n)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rwilcox(m: c_double, n: c_double) -> c_double {
     rwilcox_inner(m, n)

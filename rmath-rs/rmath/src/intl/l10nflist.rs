@@ -207,7 +207,8 @@ pub unsafe extern "C" fn _nl_make_l10nflist(
 
         // Allocate room for the full file name.
         let abs_filename =
-            alloc::alloc(Layout::from_size_align(total_len, 1).unwrap()) as *mut c_char;
+            alloc::alloc(Layout::from_size_align(total_len, 1).expect("unwrap on None/Err"))
+                as *mut c_char;
         if abs_filename.is_null() {
             return ptr::null_mut();
         }
@@ -278,7 +279,7 @@ pub unsafe extern "C" fn _nl_make_l10nflist(
         }
 
         if !retval.is_null() || do_allocate == 0 {
-            let layout = Layout::from_size_align(total_len, 1).unwrap();
+            let layout = Layout::from_size_align(total_len, 1).expect("unwrap on None/Err");
             alloc::dealloc(abs_filename as *mut u8, layout);
             return retval;
         }
@@ -294,10 +295,11 @@ pub unsafe extern "C" fn _nl_make_l10nflist(
         let entry_size = std::mem::size_of::<loaded_l10nfile>()
             + (extra_successors.saturating_sub(1) * std::mem::size_of::<*mut loaded_l10nfile>());
         let entry_layout =
-            Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>()).unwrap();
+            Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>())
+                .expect("unwrap on None/Err");
         retval = alloc::alloc(entry_layout) as *mut loaded_l10nfile;
         if retval.is_null() {
-            let layout = Layout::from_size_align(total_len, 1).unwrap();
+            let layout = Layout::from_size_align(total_len, 1).expect("unwrap on None/Err");
             alloc::dealloc(abs_filename as *mut u8, layout);
             return ptr::null_mut();
         }
@@ -338,7 +340,7 @@ pub unsafe extern "C" fn _nl_normalize_codeset(
 ) -> *const c_char {
     unsafe {
         if codeset.is_null() || name_len == 0 {
-            let layout = Layout::from_size_align(1, 1).unwrap();
+            let layout = Layout::from_size_align(1, 1).expect("unwrap on None/Err");
             let p = alloc::alloc(layout) as *mut c_char;
             if !p.is_null() {
                 *p = 0;
@@ -360,7 +362,7 @@ pub unsafe extern "C" fn _nl_normalize_codeset(
         }
 
         let alloc_len = if only_digit { 3 } else { 0 } + len + 1;
-        let layout = Layout::from_size_align(alloc_len, 1).unwrap();
+        let layout = Layout::from_size_align(alloc_len, 1).expect("unwrap on None/Err");
         let retval = alloc::alloc(layout) as *mut c_char;
         if retval.is_null() {
             return ptr::null();

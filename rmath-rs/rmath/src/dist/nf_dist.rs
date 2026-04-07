@@ -526,6 +526,7 @@ fn rnchisq(df: f64, lambda: f64) -> f64 {
 // dnf
 // =====================================================================
 
+#[must_use]
 pub fn dnf_inner(x: f64, df1: f64, df2: f64, ncp: f64, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(df1) || isnan(df2) || isnan(ncp) {
@@ -577,6 +578,7 @@ pub fn dnf_inner(x: f64, df1: f64, df2: f64, ncp: f64, log_p: bool) -> f64 {
 // pnf
 // =====================================================================
 
+#[must_use]
 pub fn pnf_inner(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(df1) || isnan(df2) || isnan(ncp) {
@@ -615,6 +617,7 @@ pub fn pnf_inner(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: bool, log_p: 
 // qnf
 // =====================================================================
 
+#[must_use]
 pub fn qnf_inner(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(p) || isnan(df1) || isnan(df2) || isnan(ncp) {
@@ -665,6 +668,7 @@ pub fn qnf_inner(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: bool, log_p: 
 // rnf
 // =====================================================================
 
+#[must_use]
 pub fn rnf_inner(df1: f64, df2: f64, ncp: f64) -> f64 {
     if isnan(df1) || isnan(df2) || isnan(ncp) {
         return ml_warn_return_nan();
@@ -693,41 +697,49 @@ pub fn rnf_inner(df1: f64, df2: f64, ncp: f64) -> f64 {
 // FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
     dnf_inner(x, df1, df2, ncp, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
     dnf_inner(x, df1, df2, ncp, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnf_inner(x, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnf_inner(x, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnf_inner(p, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnf_inner(p, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
     rnf_inner(df1, df2, ncp)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
     rnf_inner(df1, df2, ncp)

@@ -12,6 +12,7 @@ const PI: f64 = 3.14159265358979323846264338327950288;
 
 // ---- Inner implementations ----
 
+#[must_use]
 pub fn dcauchy_inner(x: f64, location: f64, scale: f64, give_log: bool) -> f64 {
     if isnan(x) || isnan(location) || isnan(scale) {
         return x + location + scale;
@@ -28,6 +29,7 @@ pub fn dcauchy_inner(x: f64, location: f64, scale: f64, give_log: bool) -> f64 {
     }
 }
 
+#[must_use]
 pub fn pcauchy_inner(x: f64, location: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     if isnan(x) || isnan(location) || isnan(scale) {
         return x + location + scale;
@@ -63,6 +65,7 @@ pub fn pcauchy_inner(x: f64, location: f64, scale: f64, lower_tail: bool, log_p:
     }
 }
 
+#[must_use]
 pub fn qcauchy_inner(p: f64, location: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     if isnan(p) || isnan(location) || isnan(scale) {
         return p + location + scale;
@@ -126,6 +129,7 @@ pub fn qcauchy_inner(p: f64, location: f64, scale: f64, lower_tail: bool, log_p:
     }
 }
 
+#[must_use]
 pub fn rcauchy_inner(location: f64, scale: f64) -> f64 {
     if isnan(location) || !r_finite(scale) || scale < 0.0 {
         return ml_warn_return_nan();
@@ -138,11 +142,13 @@ pub fn rcauchy_inner(location: f64, scale: f64) -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dcauchy_inner(x, location, scale, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dcauchy_inner(x, location, scale, give_log != 0)
@@ -159,6 +165,7 @@ pub extern "C" fn Rf_pcauchy(
     pcauchy_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pcauchy(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pcauchy_inner(x, location, scale, lower_tail != 0, log_p != 0)
@@ -175,16 +182,19 @@ pub extern "C" fn Rf_qcauchy(
     qcauchy_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qcauchy(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qcauchy_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rcauchy(location: f64, scale: f64) -> f64 {
     rcauchy_inner(location, scale)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rcauchy(location: f64, scale: f64) -> f64 {
     rcauchy_inner(location, scale)

@@ -58,7 +58,7 @@ pub fn run_tests() -> Result<(), String> {
     // rwilcox tests
     rmath::rng::set_seed(42, 24);
     let r1 = rwilcox_inner(5.0, 5.0);
-    if !(r1 >= 0.0) {
+    if r1 < 0.0 {
         return Err(format!("rwilcox(5,5) = {}, expected >= 0", r1));
     }
     rmath::rng::set_seed(42, 24);

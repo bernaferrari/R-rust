@@ -6,6 +6,7 @@
 
 #![allow(non_snake_case)]
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_ulong};
 use std::ptr;
@@ -16,59 +17,58 @@ use super::types::*;
 // Static Germanic plural expression
 // ---------------------------------------------------------------------------
 
-/// Represents the variable `n` in plural expressions.
-static mut plvar: expression = expression {
+thread_local! { static plvar: RefCell<expression> = RefCell::new(expression {
     nargs: 0,
     operation: expression_operator::var,
     val: expression_val { num: 0 },
-};
+}); }
 
-/// Represents the constant `1` in plural expressions.
-static mut plone: expression = expression {
+thread_local! { static plone: RefCell<expression> = RefCell::new(expression {
     nargs: 0,
     operation: expression_operator::num,
     val: expression_val { num: 1 },
-};
+}); }
 
-/// The Germanic plural form: `n != 1`.
-/// This is the default plural form used by English and other Germanic languages.
-static mut GERMANIC_PLURAL: expression = expression {
+thread_local! { static GERMANIC_PLURAL: RefCell<expression> = RefCell::new(expression {
     nargs: 2,
     operation: expression_operator::not_equal,
     val: expression_val {
         args: [ptr::null_mut(), ptr::null_mut(), ptr::null_mut()],
     },
-};
+}); }
 
 /// Ensure the static Germanic plural expression is initialized.
 ///
 /// This replaces the C99 designated-initializer approach and the runtime
 /// `init_germanic_plural()` fallback, using a simple initialization guard.
-unsafe fn init_germanic_plural() {
-    unsafe {
-        // We use plone.val.num as a sentinel: if it is 1, we are initialized.
-        // Since plone is initialized to { .num = 1 } above in static storage,
-        // we need a different guard. We check if GERMANIC_PLURAL.val.args[0]
-        // has been set.
-        if (*std::ptr::addr_of!(GERMANIC_PLURAL)).val.args[0].is_null() {
-            plvar.nargs = 0;
-            plvar.operation = expression_operator::var;
-
-            plone.nargs = 0;
-            plone.operation = expression_operator::num;
-            plone.val = expression_val { num: 1 };
-
-            GERMANIC_PLURAL.nargs = 2;
-            GERMANIC_PLURAL.operation = expression_operator::not_equal;
-            GERMANIC_PLURAL.val = expression_val {
-                args: [
-                    std::ptr::addr_of_mut!(plvar) as *mut expression,
-                    std::ptr::addr_of_mut!(plone) as *mut expression,
-                    ptr::null_mut(),
-                ],
+fn init_germanic_plural() {
+    GERMANIC_PLURAL.with(|ger| {
+        let g = ger.borrow();
+        if unsafe { g.val.args[0] }.is_null() {
+            drop(g);
+            plvar.with(|pv| {
+                let mut p = pv.borrow_mut();
+                p.nargs = 0;
+                p.operation = expression_operator::var;
+            });
+            plone.with(|po| {
+                let mut p = po.borrow_mut();
+                p.nargs = 0;
+                p.operation = expression_operator::num;
+                p.val = expression_val { num: 1 };
+            });
+            let plvar_ptr: *mut expression =
+                plvar.with(|v| &*v.borrow() as *const expression as *mut expression);
+            let plone_ptr: *mut expression =
+                plone.with(|v| &*v.borrow() as *const expression as *mut expression);
+            let mut g = ger.borrow_mut();
+            g.nargs = 2;
+            g.operation = expression_operator::not_equal;
+            g.val = expression_val {
+                args: [plvar_ptr, plone_ptr, ptr::null_mut()],
             };
         }
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -177,7 +177,7 @@ pub unsafe extern "C" fn libintl_gettext_extract_plural(
 
         // Fall back to Germanic plural form.
         init_germanic_plural();
-        *pluralp = &raw const GERMANIC_PLURAL;
+        *pluralp = GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression);
         *npluralsp = 2;
     }
 }
@@ -312,39 +312,58 @@ mod tests {
 
     #[test]
     fn test_germanic_plural_init() {
-        unsafe {
-            init_germanic_plural();
-            // After initialization, args[0] should point to plvar.
-            assert!(!(*std::ptr::addr_of!(GERMANIC_PLURAL)).val.args[0].is_null());
+        init_germanic_plural();
+        // After initialization, args[0] should point to plvar.
+        GERMANIC_PLURAL.with(|g| {
+            let g = g.borrow();
+            assert!(!unsafe { g.val.args[0] }.is_null());
             // plvar should be the variable operator.
             assert_eq!(
-                (*(*std::ptr::addr_of!(GERMANIC_PLURAL)).val.args[0]).operation,
+                unsafe { (*g.val.args[0]).operation },
                 expression_operator::var
             );
-        }
+        });
     }
 
     #[test]
     fn test_plural_eval_germanic() {
-        unsafe {
-            init_germanic_plural();
+        init_germanic_plural();
 
-            // n=1 -> n!=1 is false -> plural form 0 (singular)
-            let result = plural_eval(&raw const GERMANIC_PLURAL, 1);
-            assert_eq!(result, 0);
+        // n=1 -> n!=1 is false -> plural form 0 (singular)
+        let result = unsafe {
+            plural_eval(
+                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
+                1,
+            )
+        };
+        assert_eq!(result, 0);
 
-            // n=0 -> n!=1 is true -> plural form 1 (plural)
-            let result = plural_eval(&raw const GERMANIC_PLURAL, 0);
-            assert_eq!(result, 1);
+        // n=0 -> n!=1 is true -> plural form 1 (plural)
+        let result = unsafe {
+            plural_eval(
+                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
+                0,
+            )
+        };
+        assert_eq!(result, 1);
 
-            // n=2 -> n!=1 is true -> plural form 1 (plural)
-            let result = plural_eval(&raw const GERMANIC_PLURAL, 2);
-            assert_eq!(result, 1);
+        // n=2 -> n!=1 is true -> plural form 1 (plural)
+        let result = unsafe {
+            plural_eval(
+                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
+                2,
+            )
+        };
+        assert_eq!(result, 1);
 
-            // n=5 -> n!=1 is true -> plural form 1 (plural)
-            let result = plural_eval(&raw const GERMANIC_PLURAL, 5);
-            assert_eq!(result, 1);
-        }
+        // n=5 -> n!=1 is true -> plural form 1 (plural)
+        let result = unsafe {
+            plural_eval(
+                GERMANIC_PLURAL.with(|v| &*v.borrow() as *const expression),
+                5,
+            )
+        };
+        assert_eq!(result, 1);
     }
 
     #[test]

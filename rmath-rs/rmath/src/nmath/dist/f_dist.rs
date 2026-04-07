@@ -7,7 +7,7 @@ use crate::nmath::error::*;
 use libm::*;
 
 // Constants
-const M_LN_2PI: f64 = 1.837877066409345483560659472811; // log(2*pi)
+const _M_LN_2PI: f64 = 1.837877066409345483560659472811; // log(2*pi)
 const DBL_MAX: f64 = 1.7976931348623157e+308;
 
 // ---- dbinom_raw (from dbinom.c) ----
@@ -112,6 +112,7 @@ fn dbinom_raw(x: f64, n: f64, p: f64, q: f64, give_log: bool) -> f64 {
 
 // ---- df ----
 
+#[must_use]
 pub fn df_inner(x: f64, m: f64, n: f64, give_log: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(m) || isnan(n) {
@@ -174,6 +175,7 @@ pub fn df_inner(x: f64, m: f64, n: f64, give_log: bool) -> f64 {
 
 // ---- pf ----
 
+#[must_use]
 pub fn pf_inner(x: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f64 {
     let mut x = x;
 
@@ -242,6 +244,7 @@ pub fn pf_inner(x: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
 
 // ---- qf ----
 
+#[must_use]
 pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(p) || isnan(df1) || isnan(df2) {
@@ -299,6 +302,7 @@ pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
 
 // ---- rf ----
 
+#[must_use]
 pub fn rf_inner(n1: f64, n2: f64) -> f64 {
     if isnan(n1) || isnan(n2) || n1 <= 0.0 || n2 <= 0.0 {
         return ml_warn_return_nan();
@@ -319,41 +323,49 @@ pub fn rf_inner(n1: f64, n2: f64) -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
     df_inner(x, m, n, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
     df_inner(x, m, n, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     pf_inner(x, df1, df2, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     pf_inner(x, df1, df2, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     qf_inner(p, df1, df2, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     qf_inner(p, df1, df2, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rf(n1: f64, n2: f64) -> f64 {
     rf_inner(n1, n2)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rf(n1: f64, n2: f64) -> f64 {
     rf_inner(n1, n2)

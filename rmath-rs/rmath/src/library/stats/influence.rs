@@ -51,7 +51,7 @@ unsafe fn error(msg: &str) {
 }
 
 unsafe fn mkChar(s: &str) -> SEXP {
-    let c_str = CString::new(s).unwrap();
+    let c_str = CString::new(s).expect("CString::new failed: contains null byte");
     Rf_mkChar(c_str.as_ptr())
 }
 

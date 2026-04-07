@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Port of R's src/library/grid/src/grid.c (5470 lines)
@@ -6,6 +5,7 @@
  *  grid -- main grid drawing primitives and state management.
  */
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
@@ -213,10 +213,10 @@ const TRC2: f64 = 0.77756015077810708036;
 const R_GE_group: c_int = 5;
 
 /* ==============================
- * Local helper: R_gridEvalEnv
+ * Local helper: R_gridEvalEnv.with(|v| v.get())
  * ============================== */
 
-static mut R_gridEvalEnv: SEXP = ptr::null_mut();
+thread_local! { static R_gridEvalEnv.with(|v| v.get()): Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /* ==============================
  * Local helper: numeric(x, index)
@@ -305,7 +305,7 @@ unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: 
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
-    R_gridEvalEnv = GridEvalEnv;
+    R_gridEvalEnv.with(|v| v.get()).with(|v| v.set(GridEvalEnv));
     // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
     R_NilValue()
 }
@@ -415,7 +415,7 @@ pub unsafe extern "C" fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
 
     // STUB: call R function pushedvp()
     // PROTECT(fcall = lang2(install("pushedvp"), vp));
-    // PROTECT(pushedvp = Rf_eval_with_gd(fcall, R_gridEvalEnv, ptr::null_mut()));
+    // PROTECT(pushedvp = Rf_eval_with_gd(fcall, R_gridEvalEnv.with(|v| v.get()), ptr::null_mut()));
 
     let pushedvp = doSetViewport(vp, if *LOGICAL(hasParent) != 0 { 0 } else { 1 }, 1, dd);
 
@@ -434,7 +434,11 @@ unsafe fn noChildren(children: SEXP) -> bool {
         Rf_install(b"no.children\0".as_ptr() as *const c_char),
         children,
     ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, R_gridEvalEnv, ptr::null_mut()));
+    let result = Rf_protect(Rf_eval_with_gd(
+        fcall,
+        R_gridEvalEnv.with(|v| v.get()),
+        ptr::null_mut(),
+    ));
     let r = asBool(result) != 0;
     Rf_unprotect(2);
     r
@@ -446,7 +450,11 @@ unsafe fn childExists(name: SEXP, children: SEXP) -> bool {
         name,
         children,
     ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, R_gridEvalEnv, ptr::null_mut()));
+    let result = Rf_protect(Rf_eval_with_gd(
+        fcall,
+        R_gridEvalEnv.with(|v| v.get()),
+        ptr::null_mut(),
+    ));
     let r = asBool(result) != 0;
     Rf_unprotect(2);
     r
@@ -457,7 +465,11 @@ unsafe fn childList(children: SEXP) -> SEXP {
         Rf_install(b"child.list\0".as_ptr() as *const c_char),
         children,
     ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, R_gridEvalEnv, ptr::null_mut()));
+    let result = Rf_protect(Rf_eval_with_gd(
+        fcall,
+        R_gridEvalEnv.with(|v| v.get()),
+        ptr::null_mut(),
+    ));
     Rf_unprotect(2);
     result
 }

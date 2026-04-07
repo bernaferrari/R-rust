@@ -14,7 +14,7 @@ pub fn run_tests() -> Result<(), String> {
     }
     // Valid density with ncp > 0
     let d_ncp = dnt_inner(1.0, 3.0, 2.0, false);
-    if !(d_ncp > 0.0) {
+    if d_ncp <= 0.0 {
         return Err(format!("dnt(1,3,2) = {}, expected > 0", d_ncp));
     }
 
@@ -29,12 +29,12 @@ pub fn run_tests() -> Result<(), String> {
     }
     // Large t => probability well above 0.5
     let p_big = pnt_inner(100.0, 3.0, 2.0, true, false);
-    if !(p_big > 0.5) {
+    if p_big <= 0.5 {
         return Err(format!("pnt(100,3,2) = {}, expected > 0.5", p_big));
     }
     // Very negative t => probability near 0
     let p_neg = pnt_inner(-100.0, 3.0, 2.0, true, false);
-    if !(p_neg >= 0.0 && p_neg < 0.01) {
+    if !(0.0..0.01).contains(&p_neg) {
         return Err(format!("pnt(-100,3,2) = {}", p_neg));
     }
 

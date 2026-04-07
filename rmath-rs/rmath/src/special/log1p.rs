@@ -9,6 +9,7 @@
 use libm::{expm1, log1p};
 
 /// Compute log(1 + x) accurately for small x.
+#[must_use]
 ///
 /// This is a direct wrapper around the system log1p implementation
 /// (libm), which on modern platforms provides full double precision.
@@ -17,11 +18,13 @@ pub fn log1p_impl(x: f64) -> f64 {
 }
 
 /// Compute exp(x) - 1 accurately for small x.
+#[must_use]
 pub fn expm1_impl(x: f64) -> f64 {
     expm1(x)
 }
 
 /// Compute log(1 + x) - x accurately for small x.
+#[must_use]
 ///
 /// This is the same as log1pmx from gamma.rs, re-exported here
 /// for convenience. It uses the continued fraction / series expansion
@@ -31,6 +34,7 @@ pub fn log1pmx(x: f64) -> f64 {
 }
 
 /// Compute log(gamma(1 + x)) accurately also for small x (0 < x < 0.5).
+#[must_use]
 ///
 /// This re-exports lgammafn1p from the gamma module.
 pub fn lgamma1p_impl(x: f64) -> f64 {
@@ -41,21 +45,25 @@ pub fn lgamma1p_impl(x: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_log1p(x: f64) -> f64 {
     log1p(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn log1p_c(x: f64) -> f64 {
     log1p(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgamma1p(x: f64) -> f64 {
     crate::special::gamma::lgammafn1p(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn lgamma1p_c(x: f64) -> f64 {
     crate::special::gamma::lgammafn1p(x)

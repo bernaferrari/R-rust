@@ -5,18 +5,19 @@
 //!
 //! Ported from fonts.c - font creation and measurement.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
 use super::types::*;
 
-pub static mut FixedFont: font = ptr::null_mut();
-pub static mut SystemFont: font = ptr::null_mut();
-pub static mut Times: font = ptr::null_mut();
-pub static mut Helvetica: font = ptr::null_mut();
-pub static mut Courier: font = ptr::null_mut();
+pub thread_local! { static FixedFont: Cell<font> = Cell::new(ptr::null_mut()); }
+pub thread_local! { static SystemFont: Cell<font> = Cell::new(ptr::null_mut()); }
+pub thread_local! { static Times: Cell<font> = Cell::new(ptr::null_mut()); }
+pub thread_local! { static Helvetica: Cell<font> = Cell::new(ptr::null_mut()); }
+pub thread_local! { static Courier: Cell<font> = Cell::new(ptr::null_mut()); }
 
-pub unsafe fn init_fonts() { /* TODO */
+pub fn init_fonts() { /* TODO */
 }
 
 #[unsafe(no_mangle)]

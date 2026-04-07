@@ -141,13 +141,13 @@ pub unsafe extern "C" fn setim(c: control, fn_: imfn) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn clear(c: control) { /* TODO */
+pub unsafe extern "C" fn clear(_c: control) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn draw(c: control) { /* TODO */
+pub unsafe extern "C" fn draw(_c: control) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn redraw(c: control) { /* TODO */
+pub unsafe extern "C" fn redraw(_c: control) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn resize(c: control, r: rect) {
@@ -266,10 +266,10 @@ pub unsafe extern "C" fn ishighlighted(c: control) -> c_int {
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn flashcontrol(c: control) { /* TODO */
+pub unsafe extern "C" fn flashcontrol(_c: control) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn activatecontrol(c: control) { /* TODO */
+pub unsafe extern "C" fn activatecontrol(_c: control) { /* TODO */
 }
 
 #[unsafe(no_mangle)]
@@ -295,6 +295,7 @@ pub unsafe extern "C" fn GA_gettext(c: control) -> *mut c_char {
     }
 }
 #[unsafe(no_mangle)]
+#[allow(clippy::if_same_then_else)]
 pub unsafe extern "C" fn gettextfont(c: control) -> font {
     if c.is_null() {
         ptr::null_mut()
@@ -303,7 +304,7 @@ pub unsafe extern "C" fn gettextfont(c: control) -> font {
     }
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn settextfont(c: control, f: font) { /* TODO */
+pub unsafe extern "C" fn settextfont(_c: control, _f: font) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn setforeground(c: control, fg: rgb) {
@@ -371,41 +372,41 @@ pub unsafe extern "C" fn parentwindow(c: control) -> window {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newcontrol(text: *const c_char, r: rect) -> control {
+pub unsafe extern "C" fn newcontrol(_text: *const c_char, _r: rect) -> control {
     ptr::null_mut() // TODO: Platform-specific
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newdrawing(r: rect, fn_: drawfn) -> drawing {
+pub unsafe extern "C" fn newdrawing(_r: rect, _fn_: drawfn) -> drawing {
     ptr::null_mut() // TODO: Platform-specific
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newpicture(img: image, r: rect) -> drawing {
+pub unsafe extern "C" fn newpicture(_img: image, _r: rect) -> drawing {
     ptr::null_mut() // TODO: Platform-specific
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newbutton(text: *const c_char, r: rect, fn_: actionfn) -> button {
+pub unsafe extern "C" fn newbutton(_text: *const c_char, _r: rect, _fn_: actionfn) -> button {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newimagebutton(img: image, r: rect, fn_: actionfn) -> button {
+pub unsafe extern "C" fn newimagebutton(_img: image, _r: rect, _fn_: actionfn) -> button {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setimage(c: control, img: image) { /* TODO */
+pub unsafe extern "C" fn setimage(_c: control, _img: image) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newcheckbox(text: *const c_char, r: rect, fn_: actionfn) -> checkbox {
+pub unsafe extern "C" fn newcheckbox(_text: *const c_char, _r: rect, _fn_: actionfn) -> checkbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newimagecheckbox(img: image, r: rect, fn_: actionfn) -> checkbox {
+pub unsafe extern "C" fn newimagecheckbox(_img: image, _r: rect, _fn_: actionfn) -> checkbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newradiobutton(
-    text: *const c_char,
-    r: rect,
-    fn_: actionfn,
+    _text: *const c_char,
+    _r: rect,
+    _fn_: actionfn,
 ) -> radiobutton {
     ptr::null_mut() // TODO
 }
@@ -415,173 +416,173 @@ pub unsafe extern "C" fn newradiogroup() -> radiogroup {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newscrollbar(
-    r: rect,
-    max: c_int,
-    pagesize: c_int,
-    fn_: scrollfn,
+    _r: rect,
+    _max: c_int,
+    _pagesize: c_int,
+    _fn_: scrollfn,
 ) -> scrollbar {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn changescrollbar(s: scrollbar, where_: c_int, max: c_int, size: c_int) {
+pub unsafe extern "C" fn changescrollbar(_s: scrollbar, _where_: c_int, _max: c_int, _size: c_int) {
     /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newlabel(text: *const c_char, r: rect, alignment: c_int) -> label {
+pub unsafe extern "C" fn newlabel(_text: *const c_char, _r: rect, _alignment: c_int) -> label {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newfield(text: *const c_char, r: rect) -> field {
+pub unsafe extern "C" fn newfield(_text: *const c_char, _r: rect) -> field {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newpassword(text: *const c_char, r: rect) -> field {
+pub unsafe extern "C" fn newpassword(_text: *const c_char, _r: rect) -> field {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newtextbox(text: *const c_char, r: rect) -> textbox {
+pub unsafe extern "C" fn newtextbox(_text: *const c_char, _r: rect) -> textbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newtextarea(text: *const c_char, r: rect) -> textbox {
+pub unsafe extern "C" fn newtextarea(_text: *const c_char, _r: rect) -> textbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newrichtextarea(text: *const c_char, r: rect) -> textbox {
+pub unsafe extern "C" fn newrichtextarea(_text: *const c_char, _r: rect) -> textbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newlistbox(
-    list: *const *const c_char,
-    r: rect,
-    fn_: scrollfn,
-    dble: actionfn,
+    _list: *const *const c_char,
+    _r: rect,
+    _fn_: scrollfn,
+    _dble: actionfn,
 ) -> listbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newdroplist(
-    list: *const *const c_char,
-    r: rect,
-    fn_: scrollfn,
+    _list: *const *const c_char,
+    _r: rect,
+    _fn_: scrollfn,
 ) -> listbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newdropfield(
-    list: *const *const c_char,
-    r: rect,
-    fn_: scrollfn,
+    _list: *const *const c_char,
+    _r: rect,
+    _fn_: scrollfn,
 ) -> listbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newmultilist(
-    list: *const *const c_char,
-    r: rect,
-    fn_: scrollfn,
-    dble: actionfn,
+    _list: *const *const c_char,
+    _r: rect,
+    _fn_: scrollfn,
+    _dble: actionfn,
 ) -> listbox {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn isselected(b: listbox, index: c_int) -> c_int {
+pub unsafe extern "C" fn isselected(_b: listbox, _index: c_int) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setlistitem(b: listbox, index: c_int) { /* TODO */
+pub unsafe extern "C" fn setlistitem(_b: listbox, _index: c_int) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getlistitem(b: listbox) -> c_int {
+pub unsafe extern "C" fn getlistitem(_b: listbox) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn changelistbox(b: listbox, list: *const *const c_char) {
+pub unsafe extern "C" fn changelistbox(_b: listbox, _list: *const *const c_char) {
     /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn newprogressbar(
-    r: rect,
-    pmin: c_int,
-    pmax: c_int,
-    incr: c_int,
-    smooth: c_int,
+    _r: rect,
+    _pmin: c_int,
+    _pmax: c_int,
+    _incr: c_int,
+    _smooth: c_int,
 ) -> progressbar {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setprogressbar(obj: progressbar, n: c_int) { /* TODO */
+pub unsafe extern "C" fn setprogressbar(_obj: progressbar, _n: c_int) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn stepprogressbar(obj: progressbar, n: c_int) { /* TODO */
+pub unsafe extern "C" fn stepprogressbar(_obj: progressbar, _n: c_int) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setprogressbarrange(obj: progressbar, pbmin: c_int, pbmax: c_int) {
+pub unsafe extern "C" fn setprogressbarrange(_obj: progressbar, _pbmin: c_int, _pbmax: c_int) {
     /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newmenubar(fn_: actionfn) -> menubar {
+pub unsafe extern "C" fn newmenubar(_fn_: actionfn) -> menubar {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newsubmenu(parent: menu, name: *const c_char) -> menu {
+pub unsafe extern "C" fn newsubmenu(_parent: menu, _name: *const c_char) -> menu {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newmenu(name: *const c_char) -> menu {
+pub unsafe extern "C" fn newmenu(_name: *const c_char) -> menu {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newmenuitem(name: *const c_char, key: c_int, fn_: menufn) -> menuitem {
+pub unsafe extern "C" fn newmenuitem(_name: *const c_char, _key: c_int, _fn_: menufn) -> menuitem {
     ptr::null_mut()
 }
 
 // Text editing
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn undotext(t: textbox) { /* TODO */
+pub unsafe extern "C" fn undotext(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cuttext(t: textbox) { /* TODO */
+pub unsafe extern "C" fn cuttext(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn copytext(t: textbox) { /* TODO */
+pub unsafe extern "C" fn copytext(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn cleartext(t: textbox) { /* TODO */
+pub unsafe extern "C" fn cleartext(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn pastetext(t: textbox) { /* TODO */
+pub unsafe extern "C" fn pastetext(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn inserttext(t: textbox, text: *const c_char) { /* TODO */
+pub unsafe extern "C" fn inserttext(_t: textbox, _text: *const c_char) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn selecttext(t: textbox, start: c_long, end: c_long) { /* TODO */
+pub unsafe extern "C" fn selecttext(_t: textbox, _start: c_long, _end: c_long) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn textselection(t: textbox, start: *mut c_long, end: *mut c_long) {
+pub unsafe extern "C" fn textselection(_t: textbox, _start: *mut c_long, _end: *mut c_long) {
     /* TODO */
 }
 
 // Font functions
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newfont(name: *const c_char, style: c_int, size: c_int) -> font {
+pub unsafe extern "C" fn newfont(_name: *const c_char, _style: c_int, _size: c_int) -> font {
     ptr::null_mut() // TODO: Platform-specific
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fontwidth(f: font) -> c_int {
+pub unsafe extern "C" fn fontwidth(_f: font) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fontheight(f: font) -> c_int {
+pub unsafe extern "C" fn fontheight(_f: font) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fontascent(f: font) -> c_int {
+pub unsafe extern "C" fn fontascent(_f: font) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fontdescent(f: font) -> c_int {
+pub unsafe extern "C" fn fontdescent(_f: font) -> c_int {
     0
 }
 
@@ -597,59 +598,59 @@ pub unsafe extern "C" fn getdescent(f: font) -> c_int {
 
 // Image control
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newbitmap(width: c_int, height: c_int, depth: c_int) -> bitmap {
+pub unsafe extern "C" fn newbitmap(_width: c_int, _height: c_int, _depth: c_int) -> bitmap {
     ptr::null_mut() // TODO: Platform-specific
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn loadbitmap(name: *const c_char) -> bitmap {
+pub unsafe extern "C" fn loadbitmap(_name: *const c_char) -> bitmap {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn imagetobitmap(img: image) -> bitmap {
+pub unsafe extern "C" fn imagetobitmap(_img: image) -> bitmap {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn createbitmap(
-    width: c_int,
-    height: c_int,
-    depth: c_int,
-    data: *mut GAbyte,
+    _width: c_int,
+    _height: c_int,
+    _depth: c_int,
+    _data: *mut GAbyte,
 ) -> bitmap {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setbitmapdata(b: bitmap, data: *mut GAbyte) { /* TODO */
+pub unsafe extern "C" fn setbitmapdata(_b: bitmap, _data: *mut GAbyte) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getbitmapdata(b: bitmap, data: *mut GAbyte) { /* TODO */
+pub unsafe extern "C" fn getbitmapdata(_b: bitmap, _data: *mut GAbyte) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getbitmapdata2(b: bitmap, data: *mut *mut GAbyte) { /* TODO */
+pub unsafe extern "C" fn getbitmapdata2(_b: bitmap, _data: *mut *mut GAbyte) { /* TODO */
 }
 
 // Cursor functions
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newcursor(hotspot: point, img: image) -> cursor {
+pub unsafe extern "C" fn newcursor(_hotspot: point, _img: image) -> cursor {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn createcursor(
-    offset: point,
-    white_mask: *mut GAbyte,
-    black_shape: *mut GAbyte,
+    _offset: point,
+    _white_mask: *mut GAbyte,
+    _black_shape: *mut GAbyte,
 ) -> cursor {
     ptr::null_mut() // TODO
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn loadcursor(name: *const c_char) -> cursor {
+pub unsafe extern "C" fn loadcursor(_name: *const c_char) -> cursor {
     ptr::null_mut() // TODO
 }
 
 // Image load/save
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn loadimage(filename: *const c_char) -> image {
+pub unsafe extern "C" fn loadimage(_filename: *const c_char) -> image {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn saveimage(img: image, filename: *const c_char) { /* TODO */
+pub unsafe extern "C" fn saveimage(_img: image, _filename: *const c_char) { /* TODO */
 }

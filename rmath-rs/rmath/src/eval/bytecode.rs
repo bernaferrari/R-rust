@@ -10,6 +10,13 @@ use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::memory::with_arena;
 use crate::sexp::safe::Sexp;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ControlFlow {
+    Normal,
+    Break,
+    Next,
+}
+
 pub const BCreturn: c_int = 0;
 pub const BCgvar: c_int = 1;
 pub const BCsvar: c_int = 2;
@@ -166,33 +173,41 @@ where
 
 pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let bytecode = code.as_integer_slice().ok_or("bytecode has no data")?;
-
     let mut pc: usize = 0;
     let mut stack: Vec<Sexp<'a>> = Vec::new();
-
     let constants = code.attrib();
+    eval_bytecode_loop(bytecode, &mut pc, &mut stack, constants, env).map(|(sexp, _)| sexp)
+}
 
-    while pc < bytecode.len() {
-        let opcode = bytecode[pc] as c_int;
-        pc += 1;
+fn eval_bytecode_loop<'a>(
+    bytecode: &[c_int],
+    pc: &mut usize,
+    stack: &mut Vec<Sexp<'a>>,
+    constants: Option<Sexp<'a>>,
+    env: Sexp<'a>,
+) -> Result<(Sexp<'a>, ControlFlow), String> {
+    while *pc < bytecode.len() {
+        let opcode = bytecode[*pc] as c_int;
+        *pc += 1;
 
         match opcode {
             BCreturn => {
-                return stack
+                let val = stack
                     .pop()
-                    .ok_or_else(|| "empty stack on return".to_string());
+                    .ok_or_else(|| "empty stack on return".to_string())?;
+                return Ok((val, ControlFlow::Normal));
             }
             BCgvar | BCsvar => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
                 let sym = get_constant(constants, idx)?;
                 let val = crate::eval::eval::find_var_safe(sym, env)
                     .ok_or_else(|| "variable not found".to_string())?;
                 stack.push(val);
             }
             BCint | BCreal | BCstring => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
                 let val = get_constant(constants, idx)?;
                 stack.push(val);
             }
@@ -204,6 +219,9 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
             }
             BCnil => {
                 stack.push(unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) });
+            }
+            BCdot => {
+                return Err("'...' used in incorrect context".to_string());
             }
             BCnot => {
                 let val = stack
@@ -281,19 +299,18 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                     .pop()
                     .ok_or_else(|| "empty stack on mod".to_string())?;
                 if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
-                    let av = a.real_elt(0).unwrap_or(0.0);
-                    let bv = b.real_elt(0).unwrap_or(0.0);
-                    stack.push(make_real(av % bv));
+                    stack.push(make_real(
+                        a.real_elt(0).unwrap_or(0.0) % b.real_elt(0).unwrap_or(0.0),
+                    ));
                 } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
-                    let av = a.integer_elt(0).unwrap_or(0);
                     let bv = b.integer_elt(0).unwrap_or(0);
                     if bv != 0 {
-                        stack.push(make_int(av % bv));
+                        stack.push(make_int(a.integer_elt(0).unwrap_or(0) % bv));
                     } else {
                         stack.push(make_real(f64::NAN));
                     }
                 } else {
-                    stack.push(make_real(0.0));
+                    stack.push(make_real(a.as_f64() % b.as_f64()));
                 }
             }
             BCpow => {
@@ -303,21 +320,7 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on pow".to_string())?;
-                let av = if a.typeof_() == SEXPTYPE::REALSXP {
-                    a.real_elt(0).unwrap_or(0.0)
-                } else if a.typeof_() == SEXPTYPE::INTSXP {
-                    a.integer_elt(0).unwrap_or(0) as c_double
-                } else {
-                    0.0
-                };
-                let bv = if b.typeof_() == SEXPTYPE::REALSXP {
-                    b.real_elt(0).unwrap_or(0.0)
-                } else if b.typeof_() == SEXPTYPE::INTSXP {
-                    b.integer_elt(0).unwrap_or(0) as c_double
-                } else {
-                    0.0
-                };
-                stack.push(make_real(av.powf(bv)));
+                stack.push(make_real(a.as_f64().powf(b.as_f64())));
             }
             BCeq => {
                 let b = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
@@ -356,38 +359,18 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on and".to_string())?;
-                let av = if a.typeof_() == SEXPTYPE::LGLSXP {
-                    a.logical_elt(0).unwrap_or(0)
-                } else {
-                    0
-                };
-                let bv = if b.typeof_() == SEXPTYPE::LGLSXP {
-                    b.logical_elt(0).unwrap_or(0)
-                } else {
-                    0
-                };
-                stack.push(make_lgl(if av != 0 && bv != 0 { 1 } else { 0 }));
+                stack.push(make_lgl(if a.to_bool() && b.to_bool() { 1 } else { 0 }));
             }
             BCor => {
                 let b = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
-                let av = if a.typeof_() == SEXPTYPE::LGLSXP {
-                    a.logical_elt(0).unwrap_or(0)
-                } else {
-                    0
-                };
-                let bv = if b.typeof_() == SEXPTYPE::LGLSXP {
-                    b.logical_elt(0).unwrap_or(0)
-                } else {
-                    0
-                };
-                stack.push(make_lgl(if av != 0 || bv != 0 { 1 } else { 0 }));
+                stack.push(make_lgl(if a.to_bool() || b.to_bool() { 1 } else { 0 }));
             }
             BCcall => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
-                let nargs = bytecode[pc] as usize;
-                pc += 1;
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
+                let nargs = bytecode[*pc] as usize;
+                *pc += 1;
 
                 let mut args_vec = Vec::with_capacity(nargs);
                 for _ in 0..nargs {
@@ -396,7 +379,6 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                     }
                 }
                 args_vec.reverse();
-
                 let fun = get_constant(constants, idx)?;
 
                 if fun.typeof_() == SEXPTYPE::CLOSXP {
@@ -408,7 +390,6 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                         });
                         arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
                     }
-
                     let result = crate::eval::closure::apply_closure_safe(fun, arg_list, env)
                         .map_err(|e| format!("closure call failed: {e}"))?;
                     stack.push(result);
@@ -417,10 +398,9 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                 }
             }
             BCpush => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
-                let val = get_constant(constants, idx)?;
-                stack.push(val);
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
+                stack.push(get_constant(constants, idx)?);
             }
             BCpop => {
                 stack.pop();
@@ -466,143 +446,145 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                     }
                 }
             }
-            BCbegin => {
-                // Begin block: evaluate all expressions in sequence, return last result
-                // The begin block is represented as a pairlist of expressions
-                // In bytecode, this is handled by the compiler emitting sequential instructions
-                // No special handling needed here - just continue to next instruction
-            }
+            BCbegin => {}
             BCif => {
                 let cond = stack.pop().ok_or_else(|| "empty stack on if".to_string())?;
-                let true_offset = bytecode[pc] as usize;
-                pc += 1;
-                let false_offset = bytecode[pc] as usize;
-                pc += 1;
-                let is_true = if cond.typeof_() == SEXPTYPE::LGLSXP {
-                    cond.logical_elt(0).unwrap_or(0) != 0
-                } else if cond.typeof_() == SEXPTYPE::INTSXP {
-                    cond.integer_elt(0).unwrap_or(0) != 0
-                } else if cond.typeof_() == SEXPTYPE::REALSXP {
-                    cond.real_elt(0).unwrap_or(0.0) != 0.0
+                let true_offset = bytecode[*pc] as usize;
+                *pc += 1;
+                let false_offset = bytecode[*pc] as usize;
+                *pc += 1;
+                if cond.to_bool() {
+                    *pc = true_offset;
                 } else {
-                    true
-                };
-                if is_true {
-                    pc = true_offset;
-                } else {
-                    pc = false_offset;
+                    *pc = false_offset;
                 }
             }
             BCjump => {
-                let offset = bytecode[pc] as usize;
-                pc = offset;
+                let offset = bytecode[*pc] as usize;
+                *pc = offset;
             }
             BCfjmp => {
                 let cond = stack
                     .pop()
                     .ok_or_else(|| "empty stack on fjmp".to_string())?;
-                let offset = bytecode[pc] as usize;
-                pc += 1;
-                let is_false = if cond.typeof_() == SEXPTYPE::LGLSXP {
-                    cond.logical_elt(0).unwrap_or(0) == 0
-                } else {
-                    false
-                };
-                if is_false {
-                    pc = offset;
+                let offset = bytecode[*pc] as usize;
+                *pc += 1;
+                if !cond.to_bool() {
+                    *pc = offset;
                 }
             }
             BCtjmp => {
                 let cond = stack
                     .pop()
                     .ok_or_else(|| "empty stack on tjmp".to_string())?;
-                let offset = bytecode[pc] as usize;
-                pc += 1;
-                let is_true = if cond.typeof_() == SEXPTYPE::LGLSXP {
-                    cond.logical_elt(0).unwrap_or(0) != 0
-                } else {
-                    false
-                };
-                if is_true {
-                    pc = offset;
+                let offset = bytecode[*pc] as usize;
+                *pc += 1;
+                if cond.to_bool() {
+                    *pc = offset;
                 }
             }
             BCfor => {
-                let var_idx = bytecode[pc] as usize;
-                pc += 1;
-                let seq_idx = bytecode[pc] as usize;
-                pc += 1;
-                let body_offset = bytecode[pc] as usize;
-                pc += 1;
-                let end_offset = bytecode[pc] as usize;
-                pc += 1;
+                let var_idx = bytecode[*pc] as usize;
+                *pc += 1;
+                let seq_idx = bytecode[*pc] as usize;
+                *pc += 1;
+                let body_offset = bytecode[*pc] as usize;
+                *pc += 1;
+                let end_offset = bytecode[*pc] as usize;
+                *pc += 1;
 
-                let _var_sym = get_constant(constants, var_idx)?;
+                let var_sym = get_constant(constants, var_idx)?;
                 let seq_val = get_constant(constants, seq_idx)?;
+                let len = seq_val.len();
 
-                if seq_val.typeof_() == SEXPTYPE::INTSXP || seq_val.typeof_() == SEXPTYPE::REALSXP {
-                    let len = seq_val.len();
-                    for i in 0..len as usize {
-                        // Set loop variable to current index value
-                        let idx_val = make_int(i as c_int);
-                        stack.push(idx_val);
-                        // Execute body
-                        pc = body_offset;
-                    }
-                }
-                pc = end_offset;
-            }
-            BCwhile => {
-                let cond_offset = bytecode[pc] as usize;
-                pc += 1;
-                let body_offset = bytecode[pc] as usize;
-                pc += 1;
-                let end_offset = bytecode[pc] as usize;
-                pc += 1;
-
-                loop {
-                    let cond_result = if let Some(top) = stack.last() {
-                        if top.typeof_() == SEXPTYPE::LGLSXP {
-                            top.logical_elt(0).unwrap_or(0) != 0
-                        } else if top.typeof_() == SEXPTYPE::INTSXP {
-                            top.integer_elt(0).unwrap_or(0) != 0
-                        } else {
-                            true
-                        }
+                for i in 0..len as usize {
+                    let idx_val = if seq_val.typeof_() == SEXPTYPE::INTSXP {
+                        make_int(seq_val.integer_elt(i as i64).unwrap_or(0))
+                    } else if seq_val.typeof_() == SEXPTYPE::REALSXP {
+                        make_real(seq_val.real_elt(i as i64).unwrap_or(0.0))
                     } else {
-                        false
+                        make_int(i as c_int)
                     };
 
-                    if !cond_result {
-                        pc = end_offset;
-                        break;
+                    unsafe {
+                        crate::sexp::envir::defineVar(
+                            var_sym.as_raw(),
+                            idx_val.as_raw(),
+                            env.as_raw(),
+                        );
                     }
-                    pc = body_offset;
+                    stack.push(idx_val);
+
+                    let mut loop_pc = body_offset;
+                    let (_, control) =
+                        eval_bytecode_loop(bytecode, &mut loop_pc, stack, constants, env)?;
+
+                    if control == ControlFlow::Break {
+                        *pc = end_offset;
+                        return Ok((make_lgl(0), ControlFlow::Normal));
+                    }
+                }
+                *pc = end_offset;
+            }
+            BCwhile => {
+                let cond_offset = bytecode[*pc] as usize;
+                *pc += 1;
+                let body_offset = bytecode[*pc] as usize;
+                *pc += 1;
+                let end_offset = bytecode[*pc] as usize;
+                *pc += 1;
+
+                loop {
+                    let mut cond_pc = cond_offset;
+                    let (cond_result, cond_control) =
+                        eval_bytecode_loop(bytecode, &mut cond_pc, stack, constants, env)?;
+                    if cond_control != ControlFlow::Normal {
+                        return Ok((cond_result, cond_control));
+                    }
+
+                    if !cond_result.to_bool() {
+                        *pc = end_offset;
+                        return Ok((make_lgl(0), ControlFlow::Normal));
+                    }
+
+                    let mut body_pc = body_offset;
+                    let (body_result, body_control) =
+                        eval_bytecode_loop(bytecode, &mut body_pc, stack, constants, env)?;
+
+                    if body_control == ControlFlow::Break {
+                        *pc = end_offset;
+                        return Ok((body_result, ControlFlow::Normal));
+                    }
                 }
             }
             BCrepeat => {
-                let body_offset = bytecode[pc] as usize;
-                pc += 1;
-                let end_offset = bytecode[pc] as usize;
-                pc += 1;
+                let body_offset = bytecode[*pc] as usize;
+                *pc += 1;
+                let end_offset = bytecode[*pc] as usize;
+                *pc += 1;
 
                 loop {
-                    pc = body_offset;
-                    pc = end_offset;
-                    break;
+                    let mut body_pc = body_offset;
+                    let (body_result, body_control) =
+                        eval_bytecode_loop(bytecode, &mut body_pc, stack, constants, env)?;
+
+                    if body_control == ControlFlow::Break {
+                        *pc = end_offset;
+                        return Ok((body_result, ControlFlow::Normal));
+                    }
                 }
             }
             BCbreak => {
-                // Break out of innermost loop — simplified
+                return Ok((make_lgl(0), ControlFlow::Break));
             }
             BCnext => {
-                // Continue to next iteration — simplified
+                return Ok((make_lgl(0), ControlFlow::Next));
             }
             BCspecial => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
-                let nargs = bytecode[pc] as usize;
-                pc += 1;
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
+                let nargs = bytecode[*pc] as usize;
+                *pc += 1;
 
                 let mut args_vec = Vec::with_capacity(nargs);
                 for _ in 0..nargs {
@@ -611,16 +593,35 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                     }
                 }
                 args_vec.reverse();
-
                 let fun = get_constant(constants, idx)?;
-                // Special functions don't evaluate arguments
-                stack.push(fun);
+
+                if fun.typeof_() == SEXPTYPE::SPECIALSXP || fun.typeof_() == SEXPTYPE::BUILTINSXP {
+                    let mut arg_list =
+                        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
+                    for arg in args_vec.into_iter().rev() {
+                        let cell = with_arena(|arena| {
+                            arena.cons(arg.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        });
+                        arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
+                    }
+
+                    let call = with_arena(|arena| {
+                        arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                    });
+                    let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
+
+                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env)
+                        .map_err(|e| format!("special call failed: {e}"))?;
+                    stack.push(result);
+                } else {
+                    stack.push(fun);
+                }
             }
             BCbuiltin => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
-                let nargs = bytecode[pc] as usize;
-                pc += 1;
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
+                let nargs = bytecode[*pc] as usize;
+                *pc += 1;
 
                 let mut args_vec = Vec::with_capacity(nargs);
                 for _ in 0..nargs {
@@ -629,30 +630,46 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
                     }
                 }
                 args_vec.reverse();
-
                 let fun = get_constant(constants, idx)?;
-                // Builtins evaluate all arguments before calling
-                stack.push(fun);
+
+                if fun.typeof_() == SEXPTYPE::BUILTINSXP || fun.typeof_() == SEXPTYPE::SPECIALSXP {
+                    let mut arg_list =
+                        unsafe { Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue()) };
+                    for arg in args_vec.into_iter().rev() {
+                        let cell = with_arena(|arena| {
+                            arena.cons(arg.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                        });
+                        arg_list = Sexp::from_raw(cell).unwrap_or(arg_list);
+                    }
+
+                    let call = with_arena(|arena| {
+                        arena.cons(fun.as_raw(), arg_list.as_raw(), std::ptr::null_mut())
+                    });
+                    let call_sexp = unsafe { Sexp::from_raw_unchecked(call) };
+
+                    let result = crate::eval::eval::eval_lang_safe(call_sexp, env)
+                        .map_err(|e| format!("builtin call failed: {e}"))?;
+                    stack.push(result);
+                } else {
+                    stack.push(fun);
+                }
             }
             BCneg => {
                 let val = stack
                     .pop()
                     .ok_or_else(|| "empty stack on neg".to_string())?;
                 if val.typeof_() == SEXPTYPE::REALSXP {
-                    let v = val.real_elt(0).unwrap_or(0.0);
-                    stack.push(make_real(-v));
+                    stack.push(make_real(-val.real_elt(0).unwrap_or(0.0)));
                 } else if val.typeof_() == SEXPTYPE::INTSXP {
-                    let v = val.integer_elt(0).unwrap_or(0);
-                    stack.push(make_int(-v));
+                    stack.push(make_int(-val.integer_elt(0).unwrap_or(0)));
                 } else {
                     stack.push(val);
                 }
             }
             BCclosure => {
-                let idx = bytecode[pc] as usize;
-                pc += 1;
-                let val = get_constant(constants, idx)?;
-                stack.push(val);
+                let idx = bytecode[*pc] as usize;
+                *pc += 1;
+                stack.push(get_constant(constants, idx)?);
             }
             _ => {
                 return Err(format!("unknown bytecode opcode: {opcode}"));
@@ -660,9 +677,10 @@ pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, Stri
         }
     }
 
-    stack
+    let val = stack
         .pop()
-        .ok_or_else(|| "empty stack at end of bytecode".to_string())
+        .ok_or_else(|| "empty stack at end of bytecode".to_string())?;
+    Ok((val, ControlFlow::Normal))
 }
 
 fn get_constant(constants: Option<Sexp<'_>>, idx: usize) -> Result<Sexp<'_>, String> {

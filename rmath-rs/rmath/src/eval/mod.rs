@@ -1,4 +1,4 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, unused_variables)]
 
 //! R's core evaluator — ports R's src/main/eval.c.
 //!
@@ -19,6 +19,7 @@ pub mod bytecode;
 pub mod closure;
 pub mod context;
 pub mod dispatch;
+#[allow(clippy::module_inception)]
 pub mod eval;
 pub mod special;
 pub mod symbols;

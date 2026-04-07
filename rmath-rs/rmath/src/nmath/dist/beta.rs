@@ -124,6 +124,7 @@ fn lbeta_fn(a: f64, b: f64) -> f64 {
     lgammafn(a) + lgammafn(b) - lgammafn(a + b)
 }
 
+#[must_use]
 pub fn dbeta_inner(x: f64, a: f64, b: f64, give_log: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(a) || isnan(b) {
@@ -226,27 +227,21 @@ pub fn dbeta_inner(x: f64, a: f64, b: f64, give_log: bool) -> f64 {
 // ACM Trans. Math. Softw. 26(2), 2000, pp. 248-253
 
 /// pbeta_raw: raw beta distribution function (incomplete beta ratio)
-/// Simplified implementation - uses continued fraction for the main case
+/// Uses TOMS 708 bpser() power series algorithm.
 fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     if x >= 1.0 {
         return r_dt_1(lower_tail, log_p);
     }
-    // treat limit cases correctly here:
     if a == 0.0 || b == 0.0 || !r_finite(a) || !r_finite(b) {
-        // NB: 0 <= x < 1:
         if a == 0.0 && b == 0.0 {
-            // point mass 1/2 at each of {0,1}
             return if log_p { -M_LN2 } else { 0.5 };
         }
         if a == 0.0 || a / b == 0.0 {
-            // point mass 1 at 0 ==> P(X <= x) = 1, all x >= 0
             return r_dt_1(lower_tail, log_p);
         }
         if b == 0.0 || b / a == 0.0 {
-            // point mass 1 at 1 ==> P(X <= x) = 0, all x < 1
             return r_dt_0(lower_tail, log_p);
         }
-        // else, remaining case: a = b = Inf : point mass 1 at 1/2
         if x < 0.5 {
             return r_dt_0(lower_tail, log_p);
         } else {
@@ -257,18 +252,225 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
         return r_dt_0(lower_tail, log_p);
     }
 
-    // Now: 0 < a < Inf; 0 < b < Inf and 0 < x < 1
-    // Compute I_x(a,b) using continued fraction / series expansion
+    let x1 = 1.0 - x;
+    let use_symmetry = x > (a + 1.0) / (a + b + 2.0);
 
-    // For now, use a simplified approach:
-    // Use the relationship between the beta and binomial CDF:
-    // pbeta(x, a, b) = 1 - pbinom(a-1, a+b-1, x) when a+b are integer
-    // For non-integer cases, use the continued fraction.
+    let (ra, rb, rx, flip) = if use_symmetry {
+        (b, a, x1, true)
+    } else {
+        (a, b, x, false)
+    };
 
-    let x1 = 0.5 - x + 0.5; // = 1 - x
-    let (w, wc) = bratio_simplified(a, b, x, x1, log_p);
+    let lbeta_val = lbeta_fn(ra, rb);
+    let log_front = ra * log(rx) - log(ra) - lbeta_val;
 
-    if lower_tail { w } else { wc }
+    let mut c = 1.0_f64;
+    let mut sum = 0.0_f64;
+    for n in 1..1_0000_0000 {
+        let n_f = n as f64;
+        c *= (1.0 - rb / n_f) * rx;
+        let w = c / (ra + n_f);
+        sum += w;
+        if w.abs() < 1e-15 * sum.abs() {
+            break;
+        }
+    }
+
+    let w = if log_p {
+        log_front + log1p(ra * sum)
+    } else {
+        exp(log_front) * (1.0 + ra * sum)
+    };
+
+    let wc = if log_p {
+        r_log1_exp(w)
+    } else {
+        1.0 - w
+    };
+
+    if flip {
+        if lower_tail { wc } else { w }
+    } else {
+        if lower_tail { w } else { wc }
+    }
+}
+    if a == 0.0 || b == 0.0 || !r_finite(a) || !r_finite(b) {
+        if a == 0.0 && b == 0.0 {
+            return if log_p { -M_LN2 } else { 0.5 };
+        }
+        if a == 0.0 || a / b == 0.0 {
+            return r_dt_1(lower_tail, log_p);
+        }
+        if b == 0.0 || b / a == 0.0 {
+            return r_dt_0(lower_tail, log_p);
+        }
+        if x < 0.5 {
+            return r_dt_0(lower_tail, log_p);
+        } else {
+            return r_dt_1(lower_tail, log_p);
+        }
+    }
+    if x <= 0.0 {
+        return r_dt_0(lower_tail, log_p);
+    }
+
+    let x1 = 1.0 - x;
+    let use_symmetry = x > (a + 1.0) / (a + b + 2.0);
+
+    let (ra, rb, rx, flip) = if use_symmetry {
+        (b, a, x1, true)
+    } else {
+        (a, b, x, false)
+    };
+
+    let lbeta_val = lbeta_fn(ra, rb);
+    let log_front = ra * log(rx) - log(ra) - lbeta_val;
+
+    let mut sum = 1.0;
+    let mut term = 1.0;
+    for n in 1..10000 {
+        let n_f = n as f64;
+        term *= (ra + n_f - 1.0) * (1.0 - rb + n_f - 1.0) / ((ra + n_f) * n_f) * rx;
+        sum += term;
+        if term.abs() < 1e-15 * sum.abs() {
+            break;
+        }
+    }
+
+    let w = if log_p {
+        log_front + log(sum)
+    } else {
+        exp(log_front) * sum
+    };
+
+    let wc = if log_p {
+        r_log1_exp(w)
+    } else {
+        1.0 - w
+    };
+
+    if flip {
+        if lower_tail { wc } else { w }
+    } else {
+        if lower_tail { w } else { wc }
+    }
+}
+    if a == 0.0 || b == 0.0 || !r_finite(a) || !r_finite(b) {
+        if a == 0.0 && b == 0.0 {
+            return if log_p { -M_LN2 } else { 0.5 };
+        }
+        if a == 0.0 || a / b == 0.0 {
+            return r_dt_1(lower_tail, log_p);
+        }
+        if b == 0.0 || b / a == 0.0 {
+            return r_dt_0(lower_tail, log_p);
+        }
+        if x < 0.5 {
+            return r_dt_0(lower_tail, log_p);
+        } else {
+            return r_dt_1(lower_tail, log_p);
+        }
+    }
+    if x <= 0.0 {
+        return r_dt_0(lower_tail, log_p);
+    }
+
+    let x1 = 1.0 - x;
+    let use_symmetry = x > (a + 1.0) / (a + b + 2.0);
+
+    let (ra, rb, rx, rx1, flip) = if use_symmetry {
+        (b, a, x1, x, true)
+    } else {
+        (a, b, x, x1, false)
+    };
+
+    let lbeta_val = lbeta_fn(ra, rb);
+    let log_front = ra * log(rx) + rb * log(rx1) - log(ra) - lbeta_val;
+
+    let mut sum = 1.0;
+    let mut term = 1.0;
+    for n in 1..10000 {
+        let n_f = n as f64;
+        term *= (ra + n_f - 1.0) * (1.0 - rb + n_f - 1.0) / ((ra + n_f) * n_f) * rx;
+        sum += term;
+        if term.abs() < 1e-15 * sum.abs() {
+            break;
+        }
+    }
+
+    let w = if log_p {
+        log_front + log(sum)
+    } else {
+        exp(log_front) * sum
+    };
+
+    let wc = if log_p {
+        r_log1_exp(w)
+    } else {
+        1.0 - w
+    };
+
+    if flip {
+        if lower_tail { wc } else { w }
+    } else {
+        if lower_tail { w } else { wc }
+    }
+}
+        if a == 0.0 && b == 0.0 {
+            return if log_p { -M_LN2 } else { 0.5 };
+        }
+        if a == 0.0 || a / b == 0.0 {
+            return r_dt_1(lower_tail, log_p);
+        }
+        if b == 0.0 || b / a == 0.0 {
+            return r_dt_0(lower_tail, log_p);
+        }
+        if x < 0.5 {
+            return r_dt_0(lower_tail, log_p);
+        } else {
+            return r_dt_1(lower_tail, log_p);
+        }
+    }
+    if x <= 0.0 {
+        return r_dt_0(lower_tail, log_p);
+    }
+
+    let x1 = 1.0 - x;
+    let use_symmetry = x > (a + 1.0) / (a + b + 2.0);
+
+    let (ra, rb, rx, rx1, flip) = if use_symmetry {
+        (b, a, x1, x, true)
+    } else {
+        (a, b, x, x1, false)
+    };
+
+    let lbeta_val = lbeta_fn(ra, rb);
+    let log_front = ra * log(rx) + rb * log(rx1) - log(ra) - lbeta_val;
+
+    let mut sum = 1.0;
+    let mut term = 1.0;
+    for n in 1..10000 {
+        let n_f = n as f64;
+        term *= (ra + n_f - 1.0) / n_f * rx;
+        sum += term / (ra + n_f) * ra;
+        if term.abs() < 1e-15 * sum.abs() {
+            break;
+        }
+    }
+
+    let w = if log_p {
+        log_front + log(sum)
+    } else {
+        exp(log_front) * sum
+    };
+
+    let wc = if log_p { r_log1_exp(w) } else { 1.0 - w };
+
+    if flip {
+        if lower_tail { wc } else { w }
+    } else {
+        if lower_tail { w } else { wc }
+    }
 }
 
 /// Simplified bratio: computes the incomplete beta ratio I_x(a,b)
@@ -276,109 +478,11 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
 ///
 /// This is a simplified version that handles the common cases.
 /// For production use, the full TOMS 708 implementation should be ported.
-fn bratio_simplified(a: f64, b: f64, x: f64, x1: f64, log_p: bool) -> (f64, f64) {
-    // Use the continued fraction representation of the incomplete beta function
-    // Lentz's algorithm for continued fraction evaluation
-
-    let lbeta_val = lbeta_fn(a, b);
-
-    // Front factor: x^a * (1-x)^b / (a * B(a,b))
-    let front = if log_p {
-        a * log(x) + b * log(x1) - log(a) - lbeta_val
-    } else {
-        pow(x, a) * pow(x1, b) / (a * exp(lbeta_val))
-    };
-
-    // Use continued fraction to compute I_x(a,b) = front * CF
-    // CF = 1 + sum of terms using Lentz's method
-    let result = beta_cf(a, b, x, log_p, front);
-
-    let w = if log_p {
-        // result is already on log scale
-        result
-    } else {
-        result
-    };
-
-    let wc = if log_p {
-        // log(1 - exp(w))
-        r_log1_exp(w)
-    } else {
-        1.0 - w
-    };
-
-    (w, wc)
-}
 
 /// Evaluate the continued fraction for the incomplete beta function
 /// using Lentz's modified method
-fn beta_cf(a: f64, b: f64, x: f64, log_p: bool, log_front: f64) -> f64 {
-    const MAX_ITER: i32 = 2000;
-    const EPS: f64 = 3.0e-14; // DBL_EPSILON would be too strict for CF
-    const FPMIN: f64 = 1.0e-30;
 
-    // Use the continued fraction representation:
-    // I_x(a,b) = x^a * (1-x)^b / (a * B(a,b)) * 1/(1+ d_{m+1}/(1+ d_{m+2}/(1+...)))
-    // where d_m are given by:
-    // d_{2m+1} = -(a+m)(a+b+m) x / ((a+2m)(a+2m+1))
-    // d_{2m}   = m(b-m) x / ((a+2m-1)(a+2m))
-
-    let qab = a + b - 1.0;
-    let qap = a + 1.0;
-    let qam = a - 1.0;
-    let mut c = 1.0;
-    let mut d = 1.0 - qab * x / qap;
-    if fabs(d) < FPMIN {
-        d = FPMIN;
-    }
-    d = 1.0 / d;
-    let mut h = d;
-
-    for m in 1..=MAX_ITER {
-        let m_f = m as f64;
-
-        // Even step
-        let m2 = 2.0 * m_f;
-        let aa = m_f * (b - m_f) * x / ((qam + m2) * (a + m2));
-        d = 1.0 + aa * d;
-        if fabs(d) < FPMIN {
-            d = FPMIN;
-        }
-        c = 1.0 + aa / c;
-        if fabs(c) < FPMIN {
-            c = FPMIN;
-        }
-        d = 1.0 / d;
-        let del = d * c;
-        h *= del;
-
-        // Odd step
-        let m1 = m2 + 1.0;
-        let aa = -(a + m_f) * (qab + m_f) * x / ((a + m1) * (qap + m1));
-        d = 1.0 + aa * d;
-        if fabs(d) < FPMIN {
-            d = FPMIN;
-        }
-        c = 1.0 + aa / c;
-        if fabs(c) < FPMIN {
-            c = FPMIN;
-        }
-        d = 1.0 / d;
-        let del = d * c;
-        h *= del;
-
-        if fabs(del - 1.0) < EPS {
-            break;
-        }
-    }
-
-    if log_p {
-        log_front + log(fabs(h))
-    } else {
-        log_front.exp() * h
-    }
-}
-
+#[must_use]
 pub fn pbeta_inner(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(a) || isnan(b) {
@@ -972,6 +1076,7 @@ fn compute_qbeta_return(
     qb
 }
 
+#[must_use]
 pub fn qbeta_inner(alpha: f64, p: f64, q: f64, lower_tail: bool, log_p: bool) -> f64 {
     // test for admissibility of parameters
     // IEEE_754
@@ -1010,6 +1115,7 @@ thread_local! {
     static RB_K2: Cell<f64> = Cell::new(0.0);
 }
 
+#[must_use]
 pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
     const EXPMAX: f64 = (DBL_MAX_EXP as f64) * M_LN2; // = log(DBL_MAX)
 
@@ -1144,41 +1250,49 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
 // FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dbeta_inner(x, a, b, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dbeta_inner(x, a, b, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     pbeta_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     pbeta_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbeta_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbeta_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)

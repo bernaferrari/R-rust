@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Port of R's src/library/grid/src/unit.c (2043 lines)
@@ -129,10 +128,9 @@ unsafe fn isGrobUnit(x: c_int) -> bool {
  * Global null layout mode
  * ============================== */
 
-static mut L_nullLayoutMode: c_int = 0;
+thread_local! { static L_nullLayoutMode: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
-pub static mut L_nullLayoutMode_ptr: c_int = 0;
+thread_local! { pub static L_nullLayoutMode_ptr: Cell<c_int> = Cell::new(0); }
 
 /* ==============================
  * unit() -- construct a unit object

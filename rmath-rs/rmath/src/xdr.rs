@@ -628,7 +628,8 @@ pub unsafe extern "C" fn xdr_bytes(
                 }
                 if sp.is_null() {
                     // Allocate memory (mirrors C's mem_alloc / malloc)
-                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1).unwrap();
+                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
+                        .expect("unwrap on None/Err");
                     sp = std::alloc::alloc(layout) as *mut u8;
                     if sp.is_null() {
                         return FALSE;
@@ -645,7 +646,8 @@ pub unsafe extern "C" fn xdr_bytes(
             XdrOp::Free => {
                 if !sp.is_null() {
                     // Free the allocated memory
-                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1).unwrap();
+                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
+                        .expect("unwrap on None/Err");
                     std::alloc::dealloc(sp, layout);
                     *cpp = ptr::null_mut();
                 }
@@ -709,7 +711,8 @@ pub unsafe extern "C" fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize:
                     return TRUE;
                 }
                 if sp.is_null() {
-                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1).unwrap();
+                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
+                        .expect("unwrap on None/Err");
                     sp = std::alloc::alloc(layout) as *mut u8;
                     if sp.is_null() {
                         return FALSE;
@@ -727,7 +730,8 @@ pub unsafe extern "C" fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize:
             XdrOp::Encode => xdr_opaque(xdrs, sp as *mut c_void, size),
             XdrOp::Free => {
                 if !sp.is_null() {
-                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1).unwrap();
+                    let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
+                        .expect("unwrap on None/Err");
                     std::alloc::dealloc(sp, layout);
                     *cpp = ptr::null_mut();
                 }

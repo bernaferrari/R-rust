@@ -14,7 +14,6 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 use std::os::raw::c_int;
-use std::ptr;
 
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
@@ -271,6 +270,8 @@ pub unsafe fn do_asplit(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

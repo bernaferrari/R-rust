@@ -1,17 +1,16 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/unix/dynload.c -- Unix dynamic loading via dlopen/dlsym.
 //!
 //! Implements `InitFunctionHashing` which sets up the OS-specific dynamic
 //! loading vtable using POSIX dlopen/dlsym/dlclose.
 
-use std::ffi::{CStr, CString};
+use std::cell::RefCell;
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-
-use crate::sexp::ffi::SEXP;
 
 // ---------------------------------------------------------------------------
 // Opaque types
@@ -52,8 +51,7 @@ const RTLD_LOCAL: c_int = 0x4;
 // Static OS dynamic symbol vtable
 // ---------------------------------------------------------------------------
 
-/// OS-specific dynamic symbol operations vtable.
-static mut R_osDynSymbol_table: OsDynSymbolTable = OsDynSymbolTable::new();
+thread_local! { static R_osDynSymbol_table: RefCell<OsDynSymbolTable> = RefCell::new(OsDynSymbolTable::new()); }
 
 struct OsDynSymbolTable {
     loadLibrary:
@@ -183,12 +181,12 @@ unsafe fn libc_dlerror() -> *mut c_char {
 /// Sets up the OS-specific vtable for dlopen/dlsym/dlclose.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn InitFunctionHashing() {
-    unsafe {
-        R_osDynSymbol_table.loadLibrary = Some(load_library);
-        R_osDynSymbol_table.dlsym_fn = Some(local_dlsym);
-        R_osDynSymbol_table.closeLibrary = Some(close_library);
-        R_osDynSymbol_table.getError = Some(get_system_error);
-    }
+    R_osDynSymbol_table.with(|v| {
+        v.borrow_mut().loadLibrary = Some(load_library);
+        v.borrow_mut().dlsym_fn = Some(local_dlsym);
+        v.borrow_mut().closeLibrary = Some(close_library);
+        v.borrow_mut().getError = Some(get_system_error);
+    });
 }
 
 /// Delete cached symbols for a DLL (stub).
@@ -242,26 +240,12 @@ mod tests {
     fn test_init_function_hashing_runs() {
         unsafe {
             InitFunctionHashing();
-            assert!(
-                (*std::ptr::addr_of!(R_osDynSymbol_table))
-                    .loadLibrary
-                    .is_some()
-            );
-            assert!(
-                (*std::ptr::addr_of!(R_osDynSymbol_table))
-                    .dlsym_fn
-                    .is_some()
-            );
-            assert!(
-                (*std::ptr::addr_of!(R_osDynSymbol_table))
-                    .closeLibrary
-                    .is_some()
-            );
-            assert!(
-                (*std::ptr::addr_of!(R_osDynSymbol_table))
-                    .getError
-                    .is_some()
-            );
+            R_osDynSymbol_table.with(|v| {
+                assert!(v.borrow().loadLibrary.is_some());
+                assert!(v.borrow().dlsym_fn.is_some());
+                assert!(v.borrow().closeLibrary.is_some());
+                assert!(v.borrow().getError.is_some());
+            });
         }
     }
 }

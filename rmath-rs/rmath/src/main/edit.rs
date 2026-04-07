@@ -12,6 +12,7 @@
 //! Provides do_edit for interactive editing of R objects and R_EditFiles
 //! for editing external files with the system editor.
 
+use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -19,11 +20,9 @@ use std::ptr;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 
-/// Default file name for editing.
-static mut DefaultFileName: *mut c_char = ptr::null_mut();
+thread_local! { static DefaultFileName: Cell<*mut c_char> = Cell::new(ptr::null_mut()); }
 
-/// Whether the edit file has been used.
-static mut EdFileUsed: c_int = 0;
+thread_local! { static EdFileUsed: Cell<c_int> = Cell::new(0); }
 
 /// Initialize the edit subsystem — creates the default temp file name.
 ///
@@ -51,28 +50,28 @@ pub unsafe fn InitEd() {
     // Let's unlink and just keep the name
     libc::unlink(template_buf);
 
-    core::ptr::addr_of_mut!(DefaultFileName).write(template_buf);
-    EdFileUsed = 0;
+    DefaultFileName.with(|v| v.set(template_buf));
+    EdFileUsed.with(|v| v.set(0));
 }
 
 /// Clean up the edit subsystem — removes the temp file if it was used.
 ///
 /// Port of: void CleanEd(void)
 pub unsafe fn CleanEd() {
-    if EdFileUsed != 0 && !DefaultFileName.is_null() {
-        libc::unlink(DefaultFileName);
+    let file_used = EdFileUsed.with(|v| v.get());
+    let file_name = DefaultFileName.with(|v| v.get());
+    if file_used != 0 && !file_name.is_null() {
+        libc::unlink(file_name);
     }
-    if !DefaultFileName.is_null() {
-        libc::free(DefaultFileName as *mut std::ffi::c_void);
-        DefaultFileName = ptr::null_mut();
+    if !file_name.is_null() {
+        libc::free(file_name as *mut std::ffi::c_void);
+        DefaultFileName.with(|v| v.set(ptr::null_mut()));
     }
 }
 
 /// Get the default edit file name.
-///
-/// Returns the default file name for the edit buffer.
-pub(crate) unsafe fn GetDefaultFileName() -> *mut c_char {
-    DefaultFileName
+pub(crate) fn GetDefaultFileName() -> *mut c_char {
+    DefaultFileName.with(|v| v.get())
 }
 
 /// R_EditFiles — invoke the system editor on one or more files.
@@ -196,7 +195,7 @@ pub unsafe fn do_edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     use_default_file = filename.is_null();
     if use_default_file {
-        filename = DefaultFileName;
+        filename = DefaultFileName.with(|v| v.get());
     }
 
     if filename.is_null() {
@@ -257,9 +256,9 @@ mod tests {
     fn test_init_ed() {
         unsafe {
             InitEd();
-            // Should create a temp file name
-            if !DefaultFileName.is_null() {
-                let name = CStr::from_ptr(DefaultFileName);
+            let fn_val = DefaultFileName.with(|v| v.get());
+            if !fn_val.is_null() {
+                let name = CStr::from_ptr(fn_val);
                 let name_str = name.to_str().unwrap_or("");
                 assert!(name_str.contains("Redit"));
             }
@@ -271,11 +270,10 @@ mod tests {
     fn test_init_cleanup_cycle() {
         unsafe {
             InitEd();
-            let name_before = DefaultFileName;
+            let name_before = DefaultFileName.with(|v| v.get());
             CleanEd();
-            // After cleanup, DefaultFileName should be null
-            assert!(DefaultFileName.is_null());
-            assert_ne!(name_before, ptr::null_mut()); // was allocated
+            assert!(DefaultFileName.with(|v| v.get()).is_null());
+            assert_ne!(name_before, ptr::null_mut());
         }
     }
 

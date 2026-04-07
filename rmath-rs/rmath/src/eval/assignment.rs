@@ -4,17 +4,10 @@
 //!
 //! Handles `<-`, `<<-`, and `=` assignment operators.
 
-use std::ptr;
-
-use crate::sexp::accessors::{
-    CADDDR, CADDR, CADR, CAR, CDDDR, CDR, Rf_isNull, SETCAR, TAG, TYPEOF,
-};
-use crate::sexp::constructors::*;
-use crate::sexp::envir::{R_findVarInFrame, defineVar, setVar};
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::accessors::{CAR, CDR, TYPEOF};
+use crate::sexp::envir::{defineVar, setVar};
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
-use crate::sexp::memory_ext::mkPROMISE;
-use crate::sexp::symbol::Rf_install;
 
 use super::eval::Rf_eval;
 

@@ -13,6 +13,7 @@ const A21: i64 = 527612;
 const A23N: i64 = 1370589;
 
 impl LecuyerCmrg {
+    #[must_use]
     pub fn new() -> Self {
         Self { s: [0; 6] }
     }
@@ -31,6 +32,7 @@ impl LecuyerCmrg {
         }
     }
 
+    #[must_use]
     pub fn get_rand(&mut self) -> f64 {
         let [i0, i1, i2, i3, i4, i5] = self.s;
 

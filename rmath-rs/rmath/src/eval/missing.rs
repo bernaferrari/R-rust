@@ -23,6 +23,7 @@
 //! - R_initEvalSymbols: initialize eval symbols
 //! - Various helper functions
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -976,20 +977,18 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Whether the bytecode interpreter is active (to prevent recursion).
-static mut R_BCIntActive: c_int = 0;
+thread_local! { static R_BCIntActive: Cell<c_int> = Cell::new(0); }
 
 /// Get whether the bytecode interpreter is active.
 #[inline]
 pub unsafe fn get_R_BCIntActive() -> c_int {
-    unsafe { R_BCIntActive }
+    R_BCIntActive.with(|v| v.get())
 }
 
 /// Set whether the bytecode interpreter is active.
 #[inline]
 pub unsafe fn set_R_BCIntActive(val: c_int) {
-    unsafe {
-        R_BCIntActive = val;
-    }
+    R_BCIntActive.with(|v| v.set(val))
 }
 
 // ---------------------------------------------------------------------------

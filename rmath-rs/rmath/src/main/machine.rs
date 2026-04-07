@@ -5,6 +5,7 @@
 //! Implements `Init_R_Machine` which computes `.Machine` platform constants
 //! using `machar` and stores them in the specified environment.
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_double, c_int, c_void};
 
 use crate::main::machar;
@@ -46,11 +47,9 @@ unsafe fn install(name: *const std::os::raw::c_char) -> SEXP {
 // R_AccuracyInfo
 // ---------------------------------------------------------------------------
 
-/// Machine accuracy information computed by machar.
-static mut R_AccuracyInfo: AccuracyInfo = AccuracyInfo::new();
+thread_local! { static R_AccuracyInfo: RefCell<AccuracyInfo> = RefCell::new(AccuracyInfo::new()); }
 
-/// R_dec_min_exponent: smallest decimal exponent.
-static mut R_dec_min_exponent: c_int = 0;
+thread_local! { static R_dec_min_exponent: Cell<c_int> = Cell::new(0); }
 
 struct AccuracyInfo {
     ibeta: c_int,
@@ -95,85 +94,83 @@ impl AccuracyInfo {
 /// Initialize the `.Machine` variable in the given environment.
 pub unsafe fn Init_R_Machine(_rho: SEXP) {
     unsafe {
-        // Call machar to determine machine characteristics
-        let info = std::ptr::addr_of_mut!(R_AccuracyInfo);
-        machar::machar(
-            &mut (*info).ibeta,
-            &mut (*info).it,
-            &mut (*info).irnd,
-            &mut (*info).ngrd,
-            &mut (*info).machep,
-            &mut (*info).negep,
-            &mut (*info).iexp,
-            &mut (*info).minexp,
-            &mut (*info).maxexp,
-            &mut (*info).eps,
-            &mut (*info).epsneg,
-            &mut (*info).xmin,
-            &mut (*info).xmax,
-        );
+        R_AccuracyInfo.with(|v| {
+            let mut info = v.borrow_mut();
+            machar::machar(
+                &mut info.ibeta,
+                &mut info.it,
+                &mut info.irnd,
+                &mut info.ngrd,
+                &mut info.machep,
+                &mut info.negep,
+                &mut info.iexp,
+                &mut info.minexp,
+                &mut info.maxexp,
+                &mut info.eps,
+                &mut info.epsneg,
+                &mut info.xmin,
+                &mut info.xmax,
+            );
 
-        *std::ptr::addr_of_mut!(R_dec_min_exponent) = ((*info).xmin.log10()).floor() as c_int;
+            R_dec_min_exponent.set((info.xmin.log10()).floor() as c_int);
 
-        // On most modern platforms, long double == double, so MACH_SIZE = 19
-        let mach_size: usize = 19;
+            // On most modern platforms, long double == double, so MACH_SIZE = 19
+            let mach_size: usize = 19;
 
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP.0, mach_size as c_int);
-        let nms = Rf_allocVector(SEXPTYPE::STRSXP.0, mach_size as c_int);
+            let ans = Rf_allocVector(SEXPTYPE::VECSXP.0, mach_size as c_int);
+            let nms = Rf_allocVector(SEXPTYPE::STRSXP.0, mach_size as c_int);
 
-        let names: &[&[u8]] = &[
-            b"double.eps\0",
-            b"double.neg.eps\0",
-            b"double.xmin\0",
-            b"double.xmax\0",
-            b"double.base\0",
-            b"double.digits\0",
-            b"double.rounding\0",
-            b"double.guard\0",
-            b"double.ulp.digits\0",
-            b"double.neg.ulp.digits\0",
-            b"double.exponent\0",
-            b"double.min.exp\0",
-            b"double.max.exp\0",
-            b"integer.max\0",
-            b"sizeof.long\0",
-            b"sizeof.longlong\0",
-            b"sizeof.longdouble\0",
-            b"sizeof.pointer\0",
-            b"sizeof.time_t\0",
-        ];
+            let names: &[&[u8]] = &[
+                b"double.eps\0",
+                b"double.neg.eps\0",
+                b"double.xmin\0",
+                b"double.xmax\0",
+                b"double.base\0",
+                b"double.digits\0",
+                b"double.rounding\0",
+                b"double.guard\0",
+                b"double.ulp.digits\0",
+                b"double.neg.ulp.digits\0",
+                b"double.exponent\0",
+                b"double.min.exp\0",
+                b"double.max.exp\0",
+                b"integer.max\0",
+                b"sizeof.long\0",
+                b"sizeof.longlong\0",
+                b"sizeof.longdouble\0",
+                b"sizeof.pointer\0",
+                b"sizeof.time_t\0",
+            ];
 
-        // Set machine constants
-        let info = &*std::ptr::addr_of!(R_AccuracyInfo);
-        let values: [SEXP; 19] = [
-            Rf_ScalarReal(info.eps),
-            Rf_ScalarReal(info.epsneg),
-            Rf_ScalarReal(info.xmin),
-            Rf_ScalarReal(info.xmax),
-            Rf_ScalarInteger(info.ibeta),
-            Rf_ScalarInteger(info.it),
-            Rf_ScalarInteger(info.irnd),
-            Rf_ScalarInteger(info.ngrd),
-            Rf_ScalarInteger(info.machep),
-            Rf_ScalarInteger(info.negep),
-            Rf_ScalarInteger(info.iexp),
-            Rf_ScalarInteger(info.minexp),
-            Rf_ScalarInteger(info.maxexp),
-            Rf_ScalarInteger(i32::MAX),
-            Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
-            Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
-            Rf_ScalarInteger(std::mem::size_of::<u128>() as c_int), // long double on some platforms
-            Rf_ScalarInteger(std::mem::size_of::<*const c_void>() as c_int),
-            Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int), // time_t
-        ];
+            let values: [SEXP; 19] = [
+                Rf_ScalarReal(info.eps),
+                Rf_ScalarReal(info.epsneg),
+                Rf_ScalarReal(info.xmin),
+                Rf_ScalarReal(info.xmax),
+                Rf_ScalarInteger(info.ibeta),
+                Rf_ScalarInteger(info.it),
+                Rf_ScalarInteger(info.irnd),
+                Rf_ScalarInteger(info.ngrd),
+                Rf_ScalarInteger(info.machep),
+                Rf_ScalarInteger(info.negep),
+                Rf_ScalarInteger(info.iexp),
+                Rf_ScalarInteger(info.minexp),
+                Rf_ScalarInteger(info.maxexp),
+                Rf_ScalarInteger(i32::MAX),
+                Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
+                Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
+                Rf_ScalarInteger(std::mem::size_of::<u128>() as c_int),
+                Rf_ScalarInteger(std::mem::size_of::<*const c_void>() as c_int),
+                Rf_ScalarInteger(std::mem::size_of::<i64>() as c_int),
+            ];
 
-        for i in 0..mach_size.min(names.len()).min(values.len()) {
-            SET_STRING_ELT(nms, i as i64, Rf_mkChar(names[i].as_ptr() as *const _));
-            SET_VECTOR_ELT(ans, i as i64, values[i]);
-        }
+            for i in 0..mach_size.min(names.len()).min(values.len()) {
+                SET_STRING_ELT(nms, i as i64, Rf_mkChar(names[i].as_ptr() as *const _));
+                SET_VECTOR_ELT(ans, i as i64, values[i]);
+            }
 
-        setAttrib(ans, R_NamesSymbol(), nms);
-        // defineVar is stubbed since environment system is not fully ported
+            setAttrib(ans, R_NamesSymbol(), nms);
+        });
     }
 }
 
@@ -181,10 +178,9 @@ pub unsafe fn Init_R_Machine(_rho: SEXP) {
 // Accessors for machine info (used by other modules)
 // ---------------------------------------------------------------------------
 
-/// Get the smallest decimal exponent.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Dec_min_exponent() -> c_int {
-    unsafe { R_dec_min_exponent }
+pub extern "C" fn R_Dec_min_exponent() -> c_int {
+    R_dec_min_exponent.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------

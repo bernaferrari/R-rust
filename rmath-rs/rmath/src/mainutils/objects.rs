@@ -7,6 +7,7 @@
 //!
 //! Original file: r-source/src/main/objects.c (1,879 lines)
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -16,7 +17,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::{R_GlobalContext, RCNTXT};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::*;
-use crate::sexp::memory_ext::{NewEnvironment, allocList};
+use crate::sexp::memory_ext::allocList;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -68,7 +69,7 @@ unsafe fn S3MethodsTable_symbol() -> SEXP {
 /// Install a named symbol, caching the result.
 unsafe fn sym(name: &str) -> SEXP {
     unsafe {
-        let cstr = std::ffi::CString::new(name).unwrap();
+        let cstr = std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
         Rf_install(cstr.as_ptr())
     }
 }
@@ -84,9 +85,9 @@ pub type R_stdGen_ptr_t = Option<unsafe extern "C" fn(arg: SEXP, env: SEXP, fdef
 // Primitive method dispatch state
 // ---------------------------------------------------------------------------
 
-static mut MAX_METHODS_OFFSET: c_int = 0;
-static mut CUR_MAX_OFFSET: c_int = 0;
-static mut ALLOW_PRIMITIVE_METHODS: c_int = TRUE;
+thread_local! { static MAX_METHODS_OFFSET: Cell<c_int> = Cell::new(0); }
+thread_local! { static CUR_MAX_OFFSET: Cell<c_int> = Cell::new(0); }
+thread_local! { static ALLOW_PRIMITIVE_METHODS: Cell<c_int> = Cell::new(TRUE); }
 const DEFAULT_N_PRIM_METHODS: c_int = 100;
 
 /// Primitive method status codes.
@@ -100,26 +101,22 @@ pub enum prim_methods_t {
 }
 
 // Storage for primitive method tables (initialized lazily).
-static mut PRIM_METHODS: *mut prim_methods_t = ptr::null_mut();
-static mut PRIM_GENERICS: *mut SEXP = ptr::null_mut();
-static mut PRIM_MLIST: *mut SEXP = ptr::null_mut();
+thread_local! { static PRIM_METHODS: Cell<*mut prim_methods_t> = Cell::new(ptr::null_mut()); }
+thread_local! { static PRIM_GENERICS: Cell<*mut SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static PRIM_MLIST: Cell<*mut SEXP> = Cell::new(ptr::null_mut()); }
 
-/// The standardGeneric function pointer (set when methods package loads).
-static mut R_STANDARD_GENERIC_PTR: R_stdGen_ptr_t = None;
+thread_local! { static R_STANDARD_GENERIC_PTR: Cell<R_stdGen_ptr_t> = Cell::new(None); }
 
-/// Quick method check function pointer (set by methods package).
-static mut QUICK_METHOD_CHECK_PTR: R_stdGen_ptr_t = None;
+thread_local! { static QUICK_METHOD_CHECK_PTR: Cell<R_stdGen_ptr_t> = Cell::new(None); }
 
-/// Deferred default method marker symbol.
-static mut DEFERRED_DEFAULT_OBJECT: SEXP = ptr::null_mut();
+thread_local! { static DEFERRED_DEFAULT_OBJECT: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Helper: CHAR wrapper that returns a *const c_char from a CHARSXP
 // ---------------------------------------------------------------------------
 
-/// Get the C string from a CHARSXP (CHAR macro equivalent).
-/// Note: The main CHAR() is in accessors.rs; we use it directly from there.
-
+// /// Get the C string from a CHARSXP (CHAR macro equivalent).
+// /// Note: The main CHAR() is in accessors.rs; we use it directly from there.
 // ---------------------------------------------------------------------------
 // Helper: isString check
 // ---------------------------------------------------------------------------
@@ -556,11 +553,9 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
                 let mut b_iter = (*cptr).promiseargs;
                 while !b_iter.is_null() && b_iter != R_NilValue() {
                     let b_tag = TAG(b_iter);
-                    if !b_tag.is_null() && b_tag != R_NilValue() {
-                        if b_tag == tag {
-                            s = CAR(b_iter);
-                            break;
-                        }
+                    if !b_tag.is_null() && b_tag != R_NilValue() && b_tag == tag {
+                        s = CAR(b_iter);
+                        break;
                     }
                     b_iter = CDR(b_iter);
                 }
@@ -592,12 +587,13 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
             }
         }
 
-        if !s.is_null() && TYPEOF(s) == SEXPTYPE::PROMSXP.0 as c_int {
-            if PROMISE_IS_EVALUATED(s) != FALSE {
-                s = PRVALUE(s);
-            }
-            // else: leave as promise (caller will force it)
+        if !s.is_null()
+            && TYPEOF(s) == SEXPTYPE::PROMSXP.0 as c_int
+            && PROMISE_IS_EVALUATED(s) != FALSE
+        {
+            s = PRVALUE(s);
         }
+        // else: leave as promise (caller will force it)
 
         s
     }
@@ -1313,6 +1309,7 @@ pub unsafe fn readS3VarsFromFrame(
 /// R's NextMethod() function, called via .Internal.
 ///
 /// Implements the NextMethod protocol for S3 dispatch.
+#[allow(clippy::if_same_then_else)]
 pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let cptr = R_GlobalContext();
@@ -1393,14 +1390,11 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         // Get formals and matched args
         let s_callfun = (*found_cptr).closure;
-        if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP.0 as c_int {
-            if s_callfun == R_UnboundValue() {
-                Rf_unprotect(1);
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "no calling generic was found: was a method called directly?"
-                        .to_string(),
-                });
-            }
+        if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP.0 as c_int && s_callfun == R_UnboundValue() {
+            Rf_unprotect(1);
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "no calling generic was found: was a method called directly?".to_string(),
+            });
         }
 
         let formals = FORMALS(s_callfun);
@@ -1485,7 +1479,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         // Find current method in .Class
         let mut nextfun: SEXP = R_NilValue();
         let mut nextfunSignature: SEXP = R_NilValue();
-        let mut start_j: c_int = 0;
+        let start_j: c_int = 0;
 
         // Find the method currently being invoked
         let mut b: *const c_char = ptr::null();
@@ -1695,7 +1689,7 @@ unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 
         let nwhat = LENGTH(what);
         let isvec = if isLogical(which) != FALSE && LENGTH(which) == 1 {
-            LOGICAL(which) != std::ptr::null_mut() && *LOGICAL(which) == TRUE
+            !LOGICAL(which).is_null() && *LOGICAL(which) == TRUE
         } else {
             false
         };
@@ -1768,7 +1762,7 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         // If 'what' is an object (not a character vector), try nameOfClass
         if OBJECT(what) != FALSE && TYPEOF(what) != SEXPTYPE::STRSXP.0 as c_int {
             let name = nameOfClass(what, env);
-            if name != R_NilValue() && name.is_null() == false {
+            if name != R_NilValue() && !name.is_null() {
                 Rf_protect(name);
                 let val = inherits3(x, name, which);
                 Rf_unprotect(1);
@@ -2005,7 +1999,7 @@ pub unsafe extern "C" fn R_check_class_etc(x: SEXP, valid: *const *const c_char)
 
 /// Get the current standardGeneric function pointer.
 unsafe fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
-    unsafe { R_STANDARD_GENERIC_PTR }
+    R_STANDARD_GENERIC_PTR.with(|v| v.get())
 }
 
 /// Set the standardGeneric function pointer.
@@ -2014,20 +2008,16 @@ pub unsafe extern "C" fn R_set_standardGeneric_ptr(
     val: R_stdGen_ptr_t,
     _envir: SEXP,
 ) -> R_stdGen_ptr_t {
-    unsafe {
-        let old = R_STANDARD_GENERIC_PTR;
-        R_STANDARD_GENERIC_PTR = val;
-        old
-    }
+    let old = R_STANDARD_GENERIC_PTR.with(|v| v.get());
+    R_STANDARD_GENERIC_PTR.with(|v| v.set(val));
+    old
 }
 
 /// Check whether S4 methods dispatch is currently enabled.
 pub unsafe fn isMethodsDispatchOn() -> c_int {
-    unsafe {
-        match R_STANDARD_GENERIC_PTR {
-            None => FALSE,
-            Some(_) => TRUE,
-        }
+    match R_STANDARD_GENERIC_PTR.with(|v| v.get()) {
+        None => FALSE,
+        Some(_) => TRUE,
     }
 }
 
@@ -2121,59 +2111,75 @@ pub unsafe fn do_set_prim_method(
         };
 
         // Allocate tables if needed (simplified)
-        if PRIM_METHODS.is_null() {
+        if PRIM_METHODS.with(|v| v.get()).is_null() {
             let n = DEFAULT_N_PRIM_METHODS as usize;
-            PRIM_METHODS =
-                libc::malloc(std::mem::size_of::<prim_methods_t>() * n) as *mut prim_methods_t;
-            PRIM_GENERICS = libc::malloc(std::mem::size_of::<SEXP>() * n) as *mut SEXP;
-            PRIM_MLIST = libc::malloc(std::mem::size_of::<SEXP>() * n) as *mut SEXP;
-            if !PRIM_METHODS.is_null() {
+            PRIM_METHODS.with(|v| {
+                v.set(
+                libc::malloc(std::mem::size_of::<prim_methods_t>() * n) as *mut prim_methods_t
+            )
+            });
+            PRIM_GENERICS
+                .with(|v| v.set(libc::malloc(std::mem::size_of::<SEXP>() * n) as *mut SEXP));
+            PRIM_MLIST.with(|v| v.set(libc::malloc(std::mem::size_of::<SEXP>() * n) as *mut SEXP));
+            if !PRIM_METHODS.with(|v| v.get()).is_null() {
                 for i in 0..n {
-                    *PRIM_METHODS.add(i) = prim_methods_t::NO_METHODS;
+                    *PRIM_METHODS.with(|v| v.get()).add(i) = prim_methods_t::NO_METHODS;
                 }
             }
-            if !PRIM_GENERICS.is_null() {
+            if !PRIM_GENERICS.with(|v| v.get()).is_null() {
                 libc::memset(
-                    PRIM_GENERICS as *mut c_void,
+                    PRIM_GENERICS.with(|v| v.get()) as *mut c_void,
                     0,
                     std::mem::size_of::<SEXP>() * n,
                 );
             }
-            if !PRIM_MLIST.is_null() {
+            if !PRIM_MLIST.with(|v| v.get()).is_null() {
                 libc::memset(
-                    PRIM_MLIST as *mut c_void,
+                    PRIM_MLIST.with(|v| v.get()) as *mut c_void,
                     0,
                     std::mem::size_of::<SEXP>() * n,
                 );
             }
-            MAX_METHODS_OFFSET = DEFAULT_N_PRIM_METHODS;
+            MAX_METHODS_OFFSET.with(|v| v.set(DEFAULT_N_PRIM_METHODS));
         }
 
-        if !PRIM_METHODS.is_null() && offset < MAX_METHODS_OFFSET {
-            *PRIM_METHODS.add(offset as usize) = code;
-            if offset > CUR_MAX_OFFSET {
-                CUR_MAX_OFFSET = offset;
+        if !PRIM_METHODS.with(|v| v.get()).is_null()
+            && offset < MAX_METHODS_OFFSET.with(|v| v.get())
+        {
+            *PRIM_METHODS.with(|v| v.get()).add(offset as usize) = code;
+            if offset > CUR_MAX_OFFSET.with(|v| v.get()) {
+                CUR_MAX_OFFSET.with(|v| v.set(offset));
             }
         }
 
         // Store generic if provided
-        if !PRIM_GENERICS.is_null() && offset < MAX_METHODS_OFFSET {
+        if !PRIM_GENERICS.with(|v| v.get()).is_null()
+            && offset < MAX_METHODS_OFFSET.with(|v| v.get())
+        {
             if code == prim_methods_t::NO_METHODS {
-                ptr::write(PRIM_GENERICS.add(offset as usize), ptr::null_mut());
-                ptr::write(PRIM_MLIST.add(offset as usize), ptr::null_mut());
+                ptr::write(
+                    PRIM_GENERICS.with(|v| v.get()).add(offset as usize),
+                    ptr::null_mut(),
+                );
+                ptr::write(
+                    PRIM_MLIST.with(|v| v.get()).add(offset as usize),
+                    ptr::null_mut(),
+                );
             } else if !fundef.is_null()
                 && fundef != R_NilValue()
-                && ptr::read(PRIM_GENERICS.add(offset as usize)).is_null()
+                && ptr::read(PRIM_GENERICS.with(|v| v.get()).add(offset as usize)).is_null()
             {
-                ptr::write(PRIM_GENERICS.add(offset as usize), fundef);
+                ptr::write(PRIM_GENERICS.with(|v| v.get()).add(offset as usize), fundef);
             }
             if code == prim_methods_t::HAS_METHODS && !mlist.is_null() && mlist != R_NilValue() {
-                ptr::write(PRIM_MLIST.add(offset as usize), mlist);
+                ptr::write(PRIM_MLIST.with(|v| v.get()).add(offset as usize), mlist);
             }
         }
 
-        if !PRIM_GENERICS.is_null() && offset < MAX_METHODS_OFFSET {
-            ptr::read(PRIM_GENERICS.add(offset as usize))
+        if !PRIM_GENERICS.with(|v| v.get()).is_null()
+            && offset < MAX_METHODS_OFFSET.with(|v| v.get())
+        {
+            ptr::read(PRIM_GENERICS.with(|v| v.get()).add(offset as usize))
         } else {
             R_NilValue()
         }
@@ -2222,7 +2228,7 @@ pub unsafe extern "C" fn R_has_methods(_op: SEXP) -> c_int {
         if _op.is_null() || TYPEOF(_op) == SEXPTYPE::CLOSXP.0 as c_int {
             return TRUE;
         }
-        if ALLOW_PRIMITIVE_METHODS == FALSE {
+        if ALLOW_PRIMITIVE_METHODS.with(|v| v.get()) == FALSE {
             return FALSE;
         }
         FALSE
@@ -2233,20 +2239,21 @@ pub unsafe extern "C" fn R_has_methods(_op: SEXP) -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_deferred_default_method() -> SEXP {
     unsafe {
-        if DEFERRED_DEFAULT_OBJECT.is_null() {
-            DEFERRED_DEFAULT_OBJECT =
-                Rf_install(b"__Deferred_Default_Marker__\x00".as_ptr() as *const c_char);
+        if DEFERRED_DEFAULT_OBJECT.with(|v| v.get()).is_null() {
+            DEFERRED_DEFAULT_OBJECT.with(|v| {
+                v.set(Rf_install(
+                    b"__Deferred_Default_Marker__\x00".as_ptr() as *const c_char
+                ))
+            });
         }
-        DEFERRED_DEFAULT_OBJECT
+        DEFERRED_DEFAULT_OBJECT.with(|v| v.get())
     }
 }
 
 /// R_set_quick_method_check -- set the quick method check function pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
-    unsafe {
-        QUICK_METHOD_CHECK_PTR = _value;
-    }
+    QUICK_METHOD_CHECK_PTR.with(|v| v.set(_value));
 }
 
 /// R_possible_dispatch -- try to dispatch a formal method for a primitive.

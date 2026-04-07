@@ -4,6 +4,7 @@
 
 #![allow(non_snake_case, dead_code)]
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_void};
 use std::ptr;
 
@@ -297,24 +298,23 @@ pub(crate) struct arguments {
 // ---------------------------------------------------------------------------
 
 /// Default message catalog directory.
-pub(crate) static mut _nl_default_dirname: [c_char; 2] = [0x2f, 0]; // "/"
+pub(crate) static _nl_default_dirname: [c_char; 2] = [0x2f, 0];
 
 /// Linked list of domain bindings.
-pub(crate) static mut _nl_domain_bindings: *mut binding = ptr::null_mut();
+thread_local! { pub(crate) static _nl_domain_bindings: Cell<*mut binding> = Cell::new(ptr::null_mut()); }
 
 /// Counter incremented when bindings change (flush caches).
-pub(crate) static mut _nl_msg_cat_cntr: c_int = 0;
+thread_local! { pub(crate) static _nl_msg_cat_cntr: Cell<c_int> = Cell::new(0); }
 
 /// Default default text domain name ("messages").
-pub(crate) static mut _nl_default_default_domain: [c_char; 9] =
-    [0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0]; // "messages\0"
+pub(crate) static _nl_default_default_domain: [c_char; 9] =
+    [0x6d, 0x65, 0x73, 0x73, 0x61, 0x67, 0x65, 0x73, 0];
 
 /// Current default text domain (initially points to the default).
-pub(crate) static mut _nl_current_default_domain: *const c_char =
-    unsafe { (*std::ptr::addr_of!(_nl_default_default_domain)).as_ptr() };
+thread_local! { pub(crate) static _nl_current_default_domain: Cell<*const c_char> = Cell::new(_nl_default_default_domain.as_ptr()); }
 
 /// Global state lock (no-op in standalone mode).
-pub(crate) static mut _nl_state_lock: [u8; 0] = [];
+thread_local! { pub(crate) static _nl_state_lock: RefCell<[u8; 0]> = RefCell::new([]); }
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -340,17 +340,12 @@ pub(crate) unsafe fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {
 }
 
 /// Lock the global state lock (no-op in standalone mode).
-pub(crate) unsafe fn nl_state_lock_wrlock() {
-    unsafe {
-        gl_rwlock_wrlock(&mut *std::ptr::addr_of_mut!(_nl_state_lock));
-    }
+pub(crate) fn nl_state_lock_wrlock() {
+    unsafe { gl_rwlock_wrlock(&mut []) };
 }
 
-/// Unlock the global state lock (no-op in standalone mode).
-pub(crate) unsafe fn nl_state_lock_unlock() {
-    unsafe {
-        gl_rwlock_unlock(&mut *std::ptr::addr_of_mut!(_nl_state_lock));
-    }
+pub(crate) fn nl_state_lock_unlock() {
+    unsafe { gl_rwlock_unlock(&mut []) };
 }
 
 /// Duplicate a C string using `std::alloc`.
@@ -360,7 +355,7 @@ pub(crate) unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
             return ptr::null_mut();
         }
         let len = std::ffi::CStr::from_ptr(s).to_bytes().len() + 1;
-        let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+        let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
         let ptr = std::alloc::alloc(layout) as *mut c_char;
         if !ptr.is_null() {
             ptr::copy_nonoverlapping(s, ptr, len);
@@ -376,7 +371,7 @@ pub(crate) unsafe fn c_free(p: *mut c_char) {
             return;
         }
         let len = std::ffi::CStr::from_ptr(p).to_bytes().len() + 1;
-        let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+        let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
         std::alloc::dealloc(p as *mut u8, layout);
     }
 }

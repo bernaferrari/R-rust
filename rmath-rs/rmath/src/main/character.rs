@@ -112,7 +112,7 @@ pub fn tr_build_spec(s: &[u8]) -> Option<Box<TrSpec>> {
         }
 
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
     }
 
     // Remaining characters (0, 1, or 2 left)
@@ -125,7 +125,7 @@ pub fn tr_build_spec(s: &[u8]) -> Option<Box<TrSpec>> {
             last: None,
         });
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
         i += 1;
     }
 
@@ -232,7 +232,7 @@ pub fn wtr_build_spec(s: &[char]) -> Option<Box<WtrSpec>> {
         }
 
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
     }
 
     while i < len {
@@ -244,7 +244,7 @@ pub fn wtr_build_spec(s: &[char]) -> Option<Box<WtrSpec>> {
             last: None,
         });
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
         i += 1;
     }
 
@@ -659,7 +659,7 @@ fn do_chartr_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) {
             y_sexp.set_string_elt(i, na);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let xi_bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -671,7 +671,7 @@ fn do_chartr_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
             for b in buf.iter_mut() {
                 *b = xtable[*b as usize];
             }
-            let cs = std::ffi::CString::new(buf.clone()).unwrap();
+            let cs = std::ffi::CString::new(buf.clone()).expect("CString::new failed: contains null byte");
             let ch = unsafe { Rf_mkCharLen(cs.as_ptr(), buf.len() as c_int) };
             let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
             y_sexp.set_string_elt(i, ch_sexp);
@@ -757,7 +757,7 @@ fn do_toupper_lower_safe<'a>(args: Sexp<'a>, upper: bool) -> Result<Sexp<'a>, St
         if el.map_or(true, |s| s == na) {
             y_sexp.set_string_elt(i, na);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let xi_bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -773,7 +773,7 @@ fn do_toupper_lower_safe<'a>(args: Sexp<'a>, upper: bool) -> Result<Sexp<'a>, St
                     *b = (*b as char).to_ascii_lowercase() as u8;
                 }
             }
-            let cs = std::ffi::CString::new(buf.clone()).unwrap();
+            let cs = std::ffi::CString::new(buf.clone()).expect("CString::new failed: contains null byte");
             let ch = unsafe { Rf_mkCharLen(cs.as_ptr(), buf.len() as c_int) };
             let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
             y_sexp.set_string_elt(i, ch_sexp);
@@ -888,7 +888,7 @@ fn do_nchar_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
                 s_sexp.set_integer_elt(i, 2); // NA string length
             }
         } else {
-            let res = r_nchar_safe(sxi.unwrap(), type_code, allow_na, keep_na, i);
+            let res = r_nchar_safe(sxi.expect("unwrap on None/Err"), type_code, allow_na, keep_na, i);
             if res == -1 {
                 return Err(format!("invalid multibyte string, element {}", i + 1));
             } else if res == -2 {
@@ -982,7 +982,7 @@ fn do_substr_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
                 continue;
             }
 
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let ss_bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1024,7 +1024,7 @@ fn do_substr_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
                 }
 
                 let substr_bytes = &ss_bytes[rfrom..rfrom + rlen];
-                let cs = std::ffi::CString::new(substr_bytes).unwrap();
+                let cs = std::ffi::CString::new(substr_bytes).expect("CString::new failed: contains null byte");
                 let ch = unsafe { Rf_mkCharLen(cs.as_ptr(), substr_bytes.len() as c_int) };
                 let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
                 s_sexp.set_string_elt(i, ch_sexp);
@@ -1099,7 +1099,7 @@ fn do_nzchar_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
                 },
             );
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let is_empty = unsafe {
                 if let Some(data) = el.data_ptr() {
                     let cs = std::ffi::CStr::from_ptr(data as *const i8);
@@ -1177,8 +1177,8 @@ fn do_startswith_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if xi.map_or(true, |s| s.is_nil() || s == na) || pi.map_or(true, |s| s.is_nil() || s == na) {
             s_sexp.set_integer_elt(i, crate::sexp::ffi::NA_LOGICAL);
         } else {
-            let xi = xi.unwrap();
-            let pi = pi.unwrap();
+            let xi = xi.expect("unwrap on None/Err");
+            let pi = pi.expect("unwrap on None/Err");
             let xs = unsafe {
                 if let Some(data) = xi.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1260,8 +1260,8 @@ fn do_endswith_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if xi.map_or(true, |s| s.is_nil() || s == na) || si.map_or(true, |s| s.is_nil() || s == na) {
             s_sexp.set_integer_elt(i, crate::sexp::ffi::NA_LOGICAL);
         } else {
-            let xi = xi.unwrap();
-            let si = si.unwrap();
+            let xi = xi.expect("unwrap on None/Err");
+            let si = si.expect("unwrap on None/Err");
             let xs = unsafe {
                 if let Some(data) = xi.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1332,7 +1332,7 @@ fn do_strtoi_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) {
             s_sexp.set_integer_elt(i, crate::sexp::ffi::NA_INTEGER);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let cs = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8)
@@ -1404,7 +1404,7 @@ fn do_strrep_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) || times < 0 {
             s_sexp.set_string_elt(i, na);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let cs = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8)
@@ -1416,7 +1416,7 @@ fn do_strrep_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
                 }
             };
             let repeated = cs.repeat(times as usize);
-            let cstr = std::ffi::CString::new(repeated).unwrap();
+            let cstr = std::ffi::CString::new(repeated).expect("CString::new failed: contains null byte");
             let ch = unsafe { Rf_mkCharLen(cstr.as_ptr(), cstr.as_bytes().len() as c_int) };
             let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
             s_sexp.set_string_elt(i, ch_sexp);
@@ -1473,7 +1473,7 @@ fn do_strtrim_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) {
             s_sexp.set_string_elt(i, na);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1487,7 +1487,7 @@ fn do_strtrim_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
             } else {
                 bytes
             };
-            let cstr = std::ffi::CString::new(trimmed.clone()).unwrap();
+            let cstr = std::ffi::CString::new(trimmed.clone()).expect("CString::new failed: contains null byte");
             let ch = unsafe { Rf_mkCharLen(cstr.as_ptr(), trimmed.len() as c_int) };
             let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
             s_sexp.set_string_elt(i, ch_sexp);
@@ -1538,7 +1538,7 @@ fn do_validutf8_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) {
             s_sexp.set_integer_elt(i, crate::sexp::ffi::NA_LOGICAL);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1643,7 +1643,7 @@ fn do_encodestring_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) {
             s_sexp.set_string_elt(i, na);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1684,7 +1684,7 @@ fn do_encodestring_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
                     _ => encoded.push(b),
                 }
             }
-            let cstr = std::ffi::CString::new(encoded.clone()).unwrap();
+            let cstr = std::ffi::CString::new(encoded.clone()).expect("CString::new failed: contains null byte");
             let ch = unsafe { Rf_mkCharLen(cstr.as_ptr(), encoded.len() as c_int) };
             let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
             s_sexp.set_string_elt(i, ch_sexp);
@@ -1747,7 +1747,7 @@ fn do_makenames_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
             s_sexp.set_string_elt(i, na);
             continue;
         }
-        let el = el.unwrap();
+        let el = el.expect("unwrap on None/Err");
         let cs = unsafe {
             if let Some(data) = el.data_ptr() {
                 std::ffi::CStr::from_ptr(data as *const i8)
@@ -1791,7 +1791,7 @@ fn do_makenames_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         }
         seen.insert(name.clone());
 
-        let cstr = std::ffi::CString::new(name).unwrap();
+        let cstr = std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
         let ch = unsafe { Rf_mkCharLen(cstr.as_ptr(), cstr.as_bytes().len() as c_int) };
         let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
         s_sexp.set_string_elt(i, ch_sexp);
@@ -1860,7 +1860,7 @@ fn do_makeunique_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
             s_sexp.set_string_elt(i, na);
             continue;
         }
-        let el = el.unwrap();
+        let el = el.expect("unwrap on None/Err");
         let cs = unsafe {
             if let Some(data) = el.data_ptr() {
                 std::ffi::CStr::from_ptr(data as *const i8)
@@ -1880,7 +1880,7 @@ fn do_makeunique_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         }
         *count += 1;
 
-        let cstr = std::ffi::CString::new(name).unwrap();
+        let cstr = std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
         let ch = unsafe { Rf_mkCharLen(cstr.as_ptr(), cstr.as_bytes().len() as c_int) };
         let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
         s_sexp.set_string_elt(i, ch_sexp);
@@ -1939,7 +1939,7 @@ fn do_abbreviate_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
         if el.map_or(true, |s| s == na) {
             s_sexp.set_string_elt(i, na);
         } else {
-            let el = el.unwrap();
+            let el = el.expect("unwrap on None/Err");
             let bytes = unsafe {
                 if let Some(data) = el.data_ptr() {
                     std::ffi::CStr::from_ptr(data as *const i8).to_bytes().to_vec()
@@ -1953,7 +1953,7 @@ fn do_abbreviate_safe<'a>(args: Sexp<'a>) -> Result<Sexp<'a>, String> {
             } else {
                 bytes
             };
-            let cstr = std::ffi::CString::new(trimmed.clone()).unwrap();
+            let cstr = std::ffi::CString::new(trimmed.clone()).expect("CString::new failed: contains null byte");
             let ch = unsafe { Rf_mkCharLen(cstr.as_ptr(), trimmed.len() as c_int) };
             let ch_sexp = unsafe { Sexp::from_raw_unchecked(ch) };
             s_sexp.set_string_elt(i, ch_sexp);

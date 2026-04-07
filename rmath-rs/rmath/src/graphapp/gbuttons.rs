@@ -12,67 +12,67 @@ use super::types::*;
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gchangescrollbar(
-    sb: scrollbar,
-    which: c_int,
-    where_: c_int,
-    max: c_int,
-    pagesize: c_int,
-    disablenoscroll: c_int,
+    _sb: scrollbar,
+    _which: c_int,
+    _where_: c_int,
+    _max: c_int,
+    _pagesize: c_int,
+    _disablenoscroll: c_int,
 ) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gsetcursor(d: drawing, c: cursor) { /* TODO */
+pub unsafe extern "C" fn gsetcursor(_d: drawing, _c: cursor) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newtoolbar(height: c_int) -> control {
+pub unsafe extern "C" fn newtoolbar(_height: c_int) -> control {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newtoolbutton(img: image, r: rect, fn_: actionfn) -> button {
+pub unsafe extern "C" fn newtoolbutton(_img: image, _r: rect, _fn_: actionfn) -> button {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn scrolltext(c: textbox, lines: c_int) { /* TODO */
+pub unsafe extern "C" fn scrolltext(_c: textbox, _lines: c_int) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ggetkeystate() -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn scrollcaret(c: textbox, lines: c_int) { /* TODO */
+pub unsafe extern "C" fn scrollcaret(_c: textbox, _lines: c_int) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gsetmodified(c: textbox, modified: c_int) { /* TODO */
+pub unsafe extern "C" fn gsetmodified(_c: textbox, _modified: c_int) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ggetmodified(c: textbox) -> c_int {
+pub unsafe extern "C" fn ggetmodified(_c: textbox) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getlinelength(c: textbox) -> c_int {
+pub unsafe extern "C" fn getlinelength(_c: textbox) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getcurrentline(
-    c: textbox,
-    line: *mut std::os::raw::c_char,
-    length: c_int,
+    _c: textbox,
+    _line: *mut std::os::raw::c_char,
+    _length: c_int,
 ) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getseltext(c: textbox, text: *mut std::os::raw::c_char) {
+pub unsafe extern "C" fn getseltext(_c: textbox, _text: *mut std::os::raw::c_char) {
     /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setlimittext(t: textbox, limit: std::os::raw::c_long) {
+pub unsafe extern "C" fn setlimittext(_t: textbox, _limit: std::os::raw::c_long) {
     /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getlimittext(t: textbox) -> std::os::raw::c_long {
+pub unsafe extern "C" fn getlimittext(_t: textbox) -> std::os::raw::c_long {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn checklimittext(t: textbox, n: std::os::raw::c_long) { /* TODO */
+pub unsafe extern "C" fn checklimittext(_t: textbox, _n: std::os::raw::c_long) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getpastelength() -> std::os::raw::c_long {
@@ -80,23 +80,23 @@ pub unsafe extern "C" fn getpastelength() -> std::os::raw::c_long {
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn textselectionex(
-    obj: control,
-    start: *mut std::os::raw::c_long,
-    end: *mut std::os::raw::c_long,
+    _obj: control,
+    _start: *mut std::os::raw::c_long,
+    _end: *mut std::os::raw::c_long,
 ) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn selecttextex(
-    obj: control,
-    start: std::os::raw::c_long,
-    end: std::os::raw::c_long,
+    _obj: control,
+    _start: std::os::raw::c_long,
+    _end: std::os::raw::c_long,
 ) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn finddialog(t: textbox) { /* TODO */
+pub unsafe extern "C" fn finddialog(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn replacedialog(t: textbox) { /* TODO */
+pub unsafe extern "C" fn replacedialog(_t: textbox) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn modeless_active() -> c_int {

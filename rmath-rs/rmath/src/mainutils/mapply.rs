@@ -5,12 +5,10 @@
 //! `mapply` applies a function to multiple lists/vectors in parallel,
 //! recycling shorter arguments to match the longest.
 
-use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADDR, CADR, CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_VECTOR_ELT, SETCAR, SETCDR,
-    SETTAG, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CADDR, CADR, CAR, CDR, SET_VECTOR_ELT, SETCDR, SETTAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};

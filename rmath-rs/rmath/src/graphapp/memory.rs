@@ -198,11 +198,10 @@ pub unsafe extern "C" fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
         let size = memlength(a);
         let extra = memlength(b);
         let result = memexpand(a, extra);
-        if !result.is_null() {
-            if !b.is_null() {
+        if !result.is_null()
+            && !b.is_null() {
                 ptr::copy_nonoverlapping(b, result.add(size as usize), extra as usize);
             }
-        }
         result
     }
 }

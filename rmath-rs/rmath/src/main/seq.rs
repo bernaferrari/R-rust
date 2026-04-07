@@ -361,7 +361,7 @@ unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
             }
             setAttrib(a, R_LevelsSymbol(), la);
         }
-        let la = Rf_mkString(std::ffi::CString::new("factor").unwrap().as_ptr());
+        let la = Rf_mkString(std::ffi::CString::new("factor").expect("CString::new failed: contains null byte").as_ptr());
         setAttrib(a, R_ClassSymbol(), la);
         a
     }

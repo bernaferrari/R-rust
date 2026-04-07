@@ -85,7 +85,7 @@ fn get_options_table() -> &'static Mutex<OptionsStorage> {
 
 /// Get the symbol for ".Options" -- cached via Rf_install.
 fn options_symbol() -> SEXP {
-    unsafe { Rf_install(CString::new(".Options").unwrap().as_ptr()) }
+    unsafe { Rf_install(CString::new(".Options").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -443,7 +443,7 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
 /// Returns the SEXP value or R_NilValue if not found.
 unsafe fn GetOptionByName(name: &str) -> SEXP {
     unsafe {
-        let table = get_options_table().lock().unwrap();
+        let table = get_options_table().lock().expect("lock poisoned");
         if let Some(&val) = table.options.get(name) {
             val
         } else {
@@ -496,7 +496,7 @@ pub unsafe fn GetOption(name: *const c_char) -> SEXP {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Options() -> SEXP {
     unsafe {
-        let table = get_options_table().lock().unwrap();
+        let table = get_options_table().lock().expect("lock poisoned");
         let n = table.options.len();
         if n == 0 {
             return R_NilValue();
@@ -508,7 +508,7 @@ pub unsafe extern "C" fn R_Options() -> SEXP {
 
         let mut result: SEXP = R_NilValue();
         for key in keys.iter().rev() {
-            let tag = Rf_install(CString::new(key.as_str()).unwrap().as_ptr());
+            let tag = Rf_install(CString::new(key.as_str()).expect("CString::new failed: contains null byte").as_ptr());
             let val = *table.options.get(key.as_str()).unwrap_or(&R_NilValue());
             let cell = Rf_cons(val, result);
             SETTAG(cell, tag);
@@ -536,7 +536,7 @@ pub unsafe fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
             Ok(s) => s,
             Err(_) => return R_NilValue(),
         };
-        let table = get_options_table().lock().unwrap();
+        let table = get_options_table().lock().expect("lock poisoned");
         if let Some(&val) = table.options.get(name_str) {
             // Return a cons cell (tag, value) to match C semantics
             let cell = Rf_cons(val, R_NilValue());
@@ -566,7 +566,7 @@ unsafe fn SetOption(tag: SEXP, value: SEXP) -> SEXP {
             Err(_) => return R_NilValue(),
         };
 
-        let mut table = get_options_table().lock().unwrap();
+        let mut table = get_options_table().lock().expect("lock poisoned");
 
         if value == R_NilValue() {
             // Remove the option, returning the old value
@@ -599,7 +599,7 @@ pub unsafe extern "C" fn R_SetOption(tag: SEXP, value: SEXP) -> SEXP {
 /// Get the current printing width from options.
 pub unsafe fn GetOptionWidth() -> c_int {
     unsafe {
-        let width_sym = Rf_install(CString::new("width").unwrap().as_ptr());
+        let width_sym = Rf_install(CString::new("width").expect("CString::new failed: contains null byte").as_ptr());
         let val = GetOptionByName("width");
         if val == R_NilValue() {
             return 80;
@@ -619,7 +619,7 @@ pub unsafe extern "C" fn R_SetOptionWidth(w: c_int) -> c_int {
         if w > R_MAX_WIDTH_OPT {
             w = R_MAX_WIDTH_OPT;
         }
-        let tag = Rf_install(CString::new("width").unwrap().as_ptr());
+        let tag = Rf_install(CString::new("width").expect("CString::new failed: contains null byte").as_ptr());
         let val = Rf_ScalarInteger(w);
         let _protected = Rf_protect(val);
         let old = SetOption(tag, val);
@@ -682,7 +682,7 @@ pub unsafe extern "C" fn R_ShowErrorOption() -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetOptionWarn(w: c_int) -> c_int {
     unsafe {
-        let tag = Rf_install(CString::new("warn").unwrap().as_ptr());
+        let tag = Rf_install(CString::new("warn").expect("CString::new failed: contains null byte").as_ptr());
         let val = Rf_ScalarInteger(w);
         let _protected = Rf_protect(val);
         let old = SetOption(tag, val);
@@ -717,7 +717,7 @@ pub unsafe extern "C" fn Rf_GetOptionDeviceAsk() -> Rboolean {
 /// Initialize the default options list.
 pub unsafe fn InitOptions() {
     unsafe {
-        let mut table = get_options_table().lock().unwrap();
+        let mut table = get_options_table().lock().expect("lock poisoned");
         if table.initialized {
             return;
         }
@@ -726,11 +726,11 @@ pub unsafe fn InitOptions() {
 
         // Set default options
         // "prompt"
-        let val = Rf_mkString(CString::new("> ").unwrap().as_ptr());
+        let val = Rf_mkString(CString::new("> ").expect("CString::new failed: contains null byte").as_ptr());
         table.options.insert("prompt".to_string(), val);
 
         // "continue"
-        let val = Rf_mkString(CString::new("+ ").unwrap().as_ptr());
+        let val = Rf_mkString(CString::new("+ ").expect("CString::new failed: contains null byte").as_ptr());
         table.options.insert("continue".to_string(), val);
 
         // "expressions"
@@ -792,7 +792,7 @@ pub unsafe fn InitOptions() {
         table.options.insert("nwarnings".to_string(), val);
 
         // "OutDec"
-        let val = Rf_mkString(CString::new(".").unwrap().as_ptr());
+        let val = Rf_mkString(CString::new(".").expect("CString::new failed: contains null byte").as_ptr());
         table.options.insert("OutDec".to_string(), val);
 
         // "CBoundsCheck"
@@ -800,7 +800,7 @@ pub unsafe fn InitOptions() {
         table.options.insert("CBoundsCheck".to_string(), val);
 
         // "matprod"
-        let val = Rf_mkString(CString::new("default").unwrap().as_ptr());
+        let val = Rf_mkString(CString::new("default").expect("CString::new failed: contains null byte").as_ptr());
         table.options.insert("matprod".to_string(), val);
 
         // "PCRE_study"
@@ -939,7 +939,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // Zero-argument case: return all options sorted alphabetically
         if args == R_NilValue() {
-            let table = get_options_table().lock().unwrap();
+            let table = get_options_table().lock().expect("lock poisoned");
             let n = table.options.len() as c_int;
 
             let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n));
@@ -950,7 +950,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             keys.sort();
 
             for (i, key) in keys.iter().enumerate() {
-                let name_charsxp = Rf_mkChar(CString::new(key.as_str()).unwrap().as_ptr());
+                let name_charsxp = Rf_mkChar(CString::new(key.as_str()).expect("CString::new failed: contains null byte").as_ptr());
                 SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
                 if let Some(&val) = table.options.get(key) {
                     SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
@@ -1077,7 +1077,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         }
                     }
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, R_NilValue()));
-                } else if streql(name_cstr, CString::new("width").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("width").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < R_MIN_WIDTH_OPT || k > R_MAX_WIDTH_OPT {
                         r_error(&format!(
@@ -1089,13 +1089,13 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("deparse.cutoff").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("deparse.cutoff").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     let v = Rf_ScalarInteger(k);
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("digits").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("digits").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < R_MIN_DIGITS_OPT || k > R_MAX_DIGITS_OPT {
                         r_error(&format!(
@@ -1107,7 +1107,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("expressions").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("expressions").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < R_MIN_EXPRESSIONS_OPT || k > R_MAX_EXPRESSIONS_OPT {
                         r_error(&format!(
@@ -1122,7 +1122,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("keep.source").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("keep.source").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'keep.source'");
                     }
@@ -1134,7 +1134,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("continue").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("continue").expect("CString::new failed: contains null byte").as_ptr()) {
                     let s = asChar(argi);
                     if s.is_null() {
                         r_error("invalid value for 'continue'");
@@ -1143,7 +1143,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("prompt").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("prompt").expect("CString::new failed: contains null byte").as_ptr()) {
                     let s = asChar(argi);
                     if s.is_null() {
                         r_error("invalid value for 'prompt'");
@@ -1152,7 +1152,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("contrasts").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("contrasts").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::STRSXP.0 || LENGTH(argi) != 2 {
                         r_error("invalid value for 'contrasts'");
                     }
@@ -1160,7 +1160,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("check.bounds").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("check.bounds").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'check.bounds'");
                     }
@@ -1169,7 +1169,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("warn").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("warn").expect("CString::new failed: contains null byte").as_ptr()) {
                     if isNumeric(argi) == 0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'warn'");
                     }
@@ -1181,7 +1181,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("warning.length").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("warning.length").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < 100 || k > 8170 {
                         r_error("invalid value for 'warning.length'");
@@ -1193,7 +1193,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("warning.expression").unwrap().as_ptr(),
+                    CString::new("warning.expression").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if isLanguage(argi) == 0 && isExpression(argi) == 0 {
                         r_error("invalid value for 'warning.expression'");
@@ -1202,7 +1202,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("max.print").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("max.print").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < 1 {
                         r_error("invalid value for 'max.print'");
@@ -1211,13 +1211,13 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("scipen").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("scipen").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = FixupScipen(argi, iWARN);
                     let v = Rf_ScalarInteger(k);
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("nwarnings").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("nwarnings").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < 1 {
                         r_error("invalid value for 'nwarnings'");
@@ -1227,7 +1227,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("error").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("error").expect("CString::new failed: contains null byte").as_ptr()) {
                     if isFunction(argi) != 0 {
                         // Wrap in a call: makeErrorCall
                         let error_call = Rf_protect(allocLang(1));
@@ -1244,7 +1244,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     }
                 } else if streql(
                     name_cstr,
-                    CString::new("show.error.messages").unwrap().as_ptr(),
+                    CString::new("show.error.messages").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
@@ -1259,7 +1259,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("catch.script.errors").unwrap().as_ptr(),
+                    CString::new("catch.script.errors").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
@@ -1271,7 +1271,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("echo").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("echo").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'echo'");
                     }
@@ -1280,7 +1280,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("OutDec").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("OutDec").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::STRSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'OutDec'");
                     }
@@ -1290,7 +1290,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("max.contour.segments").unwrap().as_ptr(),
+                    CString::new("max.contour.segments").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     let k = asInteger(argi);
                     if k < 0 {
@@ -1302,7 +1302,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("warnPartialMatchDollar").unwrap().as_ptr(),
+                    CString::new("warnPartialMatchDollar").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
@@ -1316,7 +1316,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("warnPartialMatchArgs").unwrap().as_ptr(),
+                    CString::new("warnPartialMatchArgs").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
@@ -1330,7 +1330,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("warnPartialMatchAttr").unwrap().as_ptr(),
+                    CString::new("warnPartialMatchAttr").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
@@ -1342,7 +1342,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("showWarnCalls").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("showWarnCalls").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
@@ -1353,7 +1353,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("showErrorCalls").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("showErrorCalls").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
@@ -1364,7 +1364,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("showNCalls").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("showNCalls").expect("CString::new failed: contains null byte").as_ptr()) {
                     let k = asInteger(argi);
                     if k < 30 || k > 500 || k == NA_INTEGER || LENGTH(argi) != 1 {
                         r_error("invalid value for 'showNCalls'");
@@ -1375,7 +1375,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("browserNLdisabled").unwrap().as_ptr(),
+                    CString::new("browserNLdisabled").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
@@ -1387,7 +1387,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("CBoundsCheck").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("CBoundsCheck").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
@@ -1398,7 +1398,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("quiet").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("quiet").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'quiet'");
                     }
@@ -1407,7 +1407,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("verbose").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("verbose").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'verbose'");
                     }
@@ -1416,7 +1416,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("matprod").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("matprod").expect("CString::new failed: contains null byte").as_ptr()) {
                     let s = asChar(argi);
                     if s.is_null() {
                         r_error("invalid value for 'matprod'");
@@ -1425,7 +1425,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("PCRE_study").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("PCRE_study").expect("CString::new failed: contains null byte").as_ptr()) {
                     if TYPEOF(argi) == SEXPTYPE::LGLSXP.0 {
                         let k = asLogical(argi);
                         let v = Rf_ScalarLogical(k);
@@ -1439,7 +1439,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                         Rf_unprotect(1);
                     }
-                } else if streql(name_cstr, CString::new("PCRE_use_JIT").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("PCRE_use_JIT").expect("CString::new failed: contains null byte").as_ptr()) {
                     let use_jit = asLogical(argi);
                     let v = Rf_ScalarLogical(use_jit);
                     let _p = Rf_protect(v);
@@ -1447,7 +1447,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("PCRE_limit_recursion").unwrap().as_ptr(),
+                    CString::new("PCRE_limit_recursion").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     let v = Rf_ScalarLogical(asLogical(argi));
                     let _p = Rf_protect(v);
@@ -1455,7 +1455,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_unprotect(1);
                 } else if streql(
                     name_cstr,
-                    CString::new("stringsAsFactors").unwrap().as_ptr(),
+                    CString::new("stringsAsFactors").expect("CString::new failed: contains null byte").as_ptr(),
                 ) {
                     if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
                         r_error("invalid value for 'stringsAsFactors'");
@@ -1465,7 +1465,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(v);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, v));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("editor").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("editor").expect("CString::new failed: contains null byte").as_ptr()) {
                     let s = asChar(argi);
                     if s.is_null() {
                         r_error("invalid value for 'editor'");
@@ -1474,7 +1474,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     let _p = Rf_protect(new_val);
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
-                } else if streql(name_cstr, CString::new("par.ask.default").unwrap().as_ptr()) {
+                } else if streql(name_cstr, CString::new("par.ask.default").expect("CString::new failed: contains null byte").as_ptr()) {
                     r_error("\"par.ask.default\" has been replaced by \"device.ask.default\"");
                 } else {
                     // Generic: accept any value

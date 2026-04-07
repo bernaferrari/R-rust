@@ -16,16 +16,13 @@ use crate::eval::attrib_core::{
     getAttrib, isObject as isObject_fn,
 };
 use crate::sexp::accessors::{
-    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, FORMALS, INTEGER, LENGTH, LOGICAL, PRINTNAME,
-    RAW, REAL, SET_STRING_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, BODY, CAR, CDR, CHAR, CLOENV, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL,
+    SET_STRING_ELT, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_mkChar};
-use crate::sexp::envir::{R_findVarInFrame, defineVar, findFun};
-use crate::sexp::ffi::{
-    FALSE, ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE, TRUE,
-};
+use crate::sexp::constructors::{Rf_cons, Rf_mkChar};
+use crate::sexp::envir::R_findVarInFrame;
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_IsNA, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use crate::sexp::memory_ext::NewEnvironment;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -119,10 +116,26 @@ const R_PRINT_INIT: R_PrintData = R_PrintData {
     callArgs: ptr::null_mut(),
 };
 
-static mut R_PRINT: R_PrintData = R_PRINT_INIT;
+thread_local! { static R_PRINT: RefCell<R_PrintData> = RefCell::new(R_PRINT_INIT); }
 
-pub unsafe fn get_R_print_data() -> &'static mut R_PrintData {
-    unsafe { &mut *std::ptr::addr_of_mut!(R_PRINT) }
+#[repr(transparent)]
+pub struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
+pub unsafe fn get_R_print_data() -> MutPtr<R_PrintData> {
+    MutPtr(R_PRINT.with(|v| v.as_ptr() as *mut R_PrintData))
 }
 
 // ---------------------------------------------------------------------------
@@ -188,11 +201,10 @@ unsafe fn isList(x: SEXP) -> c_int {
         if t == SEXPTYPE::LISTSXP.0 {
             return 1;
         }
-        if t == SEXPTYPE::VECSXP.0 {
-            if getAttrib(x, R_DimSymbol()) == R_NilValue() {
+        if t == SEXPTYPE::VECSXP.0
+            && getAttrib(x, R_DimSymbol()) == R_NilValue() {
                 return 1;
             }
-        }
         0
     }
 }
@@ -247,11 +259,10 @@ unsafe fn inherits_cstr(x: SEXP, class_name: *const c_char) -> c_int {
                 continue;
             }
             let s = CStr::from_ptr(CHAR(elt));
-            if let Ok(s_str) = s.to_str() {
-                if s_str == cn {
+            if let Ok(s_str) = s.to_str()
+                && s_str == cn {
                     return 1;
                 }
-            }
         }
         0
     }
@@ -334,11 +345,10 @@ unsafe fn asInteger(x: SEXP) -> c_int {
                 }
                 return v as c_int;
             }
-        } else if t == SEXPTYPE::LGLSXP.0 {
-            if LENGTH(x) >= 1 {
+        } else if t == SEXPTYPE::LGLSXP.0
+            && LENGTH(x) >= 1 {
                 return *LOGICAL(x);
             }
-        }
         NA_INTEGER
     }
 }
@@ -354,11 +364,10 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             if LENGTH(x) >= 1 {
                 return *LOGICAL(x);
             }
-        } else if t == SEXPTYPE::INTSXP.0 {
-            if LENGTH(x) >= 1 {
+        } else if t == SEXPTYPE::INTSXP.0
+            && LENGTH(x) >= 1 {
                 return *INTEGER(x);
             }
-        }
         NA_LOGICAL
     }
 }
@@ -454,10 +463,9 @@ pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
 pub unsafe fn PrintDefaults() {
     unsafe {
         let env = R_GlobalEnv();
-        PrintInit(
-            std::ptr::addr_of_mut!(R_PRINT) as *mut std::ffi::c_void,
-            env,
-        );
+        R_PRINT.with(|v| {
+            PrintInit(v.as_ptr() as *mut std::ffi::c_void, env);
+        });
     }
 }
 
@@ -521,13 +529,13 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
     unsafe {
         let t = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
         Rf_protect(t);
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
         let n = LENGTH(t);
         for i in 0..n {
             let elt = STRING_ELT(t, i as R_xlen_t);
             if !elt.is_null() && elt != R_NilValue() {
-                eprint!("{}\n", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
+                eprintln!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
             }
         }
         Rf_unprotect(1);
@@ -543,18 +551,18 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
         PrintLanguage(s, data);
 
         if isByteCode(BODY(s)) != 0 {
-            eprint!("<bytecode: {:?}>\n", BODY(s));
+            eprintln!("<bytecode: {:?}>", BODY(s));
         }
         let t = CLOENV(s);
         if t != R_GlobalEnv() {
             let env_str = crate::mainutils::printutils::EncodeEnvironment(t);
             if !env_str.is_null() {
-                eprint!(
-                    "{}\n",
+                eprintln!(
+                    "{}",
                     CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
                 );
             } else {
-                eprint!("<environment>\n");
+                eprintln!("<environment>");
             }
         }
     }
@@ -567,7 +575,7 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
 unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
     unsafe {
         let nm = crate::eval::builtin::PRIMNAME(s);
-        let nm_cstr = std::ffi::CString::new(nm).unwrap();
+        let nm_cstr = std::ffi::CString::new(nm).expect("CString::new failed: contains null byte");
         let nm_ptr = nm_cstr.as_ptr();
 
         let env = R_findVarInFrame(
@@ -587,16 +595,16 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
         if s2 != R_UnboundValue() {
             let t = crate::mainutils::deparse::deparse1m(s2, false, DEFAULTDEPARSE);
             Rf_protect(t);
-            R_PRINT = data.clone();
+            R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
             let line = STRING_ELT(t, 0);
             if !line.is_null() && line != R_NilValue() {
                 eprint!("{} ", CStr::from_ptr(CHAR(line)).to_str().unwrap_or(""));
             }
-            eprint!(".Primitive(\"{}\")\n", nm);
+            eprintln!(".Primitive(\"{}\")", nm);
             Rf_unprotect(1);
         } else {
-            eprint!(".Primitive(\"{}\")\n", nm);
+            eprintln!(".Primitive(\"{}\")", nm);
         }
     }
 }
@@ -609,13 +617,13 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
     unsafe {
         let u = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
         Rf_protect(u);
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
         let n = LENGTH(u);
         for i in 0..n {
             let elt = STRING_ELT(u, i as R_xlen_t);
             if !elt.is_null() && elt != R_NilValue() {
-                eprint!("{}\n", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
+                eprintln!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
             }
         }
         Rf_unprotect(1);
@@ -642,7 +650,7 @@ unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
 
 unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
     // Simplified: just print a message. Full S3 dispatch requires eval.
-    eprint!("<S3 object>\n");
+    eprintln!("<S3 object>");
     let _ = (s, data);
 }
 
@@ -657,7 +665,7 @@ unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
 
         PrintObjectS3(s, data);
 
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
         restore_tagbuf(&save);
     }
 }
@@ -934,7 +942,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                 };
                 for i in 0..n_pr {
                     if i > 0 {
-                        eprint!("\n");
+                        eprintln!();
                     }
 
                     if names != R_NilValue() && i < XLENGTH(names) {
@@ -1048,17 +1056,17 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                         let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                             .to_str()
                             .unwrap_or("");
-                        eprint!("{}\n", s);
+                        eprintln!("{}", s);
                     });
 
                     PrintDispatch(VECTOR_ELT(s, i), data);
 
                     tagbuf_set(taglen, 0);
                 }
-                eprint!("\n");
+                eprintln!();
                 if (n_pr as i64) < ns {
-                    eprint!(
-                        " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]\n",
+                    eprintln!(
+                        " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]",
                         ns - n_pr as i64
                     );
                 }
@@ -1067,7 +1075,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                 if names != R_NilValue() {
                     eprint!("named ");
                 }
-                eprint!("list()\n");
+                eprintln!("list()");
             }
             Rf_unprotect(1); // names
         }
@@ -1178,7 +1186,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
 
             while TYPEOF(cur) == SEXPTYPE::LISTSXP.0 {
                 if i > 1 {
-                    eprint!("\n");
+                    eprintln!();
                 }
 
                 let tag = TAG(cur);
@@ -1228,7 +1236,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                         .to_str()
                         .unwrap_or("");
-                    eprint!("{}\n", s);
+                    eprintln!("{}", s);
                 });
 
                 PrintDispatch(CAR(cur), data);
@@ -1242,7 +1250,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                 eprint!("\n. \n\n");
                 PrintValueRec_inner(cur, data);
             }
-            eprint!("\n");
+            eprintln!();
         }
         printAttributes(s, data, false);
     }
@@ -1288,30 +1296,26 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 a = CDR(a);
                 continue;
             }
-            if isArray(s) != 0 {
-                if tag == R_DimSymbol() || tag == R_DimNamesSymbol() {
+            if isArray(s) != 0
+                && (tag == R_DimSymbol() || tag == R_DimNamesSymbol()) {
                     a = CDR(a);
                     continue;
                 }
-            }
-            if inherits_cstr(s, b"factor\0".as_ptr() as *const c_char) != 0 {
-                if tag == R_LevelsSymbol() || tag == R_ClassSymbol() {
+            if inherits_cstr(s, b"factor\0".as_ptr() as *const c_char) != 0
+                && (tag == R_LevelsSymbol() || tag == R_ClassSymbol()) {
                     a = CDR(a);
                     continue;
                 }
-            }
-            if isDataFrame(s) != 0 {
-                if tag == R_RowNamesSymbol() {
+            if isDataFrame(s) != 0
+                && tag == R_RowNamesSymbol() {
                     a = CDR(a);
                     continue;
                 }
-            }
-            if isArray(s) == 0 {
-                if tag == R_NamesSymbol() {
+            if isArray(s) == 0
+                && tag == R_NamesSymbol() {
                     a = CDR(a);
                     continue;
                 }
-            }
             if tag == comment_sym
                 || tag == srcref_sym
                 || tag == whole_srcref_sym
@@ -1352,7 +1356,7 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                     .to_str()
                     .unwrap_or("");
-                eprint!("{}\n", s);
+                eprintln!("{}", s);
             });
 
             if tag == R_RowNamesSymbol() {
@@ -1382,7 +1386,7 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
         let data = _data as *const R_PrintData;
         if data.is_null() {
             PrintDefaults();
-            PrintValueRec_inner(s, &*std::ptr::addr_of!(R_PRINT));
+            R_PRINT.with(|v| PrintValueRec_inner(s, &*v.as_ptr()));
         } else {
             PrintValueRec_inner(s, &*data);
         }
@@ -1396,21 +1400,21 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
         }
 
         if isMethodsDispatchOn() == 0 && (IS_S4_OBJECT(s) != 0 || TYPEOF(s) == SEXPTYPE(25).0) {
-            eprint!("<S4 object>\n");
+            eprintln!("<S4 object>");
             return;
         }
 
         match TYPEOF(s) {
             t if t == SEXPTYPE::NILSXP.0 => {
-                eprint!("NULL\n");
+                eprintln!("NULL");
             }
             t if t == SEXPTYPE::SYMSXP.0 => {
                 let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
                 Rf_protect(t);
-                R_PRINT = data.clone();
+                R_PRINT.with(|v| *v.borrow_mut() = data.clone());
                 let line = STRING_ELT(t, 0);
                 if !line.is_null() && line != R_NilValue() {
-                    eprint!("{}\n", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
+                    eprintln!("{}", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
                 }
                 Rf_unprotect(1);
             }
@@ -1428,7 +1432,7 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 if !enc.is_null() {
                     eprint!("{}", CStr::from_ptr(enc).to_str().unwrap_or(""));
                 }
-                eprint!(">\n");
+                eprintln!(">");
                 return; // skip attributes for CHARSXP
             }
             t if t == SEXPTYPE::EXPRSXP.0 => {
@@ -1443,19 +1447,19 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             t if t == SEXPTYPE::ENVSXP.0 => {
                 let env_str = crate::mainutils::printutils::EncodeEnvironment(s);
                 if !env_str.is_null() {
-                    eprint!(
-                        "{}\n",
+                    eprintln!(
+                        "{}",
                         CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
                     );
                 } else {
-                    eprint!("<environment>\n");
+                    eprintln!("<environment>");
                 }
             }
             t if t == SEXPTYPE::PROMSXP.0 => {
-                eprint!("<promise: {:?}>\n", s);
+                eprintln!("<promise: {:?}>", s);
             }
             t if t == SEXPTYPE::DOTSXP.0 => {
-                eprint!("<...>\n");
+                eprintln!("<...>");
             }
             t if t == SEXPTYPE::VECSXP.0 => {
                 PrintGenericVector(s, data);
@@ -1532,24 +1536,24 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 Rf_unprotect(1); // dim
             }
             t if t == SEXPTYPE::EXTPTRSXP.0 => {
-                eprint!("<pointer: {:?}>\n", s);
+                eprintln!("<pointer: {:?}>", s);
             }
             t if t == SEXPTYPE::BCODESXP.0 => {
-                eprint!("<bytecode: {:?}>\n", s);
+                eprintln!("<bytecode: {:?}>", s);
             }
             t if t == SEXPTYPE::WEAKREFSXP.0 => {
-                eprint!("<weak reference>\n");
+                eprintln!("<weak reference>");
             }
             t if t == SEXPTYPE(25).0 => {
                 // OBJSXP
                 if IS_S4_OBJECT(s) != 0 {
-                    eprint!("<S4 Type Object>\n");
+                    eprintln!("<S4 Type Object>");
                 } else {
-                    eprint!("<object>\n");
+                    eprintln!("<object>");
                 }
             }
             _ => {
-                eprint!("<unknown type {}>\n", TYPEOF(s));
+                eprintln!("<unknown type {}>", TYPEOF(s));
             }
         }
 
@@ -1642,7 +1646,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         // Simplified: if not enough args, just print directly
         if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
-            R_PRINT = data.clone();
+            R_PRINT.with(|v| *v.borrow_mut() = data.clone());
             tagbuf_clear();
             PrintValueRec_inner(x, &data);
             PrintDefaults();
@@ -1691,15 +1695,14 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         // na.print
         if cur_args != R_NilValue() {
             let naprint = CAR(cur_args);
-            if Rf_isNull(naprint) == 0 {
-                if isString(naprint) != 0 && LENGTH(naprint) >= 1 {
+            if Rf_isNull(naprint) == 0
+                && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
                     let na_str = STRING_ELT(naprint, 0);
                     data.na_string = na_str;
                     data.na_string_noquote = na_str;
                     data.na_width = crate::mainutils::printutils::Rstrlen(data.na_string, 0);
                     data.na_width_noquote = data.na_width;
                 }
-            }
             advancePrintArgs(
                 &mut cur_args,
                 &mut prev,
@@ -1796,7 +1799,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         };
         data.callArgs = CDR(orig);
 
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
         tagbuf_clear();
 
@@ -1828,19 +1831,21 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let quote = asInteger(CAR(a));
         a = CDR(a);
-        R_PRINT.right = asInteger(CAR(a));
+        R_PRINT.with(|v| v.borrow_mut().right = asInteger(CAR(a)));
         a = CDR(a);
         let naprint = CAR(a);
 
-        if Rf_isNull(naprint) == 0 {
-            if isString(naprint) != 0 && LENGTH(naprint) >= 1 {
+        if Rf_isNull(naprint) == 0
+            && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
                 let na_str = STRING_ELT(naprint, 0);
-                R_PRINT.na_string = na_str;
-                R_PRINT.na_string_noquote = na_str;
-                R_PRINT.na_width = crate::mainutils::printutils::Rstrlen(R_PRINT.na_string, 0);
-                R_PRINT.na_width_noquote = R_PRINT.na_width;
+                R_PRINT.with(|v| {
+                    let mut ds = v.borrow_mut();
+                    ds.na_string = na_str;
+                    ds.na_string_noquote = na_str;
+                    ds.na_width = crate::mainutils::printutils::Rstrlen(ds.na_string, 0);
+                    ds.na_width_noquote = ds.na_width;
+                });
             }
-        }
 
         let mut rowlab_use = rowlab;
         let mut collab_use = collab;
@@ -1852,12 +1857,13 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let dim = getAttrib(x, R_DimSymbol());
+        let right_val = R_PRINT.with(|v| v.borrow().right);
         crate::mainutils::printarray::printMatrix(
             x,
             0,
             dim,
             quote,
-            R_PRINT.right,
+            right_val,
             rowlab_use,
             collab_use,
             ptr::null(),

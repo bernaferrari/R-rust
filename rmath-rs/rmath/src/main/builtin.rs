@@ -48,6 +48,7 @@ use crate::sexp::globals::*;
 use crate::sexp::memory_ext::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
+use std::cell::Cell;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -898,7 +899,7 @@ pub unsafe fn do_makelazy(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_onexit -- on.exit() (SPECIALSXP)
 // ---------------------------------------------------------------------------
 
-static mut do_onexit_formals: SEXP = ptr::null_mut();
+thread_local! { static do_onexit_formals: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -907,15 +908,17 @@ pub unsafe fn do_onexit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut after: c_int = TRUE;
 
         checkArity(op, args);
-        if do_onexit_formals.is_null() {
-            addr_of_mut!(do_onexit_formals).write(allocFormalsList3(
-                install("expr"),
-                install("add"),
-                install("after"),
-            ));
+        if do_onexit_formals.with(|v| v.get()).is_null() {
+            do_onexit_formals.with(|v| {
+                v.set(allocFormalsList3(
+                    install("expr"),
+                    install("add"),
+                    install("after"),
+                ))
+            });
         }
 
-        let argList = matchArgs_NR(do_onexit_formals, args, call);
+        let argList = matchArgs_NR(do_onexit_formals.with(|v| v.get()), args, call);
         Rf_protect(argList);
         if CAR(argList) == R_MissingArg() {
             code = R_NilValue();

@@ -4,8 +4,7 @@
 //! Button-related functions for GraphApp.
 
 use super::types::*;
-use std::os::raw::c_int;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn clickbutton(w: window, b: button) { /* TODO */
+pub unsafe extern "C" fn clickbutton(_w: window, _b: button) { /* TODO */
 }

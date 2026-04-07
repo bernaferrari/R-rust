@@ -11,6 +11,7 @@
 //! follows R's serialization protocol structure: format header, version
 //! info, then recursive WriteItem/ReadItem.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 use std::slice;
@@ -139,14 +140,14 @@ pub type R_inpstream_t = *mut R_inpstream_st;
 // Global state for lazy-load database cache
 // ---------------------------------------------------------------------------
 
-static mut USED: usize = 0;
+thread_local! { static USED: Cell<usize> = Cell::new(0); }
 
-static mut CACHE_NAMES: [*mut c_char; NC] = [ptr::null_mut(); NC];
+thread_local! { static CACHE_NAMES: Cell<[*mut c_char; NC]> = Cell::new([ptr::null_mut(); NC]); }
 
-static mut CACHE_PTRS: [*mut c_char; NC] = [ptr::null_mut(); NC];
+thread_local! { static CACHE_PTRS: Cell<[*mut c_char; NC]> = Cell::new([ptr::null_mut(); NC]); }
 
 /// Global tracking for read recursion depth.
-static mut R_ReadItemDepth: c_int = 0;
+thread_local! { static R_ReadItemDepth: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // Internal binary writer/reader (Vec<u8> based)
@@ -210,7 +211,9 @@ impl<'a> BinaryReader<'a> {
         if self.remaining() < 4 {
             return Err("read error: not enough bytes for i32".into());
         }
-        let bytes: [u8; 4] = self.data[self.pos..self.pos + 4].try_into().unwrap();
+        let bytes: [u8; 4] = self.data[self.pos..self.pos + 4]
+            .try_into()
+            .expect("unwrap on None/Err");
         self.pos += 4;
         Ok(i32::from_ne_bytes(bytes))
     }
@@ -219,7 +222,9 @@ impl<'a> BinaryReader<'a> {
         if self.remaining() < 8 {
             return Err("read error: not enough bytes for f64".into());
         }
-        let bytes: [u8; 8] = self.data[self.pos..self.pos + 8].try_into().unwrap();
+        let bytes: [u8; 8] = self.data[self.pos..self.pos + 8]
+            .try_into()
+            .expect("unwrap on None/Err");
         self.pos += 8;
         Ok(f64::from_ne_bytes(bytes))
     }
@@ -1223,12 +1228,7 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
 // do_unserializeFromConn
 // ---------------------------------------------------------------------------
 
-pub unsafe fn do_unserializeFromConn(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
@@ -1265,12 +1265,7 @@ pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -
     unsafe { R_NilValue() }
 }
 
-pub unsafe fn do_lazyLoadDBinsertValue(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    env: SEXP,
-) -> SEXP {
+pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 

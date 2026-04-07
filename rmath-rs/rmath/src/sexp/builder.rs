@@ -374,7 +374,7 @@ impl StringVector {
 /// ```
 /// use rmath::sexp::builder::{GenericVector, IntVector};
 ///
-/// let int_v = IntVector::new(&[1, 2]).build().unwrap();
+/// let int_v = IntVector::new(&[1, 2]).build().expect("failed to build IntVector");
 /// let vec = GenericVector::with_length(2)
 ///     .set(0, int_v.as_raw())
 ///     .build();

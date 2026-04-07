@@ -28,6 +28,7 @@ use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
+use std::cell::Cell;
 
 use super::types::*;
 
@@ -41,7 +42,7 @@ unsafe fn lang2(a: SEXP, b: SEXP) -> SEXP {
 }
 
 /// R_gridEvalEnv — the grid package evaluation environment
-static mut R_gridEvalEnv: SEXP = std::ptr::null_mut();
+thread_local! { static R_gridEvalEnv: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
 
 /// Rf_inherits — check if object inherits from a given class
 unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
@@ -120,10 +121,10 @@ pub unsafe extern "C" fn resolveClipPath(path: SEXP, dd: *const u8 /* pGEDevDesc
     setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(1));
     let resolve_fn = Rf_protect(findFun(
         Rf_install(b"resolveClipPath\0".as_ptr() as *const std::os::raw::c_char),
-        R_gridEvalEnv,
+        R_gridEvalEnv.with(|v| v.get()),
     ));
     let r_fcall = Rf_protect(lang2(resolve_fn, path));
-    let result = Rf_eval_with_gd(r_fcall, R_gridEvalEnv, dd);
+    let result = Rf_eval_with_gd(r_fcall, R_gridEvalEnv.with(|v| v.get()), dd);
     setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(0));
     Rf_unprotect(2);
     result

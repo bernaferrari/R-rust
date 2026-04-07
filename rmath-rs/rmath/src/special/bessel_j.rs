@@ -533,6 +533,7 @@ fn j_bessel(x: f64, alpha: f64, nb: i32, b: &mut [f64]) -> i32 {
 // =====================================================================
 
 /// Bessel function of the first kind, J_nu(x).
+#[must_use]
 ///
 /// Ported from R's bessel_j() in bessel_j.c.
 ///
@@ -592,6 +593,7 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
 }
 
 /// C FFI wrapper for bessel_j
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn bessel_j_c(x: f64, alpha: f64) -> f64 {
     bessel_j(x, alpha)
@@ -602,6 +604,7 @@ pub extern "C" fn bessel_j_c(x: f64, alpha: f64) -> f64 {
 // =====================================================================
 
 /// Modified version of bessel_j(), accepting a work array instead of allocating one.
+#[must_use]
 /// Called from R via math_2b().
 ///
 /// # Arguments
@@ -655,6 +658,7 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
 }
 
 /// C FFI wrapper for bessel_j_ex
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
     if bj.is_null() || nb <= 0 {

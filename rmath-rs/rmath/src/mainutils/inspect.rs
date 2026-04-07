@@ -9,14 +9,13 @@
 //!   pp (print indentation)
 
 use std::os::raw::c_int;
-use std::ptr;
 
 use crate::eval::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
@@ -98,7 +97,7 @@ fn sexptype2char(s: i32) -> &'static str {
 pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         checkArity(_op, args);
-        let mut s = CAR(args);
+        let s = CAR(args);
 
         // Dotted pair list (non-language)
         if TYPEOF(s) == SEXPTYPE::LISTSXP.0 {
@@ -152,7 +151,11 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         let type_name = sexptype2char(t);
-        Rf_mkString(std::ffi::CString::new(type_name).unwrap().as_ptr())
+        Rf_mkString(
+            std::ffi::CString::new(type_name)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
     }
 }
 
@@ -387,7 +390,11 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         SET_STRING_ELT(
             ans,
             0,
-            Rf_mkChar(std::ffi::CString::new(desc).unwrap().as_ptr()),
+            Rf_mkChar(
+                std::ffi::CString::new(desc)
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            ),
         );
         Rf_unprotect(1);
         ans
@@ -512,7 +519,11 @@ pub unsafe fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
             SET_STRING_ELT(
                 ans,
                 0,
-                Rf_mkChar(std::ffi::CString::new(type_name).unwrap().as_ptr()),
+                Rf_mkChar(
+                    std::ffi::CString::new(type_name)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
             Rf_unprotect(1);
             ans
@@ -574,7 +585,11 @@ pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         SET_STRING_ELT(
             ans,
             0,
-            Rf_mkChar(std::ffi::CString::new(desc).unwrap().as_ptr()),
+            Rf_mkChar(
+                std::ffi::CString::new(desc)
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            ),
         );
         Rf_unprotect(1);
         ans
@@ -599,6 +614,8 @@ pub unsafe fn do_strformat(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

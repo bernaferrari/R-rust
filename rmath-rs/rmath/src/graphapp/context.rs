@@ -14,16 +14,16 @@ pub unsafe fn init_contexts() { /* TODO */
 }
 pub unsafe fn finish_contexts() { /* TODO */
 }
-pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) { /* TODO */
+pub unsafe fn add_context(_obj: object, _dc: *mut c_void, _old: *mut c_void) { /* TODO */
 }
-pub unsafe fn get_context(obj: object) -> *mut c_void {
+pub unsafe fn get_context(_obj: object) -> *mut c_void {
     ptr::null_mut()
 }
-pub unsafe fn remove_context(obj: object) { /* TODO */
+pub unsafe fn remove_context(_obj: object) { /* TODO */
 }
-pub unsafe fn del_context(obj: object) { /* TODO */
+pub unsafe fn del_context(_obj: object) { /* TODO */
 }
 pub unsafe fn del_all_contexts() { /* TODO */
 }
-pub unsafe fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) { /* TODO */
+pub unsafe fn fix_brush(_dc: *mut c_void, _obj: drawing, _brush: *mut c_void) { /* TODO */
 }

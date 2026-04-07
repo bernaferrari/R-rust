@@ -1,8 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/relop.c -- relational and bitwise operators.
 //!
@@ -26,25 +24,20 @@
 //!   isNumeric, conformable, UNIMPLEMENTED_TYPE, COMPLEX_RO,
 //!   INTEGER_RO, RAW_RO, IS_SIMPLE_SCALAR
 
-use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
+use std::cell::Cell;
+use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
 
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDDR, CDR, CHAR, COMPLEX, COMPLEX_ELT, DATAPTR, INTEGER, INTEGER_ELT,
-    LENGTH, LOGICAL, LOGICAL_ELT, OBJECT, PRINTNAME, RAW, RAW_ELT, REAL, REAL_ELT, SET_ATTRIB,
-    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    ATTRIB, CADR, CAR, CDR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LOGICAL, PRINTNAME, REAL,
+    REAL_ELT, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_cons,
-    Rf_isComplex, Rf_isInteger, Rf_isList, Rf_isLogical, Rf_isNull, Rf_isRaw, Rf_isReal,
-    Rf_isString, Rf_isSymbol, Rf_isVector, Rf_length, Rf_mkChar,
+    Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_length, Rf_mkChar,
 };
-use crate::sexp::ffi::{
-    ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_IsNA, R_xlen_t, Rbyte, Rcomplex, SEXP,
-    SEXPTYPE, SexprecCore,
-};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -494,12 +487,12 @@ where
 /// `do_relop_dflt` for the default implementation.
 pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let mut ans: SEXP = ptr::null_mut();
+        let ans: SEXP = ptr::null_mut();
         let arg1 = CAR(args);
         let arg2 = CADR(args);
 
-        if ATTRIB(arg1) != R_NilValue() || ATTRIB(arg2) != R_NilValue() {
-            if crate::mainutils::objects::DispatchGroup(
+        if (ATTRIB(arg1) != R_NilValue() || ATTRIB(arg2) != R_NilValue())
+            && crate::mainutils::objects::DispatchGroup(
                 arg1,
                 b"Ops\0".as_ptr() as *const c_char,
                 call,
@@ -510,7 +503,6 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             {
                 // DispatchGroup would have set the result via the evaluator
             }
-        }
 
         let argc = Rf_length(args);
         if argc != 2 {
@@ -525,16 +517,13 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // compute_lang_equal
 // ---------------------------------------------------------------------------
 
-/// Check if two language objects are equal for == and != operators.
-static mut RELOP_LANG_OPTION: c_int = 0; // UNINITIALIZED
+thread_local! { static RELOP_LANG_OPTION: Cell<c_int> = Cell::new(0); }
 
 /// Initialize the language comparison option from environment.
 unsafe fn init_relop_lang_option() {
-    unsafe {
-        // Option 1 = EQONLY (default)
-        RELOP_LANG_OPTION = 1;
-        // Note: getenv not available in no_std context, keep EQONLY default
-    }
+    // Option 1 = EQONLY (default)
+    RELOP_LANG_OPTION.with(|v| v.set(1));
+    // Note: getenv not available in no_std context, keep EQONLY default
 }
 
 /// Compute language equality for `==` and `!=` operators.
@@ -544,11 +533,10 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
             if y == x || (is_scalar_string(y) && Seql(PRINTNAME(x), STRING_ELT(y, 0)) != 0) {
                 return true;
             }
-        } else if isSymbol(y) != 0 {
-            if x == y || (is_scalar_string(x) && Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0) {
+        } else if isSymbol(y) != 0
+            && (x == y || (is_scalar_string(x) && Seql(STRING_ELT(x, 0), PRINTNAME(y)) != 0)) {
                 return true;
             }
-        }
 
         // Handle LANGSXP with attributes by stripping attributes
         let mut x = x;
@@ -567,11 +555,11 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
 /// Handle language object comparison based on `_R_COMPARE_LANG_OBJECTS` option.
 unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP {
     unsafe {
-        if RELOP_LANG_OPTION == 0 {
+        if RELOP_LANG_OPTION.with(|v| v.get()) == 0 {
             init_relop_lang_option();
         }
 
-        match RELOP_LANG_OPTION {
+        match RELOP_LANG_OPTION.with(|v| v.get()) {
             // EQONLY
             1 => {
                 match PRIMVAL(op) {
@@ -1452,6 +1440,8 @@ pub unsafe fn do_bitwise(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::accessors::*;
+
     use super::*;
 
     #[test]

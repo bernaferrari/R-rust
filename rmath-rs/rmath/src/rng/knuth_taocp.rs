@@ -18,6 +18,7 @@ fn mod_diff(x: i64, y: i64) -> i64 {
 }
 
 impl KnuthTaocp {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             x: [0; KK],
@@ -117,6 +118,7 @@ impl KnuthTaocp {
         self.ran_array(&mut aa, QUALITY);
     }
 
+    #[must_use]
     pub fn get_rand(&mut self) -> f64 {
         if self.pos >= KK {
             self.ran_arr_cycle();

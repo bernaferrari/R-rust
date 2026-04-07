@@ -9,6 +9,7 @@
  *  sqrt, integral, sum, fraction, subscript, superscript, etc.
  */
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -627,7 +628,7 @@ unsafe fn UsingItalics(gc: *const R_GE_gcontext) -> c_int {
 // The Full Adobe Symbol Font Table
 // ===========================================================================
 
-static mut SymbolTable: [SymTab; 192] = [
+thread_local! { static SymbolTable: Cell<[SymTab; 192]> = Cell::new([
     SymTab {
         name: b"space\0".as_ptr() as *const c_char,
         code: 32,
@@ -1396,15 +1397,15 @@ static mut SymbolTable: [SymTab; 192] = [
         name: std::ptr::null(),
         code: 0,
     },
-];
+]); }
 
 unsafe fn SymbolCode(expr: SEXP) -> c_int {
     unsafe {
-        let t = std::ptr::addr_of!(SymbolTable);
+        let t = SymbolTable.with(|v| v.get());
         let mut i = 0;
-        while i < (*t).len() && (*t)[i].code != 0 {
-            if NameMatch(expr, (*t)[i].name) != 0 {
-                return (*t)[i].code;
+        while i < t.len() && t[i].code != 0 {
+            if NameMatch(expr, t[i].name) != 0 {
+                return t[i].code;
             }
             i += 1;
         }
@@ -1437,7 +1438,7 @@ unsafe fn TranslatedSymbol(expr: SEXP) -> c_int {
 // Binary operator table
 // ===========================================================================
 
-static mut BinTable: [SymTab; 13] = [
+thread_local! { static BinTable: Cell<[SymTab; 13]> = Cell::new([
     SymTab {
         name: b"!\0".as_ptr() as *const c_char,
         code: 0o41,
@@ -1490,15 +1491,15 @@ static mut BinTable: [SymTab; 13] = [
         name: std::ptr::null(),
         code: 0,
     },
-];
+]); }
 
 unsafe fn BinAtom(expr: SEXP) -> c_int {
     unsafe {
-        let t = std::ptr::addr_of!(BinTable);
+        let t = BinTable.with(|v| v.get());
         let mut i = 0;
-        while i < (*t).len() && (*t)[i].code != 0 {
-            if NameMatch(expr, (*t)[i].name) != 0 {
-                return (*t)[i].code;
+        while i < t.len() && t[i].code != 0 {
+            if NameMatch(expr, t[i].name) != 0 {
+                return t[i].code;
             }
             i += 1;
         }
@@ -1510,7 +1511,7 @@ unsafe fn BinAtom(expr: SEXP) -> c_int {
 // Relation operator table
 // ===========================================================================
 
-static mut RelTable: [SymTab; 28] = [
+thread_local! { static RelTable: Cell<[SymTab; 28]> = Cell::new([
     SymTab {
         name: b"<\0".as_ptr() as *const c_char,
         code: 60,
@@ -1623,15 +1624,15 @@ static mut RelTable: [SymTab; 28] = [
         name: b"%notin%\0".as_ptr() as *const c_char,
         code: 207,
     },
-];
+]); }
 
 unsafe fn RelAtom(expr: SEXP) -> c_int {
     unsafe {
-        let t = std::ptr::addr_of!(RelTable);
+        let t = RelTable.with(|v| v.get());
         let mut i = 0;
-        while i < (*t).len() && (*t)[i].code != 0 {
-            if NameMatch(expr, (*t)[i].name) != 0 {
-                return (*t)[i].code;
+        while i < t.len() && t[i].code != 0 {
+            if NameMatch(expr, t[i].name) != 0 {
+                return t[i].code;
             }
             i += 1;
         }
@@ -1643,7 +1644,7 @@ unsafe fn RelAtom(expr: SEXP) -> c_int {
 // Operator table
 // ===========================================================================
 
-static mut OpTable: [SymTab; 12] = [
+thread_local! { static OpTable: Cell<[SymTab; 12]> = Cell::new([
     SymTab {
         name: b"prod\0".as_ptr() as *const c_char,
         code: S_PRODUCT,
@@ -1692,15 +1693,15 @@ static mut OpTable: [SymTab; 12] = [
         name: std::ptr::null(),
         code: 0,
     },
-];
+]); }
 
 unsafe fn OpAtom(expr: SEXP) -> c_int {
     unsafe {
-        let t = std::ptr::addr_of!(OpTable);
+        let t = OpTable.with(|v| v.get());
         let mut i = 0;
-        while i < (*t).len() && (*t)[i].code != 0 {
-            if NameMatch(expr, (*t)[i].name) != 0 {
-                return (*t)[i].code;
+        while i < t.len() && t[i].code != 0 {
+            if NameMatch(expr, t[i].name) != 0 {
+                return t[i].code;
             }
             i += 1;
         }
@@ -1712,7 +1713,7 @@ unsafe fn OpAtom(expr: SEXP) -> c_int {
 // Accent table
 // ===========================================================================
 
-static mut AccentTable: [SymTab; 5] = [
+thread_local! { static AccentTable: Cell<[SymTab; 5]> = Cell::new([
     SymTab {
         name: b"hat\0".as_ptr() as *const c_char,
         code: 94,
@@ -1733,15 +1734,15 @@ static mut AccentTable: [SymTab; 5] = [
         name: std::ptr::null(),
         code: 0,
     },
-];
+]); }
 
 unsafe fn AccentCode(expr: SEXP) -> c_int {
     unsafe {
-        let t = std::ptr::addr_of!(AccentTable);
+        let t = AccentTable.with(|v| v.get());
         let mut i = 0;
-        while i < (*t).len() && (*t)[i].code != 0 {
-            if NameMatch(expr, (*t)[i].name) != 0 {
-                return (*t)[i].code;
+        while i < t.len() && t[i].code != 0 {
+            if NameMatch(expr, t[i].name) != 0 {
+                return t[i].code;
             }
             i += 1;
         }

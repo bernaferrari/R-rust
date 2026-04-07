@@ -10,7 +10,7 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(dlnorm_inner(0.0, 0.0, -1.0, false), "dlnorm(0,0,-1)");
     assert_equiv(dlnorm_inner(0.0, 0.0, 1.0, false), 0.0, "dlnorm(0,0,1)");
     assert_equiv(dlnorm_inner(-1.0, 0.0, 1.0, false), 0.0, "dlnorm(-1,0,1)");
-    if !(dlnorm_inner(1.0, 0.0, 1.0, false) > 0.0) {
+    if dlnorm_inner(1.0, 0.0, 1.0, false) <= 0.0 {
         return Err("dlnorm(1,0,1) > 0".into());
     }
 
@@ -31,7 +31,7 @@ pub fn run_tests() -> Result<(), String> {
         0.0,
         "plnorm(0,0,1)",
     );
-    if !(plnorm_inner(std::f64::consts::E, 0.0, 1.0, true, false) > 0.84) {
+    if plnorm_inner(std::f64::consts::E, 0.0, 1.0, true, false) <= 0.84 {
         return Err("plnorm(e,0,1)~0.84".into());
     }
 
@@ -54,7 +54,7 @@ pub fn run_tests() -> Result<(), String> {
     // rlnorm tests
     set_seed(42, 24);
     let r1 = rlnorm_inner(0.0, 1.0);
-    if !(r1 >= 0.0) {
+    if r1 < 0.0 {
         return Err("rlnorm(0,1) >= 0".into());
     }
     set_seed(42, 24);

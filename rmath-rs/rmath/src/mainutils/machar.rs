@@ -1,8 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 use std::os::raw::c_int;
 
@@ -13,6 +11,7 @@ use std::os::raw::c_int;
 /// vol. 14, no. 4, pp. 303-311.
 ///
 /// Ported from R's src/main/machar.c (double instantiation).
+#[allow(clippy::eq_op)]
 pub unsafe fn machar(
     ibeta: *mut c_int,
     it: *mut c_int,
@@ -31,18 +30,18 @@ pub unsafe fn machar(
     unsafe {
         let mut a: f64;
         let mut b: f64;
-        let mut beta: f64;
-        let mut betain: f64;
-        let mut betah: f64;
-        let mut one: f64;
-        let mut t: f64;
+        let beta: f64;
+        let betain: f64;
+        let betah: f64;
+        let one: f64;
+        let t: f64;
         let mut temp: f64;
-        let mut tempa: f64;
+        let tempa: f64;
         let mut temp1: f64 = 0.0;
-        let mut two: f64;
+        let two: f64;
         let mut y: f64;
         let mut z: f64;
-        let mut zero: f64;
+        let zero: f64;
 
         let mut i: c_int;
         let mut iz: c_int;
@@ -73,8 +72,8 @@ pub unsafe fn machar(
         *it = 0;
         b = one;
         loop {
-            *it = *it + 1;
-            b = b * beta;
+            *it += 1;
+            b *= beta;
             temp = b + one;
             temp1 = temp - b;
             if temp1 - one != zero {
@@ -100,7 +99,7 @@ pub unsafe fn machar(
         a = one;
         i = 1;
         while i <= *negep {
-            a = a * betain;
+            a *= betain;
             i += 1;
         }
         b = a;
@@ -109,8 +108,8 @@ pub unsafe fn machar(
             if temp - one != zero {
                 break;
             }
-            a = a * beta;
-            *negep = *negep - 1;
+            a *= beta;
+            *negep -= 1;
         }
         *negep = -*negep;
         *epsneg = a;
@@ -131,8 +130,8 @@ pub unsafe fn machar(
             if temp - one != zero {
                 break;
             }
-            a = a * beta;
-            *machep = *machep + 1;
+            a *= beta;
+            *machep += 1;
         }
         *eps = a;
         temp = tempa + beta * (one + *eps);
@@ -179,7 +178,7 @@ pub unsafe fn machar(
             if temp1 * beta == z {
                 break;
             }
-            i = i + 1;
+            i += 1;
             k = k + k;
         }
         if *ibeta != 10 {
@@ -191,8 +190,8 @@ pub unsafe fn machar(
             *iexp = 2;
             iz = *ibeta;
             while k >= iz {
-                iz = iz * *ibeta;
-                *iexp = *iexp + 1;
+                iz *= *ibeta;
+                *iexp += 1;
             }
             mx = iz + iz - 1;
         }
@@ -203,7 +202,7 @@ pub unsafe fn machar(
             /* exit from loop is signaled by an underflow */
 
             *xmin = y;
-            y = y * betain;
+            y *= betain;
 
             /* check for underflow here */
 
@@ -212,7 +211,7 @@ pub unsafe fn machar(
             if a + a == zero || y.abs() >= *xmin {
                 break; /* goto L10 */
             }
-            k = k + 1;
+            k += 1;
             temp1 = temp * betain;
             if temp1 * beta == y {
                 /* while condition false -> exit loop, fall through */
@@ -232,24 +231,24 @@ pub unsafe fn machar(
 
         if mx <= k + k - 3 && *ibeta != 10 {
             mx = mx + mx;
-            *iexp = *iexp + 1;
+            *iexp += 1;
         }
         *maxexp = mx + *minexp;
 
         /* adjust irnd to reflect partial underflow */
 
-        *irnd = *irnd + nxres;
+        *irnd += nxres;
 
         /* adjust for ieee-style machines */
 
         if *irnd == 2 || *irnd == 5 {
-            *maxexp = *maxexp - 2;
+            *maxexp -= 2;
         }
 
         /* adjust for non-ieee machines with partial underflow */
 
         if *irnd == 3 || *irnd == 4 {
-            *maxexp = *maxexp - *it;
+            *maxexp -= *it;
         }
 
         /* adjust for machines with implicit leading bit in binary */
@@ -258,19 +257,19 @@ pub unsafe fn machar(
 
         i = *maxexp + *minexp;
         if *ibeta == 2 && i == 0 {
-            *maxexp = *maxexp - 1;
+            *maxexp -= 1;
         }
         if i > 20 {
-            *maxexp = *maxexp - 1;
+            *maxexp -= 1;
         }
         if a != y {
-            *maxexp = *maxexp - 2;
+            *maxexp -= 2;
         }
         *xmax = one - *epsneg;
         if *xmax * one != *xmax {
             *xmax = one - beta * *epsneg;
         }
-        *xmax = *xmax / (beta * beta * beta * *xmin);
+        *xmax /= beta * beta * beta * *xmin;
         i = *maxexp + *minexp + 3;
         if i > 0 {
             j = 1;
@@ -279,7 +278,7 @@ pub unsafe fn machar(
                     *xmax = *xmax + *xmax;
                 }
                 if *ibeta != 2 {
-                    *xmax = *xmax * beta;
+                    *xmax *= beta;
                 }
                 j += 1;
             }

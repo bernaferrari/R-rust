@@ -4744,7 +4744,7 @@ unsafe fn installFunTab(i: usize) {
             &entry.name[..end]
         };
 
-        let name_cstr = std::ffi::CString::new(entry_name).unwrap();
+        let name_cstr = std::ffi::CString::new(entry_name).expect("CString::new failed: contains null byte");
         let sym = Rf_install(name_cstr.as_ptr());
 
         let prim = mkPRIMSXP(i as c_int, entry.eval % 10);
@@ -4850,7 +4850,7 @@ pub unsafe fn installDDVAL(n: c_int) -> SEXP {
             let mut v: Vec<SEXP> = Vec::with_capacity(N_DDVAL_SYMBOLS);
             for i in 0..N_DDVAL_SYMBOLS {
                 let name = format!("..{}", i);
-                let sym = Rf_install(std::ffi::CString::new(name).unwrap().as_ptr());
+                let sym = Rf_install(std::ffi::CString::new(name).expect("CString::new failed: contains null byte").as_ptr());
                 v.push(sym);
             }
             DDVALSymbolsInner(v)
@@ -4860,7 +4860,7 @@ pub unsafe fn installDDVAL(n: c_int) -> SEXP {
             symbols.0[n]
         } else {
             let name = format!("..{}", n);
-            Rf_install(std::ffi::CString::new(name).unwrap().as_ptr())
+            Rf_install(std::ffi::CString::new(name).expect("CString::new failed: contains null byte").as_ptr())
         }
     }
 }
@@ -4946,7 +4946,7 @@ pub unsafe fn installS3Signature(className: *const c_char, methodName: *const c_
             return ptr::null_mut();
         }
 
-        let sig_cstr = std::ffi::CString::new(sig).unwrap();
+        let sig_cstr = std::ffi::CString::new(sig).expect("CString::new failed: contains null byte");
         Rf_install(sig_cstr.as_ptr())
     }
 }

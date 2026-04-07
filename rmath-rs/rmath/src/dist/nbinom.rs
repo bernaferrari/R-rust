@@ -27,6 +27,7 @@ const DBL_EPSILON: f64 = 2.220446049250313e-16;
 
 // ---- dnbinom ----
 
+#[must_use]
 pub fn dnbinom_inner(x: f64, size: f64, prob: f64, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(size) || isnan(prob) {
@@ -89,6 +90,7 @@ pub fn dnbinom_inner(x: f64, size: f64, prob: f64, log_p: bool) -> f64 {
 
 // ---- dnbinom_mu ----
 
+#[must_use]
 pub fn dnbinom_mu_inner(x: f64, size: f64, mu: f64, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(size) || isnan(mu) {
@@ -162,6 +164,7 @@ pub fn dnbinom_mu_inner(x: f64, size: f64, mu: f64, log_p: bool) -> f64 {
 
 // ---- pnbinom ----
 
+#[must_use]
 pub fn pnbinom_inner(x: f64, size: f64, prob: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(size) || isnan(prob) {
@@ -195,6 +198,7 @@ pub fn pnbinom_inner(x: f64, size: f64, prob: f64, lower_tail: bool, log_p: bool
 
 // ---- pnbinom_mu ----
 
+#[must_use]
 pub fn pnbinom_mu_inner(x: f64, size: f64, mu: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(size) || isnan(mu) {
@@ -278,6 +282,7 @@ fn do_search_nbinom(
     }
 }
 
+#[must_use]
 pub fn qnbinom_inner(p: f64, size: f64, prob: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(p) || isnan(size) || isnan(prob) {
@@ -421,6 +426,7 @@ fn do_search_nbinom_mu(
     }
 }
 
+#[must_use]
 pub fn qnbinom_mu_inner(p: f64, size: f64, mu: f64, lower_tail: bool, log_p: bool) -> f64 {
     if size == ML_POSINF {
         // limit case: Poisson
@@ -521,6 +527,7 @@ pub fn qnbinom_mu_inner(p: f64, size: f64, mu: f64, lower_tail: bool, log_p: boo
 
 // ---- rnbinom ----
 
+#[must_use]
 pub fn rnbinom_inner(size: f64, prob: f64) -> f64 {
     if !r_finite(prob) || isnan(size) || size <= 0.0 || prob <= 0.0 || prob > 1.0 {
         // prob = 1 is ok, PR#1218
@@ -536,6 +543,7 @@ pub fn rnbinom_inner(size: f64, prob: f64) -> f64 {
 
 // ---- rnbinom_mu ----
 
+#[must_use]
 pub fn rnbinom_mu_inner(size: f64, mu: f64) -> f64 {
     if !r_finite(mu) || isnan(size) || size <= 0.0 || mu < 0.0 {
         return ml_warn_return_nan();
@@ -559,6 +567,7 @@ pub extern "C" fn Rf_dnbinom(
     dnbinom_inner(x, size, prob, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnbinom(x: c_double, size: c_double, prob: c_double, log_p: c_int) -> c_double {
     dnbinom_inner(x, size, prob, log_p != 0)
@@ -574,6 +583,7 @@ pub extern "C" fn Rf_dnbinom_mu(
     dnbinom_mu_inner(x, size, mu, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnbinom_mu(x: c_double, size: c_double, mu: c_double, log_p: c_int) -> c_double {
     dnbinom_mu_inner(x, size, mu, log_p != 0)
@@ -667,21 +677,25 @@ pub extern "C" fn qnbinom_mu(
     qnbinom_mu_inner(p, size, mu, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnbinom(size: c_double, prob: c_double) -> c_double {
     rnbinom_inner(size, prob)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rnbinom(size: c_double, prob: c_double) -> c_double {
     rnbinom_inner(size, prob)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
     rnbinom_mu_inner(size, mu)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rnbinom_mu(size: c_double, mu: c_double) -> c_double {
     rnbinom_mu_inner(size, mu)

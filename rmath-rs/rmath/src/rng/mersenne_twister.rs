@@ -20,6 +20,7 @@ pub struct MersenneTwister {
 }
 
 impl MersenneTwister {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             mt: [0u32; N],
@@ -45,6 +46,7 @@ impl MersenneTwister {
         self.mti = N; // FixupSeeds sets mti = N
     }
 
+    #[must_use]
     pub fn get_rand(&mut self) -> f64 {
         if self.mti >= N {
             if self.mti == N + 1 {

@@ -172,7 +172,7 @@ static SINK_STATE: Mutex<SinkState> = Mutex::new(SinkState {
 
 /// Initialize the connection system with stdin/stdout/stderr.
 fn init_connections_table() {
-    let mut table = CONNECTIONS.lock().unwrap();
+    let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
     if !table.is_empty() {
         return;
     }
@@ -215,7 +215,7 @@ fn init_connections_table() {
 /// Find the next available connection slot.
 fn next_connection() -> usize {
     init_connections_table();
-    let table = CONNECTIONS.lock().unwrap();
+    let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
     for i in 3..table.len() {
         if table[i].is_none() {
             return i;
@@ -230,7 +230,7 @@ fn next_connection() -> usize {
 /// Get a connection by index. Returns a reference to the connection.
 fn get_connection(n: usize) -> std::sync::MutexGuard<'static, Vec<Option<Box<RConn>>>> {
     init_connections_table();
-    let table = CONNECTIONS.lock().unwrap();
+    let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
     if n >= table.len() || table[n].is_none() {
         crate::main::errors::Rf_error(
             b"invalid connection\0".as_ptr() as *const std::os::raw::c_char
@@ -243,7 +243,7 @@ fn get_connection(n: usize) -> std::sync::MutexGuard<'static, Vec<Option<Box<RCo
 /// Get a mutable reference to a connection by index.
 fn get_connection_mut(n: usize) {
     init_connections_table();
-    let mut _table = CONNECTIONS.lock().unwrap();
+    let mut _table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
     if n >= _table.len() || _table[n].is_none() {
         crate::main::errors::Rf_error(
             b"invalid connection\0".as_ptr() as *const std::os::raw::c_char
@@ -431,8 +431,8 @@ unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
         if class_vec.is_null() {
             return;
         }
-        let c1 = CString::new(specific_class).unwrap();
-        let c2 = CString::new("connection").unwrap();
+        let c1 = CString::new(specific_class).expect("CString::new failed: contains null byte");
+        let c2 = CString::new("connection").expect("CString::new failed: contains null byte");
         let charsxp1 = Rf_mkChar(c1.as_ptr());
         let charsxp2 = Rf_mkChar(c2.as_ptr());
         if !charsxp1.is_null() {
@@ -508,7 +508,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -604,7 +604,7 @@ pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -689,7 +689,7 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -725,7 +725,7 @@ pub unsafe fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         let mut conn = RConn::new("fifo", &description, &open_mode, ConnKind::Fifo);
         conn.canseek = false;
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -780,7 +780,7 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -833,7 +833,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -886,7 +886,7 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -925,8 +925,8 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             open_str
         };
 
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
         if conn.isopen {
             return R_NilValue(); // Already open, just return
         }
@@ -1011,7 +1011,7 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Check if it's a sink connection
         {
-            let sink = SINK_STATE.lock().unwrap();
+            let sink = SINK_STATE.lock().expect("SINK_STATE lock poisoned");
             for j in 0..sink.sink_number {
                 if i as c_int == sink.sink_cons[j] {
                     r_error("cannot close 'output' sink connection");
@@ -1022,7 +1022,7 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         if let Some(ref mut conn) = table[i] {
             close_connection_inner(conn);
         }
@@ -1080,11 +1080,11 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 
         let i = as_integer(scon) as usize;
         init_connections_table();
-        let table = CONNECTIONS.lock().unwrap();
+        let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
-        let conn = table[i].as_ref().unwrap();
+        let conn = table[i].as_ref().expect("expected Some, got None");
         let mut res = if conn.isopen { 1 } else { 0 };
         match rw {
             1 => {
@@ -1115,11 +1115,11 @@ pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) ->
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let table = CONNECTIONS.lock().unwrap();
+        let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
-        let conn = table[i].as_ref().unwrap();
+        let conn = table[i].as_ref().expect("expected Some, got None");
         Rf_ScalarLogical(if conn.incomplete { 1 } else { 0 })
     }
 }
@@ -1160,8 +1160,8 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
             n_val as usize
         };
 
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1288,7 +1288,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
                 let c_line =
-                    CString::new(line.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                    CString::new(line.as_str()).unwrap_or_else(|_| CString::new("").expect("CString::new failed: contains null byte"));
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -1323,8 +1323,8 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         let text_len = LENGTH(text) as R_xlen_t;
 
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1412,8 +1412,8 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1490,8 +1490,8 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if conn.canwrite {
             if let Some(ref mut writer) = conn.writer {
@@ -1570,7 +1570,7 @@ pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEX
         }
         conn.raw_data = raw_data;
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -1636,7 +1636,7 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
             conn.canwrite = true;
         }
 
-        let mut table = CONNECTIONS.lock().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -1660,8 +1660,8 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_ref().unwrap();
+        let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_ref().expect("expected Some, got None");
 
         if !conn.canwrite {
             r_error("'con' is not an output textConnection");
@@ -1673,7 +1673,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
                 let c_line =
-                    CString::new(line.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                    CString::new(line.as_str()).unwrap_or_else(|_| CString::new("").expect("CString::new failed: contains null byte"));
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -1717,13 +1717,13 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         let n = as_integer(sn) as usize;
 
         init_connections_table();
-        let table = CONNECTIONS.lock().unwrap();
+        let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
 
         if n >= table.len() || table[n].is_none() {
             r_error("invalid connection");
         }
 
-        let conn = table[n].as_ref().unwrap();
+        let conn = table[n].as_ref().expect("expected Some, got None");
 
         // Build a list with connection info
         // Return the integer index (like R's getConnection)
@@ -1741,7 +1741,7 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
         let _all = check_logical_arg(CAR(args), "all");
 
         init_connections_table();
-        let table = CONNECTIONS.lock().unwrap();
+        let table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
 
         // Count active connections
         let mut count = 0usize;
@@ -1757,7 +1757,7 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
             for i in 0..table.len() {
                 if let Some(ref conn) = table[i] {
                     let desc = format!("{} {} {}", i, conn.description, conn.mode);
-                    let c_desc = CString::new(desc).unwrap_or_else(|_| CString::new("").unwrap());
+                    let c_desc = CString::new(desc).unwrap_or_else(|_| CString::new("").expect("CString::new failed: contains null byte"));
                     let charsxp = Rf_mkChar(c_desc.as_ptr());
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     idx += 1;
@@ -1793,7 +1793,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 
         let icon = as_integer(sn);
 
-        let mut sink = SINK_STATE.lock().unwrap();
+        let mut sink = SINK_STATE.lock().expect("SINK_STATE lock poisoned");
 
         if errcon == 0 {
             // Output sink
@@ -1840,7 +1840,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 pub unsafe fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let errcon = check_logical_arg(CAR(args), "type");
-        let sink = SINK_STATE.lock().unwrap();
+        let sink = SINK_STATE.lock().expect("SINK_STATE lock poisoned");
         if errcon != 0 {
             Rf_ScalarInteger(sink.error_con)
         } else {
@@ -1959,7 +1959,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                 if !ans.is_null() {
                     for (idx, s) in strings.iter().enumerate() {
                         let c_s =
-                            CString::new(s.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                            CString::new(s.as_str()).unwrap_or_else(|_| CString::new("").expect("CString::new failed: contains null byte"));
                         let charsxp = Rf_mkChar(c_s.as_ptr());
                         SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     }
@@ -1991,8 +1991,8 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
         }
         let i = as_integer(scon) as usize;
 
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -2079,7 +2079,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                                 if !ans.is_null() {
                                     for (idx, s) in strings.iter().enumerate() {
                                         let c_s = CString::new(s.as_str())
-                                            .unwrap_or_else(|_| CString::new("").unwrap());
+                                            .unwrap_or_else(|_| CString::new("").expect("CString::new failed: contains null byte"));
                                         let charsxp = Rf_mkChar(c_s.as_ptr());
                                         SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                                     }
@@ -2192,8 +2192,8 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         }
 
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap();
-        let conn = table[i].as_mut().unwrap();
+        let mut table = CONNECTIONS.lock().expect("CONNECTIONS lock poisoned");
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");

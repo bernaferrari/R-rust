@@ -19,7 +19,6 @@ use crate::sexp::accessors::{
     REAL, STRING_ELT, TAG, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::ffi::{R_NA_BIT_PATTERN, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -211,7 +210,7 @@ fn compute_strictness(flags: c_int) -> c_int {
 ///
 /// Returns 1 if identical, 0 if not.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compute_identical(mut x: SEXP, mut y: SEXP, flags: c_int) -> c_int {
+pub unsafe extern "C" fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     unsafe {
         // Quick pointer equality check
         if x == y {
@@ -448,11 +447,10 @@ pub unsafe extern "C" fn R_compute_identical(mut x: SEXP, mut y: SEXP, flags: c_
             if R_compute_identical(BODY(x), BODY(y), flags) == 0 {
                 return 0;
             }
-            if flags & IDENT_USE_CLOENV != 0 {
-                if R_compute_identical(CLOENV(x), CLOENV(y), flags) == 0 {
+            if flags & IDENT_USE_CLOENV != 0
+                && R_compute_identical(CLOENV(x), CLOENV(y), flags) == 0 {
                     return 0;
                 }
-            }
             return 1;
         } else if t == SEXPTYPE::ENVSXP.0 || t == SEXPTYPE::SYMSXP.0 {
             // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
@@ -637,6 +635,8 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::globals::*;
+
     use super::*;
     use crate::sexp::ffi::SexprecCore;
     use std::ptr;

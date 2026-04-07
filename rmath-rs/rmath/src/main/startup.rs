@@ -4,6 +4,7 @@
 //!
 //! Startup/shutdown configuration, workspace save/restore, file opening.
 
+use std::cell::Cell;
 use std::env;
 use std::ffi::CStr;
 use std::fs::File;
@@ -28,15 +29,15 @@ pub const SA_NOSAVE: c_int = 3;
 // ---------------------------------------------------------------------------
 
 /// Whether to save workspace on exit.
-pub static mut SaveAction: c_int = SA_SAVEASK;
+pub thread_local! { static SaveAction: Cell<c_int> = Cell::new(SA_SAVEASK); }
 
 /// Whether to restore workspace on startup.
-pub static mut RestoreAction: c_int = SA_RESTORE;
+pub thread_local! { static RestoreAction: Cell<c_int> = Cell::new(SA_RESTORE); }
 
 /// Whether to load the init file (.Rprofile).
-pub static mut LoadInitFile: bool = true;
+pub thread_local! { static LoadInitFile: Cell<bool> = Cell::new(true); }
 
-static mut LoadSiteFile: bool = true;
+thread_local! { static LoadSiteFile: Cell<bool> = Cell::new(true); }
 
 // ---------------------------------------------------------------------------
 // Default sizes
@@ -64,11 +65,9 @@ pub unsafe fn get_workspace_name() -> *const c_char {
 /// Restore the global environment from the workspace file.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_RestoreGlobalEnv() {
-    unsafe {
-        if RestoreAction == SA_RESTORE {
-            let name = get_workspace_name();
-            R_RestoreGlobalEnvFromFile(name, 0);
-        }
+    if RestoreAction.with(|v| v.get()) == SA_RESTORE {
+        let name = get_workspace_name();
+        R_RestoreGlobalEnvFromFile(name, 0);
     }
 }
 
@@ -81,9 +80,7 @@ pub unsafe extern "C" fn R_SaveGlobalEnv() {
 /// Initialize data (restore workspace).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_InitialData() {
-    unsafe {
-        R_RestoreGlobalEnv();
-    }
+    R_RestoreGlobalEnv();
 }
 
 // ---------------------------------------------------------------------------
@@ -93,20 +90,18 @@ pub unsafe extern "C" fn R_InitialData() {
 /// Open a library file relative to R_HOME/library/base/R/.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_OpenLibraryFile(file: *const c_char) -> *mut std::ffi::c_void {
-    unsafe {
-        if file.is_null() {
-            return ptr::null_mut();
-        }
-        let fname = match CStr::from_ptr(file).to_str() {
-            Ok(s) => s,
-            Err(_) => return ptr::null_mut(),
-        };
-        let r_home = env::var("R_HOME").unwrap_or_default();
-        let path = format!("{}/library/base/R/{}", r_home, fname);
-        match File::open(&path) {
-            Ok(f) => Box::into_raw(Box::new(f)) as *mut std::ffi::c_void,
-            Err(_) => ptr::null_mut(),
-        }
+    if file.is_null() {
+        return ptr::null_mut();
+    }
+    let fname = match CStr::from_ptr(file).to_str() {
+        Ok(s) => s,
+        Err(_) => return ptr::null_mut(),
+    };
+    let r_home = env::var("R_HOME").unwrap_or_default();
+    let path = format!("{}/library/base/R/{}", r_home, fname);
+    match File::open(&path) {
+        Ok(f) => Box::into_raw(Box::new(f)) as *mut std::ffi::c_void,
+        Err(_) => ptr::null_mut(),
     }
 }
 
@@ -117,22 +112,20 @@ pub unsafe extern "C" fn R_LibraryFileName(
     buf: *mut c_char,
     bsize: usize,
 ) -> *mut c_char {
-    unsafe {
-        if file.is_null() || buf.is_null() || bsize == 0 {
-            return buf;
-        }
-        let fname = match CStr::from_ptr(file).to_str() {
-            Ok(s) => s,
-            Err(_) => return buf,
-        };
-        let r_home = env::var("R_HOME").unwrap_or_default();
-        let path = format!("{}/library/base/R/{}", r_home, fname);
-        let bytes = path.as_bytes();
-        let copy_len = bytes.len().min(bsize - 1);
-        ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
-        *buf.add(copy_len) = 0;
-        buf
+    if file.is_null() || buf.is_null() || bsize == 0 {
+        return buf;
     }
+    let fname = match CStr::from_ptr(file).to_str() {
+        Ok(s) => s,
+        Err(_) => return buf,
+    };
+    let r_home = env::var("R_HOME").unwrap_or_default();
+    let path = format!("{}/library/base/R/{}", r_home, fname);
+    let bytes = path.as_bytes();
+    let copy_len = bytes.len().min(bsize - 1);
+    ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, copy_len);
+    *buf.add(copy_len) = 0;
+    buf
 }
 
 /// Open the system init file (Rprofile).
@@ -149,25 +142,23 @@ pub unsafe extern "C" fn R_OpenSysInitFile() -> *mut std::ffi::c_void {
 /// Open the site init file (Rprofile.site).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_OpenSiteFile() -> *mut std::ffi::c_void {
-    unsafe {
-        if !LoadSiteFile {
+    if !LoadSiteFile.with(|v| v.get()) {
+        return ptr::null_mut();
+    }
+    if let Ok(p) = env::var("R_PROFILE") {
+        if p.is_empty() {
             return ptr::null_mut();
         }
-        if let Ok(p) = env::var("R_PROFILE") {
-            if p.is_empty() {
-                return ptr::null_mut();
-            }
-            match File::open(&p) {
-                Ok(f) => return Box::into_raw(Box::new(f)) as *mut std::ffi::c_void,
-                Err(_) => return ptr::null_mut(),
-            }
+        match File::open(&p) {
+            Ok(f) => return Box::into_raw(Box::new(f)) as *mut std::ffi::c_void,
+            Err(_) => return ptr::null_mut(),
         }
-        let r_home = env::var("R_HOME").unwrap_or_default();
-        let path = format!("{}/etc/Rprofile.site", r_home);
-        match File::open(&path) {
-            Ok(f) => Box::into_raw(Box::new(f)) as *mut std::ffi::c_void,
-            Err(_) => ptr::null_mut(),
-        }
+    }
+    let r_home = env::var("R_HOME").unwrap_or_default();
+    let path = format!("{}/etc/Rprofile.site", r_home);
+    match File::open(&path) {
+        Ok(f) => Box::into_raw(Box::new(f)) as *mut std::ffi::c_void,
+        Err(_) => ptr::null_mut(),
     }
 }
 
@@ -194,9 +185,7 @@ pub unsafe extern "C" fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) -> c_i
 /// Set default startup parameters (version 0).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_DefParams(_rp: *mut c_void) {
-    unsafe {
-        R_DefParamsEx(_rp, 0);
-    }
+    R_DefParamsEx(_rp, 0);
 }
 
 /// Apply startup parameters.
@@ -235,9 +224,9 @@ pub unsafe extern "C" fn R_SetNconn(_n: c_int) {}
 // Globals used by other modules
 // ---------------------------------------------------------------------------
 
-pub static mut R_Quiet: c_int = 0;
-pub static mut R_NoEcho: c_int = 0;
-pub static mut R_Interactive: c_int = 1;
-pub static mut R_Verbose: c_int = 0;
-pub static mut R_VSize: usize = 0;
-pub static mut R_NSize: usize = 0;
+pub thread_local! { static R_Quiet: Cell<c_int> = Cell::new(0); }
+pub thread_local! { static R_NoEcho: Cell<c_int> = Cell::new(0); }
+pub thread_local! { static R_Interactive: Cell<c_int> = Cell::new(1); }
+pub thread_local! { static R_Verbose: Cell<c_int> = Cell::new(0); }
+pub thread_local! { static R_VSize: Cell<usize> = Cell::new(0); }
+pub thread_local! { static R_NSize: Cell<usize> = Cell::new(0); }

@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/deparse.c (1,962 lines) — deparse, dput, dump.
 //!
@@ -27,8 +27,8 @@
 //! - S4 deparsing, source reference deparsing kept as stubs (need eval/methods).
 //! - do_dput, do_dump kept as stubs (need connections infrastructure).
 
-use std::ffi::CString;
-use std::os::raw::{c_char, c_int, c_uint, c_void};
+use std::cell::Cell;
+use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
 
 use crate::eval::attrib_core::getAttrib;
@@ -46,9 +46,7 @@ use crate::mainutils::names::{
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{
-    ISNAN, NA_INTEGER, R_FINITE, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE,
-};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, R_FINITE, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::R_BraceSymbol;
@@ -654,22 +652,22 @@ unsafe fn needsparens(
                     return left != 0 || deepLeft != 0;
                 }
                 PP_SUBSET => {
-                    if mainop_kind != PP_DOLLAR && mainop_kind != PP_SUBSET {
-                        if mainop_prec > arginfo.prec
-                            || (mainop_prec == arginfo.prec && left == mainop_rightassoc)
-                        {
-                            return true;
-                        }
+                    if mainop_kind != PP_DOLLAR
+                        && mainop_kind != PP_SUBSET
+                        && (mainop_prec > arginfo.prec
+                            || (mainop_prec == arginfo.prec && left == mainop_rightassoc))
+                    {
+                        return true;
                     }
                 }
                 _ => return false,
             }
-        } else if isUserBinop(CAR(arg)) && isLanguage(arg) {
-            if mainop_prec > PREC_PERCENT
-                || (mainop_prec == PREC_PERCENT && left == mainop_rightassoc)
-            {
-                return true;
-            }
+        } else if isUserBinop(CAR(arg))
+            && isLanguage(arg)
+            && (mainop_prec > PREC_PERCENT
+                || (mainop_prec == PREC_PERCENT && left == mainop_rightassoc))
+        {
+            return true;
         }
         false
     }
@@ -846,28 +844,30 @@ unsafe fn quotify(name: SEXP, quote: c_int) -> *const c_char {
         // For backtick or double-quote quoting, just return the name with quotes
         // Full EncodeString is in printutils but currently stubbed.
         // We implement basic quoting here.
-        static mut QUOTE_BUF: [u8; 1024] = [0; 1024];
-        let buf = std::ptr::addr_of_mut!(QUOTE_BUF);
-        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-        let quote_char = if quote == b'`' as c_int { b'`' } else { b'"' };
-        let mut pos = 0;
-        (*buf)[pos] = quote_char;
-        pos += 1;
-        for &b in bytes.iter() {
-            if b == quote_char || b == b'\\' {
-                (*buf)[pos] = b'\\';
+        thread_local! { static QUOTE_BUF: Cell<[u8; 1024]> = Cell::new([0; 1024]); }
+        QUOTE_BUF.with(|cell| {
+            let buf: &mut [u8; 1024] = &mut *cell.as_ptr();
+            let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+            let quote_char = if quote == b'`' as c_int { b'`' } else { b'"' };
+            let mut pos = 0;
+            buf[pos] = quote_char;
+            pos += 1;
+            for &b in bytes.iter() {
+                if b == quote_char || b == b'\\' {
+                    buf[pos] = b'\\';
+                    pos += 1;
+                }
+                if pos + 1 >= 1022 {
+                    break;
+                }
+                buf[pos] = b;
                 pos += 1;
             }
-            if pos + 1 >= 1022 {
-                break;
-            }
-            (*buf)[pos] = b;
+            buf[pos] = quote_char;
             pos += 1;
-        }
-        (*buf)[pos] = quote_char;
-        pos += 1;
-        (*buf)[pos] = 0;
-        buf.cast::<c_char>()
+            buf[pos] = 0;
+            buf.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -891,15 +891,10 @@ unsafe fn parenthesizeCaller(s: SEXP) -> bool {
             let t = TYPEOF(sym);
             if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
                 let pp = getPPinfo(sym);
-                if pp.prec >= PREC_SUBSET
+                return !(pp.prec >= PREC_SUBSET
                     || pp.kind == PP_FUNCALL
                     || pp.kind == PP_PAREN
-                    || pp.kind == PP_CURLY
-                {
-                    return false;
-                } else {
-                    return true;
-                }
+                    || pp.kind == PP_CURLY);
             }
             return false; // regular function call
         } else if TYPEOF(op) == SEXPTYPE::CLOSXP.0 {
@@ -1026,86 +1021,91 @@ unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *cons
 
 /// Format an integer element as a string.
 unsafe fn format_int_element(val: c_int) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 32] = [0; 32];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: Cell<[c_char; 32]> = Cell::new([0; 32]); }
+    BUF.with(|cell| {
+        let buf: &mut [c_char; 32] = &mut *cell.as_ptr();
         if val == NA_INTEGER {
-            libc::snprintf(buf.cast(), 32, b"NA\0".as_ptr() as *const c_char);
+            libc::snprintf(buf.as_mut_ptr(), 32, b"NA\0".as_ptr() as *const c_char);
         } else {
-            libc::snprintf(buf.cast(), 32, b"%d\0".as_ptr() as *const c_char, val);
+            libc::snprintf(buf.as_mut_ptr(), 32, b"%d\0".as_ptr() as *const c_char, val);
         }
-        buf.cast()
-    }
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Format a logical element as a string.
 unsafe fn format_logical_element(val: c_int) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 8] = [0; 8];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: Cell<[c_char; 8]> = Cell::new([0; 8]); }
+    BUF.with(|cell| {
+        let buf: &mut [c_char; 8] = &mut *cell.as_ptr();
         if val == NA_INTEGER {
-            libc::snprintf(buf.cast(), 8, b"NA\0".as_ptr() as *const c_char);
+            libc::snprintf(buf.as_mut_ptr(), 8, b"NA\0".as_ptr() as *const c_char);
         } else if val != 0 {
-            (*buf)[0] = b'T' as c_char;
-            (*buf)[1] = b'R' as c_char;
-            (*buf)[2] = b'U' as c_char;
-            (*buf)[3] = b'E' as c_char;
-            (*buf)[4] = 0;
+            buf[0] = b'T' as c_char;
+            buf[1] = b'R' as c_char;
+            buf[2] = b'U' as c_char;
+            buf[3] = b'E' as c_char;
+            buf[4] = 0;
         } else {
-            (*buf)[0] = b'F' as c_char;
-            (*buf)[1] = b'A' as c_char;
-            (*buf)[2] = b'L' as c_char;
-            (*buf)[3] = b'S' as c_char;
-            (*buf)[4] = b'E' as c_char;
-            (*buf)[5] = 0;
+            buf[0] = b'F' as c_char;
+            buf[1] = b'A' as c_char;
+            buf[2] = b'L' as c_char;
+            buf[3] = b'S' as c_char;
+            buf[4] = b'E' as c_char;
+            buf[5] = 0;
         }
-        buf.cast()
-    }
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Format a real element as a string with maximal precision.
 unsafe fn format_real_element(val: f64) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 64] = [0; 64];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
+    BUF.with(|cell| {
+        let buf: &mut [c_char; 64] = &mut *cell.as_ptr();
         if ISNAN(val) && (val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN) {
-            libc::snprintf(buf.cast(), 64, b"NA\0".as_ptr() as *const c_char);
+            libc::snprintf(buf.as_mut_ptr(), 64, b"NA\0".as_ptr() as *const c_char);
         } else if ISNAN(val) {
-            libc::snprintf(buf.cast(), 64, b"NaN\0".as_ptr() as *const c_char);
+            libc::snprintf(buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
         } else if !R_FINITE(val) {
             if val > 0.0 {
-                libc::snprintf(buf.cast(), 64, b"Inf\0".as_ptr() as *const c_char);
+                libc::snprintf(buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
             } else {
-                libc::snprintf(buf.cast(), 64, b"-Inf\0".as_ptr() as *const c_char);
+                libc::snprintf(buf.as_mut_ptr(), 64, b"-Inf\0".as_ptr() as *const c_char);
             }
         } else {
-            libc::snprintf(buf.cast(), 64, b"%.17g\0".as_ptr() as *const c_char, val);
+            libc::snprintf(
+                buf.as_mut_ptr(),
+                64,
+                b"%.17g\0".as_ptr() as *const c_char,
+                val,
+            );
         }
-        buf.cast()
-    }
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Format a string element with quoting.
 unsafe fn format_string_element(s: SEXP) -> *const c_char {
-    unsafe {
-        static mut BUF: [u8; 2048] = [0; 2048];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: Cell<[u8; 2048]> = Cell::new([0; 2048]); }
+    BUF.with(|cell| {
+        let buf: &mut [u8; 2048] = &mut *cell.as_ptr();
         if s.is_null() || s == R_NilValue() {
-            (*buf)[0] = b'N';
-            (*buf)[1] = b'A';
-            (*buf)[2] = 0;
-            return buf.cast::<c_char>();
+            buf[0] = b'N';
+            buf[1] = b'A';
+            buf[2] = 0;
+            return buf.as_ptr() as *const c_char;
         }
         let name = CHAR(s);
         if name.is_null() {
-            (*buf)[0] = b'N';
-            (*buf)[1] = b'A';
-            (*buf)[2] = 0;
-            return buf.cast::<c_char>();
+            buf[0] = b'N';
+            buf[1] = b'A';
+            buf[2] = 0;
+            return buf.as_ptr() as *const c_char;
         }
         let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
         let mut pos = 0;
-        (*buf)[pos] = b'"';
+        buf[pos] = b'"';
         pos += 1;
         for &b in bytes.iter() {
             if pos + 2 >= 2046 {
@@ -1113,55 +1113,55 @@ unsafe fn format_string_element(s: SEXP) -> *const c_char {
             }
             match b {
                 b'"' | b'\\' => {
-                    (*buf)[pos] = b'\\';
+                    buf[pos] = b'\\';
                     pos += 1;
-                    (*buf)[pos] = b;
+                    buf[pos] = b;
                     pos += 1;
                 }
                 b'\n' => {
-                    (*buf)[pos] = b'\\';
+                    buf[pos] = b'\\';
                     pos += 1;
-                    (*buf)[pos] = b'n';
+                    buf[pos] = b'n';
                     pos += 1;
                 }
                 b'\r' => {
-                    (*buf)[pos] = b'\\';
+                    buf[pos] = b'\\';
                     pos += 1;
-                    (*buf)[pos] = b'r';
+                    buf[pos] = b'r';
                     pos += 1;
                 }
                 b'\t' => {
-                    (*buf)[pos] = b'\\';
+                    buf[pos] = b'\\';
                     pos += 1;
-                    (*buf)[pos] = b't';
+                    buf[pos] = b't';
                     pos += 1;
                 }
                 _ => {
-                    (*buf)[pos] = b;
+                    buf[pos] = b;
                     pos += 1;
                 }
             }
         }
-        (*buf)[pos] = b'"';
+        buf[pos] = b'"';
         pos += 1;
-        (*buf)[pos] = 0;
-        buf.cast::<c_char>()
-    }
+        buf[pos] = 0;
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Format a raw element as hex.
 unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 8] = [0; 8];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: Cell<[c_char; 8]> = Cell::new([0; 8]); }
+    BUF.with(|cell| {
+        let buf: &mut [c_char; 8] = &mut *cell.as_ptr();
         libc::snprintf(
-            buf.cast(),
+            buf.as_mut_ptr(),
             8,
             b"0x%02x\0".as_ptr() as *const c_char,
             val as c_uint,
         );
-        buf.cast()
-    }
+        buf.as_ptr() as *const c_char
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1382,25 +1382,29 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             {
                                 strp = b"NA_real_\0".as_ptr() as *const c_char;
                             } else if (d.opts & HEXNUMERIC != 0) && R_FINITE(v) {
-                                static mut HEX_BUF: [c_char; 64] = [0; 64];
-                                let hex_buf = std::ptr::addr_of_mut!(HEX_BUF);
-                                libc::snprintf(
-                                    hex_buf.cast(),
-                                    64,
-                                    b"%a\0".as_ptr() as *const c_char,
-                                    v,
-                                );
-                                strp = hex_buf.cast();
+                                thread_local! { static HEX_BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
+                                HEX_BUF.with(|cell| {
+                                    let hex_buf: &mut [c_char; 64] = &mut *cell.as_ptr();
+                                    libc::snprintf(
+                                        hex_buf.as_mut_ptr(),
+                                        64,
+                                        b"%a\0".as_ptr() as *const c_char,
+                                        v,
+                                    );
+                                    strp = hex_buf.as_ptr() as *const c_char;
+                                });
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(v) {
-                                static mut DIG_BUF: [c_char; 64] = [0; 64];
-                                let dig_buf = std::ptr::addr_of_mut!(DIG_BUF);
-                                libc::snprintf(
-                                    dig_buf.cast(),
-                                    64,
-                                    b"%.17g\0".as_ptr() as *const c_char,
-                                    v,
-                                );
-                                strp = dig_buf.cast();
+                                thread_local! { static DIG_BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
+                                DIG_BUF.with(|cell| {
+                                    let dig_buf: &mut [c_char; 64] = &mut *cell.as_ptr();
+                                    libc::snprintf(
+                                        dig_buf.as_mut_ptr(),
+                                        64,
+                                        b"%.17g\0".as_ptr() as *const c_char,
+                                        v,
+                                    );
+                                    strp = dig_buf.as_ptr() as *const c_char;
+                                });
                             } else {
                                 strp = format_real_element(v);
                             }
@@ -1414,50 +1418,57 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             if all_na && ISNAN(c.r) && ISNAN(c.i) {
                                 strp = b"NA_complex_\0".as_ptr() as *const c_char;
                             } else if ISNAN(c.r) || !R_FINITE(c.i) {
-                                static mut CPLX_BUF: [c_char; NB2] = [0; NB2];
-                                let cplx_buf = std::ptr::addr_of_mut!(CPLX_BUF);
-                                strp = EncodeNonFiniteComplexElement(c, cplx_buf.cast());
+                                thread_local! { static CPLX_BUF: Cell<[c_char; NB2]> = Cell::new([0; NB2]); }
+                                CPLX_BUF.with(|cell| {
+                                    let cplx_buf: &mut [c_char; NB2] = &mut *cell.as_ptr();
+                                    strp = EncodeNonFiniteComplexElement(c, cplx_buf.as_mut_ptr());
+                                });
                             } else if (d.opts & HEXNUMERIC != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
-                                static mut HEX_CPLX: [c_char; 128] = [0; 128];
-                                let hex_cplx = std::ptr::addr_of_mut!(HEX_CPLX);
-                                libc::snprintf(
-                                    hex_cplx.cast(),
-                                    128,
-                                    b"%a + %ai\0".as_ptr() as *const c_char,
-                                    c.r,
-                                    c.i,
-                                );
-                                strp = hex_cplx.cast();
+                                thread_local! { static HEX_CPLX: Cell<[c_char; 128]> = Cell::new([0; 128]); }
+                                HEX_CPLX.with(|cell| {
+                                    let hex_cplx: &mut [c_char; 128] = &mut *cell.as_ptr();
+                                    libc::snprintf(
+                                        hex_cplx.as_mut_ptr(),
+                                        128,
+                                        b"%a + %ai\0".as_ptr() as *const c_char,
+                                        c.r,
+                                        c.i,
+                                    );
+                                    strp = hex_cplx.as_ptr() as *const c_char;
+                                });
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
-                                static mut DIG_CPLX: [c_char; 128] = [0; 128];
-                                let dig_cplx = std::ptr::addr_of_mut!(DIG_CPLX);
-                                libc::snprintf(
-                                    dig_cplx.cast(),
-                                    128,
-                                    b"%.17g%+.17gi\0".as_ptr() as *const c_char,
-                                    c.r,
-                                    c.i,
-                                );
-                                strp = dig_cplx.cast();
+                                thread_local! { static DIG_CPLX: Cell<[c_char; 128]> = Cell::new([0; 128]); }
+                                DIG_CPLX.with(|cell| {
+                                    let dig_cplx: &mut [c_char; 128] = &mut *cell.as_ptr();
+                                    libc::snprintf(
+                                        dig_cplx.as_mut_ptr(),
+                                        128,
+                                        b"%.17g%+.17gi\0".as_ptr() as *const c_char,
+                                        c.r,
+                                        c.i,
+                                    );
+                                    strp = dig_cplx.as_ptr() as *const c_char;
+                                });
                             } else {
-                                static mut CPLX_BUF2: [c_char; 256] = [0; 256];
-                                let cplx_buf2 = std::ptr::addr_of_mut!(CPLX_BUF2);
-                                // Format as "r+yi" or "r-yi"
-                                let re = format_real_element(c.r);
-                                let im = format_real_element(c.i);
-                                libc::snprintf(
-                                    cplx_buf2.cast(),
-                                    256,
-                                    b"%s%s%si\0".as_ptr() as *const c_char,
-                                    re,
-                                    if c.i >= 0.0 {
-                                        b"+\0".as_ptr() as *const c_char
-                                    } else {
-                                        b"\0".as_ptr() as *const c_char
-                                    },
-                                    im,
-                                );
-                                strp = cplx_buf2.cast();
+                                thread_local! { static CPLX_BUF2: Cell<[c_char; 256]> = Cell::new([0; 256]); }
+                                CPLX_BUF2.with(|cell| {
+                                    let cplx_buf2: &mut [c_char; 256] = &mut *cell.as_ptr();
+                                    let re = format_real_element(c.r);
+                                    let im = format_real_element(c.i);
+                                    libc::snprintf(
+                                        cplx_buf2.as_mut_ptr(),
+                                        256,
+                                        b"%s%s%si\0".as_ptr() as *const c_char,
+                                        re,
+                                        if c.i >= 0.0 {
+                                            b"+\0".as_ptr() as *const c_char
+                                        } else {
+                                            b"\0".as_ptr() as *const c_char
+                                        },
+                                        im,
+                                    );
+                                    strp = cplx_buf2.as_ptr() as *const c_char;
+                                });
                             }
                         }
                     }
@@ -1885,7 +1896,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
 
                 if is_builtin || userbinop != 0 {
                     let mut fop: PPinfo;
-                    let mut s = CDR(s);
+                    let s = CDR(s);
                     if userbinop != 0 {
                         let names_sym = Rf_install(b"names\0".as_ptr() as *const c_char);
                         if isNull(getAttrib(s, names_sym)) {
@@ -2474,6 +2485,7 @@ unsafe fn deparse2(what: SEXP, svec: SEXP, d: *mut LocalParseData) {
 ///
 /// Equivalent to C's `deparse1WithCutoff()`. If abbrev is true, returns a
 /// single string with at most 13 characters (for plot labelling).
+#[allow(clippy::field_reassign_with_default)]
 unsafe fn deparse1WithCutoff(
     call: SEXP,
     abbrev: bool,
@@ -2499,13 +2511,15 @@ unsafe fn deparse1WithCutoff(
             local_data.linenumber = nlines;
             local_data.maxlines = nlines;
         } else {
-            if R_BrowseLines > 0 {
-                local_data.maxlines = R_BrowseLines + 1;
+            if R_BrowseLines.with(|v| v.get()) > 0 {
+                local_data.maxlines = R_BrowseLines.with(|v| v.get()) + 1;
             }
             deparse2(call, svec, &mut local_data);
             local_data.active = true;
-            if R_BrowseLines > 0 && local_data.linenumber > R_BrowseLines {
-                local_data.linenumber = R_BrowseLines + 1;
+            if R_BrowseLines.with(|v| v.get()) > 0
+                && local_data.linenumber > R_BrowseLines.with(|v| v.get())
+            {
+                local_data.linenumber = R_BrowseLines.with(|v| v.get()) + 1;
                 need_ellipses = true;
             }
         }
@@ -2541,7 +2555,7 @@ unsafe fn deparse1WithCutoff(
             return result;
         } else if need_ellipses {
             let ellipsis = Rf_mkChar(b"  ...\0".as_ptr() as *const c_char);
-            SET_STRING_ELT(svec, R_BrowseLines as R_xlen_t, ellipsis);
+            SET_STRING_ELT(svec, R_BrowseLines.with(|v| v.get()) as R_xlen_t, ellipsis);
         }
 
         Rf_unprotect(1);
@@ -2631,10 +2645,10 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// Used in bind.c, builtin.c, coerce.c, match.c, relop.c, and do_dput/do_dump.
 pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
-        let old_bl = R_BrowseLines;
-        R_BrowseLines = 0;
+        let old_bl = R_BrowseLines.with(|v| v.get());
+        R_BrowseLines.with(|v| v.set(0));
         let result = deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0);
-        R_BrowseLines = old_bl;
+        R_BrowseLines.with(|v| v.set(old_bl));
         result
     }
 }
@@ -2648,11 +2662,11 @@ pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 /// Stubbed: requires getOption infrastructure.
 pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
-        let old_bl = R_BrowseLines;
+        let old_bl = R_BrowseLines.with(|v| v.get());
         // TODO: read getOption("deparse.max.lines") when available
-        R_BrowseLines = 0;
+        R_BrowseLines.with(|v| v.set(0));
         let result = deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0);
-        R_BrowseLines = old_bl;
+        R_BrowseLines.with(|v| v.set(old_bl));
         result
     }
 }
@@ -2788,9 +2802,7 @@ pub unsafe fn con_cleanup(_data: *mut std::ffi::c_void) {
 // R_BrowseLines — global for max lines in deparsing
 // ---------------------------------------------------------------------------
 
-/// Global variable controlling maximum lines for deparse output.
-/// Set from getOption("deparse.max.lines").
-pub static mut R_BrowseLines: c_int = 0;
+thread_local! { pub static R_BrowseLines: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // Additional helper stubs needed by other modules
@@ -2968,9 +2980,7 @@ mod tests {
 
     #[test]
     fn test_browse_lines_initial() {
-        unsafe {
-            assert_eq!(*std::ptr::addr_of!(R_BrowseLines), 0);
-        }
+        assert_eq!(R_BrowseLines.with(|v| v.get()), 0);
     }
 
     #[test]

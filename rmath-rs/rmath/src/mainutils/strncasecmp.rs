@@ -4,7 +4,6 @@
 //!
 //! Case-insensitive string comparison (locale-specific case folding).
 
-use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 
 /// Case-insensitive comparison of at most `n` characters of `s1` and `s2`.

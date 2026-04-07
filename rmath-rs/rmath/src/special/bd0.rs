@@ -946,6 +946,7 @@ pub(crate) fn ebd0(x: f64, m: f64) -> (f64, f64) {
     (yh, yl)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_bd0(x: f64, np: f64) -> f64 {
     bd0(x, np)

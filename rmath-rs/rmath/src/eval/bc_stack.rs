@@ -4,10 +4,9 @@
 //!
 //! Provides the R_bcstack_t structure and stack operations used by bcEval.
 
-use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::ffi::SEXP;
 
 // ---------------------------------------------------------------------------
 // R_bcstack_t — bytecode interpreter stack

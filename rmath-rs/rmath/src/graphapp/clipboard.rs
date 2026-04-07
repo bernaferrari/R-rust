@@ -7,14 +7,14 @@ use super::types::*;
 use std::os::raw::c_int;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn copytoclipboard(src: drawing) { /* TODO */
+pub unsafe extern "C" fn copytoclipboard(_src: drawing) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn copystringtoclipboard(str: *const std::os::raw::c_char) -> c_int {
+pub unsafe extern "C" fn copystringtoclipboard(_str: *const std::os::raw::c_char) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getstringfromclipboard(str: *mut std::os::raw::c_char, n: c_int) -> c_int {
+pub unsafe extern "C" fn getstringfromclipboard(_str: *mut std::os::raw::c_char, _n: c_int) -> c_int {
     0
 }
 #[unsafe(no_mangle)]

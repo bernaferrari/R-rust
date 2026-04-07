@@ -33,6 +33,7 @@
  *  Derived from multicore version 0.1-8 by Simon Urbanek
  */
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
 
@@ -100,37 +101,34 @@ struct child_info_t {
 }
 
 #[cfg(unix)]
-static mut children: *mut child_info_t = ptr::null_mut();
+thread_local! { static children: Cell<*mut child_info_t> = Cell::new(ptr::null_mut()); }
 
 #[cfg(unix)]
-static mut master_fd: c_int = -1;
+thread_local! { static master_fd: Cell<c_int> = Cell::new(-1); }
 
 #[cfg(unix)]
-static mut is_master: c_int = 1;
+thread_local! { static is_master: Cell<c_int> = Cell::new(1); }
 
 #[cfg(unix)]
-static mut child_can_exit: c_int = 0;
+thread_local! { static child_can_exit: Cell<c_int> = Cell::new(0); }
 
 #[cfg(unix)]
-static mut child_exit_status: c_int = -1;
+thread_local! { static child_exit_status: Cell<c_int> = Cell::new(-1); }
 
 #[cfg(unix)]
-static mut parent_handler_set: c_int = 0;
+thread_local! { static parent_handler_set: Cell<c_int> = Cell::new(0); }
 
 #[cfg(unix)]
-static mut old_sig_handler: sigaction = unsafe {
-    // Safe zero-initialization for sigaction
-    std::mem::zeroed()
-};
+thread_local! { static old_sig_handler: Cell<sigaction> = Cell::new(unsafe { std::mem::zeroed() }); }
 
 #[cfg(unix)]
-static mut R_isForkedChild: c_int = 0;
+thread_local! { static R_isForkedChild: Cell<c_int> = Cell::new(0); }
 
 #[cfg(unix)]
-static mut R_ignore_SIGPIPE: c_int = 0;
+thread_local! { static R_ignore_SIGPIPE: Cell<c_int> = Cell::new(0); }
 
 #[cfg(unix)]
-static mut R_Interactive: c_int = 1;
+thread_local! { static R_Interactive: Cell<c_int> = Cell::new(1); }
 
 // ---------------------------------------------------------------------------
 // Helper functions
@@ -175,7 +173,7 @@ unsafe fn fd_used_by_children(fd: c_int) -> c_int {
     if fd == -1 {
         return 0;
     }
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     while !ci.is_null() {
         if (*ci).pfd == fd || (*ci).sifd == fd {
             return 1;
@@ -202,9 +200,9 @@ unsafe fn close_non_child_fd(fd: c_int) {
 #[cfg(unix)]
 unsafe extern "C" fn child_sig_handler(sig: c_int) {
     if sig == SIGUSR1 {
-        child_can_exit = 1;
-        if child_exit_status >= 0 {
-            libc::_exit(child_exit_status);
+        child_can_exit.with(|v| v.set(1));
+        if child_exit_status.with(|v| v.get()) >= 0 {
+            libc::_exit(child_exit_status.with(|v| v.get()));
         }
     }
 }
@@ -212,7 +210,7 @@ unsafe extern "C" fn child_sig_handler(sig: c_int) {
 #[cfg(unix)]
 unsafe extern "C" fn parent_sig_handler(_sig: c_int) {
     let old_errno = *errno_ptr();
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     while !ci.is_null() {
         if (*ci).detached != 0 && (*ci).waitedfor == 0 {
             wait_for_child_ci(ci);
@@ -234,25 +232,26 @@ unsafe fn wait_for_child_ci(ci: *mut child_info_t) {
 
 #[cfg(unix)]
 unsafe fn setup_sig_handler() {
-    if parent_handler_set == 0 {
-        parent_handler_set = 1;
+    if parent_handler_set.with(|v| v.get()) == 0 {
+        parent_handler_set.with(|v| v.set(1));
         let mut sa: sigaction = std::mem::zeroed();
         sigemptyset(&mut sa.sa_mask);
         sa.sa_sigaction = parent_sig_handler as *const () as usize;
         sa.sa_flags = SA_RESTART | libc::SA_SIGINFO;
-        sigaction(SIGCHLD, &sa, std::ptr::addr_of_mut!(old_sig_handler));
+        sigaction(
+            SIGCHLD,
+            &sa,
+            &mut old_sig_handler.with(|v| v.replace(std::mem::zeroed())),
+        );
     }
 }
 
 #[cfg(unix)]
 unsafe fn restore_sig_handler() {
-    if parent_handler_set != 0 {
-        parent_handler_set = 0;
-        sigaction(
-            SIGCHLD,
-            std::ptr::addr_of!(old_sig_handler),
-            ptr::null_mut(),
-        );
+    if parent_handler_set.with(|v| v.get()) != 0 {
+        parent_handler_set.with(|v| v.set(0));
+        let old = old_sig_handler.with(|v| v.replace(std::mem::zeroed()));
+        sigaction(SIGCHLD, &old, ptr::null_mut());
     }
 }
 
@@ -302,7 +301,7 @@ unsafe fn kill_detached_child_ci(ci: *mut child_info_t, sig: c_int) {
 
 #[cfg(unix)]
 unsafe fn rm_child(pid: c_int) -> c_int {
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let ppid = libc::getpid();
     while !ci.is_null() {
         if (*ci).detached == 0 && (*ci).pid == pid && (*ci).ppid == ppid {
@@ -316,7 +315,7 @@ unsafe fn rm_child(pid: c_int) -> c_int {
 
 #[cfg(unix)]
 unsafe fn compact_children() {
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let mut prev: *mut child_info_t = ptr::null_mut();
     let ppid = libc::getpid();
 
@@ -332,7 +331,7 @@ unsafe fn compact_children() {
             if !prev.is_null() {
                 (*prev).next = next;
             } else {
-                children = next;
+                children.with(|v| v.set(next));
             }
             libc::free(ci as *mut c_void);
             ci = next;
@@ -446,12 +445,12 @@ pub unsafe extern "C" fn mc_prepare_cleanup() -> SEXP {
     }
     (*ci).waitedfor = 1;
     (*ci).detached = 1;
-    (*ci).pid = -1; // cleanup mark
+    (*ci).pid = -1;
     (*ci).pfd = -1;
     (*ci).sifd = -1;
     (*ci).ppid = libc::getpid();
-    (*ci).next = children;
-    children = ci;
+    (*ci).next = children.with(|v| v.get());
+    children.with(|v| v.set(ci));
 
     R_NilValue()
 }
@@ -493,7 +492,7 @@ pub unsafe extern "C" fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP)
 
     compact_children();
 
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let mut nattached: c_int = 0;
     while !ci.is_null() {
         if (*ci).detached != 0 && (*ci).waitedfor != 0 && (*ci).pid == -1 {
@@ -523,10 +522,10 @@ pub unsafe extern "C" fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP)
 
     if shutdown != 0 {
         let before = current_time();
-        while !children.is_null() {
+        while !children.with(|v| v.get()).is_null() {
             libc::sleep(1);
             compact_children();
-            if children.is_null() {
+            if children.with(|v| v.get()).is_null() {
                 break;
             }
             let now = current_time();
@@ -595,14 +594,14 @@ pub unsafe extern "C" fn mc_fork(sEstranged: SEXP) -> SEXP {
 
     if pid == 0 {
         // Child process
-        R_isForkedChild = 1;
+        R_isForkedChild.with(|v| v.set(1));
 
         // Free children entries inherited from parent
-        while !children.is_null() {
-            close_fds_child_ci(children);
-            let next = (*children).next;
-            libc::free(children as *mut c_void);
-            children = next;
+        while !children.with(|v| v.get()).is_null() {
+            close_fds_child_ci(children.with(|v| v.get()));
+            let next = (*children.with(|v| v.get())).next;
+            libc::free(children.with(|v| v.get()) as *mut c_void);
+            children.with(|v| v.set(next));
         }
 
         restore_sigchld(&ss);
@@ -612,23 +611,22 @@ pub unsafe extern "C" fn mc_fork(sEstranged: SEXP) -> SEXP {
             *res_i.add(1) = NA_INTEGER as c_int;
             *res_i.add(2) = NA_INTEGER as c_int;
         } else {
-            close(pipefd[0]); // close read end of data pipe
-            close(sipfd[1]); // close write end of child-stdin pipe
-            master_fd = *res_i.add(1);
+            close(pipefd[0]);
+            close(sipfd[1]);
+            master_fd.with(|v| v.set(*res_i.add(1)));
             *res_i.add(1) = pipefd[1];
             *res_i.add(2) = NA_INTEGER as c_int;
 
-            // Re-map stdin
             dup2(sipfd[0], R_STDIN_FILENO);
             close(sipfd[0]);
         }
-        is_master = 0;
-        child_exit_status = -1;
+        is_master.with(|v| v.set(0));
+        child_exit_status.with(|v| v.set(-1));
 
         if estranged {
-            child_can_exit = 1;
+            child_can_exit.with(|v| v.set(1));
         } else {
-            child_can_exit = 0;
+            child_can_exit.with(|v| v.set(0));
             signal(SIGUSR1, child_sig_handler as *const () as usize);
         }
     } else {
@@ -657,8 +655,8 @@ pub unsafe extern "C" fn mc_fork(sEstranged: SEXP) -> SEXP {
             (*ci).sifd = sipfd[1];
         }
 
-        (*ci).next = children;
-        children = ci;
+        (*ci).next = children.with(|v| v.get());
+        children.with(|v| v.set(ci));
         restore_sigchld(&ss);
     }
 
@@ -726,12 +724,12 @@ pub unsafe extern "C" fn mc_close_fds(sFDS: SEXP) -> SEXP {
 #[cfg(unix)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mc_send_master(what: SEXP) -> SEXP {
-    if is_master != 0 {
+    if is_master.with(|v| v.get()) != 0 {
         crate::main::errors::Rf_error(
             b"only children can send data to the master process\0".as_ptr() as *const c_char,
         );
     }
-    if master_fd == -1 {
+    if master_fd.with(|v| v.get()) == -1 {
         crate::main::errors::Rf_error(
             b"there is no pipe to the master process\0".as_ptr() as *const c_char
         );
@@ -744,15 +742,16 @@ pub unsafe extern "C" fn mc_send_master(what: SEXP) -> SEXP {
 
     let len = XLENGTH(what);
     let b = RAW(what);
+    let fd = master_fd.with(|v| v.get());
 
     if writerep(
-        master_fd,
+        fd,
         &len as *const R_xlen_t as *const c_void,
         std::mem::size_of::<R_xlen_t>(),
     ) != std::mem::size_of::<R_xlen_t>() as ssize_t
     {
-        close(master_fd);
-        master_fd = -1;
+        close(fd);
+        master_fd.with(|v| v.set(-1));
         crate::main::errors::Rf_error(
             b"write error, closing pipe to the master\0".as_ptr() as *const c_char
         );
@@ -764,10 +763,14 @@ pub unsafe extern "C" fn mc_send_master(what: SEXP) -> SEXP {
         if to_send > MC_MAX_CHUNK {
             to_send = MC_MAX_CHUNK;
         }
-        let n = writerep(master_fd, b.add(i as usize) as *const c_void, to_send);
+        let n = writerep(
+            master_fd.with(|v| v.get()),
+            b.add(i as usize) as *const c_void,
+            to_send,
+        );
         if n < 1 {
-            close(master_fd);
-            master_fd = -1;
+            close(master_fd.with(|v| v.get()));
+            master_fd.with(|v| v.set(-1));
             crate::main::errors::Rf_error(
                 b"write error, closing pipe to the master\0".as_ptr() as *const c_char
             );
@@ -785,7 +788,7 @@ pub unsafe extern "C" fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let pid = asInteger(sPid);
-    if is_master == 0 {
+    if is_master.with(|v| v.get()) == 0 {
         crate::main::errors::Rf_error(
             b"only the master process can send data to a child process\0".as_ptr() as *const c_char,
         );
@@ -794,7 +797,7 @@ pub unsafe extern "C" fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
         crate::main::errors::Rf_error(b"what must be a raw vector\0".as_ptr() as *const c_char);
     }
 
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let ppid = libc::getpid();
     while !ci.is_null() {
         if (*ci).detached == 0 && (*ci).pid == pid && (*ci).ppid == ppid {
@@ -836,7 +839,7 @@ pub unsafe extern "C" fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEX
     let mut wlen: c_uint = 0;
     let mut wcount: c_uint = 0;
     let mut which: *const c_int = ptr::null();
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let mut fs: fd_set = std::mem::zeroed();
     let mut timeout: c_double = 0.0;
     let ppid = libc::getpid();
@@ -980,7 +983,7 @@ pub unsafe extern "C" fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEX
         return Rf_ScalarLogical(1);
     }
 
-    ci = children;
+    ci = children.with(|v| v.get());
     let res = Rf_allocVector(SEXPTYPE::INTSXP.0, sr as c_int);
     let mut res_i = INTEGER(res);
     while !ci.is_null() {
@@ -1046,7 +1049,7 @@ pub unsafe extern "C" fn mc_read_child(sPid: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let pid = asInteger(sPid);
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let ppid = libc::getpid();
     while !ci.is_null() {
         if (*ci).detached == 0 && (*ci).pid == pid && (*ci).ppid == ppid {
@@ -1068,7 +1071,7 @@ pub unsafe extern "C" fn mc_read_children(sTimeout: SEXP) -> SEXP {
 
     let mut maxfd: c_int = 0;
     let mut sr: c_int = 0;
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let mut fs: fd_set = std::mem::zeroed();
     let mut tv: timeval = std::mem::zeroed();
     tv.tv_sec = 0;
@@ -1122,7 +1125,7 @@ pub unsafe extern "C" fn mc_read_children(sTimeout: SEXP) -> SEXP {
         return Rf_ScalarLogical(1);
     }
 
-    ci = children;
+    ci = children.with(|v| v.get());
     while !ci.is_null() {
         if (*ci).detached == 0 && (*ci).ppid == ppid {
             if (*ci).pfd >= 0 && FD_ISSET((*ci).pfd, &fs) {
@@ -1153,7 +1156,7 @@ pub unsafe extern "C" fn mc_rm_child(sPid: SEXP) -> SEXP {
 #[cfg(unix)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mc_children() -> SEXP {
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let mut count: c_uint = 0;
     let ppid = libc::getpid();
     while !ci.is_null() {
@@ -1166,7 +1169,7 @@ pub unsafe extern "C" fn mc_children() -> SEXP {
     let res = Rf_allocVector(SEXPTYPE::INTSXP.0, count as c_int);
     if count > 0 {
         let mut pids = INTEGER(res);
-        ci = children;
+        ci = children.with(|v| v.get());
         while !ci.is_null() {
             if (*ci).detached == 0 && (*ci).ppid == ppid {
                 *pids = (*ci).pid as c_int;
@@ -1186,7 +1189,7 @@ pub unsafe extern "C" fn mc_fds(sFdi: SEXP) -> SEXP {
 
     let fdi = asInteger(sFdi);
     let mut count: c_uint = 0;
-    let mut ci = children;
+    let mut ci = children.with(|v| v.get());
     let ppid = libc::getpid();
     while !ci.is_null() {
         if (*ci).detached == 0 && (*ci).ppid == ppid {
@@ -1198,7 +1201,7 @@ pub unsafe extern "C" fn mc_fds(sFdi: SEXP) -> SEXP {
     let res = Rf_allocVector(SEXPTYPE::INTSXP.0, count as c_int);
     if count > 0 {
         let mut fds = INTEGER(res);
-        ci = children;
+        ci = children.with(|v| v.get());
         while !ci.is_null() {
             if (*ci).detached == 0 && (*ci).ppid == ppid {
                 *fds = if fdi == 0 { (*ci).pfd } else { (*ci).sifd };
@@ -1214,14 +1217,18 @@ pub unsafe extern "C" fn mc_fds(sFdi: SEXP) -> SEXP {
 #[cfg(unix)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mc_master_fd() -> SEXP {
-    Rf_ScalarInteger(master_fd)
+    Rf_ScalarInteger(master_fd.with(|v| v.get()))
 }
 
 /// Check if current process is a child.
 #[cfg(unix)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn mc_is_child() -> SEXP {
-    Rf_ScalarLogical(if is_master != 0 { 0 } else { 1 })
+    Rf_ScalarLogical(if is_master.with(|v| v.get()) != 0 {
+        0
+    } else {
+        1
+    })
 }
 
 /// Send a signal to a process.
@@ -1246,23 +1253,24 @@ pub unsafe extern "C" fn mc_exit(sRes: SEXP) -> SEXP {
 
     let res = asInteger(sRes);
 
-    if is_master != 0 {
+    if is_master.with(|v| v.get()) != 0 {
         crate::main::errors::Rf_error(
             b"'mcexit' can only be used in a child process\0".as_ptr() as *const c_char
         );
     }
 
-    if master_fd != -1 {
+    if master_fd.with(|v| v.get()) != -1 {
         let len: size_t = 0;
-        R_ignore_SIGPIPE = 1;
+        R_ignore_SIGPIPE.with(|v| v.set(1));
+        let fd = master_fd.with(|v| v.get());
         let n = writerep(
-            master_fd,
+            fd,
             &len as *const size_t as *const c_void,
             std::mem::size_of::<size_t>(),
         );
-        close(master_fd);
-        R_ignore_SIGPIPE = 0;
-        master_fd = -1;
+        close(fd);
+        R_ignore_SIGPIPE.with(|v| v.set(0));
+        master_fd.with(|v| v.set(-1));
         if n < 0 && *errno_ptr() != EPIPE {
             crate::main::errors::Rf_error(
                 b"write error, closing pipe to the master\0".as_ptr() as *const c_char
@@ -1270,8 +1278,8 @@ pub unsafe extern "C" fn mc_exit(sRes: SEXP) -> SEXP {
         }
     }
 
-    if child_can_exit == 0 {
-        while child_can_exit == 0 {
+    if child_can_exit.with(|v| v.get()) == 0 {
+        while child_can_exit.with(|v| v.get()) == 0 {
             libc::sleep(1);
         }
     }
@@ -1290,9 +1298,9 @@ pub unsafe extern "C" fn mc_interactive(sWhat: SEXP) -> SEXP {
 
     let what = asInteger(sWhat);
     if what != NA_INTEGER {
-        R_Interactive = what;
+        R_Interactive.with(|v| v.set(what));
     }
-    Rf_ScalarLogical(R_Interactive)
+    Rf_ScalarLogical(R_Interactive.with(|v| v.get()))
 }
 
 /// Get or set CPU affinity (stub on non-Linux).

@@ -5,11 +5,12 @@
 //!
 //! Ported from events.c - winprocs, timers, and event dispatch.
 
+use std::cell::Cell;
 use std::os::raw::{c_int, c_long, c_uint, c_void};
 
 use super::types::*;
 
-static mut KEYSTATE: c_int = 0;
+thread_local! { static KEYSTATE: Cell<c_int> = Cell::new(0); }
 
 pub unsafe fn init_events() { /* TODO */
 }
@@ -20,7 +21,7 @@ pub unsafe fn handle_control(_hwnd: *mut c_void, _message: c_uint) { /* TODO */
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getkeystate() -> c_int {
-    unsafe { KEYSTATE }
+    KEYSTATE.with(|v| v.get())
 }
 
 #[unsafe(no_mangle)]

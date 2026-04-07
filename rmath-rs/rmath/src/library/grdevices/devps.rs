@@ -12,6 +12,7 @@
 //!   PostScript(SEXP args) -> SEXP
 //!   PDF(SEXP args) -> SEXP
 
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::io::Write as _;
 use std::os::raw::{c_char, c_double, c_int, c_short, c_uchar, c_uint, c_void};
@@ -380,17 +381,17 @@ type encodinglist = *mut EncList;
 // Global font/encoding lists (session-wide)
 // =========================================================================
 
-static mut loadedCIDFonts: cidfontlist = ptr::null_mut();
-static mut loadedFonts: type1fontlist = ptr::null_mut();
-static mut loadedEncodings: encodinglist = ptr::null_mut();
-static mut PDFloadedCIDFonts: cidfontlist = ptr::null_mut();
-static mut PDFloadedFonts: type1fontlist = ptr::null_mut();
-static mut PDFloadedEncodings: encodinglist = ptr::null_mut();
+thread_local! { static loadedCIDFonts: Cell<cidfontlist> = Cell::new(ptr::null_mut()); }
+thread_local! { static loadedFonts: Cell<type1fontlist> = Cell::new(ptr::null_mut()); }
+thread_local! { static loadedEncodings: Cell<encodinglist> = Cell::new(ptr::null_mut()); }
+thread_local! { static PDFloadedCIDFonts: Cell<cidfontlist> = Cell::new(ptr::null_mut()); }
+thread_local! { static PDFloadedFonts: Cell<type1fontlist> = Cell::new(ptr::null_mut()); }
+thread_local! { static PDFloadedEncodings: Cell<encodinglist> = Cell::new(ptr::null_mut()); }
 
-static mut PostScriptFonts: [c_char; 20] = [
+thread_local! { static PostScriptFonts: RefCell<[c_char; 20]> = RefCell::new([
     46, 80, 111, 115, 116, 83, 99, 114, 105, 112, 116, 46, 70, 111, 110, 116, 115, 0, 0, 0,
-];
-static mut PDFFonts: [c_char; 12] = [46, 80, 68, 70, 46, 70, 111, 110, 116, 115, 0, 0];
+]); }
+thread_local! { static PDFFonts: RefCell<[c_char; 12]> = RefCell::new([46, 80, 68, 70, 46, 70, 111, 110, 116, 115, 0, 0]); }
 
 // =========================================================================
 // CID font PostScript strings
@@ -779,7 +780,7 @@ unsafe fn pathcmp(encpath: *const c_char, comparison: &str) -> c_int {
     libc::strcmp(
         p1,
         CStr::from_bytes_with_nul(comparison.as_bytes())
-            .unwrap()
+            .expect("unwrap on None/Err")
             .as_ptr(),
     )
 }
@@ -1214,9 +1215,9 @@ unsafe fn findEncoding(
     isPDF: bool,
 ) -> encodinginfo {
     let enclist = if isPDF {
-        PDFloadedEncodings
+        PDFloadedEncodings.with(|v| v.get())
     } else {
-        loadedEncodings
+        loadedEncodings.with(|v| v.get())
     };
     let mut result: encodinginfo = ptr::null_mut();
     let mut found = false;
@@ -1287,9 +1288,9 @@ unsafe fn addEncoding(encpath: *const c_char, isPDF: bool) -> encodinginfo {
         (*newenc).encoding = encoding;
         if enclist.is_null() {
             if isPDF {
-                PDFloadedEncodings = newenc;
+                PDFloadedEncodings.with(|v| v.set(newenc));
             } else {
-                loadedEncodings = newenc;
+                loadedEncodings.with(|v| v.set(newenc));
             }
         } else {
             let mut el = enclist;
@@ -1411,7 +1412,11 @@ unsafe fn findLoadedFont(
     _encoding: *const c_char,
     isPDF: bool,
 ) -> type1fontfamily {
-    let mut fontlist = if isPDF { PDFloadedFonts } else { loadedFonts };
+    let mut fontlist = if isPDF {
+        PDFloadedFonts.with(|v| v.get())
+    } else {
+        loadedFonts.with(|v| v.get())
+    };
     while !fontlist.is_null() {
         if streql(name, (*(*fontlist).family).fxname.as_ptr()) {
             return (*fontlist).family;
@@ -1423,9 +1428,9 @@ unsafe fn findLoadedFont(
 
 unsafe fn findLoadedCIDFont(family: *const c_char, isPDF: bool) -> cidfontfamily {
     let mut fontlist = if isPDF {
-        PDFloadedCIDFonts
+        PDFloadedCIDFonts.with(|v| v.get())
     } else {
-        loadedCIDFonts
+        loadedCIDFonts.with(|v| v.get())
     };
     while !fontlist.is_null() {
         if !(*(*fontlist).cidfamily).cidfonts[0].is_null()
@@ -1504,15 +1509,15 @@ unsafe fn addLoadedCIDFont(font: cidfontfamily, isPDF: bool) -> cidfontfamily {
     }
     (*newfont).cidfamily = font;
     let fontlist = if isPDF {
-        PDFloadedCIDFonts
+        PDFloadedCIDFonts.with(|v| v.get())
     } else {
-        loadedCIDFonts
+        loadedCIDFonts.with(|v| v.get())
     };
     if fontlist.is_null() {
         if isPDF {
-            PDFloadedCIDFonts = newfont;
+            PDFloadedCIDFonts.with(|v| v.set(newfont));
         } else {
-            loadedCIDFonts = newfont;
+            loadedCIDFonts.with(|v| v.set(newfont));
         }
     } else {
         let mut fl = fontlist;
@@ -1534,12 +1539,16 @@ unsafe fn addLoadedFont(font: type1fontfamily, isPDF: bool) -> type1fontfamily {
         return ptr::null_mut();
     }
     (*newfont).family = font;
-    let fontlist = if isPDF { PDFloadedFonts } else { loadedFonts };
+    let fontlist = if isPDF {
+        PDFloadedFonts.with(|v| v.get())
+    } else {
+        loadedFonts.with(|v| v.get())
+    };
     if fontlist.is_null() {
         if isPDF {
-            PDFloadedFonts = newfont;
+            PDFloadedFonts.with(|v| v.set(newfont));
         } else {
-            loadedFonts = newfont;
+            loadedFonts.with(|v| v.set(newfont));
         }
     } else {
         let mut fl = fontlist;
@@ -1559,9 +1568,9 @@ unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
     let cmap = getFontCMap(
         name,
         if isPDF {
-            core::ptr::addr_of!(PDFFonts) as *const c_char
+            PDFFonts.with(|v| v.as_ptr() as *const c_char)
         } else {
-            core::ptr::addr_of!(PostScriptFonts) as *const c_char
+            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
         },
     );
     if cmap.is_null() {
@@ -1573,9 +1582,9 @@ unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
     let enc = getCIDFontEncoding(
         name,
         if isPDF {
-            core::ptr::addr_of!(PDFFonts) as *const c_char
+            PDFFonts.with(|v| v.as_ptr() as *const c_char)
         } else {
-            core::ptr::addr_of!(PostScriptFonts) as *const c_char
+            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
         },
     );
     if !enc.is_null() {
@@ -1584,9 +1593,9 @@ unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
     let fname = getFontName(
         name,
         if isPDF {
-            core::ptr::addr_of!(PDFFonts) as *const c_char
+            PDFFonts.with(|v| v.as_ptr() as *const c_char)
         } else {
-            core::ptr::addr_of!(PostScriptFonts) as *const c_char
+            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
         },
     );
     for i in 0..4 {
@@ -1612,9 +1621,9 @@ unsafe fn addFont(
     let encpath = getFontEncoding(
         name,
         if isPDF {
-            core::ptr::addr_of!(PDFFonts) as *const c_char
+            PDFFonts.with(|v| v.as_ptr() as *const c_char)
         } else {
-            core::ptr::addr_of!(PostScriptFonts) as *const c_char
+            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
         },
     );
     if encpath.is_null() {
@@ -1645,9 +1654,9 @@ unsafe fn addFont(
             name,
             i as c_int,
             if isPDF {
-                core::ptr::addr_of!(PDFFonts) as *const c_char
+                PDFFonts.with(|v| v.as_ptr() as *const c_char)
             } else {
-                core::ptr::addr_of!(PostScriptFonts) as *const c_char
+                PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
             },
         );
         if afmpath.is_null() {

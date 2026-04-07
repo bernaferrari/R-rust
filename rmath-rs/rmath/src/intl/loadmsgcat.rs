@@ -10,6 +10,7 @@
 #![allow(non_snake_case)]
 
 use std::alloc::{self, Layout};
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::Read as IoRead;
@@ -22,8 +23,7 @@ use super::types::*;
 // Internal state
 // ---------------------------------------------------------------------------
 
-/// Lock for domain data loading.
-static mut _nl_msg_cat_cntr_lock: [u8; 0] = [];
+thread_local! { static _nl_msg_cat_cntr_lock: Cell<[u8; 0]> = Cell::new([]); }
 
 // ---------------------------------------------------------------------------
 // Helper: read a .mo file from disk (no mmap)
@@ -58,7 +58,7 @@ unsafe fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_cha
         data.push(0);
 
         let size = data.len();
-        let layout = Layout::from_size_align(size, 1).unwrap();
+        let layout = Layout::from_size_align(size, 1).expect("unwrap on None/Err");
         let buf = alloc::alloc(layout) as *mut c_char;
         if buf.is_null() {
             return ptr::null_mut();
@@ -126,7 +126,7 @@ pub unsafe extern "C" fn _nl_load_domain(
         let domain_layout = Layout::new::<loaded_domain>();
         let domain = alloc::alloc(domain_layout) as *mut loaded_domain;
         if domain.is_null() {
-            let layout = Layout::from_size_align(file_size, 1).unwrap();
+            let layout = Layout::from_size_align(file_size, 1).expect("unwrap on None/Err");
             alloc::dealloc(data as *mut u8, layout);
             (*domain_file).decided = 1;
             (*domain_file).data = ptr::null();
@@ -145,7 +145,7 @@ pub unsafe extern "C" fn _nl_load_domain(
             // File too small to be a valid .mo file.
             alloc::dealloc(
                 data as *mut u8,
-                Layout::from_size_align(file_size, 1).unwrap(),
+                Layout::from_size_align(file_size, 1).expect("unwrap on None/Err"),
             );
             alloc::dealloc(domain as *mut u8, domain_layout);
             (*domain_file).decided = 1;
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn _nl_load_domain(
             // Invalid magic number.
             alloc::dealloc(
                 data as *mut u8,
-                Layout::from_size_align(file_size, 1).unwrap(),
+                Layout::from_size_align(file_size, 1).expect("unwrap on None/Err"),
             );
             alloc::dealloc(domain as *mut u8, domain_layout);
             (*domain_file).decided = 1;

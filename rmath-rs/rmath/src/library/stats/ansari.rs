@@ -46,7 +46,7 @@ unsafe fn w_init(m: c_int, n: c_int) -> *mut *mut *mut f64 {
 
     // Allocate array of (m+1) pointers to (n+1) pointers
     let ptr_size = std::mem::size_of::<*mut *mut f64>();
-    let outer_layout = Layout::array::<*mut *mut f64>((m + 1) as usize).unwrap();
+    let outer_layout = Layout::array::<*mut *mut f64>((m + 1) as usize).expect("unwrap on None/Err");
     let outer = alloc(outer_layout) as *mut *mut *mut f64;
     if outer.is_null() {
         return ptr::null_mut();
@@ -54,7 +54,7 @@ unsafe fn w_init(m: c_int, n: c_int) -> *mut *mut *mut f64 {
     ptr::write_bytes(outer, 0, (m + 1) as usize);
 
     for i in 0..=(m as usize) {
-        let mid_layout = Layout::array::<*mut f64>((n + 1) as usize).unwrap();
+        let mid_layout = Layout::array::<*mut f64>((n + 1) as usize).expect("unwrap on None/Err");
         let mid = alloc(mid_layout) as *mut *mut f64;
         if mid.is_null() {
             // cleanup on failure - simplified
@@ -82,7 +82,7 @@ unsafe fn cansari(k: c_int, m: c_int, n: c_int, w: *mut *mut *mut f64) -> f64 {
     let w_mn = *w_m.add(n as usize);
     if w_mn.is_null() {
         // allocate the inner array
-        let inner_layout = std::alloc::Layout::array::<f64>((u + 1) as usize).unwrap();
+        let inner_layout = std::alloc::Layout::array::<f64>((u + 1) as usize).expect("unwrap on None/Err");
         let inner = std::alloc::alloc(inner_layout) as *mut f64;
         if inner.is_null() {
             return 0.0;

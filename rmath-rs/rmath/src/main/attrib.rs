@@ -33,6 +33,7 @@
 //! Functions in eval/attrib_core.rs (NOT duplicated):
 //!   getAttrib, setAttrib, isObject, R_classgets, R_data_class
 
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
@@ -196,7 +197,7 @@ unsafe fn installTrChar(s: SEXP) -> SEXP {
             .to_str()
             .unwrap_or(""),
     )
-    .unwrap();
+    .expect("unwrap on None/Err");
     Rf_install(cstr.as_ptr())
 }
 
@@ -213,13 +214,13 @@ unsafe fn CHAR(x: SEXP) -> *const c_char {
 
 #[inline(always)]
 unsafe fn mkChar(s: &str) -> SEXP {
-    let cs = std::ffi::CString::new(s).unwrap();
+    let cs = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
     Rf_mkChar(cs.as_ptr())
 }
 
 #[inline(always)]
 unsafe fn mkString(s: &str) -> SEXP {
-    let cs = std::ffi::CString::new(s).unwrap();
+    let cs = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
     Rf_mkString(cs.as_ptr())
 }
 
@@ -244,7 +245,7 @@ unsafe fn type2str(t: c_int) -> SEXP {
         t if t == SEXPTYPE::OBJSXP.0 => "object",
         _ => "unknown",
     };
-    let cs = std::ffi::CString::new(name).unwrap();
+    let cs = std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
     Rf_mkChar(cs.as_ptr())
 }
 
@@ -269,18 +270,18 @@ unsafe fn R_typeToChar(x: SEXP) -> *const c_char {
         t if t == SEXPTYPE::OBJSXP.0 => "object",
         _ => "unknown",
     };
-    static mut BUF: [c_char; 64] = [0; 64];
-    let cs = std::ffi::CString::new(name).unwrap();
+    thread_local! { static BUF: RefCell<[c_char; 64]> = RefCell::new([0; 64]); }
+    let cs = std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
     let bytes = cs.as_bytes_with_nul();
-    let buf_ptr: *mut c_char = core::ptr::addr_of_mut!(BUF[0]);
-    for (i, &b) in bytes.iter().enumerate() {
-        if i < 64 {
-            unsafe {
+    BUF.with(|buf| {
+        let buf_ptr = buf.as_ptr() as *mut c_char;
+        for (i, &b) in bytes.iter().enumerate() {
+            if i < 64 {
                 *buf_ptr.add(i) = b as c_char;
             }
         }
-    }
-    buf_ptr
+        buf_ptr
+    })
 }
 
 const S4_OBJECT_MASK: u16 = 1 << 11;
@@ -318,7 +319,7 @@ unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
 
 #[inline(always)]
 unsafe fn Rf_error(s: &str) {
-    let cs = std::ffi::CString::new(s).unwrap();
+    let cs = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
     crate::main::errors::Rf_error(cs.as_ptr());
 }
 
@@ -406,7 +407,7 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
 
 #[inline(always)]
 unsafe fn install(s: &str) -> SEXP {
-    let cs = std::ffi::CString::new(s).unwrap();
+    let cs = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
     Rf_install(cs.as_ptr())
 }
 
@@ -711,23 +712,22 @@ unsafe fn R_UnboundValue() -> SEXP {
 // Static state for slot handling and S3/S4
 // ---------------------------------------------------------------------------
 
-static mut s_dot_S3Class: SEXP = ptr::null_mut();
-static mut s_dot_Data: SEXP = ptr::null_mut();
-static mut s_getDataPart: SEXP = ptr::null_mut();
-static mut s_setDataPart: SEXP = ptr::null_mut();
-static mut pseudo_NULL: SEXP = ptr::null_mut();
+thread_local! { static s_dot_S3Class: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static s_dot_Data: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static s_getDataPart: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static s_setDataPart: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static pseudo_NULL: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 unsafe fn init_slot_handling() {
-    s_dot_Data = install(".Data");
-    s_dot_S3Class = install(".S3Class");
-    s_getDataPart = install("getDataPart");
-    s_setDataPart = install("setDataPart");
-    pseudo_NULL = install("\x01NULL\x01");
+    s_dot_Data.with(|v| v.set(install(".Data")));
+    s_dot_S3Class.with(|v| v.set(install(".S3Class")));
+    s_getDataPart.with(|v| v.set(install("getDataPart")));
+    s_setDataPart.with(|v| v.set(install("setDataPart")));
+    pseudo_NULL.with(|v| v.set(install("\x01NULL\x01")));
 }
 
 // Pre-allocated default class attributes
-static mut Type2DefaultClass: [*mut std::ffi::c_void; MAX_NUM_SEXPTYPE] =
-    [ptr::null_mut(); MAX_NUM_SEXPTYPE];
+thread_local! { static Type2DefaultClass: RefCell<[*mut std::ffi::c_void; MAX_NUM_SEXPTYPE]> = RefCell::new([ptr::null_mut(); MAX_NUM_SEXPTYPE]); }
 
 struct DefaultClassEntry {
     vector: SEXP,
@@ -2196,10 +2196,10 @@ pub unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn S3Class(obj: SEXP) -> SEXP {
-    if s_dot_S3Class.is_null() {
+    if s_dot_S3Class.with(|v| v.get()).is_null() {
         init_slot_handling();
     }
-    crate::attrib_core::getAttrib(obj, s_dot_S3Class)
+    crate::attrib_core::getAttrib(obj, s_dot_S3Class.with(|v| v.get()))
 }
 
 // ---------------------------------------------------------------------------
@@ -2211,11 +2211,11 @@ pub unsafe extern "C" fn R_has_slot(obj: SEXP, name: SEXP) -> c_int {
     if !(isSymbol(name) || isScalarString(name)) {
         Rf_error("invalid type or length for slot name");
     }
-    if s_dot_Data.is_null() {
+    if s_dot_Data.with(|v| v.get()).is_null() {
         init_slot_handling();
     }
     let name = if isString(name) { install("") } else { name }; // simplified
-    if name == s_dot_Data && TYPEOF(obj) != SEXPTYPE::OBJSXP.0 {
+    if name == s_dot_Data.with(|v| v.get()) && TYPEOF(obj) != SEXPTYPE::OBJSXP.0 {
         return 1;
     }
     if !isNull(crate::attrib_core::getAttrib(obj, name))
@@ -2235,23 +2235,23 @@ pub unsafe extern "C" fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
     if !(isSymbol(name) || isScalarString(name)) {
         Rf_error("invalid type or length for slot name");
     }
-    if s_dot_Data.is_null() {
+    if s_dot_Data.with(|v| v.get()).is_null() {
         init_slot_handling();
     }
     let name = if isString(name) { install("") } else { name }; // simplified
 
-    if name == s_dot_Data {
+    if name == s_dot_Data.with(|v| v.get()) {
         // data_part — stub
         return R_NilValue();
     } else {
         let value = crate::attrib_core::getAttrib(obj, name);
         if isNull(value) || value == R_NilValue() {
-            if name == s_dot_S3Class {
+            if name == s_dot_S3Class.with(|v| v.get()) {
                 return R_data_class_full(obj, 0);
             }
             // Slot not found
             Rf_error("no slot of name for this object of class");
-        } else if value == pseudo_NULL {
+        } else if value == pseudo_NULL.with(|v| v.get()) {
             return R_NilValue();
         }
         value
@@ -2280,16 +2280,16 @@ pub unsafe extern "C" fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) ->
         Rf_error("invalid type or length for slot name");
     }
 
-    if s_dot_Data.is_null() {
+    if s_dot_Data.with(|v| v.get()).is_null() {
         init_slot_handling();
     }
 
-    if name == s_dot_Data {
+    if name == s_dot_Data.with(|v| v.get()) {
         // set_data_part — stub
         return obj;
     } else {
         let val = if isNull(value) || value == R_NilValue() {
-            pseudo_NULL
+            pseudo_NULL.with(|v| v.get())
         } else {
             value
         };
@@ -2315,11 +2315,11 @@ pub unsafe fn do_AT(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         Rf_error("invalid type or length for slot name");
     }
 
-    if s_dot_Data.is_null() {
+    if s_dot_Data.with(|v| v.get()).is_null() {
         init_slot_handling();
     }
 
-    if nlist != s_dot_Data && IS_S4_OBJECT(object) == 0 {
+    if nlist != s_dot_Data.with(|v| v.get()) && IS_S4_OBJECT(object) == 0 {
         Rf_error("no applicable method for `@` applied to an object of class");
     }
 
@@ -2349,7 +2349,7 @@ pub unsafe extern "C" fn R_getS4DataSlot(obj: SEXP, type_: c_int) -> SEXP {
         let mut obj = shallow_duplicate(obj);
         if !isNull(s3class) && s3class != R_NilValue() {
             crate::attrib_core::setAttrib(obj, R_ClassSymbol(), s3class);
-            crate::attrib_core::setAttrib(obj, s_dot_S3Class, R_NilValue());
+            crate::attrib_core::setAttrib(obj, s_dot_S3Class.with(|v| v.get()), R_NilValue());
         } else {
             crate::attrib_core::setAttrib(obj, R_ClassSymbol(), R_NilValue());
         }

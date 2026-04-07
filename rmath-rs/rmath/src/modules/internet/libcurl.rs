@@ -11,6 +11,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::*;
 use core::ffi::{c_char, c_double, c_int, c_long, c_uint, c_void};
 use libc::{FILE, size_t, ssize_t};
+use std::cell::{Cell, RefCell};
 
 // ============================================================
 // libcurl FFI types and constants
@@ -221,8 +222,8 @@ unsafe extern "C" {
 // Module-level state (statics matching C code)
 // ============================================================
 
-static mut current_timeout: c_int = 0;
-static mut current_time: c_double = 0.0;
+thread_local! { static current_timeout: Cell<c_int> = Cell::new(0); }
+thread_local! { static current_time: Cell<c_double> = Cell::new(0.0); }
 
 // ============================================================
 // Internal helper functions
@@ -305,8 +306,8 @@ fn r_min<T: PartialOrd>(a: T, b: T) -> T {
 const MAX_HEADERS: usize = 500;
 const MAX_HEADER_LEN: usize = 2049;
 
-static mut HEADERS: [[c_char; MAX_HEADER_LEN]; MAX_HEADERS] = [[0; MAX_HEADER_LEN]; MAX_HEADERS];
-static mut headers_used: c_int = 0;
+thread_local! { static HEADERS: RefCell<[[c_char; MAX_HEADER_LEN]; MAX_HEADERS]> = RefCell::new([[0; MAX_HEADER_LEN]; MAX_HEADERS]); }
+thread_local! { static headers_used: Cell<c_int> = Cell::new(0); }
 
 /// rcvHeaders - callback for receiving HTTP headers (used by curlGetHeaders)
 unsafe extern "C" fn rcvHeaders(
@@ -318,13 +319,23 @@ unsafe extern "C" fn rcvHeaders(
     let d = buffer as *mut c_char;
     let result = size * nmemb;
     let res = if result > 2048 { 2048 } else { result };
-    if (headers_used as usize) >= MAX_HEADERS {
+    if (headers_used.with(|v| v.get()) as usize) >= MAX_HEADERS {
         return result;
     }
-    libc::strncpy(HEADERS[headers_used as usize].as_mut_ptr(), d, res);
+    HEADERS.with(|headers| {
+        libc::strncpy(
+            headers.borrow_mut()[headers_used.with(|v| v.get()) as usize].as_mut_ptr(),
+            d,
+            res,
+        )
+    });
     // Header line is NOT zero terminated
-    *HEADERS[headers_used as usize].as_mut_ptr().add(res) = 0;
-    headers_used += 1;
+    HEADERS.with(|headers| {
+        *headers.borrow_mut()[headers_used.with(|v| v.get()) as usize]
+            .as_mut_ptr()
+            .add(res) = 0
+    });
+    headers_used.with(|v| v.set(v.get() + 1));
     result
 }
 
@@ -482,7 +493,7 @@ unsafe fn download_report_url_error(msg: *mut CURLMsg) {
 
         if timedout {
             Rf_warning1(b"URL '%s': Timeout was reached\0".as_ptr() as *const c_char);
-            let _ = current_timeout;
+            let _ = current_timeout.with(|v| v.get());
         } else {
             Rf_warning1(b"URL '%s': status was unknown\0".as_ptr() as *const c_char);
             let _ = strerr;
@@ -559,7 +570,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
     } else {
         1000 * timeout0 as c_long
     };
-    current_timeout = if timeout0 == NA_INTEGER { 0 } else { timeout0 };
+    current_timeout.with(|v| v.set(if timeout0 == NA_INTEGER { 0 } else { timeout0 }));
     curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, timeout);
     curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, timeout);
 
@@ -591,8 +602,8 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
 // Progress callbacks for downloads
 // ============================================================
 
-static mut total: c_double = 0.0;
-static mut ndashes: c_int = 0;
+thread_local! { static total: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static ndashes: Cell<c_int> = Cell::new(0); }
 
 /// putdashes - print download progress dashes (Unix)
 #[cfg(unix)]
@@ -627,8 +638,8 @@ unsafe extern "C" fn progress(
 
     // We only use downloads. dltotal may be zero.
     if status < 300 && dltotal > 0.0 {
-        if total == 0.0 {
-            total = dltotal;
+        if total.with(|v| v.get()) == 0.0 {
+            total.with(|v| v.set(dltotal));
             let mut content_type: *mut c_char = std::ptr::null_mut();
             curl_easy_getinfo(
                 hnd,
@@ -643,7 +654,7 @@ unsafe extern "C" fn progress(
                     std::ffi::CStr::from_ptr(content_type).to_string_lossy()
                 );
             }
-            let total_val = *core::ptr::addr_of!(total);
+            let total_val = total.with(|v| v.get());
             if total_val > 1024.0 * 1024.0 {
                 eprintln!(
                     " length {:.0} bytes ({:.1} MB)",
@@ -660,9 +671,12 @@ unsafe extern "C" fn progress(
                 eprintln!(" length {} bytes", total_val as c_int);
             }
         }
-        let total_ref = core::ptr::addr_of_mut!(total);
-        let ndashes_ref = core::ptr::addr_of_mut!(ndashes);
-        putdashes(ndashes_ref, (50.0 * dlnow / *total_ref) as c_int);
+        let mut ndashes_ref = ndashes.with(|v| v.get());
+        putdashes(
+            &mut ndashes_ref,
+            (50.0 * dlnow / total.with(|v| v.get())) as c_int,
+        );
+        ndashes.with(|v| v.set(ndashes_ref));
     }
     0
 }
@@ -678,8 +692,11 @@ unsafe extern "C" fn progress_multi(
     let tstart = clientp as *mut c_double;
     if !tstart.is_null() {
         if *tstart == 0.0 && (dlnow > 0.0 || dltotal > 0.0) {
-            *tstart = current_time;
-        } else if *tstart > 0.0 && (current_time - *tstart) > (current_timeout as c_double) {
+            *tstart = current_time.with(|v| v.get());
+        } else if *tstart > 0.0
+            && (current_time.with(|v| v.get()) - *tstart)
+                > (current_timeout.with(|v| v.get()) as c_double)
+        {
             return 1; // abort transfer
         }
     }
@@ -696,7 +713,7 @@ unsafe extern "C" fn prereq_multi(
 ) -> c_int {
     let tstart = clientp as *mut c_double;
     if !tstart.is_null() {
-        *tstart = current_time;
+        *tstart = current_time.with(|v| v.get());
     }
     CURL_PREREQFUNC_OK
 }
@@ -760,10 +777,10 @@ unsafe fn download_add_url(
         c_ref.errs.add(i as usize) as *mut c_void,
     );
 
-    total = 0.0;
+    total.with(|v| v.set(0.0));
     if quiet == 0 && single != 0 {
         curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);
-        ndashes = 0;
+        ndashes.with(|v| v.set(0));
         curl_easy_setopt(hnd, CURLOPT_XFERINFOFUNCTION, progress as *const c_void);
         curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, hnd);
     } else if quiet != 0 && single != 0 {
@@ -782,7 +799,11 @@ unsafe fn download_add_url(
         curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, tstart_ptr as *mut c_void);
         curl_easy_setopt(hnd, CURLOPT_PREREQFUNCTION, prereq_multi as *const c_void);
         curl_easy_setopt(hnd, CURLOPT_PREREQDATA, tstart_ptr as *mut c_void);
-        curl_easy_setopt(hnd, CURLOPT_LOW_SPEED_TIME, current_timeout as c_long);
+        curl_easy_setopt(
+            hnd,
+            CURLOPT_LOW_SPEED_TIME,
+            current_timeout.with(|v| v.get()) as c_long,
+        );
         curl_easy_setopt(hnd, CURLOPT_LOW_SPEED_LIMIT, 1);
     }
 
@@ -960,7 +981,7 @@ pub(crate) unsafe extern "C" fn in_do_curlGetHeaders(
     }
     let url = translateChar(STRING_ELT(scmd, 0));
 
-    headers_used = 0;
+    headers_used.with(|v| v.set(0));
 
     // redirect
     let redirect = asLogical(CADR(args));
@@ -1006,7 +1027,7 @@ pub(crate) unsafe extern "C" fn in_do_curlGetHeaders(
 
     if timeout > 0 {
         curl_easy_setopt(hnd, CURLOPT_TIMEOUT, timeout as c_long);
-        current_timeout = timeout;
+        current_timeout.with(|v| v.set(timeout));
     }
 
     // TLS version
@@ -1056,9 +1077,18 @@ pub(crate) unsafe extern "C" fn in_do_curlGetHeaders(
     );
     curl_easy_cleanup(hnd);
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, headers_used));
-    for i in 0..headers_used {
-        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(HEADERS[i as usize].as_ptr()));
+    let ans = Rf_protect(Rf_allocVector(
+        SEXPTYPE::STRSXP.0,
+        headers_used.with(|v| v.get()),
+    ));
+    for i in 0..headers_used.with(|v| v.get()) {
+        HEADERS.with(|headers| {
+            SET_STRING_ELT(
+                ans,
+                i as R_xlen_t,
+                Rf_mkChar(headers.borrow()[i as usize].as_ptr()),
+            )
+        });
     }
 
     let sStatus = install(b"status\0".as_ptr() as *const c_char);
@@ -1202,7 +1232,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
     curl_multi_setopt(mhnd, CURLMOPT_MAX_HOST_CONNECTIONS, 6);
 
     if single == 0 {
-        current_time = currentTime();
+        current_time.with(|v| v.set(currentTime()));
     }
 
     let mut next_url: c_int = 0;
@@ -1226,7 +1256,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
     );
 
     if single == 0 {
-        current_time = currentTime();
+        current_time.with(|v| v.set(currentTime()));
     }
 
     let mut still_running: c_int = 0;
@@ -1235,7 +1265,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
     let mut repeats: c_int = 0;
     loop {
         if single == 0 {
-            current_time = currentTime();
+            current_time.with(|v| v.set(currentTime()));
         }
         let mut numfds: c_int = 0;
         let mc = curl_multi_wait(mhnd, std::ptr::null_mut(), 0, 100, &mut numfds);
@@ -1253,7 +1283,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
         }
 
         if single == 0 {
-            current_time = currentTime();
+            current_time.with(|v| v.set(currentTime()));
         }
         curl_multi_perform(mhnd, &mut still_running);
 
@@ -1279,7 +1309,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
         );
 
         if single == 0 {
-            current_time = currentTime();
+            current_time.with(|v| v.set(currentTime()));
         }
         curl_multi_perform(mhnd, &mut still_running);
 
@@ -1289,7 +1319,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
     }
 
     // Final newline if progress was shown
-    if total > 0.0 {
+    if total.with(|v| v.get()) > 0.0 {
         eprintln!();
     }
 
@@ -1401,7 +1431,7 @@ pub(crate) unsafe extern "C" fn in_newCurlUrl(
 
     // Allocate a minimal Curlconn-like structure
     let buf_size: size_t = 16 * CURL_MAX_WRITE_SIZE;
-    let layout = std::alloc::Layout::from_size_align(buf_size, 1).unwrap();
+    let layout = std::alloc::Layout::from_size_align(buf_size, 1).expect("unwrap on None/Err");
     let buf = std::alloc::alloc(layout);
     if buf.is_null() {
         Rf_error(b"allocation of url connection failed\0".as_ptr() as *const c_char);

@@ -27,6 +27,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_long, c_uchar, c_uint, c_void};
 use std::ptr;
@@ -187,11 +188,7 @@ pub unsafe extern "C" fn R_fopen(filename: *const c_char, mode: *const c_char) -
 /// fopen wrapper for SEXP filenames (Unix version).
 ///
 /// Ported from R's `RC_fopen`.
-pub unsafe fn RC_fopen(
-    fn_: SEXP,
-    mode: *const c_char,
-    expand: Rboolean,
-) -> *mut libc::FILE {
+pub unsafe fn RC_fopen(fn_: SEXP, mode: *const c_char, expand: Rboolean) -> *mut libc::FILE {
     if fn_.is_null() || fn_ == R_NilValue() {
         return ptr::null_mut();
     }
@@ -314,14 +311,14 @@ pub unsafe fn do_interactive(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> S
 // ---------------------------------------------------------------------------
 
 /// Global temp directory pointer (C-compatible static).
-static mut R_TempDir: *mut c_char = ptr::null_mut();
+thread_local! { static R_TempDir: Cell<*mut c_char> = Cell::new(ptr::null_mut()); }
 
 /// Reinitialize the temp directory (Unix version).
 ///
 /// Ported from R's `R_reInitTempDir`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_reInitTempDir(die_on_fail: c_int) {
-    if !R_TempDir.is_null() {
+    if !R_TempDir.with(|v| v.get()).is_null() {
         return;
     }
 
@@ -375,7 +372,7 @@ pub unsafe extern "C" fn R_reInitTempDir(die_on_fail: c_int) {
             1,
         )
     };
-    R_TempDir = template_buf;
+    R_TempDir.with(|v| v.set(template_buf));
 }
 
 /// Initialize temp directory (dies on failure).
@@ -386,7 +383,7 @@ pub unsafe fn InitTempDir() {
 /// Get the current temp directory path (C string).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_TempDir_get() -> *mut c_char {
-    R_TempDir
+    R_TempDir.with(|v| v.get())
 }
 
 /// tempdir() -- return the temporary directory path.
@@ -558,7 +555,7 @@ pub unsafe fn do_getenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, count as R_xlen_t));
         for (i, (key, val)) in vars.iter().enumerate() {
             let combined = format!("{}={}", key, val);
-            let c_str = CString::new(combined).unwrap();
+            let c_str = CString::new(combined).expect("CString::new failed: contains null byte");
             SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
         }
         Rf_unprotect(1);
@@ -572,7 +569,7 @@ pub unsafe fn do_getenv(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let val = std::env::var(name_str);
             match val {
                 Ok(v) => {
-                    let c_str = CString::new(v).unwrap();
+                    let c_str = CString::new(v).expect("CString::new failed: contains null byte");
                     SET_STRING_ELT(ans, j, Rf_mkChar(c_str.as_ptr()));
                 }
                 Err(_) => {
@@ -653,8 +650,8 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
     let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, n as R_xlen_t));
 
     for (i, (key, val)) in vars.iter().enumerate() {
-        let k = CString::new(key.as_str()).unwrap();
-        let v = CString::new(val.as_str()).unwrap();
+        let k = CString::new(key.as_str()).expect("CString::new failed: contains null byte");
+        let v = CString::new(val.as_str()).expect("CString::new failed: contains null byte");
         SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(v.as_ptr()));
         SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(k.as_ptr()));
     }
@@ -671,12 +668,12 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 // Time limit globals
-static mut cpuLimitValue: c_double = -1.0;
-static mut elapsedLimitValue: c_double = -1.0;
-static mut cpuLimit: c_double = -1.0;
-static mut elapsedLimit: c_double = -1.0;
-static mut cpuLimit2: c_double = -1.0;
-static mut elapsedLimit2: c_double = -1.0;
+thread_local! { static cpuLimitValue: Cell<c_double> = Cell::new(-1.0); }
+thread_local! { static elapsedLimitValue: Cell<c_double> = Cell::new(-1.0); }
+thread_local! { static cpuLimit: Cell<c_double> = Cell::new(-1.0); }
+thread_local! { static elapsedLimit: Cell<c_double> = Cell::new(-1.0); }
+thread_local! { static cpuLimit2: Cell<c_double> = Cell::new(-1.0); }
+thread_local! { static elapsedLimit2: Cell<c_double> = Cell::new(-1.0); }
 
 /// Reset time limits based on current time and limit values.
 ///
@@ -685,25 +682,32 @@ pub unsafe fn resetTimeLimits() {
     let mut data: [c_double; 5] = [0.0; 5];
     unsafe { R_getProcTime(data.as_mut_ptr()) };
 
-    unsafe {
-        elapsedLimit = if elapsedLimitValue > 0.0 {
-            data[2] + elapsedLimitValue
+    elapsedLimit.with(|v| {
+        v.set(if elapsedLimitValue.with(|ev| ev.get()) > 0.0 {
+            data[2] + elapsedLimitValue.with(|ev| ev.get())
         } else {
             -1.0
-        };
-        if elapsedLimit2 > 0.0 && (elapsedLimit <= 0.0 || elapsedLimit2 < elapsedLimit) {
-            elapsedLimit = elapsedLimit2;
-        }
+        })
+    });
+    if elapsedLimit2.with(|v| v.get()) > 0.0
+        && (elapsedLimit.with(|v| v.get()) <= 0.0
+            || elapsedLimit2.with(|v| v.get()) < elapsedLimit.with(|v| v.get()))
+    {
+        elapsedLimit.with(|v| v.set(elapsedLimit2.with(|v| v.get())));
+    }
 
-        // On Unix: user.self + sys.self + user.child + sys.child
-        cpuLimit = if cpuLimitValue > 0.0 {
-            data[0] + data[1] + data[3] + data[4] + cpuLimitValue
+    cpuLimit.with(|v| {
+        v.set(if cpuLimitValue.with(|cv| cv.get()) > 0.0 {
+            data[0] + data[1] + data[3] + data[4] + cpuLimitValue.with(|cv| cv.get())
         } else {
             -1.0
-        };
-        if cpuLimit2 > 0.0 && (cpuLimit <= 0.0 || cpuLimit2 < cpuLimit) {
-            cpuLimit = cpuLimit2;
-        }
+        })
+    });
+    if cpuLimit2.with(|v| v.get()) > 0.0
+        && (cpuLimit.with(|v| v.get()) <= 0.0
+            || cpuLimit2.with(|v| v.get()) < cpuLimit.with(|v| v.get()))
+    {
+        cpuLimit.with(|v| v.set(cpuLimit2.with(|v| v.get())));
     }
 }
 
@@ -717,25 +721,25 @@ pub unsafe fn do_setTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
     let transient = unsafe { asLogical(CADDR(args)) };
 
     unsafe {
-        let old_cpu = cpuLimitValue;
-        let old_elapsed = elapsedLimitValue;
+        let old_cpu = cpuLimitValue.with(|v| v.get());
+        let old_elapsed = elapsedLimitValue.with(|v| v.get());
 
         if R_FINITE(cpu) != 0 && cpu > 0.0 {
-            cpuLimitValue = cpu;
+            cpuLimitValue.with(|v| v.set(cpu));
         } else {
-            cpuLimitValue = -1.0;
+            cpuLimitValue.with(|v| v.set(-1.0));
         }
         if R_FINITE(elapsed) != 0 && elapsed > 0.0 {
-            elapsedLimitValue = elapsed;
+            elapsedLimitValue.with(|v| v.set(elapsed));
         } else {
-            elapsedLimitValue = -1.0;
+            elapsedLimitValue.with(|v| v.set(-1.0));
         }
 
         resetTimeLimits();
 
         if transient == TRUE as c_int {
-            cpuLimitValue = old_cpu;
-            elapsedLimitValue = old_elapsed;
+            cpuLimitValue.with(|v| v.set(old_cpu));
+            elapsedLimitValue.with(|v| v.set(old_elapsed));
         }
     }
 
@@ -745,12 +749,7 @@ pub unsafe fn do_setTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// setSessionTimeLimit() -- set session time limits.
 ///
 /// Ported from R's `do_setSessionTimeLimit`.
-pub unsafe fn do_setSessionTimeLimit(
-    _call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    _rho: SEXP,
-) -> SEXP {
+pub unsafe fn do_setSessionTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     checkArity(op, args);
     let cpu = unsafe { asReal(CAR(args)) };
     let elapsed = unsafe { asReal(CADR(args)) };
@@ -759,14 +758,14 @@ pub unsafe fn do_setSessionTimeLimit(
 
     unsafe {
         if R_FINITE(cpu) != 0 && cpu > 0.0 {
-            cpuLimit2 = cpu + data[0] + data[1] + data[3] + data[4];
+            cpuLimit2.with(|v| v.set(cpu + data[0] + data[1] + data[3] + data[4]));
         } else {
-            cpuLimit2 = -1.0;
+            cpuLimit2.with(|v| v.set(-1.0));
         }
         if R_FINITE(elapsed) != 0 && elapsed > 0.0 {
-            elapsedLimit2 = elapsed + data[2];
+            elapsedLimit2.with(|v| v.set(elapsed + data[2]));
         } else {
-            elapsedLimit2 = -1.0;
+            elapsedLimit2.with(|v| v.set(-1.0));
         }
     }
 
@@ -778,52 +777,50 @@ pub unsafe fn do_setSessionTimeLimit(
 /// Ported from R's `R_CheckTimeLimits`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_CheckTimeLimits() {
-    unsafe {
-        if cpuLimit <= 0.0 && elapsedLimit <= 0.0 {
-            return;
-        }
+    if cpuLimit.with(|v| v.get()) <= 0.0 && elapsedLimit.with(|v| v.get()) <= 0.0 {
+        return;
+    }
 
-        const TIME_CHECK_SKIP: c_int = 5;
-        static mut check_count: c_int = 0;
-        if check_count < TIME_CHECK_SKIP {
-            check_count += 1;
-            return;
+    const TIME_CHECK_SKIP: c_int = 5;
+    thread_local! { static check_count: Cell<c_int> = Cell::new(0); }
+    if check_count.with(|v| v.get()) < TIME_CHECK_SKIP {
+        check_count.with(|v| v.set(v.get() + 1));
+        return;
+    } else {
+        check_count.with(|v| v.set(0));
+    }
+
+    const TIME_CHECK_DELTA: c_double = 0.05;
+    thread_local! { static check_time: Cell<c_double> = Cell::new(0.0); }
+    let tm = crate::main::times::currentTime();
+    if tm < check_time.with(|v| v.get()) {
+        return;
+    } else {
+        check_time.with(|v| v.set(tm + TIME_CHECK_DELTA));
+    }
+
+    let mut data: [c_double; 5] = [0.0; 5];
+    unsafe { R_getProcTime(data.as_mut_ptr()) };
+    let cpu = data[0] + data[1] + data[3] + data[4];
+
+    if elapsedLimit.with(|v| v.get()) > 0.0 && data[2] > elapsedLimit.with(|v| v.get()) {
+        cpuLimit.with(|v| v.set(-1.0));
+        elapsedLimit.with(|v| v.set(-1.0));
+        if elapsedLimit2.with(|v| v.get()) > 0.0 && data[2] > elapsedLimit2.with(|v| v.get()) {
+            elapsedLimit2.with(|v| v.set(-1.0));
+            Rf_error(b"reached session elapsed time limit\0".as_ptr() as *const c_char);
         } else {
-            check_count = 0;
+            Rf_error(b"reached elapsed time limit\0".as_ptr() as *const c_char);
         }
-
-        const TIME_CHECK_DELTA: c_double = 0.05;
-        static mut check_time: c_double = 0.0;
-        let tm = crate::main::times::currentTime();
-        if tm < check_time {
-            return;
+    }
+    if cpuLimit.with(|v| v.get()) > 0.0 && cpu > cpuLimit.with(|v| v.get()) {
+        cpuLimit.with(|v| v.set(-1.0));
+        elapsedLimit.with(|v| v.set(-1.0));
+        if cpuLimit2.with(|v| v.get()) > 0.0 && cpu > cpuLimit2.with(|v| v.get()) {
+            cpuLimit2.with(|v| v.set(-1.0));
+            Rf_error(b"reached session CPU time limit\0".as_ptr() as *const c_char);
         } else {
-            check_time = tm + TIME_CHECK_DELTA;
-        }
-
-        let mut data: [c_double; 5] = [0.0; 5];
-        R_getProcTime(data.as_mut_ptr());
-        let cpu = data[0] + data[1] + data[3] + data[4];
-
-        if elapsedLimit > 0.0 && data[2] > elapsedLimit {
-            cpuLimit = -1.0;
-            elapsedLimit = -1.0;
-            if elapsedLimit2 > 0.0 && data[2] > elapsedLimit2 {
-                elapsedLimit2 = -1.0;
-                Rf_error(b"reached session elapsed time limit\0".as_ptr() as *const c_char);
-            } else {
-                Rf_error(b"reached elapsed time limit\0".as_ptr() as *const c_char);
-            }
-        }
-        if cpuLimit > 0.0 && cpu > cpuLimit {
-            cpuLimit = -1.0;
-            elapsedLimit = -1.0;
-            if cpuLimit2 > 0.0 && cpu > cpuLimit2 {
-                cpuLimit2 = -1.0;
-                Rf_error(b"reached session CPU time limit\0".as_ptr() as *const c_char);
-            } else {
-                Rf_error(b"reached CPU time limit\0".as_ptr() as *const c_char);
-            }
+            Rf_error(b"reached CPU time limit\0".as_ptr() as *const c_char);
         }
     }
 }
@@ -890,7 +887,11 @@ pub(crate) unsafe fn do_sysinfo_main(_call: SEXP, _op: SEXP, _args: SEXP, _env: 
     SET_VECTOR_ELT(ans, 2, version);
 
     let hn = get_hostname();
-    let nodename = Rf_mkString(CString::new(hn.as_str()).unwrap().as_ptr());
+    let nodename = Rf_mkString(
+        CString::new(hn.as_str())
+            .expect("CString::new failed: contains null byte")
+            .as_ptr(),
+    );
     SET_VECTOR_ELT(ans, 3, nodename);
 
     let machine = Rf_mkString(b"x86_64\0".as_ptr() as *const c_char);
@@ -1350,10 +1351,7 @@ pub unsafe fn mbtoucs(wc: *mut c_uint, s: *const c_char, _n: usize) -> usize {
 /// Open an iconv conversion descriptor.
 ///
 /// Ported from R's `Riconv_open`.
-pub unsafe fn Riconv_open(
-    tocode: *const c_char,
-    fromcode: *const c_char,
-) -> *mut c_void {
+pub unsafe fn Riconv_open(tocode: *const c_char, fromcode: *const c_char) -> *mut c_void {
     let to_str = if !tocode.is_null() {
         unsafe { CStr::from_ptr(tocode) }.to_str().unwrap_or("")
     } else {

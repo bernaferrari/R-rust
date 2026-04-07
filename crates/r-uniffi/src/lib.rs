@@ -154,10 +154,10 @@ fn spawn_worker(
                         })
                         .map_err(|e| RError::RenderError(e.to_string()));
 
-                    if let Some(cb) = callback.lock().unwrap().as_ref() {
-                        if let Ok(plot) = &result {
-                            cb.on_plot_ready(plot.clone());
-                        }
+                    if let Some(cb) = callback.lock().unwrap().as_ref()
+                        && let Ok(plot) = &result
+                    {
+                        cb.on_plot_ready(plot.clone());
                     }
 
                     let _ = reply.send(result);
@@ -249,19 +249,19 @@ impl RSession {
 
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        if let Ok(tx_guard) = self.cmd_tx.lock() {
-            if let Some(tx) = tx_guard.as_ref() {
-                let _ = tx.send(SessionCommand::Cancel);
-            }
+        if let Ok(tx_guard) = self.cmd_tx.lock()
+            && let Some(tx) = tx_guard.as_ref()
+        {
+            let _ = tx.send(SessionCommand::Cancel);
         }
     }
 
     pub fn destroy(&self) {
         self.cancel();
-        if let Ok(mut tx_guard) = self.cmd_tx.lock() {
-            if let Some(tx) = tx_guard.take() {
-                let _ = tx.send(SessionCommand::Shutdown);
-            }
+        if let Ok(mut tx_guard) = self.cmd_tx.lock()
+            && let Some(tx) = tx_guard.take()
+        {
+            let _ = tx.send(SessionCommand::Shutdown);
         }
     }
 }

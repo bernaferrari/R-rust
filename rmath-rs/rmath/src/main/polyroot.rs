@@ -16,8 +16,9 @@
 //! Also ports the standalone complex polynomial utility functions:
 //!   cdivid, polyev, errev, cpoly_cauchy, cpoly_scale
 
+use std::cell::Cell;
 use std::os::raw::{c_double, c_int};
-use std::ptr::{self, addr_of_mut};
+use std::ptr;
 
 use crate::nmath::special::mlutils::R_pow_di;
 use crate::sexp::accessors::{CAR, COMPLEX, LENGTH, REAL, TYPEOF, XLENGTH};
@@ -46,23 +47,23 @@ pub const R_PosInf: c_double = f64::INFINITY;
 // Global state for the Jenkins-Traub algorithm
 // ---------------------------------------------------------------------------
 
-static mut NN: c_int = 0;
-static mut G_PR: *mut c_double = ptr::null_mut();
-static mut G_PI: *mut c_double = ptr::null_mut();
-static mut G_HR: *mut c_double = ptr::null_mut();
-static mut G_HI: *mut c_double = ptr::null_mut();
-static mut G_QPR: *mut c_double = ptr::null_mut();
-static mut G_QPI: *mut c_double = ptr::null_mut();
-static mut G_QHR: *mut c_double = ptr::null_mut();
-static mut G_QHI: *mut c_double = ptr::null_mut();
-static mut G_SHR: *mut c_double = ptr::null_mut();
-static mut G_SHI: *mut c_double = ptr::null_mut();
-static mut G_SR: c_double = 0.0;
-static mut G_SI: c_double = 0.0;
-static mut G_TR: c_double = 0.0;
-static mut G_TI: c_double = 0.0;
-static mut G_PVR: c_double = 0.0;
-static mut G_PVI: c_double = 0.0;
+thread_local! { static NN: Cell<c_int> = Cell::new(0); }
+thread_local! { static G_PR: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_PI: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_HR: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_HI: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_QPR: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_QPI: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_QHR: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_QHI: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_SHR: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_SHI: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static G_SR: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static G_SI: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static G_TR: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static G_TI: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static G_PVR: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static G_PVI: Cell<c_double> = Cell::new(0.0); }
 
 // ---------------------------------------------------------------------------
 // cdivid -- complex division avoiding overflow
@@ -246,42 +247,43 @@ unsafe fn cpoly_scale(
 // calct -- computes t = -p(s)/h(s)
 // ---------------------------------------------------------------------------
 
-unsafe fn calct(h_s_0: *mut bool) {
-    let n = *addr_of_mut!(NN) - 1;
+fn calct(h_s_0: *mut bool) {
+    let n = NN.with(|v| v.get()) - 1;
 
-    // evaluate h(s)
     let mut hvr: c_double = 0.0;
     let mut hvi: c_double = 0.0;
     polyev(
         n,
-        *addr_of_mut!(G_SR),
-        *addr_of_mut!(G_SI),
-        *addr_of_mut!(G_HR),
-        *addr_of_mut!(G_HI),
-        *addr_of_mut!(G_QHR),
-        *addr_of_mut!(G_QHI),
+        G_SR.with(|v| v.get()),
+        G_SI.with(|v| v.get()),
+        G_PR.with(|v| v.get()),
+        G_PI.with(|v| v.get()),
+        G_QHR.with(|v| v.get()),
+        G_QHI.with(|v| v.get()),
         &mut hvr,
         &mut hvi,
     );
 
     let hvr_val = hvr;
     let hvi_val = hvi;
-    let hr_n1 = *(*addr_of_mut!(G_HR)).offset((n - 1) as isize);
-    let hi_n1 = *(*addr_of_mut!(G_HI)).offset((n - 1) as isize);
+    let hr_n1 = unsafe { *G_HR.with(|v| v.get()).offset((n - 1) as isize) };
+    let hi_n1 = unsafe { *G_HI.with(|v| v.get()).offset((n - 1) as isize) };
 
-    *h_s_0 = hvr_val.hypot(hvi_val) <= ARE * 10.0 * hr_n1.hypot(hi_n1);
-    if !*h_s_0 {
-        let (tr_val, ti_val) = cdivid(
-            -*addr_of_mut!(G_PVR),
-            -*addr_of_mut!(G_PVI),
-            hvr_val,
-            hvi_val,
-        );
-        *addr_of_mut!(G_TR) = tr_val;
-        *addr_of_mut!(G_TI) = ti_val;
-    } else {
-        *addr_of_mut!(G_TR) = 0.0;
-        *addr_of_mut!(G_TI) = 0.0;
+    unsafe {
+        *h_s_0 = hvr_val.hypot(hvi_val) <= ARE * 10.0 * hr_n1.hypot(hi_n1);
+        if !*h_s_0 {
+            let (tr_val, ti_val) = cdivid(
+                -G_PVR.with(|v| v.get()),
+                -G_PVI.with(|v| v.get()),
+                hvr_val,
+                hvi_val,
+            );
+            G_TR.with(|v| v.set(tr_val));
+            G_TI.with(|v| v.set(ti_val));
+        } else {
+            G_TR.with(|v| v.set(0.0));
+            G_TI.with(|v| v.set(0.0));
+        }
     }
 }
 
@@ -289,36 +291,43 @@ unsafe fn calct(h_s_0: *mut bool) {
 // nexth -- calculates the next shifted h polynomial
 // ---------------------------------------------------------------------------
 
-unsafe fn nexth(h_s_0: bool) {
-    let n = *addr_of_mut!(NN) - 1;
+fn nexth(h_s_0: bool) {
+    let n = NN.with(|v| v.get()) - 1;
 
     if !h_s_0 {
-        let tr_val = *addr_of_mut!(G_TR);
-        let ti_val = *addr_of_mut!(G_TI);
+        let tr_val = G_TR.with(|v| v.get());
+        let ti_val = G_TI.with(|v| v.get());
         let mut j: c_int = 1;
         while j < n {
-            let t1 = *(*addr_of_mut!(G_QHR)).offset((j - 1) as isize);
-            let t2 = *(*addr_of_mut!(G_QHI)).offset((j - 1) as isize);
-            *(*addr_of_mut!(G_HR)).offset(j as isize) =
-                tr_val * t1 - ti_val * t2 + *(*addr_of_mut!(G_QPR)).offset(j as isize);
-            *(*addr_of_mut!(G_HI)).offset(j as isize) =
-                tr_val * t2 + ti_val * t1 + *(*addr_of_mut!(G_QPI)).offset(j as isize);
+            let t1 = unsafe { *G_QHR.with(|v| v.get()).offset((j - 1) as isize) };
+            let t2 = unsafe { *G_QHI.with(|v| v.get()).offset((j - 1) as isize) };
+            unsafe {
+                *G_HR.with(|v| v.get()).offset(j as isize) =
+                    tr_val * t1 - ti_val * t2 + *G_QPR.with(|v| v.get()).offset(j as isize);
+                *G_HI.with(|v| v.get()).offset(j as isize) =
+                    tr_val * t2 + ti_val * t1 + *G_QPI.with(|v| v.get()).offset(j as isize);
+            }
             j += 1;
         }
-        *(*addr_of_mut!(G_HR)).offset(0) = *(*addr_of_mut!(G_QPR)).offset(0);
-        *(*addr_of_mut!(G_HI)).offset(0) = *(*addr_of_mut!(G_QPI)).offset(0);
+        unsafe {
+            *G_HR.with(|v| v.get()).offset(0) = *G_QPR.with(|v| v.get()).offset(0);
+            *G_HI.with(|v| v.get()).offset(0) = *G_QPI.with(|v| v.get()).offset(0);
+        }
     } else {
-        // if h(s) is zero replace h with qh
         let mut j: c_int = 1;
         while j < n {
-            *(*addr_of_mut!(G_HR)).offset(j as isize) =
-                *(*addr_of_mut!(G_QHR)).offset((j - 1) as isize);
-            *(*addr_of_mut!(G_HI)).offset(j as isize) =
-                *(*addr_of_mut!(G_QHI)).offset((j - 1) as isize);
+            unsafe {
+                *G_HR.with(|v| v.get()).offset(j as isize) =
+                    *G_QHR.with(|v| v.get()).offset((j - 1) as isize);
+                *G_HI.with(|v| v.get()).offset(j as isize) =
+                    *G_QHI.with(|v| v.get()).offset((j - 1) as isize);
+            }
             j += 1;
         }
-        *(*addr_of_mut!(G_HR)).offset(0) = 0.0;
-        *(*addr_of_mut!(G_HI)).offset(0) = 0.0;
+        unsafe {
+            *G_HR.with(|v| v.get()).offset(0) = 0.0;
+            *G_HI.with(|v| v.get()).offset(0) = 0.0;
+        }
     }
 }
 
@@ -326,59 +335,68 @@ unsafe fn nexth(h_s_0: bool) {
 // noshft -- computes l1 no-shift h polynomials
 // ---------------------------------------------------------------------------
 
-unsafe fn noshft(l1: c_int) {
-    let n = *addr_of_mut!(NN) - 1;
+fn noshft(l1: c_int) {
+    let n = NN.with(|v| v.get()) - 1;
     let nm1 = n - 1;
 
-    // compute derivative polynomial as initial h
     let mut i: c_int = 0;
     while i < n {
-        let xni = (*addr_of_mut!(NN) - i - 1) as c_double;
-        *(*addr_of_mut!(G_HR)).offset(i as isize) =
-            xni * *(*addr_of_mut!(G_PR)).offset(i as isize) / n as c_double;
-        *(*addr_of_mut!(G_HI)).offset(i as isize) =
-            xni * *(*addr_of_mut!(G_PI)).offset(i as isize) / n as c_double;
+        let xni = (NN.with(|v| v.get()) - i - 1) as c_double;
+        unsafe {
+            *G_HR.with(|v| v.get()).offset(i as isize) =
+                xni * *G_PR.with(|v| v.get()).offset(i as isize) / n as c_double;
+            *G_HI.with(|v| v.get()).offset(i as isize) =
+                xni * *G_PI.with(|v| v.get()).offset(i as isize) / n as c_double;
+        }
         i += 1;
     }
 
     let mut jj: c_int = 1;
     while jj <= l1 {
-        let hr_n1 = *(*addr_of_mut!(G_HR)).offset((n - 1) as isize);
-        let hi_n1 = *(*addr_of_mut!(G_HI)).offset((n - 1) as isize);
-        let pr_n1 = *(*addr_of_mut!(G_PR)).offset((n - 1) as isize);
-        let pi_n1 = *(*addr_of_mut!(G_PI)).offset((n - 1) as isize);
+        let hr_n1 = unsafe { *G_HR.with(|v| v.get()).offset((n - 1) as isize) };
+        let hi_n1 = unsafe { *G_HI.with(|v| v.get()).offset((n - 1) as isize) };
+        let pr_n1 = unsafe { *G_PR.with(|v| v.get()).offset((n - 1) as isize) };
+        let pi_n1 = unsafe { *G_PI.with(|v| v.get()).offset((n - 1) as isize) };
 
         if hr_n1.hypot(hi_n1) <= ETA * 10.0 * pr_n1.hypot(pi_n1) {
-            // shift h coefficients
             let mut i: c_int = 1;
             while i <= nm1 {
-                let j = *addr_of_mut!(NN) - i;
-                *(*addr_of_mut!(G_HR)).offset((j - 1) as isize) =
-                    *(*addr_of_mut!(G_HR)).offset((j - 2) as isize);
-                *(*addr_of_mut!(G_HI)).offset((j - 1) as isize) =
-                    *(*addr_of_mut!(G_HI)).offset((j - 2) as isize);
+                let j = NN.with(|v| v.get()) - i;
+                unsafe {
+                    *G_HR.with(|v| v.get()).offset((j - 1) as isize) =
+                        *G_HR.with(|v| v.get()).offset((j - 2) as isize);
+                    *G_HI.with(|v| v.get()).offset((j - 1) as isize) =
+                        *G_HI.with(|v| v.get()).offset((j - 2) as isize);
+                }
                 i += 1;
             }
-            *(*addr_of_mut!(G_HR)).offset(0) = 0.0;
-            *(*addr_of_mut!(G_HI)).offset(0) = 0.0;
+            unsafe {
+                *G_HR.with(|v| v.get()).offset(0) = 0.0;
+                *G_HI.with(|v| v.get()).offset(0) = 0.0;
+            }
         } else {
             let (tr_val, ti_val) = cdivid(-pr_n1, -pi_n1, hr_n1, hi_n1);
-            *addr_of_mut!(G_TR) = tr_val;
-            *addr_of_mut!(G_TI) = ti_val;
+            G_TR.with(|v| v.set(tr_val));
+            G_TI.with(|v| v.set(ti_val));
 
             let mut i: c_int = 1;
             while i <= nm1 {
-                let j = *addr_of_mut!(NN) - i;
-                let t1 = *(*addr_of_mut!(G_HR)).offset((j - 2) as isize);
-                let t2 = *(*addr_of_mut!(G_HI)).offset((j - 2) as isize);
-                *(*addr_of_mut!(G_HR)).offset((j - 1) as isize) =
-                    tr_val * t1 - ti_val * t2 + *(*addr_of_mut!(G_PR)).offset((j - 1) as isize);
-                *(*addr_of_mut!(G_HI)).offset((j - 1) as isize) =
-                    tr_val * t2 + ti_val * t1 + *(*addr_of_mut!(G_PI)).offset((j - 1) as isize);
+                let j = NN.with(|v| v.get()) - i;
+                unsafe {
+                    let t1 = *G_HR.with(|v| v.get()).offset((j - 2) as isize);
+                    let t2 = *G_HI.with(|v| v.get()).offset((j - 2) as isize);
+                    *G_HR.with(|v| v.get()).offset((j - 1) as isize) = tr_val * t1 - ti_val * t2
+                        + *G_PR.with(|v| v.get()).offset((j - 1) as isize);
+                    *G_HI.with(|v| v.get()).offset((j - 1) as isize) = tr_val * t2
+                        + ti_val * t1
+                        + *G_PI.with(|v| v.get()).offset((j - 1) as isize);
+                }
                 i += 1;
             }
-            *(*addr_of_mut!(G_HR)).offset(0) = *(*addr_of_mut!(G_PR)).offset(0);
-            *(*addr_of_mut!(G_HI)).offset(0) = *(*addr_of_mut!(G_PI)).offset(0);
+            unsafe {
+                *G_HR.with(|v| v.get()).offset(0) = *G_PR.with(|v| v.get()).offset(0);
+                *G_HI.with(|v| v.get()).offset(0) = *G_PI.with(|v| v.get()).offset(0);
+            }
         }
         jj += 1;
     }
@@ -390,66 +408,65 @@ unsafe fn noshft(l1: c_int) {
 
 unsafe fn vrshft(l3: c_int, zr: *mut c_double, zi: *mut c_double) -> bool {
     let mut b = false;
-    *addr_of_mut!(G_SR) = *zr;
-    *addr_of_mut!(G_SI) = *zi;
+    G_SR.with(|v| v.set(*zr));
+    G_SI.with(|v| v.set(*zi));
 
     let mut omp: c_double = 0.0;
     let mut relstp: c_double = 0.0;
 
     let mut i: c_int = 1;
     while i <= l3 {
-        // evaluate p at s and test for convergence
         polyev(
-            *addr_of_mut!(NN),
-            *addr_of_mut!(G_SR),
-            *addr_of_mut!(G_SI),
-            *addr_of_mut!(G_PR),
-            *addr_of_mut!(G_PI),
-            *addr_of_mut!(G_QPR),
-            *addr_of_mut!(G_QPI),
-            addr_of_mut!(G_PVR),
-            addr_of_mut!(G_PVI),
+            NN.with(|v| v.get()),
+            G_SR.with(|v| v.get()),
+            G_SI.with(|v| v.get()),
+            G_PR.with(|v| v.get()),
+            G_PI.with(|v| v.get()),
+            G_QPR.with(|v| v.get()),
+            G_QPI.with(|v| v.get()),
+            G_PVR.as_ptr(),
+            G_PVI.as_ptr(),
         );
 
-        let mp = (*addr_of_mut!(G_PVR)).hypot(*addr_of_mut!(G_PVI));
-        let ms = (*addr_of_mut!(G_SR)).hypot(*addr_of_mut!(G_SI));
+        let mp = G_PVR.with(|v| v.get()).hypot(G_PVI.with(|v| v.get()));
+        let ms = G_SR.with(|v| v.get()).hypot(G_SI.with(|v| v.get()));
         if mp
             <= 20.0
                 * errev(
-                    *addr_of_mut!(NN),
-                    *addr_of_mut!(G_QPR),
-                    *addr_of_mut!(G_QPI),
+                    NN.with(|v| v.get()),
+                    G_QPR.with(|v| v.get()),
+                    G_QPI.with(|v| v.get()),
                     ms,
                     mp,
                     ETA,
                     MRE,
                 )
         {
-            // convergence
-            *zr = *addr_of_mut!(G_SR);
-            *zi = *addr_of_mut!(G_SI);
+            *zr = G_SR.with(|v| v.get());
+            *zi = G_SI.with(|v| v.get());
             return true;
         }
 
         if i != 1 {
             if !b && mp >= omp && relstp < 0.05 {
-                // iteration has stalled. probably a cluster of zeros.
                 let tp = if relstp < ETA { ETA } else { relstp };
                 b = true;
                 let r1 = tp.sqrt();
-                let r2 = *addr_of_mut!(G_SR) * (r1 + 1.0) - *addr_of_mut!(G_SI) * r1;
-                *addr_of_mut!(G_SI) = *addr_of_mut!(G_SR) * r1 + *addr_of_mut!(G_SI) * (r1 + 1.0);
-                *addr_of_mut!(G_SR) = r2;
+                let sr = G_SR.with(|v| v.get());
+                let si = G_SI.with(|v| v.get());
+                let r2 = sr * (r1 + 1.0) - si * r1;
+                G_SI.with(|v| v.set(sr * r1 + si * (r1 + 1.0)));
+                G_SR.with(|v| v.set(r2));
                 polyev(
-                    *addr_of_mut!(NN),
-                    *addr_of_mut!(G_SR),
-                    *addr_of_mut!(G_SI),
-                    *addr_of_mut!(G_PR),
-                    *addr_of_mut!(G_PI),
-                    *addr_of_mut!(G_QPR),
-                    *addr_of_mut!(G_QPI),
-                    addr_of_mut!(G_PVR),
-                    addr_of_mut!(G_PVI),
+                    NN.with(|v| v.get()),
+                    G_SR.with(|v| v.get()),
+                    G_SI.with(|v| v.get()),
+                    G_PR.with(|v| v.get()),
+                    G_PI.with(|v| v.get()),
+                    G_QPR.with(|v| v.get()),
+                    G_QPI.with(|v| v.get()),
+                    G_PVR.as_ptr(),
+                    G_PVI.as_ptr(),
                 );
                 let mut j: c_int = 1;
                 while j <= 5 {
@@ -460,7 +477,6 @@ unsafe fn vrshft(l3: c_int, zr: *mut c_double, zi: *mut c_double) -> bool {
                 }
                 omp = INFIN;
             } else {
-                // exit if polynomial value increases significantly
                 if mp * 0.1 > omp {
                     return false;
                 }
@@ -468,17 +484,16 @@ unsafe fn vrshft(l3: c_int, zr: *mut c_double, zi: *mut c_double) -> bool {
         }
         omp = mp;
 
-        // calculate next iterate
         let mut h_s_0 = false;
         calct(&mut h_s_0);
         nexth(h_s_0);
         calct(&mut h_s_0);
         if !h_s_0 {
-            let tr_val = *addr_of_mut!(G_TR);
-            let ti_val = *addr_of_mut!(G_TI);
-            relstp = tr_val.hypot(ti_val) / (*addr_of_mut!(G_SR)).hypot(*addr_of_mut!(G_SI));
-            *addr_of_mut!(G_SR) += tr_val;
-            *addr_of_mut!(G_SI) += ti_val;
+            let tr_val = G_TR.with(|v| v.get());
+            let ti_val = G_TI.with(|v| v.get());
+            relstp = tr_val.hypot(ti_val) / (G_SR.with(|v| v.get()).hypot(G_SI.with(|v| v.get())));
+            G_SR.with(|v| v.set(v.get() + tr_val));
+            G_SI.with(|v| v.set(v.get() + ti_val));
         }
 
         i += 1;
@@ -492,86 +507,79 @@ unsafe fn vrshft(l3: c_int, zr: *mut c_double, zi: *mut c_double) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn fxshft(l2: c_int, zr: *mut c_double, zi: *mut c_double) -> bool {
-    let n = *addr_of_mut!(NN) - 1;
+    let n = NN.with(|v| v.get()) - 1;
 
-    // evaluate p at s
     polyev(
-        *addr_of_mut!(NN),
-        *addr_of_mut!(G_SR),
-        *addr_of_mut!(G_SI),
-        *addr_of_mut!(G_PR),
-        *addr_of_mut!(G_PI),
-        *addr_of_mut!(G_QPR),
-        *addr_of_mut!(G_QPI),
-        addr_of_mut!(G_PVR),
-        addr_of_mut!(G_PVI),
+        NN.with(|v| v.get()),
+        G_SR.with(|v| v.get()),
+        G_SI.with(|v| v.get()),
+        G_PR.with(|v| v.get()),
+        G_PI.with(|v| v.get()),
+        G_QPR.with(|v| v.get()),
+        G_QPI.with(|v| v.get()),
+        G_PVR.as_ptr(),
+        G_PVI.as_ptr(),
     );
 
     let mut test = true;
     let mut pasd = false;
 
-    // calculate first t = -p(s)/h(s)
     let mut h_s_0 = false;
     calct(&mut h_s_0);
 
-    // main loop for one second stage step
     let mut j: c_int = 1;
     while j <= l2 {
-        let otr = *addr_of_mut!(G_TR);
-        let oti = *addr_of_mut!(G_TI);
+        let otr = G_TR.with(|v| v.get());
+        let oti = G_TI.with(|v| v.get());
 
-        // compute next h polynomial and new t
         nexth(h_s_0);
         calct(&mut h_s_0);
-        *zr = *addr_of_mut!(G_SR) + *addr_of_mut!(G_TR);
-        *zi = *addr_of_mut!(G_SI) + *addr_of_mut!(G_TI);
+        *zr = G_SR.with(|v| v.get()) + G_TR.with(|v| v.get());
+        *zi = G_SI.with(|v| v.get()) + G_TI.with(|v| v.get());
 
-        // test for convergence unless stage 3 has failed once
         if !h_s_0 && test && j != l2 {
-            let tr_val = *addr_of_mut!(G_TR);
-            let ti_val = *addr_of_mut!(G_TI);
+            let tr_val = G_TR.with(|v| v.get());
+            let ti_val = G_TI.with(|v| v.get());
             if (tr_val - otr).hypot(ti_val - oti) >= (*zr).hypot(*zi) * 0.5 {
                 pasd = false;
             } else if !pasd {
                 pasd = true;
             } else {
-                // weak convergence test passed twice, start third stage
                 let mut i: c_int = 0;
                 while i < n {
-                    *(*addr_of_mut!(G_SHR)).offset(i as isize) =
-                        *(*addr_of_mut!(G_HR)).offset(i as isize);
-                    *(*addr_of_mut!(G_SHI)).offset(i as isize) =
-                        *(*addr_of_mut!(G_HI)).offset(i as isize);
+                    *G_SHR.with(|v| v.get()).offset(i as isize) =
+                        *G_HR.with(|v| v.get()).offset(i as isize);
+                    *G_SHI.with(|v| v.get()).offset(i as isize) =
+                        *G_HI.with(|v| v.get()).offset(i as isize);
                     i += 1;
                 }
-                let svsr = *addr_of_mut!(G_SR);
-                let svsi = *addr_of_mut!(G_SI);
+                let svsr = G_SR.with(|v| v.get());
+                let svsi = G_SI.with(|v| v.get());
                 if vrshft(10, zr, zi) {
                     return true;
                 }
 
-                // iteration failed to converge, turn off testing, restore h, s, pv, t
                 test = false;
                 let mut i: c_int = 1;
                 while i <= n {
-                    *(*addr_of_mut!(G_HR)).offset((i - 1) as isize) =
-                        *(*addr_of_mut!(G_SHR)).offset((i - 1) as isize);
-                    *(*addr_of_mut!(G_HI)).offset((i - 1) as isize) =
-                        *(*addr_of_mut!(G_SHI)).offset((i - 1) as isize);
+                    *G_HR.with(|v| v.get()).offset((i - 1) as isize) =
+                        *G_SHR.with(|v| v.get()).offset((i - 1) as isize);
+                    *G_HI.with(|v| v.get()).offset((i - 1) as isize) =
+                        *G_SHI.with(|v| v.get()).offset((i - 1) as isize);
                     i += 1;
                 }
-                *addr_of_mut!(G_SR) = svsr;
-                *addr_of_mut!(G_SI) = svsi;
+                G_SR.with(|v| v.set(svsr));
+                G_SI.with(|v| v.set(svsi));
                 polyev(
-                    *addr_of_mut!(NN),
-                    *addr_of_mut!(G_SR),
-                    *addr_of_mut!(G_SI),
-                    *addr_of_mut!(G_PR),
-                    *addr_of_mut!(G_PI),
-                    *addr_of_mut!(G_QPR),
-                    *addr_of_mut!(G_QPI),
-                    addr_of_mut!(G_PVR),
-                    addr_of_mut!(G_PVI),
+                    NN.with(|v| v.get()),
+                    G_SR.with(|v| v.get()),
+                    G_SI.with(|v| v.get()),
+                    G_PR.with(|v| v.get()),
+                    G_PI.with(|v| v.get()),
+                    G_QPR.with(|v| v.get()),
+                    G_QPI.with(|v| v.get()),
+                    G_PVR.as_ptr(),
+                    G_PVI.as_ptr(),
                 );
                 calct(&mut h_s_0);
             }
@@ -580,7 +588,6 @@ unsafe fn fxshft(l2: c_int, zr: *mut c_double, zi: *mut c_double) -> bool {
         j += 1;
     }
 
-    // attempt an iteration with final h polynomial from second stage
     vrshft(10, zr, zi)
 }
 
@@ -596,18 +603,140 @@ unsafe fn R_cpolyroot(
     zeroi: *mut c_double,
     fail: *mut bool,
 ) {
-    let mut xx: c_double = std::f64::consts::FRAC_1_SQRT_2; // M_SQRT1_2 = 1/sqrt(2)
+    let mut xx: c_double = std::f64::consts::FRAC_1_SQRT_2;
     let mut yy: c_double = -xx;
     *fail = false;
 
-    *addr_of_mut!(NN) = *degree;
-    let d1 = *addr_of_mut!(NN) - 1;
+    NN.with(|v| v.set(*degree));
+    let d1 = NN.with(|v| v.get()) - 1;
 
-    // algorithm fails if the leading coefficient is zero
-    if *opr.offset(0) == 0.0 && *opi.offset(0) == 0.0 {
-        *fail = true;
+    if *opr.offset(NN.with(|v| v.get()) as isize) == 0.0
+        && *opi.offset(NN.with(|v| v.get()) as isize) == 0.0
+    {
+        let d_n = d1 - NN.with(|v| v.get()) + 1;
+        *zeror.offset(d_n as isize) = 0.0;
+        *zeroi.offset(d_n as isize) = 0.0;
+        NN.with(|v| v.set(v.get() - 1));
+    }
+    NN.with(|v| v.set(v.get() + 1));
+
+    if NN.with(|v| v.get()) == 1 {
         return;
     }
+
+    let nn_val = NN.with(|v| v.get()) as usize;
+    let tmp = std::alloc::alloc(std::alloc::Layout::array::<c_double>(10 * nn_val).expect("unwrap on None/Err"))
+        as *mut c_double;
+
+    G_PR.with(|v| v.set(tmp));
+    G_PI.with(|v| v.set(tmp.add(nn_val)));
+    G_HR.with(|v| v.set(tmp.add(2 * nn_val)));
+    G_HI.with(|v| v.set(tmp.add(3 * nn_val)));
+    G_QPR.with(|v| v.set(tmp.add(4 * nn_val)));
+    G_QPI.with(|v| v.set(tmp.add(5 * nn_val)));
+    G_QHR.with(|v| v.set(tmp.add(6 * nn_val)));
+    G_QHI.with(|v| v.set(tmp.add(7 * nn_val)));
+    G_SHR.with(|v| v.set(tmp.add(8 * nn_val)));
+    G_SHI.with(|v| v.set(tmp.add(9 * nn_val)));
+
+    let mut i: c_int = 0;
+    while i < NN.with(|v| v.get()) {
+        *G_PR.with(|v| v.get()).offset(i as isize) = *opr.offset(i as isize);
+        *G_PI.with(|v| v.get()).offset(i as isize) = *opi.offset(i as isize);
+        *G_SHR.with(|v| v.get()).offset(i as isize) =
+            (*opr.offset(i as isize)).hypot(*opi.offset(i as isize));
+        i += 1;
+    }
+
+    let bnd = cpoly_scale(
+        NN.with(|v| v.get()),
+        G_SHR.with(|v| v.get()),
+        ETA,
+        INFIN,
+        SMALNO,
+        BASE,
+    );
+    if bnd != 1.0 {
+        let mut i: c_int = 0;
+        while i < NN.with(|v| v.get()) {
+            *G_PR.with(|v| v.get()).offset(i as isize) *= bnd;
+            *G_PI.with(|v| v.get()).offset(i as isize) *= bnd;
+            i += 1;
+        }
+    }
+
+    while NN.with(|v| v.get()) > 2 {
+        let mut i: c_int = 0;
+        while i < NN.with(|v| v.get()) {
+            *G_SHR.with(|v| v.get()).offset(i as isize) = (*G_PR.with(|v| v.get())
+                .offset(i as isize))
+            .hypot(*G_PI.with(|v| v.get()).offset(i as isize));
+            i += 1;
+        }
+        let bnd = cpoly_cauchy(
+            NN.with(|v| v.get()),
+            G_SHR.with(|v| v.get()),
+            G_SHI.with(|v| v.get()),
+        );
+
+        let mut i1: c_int = 1;
+        'outer: while i1 <= 2 {
+            noshft(5);
+
+            let mut i2: c_int = 1;
+            while i2 <= 9 {
+                let xxx = COSR * xx - SINR * yy;
+                yy = SINR * xx + COSR * yy;
+                xx = xxx;
+                G_SR.with(|v| v.set(bnd * xx));
+                G_SI.with(|v| v.set(bnd * yy));
+
+                let mut zr: c_double = 0.0;
+                let mut zi: c_double = 0.0;
+                let conv = fxshft(i2 * 10, &mut zr, &mut zi);
+                if conv {
+                    let d_n = d1 + 2 - NN.with(|v| v.get());
+                    *zeror.offset(d_n as isize) = zr;
+                    *zeroi.offset(d_n as isize) = zi;
+                    NN.with(|v| v.set(v.get() - 1));
+                    let mut i: c_int = 0;
+                    while i < NN.with(|v| v.get()) {
+                        *G_PR.with(|v| v.get()).offset(i as isize) =
+                            *G_QPR.with(|v| v.get()).offset(i as isize);
+                        *G_PI.with(|v| v.get()).offset(i as isize) =
+                            *G_QPI.with(|v| v.get()).offset(i as isize);
+                        i += 1;
+                    }
+                    continue 'outer;
+                }
+                i2 += 1;
+            }
+            i1 += 1;
+        }
+
+        *fail = true;
+
+        std::alloc::dealloc(
+            tmp as *mut u8,
+            std::alloc::Layout::array::<c_double>(10 * nn_val).expect("unwrap on None/Err"),
+        );
+        return;
+    }
+
+    let (zr_val, zi_val) = cdivid(
+        -*G_PR.with(|v| v.get()).offset(1),
+        -*G_PI.with(|v| v.get()).offset(1),
+        *G_PR.with(|v| v.get()).offset(0),
+        *G_PI.with(|v| v.get()).offset(0),
+    );
+    *zeror.offset(d1 as isize) = zr_val;
+    *zeroi.offset(d1 as isize) = zi_val;
+
+    std::alloc::dealloc(
+        tmp as *mut u8,
+        std::alloc::Layout::array::<c_double>(10 * nn_val).expect("unwrap on None/Err"),
+    );
+}
 
     // remove the zeros at the origin if any
     while *opr.offset(*addr_of_mut!(NN) as isize) == 0.0
@@ -627,8 +756,9 @@ unsafe fn R_cpolyroot(
 
     // Allocate temporary arrays
     let nn_val = *addr_of_mut!(NN) as usize;
-    let tmp = std::alloc::alloc(std::alloc::Layout::array::<c_double>(10 * nn_val).unwrap())
-        as *mut c_double;
+    let tmp = std::alloc::alloc(
+        std::alloc::Layout::array::<c_double>(10 * nn_val).expect("unwrap on None/Err"),
+    ) as *mut c_double;
 
     *addr_of_mut!(G_PR) = tmp;
     *addr_of_mut!(G_PI) = tmp.add(nn_val);
@@ -732,7 +862,7 @@ unsafe fn R_cpolyroot(
         // free tmp
         std::alloc::dealloc(
             tmp as *mut u8,
-            std::alloc::Layout::array::<c_double>(10 * nn_val).unwrap(),
+            std::alloc::Layout::array::<c_double>(10 * nn_val).expect("unwrap on None/Err"),
         );
         return;
     }
@@ -750,7 +880,7 @@ unsafe fn R_cpolyroot(
     // free tmp
     std::alloc::dealloc(
         tmp as *mut u8,
-        std::alloc::Layout::array::<c_double>(10 * nn_val).unwrap(),
+        std::alloc::Layout::array::<c_double>(10 * nn_val).expect("unwrap on None/Err"),
     );
 }
 

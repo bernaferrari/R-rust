@@ -51,31 +51,31 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 /// Get the "dim" symbol.
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("dim").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("names").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 unsafe fn sym_DimNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("dimnames").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("class").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "use.names" symbol (for subscript name passing).
 #[inline]
 unsafe fn sym_UseNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("use.names").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("use.names").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -2734,7 +2734,7 @@ pub unsafe extern "C" fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val
 
 /// Port of `SubassignTypeSym()` -- used by the byte code compiler.
 pub unsafe fn SubassignTypeSym() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("SubassignTypeSym").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("SubassignTypeSym").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.

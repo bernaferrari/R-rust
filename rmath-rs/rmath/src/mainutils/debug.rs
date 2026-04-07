@@ -6,8 +6,8 @@
 //! .Internal(trace()), .primTrace/.primUntrace,
 //! tracingState/debuggingState, and memory profiling stubs.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
-use std::ptr;
 
 use crate::mainutils::errors::Rf_error;
 use crate::sexp::accessors::{CAR, TYPEOF};
@@ -62,11 +62,9 @@ unsafe fn PRIMVAL(_x: SEXP) -> c_int {
 // Static state for tracing/debugging toggles
 // ---------------------------------------------------------------------------
 
-/// Global tracing state (on/off). Defaults to TRUE (enabled).
-static mut tracing_state: c_int = TRUE;
+thread_local! { static tracing_state: Cell<c_int> = Cell::new(TRUE); }
 
-/// Global debugging state (on/off). Defaults to TRUE (enabled).
-static mut debugging_state: c_int = TRUE;
+thread_local! { static debugging_state: Cell<c_int> = Cell::new(TRUE); }
 
 // ---------------------------------------------------------------------------
 // do_debug — debug / undebug / isdebugged / debugonce
@@ -172,14 +170,14 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         match PRIMVAL(op) {
             0 => {
                 // tracingState
-                let prev = tracing_state;
-                tracing_state = state;
+                let prev = tracing_state.with(|v| v.get());
+                tracing_state.with(|v| v.set(state));
                 return Rf_ScalarLogical(prev);
             }
             1 => {
                 // debuggingState
-                let prev = debugging_state;
-                debugging_state = state;
+                let prev = debugging_state.with(|v| v.get());
+                debugging_state.with(|v| v.set(state));
                 return Rf_ScalarLogical(prev);
             }
             _ => {}
@@ -194,8 +192,8 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_current_debug_state() -> c_int {
-    unsafe { debugging_state }
+pub extern "C" fn R_current_debug_state() -> c_int {
+    debugging_state.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -203,8 +201,8 @@ pub unsafe extern "C" fn R_current_debug_state() -> c_int {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_current_trace_state() -> c_int {
-    unsafe { tracing_state }
+pub extern "C" fn R_current_trace_state() -> c_int {
+    tracing_state.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -257,6 +255,8 @@ pub unsafe fn memtrace_report(old: *mut std::ffi::c_void, new: *mut std::ffi::c_
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     /// Test that do_debug does not panic when called with null pointers.
@@ -276,24 +276,22 @@ mod tests {
     /// Test that the tracing/debugging state functions work correctly.
     #[test]
     fn test_trace_state() {
-        unsafe {
-            // Initial state should be TRUE
-            assert_eq!(R_current_trace_state(), TRUE);
-            assert_eq!(R_current_debug_state(), TRUE);
+        // Initial state should be TRUE
+        assert_eq!(R_current_trace_state(), TRUE);
+        assert_eq!(R_current_debug_state(), TRUE);
 
-            // Mutate state directly and verify
-            tracing_state = FALSE;
-            assert_eq!(R_current_trace_state(), FALSE);
+        // Mutate state directly and verify
+        tracing_state.with(|v| v.set(FALSE));
+        assert_eq!(R_current_trace_state(), FALSE);
 
-            debugging_state = FALSE;
-            assert_eq!(R_current_debug_state(), FALSE);
+        debugging_state.with(|v| v.set(FALSE));
+        assert_eq!(R_current_debug_state(), FALSE);
 
-            // Restore defaults
-            tracing_state = TRUE;
-            debugging_state = TRUE;
-            assert_eq!(R_current_trace_state(), TRUE);
-            assert_eq!(R_current_debug_state(), TRUE);
-        }
+        // Restore defaults
+        tracing_state.with(|v| v.set(TRUE));
+        debugging_state.with(|v| v.set(TRUE));
+        assert_eq!(R_current_trace_state(), TRUE);
+        assert_eq!(R_current_debug_state(), TRUE);
     }
 
     /// Test that do_tracemem is defined (actual error behavior tested
@@ -303,13 +301,13 @@ mod tests {
         // do_tracemem always calls Rf_error which panics.
         // Cannot catch panics across extern "C" boundaries in Rust,
         // so we just verify the function exists and is callable via FFI.
-        assert!(do_tracemem as usize != 0);
+        assert!((do_tracemem as *const ()) as usize != 0);
     }
 
     /// Test that do_untracemem is defined.
     #[test]
     fn test_untracemem_error() {
-        assert!(do_untracemem as usize != 0);
+        assert!((do_untracemem as *const ()) as usize != 0);
     }
 
     /// Test that the stub accessors return expected values.

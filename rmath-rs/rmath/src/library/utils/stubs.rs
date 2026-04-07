@@ -102,7 +102,7 @@ pub unsafe extern "C" fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
     let sfile = CAR(args);
 
     if !isString(sfile) || LENGTH(sfile) < 1 {
-        let msg = CString::new("invalid 'file' argument").unwrap();
+        let msg = CString::new("invalid 'file' argument").expect("CString::new failed: contains null byte");
         Rf_warning(msg.as_ptr());
         return R_NilValue();
     }
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
     let sfile = CAR(args);
 
     if !isString(sfile) || LENGTH(sfile) < 1 {
-        let msg = CString::new("invalid 'file' argument").unwrap();
+        let msg = CString::new("invalid 'file' argument").expect("CString::new failed: contains null byte");
         Rf_warning(msg.as_ptr());
         return R_NilValue();
     }
@@ -254,7 +254,7 @@ pub unsafe extern "C" fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
     let stamp = CAR(args);
 
     if !isString(stamp) {
-        let msg = CString::new("invalid timestamp").unwrap();
+        let msg = CString::new("invalid timestamp").expect("CString::new failed: contains null byte");
         Rf_warning(msg.as_ptr());
         return R_NilValue();
     }
@@ -292,7 +292,7 @@ pub unsafe extern "C" fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
-    let msg = CString::new("data entry editor is not available").unwrap();
+    let msg = CString::new("data entry editor is not available").expect("CString::new failed: contains null byte");
     Rf_warning(msg.as_ptr());
     R_NilValue()
 }
@@ -303,7 +303,7 @@ pub unsafe extern "C" fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
-    let msg = CString::new("data viewer is not available").unwrap();
+    let msg = CString::new("data viewer is not available").expect("CString::new failed: contains null byte");
     Rf_warning(msg.as_ptr());
     R_NilValue()
 }
@@ -334,7 +334,7 @@ pub unsafe extern "C" fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 
     // Validate editor argument
     if !isString(ed) || LENGTH(ed) != 1 {
-        let msg = CString::new("invalid 'editor' specification").unwrap();
+        let msg = CString::new("invalid 'editor' specification").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 
@@ -344,13 +344,13 @@ pub unsafe extern "C" fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
     let mut files: Vec<String> = Vec::new();
     if n > 0 {
         if !isString(fn_) {
-            let msg = CString::new("invalid 'filename' specification").unwrap();
+            let msg = CString::new("invalid 'filename' specification").expect("CString::new failed: contains null byte");
             Rf_error(msg.as_ptr());
         }
         for i in 0..n {
             let elt = STRING_ELT(fn_, i as R_xlen_t);
             if elt.is_null() || elt == R_NilValue() {
-                let msg = CString::new("'filename' contains missing values").unwrap();
+                let msg = CString::new("'filename' contains missing values").expect("CString::new failed: contains null byte");
                 Rf_error(msg.as_ptr());
             }
             let c = CHAR(elt);
@@ -435,13 +435,13 @@ pub unsafe extern "C" fn tzcode_type() -> SEXP {
 pub unsafe extern "C" fn charClass(x: SEXP, scl: SEXP) -> SEXP {
     // Validate class argument
     if !isString(scl) || LENGTH(scl) != 1 {
-        let msg = CString::new("argument 'class' must be a character string").unwrap();
+        let msg = CString::new("argument 'class' must be a character string").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 
     let cl_ptr = CHAR(STRING_ELT(scl, 0));
     if cl_ptr.is_null() {
-        let msg = CString::new("argument 'class' must be a character string").unwrap();
+        let msg = CString::new("argument 'class' must be a character string").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
     let cl = CStr::from_ptr(cl_ptr).to_string_lossy();
@@ -462,7 +462,7 @@ pub unsafe extern "C" fn charClass(x: SEXP, scl: SEXP) -> SEXP {
     if isString(x) {
         // x is a character string: classify each character
         if XLENGTH(x) != 1 {
-            let msg = CString::new("argument 'x' must be a length-1 character vector").unwrap();
+            let msg = CString::new("argument 'x' must be a length-1 character vector").expect("CString::new failed: contains null byte");
             Rf_error(msg.as_ptr());
         }
 
@@ -555,7 +555,7 @@ fn compute_crc64(data: &[u8]) -> u64 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn crc64(in_: SEXP) -> SEXP {
     if !isString(in_) {
-        let msg = CString::new("input must be a character string").unwrap();
+        let msg = CString::new("input must be a character string").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 
@@ -565,14 +565,14 @@ pub unsafe extern "C" fn crc64(in_: SEXP) -> SEXP {
         // Empty input -- return CRC64 of empty string
         let hash = compute_crc64(b"");
         let hash_str = format!("{:016x}", hash);
-        let c_hash = CString::new(hash_str).unwrap();
+        let c_hash = CString::new(hash_str).expect("CString::new failed: contains null byte");
         return Rf_mkString(c_hash.as_ptr());
     }
 
     let bytes = CStr::from_ptr(c_ptr).to_bytes();
     let hash = compute_crc64(bytes);
     let hash_str = format!("{:016x}", hash);
-    let c_hash = CString::new(hash_str).unwrap();
+    let c_hash = CString::new(hash_str).expect("CString::new failed: contains null byte");
     Rf_mkString(c_hash.as_ptr())
 }
 
@@ -585,14 +585,14 @@ pub unsafe extern "C" fn crc64(in_: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nsl(hostname: SEXP) -> SEXP {
     if !isString(hostname) || LENGTH(hostname) != 1 {
-        let msg = CString::new("'hostname' must be a character vector of length 1").unwrap();
+        let msg = CString::new("'hostname' must be a character vector of length 1").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 
     let s = STRING_ELT(hostname, 0);
     let c_ptr = CHAR(s);
     if c_ptr.is_null() {
-        let msg = CString::new("'hostname' must be a character vector of length 1").unwrap();
+        let msg = CString::new("'hostname' must be a character vector of length 1").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 
@@ -647,7 +647,7 @@ pub unsafe extern "C" fn nsl(hostname: SEXP) -> SEXP {
         Rf_warning(msg.as_ptr());
     }
 
-    let c_ip = CString::new(ip).unwrap();
+    let c_ip = CString::new(ip).expect("CString::new failed: contains null byte");
     Rf_mkString(c_ip.as_ptr())
 }
 
@@ -663,7 +663,7 @@ pub unsafe extern "C" fn octsize(size: SEXP) -> SEXP {
     let ra = RAW(ans);
 
     if !s_val.is_finite() || s_val < 0.0 {
-        let msg = CString::new("size must be finite and >= 0").unwrap();
+        let msg = CString::new("size must be finite and >= 0").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 

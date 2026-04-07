@@ -11,14 +11,14 @@ use std::ptr;
 use super::types::*;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn textheight(width: c_int, text: *const std::os::raw::c_char) -> c_int {
+pub unsafe extern "C" fn textheight(_width: c_int, _text: *const std::os::raw::c_char) -> c_int {
     0
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn drawtext(
-    r: rect,
-    alignment: c_int,
+    _r: rect,
+    _alignment: c_int,
     text: *const std::os::raw::c_char,
 ) -> *const std::os::raw::c_char {
     if text.is_null() {
@@ -29,7 +29,7 @@ pub unsafe extern "C" fn drawtext(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn gprintf(
-    fmt: *const std::os::raw::c_char,
+    _fmt: *const std::os::raw::c_char,
     _args: *const std::os::raw::c_void,
 ) -> c_int {
     // Variadic functions not supported; stub

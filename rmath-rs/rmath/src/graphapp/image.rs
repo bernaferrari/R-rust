@@ -6,7 +6,7 @@
 //! Ported from image.c - provides cross-platform image type with
 //! 8-bit indexed and 32-bit true-colour support.
 
-use std::os::raw::{c_int, c_ulong};
+use std::os::raw::c_int;
 use std::ptr;
 
 use super::memory;
@@ -214,13 +214,13 @@ pub unsafe extern "C" fn convert8to32(img: image) -> image {
 
 /// Sort an image's colour map.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn sortpalette(img: image) {
+pub unsafe extern "C" fn sortpalette(_img: image) {
     // TODO: Full implementation
 }
 
 /// Scale an image.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn scaleimage(src: image, dr: rect, sr: rect) -> image {
+pub unsafe extern "C" fn scaleimage(src: image, dr: rect, _sr: rect) -> image {
     unsafe {
         if src.is_null() {
             return ptr::null_mut();
@@ -264,6 +264,7 @@ pub unsafe extern "C" fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb 
 
 /// Get monochrome pixel value.
 #[unsafe(no_mangle)]
+#[allow(clippy::if_same_then_else)]
 pub unsafe extern "C" fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         let pixel = get_image_pixel(img, x, y);
@@ -317,7 +318,7 @@ pub unsafe extern "C" fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
 
 /// Check if image has transparent pixels.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn has_transparent_pixels(img: image) -> c_int {
+pub unsafe extern "C" fn has_transparent_pixels(_img: image) -> c_int {
     // TODO: Full implementation
     0
 }

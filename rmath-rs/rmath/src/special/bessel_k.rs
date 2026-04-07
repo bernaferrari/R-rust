@@ -87,6 +87,7 @@ fn max0(x: i32, y: i32) -> i32 {
 }
 
 /// Modified Bessel function of the third kind, K_alpha(x).
+#[must_use]
 ///
 /// # Arguments
 /// * `x` - Non-negative argument
@@ -129,6 +130,7 @@ pub fn bessel_k(x: f64, alpha: f64, expo: f64) -> f64 {
 }
 
 /// Modified Bessel function of the third kind with user-supplied work array.
+#[must_use]
 ///
 /// This is a modified version of bessel_k that accepts a work array
 /// instead of allocating one.
@@ -593,6 +595,7 @@ fn k_bessel_forward(
 mod imp {
     use super::*;
 
+    #[must_use]
     #[unsafe(no_mangle)]
     pub extern "C" fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
         bessel_k(x, alpha, expo)

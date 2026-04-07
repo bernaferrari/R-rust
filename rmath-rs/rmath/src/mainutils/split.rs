@@ -11,8 +11,7 @@
 //! - Long vector support (uses R_xlen_t counts for long vectors,
 //!   c_int counts for normal vectors, matching the C code)
 
-use std::os::raw::{c_char, c_double, c_int};
-use std::ptr;
+use std::os::raw::c_int;
 
 use crate::eval::attrib_core::{
     R_ClassSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib, setAttrib,
@@ -23,7 +22,6 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
-use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Local helpers

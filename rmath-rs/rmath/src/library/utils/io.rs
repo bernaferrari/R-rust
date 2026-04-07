@@ -41,7 +41,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 use crate::attrib_core;
 use crate::main::coerce::asLogical;
-use crate::main::duplicate::{copyVector, Rf_duplicate};
+use crate::main::duplicate::{Rf_duplicate, copyVector};
 
 /// Get errno pointer (macOS uses __error())
 #[inline]
@@ -132,7 +132,7 @@ unsafe extern "C" {
 
     /* Print defaults */
     fn PrintDefaults();
-    static mut R_print_digits: c_int;
+    static R_print_digits: c_int;
 
     /* VMAX (R's memory pool) */
     fn vmaxget() -> *mut c_void;

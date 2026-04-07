@@ -520,7 +520,7 @@ pub unsafe extern "C" fn R_makePartialMatchWarningCondition(
             "'{}' matches multiple arguments (partial match of '{}' to '{}')",
             arg_str, arg_str, formal_str
         );
-        let c_msg = std::ffi::CString::new(msg).unwrap();
+        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
 
         R_makeWarningCondition(
             call,
@@ -551,7 +551,7 @@ pub unsafe extern "C" fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP 
             "object"
         };
         let msg = format!("object of type '{}' is not subsettable", class_str);
-        let c_msg = std::ffi::CString::new(msg).unwrap();
+        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
 
         R_makeErrorCondition(
             call,
@@ -579,7 +579,7 @@ pub unsafe extern "C" fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEX
             "object"
         };
         let msg = format!("subscript out of bounds for {}", class_str);
-        let c_msg = std::ffi::CString::new(msg).unwrap();
+        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
 
         R_makeErrorCondition(
             call,
@@ -596,7 +596,7 @@ pub unsafe extern "C" fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEX
 pub unsafe extern "C" fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
     unsafe {
         let msg = "subscript out of bounds";
-        let c_msg = std::ffi::CString::new(msg).unwrap();
+        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
 
         R_makeErrorCondition(
             call,
@@ -625,7 +625,7 @@ pub unsafe extern "C" fn R_makeOutOfBoundsError(
             format!("{}", subscript)
         };
         let msg = format!("subscript out of bounds (index {} too large)", idx_str);
-        let c_msg = std::ffi::CString::new(msg).unwrap();
+        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
 
         R_makeErrorCondition(
             call,
@@ -642,7 +642,7 @@ pub unsafe extern "C" fn R_makeOutOfBoundsError(
 pub unsafe extern "C" fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
     unsafe {
         let msg = format!("C stack usage {} is too close to the limit", usage);
-        let c_msg = std::ffi::CString::new(msg).unwrap();
+        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
 
         R_makeErrorCondition(
             call,
@@ -724,7 +724,7 @@ pub unsafe extern "C" fn R_tryCatch(
                         b"simpleError\0".as_ptr() as *const c_char,
                         ptr::null_mut(),
                         0,
-                        std::ffi::CString::new(e.message.clone()).unwrap().as_ptr(),
+                        std::ffi::CString::new(e.message.clone()).expect("CString::new failed: contains null byte").as_ptr(),
                     )
                 } else {
                     R_makeErrorCondition(

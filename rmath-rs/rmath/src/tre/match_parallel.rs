@@ -1,6 +1,4 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
 #![allow(unused_assignments)]
 /*
   tre/match_parallel.rs - TRE parallel regex matching engine
@@ -88,6 +86,7 @@ fn CHECK_CHAR_CLASSES(
     }
 }
 
+#[allow(clippy::if_same_then_else)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tre_tnfa_run_parallel(
     tnfa: *const tre_tnfa_t,
@@ -101,7 +100,7 @@ pub unsafe extern "C" fn tre_tnfa_run_parallel(
     unsafe {
         let str_byte = string as *const u8;
         let mut pos: c_int = -1;
-        let mut pos_add_next: u32 = 1;
+        let pos_add_next: u32 = 1;
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
         let reg_newline = (*tnfa).cflags & REG_NEWLINE;

@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/sprintf.c
 //!
@@ -11,22 +10,22 @@
 //!   - `sprintf_findspec()` -- locate the conversion specifier character in a format
 //!   - `sprintf_checkfmt()` -- validate that a format string matches an allowed set
 //!   - `do_sprintf()`       -- full sprintf implementation with format strings,
-//!                            type coercion, NA handling, star-width support,
-//!                            positional (%n$) arguments, and recycling
+//!     type coercion, NA handling, star-width support,
+//!     positional (%n$) arguments, and recycling
 //!
 //! Note: `findspec` and `checkfmt` are `static` in the original C source;
 //! they are exported here with `sprintf_` prefixes so they can be reused
 //! by other ports (e.g. formatC in util.c) and by tests.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
     CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, STRING_ELT, TYPEOF, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector, Rf_isNull, Rf_isString, Rf_mkChar};
+use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar};
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, R_FINITE, R_IsNA, R_xlen_t, SEXP};
-use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -123,18 +122,32 @@ impl RStringBuffer {
     }
 }
 
-/// Thread-local string buffer (mirrors R's static outbuff).
-static mut OUTBUFF: *mut RStringBuffer = ptr::null_mut();
+thread_local! { static OUTBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
 
-/// Ensure OUTBUFF is initialized and return a mutable reference.
-unsafe fn get_outbuff() -> &'static mut RStringBuffer {
-    unsafe {
-        if OUTBUFF.is_null() {
-            let buf = Box::new(RStringBuffer::new());
-            OUTBUFF = Box::into_raw(buf);
-        }
-        &mut *OUTBUFF
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
     }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
+unsafe fn get_outbuff() -> MutPtr<RStringBuffer> {
+    MutPtr(OUTBUFF.with(|v| {
+        if v.get().is_null() {
+            let buf = Box::new(RStringBuffer::new());
+            v.set(Box::into_raw(buf));
+        }
+        v.get()
+    }))
 }
 
 /// Allocate or grow the string buffer to hold at least `buflen` characters.
@@ -382,7 +395,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
     unsafe {
         let mut nargs: c_int = 0;
         let mut nfmt: c_int = 0;
-        let mut nprotect: c_int = 0;
+        let nprotect: c_int = 0;
 
         // fmt2 is a copy of fmt with '*' expanded.
         // bit will hold the result of each snprintf call.
@@ -398,7 +411,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         if nfmt == 0 {
             return Rf_allocVector(STRSXP, 0);
         }
-        let mut args_rest = CDR(args);
+        let args_rest = CDR(args);
         nargs = LENGTH(args_rest);
         if nargs as usize >= MAXNARGS {
             return ptr::null_mut();
@@ -440,13 +453,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        let outbuff = get_outbuff();
+        let mut outbuff = get_outbuff();
 
         // We do the format analysis a row at a time
         let mut ans: SEXP = ptr::null_mut();
 
         for ns in 0..maxlen as R_xlen_t {
-            let outputString = R_AllocStringBuffer(0, outbuff);
+            let outputString = R_AllocStringBuffer(0, &mut outbuff);
             *outputString = 0; // NUL-terminate
 
             let use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
@@ -468,7 +481,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             while cur < n {
                 let curFormat = formatString.add(cur);
                 let mut ss: *const c_char = ptr::null();
-                let mut chunk: usize;
+                let chunk: usize;
 
                 if *curFormat == b'%' as c_char {
                     // handle special format command
@@ -681,7 +694,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                 c_strcpy(bit.as_mut_ptr(), fmt.as_ptr());
                             }
                         } else {
-                            let mut did_this = false;
+                            let did_this = false;
 
                             if nthis < 0 {
                                 if cnt >= nargs {
@@ -974,7 +987,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                 let append_str = if !ss.is_null() { ss } else { bit.as_ptr() };
                 let outputString = R_AllocStringBuffer(
                     (c_strlen(outputString) + c_strlen(append_str)) as i64,
-                    outbuff,
+                    &mut outbuff,
                 );
                 c_strcat(outputString, append_str);
 
@@ -1029,7 +1042,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        R_FreeStringBufferL(outbuff);
+        R_FreeStringBufferL(&mut outbuff);
         ans
     }
 }

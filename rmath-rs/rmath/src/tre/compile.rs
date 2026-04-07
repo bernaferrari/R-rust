@@ -1,7 +1,5 @@
 #![allow(unreachable_code)]
 #![allow(unused_variables)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
 #![allow(unused_assignments)]
 /*
   tre/compile.rs - TRE regex compiler
@@ -242,8 +240,8 @@ unsafe fn tre_add_tags(
                     match (*node).type_ {
                         tre_ast_type_t::LITERAL => {
                             let lit = (*node).obj as *mut tre_literal_t;
-                            if !IS_SPECIAL(&*lit) || IS_BACKREF(&*lit) {
-                                if *regset >= 0 {
+                            if (!IS_SPECIAL(&*lit) || IS_BACKREF(&*lit))
+                                && *regset >= 0 {
                                     if !first_pass {
                                         status = tre_add_tag_left(mem, node, tag);
                                         *(*tnfa).tag_directions.offset(tag as isize) =
@@ -268,7 +266,6 @@ unsafe fn tre_add_tags(
                                     num_tags += 1;
                                     next_tag += 1;
                                 }
-                            }
                         }
                         tre_ast_type_t::CATENATION => {
                             let cat = (*node).obj as *mut tre_catenation_t;
@@ -450,7 +447,7 @@ unsafe fn tre_add_tags(
                         (*node).num_tags = (*((*node).obj as *mut tre_iteration_t))
                             .arg
                             .as_ref()
-                            .map_or(0, |a| (*a).num_tags)
+                            .map_or(0, |a| a.num_tags)
                             + val;
                         minimal_tag = -1;
                     } else {
@@ -479,11 +476,11 @@ unsafe fn tre_add_tags(
                         (*node).num_tags = (*((*node).obj as *mut tre_catenation_t))
                             .left
                             .as_ref()
-                            .map_or(0, |l| (*l).num_tags)
+                            .map_or(0, |l| l.num_tags)
                             + (*((*node).obj as *mut tre_catenation_t))
                                 .right
                                 .as_ref()
-                                .map_or(0, |r| (*r).num_tags);
+                                .map_or(0, |r| r.num_tags);
                     }
                 }
                 x if x == tre_addtags_symbol_t::ADDTAGS_AFTER_UNION_LEFT as c_int => {
@@ -500,11 +497,11 @@ unsafe fn tre_add_tags(
                         (*node).num_tags = (*((*node).obj as *mut tre_union_t))
                             .left
                             .as_ref()
-                            .map_or(0, |l| (*l).num_tags)
+                            .map_or(0, |l| l.num_tags)
                             + (*((*node).obj as *mut tre_union_t))
                                 .right
                                 .as_ref()
-                                .map_or(0, |r| (*r).num_tags)
+                                .map_or(0, |r| r.num_tags)
                             + added_tags
                             + if (*node).num_submatches > 0 { 2 } else { 0 };
                     }
@@ -735,8 +732,8 @@ unsafe fn tre_expand_ast(
         let mut pos_add: c_int = 0;
         let mut pos_add_total: c_int = 0;
         let mut max_pos: c_int = 0;
-        let mut params: [c_int; TRE_PARAM_LAST] = [TRE_PARAM_DEFAULT; TRE_PARAM_LAST];
-        let mut params_depth: c_int = 0;
+        let params: [c_int; TRE_PARAM_LAST] = [TRE_PARAM_DEFAULT; TRE_PARAM_LAST];
+        let params_depth: c_int = 0;
         let mut iter_depth: c_int = 0;
 
         stack::tre_stack_push_voidptr(stack, ast as *mut c_void);
@@ -1040,7 +1037,7 @@ unsafe fn tre_match_empty(
 ) -> c_int {
     unsafe {
         let bottom = stack::tre_stack_num_objects(stack);
-        let mut status: c_int = REG_OK as c_int;
+        let status: c_int = REG_OK as c_int;
 
         if !num_tags_seen.is_null() {
             *num_tags_seen = 0;
@@ -1086,7 +1083,7 @@ unsafe fn tre_match_empty(
                             if !params.is_null() {
                                 let p = (*lit).get_params();
                                 for i in 0..TRE_PARAM_LAST {
-                                    *params.offset(i as isize) = *p.offset(i as isize);
+                                    *params.add(i) = *p.add(i);
                                 }
                             }
                             if !_params_seen.is_null() {
@@ -1549,20 +1546,20 @@ unsafe fn tre_make_trans(
                             as *mut c_int;
                         if !(*t).params.is_null() {
                             for k in 0..TRE_PARAM_LAST {
-                                *(*t).params.offset(k as isize) = TRE_PARAM_UNSET;
+                                *(*t).params.add(k) = TRE_PARAM_UNSET;
                                 if !(*p1.offset(pi)).params.is_null()
-                                    && *(*p1.offset(pi)).params.offset(k as isize)
+                                    && *(*p1.offset(pi)).params.add(k)
                                         != TRE_PARAM_UNSET
                                 {
-                                    *(*t).params.offset(k as isize) =
-                                        *(*p1.offset(pi)).params.offset(k as isize);
+                                    *(*t).params.add(k) =
+                                        *(*p1.offset(pi)).params.add(k);
                                 }
                                 if !(*p2.offset(pj)).params.is_null()
-                                    && *(*p2.offset(pj)).params.offset(k as isize)
+                                    && *(*p2.offset(pj)).params.add(k)
                                         != TRE_PARAM_UNSET
                                 {
-                                    *(*t).params.offset(k as isize) =
-                                        *(*p2.offset(pj)).params.offset(k as isize);
+                                    *(*t).params.add(k) =
+                                        *(*p2.offset(pj)).params.add(k);
                                 }
                             }
                         }
@@ -1615,8 +1612,8 @@ unsafe fn tre_ast_to_tnfa_iter(
                 tre_ast_type_t::CATENATION => {
                     let cat = (*node).obj as *mut tre_catenation_t;
                     let errcode = tre_make_trans(
-                        (*cat).left.as_ref().map_or(ptr::null(), |l| (*l).lastpos),
-                        (*cat).right.as_ref().map_or(ptr::null(), |r| (*r).firstpos),
+                        (*cat).left.as_ref().map_or(ptr::null(), |l| l.lastpos),
+                        (*cat).right.as_ref().map_or(ptr::null(), |r| r.firstpos),
                         transitions,
                         counts,
                         offs,
@@ -1631,8 +1628,8 @@ unsafe fn tre_ast_to_tnfa_iter(
                     let iter = (*node).obj as *mut tre_iteration_t;
                     if (*iter).max == -1 {
                         let errcode = tre_make_trans(
-                            (*iter).arg.as_ref().map_or(ptr::null(), |a| (*a).lastpos),
-                            (*iter).arg.as_ref().map_or(ptr::null(), |a| (*a).firstpos),
+                            (*iter).arg.as_ref().map_or(ptr::null(), |a| a.lastpos),
+                            (*iter).arg.as_ref().map_or(ptr::null(), |a| a.firstpos),
                             transitions,
                             counts,
                             offs,
@@ -1900,7 +1897,7 @@ pub unsafe extern "C" fn tre_compile(
                     mem::xmalloc(std::mem::size_of::<c_int>() * TRE_PARAM_LAST) as *mut c_int;
                 if !params.is_null() {
                     for k in 0..TRE_PARAM_LAST {
-                        *params.offset(k as isize) = *(*p).params.offset(k as isize);
+                        *params.add(k) = *(*p).params.add(k);
                     }
                     (*initial.offset(i2 as isize)).params = params;
                 }

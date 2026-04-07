@@ -7,6 +7,7 @@
  *  This should be regarded as part of the graphics engine.
  */
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
 use crate::attrib_core::{R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
@@ -83,25 +84,24 @@ const DEFAULT_PALETTE: [rcolor; 8] = [
 // Static palette state
 // ---------------------------------------------------------------------------
 
-static mut PALETTE_SIZE: c_int = 8;
-
-// Use a const block for initialization
 const PALETTE_INIT: [rcolor; 32] = [
     0xff000000, 0xff6b53df, 0xff4fd061, 0xffe69722, 0xffe5e228, 0xffbc0bcd, 0xff10c7f5, 0xff9e9e9e,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
-static mut PALETTE: [rcolor; MAX_PALETTE_SIZE] = {
-    let mut arr = [0u32; MAX_PALETTE_SIZE];
-    let mut i = 0;
-    while i < PALETTE_INIT.len() {
-        arr[i] = PALETTE_INIT[i];
-        i += 1;
-    }
-    arr
-};
-
-static mut PALETTE0: [rcolor; MAX_PALETTE_SIZE] = [0; MAX_PALETTE_SIZE];
+thread_local! {
+    static PALETTE_SIZE: Cell<c_int> = Cell::new(8);
+    static PALETTE: Cell<[rcolor; MAX_PALETTE_SIZE]> = Cell::new({
+        let mut arr = [0u32; MAX_PALETTE_SIZE];
+        let mut i = 0;
+        while i < PALETTE_INIT.len() {
+            arr[i] = PALETTE_INIT[i];
+            i += 1;
+        }
+        arr
+    });
+    static PALETTE0: Cell<[rcolor; MAX_PALETTE_SIZE]> = Cell::new([0; MAX_PALETTE_SIZE]);
+}
 
 // ---------------------------------------------------------------------------
 // Thread-local return buffers
@@ -3205,9 +3205,9 @@ unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
         if indx == 0 {
             return bg;
         }
-        let ps = PALETTE_SIZE as usize;
+        let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
         let idx = (indx as usize).wrapping_sub(1) % ps;
-        PALETTE[idx]
+        PALETTE.with(|v| v.get()[idx])
     } else {
         name2col(s)
     }
@@ -3286,24 +3286,32 @@ pub unsafe extern "C" fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
     if indx == 0 {
         return bg;
     }
-    let ps = PALETTE_SIZE as usize;
+    let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     let idx = (indx as usize).wrapping_sub(1) % ps;
-    PALETTE[idx]
+    PALETTE.with(|v| v.get()[idx])
 }
 
 /// Save/restore palette (NOT #[unsafe(no_mangle)] — main/colors.rs already exports it)
 unsafe extern "C" fn savePalette_impl(save: c_int) {
-    let ps = PALETTE_SIZE as usize;
+    let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     if save != 0 {
         let mut i = 0usize;
         while i < ps {
-            PALETTE0[i] = PALETTE[i];
+            PALETTE0.with(|v0| {
+                let mut arr = v0.get();
+                arr[i] = PALETTE.with(|v| v.get()[i]);
+                v0.set(arr);
+            });
             i += 1;
         }
     } else {
         let mut i = 0usize;
         while i < ps {
-            PALETTE[i] = PALETTE0[i];
+            PALETTE.with(|v| {
+                let mut arr = v.get();
+                arr[i] = PALETTE0.with(|v0| v0.get()[i]);
+                v.set(arr);
+            });
             i += 1;
         }
     }
@@ -3852,11 +3860,11 @@ pub unsafe extern "C" fn do_palette(val: SEXP) -> SEXP {
     }
 
     // Record current palette
-    let ps = PALETTE_SIZE as usize;
+    let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, ps as c_int));
     let mut i = 0usize;
     while i < ps {
-        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(incol2name(PALETTE[i])));
+        SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(incol2name(PALETTE.with(|v| v.get()[i]))));
         i += 1;
     }
 
@@ -3866,10 +3874,14 @@ pub unsafe extern "C" fn do_palette(val: SEXP) -> SEXP {
         if StrMatch(b"default\0".as_ptr() as *const c_char, s) != 0 {
             let mut i = 0usize;
             while i < 8 {
-                PALETTE[i] = DEFAULT_PALETTE[i];
+                PALETTE.with(|v| {
+                    let mut arr = v.get();
+                    arr[i] = DEFAULT_PALETTE[i];
+                    v.set(arr);
+                });
                 i += 1;
             }
-            PALETTE_SIZE = 8;
+            PALETTE_SIZE.with(|v| v.set(8));
         } else {
             Rf_error(b"unknown palette (need >= 2 colors)\0".as_ptr() as *const c_char);
         }
@@ -3890,10 +3902,14 @@ pub unsafe extern "C" fn do_palette(val: SEXP) -> SEXP {
         }
         let mut i = 0usize;
         while i < n {
-            PALETTE[i] = color_buf[i];
+            PALETTE.with(|v| {
+                let mut arr = v.get();
+                arr[i] = color_buf[i];
+                v.set(arr);
+            });
             i += 1;
         }
-        PALETTE_SIZE = n as c_int;
+        PALETTE_SIZE.with(|v| v.set(n as c_int));
     }
 
     Rf_unprotect(1);
@@ -3902,12 +3918,12 @@ pub unsafe extern "C" fn do_palette(val: SEXP) -> SEXP {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn do_palette2(val: SEXP) -> SEXP {
-    let ps = PALETTE_SIZE as usize;
+    let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, ps as c_int));
     let ians = INTEGER(ans);
     let mut i = 0usize;
     while i < ps {
-        *ians.add(i) = PALETTE[i] as c_int;
+        *ians.add(i) = PALETTE.with(|v| v.get()[i]) as c_int;
         i += 1;
     }
 
@@ -3921,10 +3937,14 @@ pub unsafe extern "C" fn do_palette2(val: SEXP) -> SEXP {
         }
         let mut i = 0usize;
         while i < n {
-            PALETTE[i] = *INTEGER(val).add(i) as rcolor;
+            PALETTE.with(|v| {
+                let mut arr = v.get();
+                arr[i] = *INTEGER(val).add(i) as rcolor;
+                v.set(arr);
+            });
             i += 1;
         }
-        PALETTE_SIZE = n as c_int;
+        PALETTE_SIZE.with(|v| v.set(n as c_int));
     }
     Rf_unprotect(1);
     ans

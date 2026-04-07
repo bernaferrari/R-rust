@@ -6,9 +6,6 @@
 //! that are accessible from S code via the R executable.
 
 use std::os::raw::{c_int, c_void};
-use std::ptr;
-
-use crate::sexp::ffi::SEXP;
 
 // ---------------------------------------------------------------------------
 // Stub: R_registerRoutines, R_useDynamicSymbols, R_forceSymbols

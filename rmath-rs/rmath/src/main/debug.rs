@@ -6,6 +6,7 @@
 //! .Internal(trace()), .primTrace/.primUntrace,
 //! tracingState/debuggingState, and memory profiling stubs.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 
 use crate::main::errors::Rf_error;
@@ -60,11 +61,9 @@ unsafe fn PRIMVAL(op: SEXP) -> c_int {
 // Static state for tracing/debugging toggles
 // ---------------------------------------------------------------------------
 
-/// Global tracing state (on/off). Defaults to TRUE (enabled).
-static mut tracing_state: c_int = TRUE;
+thread_local! { static tracing_state: Cell<c_int> = Cell::new(TRUE); }
 
-/// Global debugging state (on/off). Defaults to TRUE (enabled).
-static mut debugging_state: c_int = TRUE;
+thread_local! { static debugging_state: Cell<c_int> = Cell::new(TRUE); }
 
 // ---------------------------------------------------------------------------
 // do_debug — debug / undebug / isdebugged / debugonce
@@ -169,15 +168,13 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
         match PRIMVAL(op) {
             0 => {
-                // tracingState
-                let prev = tracing_state;
-                tracing_state = state;
+                let prev = tracing_state.with(|v| v.get());
+                tracing_state.with(|v| v.set(state));
                 return Rf_ScalarLogical(prev);
             }
             1 => {
-                // debuggingState
-                let prev = debugging_state;
-                debugging_state = state;
+                let prev = debugging_state.with(|v| v.get());
+                debugging_state.with(|v| v.set(state));
                 return Rf_ScalarLogical(prev);
             }
             _ => {}
@@ -192,8 +189,8 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_current_debug_state() -> c_int {
-    unsafe { debugging_state }
+pub extern "C" fn R_current_debug_state() -> c_int {
+    debugging_state.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -201,8 +198,8 @@ pub unsafe extern "C" fn R_current_debug_state() -> c_int {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_current_trace_state() -> c_int {
-    unsafe { tracing_state }
+pub extern "C" fn R_current_trace_state() -> c_int {
+    tracing_state.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -270,24 +267,22 @@ mod tests {
     /// Test that the tracing/debugging state functions work correctly.
     #[test]
     fn test_trace_state() {
-        unsafe {
-            // Initial state should be TRUE
-            assert_eq!(R_current_trace_state(), TRUE);
-            assert_eq!(R_current_debug_state(), TRUE);
+        // Initial state should be TRUE
+        assert_eq!(R_current_trace_state(), TRUE);
+        assert_eq!(R_current_debug_state(), TRUE);
 
-            // Mutate state directly and verify
-            tracing_state = FALSE;
-            assert_eq!(R_current_trace_state(), FALSE);
+        // Mutate state directly and verify
+        tracing_state.with(|v| v.set(FALSE));
+        assert_eq!(R_current_trace_state(), FALSE);
 
-            debugging_state = FALSE;
-            assert_eq!(R_current_debug_state(), FALSE);
+        debugging_state.with(|v| v.set(FALSE));
+        assert_eq!(R_current_debug_state(), FALSE);
 
-            // Restore defaults
-            tracing_state = TRUE;
-            debugging_state = TRUE;
-            assert_eq!(R_current_trace_state(), TRUE);
-            assert_eq!(R_current_debug_state(), TRUE);
-        }
+        // Restore defaults
+        tracing_state.with(|v| v.set(TRUE));
+        debugging_state.with(|v| v.set(TRUE));
+        assert_eq!(R_current_trace_state(), TRUE);
+        assert_eq!(R_current_debug_state(), TRUE);
     }
 
     /// Test that do_tracemem is defined (actual error behavior tested

@@ -347,7 +347,7 @@ pub unsafe fn psmatch_case_insensitive(f: *const c_char, t: *const c_char, exact
                 return 0;
             }
             for i in 0..f_bytes.len() {
-                if f_bytes[i].to_ascii_lowercase() != t_bytes[i].to_ascii_lowercase() {
+                if !f_bytes[i].eq_ignore_ascii_case(&t_bytes[i]) {
                     return 0;
                 }
             }
@@ -358,7 +358,7 @@ pub unsafe fn psmatch_case_insensitive(f: *const c_char, t: *const c_char, exact
             return 0;
         }
         for i in 0..t_bytes.len() {
-            if t_bytes[i].to_ascii_lowercase() != f_bytes[i].to_ascii_lowercase() {
+            if !t_bytes[i].eq_ignore_ascii_case(&f_bytes[i]) {
                 return 0;
             }
         }
@@ -870,7 +870,7 @@ pub unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) ->
         let mut f: SEXP;
         let mut a: SEXP;
         let mut b: SEXP;
-        let mut prsupplied: SEXP;
+        let prsupplied: SEXP;
 
         let nfarg = length(formals);
         let nfarg_usize = if nfarg > 0 { nfarg as usize } else { 1 };

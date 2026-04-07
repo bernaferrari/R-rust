@@ -5,6 +5,7 @@
 //! Manages command-line arguments and processes common options like --save,
 //! --no-save, --restore, --vanilla, etc.
 
+use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -38,45 +39,45 @@ pub const SA_NORESTORE: c_int = 0;
 // ---------------------------------------------------------------------------
 
 /// Number of stored command-line arguments.
-static mut NumCommandLineArgs: c_int = 0;
+thread_local! { static NumCommandLineArgs: Cell<c_int> = Cell::new(0); }
 
 /// Array of C-string pointers to permanently stored command-line arguments.
 /// This memory is never freed (matching R's behavior).
-static mut CommandLineArgs: *mut *mut c_char = ptr::null_mut();
+thread_local! { static CommandLineArgs: Cell<*mut *mut c_char> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Static state: option flags (matching Rstart fields)
 // ---------------------------------------------------------------------------
 
 /// Whether to restore .Rhistory at startup.
-static mut R_RestoreHistory: c_int = 1;
+thread_local! { static R_RestoreHistory: Cell<c_int> = Cell::new(1); }
 
 /// Save action: SA_SAVEASK, SA_SAVE, or SA_NOSAVE.
-static mut SaveAction: c_int = SA_SAVEASK;
+thread_local! { static SaveAction: Cell<c_int> = Cell::new(SA_SAVEASK); }
 
 /// Restore action: SA_RESTORE or SA_NORESTORE.
-static mut RestoreAction: c_int = SA_RESTORE;
+thread_local! { static RestoreAction: Cell<c_int> = Cell::new(SA_RESTORE); }
 
 /// Run in quiet mode (suppress startup messages).
-static mut R_Quiet: c_int = 0;
+thread_local! { static R_Quiet: Cell<c_int> = Cell::new(0); }
 
 /// Suppress echo of input (--no-echo / --slave / -s).
-static mut R_NoEcho: c_int = 0;
+thread_local! { static R_NoEcho: Cell<c_int> = Cell::new(0); }
 
 /// Whether R is running interactively.
-static mut R_Interactive: c_int = 1;
+thread_local! { static R_Interactive: Cell<c_int> = Cell::new(1); }
 
 /// Run in verbose mode.
-static mut R_Verbose: c_int = 0;
+thread_local! { static R_Verbose: Cell<c_int> = Cell::new(0); }
 
 /// Whether to load the site-wide Rprofile.
-static mut LoadSiteFile: c_int = 1;
+thread_local! { static LoadSiteFile: Cell<c_int> = Cell::new(1); }
 
 /// Whether to load the user's .Rprofile.
-static mut LoadInitFile: c_int = 1;
+thread_local! { static LoadInitFile: Cell<c_int> = Cell::new(1); }
 
 /// Whether to suppress processing of .Renviron files.
-static mut NoRenviron: c_int = 0;
+thread_local! { static NoRenviron: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // R_set_command_line_arguments
@@ -92,17 +93,35 @@ static mut NoRenviron: c_int = 0;
 /// - Each `argv[i]` must be a valid null-terminated C string.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) {
-    unsafe {
-        // Nothing here is ever freed (matching R's behavior).
-        NumCommandLineArgs = argc;
+    NumCommandLineArgs.with(|v| v.set(argc));
 
-        if argc <= 0 {
-            CommandLineArgs = ptr::null_mut();
-            return;
+    if argc <= 0 {
+        CommandLineArgs.with(|v| v.set(ptr::null_mut()));
+        return;
+    }
+
+    let layout = std::alloc::Layout::array::<*mut c_char>(argc as usize).expect("unwrap on None/Err");
+    let ptr = std::alloc::alloc(layout) as *mut *mut c_char;
+    if ptr.is_null() {
+        return;
+    }
+
+    ptr::write_bytes(ptr, 0, argc as usize);
+    CommandLineArgs.with(|v| v.set(ptr));
+
+    for i in 0..argc as usize {
+        let src = *argv.add(i);
+        if !src.is_null() {
+            let cstr = CStr::from_ptr(src);
+            let dup = CString::new(cstr.to_bytes()).expect("CString::new failed: contains null byte");
+            *ptr.add(i) = dup.into_raw();
         }
+    }
+}
 
         // Allocate array of pointers (using calloc-like semantics via Vec).
-        let layout = std::alloc::Layout::array::<*mut c_char>(argc as usize).unwrap();
+        let layout =
+            std::alloc::Layout::array::<*mut c_char>(argc as usize).expect("unwrap on None/Err");
         let ptr = std::alloc::alloc(layout) as *mut *mut c_char;
         if ptr.is_null() {
             // R_Suicide("allocation failure in R_set_command_line_arguments");
@@ -117,7 +136,8 @@ pub unsafe extern "C" fn R_set_command_line_arguments(argc: c_int, argv: *mut *m
             let src = *argv.add(i);
             if !src.is_null() {
                 let cstr = CStr::from_ptr(src);
-                let dup = CString::new(cstr.to_bytes()).unwrap();
+                let dup =
+                    CString::new(cstr.to_bytes()).expect("CString::new failed: contains null byte");
                 *ptr.add(i) = dup.into_raw();
             }
         }
@@ -135,31 +155,30 @@ pub unsafe extern "C" fn R_set_command_line_arguments(argc: c_int, argv: *mut *m
 /// - `call`, `op`, `args`, `env` are SEXP pointers following R's calling
 ///   convention. Only `args` is checked for arity.
 pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe {
-        let _ = call;
-        let _ = op;
-        let _ = args;
-        let _ = env;
+    let _ = call;
+    let _ = op;
+    let _ = args;
+    let _ = env;
 
-        let n = NumCommandLineArgs as R_xlen_t;
-        let vals = Rf_allocVector(SEXPTYPE::STRSXP.0, NumCommandLineArgs);
+    let num_args = NumCommandLineArgs.with(|v| v.get());
+    let vals = Rf_allocVector(SEXPTYPE::STRSXP.0, num_args);
 
-        if vals.is_null() {
-            return ptr::null_mut();
-        }
+    if vals.is_null() {
+        return ptr::null_mut();
+    }
 
-        if !CommandLineArgs.is_null() {
-            for i in 0..NumCommandLineArgs as usize {
-                let arg_ptr = *CommandLineArgs.add(i);
-                if !arg_ptr.is_null() {
-                    let charsxp = Rf_mkChar(arg_ptr);
-                    SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
-                }
+    let cmd_args = CommandLineArgs.with(|v| v.get());
+    if !cmd_args.is_null() {
+        for i in 0..num_args as usize {
+            let arg_ptr = *cmd_args.add(i);
+            if !arg_ptr.is_null() {
+                let charsxp = Rf_mkChar(arg_ptr);
+                SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
             }
         }
-
-        vals
     }
+
+    vals
 }
 
 // ---------------------------------------------------------------------------
@@ -188,153 +207,135 @@ pub unsafe extern "C" fn R_common_command_line(
     argv: *mut *mut c_char,
     Rp: *mut c_void,
 ) -> c_int {
-    unsafe {
-        let _ = Rp;
+    let _ = Rp;
 
-        if pac.is_null() || argv.is_null() {
-            return 0;
+    if pac.is_null() || argv.is_null() {
+        return 0;
+    }
+
+    let ac = *pac;
+    let mut newac: c_int = 1;
+    let mut processing: bool = true;
+
+    R_RestoreHistory.with(|v| v.set(1));
+
+    let mut i: c_int = 1;
+    while i < ac {
+        let av = *argv.add(i as usize);
+        i += 1;
+
+        if av.is_null() {
+            if newac < ac {
+                *argv.add(newac as usize) = av;
+                newac += 1;
+            }
+            continue;
         }
 
-        let ac = *pac;
-        let mut newac: c_int = 1; // argv[0] is process name, always kept
-        let mut processing: bool = true;
+        let arg = CStr::from_ptr(av);
+        let arg_bytes = arg.to_bytes();
 
-        R_RestoreHistory = 1;
-
-        let mut i: c_int = 1; // skip argv[0]
-        while i < ac {
-            let av = *argv.add(i as usize);
-            i += 1;
-
-            if av.is_null() {
-                // Null entry, pass through
+        if processing && arg_bytes.starts_with(b"-") {
+            if arg_bytes == b"--version" {
+                continue;
+            } else if arg_bytes == b"--args" {
                 if newac < ac {
                     *argv.add(newac as usize) = av;
                     newac += 1;
                 }
-                continue;
-            }
-
-            let arg = CStr::from_ptr(av);
-            let arg_bytes = arg.to_bytes();
-
-            if processing && arg_bytes.starts_with(b"-") {
-                // Check each known option
-                if arg_bytes == b"--version" {
-                    // Print version and exit — in the real R this calls
-                    // PrintVersion + R_ShowMessage + exit(0).
-                    // For the port, we just skip it (the caller handles version).
-                    continue;
-                } else if arg_bytes == b"--args" {
-                    // Copy this through for further processing
-                    if newac < ac {
-                        *argv.add(newac as usize) = av;
-                        newac += 1;
+                processing = false;
+            } else if arg_bytes == b"--save" {
+                SaveAction.with(|v| v.set(SA_SAVE));
+            } else if arg_bytes == b"--no-save" {
+                SaveAction.with(|v| v.set(SA_NOSAVE));
+            } else if arg_bytes == b"--restore" {
+                RestoreAction.with(|v| v.set(SA_RESTORE));
+            } else if arg_bytes == b"--no-restore" {
+                RestoreAction.with(|v| v.set(SA_NORESTORE));
+                R_RestoreHistory.with(|v| v.set(0));
+            } else if arg_bytes == b"--no-restore-data" {
+                RestoreAction.with(|v| v.set(SA_NORESTORE));
+            } else if arg_bytes == b"--no-restore-history" {
+                R_RestoreHistory.with(|v| v.set(0));
+            } else if arg_bytes == b"--silent" || arg_bytes == b"--quiet" || arg_bytes == b"-q"
+            {
+                R_Quiet.with(|v| v.set(1));
+            } else if arg_bytes == b"--vanilla" {
+                SaveAction.with(|v| v.set(SA_NOSAVE));
+                RestoreAction.with(|v| v.set(SA_NORESTORE));
+                R_RestoreHistory.with(|v| v.set(0));
+                LoadSiteFile.with(|v| v.set(0));
+                LoadInitFile.with(|v| v.set(0));
+                NoRenviron.with(|v| v.set(1));
+            } else if arg_bytes == b"--no-environ" {
+                NoRenviron.with(|v| v.set(1));
+            } else if arg_bytes == b"--verbose" {
+                R_Verbose.with(|v| v.set(1));
+            } else if arg_bytes == b"--no-echo" || arg_bytes == b"--slave" || arg_bytes == b"-s"
+            {
+                R_Quiet.with(|v| v.set(1));
+                R_NoEcho.with(|v| v.set(1));
+                SaveAction.with(|v| v.set(SA_NOSAVE));
+            } else if arg_bytes == b"--no-site-file" {
+                LoadSiteFile.with(|v| v.set(0));
+            } else if arg_bytes == b"--no-init-file" {
+                LoadInitFile.with(|v| v.set(0));
+            } else if arg_bytes.starts_with(b"--encoding") {
+                let mut p: Option<&[u8]> = None;
+                if arg_bytes.len() > 11 {
+                    p = Some(&arg_bytes[11..]);
+                } else if i < ac {
+                    let next_av = *argv.add(i as usize);
+                    i += 1;
+                    if !next_av.is_null() {
+                        p = Some(CStr::from_ptr(next_av).to_bytes());
                     }
-                    processing = false;
-                } else if arg_bytes == b"--save" {
-                    SaveAction = SA_SAVE;
-                } else if arg_bytes == b"--no-save" {
-                    SaveAction = SA_NOSAVE;
-                } else if arg_bytes == b"--restore" {
-                    RestoreAction = SA_RESTORE;
-                } else if arg_bytes == b"--no-restore" {
-                    RestoreAction = SA_NORESTORE;
-                    R_RestoreHistory = 0;
-                } else if arg_bytes == b"--no-restore-data" {
-                    RestoreAction = SA_NORESTORE;
-                } else if arg_bytes == b"--no-restore-history" {
-                    R_RestoreHistory = 0;
-                } else if arg_bytes == b"--silent" || arg_bytes == b"--quiet" || arg_bytes == b"-q"
-                {
-                    R_Quiet = 1;
-                } else if arg_bytes == b"--vanilla" {
-                    SaveAction = SA_NOSAVE; // --no-save
-                    RestoreAction = SA_NORESTORE; // --no-restore
-                    R_RestoreHistory = 0; // --no-restore-history
-                    LoadSiteFile = 0; // --no-site-file
-                    LoadInitFile = 0; // --no-init-file
-                    NoRenviron = 1; // --no-environ
-                } else if arg_bytes == b"--no-environ" {
-                    NoRenviron = 1;
-                } else if arg_bytes == b"--verbose" {
-                    R_Verbose = 1;
-                } else if arg_bytes == b"--no-echo" || arg_bytes == b"--slave" || arg_bytes == b"-s"
-                {
-                    R_Quiet = 1;
-                    R_NoEcho = 1;
-                    SaveAction = SA_NOSAVE;
-                } else if arg_bytes == b"--no-site-file" {
-                    LoadSiteFile = 0;
-                } else if arg_bytes == b"--no-init-file" {
-                    LoadInitFile = 0;
-                } else if arg_bytes.starts_with(b"--encoding") {
-                    // Handle --encoding=<enc> or --encoding <enc>
-                    let mut p: Option<&[u8]> = None;
-                    if arg_bytes.len() > 11 {
-                        // --encoding=xxx (skip the '=')
-                        p = Some(&arg_bytes[11..]);
-                    } else if i < ac {
-                        // Next arg is the encoding value
-                        let next_av = *argv.add(i as usize);
-                        i += 1;
-                        if !next_av.is_null() {
-                            p = Some(CStr::from_ptr(next_av).to_bytes());
-                        }
-                    }
-                    // If p is None, warning would be emitted in real R
-                    let _ = p; // encoding not stored in this port
-                } else if arg_bytes == b"-save"
-                    || arg_bytes == b"-nosave"
-                    || arg_bytes == b"-restore"
-                    || arg_bytes == b"-norestore"
-                    || arg_bytes == b"-noreadline"
-                    || arg_bytes == b"-quiet"
-                    || arg_bytes == b"-nsize"
-                    || arg_bytes == b"-vsize"
-                    || arg_bytes.starts_with(b"--max-nsize")
-                    || arg_bytes.starts_with(b"--max-vsize")
-                    || arg_bytes == b"-V"
-                    || arg_bytes == b"-n"
-                    || arg_bytes == b"-v"
-                {
-                    // Deprecated/unsupported options — would print warning in real R
-                    // R_ShowMessage("WARNING: option '<name>' no longer supported");
-                } else if arg_bytes.starts_with(b"--min-nsize")
-                    || arg_bytes.starts_with(b"--min-vsize")
-                {
-                    // Consume optional next arg if value not inline
-                    if arg_bytes.len() < 13 && i < ac {
-                        i += 1;
-                    }
-                    // Would parse value in real R
-                } else if arg_bytes.starts_with(b"--max-ppsize") {
-                    if arg_bytes.len() < 14 && i < ac {
-                        i += 1;
-                    }
-                } else if arg_bytes.starts_with(b"--max-connections") {
-                    if arg_bytes.len() < 19 && i < ac {
-                        i += 1;
-                    }
-                } else {
-                    // Unknown -option: pass through
-                    if newac < ac {
-                        *argv.add(newac as usize) = av;
-                        newac += 1;
-                    }
+                }
+                let _ = p;
+            } else if arg_bytes == b"-save"
+                || arg_bytes == b"-nosave"
+                || arg_bytes == b"-restore"
+                || arg_bytes == b"-norestore"
+                || arg_bytes == b"-noreadline"
+                || arg_bytes == b"-quiet"
+                || arg_bytes == b"-nsize"
+                || arg_bytes == b"-vsize"
+                || arg_bytes.starts_with(b"--max-nsize")
+                || arg_bytes.starts_with(b"--max-vsize")
+                || arg_bytes == b"-V"
+                || arg_bytes == b"-n"
+                || arg_bytes == b"-v"
+            {
+            } else if arg_bytes.starts_with(b"--min-nsize")
+                || arg_bytes.starts_with(b"--min-vsize")
+            {
+                if arg_bytes.len() < 13 && i < ac {
+                    i += 1;
+                }
+            } else if arg_bytes.starts_with(b"--max-ppsize") {
+                if arg_bytes.len() < 14 && i < ac {
+                    i += 1;
+                }
+            } else if arg_bytes.starts_with(b"--max-connections") {
+                if arg_bytes.len() < 19 && i < ac {
+                    i += 1;
                 }
             } else {
-                // Non-option argument: pass through
                 if newac < ac {
                     *argv.add(newac as usize) = av;
                     newac += 1;
                 }
             }
+        } else {
+            if newac < ac {
+                *argv.add(newac as usize) = av;
+                newac += 1;
+            }
         }
-
-        *pac = newac;
-        newac
     }
+
+    *pac = newac;
+    newac
 }
 
 // ---------------------------------------------------------------------------
@@ -344,61 +345,61 @@ pub unsafe extern "C" fn R_common_command_line(
 /// Returns the current SaveAction setting.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetSaveAction() -> c_int {
-    unsafe { SaveAction }
+    SaveAction.with(|v| v.get())
 }
 
 /// Returns the current RestoreAction setting.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetRestoreAction() -> c_int {
-    unsafe { RestoreAction }
+    RestoreAction.with(|v| v.get())
 }
 
 /// Returns whether R_RestoreHistory is set.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetRestoreHistory() -> c_int {
-    unsafe { R_RestoreHistory }
+    R_RestoreHistory.with(|v| v.get())
 }
 
 /// Returns whether R_Quiet mode is active.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetQuiet() -> c_int {
-    unsafe { R_Quiet }
+    R_Quiet.with(|v| v.get())
 }
 
 /// Returns whether R_NoEcho mode is active.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetNoEcho() -> c_int {
-    unsafe { R_NoEcho }
+    R_NoEcho.with(|v| v.get())
 }
 
 /// Returns whether R is running interactively.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetInteractive() -> c_int {
-    unsafe { R_Interactive }
+    R_Interactive.with(|v| v.get())
 }
 
 /// Returns whether R_Verbose mode is active.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetVerbose() -> c_int {
-    unsafe { R_Verbose }
+    R_Verbose.with(|v| v.get())
 }
 
 /// Returns whether site file loading is enabled.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetLoadSiteFile() -> c_int {
-    unsafe { LoadSiteFile }
+    LoadSiteFile.with(|v| v.get())
 }
 
 /// Returns whether init file loading is enabled.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetLoadInitFile() -> c_int {
-    unsafe { LoadInitFile }
+    LoadInitFile.with(|v| v.get())
 }
 
 /// Returns whether .Renviron processing is disabled.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetNoRenviron() -> c_int {
-    unsafe { NoRenviron }
+    NoRenviron.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -463,35 +464,31 @@ mod tests {
 
             R_set_command_line_arguments(argc, argv.as_mut_ptr());
 
-            assert_eq!(*std::ptr::addr_of!(NumCommandLineArgs), 4);
-            assert!(!(*std::ptr::addr_of!(CommandLineArgs)).is_null());
+            assert_eq!(NumCommandLineArgs.with(|v| v.get()), 4);
+            assert!(!CommandLineArgs.with(|v| v.get()).is_null());
 
-            // Verify stored args match
             for i in 0..args.len() {
-                let stored = *(*std::ptr::addr_of!(CommandLineArgs)).add(i);
+                let stored = *CommandLineArgs.with(|v| v.get()).add(i);
                 assert!(!stored.is_null());
                 let s = CStr::from_ptr(stored).to_str().unwrap();
                 assert_eq!(s, args[i]);
             }
 
-            // Cleanup stored args
-            for i in 0..*std::ptr::addr_of!(NumCommandLineArgs) as usize {
-                let p = *(*std::ptr::addr_of!(CommandLineArgs)).add(i);
+            for i in 0..NumCommandLineArgs.with(|v| v.get()) as usize {
+                let p = *CommandLineArgs.with(|v| v.get()).add(i);
                 if !p.is_null() {
                     let _ = CString::from_raw(p);
                 }
             }
-            if !(*std::ptr::addr_of!(CommandLineArgs)).is_null() {
+            if !CommandLineArgs.with(|v| v.get()).is_null() {
                 let layout = std::alloc::Layout::array::<*mut c_char>(4).unwrap();
-                std::alloc::dealloc(*std::ptr::addr_of!(CommandLineArgs) as *mut u8, layout);
+                std::alloc::dealloc(CommandLineArgs.with(|v| v.get()) as *mut u8, layout);
             }
 
-            // Cleanup argv
             free_argv(&mut argv);
 
-            // Reset state
-            std::ptr::addr_of_mut!(NumCommandLineArgs).write(0);
-            std::ptr::addr_of_mut!(CommandLineArgs).write(ptr::null_mut());
+            NumCommandLineArgs.with(|v| v.set(0));
+            CommandLineArgs.with(|v| v.set(ptr::null_mut()));
         }
     }
 
@@ -507,25 +504,23 @@ mod tests {
 
             R_set_command_line_arguments(argc, argv.as_mut_ptr());
 
-            assert_eq!(*std::ptr::addr_of!(NumCommandLineArgs), 0);
+            assert_eq!(NumCommandLineArgs.with(|v| v.get()), 0);
 
-            // Reset state
-            std::ptr::addr_of_mut!(CommandLineArgs).write(ptr::null_mut());
+            CommandLineArgs.with(|v| v.set(ptr::null_mut()));
         }
     }
 
-    /// Reset all static state to defaults.
     unsafe fn reset_state() {
-        std::ptr::addr_of_mut!(SaveAction).write(SA_SAVEASK);
-        std::ptr::addr_of_mut!(RestoreAction).write(SA_RESTORE);
-        std::ptr::addr_of_mut!(R_RestoreHistory).write(1);
-        std::ptr::addr_of_mut!(R_Quiet).write(0);
-        std::ptr::addr_of_mut!(R_NoEcho).write(0);
-        std::ptr::addr_of_mut!(R_Interactive).write(1);
-        std::ptr::addr_of_mut!(R_Verbose).write(0);
-        std::ptr::addr_of_mut!(LoadSiteFile).write(1);
-        std::ptr::addr_of_mut!(LoadInitFile).write(1);
-        std::ptr::addr_of_mut!(NoRenviron).write(0);
+        SaveAction.with(|v| v.set(SA_SAVEASK));
+        RestoreAction.with(|v| v.set(SA_RESTORE));
+        R_RestoreHistory.with(|v| v.set(1));
+        R_Quiet.with(|v| v.set(0));
+        R_NoEcho.with(|v| v.set(0));
+        R_Interactive.with(|v| v.set(1));
+        R_Verbose.with(|v| v.set(0));
+        LoadSiteFile.with(|v| v.set(1));
+        LoadInitFile.with(|v| v.set(1));
+        NoRenviron.with(|v| v.set(0));
     }
 
     #[test]
@@ -540,8 +535,7 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            // After processing: --save then --no-save, so final should be SA_NOSAVE
-            assert_eq!(*std::ptr::addr_of!(SaveAction), SA_NOSAVE);
+            assert_eq!(SaveAction.with(|v| v.get()), SA_NOSAVE);
             // argv[0] (R) + unknown "script.R" = 2
             assert_eq!(argc, 2);
 
@@ -561,12 +555,12 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(*std::ptr::addr_of!(SaveAction), SA_NOSAVE);
-            assert_eq!(*std::ptr::addr_of!(RestoreAction), SA_NORESTORE);
-            assert_eq!(*std::ptr::addr_of!(R_RestoreHistory), 0);
-            assert_eq!(*std::ptr::addr_of!(LoadSiteFile), 0);
-            assert_eq!(*std::ptr::addr_of!(LoadInitFile), 0);
-            assert_eq!(*std::ptr::addr_of!(NoRenviron), 1);
+            assert_eq!(SaveAction.with(|v| v.get()), SA_NOSAVE);
+            assert_eq!(RestoreAction.with(|v| v.get()), SA_NORESTORE);
+            assert_eq!(R_RestoreHistory.with(|v| v.get()), 0);
+            assert_eq!(LoadSiteFile.with(|v| v.get()), 0);
+            assert_eq!(LoadInitFile.with(|v| v.get()), 0);
+            assert_eq!(NoRenviron.with(|v| v.get()), 1);
             assert_eq!(argc, 2); // R + script.R
 
             free_argv(&mut argv);
@@ -585,9 +579,9 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(*std::ptr::addr_of!(R_Quiet), 1);
-            assert_eq!(*std::ptr::addr_of!(R_Verbose), 1);
-            assert_eq!(*std::ptr::addr_of!(SaveAction), SA_SAVEASK); // -q alone doesn't change SaveAction
+            assert_eq!(R_Quiet.with(|v| v.get()), 1);
+            assert_eq!(R_Verbose.with(|v| v.get()), 1);
+            assert_eq!(SaveAction.with(|v| v.get()), SA_SAVEASK); // -q alone doesn't change SaveAction
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -606,9 +600,9 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(*std::ptr::addr_of!(R_Quiet), 1);
-            assert_eq!(*std::ptr::addr_of!(R_NoEcho), 1);
-            assert_eq!(*std::ptr::addr_of!(SaveAction), SA_NOSAVE);
+            assert_eq!(R_Quiet.with(|v| v.get()), 1);
+            assert_eq!(R_NoEcho.with(|v| v.get()), 1);
+            assert_eq!(SaveAction.with(|v| v.get()), SA_NOSAVE);
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -628,7 +622,7 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(*std::ptr::addr_of!(SaveAction), SA_SAVE);
+            assert_eq!(SaveAction.with(|v| v.get()), SA_SAVE);
             // argv[0] + --args + --no-save + file.R = 4
             assert_eq!(argc, 4);
 
@@ -648,8 +642,8 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(*std::ptr::addr_of!(RestoreAction), SA_NORESTORE);
-            assert_eq!(*std::ptr::addr_of!(R_RestoreHistory), 0);
+            assert_eq!(RestoreAction.with(|v| v.get()), SA_NORESTORE);
+            assert_eq!(R_RestoreHistory.with(|v| v.get()), 0);
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -668,8 +662,8 @@ mod tests {
 
             R_common_command_line(&mut argc, argv.as_mut_ptr(), ptr::null_mut());
 
-            assert_eq!(*std::ptr::addr_of!(LoadSiteFile), 0);
-            assert_eq!(*std::ptr::addr_of!(LoadInitFile), 0);
+            assert_eq!(LoadSiteFile.with(|v| v.get()), 0);
+            assert_eq!(LoadInitFile.with(|v| v.get()), 0);
             assert_eq!(argc, 2);
 
             free_argv(&mut argv);
@@ -700,34 +694,34 @@ mod tests {
             let _guard = TEST_LOCK.lock().unwrap();
             reset_state();
 
-            std::ptr::addr_of_mut!(SaveAction).write(SA_NOSAVE);
+            SaveAction.with(|v| v.set(SA_NOSAVE));
             assert_eq!(R_GetSaveAction(), SA_NOSAVE);
 
-            std::ptr::addr_of_mut!(RestoreAction).write(SA_NORESTORE);
+            RestoreAction.with(|v| v.set(SA_NORESTORE));
             assert_eq!(R_GetRestoreAction(), SA_NORESTORE);
 
-            std::ptr::addr_of_mut!(R_RestoreHistory).write(0);
+            R_RestoreHistory.with(|v| v.set(0));
             assert_eq!(R_GetRestoreHistory(), 0);
 
-            std::ptr::addr_of_mut!(R_Quiet).write(1);
+            R_Quiet.with(|v| v.set(1));
             assert_eq!(R_GetQuiet(), 1);
 
-            std::ptr::addr_of_mut!(R_NoEcho).write(1);
+            R_NoEcho.with(|v| v.set(1));
             assert_eq!(R_GetNoEcho(), 1);
 
-            std::ptr::addr_of_mut!(R_Interactive).write(0);
+            R_Interactive.with(|v| v.set(0));
             assert_eq!(R_GetInteractive(), 0);
 
-            std::ptr::addr_of_mut!(R_Verbose).write(1);
+            R_Verbose.with(|v| v.set(1));
             assert_eq!(R_GetVerbose(), 1);
 
-            std::ptr::addr_of_mut!(LoadSiteFile).write(0);
+            LoadSiteFile.with(|v| v.set(0));
             assert_eq!(R_GetLoadSiteFile(), 0);
 
-            std::ptr::addr_of_mut!(LoadInitFile).write(0);
+            LoadInitFile.with(|v| v.set(0));
             assert_eq!(R_GetLoadInitFile(), 0);
 
-            std::ptr::addr_of_mut!(NoRenviron).write(1);
+            NoRenviron.with(|v| v.set(1));
             assert_eq!(R_GetNoRenviron(), 1);
 
             reset_state();

@@ -1,4 +1,4 @@
-/// Bitwise comparison utilities for f64 numerical equivalence testing.
+//! Bitwise comparison utilities for f64 numerical equivalence testing.
 
 /// Compare two f64 values, treating all NaN bit patterns as equal.
 pub fn equiv(a: f64, b: f64) -> bool {

@@ -10,12 +10,13 @@
 //! - fpu_setup: FPU initialization
 //! - R_OpenInitFile: open R initialization file (.Rprofile)
 
+use std::cell::{Cell, RefCell};
 use std::env;
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::sexp::accessors::{LENGTH, SET_STRING_ELT, TYPEOF};
+use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar, Rf_mkString};
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
@@ -37,15 +38,13 @@ unsafe fn R_NamesSymbol() -> SEXP {
     ptr::null_mut()
 }
 
-/// LoadInitFile global flag.
-static mut LoadInitFile: c_int = 1;
+thread_local! { static LoadInitFile: Cell<c_int> = Cell::new(1); }
 
 // ---------------------------------------------------------------------------
 // R_ExpandFileName
 // ---------------------------------------------------------------------------
 
-/// Static buffer for R_ExpandFileName result.
-static mut newFileName: [c_char; R_PATH_MAX + 1] = [0; R_PATH_MAX + 1];
+thread_local! { static newFileName: RefCell<[c_char; R_PATH_MAX + 1]> = RefCell::new([0; R_PATH_MAX + 1]); }
 
 /// Expand ~ in file paths.
 /// Handles ~, ~user, and ~user/path forms using HOME env and getpwnam.
@@ -120,11 +119,13 @@ pub unsafe extern "C" fn R_ExpandFileName(s: *const c_char) -> *const c_char {
         }
 
         let bytes = expanded.as_bytes();
-        let buf = std::ptr::addr_of_mut!(newFileName);
-        ptr::copy_nonoverlapping(bytes.as_ptr(), (*buf).as_mut_ptr() as *mut u8, bytes.len());
-        *(*buf).as_mut_ptr().add(bytes.len()) = 0;
-
-        (*buf).as_ptr()
+        let result = newFileName.with(|buf_cell| {
+            let buf = &mut *buf_cell.borrow_mut();
+            ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr() as *mut u8, bytes.len());
+            *buf.as_mut_ptr().add(bytes.len()) = 0;
+            buf.as_ptr()
+        });
+        result
     }
 }
 
@@ -142,8 +143,8 @@ pub unsafe extern "C" fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: S
 // Process timing
 // ---------------------------------------------------------------------------
 
-static mut clk_tck: c_double = 100.0;
-static mut StartTime: c_double = 0.0;
+thread_local! { static clk_tck: Cell<c_double> = Cell::new(100.0); }
+thread_local! { static StartTime: Cell<c_double> = Cell::new(0.0); }
 
 /// Get current time in seconds (using gettimeofday).
 unsafe fn currentTime() -> c_double {
@@ -158,8 +159,8 @@ unsafe fn currentTime() -> c_double {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_setStartTime() {
     unsafe {
-        clk_tck = libc::sysconf(libc::_SC_CLK_TCK) as c_double;
-        StartTime = currentTime();
+        clk_tck.with(|v| v.set(libc::sysconf(libc::_SC_CLK_TCK) as c_double));
+        StartTime.with(|v| v.set(currentTime()));
     }
 }
 
@@ -167,7 +168,7 @@ pub unsafe extern "C" fn R_setStartTime() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_getProcTime(data: *mut c_double) {
     unsafe {
-        let et = currentTime() - StartTime;
+        let et = currentTime() - StartTime.with(|v| v.get());
         *data.add(2) = 1e-3 * (1000.0 * et).round();
 
         let mut self_usage: libc::rusage = std::mem::zeroed();
@@ -189,7 +190,7 @@ pub unsafe extern "C" fn R_getProcTime(data: *mut c_double) {
 /// Get the clock increment in seconds.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_getClockIncrement() -> c_double {
-    unsafe { 1.0 / clk_tck }
+    1.0 / clk_tck.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +216,7 @@ pub unsafe extern "C" fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: S
         let machine = CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy();
 
         // Get login name
-        let login = CString::new("unknown").unwrap();
+        let login = CString::new("unknown").expect("CString::new failed: contains null byte");
         let login_ptr = libc::getlogin();
         let login_cstr = if !login_ptr.is_null() {
             CStr::from_ptr(login_ptr)
@@ -335,7 +336,7 @@ pub unsafe extern "C" fn fpu_setup(start: c_int) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_OpenInitFile() -> *mut libc::FILE {
     unsafe {
-        if LoadInitFile == 0 {
+        if LoadInitFile.with(|v| v.get()) == 0 {
             return ptr::null_mut();
         }
 
@@ -344,7 +345,11 @@ pub unsafe extern "C" fn R_OpenInitFile() -> *mut libc::FILE {
             if profile.is_empty() {
                 return ptr::null_mut();
             }
-            let expanded = R_ExpandFileName(CString::new(profile).unwrap().as_ptr());
+            let expanded = R_ExpandFileName(
+                CString::new(profile)
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            );
             let path = CStr::from_ptr(expanded);
             let mode = b"r\0".as_ptr() as *const c_char;
             let fp = libc::fopen(path.as_ptr(), mode);
@@ -381,6 +386,8 @@ pub unsafe extern "C" fn R_OpenInitFile() -> *mut libc::FILE {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::accessors::*;
+
     use super::*;
     use std::ffi::CString;
 
@@ -441,8 +448,8 @@ mod tests {
     fn test_set_start_time() {
         unsafe {
             R_setStartTime();
-            assert!(clk_tck > 0.0);
-            assert!(StartTime > 0.0);
+            assert!(clk_tck.with(|v| v.get()) > 0.0);
+            assert!(StartTime.with(|v| v.get()) > 0.0);
         }
     }
 

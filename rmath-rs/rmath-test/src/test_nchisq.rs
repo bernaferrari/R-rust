@@ -8,19 +8,19 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(dnchisq_inner(1.0, 1.0, f64::NAN, false), "dnchisq(1,1,NaN)");
     // ncp=0 reduces to dchisq: dnchisq(x, df, 0) = dchisq(x, df)
     let d_ncp0 = dnchisq_inner(1.0, 1.0, 0.0, false);
-    if !(d_ncp0 > 0.0) {
+    if d_ncp0 <= 0.0 {
         return Err(format!("dnchisq(1,1,0) = {}, expected > 0", d_ncp0));
     }
     // Valid density with ncp > 0
     let d_ncp = dnchisq_inner(2.0, 3.0, 2.0, false);
-    if !(d_ncp > 0.0) {
+    if d_ncp <= 0.0 {
         return Err(format!("dnchisq(2,3,2) = {}, expected > 0", d_ncp));
     }
     // Negative x => 0
     assert_equiv(dnchisq_inner(-1.0, 3.0, 2.0, false), 0.0, "dnchisq(-1,3,2)");
     // Log scale
     let d_log = dnchisq_inner(2.0, 3.0, 2.0, true);
-    if !(d_log < 0.0) {
+    if d_log >= 0.0 {
         return Err(format!("dnchisq(2,3,2,log) = {}, expected < 0", d_log));
     }
 
@@ -41,7 +41,7 @@ pub fn run_tests() -> Result<(), String> {
     );
     // Large x => probability near 1
     let p_big = pnchisq_inner(100.0, 3.0, 2.0, true, false);
-    if !(p_big > 0.99 && p_big <= 1.0) {
+    if !(0.99..=1.0).contains(&p_big) {
         return Err(format!("pnchisq(100,3,2) = {}, expected ~1", p_big));
     }
     // Negative x => 0
@@ -52,14 +52,14 @@ pub fn run_tests() -> Result<(), String> {
     );
     // Upper tail
     let p_upper = pnchisq_inner(100.0, 3.0, 2.0, false, false);
-    if !(p_upper >= 0.0 && p_upper < 0.01) {
+    if !(0.0..0.01).contains(&p_upper) {
         return Err(format!("pnchisq(100,3,2,upper) = {}", p_upper));
     }
 
     // rnchisq tests
     rmath::rng::set_seed(42, 24);
     let r1 = rnchisq_inner(3.0, 2.0);
-    if !(r1 >= 0.0) {
+    if r1 < 0.0 {
         return Err(format!("rnchisq(3,2) = {}, expected >= 0", r1));
     }
     rmath::rng::set_seed(42, 24);

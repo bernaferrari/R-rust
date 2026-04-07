@@ -10,6 +10,7 @@
  */
 
 use std::os::raw::{c_char, c_double, c_int};
+use std::cell::Cell;
 use std::ptr;
 
 use crate::main::engine::{
@@ -174,32 +175,27 @@ struct plHersheyAccentedCharInfoStruct {
     accent: u8,
 }
 
-// Static stub font info table -- populated with zeros; real data from g_fontdb.c
-static mut _hershey_font_info: [plHersheyFontInfoStruct; 22] = [plHersheyFontInfoStruct {
-    name: ptr::null(),
-    othername: ptr::null(),
-    orig_name: ptr::null(),
-    chars: [0; 256],
-    typeface_index: 0,
-    font_index: 0,
-    obliquing: 0,
-    iso8859_1: 0,
-    visible: 0,
-}; 22];
-
-// Static stub accented char info table
-static mut _hershey_accented_char_info: [plHersheyAccentedCharInfoStruct; 1] =
-    [plHersheyAccentedCharInfoStruct {
-        composite: 0,
-        character: 0,
-        accent: 0,
-    }];
-
-// Static stub occidental glyphs table
-static mut _occidental_hershey_glyphs: [*const u8; 4200] = [ptr::null(); 4200];
-
-// Static stub oriental glyphs table
-static mut _oriental_hershey_glyphs: [*const u8; 1] = [ptr::null(); 1];
+thread_local! {
+    static _hershey_font_info: Cell<[plHersheyFontInfoStruct; 22]> = Cell::new([plHersheyFontInfoStruct {
+        name: ptr::null(),
+        othername: ptr::null(),
+        orig_name: ptr::null(),
+        chars: [0; 256],
+        typeface_index: 0,
+        font_index: 0,
+        obliquing: 0,
+        iso8859_1: 0,
+        visible: 0,
+    }; 22]);
+    static _hershey_accented_char_info: Cell<[plHersheyAccentedCharInfoStruct; 1]> =
+        Cell::new([plHersheyAccentedCharInfoStruct {
+            composite: 0,
+            character: 0,
+            accent: 0,
+        }]);
+    static _occidental_hershey_glyphs: Cell<[*const u8; 4200]> = Cell::new([ptr::null(); 4200]);
+    static _oriental_hershey_glyphs: Cell<[*const u8; 1]> = Cell::new([ptr::null(); 1]);
+}
 
 /// Stub: _controlify function -- converts string to codestring with annotations
 /// Real implementation in g_cntrlify.c
@@ -333,13 +329,13 @@ unsafe fn _label_width_hershey(
 
             if (c as c_int & RAW_HERSHEY_GLYPH) != 0 {
                 let glyphnum = (c as c_int & GLYPH_SPEC) as usize;
-                let glyph = _occidental_hershey_glyphs[glyphnum];
+                let glyph = _occidental_hershey_glyphs.with(|v| v.get()[glyphnum]);
                 if !glyph.is_null() && *glyph != 0 {
                     width += charsize * (*glyph.add(1) as c_int - *glyph as c_int) as c_double;
                 }
             } else if (c as c_int & RAW_ORIENTAL_HERSHEY_GLYPH) != 0 {
                 let glyphnum = (c as c_int & GLYPH_SPEC) as usize;
-                let glyph = _oriental_hershey_glyphs[glyphnum];
+                let glyph = _oriental_hershey_glyphs.with(|v| v.get()[glyphnum]);
                 if !glyph.is_null() && *glyph != 0 {
                     width += charsize * (*glyph.add(1) as c_int - *glyph as c_int) as c_double;
                 }
@@ -401,7 +397,7 @@ unsafe fn _label_width_hershey(
                 // Actual font character
                 let raw_fontnum = ((c as c_int >> FONT_SHIFT) & ONE_BYTE) as usize;
                 let char_c = c as c_int & !FONT_SPEC;
-                let mut glyphnum = _hershey_font_info[raw_fontnum].chars[char_c as usize] as c_int;
+                let mut glyphnum = _hershey_font_info.with(|v| v.get()[raw_fontnum].chars[char_c as usize]) as c_int;
 
                 // Check for composite character
                 if glyphnum == ACC0 || glyphnum == ACC1 || glyphnum == ACC2 {
@@ -410,7 +406,7 @@ unsafe fn _label_width_hershey(
                     let mut accent: u8 = 0;
                     if _composite_char(&mut composite, &mut character, &mut accent) != 0 {
                         glyphnum =
-                            _hershey_font_info[raw_fontnum].chars[character as usize] as c_int;
+                            _hershey_font_info.with(|v| v.get()[raw_fontnum].chars[character as usize]) as c_int;
                     } else {
                         glyphnum = UNDE;
                     }
@@ -421,7 +417,7 @@ unsafe fn _label_width_hershey(
                     glyphnum -= KS;
                 }
 
-                let glyph = _occidental_hershey_glyphs[glyphnum as usize];
+                let glyph = _occidental_hershey_glyphs.with(|v| v.get()[glyphnum as usize]);
                 if !glyph.is_null() && *glyph != 0 {
                     width += charsize * (*glyph.add(1) as c_int - *glyph as c_int) as c_double;
                 }
@@ -465,10 +461,10 @@ unsafe fn _draw_hershey_glyph(
         let glyph: *const u8;
         match glyph_type {
             ORIENTAL => {
-                glyph = _oriental_hershey_glyphs[glyphnum as usize];
+                glyph = _oriental_hershey_glyphs.with(|v| v.get()[glyphnum as usize]);
             }
             _ => {
-                glyph = _occidental_hershey_glyphs[glyphnum as usize];
+                glyph = _occidental_hershey_glyphs.with(|v| v.get()[glyphnum as usize]);
             }
         }
 
@@ -652,9 +648,9 @@ unsafe fn _draw_hershey_string(
             } else {
                 // Actual font character
                 let raw_fontnum = ((c as c_int >> FONT_SHIFT) & ONE_BYTE) as usize;
-                let oblique = _hershey_font_info[raw_fontnum].obliquing;
+                let oblique = _hershey_font_info.with(|v| v.get()[raw_fontnum].obliquing);
                 let char_c = c as c_int & !FONT_SPEC;
-                let glyphnum = _hershey_font_info[raw_fontnum].chars[char_c as usize] as c_int;
+                let glyphnum = _hershey_font_info.with(|v| v.get()[raw_fontnum].chars[char_c as usize]) as c_int;
 
                 let mut small_kana = false;
                 let mut glyphnum_val = glyphnum;
@@ -676,16 +672,16 @@ unsafe fn _draw_hershey_string(
 
                         if _composite_char(&mut composite, &mut character, &mut accent) != 0 {
                             char_glyphnum =
-                                _hershey_font_info[raw_fontnum].chars[character as usize] as c_int;
+                                _hershey_font_info.with(|v| v.get()[raw_fontnum].chars[character as usize]) as c_int;
                             accent_glyphnum =
-                                _hershey_font_info[raw_fontnum].chars[accent as usize] as c_int;
+                                _hershey_font_info.with(|v| v.get()[raw_fontnum].chars[accent as usize]) as c_int;
                         } else {
                             char_glyphnum = UNDE;
                             accent_glyphnum = 0;
                         }
 
-                        let char_glyph = _occidental_hershey_glyphs[char_glyphnum as usize];
-                        let accent_glyph = _occidental_hershey_glyphs[accent_glyphnum as usize];
+                        let char_glyph = _occidental_hershey_glyphs.with(|v| v.get()[char_glyphnum as usize]);
+                        let accent_glyph = _occidental_hershey_glyphs.with(|v| v.get()[accent_glyphnum as usize]);
 
                         let char_width = if !char_glyph.is_null() && *char_glyph != 0 {
                             *char_glyph.add(1) as c_int - *char_glyph as c_int
@@ -795,7 +791,7 @@ unsafe fn _draw_hershey_string(
                     _ => {
                         // Ordinary glyph (possibly small Kana)
                         if small_kana {
-                            let kana_glyph = _occidental_hershey_glyphs[glyphnum_val as usize];
+                            let kana_glyph = _occidental_hershey_glyphs.with(|v| v.get()[glyphnum_val as usize]);
                             let kana_width = if !kana_glyph.is_null() && *kana_glyph != 0 {
                                 *kana_glyph.add(1) as c_int - *kana_glyph as c_int
                             } else {
@@ -875,7 +871,7 @@ unsafe fn _composite_char(composite: *mut u8, character: *mut u8, accent: *mut u
         let mut idx = 0;
 
         loop {
-            let compchar = _hershey_accented_char_info[idx];
+            let compchar = _hershey_accented_char_info.with(|v| v.get()[idx]);
             if compchar.composite == 0 {
                 break;
             }
@@ -885,7 +881,7 @@ unsafe fn _composite_char(composite: *mut u8, character: *mut u8, accent: *mut u
                 *accent = compchar.accent;
             }
             idx += 1;
-            if idx >= (*std::ptr::addr_of!(_hershey_accented_char_info)).len() {
+            if idx >= _hershey_accented_char_info.with(|v| v.get().len()) {
                 break;
             }
         }

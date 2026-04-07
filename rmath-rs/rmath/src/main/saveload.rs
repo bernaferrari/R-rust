@@ -15,6 +15,7 @@
 //! formats, old-style workspace loading, and XDR encode/decode helpers.
 
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::io::{self, BufRead, Read, Write};
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
@@ -265,21 +266,21 @@ pub unsafe extern "C" fn R_ReadMagic(fp: *mut c_void) -> c_int {
 
 /// Port of: static int defaultSaveVersion(void)
 pub unsafe fn defaultSaveVersion() -> c_int {
-    static mut DFLT: c_int = -1;
+    thread_local! { static DFLT: Cell<c_int> = Cell::new(-1); }
 
     unsafe {
-        if DFLT < 0 {
+        if DFLT.with(|v| v.get()) < 0 {
             let val = std::env::var("R_DEFAULT_SAVE_VERSION")
                 .ok()
                 .and_then(|s| s.trim().parse::<c_int>().ok())
                 .unwrap_or(-1);
             if val == 2 || val == 3 {
-                DFLT = val;
+                DFLT.with(|v| v.set(val));
             } else {
-                DFLT = 3;
+                DFLT.with(|v| v.set(3));
             }
         }
-        DFLT
+        DFLT.with(|v| v.get())
     }
 }
 
@@ -506,8 +507,8 @@ unsafe fn OutStringAscii(fp: *mut c_void, x: *const c_char, _d: *mut SaveLoadDat
 }
 
 unsafe fn InStringAscii(_fp: *mut c_void, _d: *mut SaveLoadData) -> *mut c_char {
-    static mut BUF: [u8; 4096] = [0u8; 4096];
-    core::ptr::addr_of_mut!(BUF) as *mut c_char
+    thread_local! { static BUF_ASCII: RefCell<[u8; 4096]> = RefCell::new([0u8; 4096]); }
+    BUF_ASCII.with(|v| v.as_ptr() as *mut c_char)
 }
 
 // ---------------------------------------------------------------------------
@@ -578,14 +579,14 @@ unsafe fn BinaryInComplex(fp: *mut c_void, _unused: *mut SaveLoadData) -> Rcompl
 }
 
 unsafe fn BinaryInString(fp: *mut c_void, _d: *mut SaveLoadData) -> *mut c_char {
-    static mut BUF: [u8; 65536] = [0u8; 65536];
+    thread_local! { static BUF_BINARY: RefCell<[u8; 65536]> = RefCell::new([0u8; 65536]); }
     unsafe extern "C" {
         fn R_fgetc(stream: *mut c_void) -> c_int;
     }
     let mut bufp = 0usize;
     loop {
         let c = unsafe { R_fgetc(fp) };
-        BUF[bufp] = c as u8;
+        BUF_BINARY.with(|v| v.borrow_mut()[bufp] = c as u8);
         bufp += 1;
         if c as u8 == 0 {
             break;
@@ -594,7 +595,7 @@ unsafe fn BinaryInString(fp: *mut c_void, _d: *mut SaveLoadData) -> *mut c_char 
             break;
         }
     }
-    core::ptr::addr_of_mut!(BUF) as *mut c_char
+    BUF_BINARY.with(|v| v.as_ptr() as *mut c_char)
 }
 
 // ---------------------------------------------------------------------------
@@ -631,8 +632,8 @@ unsafe fn XdrInComplex(_fp: *mut c_void, _d: *mut SaveLoadData) -> Rcomplex {
 }
 
 unsafe fn XdrInString(_fp: *mut c_void, _d: *mut SaveLoadData) -> *mut c_char {
-    static mut BUF: [u8; 65536] = [0u8; 65536];
-    core::ptr::addr_of_mut!(BUF) as *mut c_char
+    thread_local! { static BUF_XDRIN: RefCell<[u8; 65536]> = RefCell::new([0u8; 65536]); }
+    BUF_XDRIN.with(|v| v.as_ptr() as *mut c_char)
 }
 
 unsafe fn OutInitXdr(_fp: *mut c_void, _d: *mut SaveLoadData) {}
@@ -657,8 +658,8 @@ unsafe fn OutStringXdr(_fp: *mut c_void, _s: *const c_char, _d: *mut SaveLoadDat
 }
 
 unsafe fn InStringXdr(_fp: *mut c_void, _d: *mut SaveLoadData) -> *mut c_char {
-    static mut BUF: [u8; 65536] = [0u8; 65536];
-    core::ptr::addr_of_mut!(BUF) as *mut c_char
+    thread_local! { static BUF_INSTRINGXDR: RefCell<[u8; 65536]> = RefCell::new([0u8; 65536]); }
+    BUF_INSTRINGXDR.with(|v| v.as_ptr() as *mut c_char)
 }
 
 unsafe fn OutRealXdr(_fp: *mut c_void, _x: c_double, _d: *mut SaveLoadData) {
@@ -695,8 +696,8 @@ unsafe fn InIntegerBinary(_fp: *mut c_void, _unused: *mut SaveLoadData) -> c_int
 }
 
 unsafe fn InStringBinary(_fp: *mut c_void, _unused: *mut SaveLoadData) -> *mut c_char {
-    static mut BUF: [u8; 65536] = [0u8; 65536];
-    core::ptr::addr_of_mut!(BUF) as *mut c_char
+    thread_local! { static BUF_INSTRINGBINARY: RefCell<[u8; 65536]> = RefCell::new([0u8; 65536]); }
+    BUF_INSTRINGBINARY.with(|v| v.as_ptr() as *mut c_char)
 }
 
 unsafe fn InRealBinary(_fp: *mut c_void, _unused: *mut SaveLoadData) -> c_double {
@@ -733,8 +734,8 @@ unsafe fn AsciiInComplex(_fp: *mut c_void, _d: *mut SaveLoadData) -> Rcomplex {
 }
 
 unsafe fn AsciiInString(_fp: *mut c_void, _d: *mut SaveLoadData) -> *mut c_char {
-    static mut BUF: [u8; 65536] = [0u8; 65536];
-    core::ptr::addr_of_mut!(BUF) as *mut c_char
+    thread_local! { static BUF_ASCIIIN: RefCell<[u8; 65536]> = RefCell::new([0u8; 65536]); }
+    BUF_ASCIIIN.with(|v| v.as_ptr() as *mut c_char)
 }
 
 // ---------------------------------------------------------------------------

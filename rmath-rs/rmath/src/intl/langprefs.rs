@@ -115,10 +115,10 @@ mod tests {
     #[test]
     fn test_language_preferences_returns() {
         unsafe {
-            let result = _nl_language_preferences_default();
+            let _result = _nl_language_preferences_default();
             // On non-macOS, this should be null.
             #[cfg(not(target_os = "macos"))]
-            assert!(result.is_null());
+            assert!(_result.is_null());
         }
     }
 }

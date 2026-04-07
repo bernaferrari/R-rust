@@ -216,7 +216,7 @@ static CODESET_BUF: Mutex<[u8; R_CODESET_MAX + 1]> = Mutex::new([0u8; R_CODESET_
 /// The encoding is initialized by `R_check_locale()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_nativeEncoding() -> *const c_char {
-    let enc = NATIVE_ENC.lock().unwrap();
+    let enc = NATIVE_ENC.lock().expect("NATIVE_ENC lock poisoned");
     enc.as_ptr() as *const c_char
 }
 
@@ -228,14 +228,14 @@ pub unsafe extern "C" fn R_nativeEncoding() -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_check_locale() {
     {
-        let mut enc = NATIVE_ENC.lock().unwrap();
+        let mut enc = NATIVE_ENC.lock().expect("NATIVE_ENC lock poisoned");
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         enc[..len].copy_from_slice(&bytes[..len]);
         enc[len] = 0;
     }
     {
-        let mut cs = CODESET_BUF.lock().unwrap();
+        let mut cs = CODESET_BUF.lock().expect("CODESET_BUF lock poisoned");
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         cs[..len].copy_from_slice(&bytes[..len]);
@@ -254,7 +254,7 @@ pub unsafe fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         let date_str = R_Date();
         let s = CStr::from_ptr(date_str);
         let formatted = s.to_str().unwrap_or("").trim_end();
-        Rf_mkString(CString::new(formatted).unwrap().as_ptr())
+        Rf_mkString(CString::new(formatted).expect("CString::new failed: contains null byte").as_ptr())
     }
 }
 
@@ -871,7 +871,7 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(name.as_str()).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(name.as_str()).expect("CString::new failed: contains null byte").as_ptr()),
             );
         }
         Rf_unprotect(1);
@@ -945,7 +945,7 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(name.as_str()).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(name.as_str()).expect("CString::new failed: contains null byte").as_ptr()),
             );
         }
         Rf_unprotect(1);
@@ -971,7 +971,7 @@ pub unsafe fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
             }
             "/usr/lib/R".to_string()
         });
-        Rf_mkString(CString::new(home).unwrap().as_ptr())
+        Rf_mkString(CString::new(home).expect("CString::new failed: contains null byte").as_ptr())
     }
 }
 
@@ -1186,7 +1186,7 @@ pub unsafe fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             _ => "".to_string(),
         };
 
-        Rf_mkString(CString::new(val).unwrap().as_ptr())
+        Rf_mkString(CString::new(val).expect("CString::new failed: contains null byte").as_ptr())
     }
 }
 
@@ -1290,7 +1290,7 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
             SET_STRING_ELT(
                 names,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(*name).expect("CString::new failed: contains null byte").as_ptr()),
             );
             if !val.is_null() {
                 let s = CStr::from_ptr(*val);
@@ -1358,7 +1358,7 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 crate::sexp::accessors::SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(CString::new(expanded).unwrap().as_ptr()),
+                    Rf_mkChar(CString::new(expanded).expect("CString::new failed: contains null byte").as_ptr()),
                 );
             }
         }
@@ -1430,7 +1430,7 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
             SET_STRING_ELT(
                 cn,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(*name).expect("CString::new failed: contains null byte").as_ptr()),
             );
         }
 
@@ -1652,7 +1652,7 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                             i as crate::sexp::ffi::R_xlen_t,
                             Rf_mkChar(
                                 CString::new(target.to_str().unwrap_or(""))
-                                    .unwrap()
+                                    .expect("unwrap on None/Err")
                                     .as_ptr(),
                             ),
                         );
@@ -1741,12 +1741,12 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*val).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(*val).expect("CString::new failed: contains null byte").as_ptr()),
             );
             SET_STRING_ELT(
                 cn,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(*name).expect("CString::new failed: contains null byte").as_ptr()),
             );
         }
 
@@ -1775,7 +1775,7 @@ pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP 
         match std::env::current_dir() {
             Ok(path) => {
                 let path_str = path.to_string_lossy().to_string();
-                let cstr = std::ffi::CString::new(path_str).unwrap();
+                let cstr = std::ffi::CString::new(path_str).expect("CString::new failed: contains null byte");
 
                 use crate::sexp::accessors::SET_STRING_ELT;
                 use crate::sexp::constructors::Rf_allocVector;
@@ -1818,7 +1818,7 @@ pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         match std::env::set_current_dir(path_str) {
             Ok(_) => {
-                let cstr = std::ffi::CString::new(path_str).unwrap();
+                let cstr = std::ffi::CString::new(path_str).expect("CString::new failed: contains null byte");
                 let s = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
                 SET_STRING_ELT(s, 0, Rf_mkChar(cstr.as_ptr()));
                 s
@@ -1870,7 +1870,7 @@ pub unsafe fn do_basename(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("");
-                let cstr = std::ffi::CString::new(base).unwrap();
+                let cstr = std::ffi::CString::new(base).expect("CString::new failed: contains null byte");
                 SET_STRING_ELT(s, i as i64, Rf_mkChar(cstr.as_ptr()));
             }
         }
@@ -1918,7 +1918,7 @@ pub unsafe fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                     .parent()
                     .and_then(|p| p.to_str())
                     .unwrap_or(".");
-                let cstr = std::ffi::CString::new(dir).unwrap();
+                let cstr = std::ffi::CString::new(dir).expect("CString::new failed: contains null byte");
                 SET_STRING_ELT(s, i as i64, Rf_mkChar(cstr.as_ptr()));
             }
         }

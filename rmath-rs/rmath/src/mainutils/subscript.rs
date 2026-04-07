@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/subscript.c — subscript indexing utilities.
 //!
@@ -24,13 +24,12 @@
 //!   negativeSubscript(), positiveSubscript(), integerSubscript(),
 //!   realSubscript(), stringSubscript()
 
-use std::os::raw::{c_char, c_double, c_int};
+use std::os::raw::{c_double, c_int};
 use std::ptr;
 
-use crate::mainutils::coerce::R_IsNA;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -39,6 +38,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
+#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 const NA_REAL: c_double = 0.0 / 0.0;
 
 /// Interval at which to check interrupts (~subsecond on current hw).
@@ -993,8 +993,7 @@ unsafe fn stringSubscript(
         let mut count: R_xlen_t = 0;
 
         // Match each string against names
-        let mut indices: Vec<c_int> = Vec::new();
-        indices.reserve(slen as usize);
+        let mut indices: Vec<c_int> = Vec::with_capacity(slen as usize);
 
         for i in 0..slen {
             let elt = STRING_ELT(s, i);
@@ -1219,6 +1218,8 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::ffi::{FALSE, NA_INTEGER, TRUE};
+
     use super::*;
 
     #[test]

@@ -8,12 +8,9 @@
 //! - deferred_string: deferred string operations
 //! - deferred_names: deferred names vectors
 
-use std::os::raw::{c_int, c_void};
-use std::ptr;
+use std::os::raw::c_int;
 
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -113,6 +110,8 @@ pub unsafe extern "C" fn R_init_altrep_classes() {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

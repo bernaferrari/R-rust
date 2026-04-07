@@ -14,7 +14,6 @@
 //! This module provides FFI-compatible stubs that return safe defaults.
 
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
 /// Stub for `do_agrep` -- approximate grep.
 ///

@@ -6,7 +6,7 @@
 //! Ported from strings.c - provides safe string manipulation
 //! with null-safety guarantees.
 
-use std::ffi::{CStr, CString};
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
@@ -108,7 +108,7 @@ pub unsafe extern "C" fn compare_strings(s1: *const c_char, s2: *const c_char) -
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn add_strings(s1: *const c_char, s2: *const c_char) -> *const c_char {
     unsafe {
-        static mut BUFFER: *mut c_char = ptr::null_mut();
+        thread_local! { static BUFFER: Cell<*mut c_char> = Cell::new(ptr::null_mut()); }
 
         if s1.is_null() {
             return s2;
@@ -120,63 +120,67 @@ pub unsafe extern "C" fn add_strings(s1: *const c_char, s2: *const c_char) -> *c
         let len1 = string_length(s1);
         let len2 = string_length(s2);
 
-        let prev = BUFFER;
-        BUFFER = memory::memalloc(len1 + len2 + 1) as *mut c_char;
+        let prev = BUFFER.with(|v| v.get());
+        BUFFER.with(|v| v.set(memory::memalloc(len1 + len2 + 1) as *mut c_char));
 
-        if !BUFFER.is_null() {
-            copy_string(BUFFER, s1);
-            copy_string(BUFFER.add(len1 as usize), s2);
+        let buf = BUFFER.with(|v| v.get());
+        if !buf.is_null() {
+            copy_string(buf, s1);
+            copy_string(buf.add(len1 as usize), s2);
         }
 
         if !prev.is_null() {
             memory::memfree(prev as *mut u8);
         }
 
-        BUFFER as *const c_char
+        BUFFER.with(|v| v.get()) as *const c_char
     }
 }
 
 /// Convert a char to a string, return in a static buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn char_to_string(ch: c_char) -> *mut c_char {
-    unsafe {
-        static mut STR: [c_char; 2] = [0; 2];
-        STR[0] = ch;
-        STR[1] = 0;
-        std::ptr::addr_of_mut!(STR) as *mut c_char
-    }
+    thread_local! { static STR: RefCell<[c_char; 2]> = RefCell::new([0; 2]); }
+    STR.with(|s| {
+        let s = &mut *s.borrow_mut();
+        s[0] = ch;
+        s[1] = 0;
+        s.as_mut_ptr()
+    })
 }
 
 /// Convert an integer to a string, return in a static buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn int_to_string(i: c_long) -> *mut c_char {
-    unsafe {
-        static mut STR: [c_char; 40] = [0; 40];
-        let s = format!("{}", i);
-        let bytes = s.as_bytes();
+    thread_local! { static STR: RefCell<[c_char; 40]> = RefCell::new([0; 40]); }
+    STR.with(|s| {
+        let s = &mut *s.borrow_mut();
+        let str_val = format!("{}", i);
+        let bytes = str_val.as_bytes();
         let len = bytes.len().min(39);
         for j in 0..len {
-            STR[j] = bytes[j] as c_char;
+            s[j] = bytes[j] as c_char;
         }
-        STR[len] = 0;
-        std::ptr::addr_of_mut!(STR) as *mut c_char
-    }
+        s[len] = 0;
+        s.as_mut_ptr()
+    })
 }
 
 /// Convert a float to a string, return in a static buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn float_to_string(f: f32) -> *mut c_char {
-    unsafe {
-        static mut STR: [c_char; 40] = [0; 40];
-        let s = format!("{}", f);
-        let bytes = s.as_bytes();
+    thread_local! { static STR: RefCell<[c_char; 40]> = RefCell::new([0; 40]); }
+    STR.with(|s| {
+        let s = &mut *s.borrow_mut();
+        let str_val = format!("{}", f);
+        let bytes = str_val.as_bytes();
         let len = bytes.len().min(39);
         for j in 0..len {
-            STR[j] = bytes[j] as c_char;
+            s[j] = bytes[j] as c_char;
         }
-        STR[len] = 0;
-        std::ptr::addr_of_mut!(STR) as *mut c_char
-    }
+        s[len] = 0;
+        s.as_mut_ptr()
+    })
 }
 
 /// Case-insensitive string comparison.

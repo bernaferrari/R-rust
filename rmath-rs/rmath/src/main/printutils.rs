@@ -16,6 +16,7 @@
 //!   Rprintf, Rvprintf, REvprintf, REvprintf_internal,
 //!   Rcons_vprintf, VectorIndex
 
+use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::io::Write as IoWrite;
 use std::os::raw::{c_char, c_int, c_void};
@@ -64,31 +65,21 @@ impl Default for RPrint {
 }
 
 /// Thread-local print configuration.
-static mut R_PRINT: RPrint = RPrint {
-    na_string: ptr::null(),
-    na_string_noquote: ptr::null(),
-    na_width: 2,
-    na_width_noquote: 2,
-    gap: 1,
-};
+thread_local! { static R_PRINT: Cell<RPrint> = Cell::new(RPrint { na_string: ptr::null(), na_string_noquote: ptr::null(), na_width: 2, na_width_noquote: 2, gap: 1 }); }
 
-/// Return the current R_print configuration.
-pub unsafe fn get_R_print() -> &'static RPrint {
-    unsafe { &*std::ptr::addr_of!(R_PRINT) }
+pub unsafe fn get_R_print() -> RPrint {
+    R_PRINT.with(|v| v.get())
 }
 
-/// Set the R_print configuration.
 pub unsafe fn set_R_print(rp: RPrint) {
-    unsafe {
-        std::ptr::addr_of_mut!(R_PRINT).write(rp);
-    }
+    R_PRINT.with(|v| v.set(rp));
 }
 
 /// Helper: return the NA string from R_print, falling back to "NA".
 unsafe fn na_string_str() -> &'static str {
     unsafe {
-        let rp = std::ptr::addr_of_mut!(R_PRINT);
-        let na = (*rp).na_string;
+        let rp = R_PRINT.with(|v| v.get());
+        let na = rp.na_string;
         if !na.is_null() {
             let p = CHAR(na as SEXP);
             if !p.is_null() {
@@ -105,8 +96,8 @@ unsafe fn na_string_str() -> &'static str {
 /// Helper: return the no-quote NA string from R_print, falling back to "NA".
 unsafe fn na_string_noquote_str() -> &'static str {
     unsafe {
-        let rp = std::ptr::addr_of_mut!(R_PRINT);
-        let na = (*rp).na_string_noquote;
+        let rp = R_PRINT.with(|v| v.get());
+        let na = rp.na_string_noquote;
         if !na.is_null() {
             let p = CHAR(na as SEXP);
             if !p.is_null() {
@@ -235,7 +226,7 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 
         // Fast path: exact-width matches
         if x == NA_LOGICAL {
-            if w == R_PRINT.na_width {
+            if w == R_PRINT.with(|v| v.get()).na_width {
                 return na.as_ptr() as *const c_char;
             }
         } else if x != 0 {
@@ -259,7 +250,7 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
         let width = w as usize;
         let mw = if width < NB - 1 { width } else { NB - 1 };
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
         // Right-justify into buffer
         let val_bytes = val.as_bytes();
         let val_len = val_bytes.len().min(mw);
@@ -288,7 +279,7 @@ pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
 
         static BUF: LazyLock<Mutex<[u8; NB]>> = LazyLock::new(|| Mutex::new([0u8; NB]));
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
 
         if x == NA_INTEGER {
             let na = na_string_str();
@@ -366,7 +357,7 @@ pub unsafe fn EncodeReal0(
 
         static BUF: LazyLock<Mutex<[u8; 2 * NB]>> = LazyLock::new(|| Mutex::new([0u8; 2 * NB]));
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
         let dec_str = if dec.is_null() {
             "."
         } else {
@@ -447,13 +438,7 @@ pub unsafe fn EncodeReal0(
 // ---------------------------------------------------------------------------
 
 /// Encode a real value for printing (single-char decimal separator variant).
-pub unsafe fn EncodeReal(
-    x: f64,
-    w: c_int,
-    d: c_int,
-    e: c_int,
-    cdec: c_char,
-) -> *const c_char {
+pub unsafe fn EncodeReal(x: f64, w: c_int, d: c_int, e: c_int, cdec: c_char) -> *const c_char {
     unsafe {
         let dec_buf = [cdec as u8, 0u8];
         EncodeReal0(x, w, d, e, dec_buf.as_ptr() as *const c_char)
@@ -480,7 +465,7 @@ pub unsafe fn EncodeRealDrop0(
 
         static BUF: LazyLock<Mutex<[u8; 2 * NB]>> = LazyLock::new(|| Mutex::new([0u8; 2 * NB]));
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
         let dec_str = if dec.is_null() {
             "."
         } else {
@@ -587,7 +572,7 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
 
         static BUF: LazyLock<Mutex<[u8; NB]>> = LazyLock::new(|| Mutex::new([0u8; NB]));
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
 
         // IEEE: normalize signed zero
         let x = if x == 0.0 { 0.0 } else { x };
@@ -656,7 +641,7 @@ pub unsafe fn EncodeComplex(
 
         static BUF: LazyLock<Mutex<[u8; NB + 3]>> = LazyLock::new(|| Mutex::new([0u8; NB + 3]));
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
 
         let dec_str = if dec.is_null() {
             "."
@@ -671,7 +656,7 @@ pub unsafe fn EncodeComplex(
         let r = if x.r == 0.0 { 0.0 } else { x.r };
         let mut i = if x.i == 0.0 { 0.0 } else { x.i };
 
-        let dec_cstr = CString::new(dec_str).unwrap();
+        let dec_cstr = CString::new(dec_str).expect("CString::new failed: contains null byte");
         let dec_ptr = dec_cstr.as_ptr();
 
         let na = na_string_str();
@@ -722,7 +707,7 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
 
         static BUF: LazyLock<Mutex<[u8; 10]>> = LazyLock::new(|| Mutex::new([0u8; 10]));
 
-        let mut buf = BUF.lock().unwrap();
+        let mut buf = BUF.lock().expect("BUF lock poisoned");
 
         let prefix_str = if prefix.is_null() {
             ""
@@ -755,12 +740,7 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
 ///
 /// This counts the number of columns needed when the string is printed
 /// with escape sequences (e.g., `\n` counts as 2 columns).
-pub unsafe fn Rstrwid(
-    str: *const c_char,
-    slen: c_int,
-    ienc: c_int,
-    quote: c_int,
-) -> c_int {
+pub unsafe fn Rstrwid(str: *const c_char, slen: c_int, ienc: c_int, quote: c_int) -> c_int {
     unsafe {
         if str.is_null() || slen <= 0 {
             return 0;
@@ -843,7 +823,7 @@ pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 /// Encode an environment SEXP for display.
 pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
     static BUF: LazyLock<Mutex<[u8; 1000]>> = LazyLock::new(|| Mutex::new([0u8; 1000]));
-    let mut buf = BUF.lock().unwrap();
+    let mut buf = BUF.lock().expect("BUF lock poisoned");
     let s = "<environment: 0x0>";
     let bytes = s.as_bytes();
     buf[..bytes.len()].copy_from_slice(bytes);
@@ -854,7 +834,7 @@ pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
 /// Encode an external pointer SEXP for display.
 pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
     static BUF: LazyLock<Mutex<[u8; 1000]>> = LazyLock::new(|| Mutex::new([0u8; 1000]));
-    let mut buf = BUF.lock().unwrap();
+    let mut buf = BUF.lock().expect("BUF lock poisoned");
     let s = "<pointer: 0x0>";
     let bytes = s.as_bytes();
     buf[..bytes.len()].copy_from_slice(bytes);
@@ -921,17 +901,12 @@ pub enum Rprt_adj {
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// thread-local buffer.
-pub unsafe fn EncodeString(
-    s: SEXP,
-    w: c_int,
-    quote: c_int,
-    justify: Rprt_adj,
-) -> *const c_char {
+pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
         static BUFFER: LazyLock<Mutex<Vec<u8>>> =
             LazyLock::new(|| Mutex::new(Vec::with_capacity(BUFSIZE)));
 
-        let mut buffer = BUFFER.lock().unwrap();
+        let mut buffer = BUFFER.lock().expect("BUFFER lock poisoned");
         buffer.clear();
 
         if s.is_null() {
@@ -1075,12 +1050,7 @@ pub unsafe fn EncodeString(
 ///
 /// Dispatches on TYPEOF(x) to the appropriate encode function.
 /// The `cdec` parameter is the decimal separator character.
-pub unsafe fn EncodeElement(
-    x: SEXP,
-    indx: c_int,
-    quote: c_int,
-    cdec: c_char,
-) -> *const c_char {
+pub unsafe fn EncodeElement(x: SEXP, indx: c_int, quote: c_int, cdec: c_char) -> *const c_char {
     unsafe {
         let dec_buf = [cdec as u8, 0u8];
         EncodeElement0(

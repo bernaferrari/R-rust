@@ -3,17 +3,18 @@
 
 //! Cursor management for GraphApp.
 
+use std::cell::Cell;
 use std::ptr;
 
 use super::types::*;
 
-pub static mut ArrowCursor: cursor = ptr::null_mut();
-pub static mut BlankCursor: cursor = ptr::null_mut();
-pub static mut WatchCursor: cursor = ptr::null_mut();
-pub static mut CaretCursor: cursor = ptr::null_mut();
-pub static mut TextCursor: cursor = ptr::null_mut();
-pub static mut HandCursor: cursor = ptr::null_mut();
-pub static mut CrossCursor: cursor = ptr::null_mut();
+thread_local! { pub static ArrowCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static BlankCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static WatchCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static CaretCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static TextCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static HandCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static CrossCursor: Cell<cursor> = Cell::new(ptr::null_mut()); }
 
 pub unsafe fn init_cursors() { /* TODO */
 }

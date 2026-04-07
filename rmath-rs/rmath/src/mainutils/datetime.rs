@@ -1,5 +1,4 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
 /*
  *  R : A Computer Language for Statistical Data Analysis
@@ -24,11 +23,10 @@
  *
  *  Ported from R source: src/main/datetime.c
  */
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 use std::ffi::{CStr, CString};
-use std::os::raw::{c_char, c_double, c_int, c_long, c_void};
-use std::ptr;
+use std::os::raw::{c_char, c_double, c_int, c_long};
 
 use libc::{localtime_r, mktime, strftime, time_t, tm as libc_tm};
 
@@ -182,14 +180,12 @@ pub fn validate_tm(tm: &mut stm) -> c_int {
     if tm.tm_hour == 24 && tm.tm_min == 0 && tm.tm_sec == 0 {
         tm.tm_hour = 0;
         tm.tm_mday += 1;
-        if tm.tm_mon >= 0 && tm.tm_mon <= 11 {
-            if tm.tm_mday > days_in_month(tm.tm_mon, tm.tm_year) {
-                tm.tm_mon += 1;
-                tm.tm_mday = 1;
-                if tm.tm_mon == 12 {
-                    tm.tm_year += 1;
-                    tm.tm_mon = 0;
-                }
+        if tm.tm_mon >= 0 && tm.tm_mon <= 11 && tm.tm_mday > days_in_month(tm.tm_mon, tm.tm_year) {
+            tm.tm_mon += 1;
+            tm.tm_mday = 1;
+            if tm.tm_mon == 12 {
+                tm.tm_year += 1;
+                tm.tm_mon = 0;
             }
         }
     } else if tm.tm_hour < 0 || tm.tm_hour > 23 {
@@ -383,6 +379,7 @@ pub fn timegm00(tm: &mut stm) -> c_double {
 /// Returns true if the conversion was successful, false otherwise.
 ///
 /// Ported from the date arithmetic in `do_D2POSIXlt()` in datetime.c.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub fn julian2dtime(x_i: c_double, tm: &mut stm) -> bool {
     if !x_i.is_finite() {
         return false;
@@ -1258,6 +1255,7 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 /// Convert a POSIXlt list to a Date (numeric days since epoch).
 ///
 /// Ported from `do_POSIXlt2D()` in datetime.c.
+#[allow(clippy::if_same_then_else)]
 pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));

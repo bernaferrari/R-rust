@@ -198,6 +198,7 @@ pub(crate) fn pnchisq_raw(
 
 // ---- dnchisq ----
 
+#[must_use]
 pub fn dnchisq_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
     let eps: f64 = 5e-15;
 
@@ -287,6 +288,7 @@ pub fn dnchisq_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
 
 // ---- pnchisq ----
 
+#[must_use]
 pub fn pnchisq_inner(x: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(df) || isnan(ncp) {
@@ -346,6 +348,7 @@ pub fn pnchisq_inner(x: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -
 
 // ---- qnchisq ----
 
+#[must_use]
 pub fn qnchisq_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     let accu: f64 = 1e-13;
     let racc: f64 = 4.0 * DBL_EPSILON;
@@ -465,6 +468,7 @@ pub fn qnchisq_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -
 
 // ---- rnchisq ----
 
+#[must_use]
 pub fn rnchisq_inner(df: f64, lambda: f64) -> f64 {
     if isnan(df) || !r_finite(lambda) || df < 0.0 || lambda < 0.0 {
         return ml_warn_return_nan();
@@ -500,6 +504,7 @@ pub extern "C" fn Rf_dnchisq(
     dnchisq_inner(x, df, ncp, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnchisq(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnchisq_inner(x, df, ncp, give_log != 0)
@@ -549,11 +554,13 @@ pub extern "C" fn qnchisq(
     qnchisq_inner(p, df, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnchisq(df: c_double, ncp: c_double) -> c_double {
     rnchisq_inner(df, ncp)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rnchisq(df: c_double, ncp: c_double) -> c_double {
     rnchisq_inner(df, ncp)

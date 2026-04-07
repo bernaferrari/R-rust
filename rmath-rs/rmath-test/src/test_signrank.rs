@@ -8,7 +8,7 @@ pub fn run_tests() -> Result<(), String> {
     // Valid density: dsignrank should be > 0 for a valid statistic value
     // The signed rank statistic for n=3 ranges from 0 to 6
     let d1 = dsignrank_inner(3.0, 3.0, false);
-    if !(d1 > 0.0) {
+    if d1 <= 0.0 {
         return Err(format!("dsignrank(3,3) = {}, expected > 0", d1));
     }
     // Out of range: x < 0 or x > n*(n+1)/2 => 0
@@ -58,7 +58,7 @@ pub fn run_tests() -> Result<(), String> {
     // rsignrank tests
     rmath::rng::set_seed(42, 24);
     let r1 = rsignrank_inner(5.0);
-    if !(r1 >= 0.0) {
+    if r1 < 0.0 {
         return Err(format!("rsignrank(5) = {}, expected >= 0", r1));
     }
     rmath::rng::set_seed(42, 24);

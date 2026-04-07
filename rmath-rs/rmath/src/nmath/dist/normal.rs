@@ -10,6 +10,7 @@ use libm::{exp, fabs, ldexp, log, log1p, sqrt, trunc};
 
 // ---- dnorm ----
 
+#[must_use]
 pub fn dnorm4_inner(x: f64, mu: f64, sigma: f64, give_log: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(mu) || isnan(sigma) {
@@ -268,6 +269,7 @@ pub(crate) fn pnorm_both(x: f64, i_tail: i32, log_p: bool) -> (f64, f64) {
     (cum, ccum)
 }
 
+#[must_use]
 pub fn pnorm5_inner(x: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) -> f64 {
     /* Note: The structure of these checks has been carefully thought through.
      * For example, if x == mu and sigma == 0, we get the correct answer 1.
@@ -312,6 +314,7 @@ pub fn pnorm5_inner(x: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) 
 
 // ---- qnorm ----
 
+#[must_use]
 pub fn qnorm5_inner(p: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(p) || isnan(mu) || isnan(sigma) {
@@ -498,6 +501,7 @@ pub fn qnorm5_inner(p: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) 
 
 // ---- rnorm ----
 
+#[must_use]
 pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
     if isnan(mu) || !r_finite(sigma) || sigma < 0.0 {
         return ml_warn_return_nan();
@@ -514,6 +518,7 @@ pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
 use std::cell::Cell;
 
 /// norm_rand: random variate from the STANDARD normal distribution N(0,1).
+#[must_use]
 /// Uses INVERSION method (default for standalone mode).
 #[unsafe(no_mangle)]
 pub extern "C" fn norm_rand() -> f64 {
@@ -526,6 +531,7 @@ pub extern "C" fn norm_rand() -> f64 {
     qnorm5_inner(u1 / BIG, 0.0, 1.0, true, false)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_norm_rand() -> f64 {
     norm_rand()
@@ -533,41 +539,49 @@ pub extern "C" fn Rf_norm_rand() -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnorm(x: f64, mu: f64, sigma: f64, give_log: i32) -> f64 {
     dnorm4_inner(x, mu, sigma, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnorm(x: f64, mu: f64, sigma: f64, give_log: i32) -> f64 {
     dnorm4_inner(x, mu, sigma, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnorm(x: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnorm5_inner(x, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pnorm(x: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnorm5_inner(x, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnorm(p: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnorm5_inner(p, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qnorm(p: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnorm5_inner(p, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnorm(mu: f64, sigma: f64) -> f64 {
     rnorm_inner(mu, sigma)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rnorm(mu: f64, sigma: f64) -> f64 {
     rnorm_inner(mu, sigma)

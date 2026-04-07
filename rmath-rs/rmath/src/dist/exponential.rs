@@ -10,6 +10,7 @@ use libm::*;
 // ---- exp_rand (standard exponential variate) ----
 
 /// exp_rand: random variate from the standard exponential distribution.
+#[must_use]
 /// Ahrens-Dieter (1972) algorithm.
 #[unsafe(no_mangle)]
 pub extern "C" fn exp_rand() -> f64 {
@@ -71,6 +72,7 @@ pub extern "C" fn exp_rand() -> f64 {
 
 // ---- Inner implementations ----
 
+#[must_use]
 pub fn dexp_inner(x: f64, scale: f64, give_log: bool) -> f64 {
     if isnan(x) || isnan(scale) {
         return x + scale;
@@ -90,6 +92,7 @@ pub fn dexp_inner(x: f64, scale: f64, give_log: bool) -> f64 {
     }
 }
 
+#[must_use]
 pub fn pexp_inner(x: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     if isnan(x) || isnan(scale) {
         return x + scale;
@@ -111,6 +114,7 @@ pub fn pexp_inner(x: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     }
 }
 
+#[must_use]
 pub fn qexp_inner(p: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     if isnan(p) || isnan(scale) {
         return p + scale;
@@ -130,6 +134,7 @@ pub fn qexp_inner(p: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     -scale * r_dt_clog(p, lower_tail, log_p)
 }
 
+#[must_use]
 pub fn rexp_inner(scale: f64) -> f64 {
     if !r_finite(scale) || scale <= 0.0 {
         if scale == 0.0 {
@@ -142,46 +147,55 @@ pub fn rexp_inner(scale: f64) -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dexp(x: f64, scale: f64, give_log: i32) -> f64 {
     dexp_inner(x, scale, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dexp(x: f64, scale: f64, give_log: i32) -> f64 {
     dexp_inner(x, scale, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pexp(x: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pexp_inner(x, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pexp(x: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pexp_inner(x, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qexp(p: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qexp_inner(p, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qexp(p: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qexp_inner(p, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rexp(scale: f64) -> f64 {
     rexp_inner(scale)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rexp(scale: f64) -> f64 {
     rexp_inner(scale)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_exp_rand() -> f64 {
     exp_rand()

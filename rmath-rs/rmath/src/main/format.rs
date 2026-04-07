@@ -10,6 +10,7 @@
 //!   formatInteger, formatIntegerS, formatReal, formatRealS,
 //!   formatComplex, formatComplexS, formatRaw, formatRawS
 
+use std::cell::Cell;
 use std::os::raw::{c_double, c_int, c_void};
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
@@ -51,32 +52,16 @@ impl Default for RPrint {
 /// Because R uses a global `R_print`, we expose a mutable reference so the
 /// formatting functions can read the current configuration without requiring
 /// a full R session.
-static mut R_PRINT: RPrint = RPrint {
-    digits: 0,
-    scipen: 0,
-    na_width: 2,
-    na_width_noquote: 2,
-};
+thread_local! { static R_PRINT: Cell<RPrint> = Cell::new(RPrint { digits: 0, scipen: 0, na_width: 2, na_width_noquote: 2 }); }
 
-/// Install a new R_print configuration.  Returns the previous value.
-///
-/// # Safety
-/// This mutates a global.  Do not call concurrently with any formatting
-/// functions that read `R_print`.
 pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
-    unsafe {
-        let old = R_PRINT;
-        R_PRINT = p;
-        old
-    }
+    let old = R_PRINT.with(|v| v.get());
+    R_PRINT.with(|v| v.set(p));
+    old
 }
 
-/// Return a copy of the current R_print configuration.
-///
-/// # Safety
-/// Must not be called concurrently with `format_set_R_print`.
 pub unsafe fn format_get_R_print() -> RPrint {
-    unsafe { R_PRINT }
+    R_PRINT.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -186,12 +171,7 @@ const NB: usize = 1000;
 ///
 /// This is the fallback path when `R_print.digits >= DBL_DIG + 1` (i.e.
 /// >= 16 for IEEE 754 double).
-pub unsafe fn format_via_sprintf(
-    r: c_double,
-    d: c_int,
-    kpower: *mut c_int,
-    nsig: *mut c_int,
-) {
+pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
     unsafe {
         let mut buff = [0i8; NB];
         let d = d as usize;
@@ -272,7 +252,7 @@ pub unsafe fn format_scientific(
             r = xv;
         }
 
-        let digits = R_PRINT.digits;
+        let digits = R_PRINT.with(|v| v.get()).digits;
         if digits == 0 {
             // No digits configured; fall back to a safe default.
             *kpower = 0;
@@ -386,12 +366,7 @@ pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
 // Ported from C: iterates SEXP array, calls Rstrlen for display width.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn formatString(
-    x: *const SEXP,
-    n: R_xlen_t,
-    fieldwidth: *mut c_int,
-    quote: c_int,
-) {
+pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
 
@@ -401,9 +376,9 @@ pub unsafe fn formatString(
             if si.is_null() {
                 // NA_STRING
                 l = if quote != 0 {
-                    R_PRINT.na_width
+                    R_PRINT.with(|v| v.get()).na_width
                 } else {
-                    R_PRINT.na_width_noquote
+                    R_PRINT.with(|v| v.get()).na_width_noquote
                 };
             } else {
                 l = Rstrlen(si, quote) + if quote != 0 { 2 } else { 0 };
@@ -432,9 +407,9 @@ pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote:
             if si.is_null() {
                 // NA_STRING
                 l = if quote != 0 {
-                    R_PRINT.na_width
+                    R_PRINT.with(|v| v.get()).na_width
                 } else {
-                    R_PRINT.na_width_noquote
+                    R_PRINT.with(|v| v.get()).na_width_noquote
                 };
             } else {
                 l = Rstrlen(si, quote) + if quote != 0 { 2 } else { 0 };
@@ -466,8 +441,8 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
         for i in 0..n {
             let xi = *x.add(i as usize);
             if xi == NA_LOGICAL {
-                if *fieldwidth < R_PRINT.na_width {
-                    *fieldwidth = R_PRINT.na_width;
+                if *fieldwidth < R_PRINT.with(|v| v.get()).na_width {
+                    *fieldwidth = R_PRINT.with(|v| v.get()).na_width;
                 }
             } else if xi != 0 && *fieldwidth < 4 {
                 // TRUE
@@ -476,7 +451,7 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
                 // FALSE
                 *fieldwidth = 5;
                 // Only break early if NA can't be wider
-                if R_PRINT.na_width <= max_fixed_width {
+                if R_PRINT.with(|v| v.get()).na_width <= max_fixed_width {
                     break;
                 }
             }
@@ -545,7 +520,7 @@ pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
 
         // FORMATINT_RETLOGIC:
         if naflag {
-            *fieldwidth = R_PRINT.na_width;
+            *fieldwidth = R_PRINT.with(|v| v.get()).na_width;
         } else {
             *fieldwidth = 1;
         }
@@ -637,7 +612,7 @@ pub unsafe fn formatReal(
         let mut mxsl: c_int = c_int::MIN;
         let mut mxns: c_int = c_int::MIN;
 
-        let na_width = R_PRINT.na_width;
+        let na_width = R_PRINT.with(|v| v.get()).na_width;
 
         for i in 0..n {
             let xi = *x.add(i as usize);
@@ -693,7 +668,7 @@ pub unsafe fn formatReal(
         }
 
         // F vs E format decision
-        if R_PRINT.digits == 0 {
+        if R_PRINT.with(|v| v.get()).digits == 0 {
             rgt = 0;
         }
         if mxl < 0 {
@@ -710,7 +685,7 @@ pub unsafe fn formatReal(
         if mxns != c_int::MIN {
             *d = mxns - 1;
             *w = neg + if *d > 0 { 1 } else { 0 } + *d + 4 + *e; // width for E format
-            if wF <= *w + R_PRINT.scipen {
+            if wF <= *w + R_PRINT.with(|v| v.get()).scipen {
                 // Fixpoint if it needs less space
                 *e = 0;
                 let nsmall_i = nsmall as c_int;
@@ -873,7 +848,7 @@ pub unsafe fn formatComplex(
         formatReal(im_ptr, i1 as R_xlen_t, wi, di, ei, nsmall);
 
         // Ensure space for NA in the combined width.
-        let na_width = R_PRINT.na_width;
+        let na_width = R_PRINT.with(|v| v.get()).na_width;
         if naflag && *wr + *wi + 2 < na_width {
             *wr += na_width - (*wr + *wi + 2);
         }

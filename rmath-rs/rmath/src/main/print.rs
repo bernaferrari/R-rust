@@ -116,10 +116,22 @@ const R_PRINT_INIT: R_PrintData = R_PrintData {
     callArgs: ptr::null_mut(),
 };
 
-static mut R_PRINT: R_PrintData = R_PRINT_INIT;
+thread_local! { static R_PRINT: RefCell<R_PrintData> = RefCell::new(R_PRINT_INIT); }
 
-pub unsafe fn get_R_print_data() -> &'static mut R_PrintData {
-    unsafe { &mut *std::ptr::addr_of_mut!(R_PRINT) }
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target { unsafe { &*self.0 } }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target { unsafe { &mut *self.0 } }
+}
+
+pub unsafe fn get_R_print_data() -> MutPtr<R_PrintData> {
+    MutPtr(R_PRINT.with(|v| v.as_ptr() as *mut R_PrintData))
 }
 
 // ---------------------------------------------------------------------------
@@ -480,7 +492,7 @@ pub unsafe fn PrintDefaults() {
     unsafe {
         let env = R_GlobalEnv();
         PrintInit(
-            std::ptr::addr_of_mut!(R_PRINT) as *mut std::ffi::c_void,
+            R_PRINT.with(|v| PrintInit(v.as_ptr() as *mut std::ffi::c_void, env));
             env,
         );
     }
@@ -546,7 +558,7 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
     unsafe {
         let t = crate::main::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
         Rf_protect(t);
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
         let n = LENGTH(t);
         for i in 0..n {
@@ -592,7 +604,7 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
 unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
     unsafe {
         let nm = crate::eval::builtin::PRIMNAME(s);
-        let nm_cstr = std::ffi::CString::new(nm).unwrap();
+        let nm_cstr = std::ffi::CString::new(nm).expect("CString::new failed: contains null byte");
         let nm_ptr = nm_cstr.as_ptr();
 
         let env = R_findVarInFrame(
@@ -612,7 +624,7 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
         if s2 != R_UnboundValue() {
             let t = crate::main::deparse::deparse1m(s2, false, DEFAULTDEPARSE);
             Rf_protect(t);
-            R_PRINT = data.clone();
+            R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
             let line = STRING_ELT(t, 0);
             if !line.is_null() && line != R_NilValue() {
@@ -634,7 +646,7 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
     unsafe {
         let u = crate::main::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
         Rf_protect(u);
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
         let n = LENGTH(u);
         for i in 0..n {
@@ -682,7 +694,7 @@ unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
 
         PrintObjectS3(s, data);
 
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
         restore_tagbuf(&save);
     }
 }
@@ -1403,7 +1415,7 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
         let data = _data as *const R_PrintData;
         if data.is_null() {
             PrintDefaults();
-            PrintValueRec_inner(s, &*std::ptr::addr_of!(R_PRINT));
+            R_PRINT.with(|v| PrintValueRec_inner(s, &*v.as_ptr()));
         } else {
             PrintValueRec_inner(s, &*data);
         }
@@ -1428,7 +1440,7 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             t if t == SEXPTYPE::SYMSXP.0 => {
                 let t = crate::main::deparse::deparse1(s, false, SIMPLEDEPARSE);
                 Rf_protect(t);
-                R_PRINT = data.clone();
+                R_PRINT.with(|v| *v.borrow_mut() = data.clone());
                 let line = STRING_ELT(t, 0);
                 if !line.is_null() && line != R_NilValue() {
                     eprint!("{}\n", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
@@ -1663,7 +1675,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         // Simplified: if not enough args, just print directly
         if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
-            R_PRINT = data.clone();
+            R_PRINT.with(|v| *v.borrow_mut() = data.clone());
             tagbuf_clear();
             PrintValueRec_inner(x, &data);
             PrintDefaults();
@@ -1817,7 +1829,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         };
         data.callArgs = CDR(orig);
 
-        R_PRINT = data.clone();
+        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
 
         tagbuf_clear();
 
@@ -1849,17 +1861,20 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let quote = asInteger(CAR(a));
         a = CDR(a);
-        R_PRINT.right = asInteger(CAR(a));
+        R_PRINT.with(|v| v.borrow_mut().right = asInteger(CAR(a)));
         a = CDR(a);
         let naprint = CAR(a);
 
         if Rf_isNull(naprint) == 0 {
             if isString(naprint) != 0 && LENGTH(naprint) >= 1 {
                 let na_str = STRING_ELT(naprint, 0);
-                R_PRINT.na_string = na_str;
-                R_PRINT.na_string_noquote = na_str;
-                R_PRINT.na_width = crate::main::printutils::Rstrlen(R_PRINT.na_string, 0);
-                R_PRINT.na_width_noquote = R_PRINT.na_width;
+                R_PRINT.with(|v| {
+                    let mut ds = v.borrow_mut();
+                    ds.na_string = na_str;
+                    ds.na_string_noquote = na_str;
+                    ds.na_width = crate::main::printutils::Rstrlen(ds.na_string, 0);
+                    ds.na_width_noquote = ds.na_width;
+                });
             }
         }
 
@@ -1873,12 +1888,13 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let dim = getAttrib(x, R_DimSymbol());
+        let right_val = R_PRINT.with(|v| v.borrow().right);
         crate::main::printarray::printMatrix(
             x,
             0,
             dim,
             quote,
-            R_PRINT.right,
+            right_val,
             rowlab_use,
             collab_use,
             ptr::null(),

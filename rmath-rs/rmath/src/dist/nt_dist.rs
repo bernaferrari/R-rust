@@ -32,6 +32,7 @@ const DBL_MIN_EXP: i32 = -1022;
 
 // ---- dnt ----
 
+#[must_use]
 pub fn dnt_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
     let u: f64;
 
@@ -85,6 +86,7 @@ pub fn dnt_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
 
 // ---- pnt ----
 
+#[must_use]
 pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     let mut lower_tail = lower_tail;
 
@@ -236,6 +238,7 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
 
 // ---- qnt ----
 
+#[must_use]
 pub fn qnt_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     let accu: f64 = 1e-13;
     let eps: f64 = 1e-11; /* must be > accu */
@@ -323,6 +326,7 @@ pub fn qnt_inner(p: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
 // R generates noncentral t as:
 //   (rnchisq(1, ncp^2) + norm_rand()) / sqrt(rchisq(df) / df)
 
+#[must_use]
 pub fn rnt_inner(df: f64, ncp: f64) -> f64 {
     if isnan(df) || isnan(ncp) || df <= 0.0 {
         return ml_warn_return_nan();
@@ -335,11 +339,13 @@ pub fn rnt_inner(df: f64, ncp: f64) -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnt(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnt_inner(x, df, ncp, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnt(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnt_inner(x, df, ncp, give_log != 0)
@@ -389,11 +395,13 @@ pub extern "C" fn qnt(
     qnt_inner(p, df, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnt(df: c_double, ncp: c_double) -> c_double {
     rnt_inner(df, ncp)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rnt(df: c_double, ncp: c_double) -> c_double {
     rnt_inner(df, ncp)

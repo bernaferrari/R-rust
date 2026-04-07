@@ -5,6 +5,7 @@
 //! This file implements R's graphics engine, providing the interface between
 //! graphics devices and graphics systems (like base graphics and grid).
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
@@ -116,7 +117,7 @@ fn r_finite(x: c_double) -> bool {
 // Number of registered graphics systems (mutable static)
 // ---------------------------------------------------------------------------
 
-static mut numGraphicsSystems: c_int = 0;
+thread_local! { static numGraphicsSystems: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // R_GE_gcontext -- Graphics context structure
@@ -440,8 +441,7 @@ pub const GEStructID: c_int = 42;
 // Registered systems array
 // ---------------------------------------------------------------------------
 
-static mut registeredSystems: [*mut GESystemDesc; MAX_GRAPHICS_SYSTEMS as usize] =
-    [ptr::null_mut(); MAX_GRAPHICS_SYSTEMS as usize];
+thread_local! { static registeredSystems: Cell<[*mut GESystemDesc; MAX_GRAPHICS_SYSTEMS as usize]> = Cell::new([ptr::null_mut(); MAX_GRAPHICS_SYSTEMS as usize]); }
 
 // ---------------------------------------------------------------------------
 // R_GE_getVersion / R_GE_checkVersionOrDie
@@ -548,8 +548,9 @@ pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
     let gdd = dd as pGEDevDesc;
     for i in 0..MAX_GRAPHICS_SYSTEMS {
         let idx = i as usize;
-        if !registeredSystems[idx].is_null() {
-            let cb = (*registeredSystems[idx]).callback;
+        let sys = registeredSystems.with(|v| v.get()[idx]);
+        if !sys.is_null() {
+            let cb = (*sys).callback;
             registerOne(gdd, i, cb);
         }
     }
@@ -570,7 +571,7 @@ pub unsafe fn GEregisterSystem(
     // Find first NULL slot
     while (*systemRegisterIndex as usize) < MAX_GRAPHICS_SYSTEMS as usize {
         let idx = *systemRegisterIndex as usize;
-        if registeredSystems[idx].is_null() {
+        if registeredSystems.with(|v| v.get()[idx]).is_null() {
             break;
         }
         *systemRegisterIndex += 1;
@@ -583,8 +584,12 @@ pub unsafe fn GEregisterSystem(
         systemSpecific: ptr::null_mut(),
         callback: cb_typed,
     });
-    registeredSystems[idx] = Box::into_raw(gesd);
-    numGraphicsSystems += 1;
+    registeredSystems.with(|v| {
+        let mut arr = v.get();
+        arr[idx] = Box::into_raw(gesd);
+        v.set(arr);
+    });
+    numGraphicsSystems.with(|v| v.set(v.get() + 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -595,15 +600,20 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
     if registerIndex < 0 {
         return;
     }
-    if numGraphicsSystems == 0 {
+    if numGraphicsSystems.with(|v| v.get()) == 0 {
         return;
     }
     let idx = registerIndex as usize;
-    if idx < MAX_GRAPHICS_SYSTEMS as usize && !registeredSystems[idx].is_null() {
-        let _ = Box::from_raw(registeredSystems[idx]);
-        registeredSystems[idx] = ptr::null_mut();
+    let sys = registeredSystems.with(|v| v.get()[idx]);
+    if idx < MAX_GRAPHICS_SYSTEMS as usize && !sys.is_null() {
+        let _ = Box::from_raw(sys);
+        registeredSystems.with(|v| {
+            let mut arr = v.get();
+            arr[idx] = ptr::null_mut();
+            v.set(arr);
+        });
     }
-    numGraphicsSystems -= 1;
+    numGraphicsSystems.with(|v| v.set(v.get() - 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -613,8 +623,9 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
     for i in 0..MAX_GRAPHICS_SYSTEMS {
         let idx = i as usize;
-        if !registeredSystems[idx].is_null() {
-            if let Some(cb) = (*registeredSystems[idx]).callback {
+        let sys = registeredSystems.with(|v| v.get()[idx]);
+        if !sys.is_null() {
+            if let Some(cb) = (*sys).callback {
                 // We need a pGEDevDesc, but we only have pDevDesc here.
                 // In the full implementation, desc2GEDesc maps pDevDesc -> pGEDevDesc.
                 // For now, call with null.

@@ -1,6 +1,4 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
-#![allow(unused_assignments)]
 #![allow(unused_assignments)]
 //! Object duplication system for R objects.
 //!
@@ -8,17 +6,14 @@
 //! of R objects, vector/matrix copy with recycling, and cycle detection for
 //! complex assignment operations.
 
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::{
-    Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_isEnvironment, Rf_isNull,
-    Rf_isVector,
-};
-use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
+use crate::sexp::constructors::{Rf_allocVector3, Rf_cons, Rf_isVector};
+use crate::sexp::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::with_arena;
 
@@ -664,10 +659,8 @@ pub unsafe extern "C" fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
 
         // Check attributes
         let attr = ATTRIB(child);
-        if !attr.is_null() && attr != R_NilValue() {
-            if R_cycle_detected(s, attr) != 0 {
-                return 1;
-            }
+        if !attr.is_null() && attr != R_NilValue() && R_cycle_detected(s, attr) != 0 {
+            return 1;
         }
 
         // Check pairlist
@@ -782,6 +775,7 @@ pub unsafe fn copyVector(s: SEXP, t: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Copy list matrix contents (legacy function).
+#[allow(clippy::never_loop)]
 pub unsafe fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
     unsafe {
         let nr = nrows(s);

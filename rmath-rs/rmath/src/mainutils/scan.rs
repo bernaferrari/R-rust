@@ -21,7 +21,7 @@
 //! extractItem, etc.) depend on R connections, SEXP vectors, and R's
 //! memory allocator and are provided as stubs only.
 
-use std::os::raw::{c_char, c_int, c_void};
+use std::os::raw::{c_char, c_int};
 
 use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXP};
 
@@ -151,7 +151,7 @@ pub unsafe fn Strtod(
 ) -> f64 {
     unsafe {
         if nptr.is_null() {
-            return std::f64::NAN;
+            return f64::NAN;
         }
         let s = match std::ffi::CStr::from_ptr(nptr).to_str() {
             Ok(s) => s,
@@ -183,7 +183,7 @@ pub unsafe fn Strtod(
             }
             Err(_) => {
                 if treat_as_na {
-                    std::f64::NAN
+                    f64::NAN
                 } else {
                     if !endptr.is_null() {
                         *endptr = nptr as *mut c_char;
@@ -224,10 +224,10 @@ pub unsafe fn strtoc(
         if stripped != trimmed && !stripped.ends_with('e') && !stripped.ends_with('E') {
             // Make sure 'i' is at the very end and not part of exponent notation.
             let i_pos = trimmed.trim_end().len() - 1;
-            if trimmed.as_bytes()[i_pos] == b'i' {
-                if let Ok(val) = stripped.parse::<f64>() {
-                    return Rcomplex { r: 0.0, i: val };
-                }
+            if trimmed.as_bytes()[i_pos] == b'i'
+                && let Ok(val) = stripped.parse::<f64>()
+            {
+                return Rcomplex { r: 0.0, i: val };
             }
         }
 

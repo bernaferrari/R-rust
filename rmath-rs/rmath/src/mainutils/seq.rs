@@ -1,32 +1,25 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/seq.c -- sequence generation.
 //!
 //! Implements `:`, `seq.int()`, `seq_len()`, `seq_along()`, `rep()`,
 //! `rep.int()`, `rep_len()`, and `sequence()`.
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, CHAR, COMPLEX, COMPLEX_ELT, DATAPTR,
-    INTEGER, INTEGER_ELT, LENGTH, LOGICAL, LOGICAL_ELT, NAMED, OBJECT, PRINTNAME, RAW, RAW_ELT,
-    REAL, REAL_ELT, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT,
-    TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
+    SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_isInteger,
-    Rf_isNull, Rf_isReal, Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_isInteger, Rf_isNull, Rf_isReal,
+    Rf_isVector, Rf_mkChar, Rf_mkString,
 };
-use crate::sexp::ffi::{
-    ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE,
-    SexprecCore,
-};
+use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::memory::with_arena;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -407,7 +400,11 @@ unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
             }
             setAttrib(a, R_LevelsSymbol(), la);
         }
-        let la = Rf_mkString(std::ffi::CString::new("factor").unwrap().as_ptr());
+        let la = Rf_mkString(
+            std::ffi::CString::new("factor")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
         setAttrib(a, R_ClassSymbol(), la);
         a
     }
@@ -1175,8 +1172,8 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         // DispatchOrEval internal generic: rep
-        if inherits(s, b"factor\0".as_ptr() as *const c_char) == 0 {
-            if DispatchOrEval(
+        if inherits(s, b"factor\0".as_ptr() as *const c_char) == 0
+            && DispatchOrEval(
                 call,
                 op,
                 b"rep\0".as_ptr() as *const c_char,
@@ -1189,7 +1186,6 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             {
                 return a;
             }
-        }
 
         if isVector(ncopy) == 0 {
             return ptr::null_mut();
@@ -1739,8 +1735,8 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             *ra.add(i as usize) = rfrom + i as c_double * rby;
                         }
                     } else {
-                        let mut rfrom_scaled = rfrom / 4.0;
-                        let mut rby_scaled = rby / 4.0;
+                        let rfrom_scaled = rfrom / 4.0;
+                        let rby_scaled = rby / 4.0;
                         for i in 0..=nn {
                             *ra.add(i as usize) = (rfrom_scaled + i as c_double * rby_scaled) * 4.0;
                         }
@@ -1816,8 +1812,8 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             *REAL(ans).add(i as usize) = rfrom + i as c_double * rby;
                         }
                     } else {
-                        let mut rfrom_s = rfrom / 4.0;
-                        let mut rby_s = rby / 4.0;
+                        let rfrom_s = rfrom / 4.0;
+                        let rby_s = rby / 4.0;
                         for i in 1..lout - 1 {
                             *REAL(ans).add(i as usize) = (rfrom_s + i as c_double * rby_s) * 4.0;
                         }
@@ -2058,6 +2054,8 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::constructors::*;
+
     use super::*;
     use crate::sexp::ffi::*;
 

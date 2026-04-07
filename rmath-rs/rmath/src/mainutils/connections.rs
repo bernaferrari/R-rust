@@ -1,8 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/connections.c — R connection infrastructure.
 //!
@@ -18,10 +16,9 @@
 
 use std::cell::RefCell;
 use std::ffi::{CStr, CString};
-use std::fs::{self, File, OpenOptions};
+use std::fs::{File, OpenOptions};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
-use std::os::raw::{c_char, c_double, c_int, c_void};
-use std::path::Path;
+use std::os::raw::{c_double, c_int};
 use std::process::{Child, Command, Stdio};
 use std::ptr;
 use std::sync::Mutex;
@@ -461,8 +458,8 @@ unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
         if class_vec.is_null() {
             return;
         }
-        let c1 = CString::new(specific_class).unwrap();
-        let c2 = CString::new("connection").unwrap();
+        let c1 = CString::new(specific_class).expect("CString::new failed: contains null byte");
+        let c2 = CString::new("connection").expect("CString::new failed: contains null byte");
         let charsxp1 = Rf_mkChar(c1.as_ptr());
         let charsxp2 = Rf_mkChar(c2.as_ptr());
         if !charsxp1.is_null() {
@@ -551,6 +548,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 }
 
 /// Open a file and return (file, optional reader, optional writer).
+#[allow(clippy::type_complexity)]
 fn open_file_conn(
     path: &str,
     mode: &str,
@@ -673,8 +671,7 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
         };
 
         // Check if it's a file:// URL or a regular path
-        let (actual_desc, conn_class) = if description.starts_with("file://") {
-            let path = &description[7..];
+        let (actual_desc, conn_class) = if let Some(path) = description.strip_prefix("file://") {
             (path.to_string(), "file".to_string())
         } else if description.starts_with("http://")
             || description.starts_with("https://")
@@ -957,7 +954,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         };
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
         if conn.isopen {
             return R_NilValue(); // Already open, just return
         }
@@ -1115,7 +1112,7 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
-        let conn = table[i].as_ref().unwrap();
+        let conn = table[i].as_ref().expect("expected Some, got None");
         let mut res = if conn.isopen { 1 } else { 0 };
         match rw {
             1 => {
@@ -1150,7 +1147,7 @@ pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) ->
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
-        let conn = table[i].as_ref().unwrap();
+        let conn = table[i].as_ref().expect("expected Some, got None");
         Rf_ScalarLogical(if conn.incomplete { 1 } else { 0 })
     }
 }
@@ -1192,7 +1189,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
         };
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1229,14 +1226,13 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
                 }
             }
             ConnKind::Pipe => {
-                if let Some(ref mut child) = conn.child {
-                    if let Some(ref mut stdout) = child.stdout {
-                        let reader = BufReader::new(stdout);
-                        for _ in 0..n {
-                            // We can't borrow stdout mutably here because we're inside
-                            // an immutable borrow via child. So we use a different approach.
-                            break; // For now, stub out pipe reading
-                        }
+                if let Some(ref mut child) = conn.child
+                    && let Some(ref mut stdout) = child.stdout
+                {
+                    let _reader = BufReader::new(stdout);
+                    #[allow(clippy::never_loop)]
+                    for _ in 0..n {
+                        break;
                     }
                 }
             }
@@ -1318,8 +1314,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line =
-                    CString::new(line.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                let c_line = CString::new(line.as_str()).unwrap_or_else(|_| {
+                    CString::new("").expect("CString::new failed: contains null byte")
+                });
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -1355,7 +1352,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
 
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1404,16 +1401,16 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
                 }
             }
             ConnKind::Pipe => {
-                if let Some(ref mut child) = conn.child {
-                    if let Some(ref mut stdin) = child.stdin {
-                        for j in 0..text_len {
-                            let line = string_elt(text, j);
-                            if let Err(e) = write!(stdin, "{}{}", line, sep_str) {
-                                r_error(&format!("error writing to pipe: {}", e));
-                            }
+                if let Some(ref mut child) = conn.child
+                    && let Some(ref mut stdin) = child.stdin
+                {
+                    for j in 0..text_len {
+                        let line = string_elt(text, j);
+                        if let Err(e) = write!(stdin, "{}{}", line, sep_str) {
+                            r_error(&format!("error writing to pipe: {}", e));
                         }
-                        let _ = stdin.flush();
                     }
+                    let _ = stdin.flush();
                 }
             }
             _ => {
@@ -1444,7 +1441,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         }
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1459,7 +1456,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
                         _ => SeekFrom::Start(where_val as u64),
                     };
 
-                    let old_pos = match file.seek(SeekFrom::Current(0)) {
+                    let old_pos = match file.stream_position() {
                         Ok(p) => p as c_double,
                         Err(_) => 0.0,
                     };
@@ -1522,12 +1519,12 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
-        if conn.canwrite {
-            if let Some(ref mut writer) = conn.writer {
-                let _ = writer.flush();
-            }
+        if conn.canwrite
+            && let Some(ref mut writer) = conn.writer
+        {
+            let _ = writer.flush();
         }
 
         R_NilValue()
@@ -1692,7 +1689,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         }
         let i = as_integer(scon) as usize;
         let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_ref().unwrap();
+        let conn = table[i].as_ref().expect("expected Some, got None");
 
         if !conn.canwrite {
             r_error("'con' is not an output textConnection");
@@ -1703,8 +1700,9 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line =
-                    CString::new(line.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                let c_line = CString::new(line.as_str()).unwrap_or_else(|_| {
+                    CString::new("").expect("CString::new failed: contains null byte")
+                });
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -1754,7 +1752,7 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             r_error("invalid connection");
         }
 
-        let conn = table[n].as_ref().unwrap();
+        let conn = table[n].as_ref().expect("expected Some, got None");
 
         // Build a list with connection info
         // Return the integer index (like R's getConnection)
@@ -1788,7 +1786,9 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
             for i in 0..table.len() {
                 if let Some(ref conn) = table[i] {
                     let desc = format!("{} {} {}", i, conn.description, conn.mode);
-                    let c_desc = CString::new(desc).unwrap_or_else(|_| CString::new("").unwrap());
+                    let c_desc = CString::new(desc).unwrap_or_else(|_| {
+                        CString::new("").expect("CString::new failed: contains null byte")
+                    });
                     let charsxp = Rf_mkChar(c_desc.as_ptr());
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     idx += 1;
@@ -1989,8 +1989,9 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                 let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nstr);
                 if !ans.is_null() {
                     for (idx, s) in strings.iter().enumerate() {
-                        let c_s =
-                            CString::new(s.as_str()).unwrap_or_else(|_| CString::new("").unwrap());
+                        let c_s = CString::new(s.as_str()).unwrap_or_else(|_| {
+                            CString::new("").expect("CString::new failed: contains null byte")
+                        });
                         let charsxp = Rf_mkChar(c_s.as_ptr());
                         SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     }
@@ -2023,7 +2024,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
         let i = as_integer(scon) as usize;
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -2109,8 +2110,10 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                                 let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nstr);
                                 if !ans.is_null() {
                                     for (idx, s) in strings.iter().enumerate() {
-                                        let c_s = CString::new(s.as_str())
-                                            .unwrap_or_else(|_| CString::new("").unwrap());
+                                        let c_s = CString::new(s.as_str()).unwrap_or_else(|_| {
+                                            CString::new("")
+                                                .expect("CString::new failed: contains null byte")
+                                        });
                                         let charsxp = Rf_mkChar(c_s.as_ptr());
                                         SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                                     }
@@ -2224,7 +2227,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
 
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().unwrap();
+        let conn = table[i].as_mut().expect("expected Some, got None");
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -2258,10 +2261,10 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
                 // Write directly and return
                 match &conn.kind {
                     ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-                        if let Some(ref mut file) = conn.file {
-                            if let Err(e) = file.write_all(&buf) {
-                                r_error(&format!("error writing to connection: {}", e));
-                            }
+                        if let Some(ref mut file) = conn.file
+                            && let Err(e) = file.write_all(&buf)
+                        {
+                            r_error(&format!("error writing to connection: {}", e));
                         }
                     }
                     ConnKind::RawConnection => {
@@ -2282,22 +2285,21 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
 
         match &conn.kind {
             ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
-                if let Some(ref mut file) = conn.file {
-                    if let Err(e) = file.write_all(bytes_to_write) {
-                        r_error(&format!("error writing to connection: {}", e));
-                    }
+                if let Some(ref mut file) = conn.file
+                    && let Err(e) = file.write_all(bytes_to_write)
+                {
+                    r_error(&format!("error writing to connection: {}", e));
                 }
             }
             ConnKind::RawConnection => {
                 conn.raw_data.extend_from_slice(bytes_to_write);
             }
             ConnKind::Pipe => {
-                if let Some(ref mut child) = conn.child {
-                    if let Some(ref mut stdin) = child.stdin {
-                        if let Err(e) = stdin.write_all(bytes_to_write) {
-                            r_error(&format!("error writing to pipe: {}", e));
-                        }
-                    }
+                if let Some(ref mut child) = conn.child
+                    && let Some(ref mut stdin) = child.stdin
+                    && let Err(e) = stdin.write_all(bytes_to_write)
+                {
+                    r_error(&format!("error writing to pipe: {}", e));
                 }
             }
             ConnKind::Terminal(name) if name == "stdout" => {
@@ -2347,10 +2349,18 @@ pub unsafe extern "C" fn R_GetConnection(_n: c_int) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
+
     use super::*;
     use std::io::Write;
 
-    fn reset_connections() {
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    /// Reset global connection state and return a lock guard that serializes
+    /// tests. The guard must be held for the duration of the test to prevent
+    /// race conditions on the shared CONNECTIONS table.
+    fn reset_connections() -> std::sync::MutexGuard<'static, ()> {
+        let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         table.clear();
         drop(table);
@@ -2361,11 +2371,12 @@ mod tests {
         sink.sink_cons = vec![1];
         sink.sink_close = vec![false];
         sink.sink_split = vec![false];
+        lock
     }
 
     #[test]
     fn test_init_connections() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             R_InitConnections();
             let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
@@ -2378,7 +2389,7 @@ mod tests {
 
     #[test]
     fn test_do_file_create() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             // Create a temp file for testing
             let tmp = std::env::temp_dir().join("rport_test_file_conn.txt");
@@ -2428,7 +2439,7 @@ mod tests {
 
     #[test]
     fn test_do_raw_connection() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             // Create a raw vector
             let raw = Rf_allocVector(SEXPTYPE::RAWSXP.0, 5);
@@ -2468,7 +2479,7 @@ mod tests {
 
     #[test]
     fn test_do_text_connection() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             // Create a text vector
             let text = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
@@ -2515,7 +2526,7 @@ mod tests {
 
     #[test]
     fn test_do_isopen() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             R_InitConnections();
             // stdin should be open
@@ -2538,7 +2549,7 @@ mod tests {
 
     #[test]
     fn test_do_show_connections() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             R_InitConnections();
             let all_sxp = Rf_ScalarLogical(1);
@@ -2557,7 +2568,7 @@ mod tests {
 
     #[test]
     fn test_do_gzfile_stub() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             let tmp = std::env::temp_dir().join("rport_test_gz.txt");
             {
@@ -2589,7 +2600,7 @@ mod tests {
 
     #[test]
     fn test_readbin_from_raw() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             // Create a raw vector with some bytes
             let raw = Rf_allocVector(SEXPTYPE::RAWSXP.0, 8);
@@ -2635,7 +2646,7 @@ mod tests {
 
     #[test]
     fn test_writebin_to_raw_connection() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             // Create a raw output connection
             let desc_sxp = Rf_mkString(CString::new("test_write_raw").unwrap().as_ptr());
@@ -2705,7 +2716,7 @@ mod tests {
 
     #[test]
     fn test_sink_number() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             let type_sxp = Rf_ScalarLogical(0);
             Rf_protect(type_sxp);
@@ -2722,7 +2733,7 @@ mod tests {
 
     #[test]
     fn test_conn_new_api() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             R_InitConnections();
 
@@ -2739,7 +2750,7 @@ mod tests {
 
     #[test]
     fn test_open_file_read_lines() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             // Create a temp file
             let tmp = std::env::temp_dir().join("rport_test_readlines.txt");
@@ -2838,7 +2849,7 @@ mod tests {
 
     #[test]
     fn test_write_lines_to_file() {
-        reset_connections();
+        let _lock = reset_connections();
         unsafe {
             let tmp = std::env::temp_dir().join("rport_test_writelines.txt");
 

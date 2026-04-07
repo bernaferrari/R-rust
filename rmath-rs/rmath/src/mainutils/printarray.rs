@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/printarray.c -- matrix and array printing.
 //!
@@ -54,11 +53,11 @@ type Rbyte = u8;
 // R_print full parameters -- imported from printvector
 // ---------------------------------------------------------------------------
 
-use crate::mainutils::printvector::R_PrintData;
+use crate::mainutils::printvector::{MutPtr, R_PrintData};
 
 /// Get the global R_print parameters.
-unsafe fn get_R_print_full() -> &'static R_PrintData {
-    unsafe { crate::mainutils::printvector::get_R_PrintData() }
+unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
+    crate::mainutils::printvector::get_R_PrintData()
 }
 
 // ---------------------------------------------------------------------------
@@ -138,8 +137,9 @@ unsafe extern "C" {
         rn: *mut *const c_char,
         cn: *mut *const c_char,
     );
-    fn getAttrib(x: SEXP, which: SEXP) -> SEXP;
 }
+
+use crate::eval::attrib_core::getAttrib;
 
 // ---------------------------------------------------------------------------
 // NA_STRING -- sentinel; R_NilValue is used since real NA_STRING CHARSXP
@@ -317,7 +317,7 @@ unsafe fn MatrixRowLabel(rl: SEXP, i: c_int, rlabw: c_int, lbloff: c_int) {
         } else {
             let iw = IndexWidth((i + 1) as R_xlen_t);
             let pad = rlabw - 3 - iw;
-            eprint!("\n");
+            eprintln!();
             if pad > 0 {
                 eprint!("{:width$}", "", width = pad as usize);
             }
@@ -381,7 +381,7 @@ unsafe fn print_row_header(cn: *const c_char, rlabw: c_int, rn: *const c_char) {
         if !cn.is_null() {
             let cn_cstr = std::ffi::CStr::from_ptr(cn);
             let s = cn_cstr.to_str().unwrap_or("");
-            eprint!("{:width$}\n", s, width = rlabw as usize);
+            eprintln!("{:width$}", s, width = rlabw as usize);
         }
         if !rn.is_null() {
             let rn_cstr = std::ffi::CStr::from_ptr(rn);
@@ -794,7 +794,7 @@ unsafe fn print_complex_matrix(
                         for j in jmin..jmax {
                             let cx = *x.offset((j as c_int * r + i as c_int) as isize);
                             let s = if R_IsNA(cx.r) || R_IsNA(cx.i) {
-                                EncodeReal0(std::f64::NAN, w[j], 0, 0, dec_ptr)
+                                EncodeReal0(f64::NAN, w[j], 0, 0, dec_ptr)
                             } else {
                                 EncodeComplex(
                                     cx,
@@ -1154,6 +1154,7 @@ pub unsafe fn printMatrix(
 // printArray -- print an n-dimensional array (#[unsafe(no_mangle)] export)
 // ---------------------------------------------------------------------------
 
+#[allow(clippy::if_same_then_else)]
 pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimnames: SEXP) {
     unsafe {
         if x.is_null() || dim.is_null() {
@@ -1190,8 +1191,8 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
         let mut dn1: SEXP = R_NilValue();
         let mut dnn: SEXP = R_NilValue();
         let mut has_dnn = false;
-        let mut rn: *const c_char = ptr::null();
-        let mut cn: *const c_char = ptr::null();
+        let rn: *const c_char = ptr::null();
+        let cn: *const c_char = ptr::null();
 
         if has_dimnames {
             dn0 = VECTOR_ELT(dimnames, 0);
@@ -1210,7 +1211,7 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
 
         let max_reached = b > 0 && rp.max / b < nb;
         let mut nb_pr: c_int;
-        let mut ne_last: c_int;
+        let ne_last: c_int;
         let mut nc_last: c_int;
         let mut nr_last: c_int;
 
@@ -1301,11 +1302,11 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
                 let omitted = nb - nb_pr;
                 eprint!(" {} slice{}", omitted, if omitted == 1 { "" } else { "s" });
             } else if (nb_pr as c_int) == nb {
-                let mut nr_rem = nr - nr_last;
+                let nr_rem = nr - nr_last;
                 if nr_rem > 0 {
                     eprint!(" {} row{}", nr_rem, if nr_rem == 1 { "" } else { "s" });
                 }
-                let mut nc_rem = nc - nc_last;
+                let nc_rem = nc - nc_last;
                 if nc_rem > 0 {
                     eprint!(" {} column{}", nc_rem, if nc_rem == 1 { "" } else { "s" });
                 }

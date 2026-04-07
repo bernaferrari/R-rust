@@ -22,52 +22,112 @@ use super::symbol::Rf_install;
 
 /// Get the "class" symbol.
 pub unsafe fn R_ClassSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("class")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "names" symbol.
 pub unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "dim" symbol.
 pub unsafe fn R_DimSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dim")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "dimnames" symbol.
 pub unsafe fn R_DimNamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dimnames")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "levels" symbol.
 pub unsafe fn R_LevelsSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("levels").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("levels")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "tsp" symbol.
 pub unsafe fn R_TspSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("tsp")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "srcref" symbol.
 pub unsafe fn R_SrcRefSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("srcref").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("srcref")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "srcfile" symbol.
 pub unsafe fn R_SrcFileSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("srcfile").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("srcfile")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "row.names" symbol.
 pub unsafe fn R_RowNamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("row.names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("row.names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the ".Environment" symbol.
 pub unsafe fn R_EnvironmentSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new(".Environment").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new(".Environment")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -78,7 +138,8 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
 ///
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
-pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || which.is_null() {
             return R_NilValue();
@@ -225,7 +286,11 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 19 => "list",
                 _ => "unknown",
             };
-            return Rf_mkString(std::ffi::CString::new(name).unwrap().as_ptr());
+            return Rf_mkString(
+                std::ffi::CString::new(name)
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            );
         }
         class_val
     }
@@ -238,7 +303,11 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
 /// Get the length of an object via the "length" attribute.
 pub unsafe fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
-        let len_sym = Rf_install(std::ffi::CString::new("length").unwrap().as_ptr());
+        let len_sym = Rf_install(
+            std::ffi::CString::new("length")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
         let val = getAttrib(x, len_sym);
         if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP.0 {
             let data = super::accessors::INTEGER(val);
@@ -276,6 +345,7 @@ pub unsafe extern "C" fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ptr;
 
     #[test]
     fn test_get_attrib_null() {

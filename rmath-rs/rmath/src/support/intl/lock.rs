@@ -13,8 +13,9 @@
 
 #![allow(non_snake_case, dead_code)]
 
+use std::cell::Cell;
 use std::os::raw::c_int;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 // ---------------------------------------------------------------------------
 // gl_lock_t -- Simple lock (stub, no-op in standalone mode)
@@ -225,25 +226,19 @@ mod tests {
     #[test]
     fn test_once_initialization() {
         unsafe {
-            static mut INIT_CALLED: AtomicBool = AtomicBool::new(false);
+            thread_local! { static INIT_CALLED: Cell<AtomicBool> = Cell::new(AtomicBool::new(false)); }
             unsafe extern "C" fn init_fn() {
-                (*std::ptr::addr_of!(INIT_CALLED)).store(true, Ordering::Relaxed);
+                INIT_CALLED.with(|v| v.get().store(true, Ordering::Relaxed));
             }
 
             let mut once = gl_once_t::new();
             glthread_once(&mut once, Some(init_fn));
-            assert_eq!(
-                (*std::ptr::addr_of!(INIT_CALLED)).load(Ordering::Relaxed),
-                true
-            );
+            assert_eq!(INIT_CALLED.with(|v| v.get().load(Ordering::Relaxed)), true);
 
             // Calling again should not re-initialize.
-            (*std::ptr::addr_of!(INIT_CALLED)).store(false, Ordering::Relaxed);
+            INIT_CALLED.with(|v| v.get().store(false, Ordering::Relaxed));
             glthread_once(&mut once, Some(init_fn));
-            assert_eq!(
-                (*std::ptr::addr_of!(INIT_CALLED)).load(Ordering::Relaxed),
-                false
-            );
+            assert_eq!(INIT_CALLED.with(|v| v.get().load(Ordering::Relaxed)), false);
         }
     }
 

@@ -9,6 +9,7 @@
 
 #![allow(non_snake_case, dead_code)]
 
+use std::cell::Cell;
 use std::env;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
@@ -20,8 +21,7 @@ use super::types::*;
 // Internal state
 // ---------------------------------------------------------------------------
 
-/// Cached locale name for LC_MESSAGES.
-static mut _nl_locale_name_message: *mut c_char = ptr::null_mut();
+thread_local! { static _nl_locale_name_message: Cell<*mut c_char> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Internal helper: get locale from environment
@@ -178,8 +178,8 @@ unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
 pub unsafe extern "C" fn _nl_locale_name(category: c_int) -> *const c_char {
     unsafe {
         // For LC_MESSAGES, use the cached value.
-        if category == LC_MESSAGES && !_nl_locale_name_message.is_null() {
-            return _nl_locale_name_message;
+        if category == LC_MESSAGES && !_nl_locale_name_message.with(|v| v.get()).is_null() {
+            return _nl_locale_name_message.with(|v| v.get());
         }
 
         let result = get_locale_from_cf(category);
@@ -187,10 +187,10 @@ pub unsafe extern "C" fn _nl_locale_name(category: c_int) -> *const c_char {
         if category == LC_MESSAGES {
             // Cache the result.
             if !result.is_null() {
-                _nl_locale_name_message = super::types::c_strdup(result);
+                _nl_locale_name_message.with(|v| v.set(super::types::c_strdup(result)));
             }
-            return if !_nl_locale_name_message.is_null() {
-                _nl_locale_name_message
+            return if !_nl_locale_name_message.with(|v| v.get()).is_null() {
+                _nl_locale_name_message.with(|v| v.get())
             } else {
                 result
             };

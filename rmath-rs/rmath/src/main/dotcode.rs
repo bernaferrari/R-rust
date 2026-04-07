@@ -12,6 +12,7 @@
 //!   - R_doDotCall   -- internal dispatcher for .Call
 //!   - R_dotCallFn   -- resolve .Call entry point
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -137,11 +138,11 @@ impl R_RegisteredNativeSymbol {
 // Static symbols (set during first call to do_dotCode)
 // ---------------------------------------------------------------------------
 
-static mut NaokSymbol: SEXP = ptr::null_mut();
-static mut DupSymbol: SEXP = ptr::null_mut();
-static mut PkgSymbol: SEXP = ptr::null_mut();
-static mut EncSymbol: SEXP = ptr::null_mut();
-static mut CSingSymbol: SEXP = ptr::null_mut();
+thread_local! { static NaokSymbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static DupSymbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static PkgSymbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static EncSymbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+thread_local! { static CSingSymbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // check1arg2
@@ -193,14 +194,18 @@ unsafe fn checkValidSymbolId(
         }
 
         if TYPEOF(op) == SEXPTYPE::EXTPTRSXP.0 {
-            static mut native_symbol: SEXP = ptr::null_mut();
-            static mut registered_native_symbol: SEXP = ptr::null_mut();
-            if native_symbol.is_null() {
-                native_symbol = Rf_install(b"native symbol\0".as_ptr() as *const c_char);
-                registered_native_symbol =
-                    Rf_install(b"registered native symbol\0".as_ptr() as *const c_char);
+            thread_local! { static native_symbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+            thread_local! { static registered_native_symbol: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+            if native_symbol.with(|v| v.get()).is_null() {
+                native_symbol
+                    .with(|v| v.set(Rf_install(b"native symbol\0".as_ptr() as *const c_char)));
+                registered_native_symbol.with(|v| {
+                    v.set(Rf_install(
+                        b"registered native symbol\0".as_ptr() as *const c_char
+                    ))
+                });
             }
-            if R_ExternalPtrTag(op) == native_symbol {
+            if R_ExternalPtrTag(op) == native_symbol.with(|v| v.get()) {
                 let addr = R_ExternalPtrAddr(op);
                 if !addr.is_null() {
                     // SAFETY: addr is a function pointer obtained from R_ExternalPtrAddr,
@@ -208,7 +213,7 @@ unsafe fn checkValidSymbolId(
                     // a function pointer via transmute_copy is the standard pattern for .C/.Call.
                     *fun = Some(std::mem::transmute_copy(&addr));
                 }
-            } else if R_ExternalPtrTag(op) == registered_native_symbol {
+            } else if R_ExternalPtrTag(op) == registered_native_symbol.with(|v| v.get()) {
                 let tmp = R_ExternalPtrAddr(op) as *const R_RegisteredNativeSymbol;
                 if !tmp.is_null() {
                     if symbol.sym_type != R_ANY_SYM && symbol.sym_type != (*tmp).sym_type {
@@ -263,7 +268,7 @@ unsafe fn comparePrimitiveTypes(type_: c_int, s: SEXP) -> bool {
             return true;
         }
         if type_ == SINGLESXP {
-            return asLogical(getAttrib(s, CSingSymbol)) == 1;
+            return asLogical(getAttrib(s, CSingSymbol.with(|v| v.get()))) == 1;
         }
         false
     }
@@ -292,18 +297,18 @@ unsafe fn naokfind(
         let mut prev = args;
 
         while s != R_NilValue() {
-            if TAG(s) == NaokSymbol {
+            if TAG(s) == NaokSymbol.with(|v| v.get()) {
                 *naok = asLogical(CAR(s));
                 if _naokused == 1 {
                     Rf_warning(b"'%s' used more than once\0".as_ptr() as *const c_char);
                 }
                 _naokused += 1;
-            } else if TAG(s) == DupSymbol {
+            } else if TAG(s) == DupSymbol.with(|v| v.get()) {
                 if _dupused == 1 {
                     Rf_warning(b"'%s' used more than once\0".as_ptr() as *const c_char);
                 }
                 _dupused += 1;
-            } else if TAG(s) == PkgSymbol {
+            } else if TAG(s) == PkgSymbol.with(|v| v.get()) {
                 dll.obj = CAR(s);
                 if TYPEOF(CAR(s)) == SEXPTYPE::STRSXP.0 {
                     let p = translateChar(STRING_ELT(CAR(s), 0));
@@ -388,14 +393,14 @@ unsafe fn setDLLname(s: SEXP, DLLname: &mut [c_char]) {
 unsafe fn pkgtrim(args: SEXP, dll: &mut DllReference) -> SEXP {
     unsafe {
         let mut pkgused: c_int = 0;
-        if PkgSymbol.is_null() {
-            PkgSymbol = Rf_install(b"PACKAGE\0".as_ptr() as *const c_char);
+        if PkgSymbol.with(|v| v.get()).is_null() {
+            PkgSymbol.with(|v| v.set(Rf_install(b"PACKAGE\0".as_ptr() as *const c_char)));
         }
 
         let mut s = args;
         while s != R_NilValue() {
             let ss = CDR(s);
-            if ss == R_NilValue() && TAG(s) == PkgSymbol {
+            if ss == R_NilValue() && TAG(s) == PkgSymbol.with(|v| v.get()) {
                 if pkgused == 1 {
                     Rf_warning(b"'%s' used more than once\0".as_ptr() as *const c_char);
                 }
@@ -404,7 +409,7 @@ unsafe fn pkgtrim(args: SEXP, dll: &mut DllReference) -> SEXP {
                 pkgused += 1;
                 return R_NilValue();
             }
-            if !ss.is_null() && TAG(ss) == PkgSymbol {
+            if !ss.is_null() && TAG(ss) == PkgSymbol.with(|v| v.get()) {
                 if pkgused == 1 {
                     Rf_warning(b"'%s' used more than once\0".as_ptr() as *const c_char);
                 }
@@ -428,11 +433,11 @@ unsafe fn enctrim(args: SEXP) -> SEXP {
         let mut s = args;
         while s != R_NilValue() {
             let ss = CDR(s);
-            if ss == R_NilValue() && TAG(s) == EncSymbol {
+            if ss == R_NilValue() && TAG(s) == EncSymbol.with(|v| v.get()) {
                 Rf_warning(b"ENCODING is defunct and will be ignored\0".as_ptr() as *const c_char);
                 return R_NilValue();
             }
-            if !ss.is_null() && TAG(ss) == EncSymbol {
+            if !ss.is_null() && TAG(ss) == EncSymbol.with(|v| v.get()) {
                 Rf_warning(b"ENCODING is defunct and will be ignored\0".as_ptr() as *const c_char);
                 SETCDR(s, CDR(ss));
             }
@@ -448,11 +453,11 @@ unsafe fn enctrim(args: SEXP) -> SEXP {
 
 unsafe fn check_retval(call: SEXP, mut val: SEXP) -> SEXP {
     unsafe {
-        static mut inited: bool = false;
-        static mut do_check: bool = false;
+        thread_local! { static inited: Cell<bool> = Cell::new(false); }
+        thread_local! { static do_check: Cell<bool> = Cell::new(false); }
 
-        if !inited {
-            inited = true;
+        if !inited.with(|v| v.get()) {
+            inited.with(|v| v.set(true));
             let env_ptr = libc::getenv(b"_R_CHECK_DOTCODE_RETVAL_\0".as_ptr() as *const c_char);
             if !env_ptr.is_null() {
                 let p = std::ffi::CStr::from_ptr(env_ptr);
@@ -464,13 +469,13 @@ unsafe fn check_retval(call: SEXP, mut val: SEXP) -> SEXP {
                         || first == b'y'
                         || first == b'1'
                     {
-                        do_check = true;
+                        do_check.with(|v| v.set(true));
                     }
                 }
             }
         }
 
-        if do_check {
+        if do_check.with(|v| v.get()) {
             let val_addr = val as usize;
             if val_addr < 16 {
                 errorcall(call, b"WEIRD RETURN VALUE\0".as_ptr() as *const c_char);
@@ -1080,20 +1085,20 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, mut args: SEXP, env: SEXP) -> SEX
         let mut symName: [c_char; MaxSymbolBytes] = [0; MaxSymbolBytes];
 
         // Initialize static symbols
-        if NaokSymbol.is_null() {
-            NaokSymbol = Rf_install(b"NAOK\0".as_ptr() as *const c_char);
+        if NaokSymbol.with(|v| v.get()).is_null() {
+            NaokSymbol.with(|v| v.set(Rf_install(b"NAOK\0".as_ptr() as *const c_char)));
         }
-        if DupSymbol.is_null() {
-            DupSymbol = Rf_install(b"DUP\0".as_ptr() as *const c_char);
+        if DupSymbol.with(|v| v.get()).is_null() {
+            DupSymbol.with(|v| v.set(Rf_install(b"DUP\0".as_ptr() as *const c_char)));
         }
-        if PkgSymbol.is_null() {
-            PkgSymbol = Rf_install(b"PACKAGE\0".as_ptr() as *const c_char);
+        if PkgSymbol.with(|v| v.get()).is_null() {
+            PkgSymbol.with(|v| v.set(Rf_install(b"PACKAGE\0".as_ptr() as *const c_char)));
         }
-        if EncSymbol.is_null() {
-            EncSymbol = Rf_install(b"ENCODING\0".as_ptr() as *const c_char);
+        if EncSymbol.with(|v| v.get()).is_null() {
+            EncSymbol.with(|v| v.set(Rf_install(b"ENCODING\0".as_ptr() as *const c_char)));
         }
-        if CSingSymbol.is_null() {
-            CSingSymbol = Rf_install(b"Csingle\0".as_ptr() as *const c_char);
+        if CSingSymbol.with(|v| v.get()).is_null() {
+            CSingSymbol.with(|v| v.set(Rf_install(b"Csingle\0".as_ptr() as *const c_char)));
         }
 
         if length(args) < 1 {

@@ -107,7 +107,7 @@ type Rboolean = c_int;
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GE_isPattern(x: SEXP) -> Rboolean {
     unsafe {
-        let pat = std::ffi::CString::new("Pattern").unwrap();
+        let pat = std::ffi::CString::new("Pattern").expect("CString::new failed: contains null byte");
         Rf_inherits(x, pat.as_ptr())
     }
 }

@@ -27,7 +27,6 @@ use super::accessors::{CHAR, PRINTNAME, SET_FRAME, SET_PRVALUE, SETCAR, SETCDR, 
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
-use super::memory;
 use super::memory_ext::NewEnvironment;
 use super::safe::{PairlistIter, Sexp};
 use super::symbol::Rf_install;
@@ -90,11 +89,10 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
             return Some(val);
         }
 
-        if let Some(sym_val) = symbol.symvalue() {
-            if sym_val.typeof_() == SEXPTYPE::SPECIALSXP {
+        if let Some(sym_val) = symbol.symvalue()
+            && sym_val.typeof_() == SEXPTYPE::SPECIALSXP {
                 return Some(sym_val);
             }
-        }
 
         current = current.enclos()?;
     }
@@ -289,7 +287,10 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>
             result_tail = Some(cell);
         } else {
             unsafe {
-                SETCDR(result_tail.unwrap().as_raw(), cell.as_raw());
+                SETCDR(
+                    result_tail.expect("unwrap on None/Err").as_raw(),
+                    cell.as_raw(),
+                );
             }
             result_tail = Some(cell);
         }
@@ -315,13 +316,11 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
         return true;
     }
 
-    if val.typeof_() == SEXPTYPE::PROMSXP {
-        if let Some(expr) = val.prcode() {
-            if expr == missing_arg {
+    if val.typeof_() == SEXPTYPE::PROMSXP
+        && let Some(expr) = val.prcode()
+            && expr == missing_arg {
                 return true;
             }
-        }
-    }
 
     false
 }
@@ -634,7 +633,7 @@ pub unsafe extern "C" fn R_typeToChar(stype: c_int) -> SEXP {
         25 => "S4",
         _ => "unknown",
     };
-    let _cs = std::ffi::CString::new(_name).unwrap();
+    let _cs = std::ffi::CString::new(_name).expect("CString::new failed: contains null byte");
     ptr::null_mut()
 }
 
@@ -653,12 +652,11 @@ pub unsafe extern "C" fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
 ///
 /// FFI wrapper around [`check_formals_safe`].
 pub unsafe fn CheckFormals(formals: SEXP) {
-    if let Some(formals) = Sexp::from_raw(formals) {
-        if let Err(msg) = check_formals_safe(formals) {
+    if let Some(formals) = Sexp::from_raw(formals)
+        && let Err(msg) = check_formals_safe(formals) {
             eprintln!("Error: {}", msg);
             std::panic::panic_any(crate::sexp::context::RError { message: msg });
         }
-    }
 }
 
 /// Add missing variable bindings for unprovided arguments.
@@ -835,13 +833,11 @@ mod tests {
 
     #[test]
     fn test_safe_find_var_in_frame() {
-        unsafe {
-            let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sexp_env = Sexp::from_raw(env).unwrap();
+        let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
+        let sexp_env = Sexp::from_raw(env).unwrap();
 
-            let result = find_var_in_frame_safe(sexp_env, sexp_env);
-            assert!(result.is_none());
-        }
+        let result = find_var_in_frame_safe(sexp_env, sexp_env);
+        assert!(result.is_none());
     }
 
     #[test]

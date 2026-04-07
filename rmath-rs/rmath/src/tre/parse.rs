@@ -1,6 +1,4 @@
 #![allow(unreachable_code)]
-#![allow(unreachable_code)]
-#![allow(unused_variables)]
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
 /*
@@ -182,7 +180,7 @@ fn tre_ctype(name: &str) -> tre_ctype_t {
         // SAFETY: fn pointer -> *const () -> usize roundtrip. tre_ctype_t is usize,
         // used as an opaque handle. The roundtrip is lossless on all supported platforms
         // (fn pointers fit in usize).
-        Some(f) => unsafe { std::mem::transmute(f as *const ()) },
+        Some(f) => f as *const () as usize,
         None => 0,
     }
 }
@@ -335,6 +333,7 @@ unsafe fn tre_expand_ctype(
     }
 }
 
+#[allow(clippy::if_same_then_else)]
 unsafe fn tre_parse_bracket_items(
     ctx: &mut tre_parse_ctx_t,
     negate: c_int,
@@ -404,14 +403,9 @@ unsafe fn tre_parse_bracket_items(
                         if class == 0 {
                             status = REG_ECTYPE;
                         }
-                        if status == REG_OK && (*ctx).cur_max == 1 {
+                        if status == REG_OK && ctx.cur_max == 1 {
                             status = tre_expand_ctype(
-                                ctx.mem,
-                                class,
-                                items,
-                                &mut i,
-                                &mut max_i,
-                                (*ctx).cflags,
+                                ctx.mem, class, items, &mut i, &mut max_i, ctx.cflags,
                             );
                             class = 0;
                             skip = 1;
@@ -462,11 +456,11 @@ unsafe fn tre_parse_bracket_items(
                     (*lit).set_class(class);
                 }
 
-                if (*ctx).cflags & REG_ICASE != 0 && class == 0 && status == REG_OK && skip == 0 {
+                if ctx.cflags & REG_ICASE != 0 && class == 0 && status == REG_OK && skip == 0 {
                     let mut m = min;
                     while m <= max {
                         if tre_islower(m) {
-                            let mut cmin = tre_toupper(m);
+                            let cmin = tre_toupper(m);
                             let mut ccurr = cmin;
                             m += 1;
                             while m <= max && tre_islower(m) && tre_toupper(m) == ccurr + 1 {
@@ -482,7 +476,7 @@ unsafe fn tre_parse_bracket_items(
                                 items,
                             );
                         } else if tre_isupper(m) {
-                            let mut cmin = tre_tolower(m);
+                            let cmin = tre_tolower(m);
                             let mut ccurr = cmin;
                             m += 1;
                             while m <= max && tre_isupper(m) && tre_tolower(m) == ccurr + 1 {
@@ -512,7 +506,7 @@ unsafe fn tre_parse_bracket_items(
         }
         *num_items = i;
         *items_size = max_i;
-        (*ctx).re = re;
+        ctx.re = re;
         status
     }
 }
@@ -585,8 +579,8 @@ unsafe fn tre_parse_bracket(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast
                 break;
             }
             let l = (**items.offset(j)).obj as *mut tre_literal_t;
-            let mut min = (*l).code_min as c_int;
-            let mut max = (*l).code_max as c_int;
+            let min = (*l).code_min as c_int;
+            let max = (*l).code_max as c_int;
             let mut use_item = true;
 
             if negate != 0 {
@@ -699,6 +693,7 @@ unsafe fn tre_parse_int(regex: &mut *const tre_char_t, regex_end: *const tre_cha
     }
 }
 
+#[allow(clippy::if_same_then_else)]
 unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_node_t) -> c_int {
     unsafe {
         let mut min: c_int;
@@ -772,9 +767,8 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
                         ctx.re = ctx.re.add(1);
                     } else if c == CHAR_SPACE {
                         ctx.re = ctx.re.add(1);
-                    } else if c == CHAR_RCURLY {
-                        done = true;
                     } else {
+                        let _ = c == CHAR_RCURLY;
                         done = true;
                     }
                 }
@@ -917,16 +911,16 @@ unsafe fn tre_parse_bound(ctx: &mut tre_parse_ctx_t, result: &mut *mut tre_ast_n
                     return REG_ESPACE;
                 }
                 for i in 0..TRE_PARAM_LAST {
-                    *params.offset(i as isize) = TRE_PARAM_UNSET;
+                    *params.add(i) = TRE_PARAM_UNSET;
                 }
-                *params.offset(TRE_PARAM_COST_INS as isize) = cost_ins;
-                *params.offset(TRE_PARAM_COST_DEL as isize) = cost_del;
-                *params.offset(TRE_PARAM_COST_SUBST as isize) = cost_subst;
-                *params.offset(TRE_PARAM_COST_MAX as isize) = cost_max;
-                *params.offset(TRE_PARAM_MAX_INS as isize) = limit_ins;
-                *params.offset(TRE_PARAM_MAX_DEL as isize) = limit_del;
-                *params.offset(TRE_PARAM_MAX_SUBST as isize) = limit_subst;
-                *params.offset(TRE_PARAM_MAX_ERR as isize) = limit_err;
+                *params.add(TRE_PARAM_COST_INS) = cost_ins;
+                *params.add(TRE_PARAM_COST_DEL) = cost_del;
+                *params.add(TRE_PARAM_COST_SUBST) = cost_subst;
+                *params.add(TRE_PARAM_COST_MAX) = cost_max;
+                *params.add(TRE_PARAM_MAX_INS) = limit_ins;
+                *params.add(TRE_PARAM_MAX_DEL) = limit_del;
+                *params.add(TRE_PARAM_MAX_SUBST) = limit_subst;
+                *params.add(TRE_PARAM_MAX_ERR) = limit_err;
                 let iter = (**result).obj as *mut tre_iteration_t;
                 (*iter).params = params;
             }
@@ -974,7 +968,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
         }
         stack::tre_stack_push_int(stack, tre_parse_re_stack_symbol_t::PARSE_RE as c_int);
         ctx.re_start = ctx.re;
-        ctx.re_end = ctx.re.offset(ctx.len as isize);
+        ctx.re_end = ctx.re.add(ctx.len);
 
         while stack::tre_stack_num_objects(stack) > bottom && status == REG_OK {
             let symbol = stack::tre_stack_pop_int(stack);
@@ -1606,7 +1600,7 @@ pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
         }
 
         if status == REG_OK {
-            (*ctx).result = result;
+            ctx.result = result;
         }
 
         status
@@ -1634,8 +1628,8 @@ unsafe fn parse_literal(
         }
 
         // Check for empty expression
-        if ctx.cflags & REG_LITERAL == 0 {
-            if ctx.re >= ctx.re_end
+        if ctx.cflags & REG_LITERAL == 0
+            && (ctx.re >= ctx.re_end
                 || *ctx.re == CHAR_STAR
                 || (ctx.cflags & REG_EXTENDED != 0
                     && (*ctx.re == CHAR_PIPE
@@ -1645,15 +1639,14 @@ unsafe fn parse_literal(
                 || (ctx.cflags & REG_EXTENDED == 0
                     && ctx.re.add(1) < ctx.re_end
                     && *ctx.re == CHAR_BACKSLASH
-                    && *ctx.re.add(1) == CHAR_LBRACE)
-            {
-                let node = tre_ast_new_literal(ctx.mem, EMPTY as c_int, -1, -1);
-                if node.is_null() {
-                    *status = REG_ESPACE;
-                    return ptr::null_mut();
-                }
-                return node;
+                    && *ctx.re.add(1) == CHAR_LBRACE))
+        {
+            let node = tre_ast_new_literal(ctx.mem, EMPTY as c_int, -1, -1);
+            if node.is_null() {
+                *status = REG_ESPACE;
+                return ptr::null_mut();
             }
+            return node;
         }
 
         // R change: literal empty

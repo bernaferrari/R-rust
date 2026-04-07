@@ -106,7 +106,7 @@ pub unsafe fn inttomb(s: *mut c_char, wc: c_int) -> usize {
         }
 
         let mut j = i as isize;
-        let mut bp = b.offset(i as isize);
+        let mut bp = b.add(i);
         while j > 0 {
             j -= 1;
             *bp = (0x80 | (cvalue & 0x3F)) as c_char;

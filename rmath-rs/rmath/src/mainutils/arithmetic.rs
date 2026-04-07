@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/arithmetic.c — arithmetic utility functions.
 //!
@@ -20,13 +20,11 @@ use std::os::raw::c_int;
 
 use crate::fprec::{fprec, fround};
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, NAMED, REAL, SET_NAMED, TYPEOF,
-    XLENGTH,
+    CADR, CAR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, NAMED, REAL, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::Rcomplex;
-use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecData};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::protect::Rf_protect;
 use crate::special::cospi::{cospi, sinpi, tanpi};
 use crate::special::gamma::{gammafn, lgammafn};
@@ -38,6 +36,7 @@ use crate::special::polygamma::{digamma, trigamma};
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (NaN with specific bit pattern).
+#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 pub const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
 
 /// IEEE double epsilon (machine epsilon).

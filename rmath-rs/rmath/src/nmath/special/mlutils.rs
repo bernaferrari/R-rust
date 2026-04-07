@@ -116,8 +116,9 @@ pub extern "C" fn R_pow_di(x: f64, n: i32) -> f64 {
 }
 
 /// R's NA_REAL constant (a specific NaN).
+/// Immutable: this value is initialized once and never mutated.
 #[unsafe(no_mangle)]
-pub static mut NA_REAL: f64 = ML_NAN;
+pub static NA_REAL: f64 = ML_NAN;
 
 /// R_PosInf constant.
 #[unsafe(no_mangle)]

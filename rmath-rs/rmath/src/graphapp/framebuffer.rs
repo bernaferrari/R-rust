@@ -13,7 +13,6 @@
 use std::os::raw::{c_int, c_ulong, c_void};
 use std::ptr;
 
-use super::memory;
 use super::types::*;
 
 /// RGBA pixel stored as 4 bytes (R, G, B, A).
@@ -191,8 +190,8 @@ impl Framebuffer {
         let mut y = y0;
         let dx = (x1 - x0).abs();
         let dy = -(y1 - y0).abs();
-        let mut sx = if x0 < x1 { 1 } else { -1 };
-        let mut sy = if y0 < y1 { 1 } else { -1 };
+        let sx = if x0 < x1 { 1 } else { -1 };
+        let sy = if y0 < y1 { 1 } else { -1 };
         let mut err = dx + dy;
 
         loop {
@@ -261,7 +260,7 @@ impl Framebuffer {
         for i in 0..=steps {
             let theta = 2.0 * std::f64::consts::PI * (i as f64) / (steps as f64);
             let py = cy + (ry as f64 * theta.sin()).round() as c_int;
-            let px = cx + (rx as f64 * theta.cos()).round() as c_int;
+            let _px = cx + (rx as f64 * theta.cos()).round() as c_int;
             if py < min_y {
                 min_y = py;
             }
@@ -343,10 +342,10 @@ impl Framebuffer {
         let end_rad = (end_deg as f64) * std::f64::consts::PI / 180.0;
 
         // Draw filled triangle from center
-        let x0 = cx + (rx as f64 * start_rad.cos()).round() as c_int;
-        let y0 = cy + (ry as f64 * start_rad.sin()).round() as c_int;
-        let x1 = cx + (rx as f64 * end_rad.cos()).round() as c_int;
-        let y1 = cy + (ry as f64 * end_rad.sin()).round() as c_int;
+        let _x0 = cx + (rx as f64 * start_rad.cos()).round() as c_int;
+        let _y0 = cy + (ry as f64 * start_rad.sin()).round() as c_int;
+        let _x1 = cx + (rx as f64 * end_rad.cos()).round() as c_int;
+        let _y1 = cy + (ry as f64 * end_rad.sin()).round() as c_int;
 
         // Scan-line fill the pie
         let mut angles = vec![(start_rad, end_rad)];
@@ -370,7 +369,7 @@ impl Framebuffer {
         }
 
         for y in all_y_min..=all_y_max {
-            let dy = (y - cy) as f64;
+            let _dy = (y - cy) as f64;
             let mut x_left = cx as f64;
             let mut x_right = cx as f64;
 
@@ -433,7 +432,7 @@ impl Framebuffer {
                 }
             }
 
-            intersections.sort();
+            intersections.sort_unstable();
 
             // Fill between pairs
             for k in (0..intersections.len()).step_by(2) {
@@ -591,9 +590,25 @@ impl Framebuffer {
     }
 }
 
+#[repr(transparent)]
+pub struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
 /// Extract a Framebuffer pointer from an ObjInfo's handle field.
 #[inline]
-pub unsafe fn get_framebuffer(obj: objptr) -> Option<&'static mut Framebuffer> {
+pub unsafe fn get_framebuffer(obj: objptr) -> Option<MutPtr<Framebuffer>> {
     unsafe {
         if obj.is_null() {
             return None;
@@ -602,7 +617,7 @@ pub unsafe fn get_framebuffer(obj: objptr) -> Option<&'static mut Framebuffer> {
         if handle.is_null() {
             return None;
         }
-        (handle as *mut Framebuffer).as_mut()
+        Some(MutPtr(handle as *mut Framebuffer))
     }
 }
 
@@ -637,7 +652,7 @@ pub unsafe fn detach_framebuffer(obj: objptr) {
     }
 }
 
-pub unsafe fn framebuffer_from_drawstate() -> Option<&'static mut Framebuffer> {
+pub unsafe fn framebuffer_from_drawstate() -> Option<MutPtr<Framebuffer>> {
     unsafe {
         let ds = super::drawing::get_current_drawstate();
         if ds.dest.is_null() {
@@ -647,12 +662,12 @@ pub unsafe fn framebuffer_from_drawstate() -> Option<&'static mut Framebuffer> {
         if handle.is_null() {
             return None;
         }
-        (handle as *mut Framebuffer).as_mut()
+        Some(MutPtr(handle as *mut Framebuffer))
     }
 }
 
 #[inline]
-pub unsafe fn framebuffer_from_drawing(d: drawing) -> Option<&'static mut Framebuffer> {
+pub unsafe fn framebuffer_from_drawing(d: drawing) -> Option<MutPtr<Framebuffer>> {
     unsafe {
         if d.is_null() {
             return None;
@@ -661,6 +676,6 @@ pub unsafe fn framebuffer_from_drawing(d: drawing) -> Option<&'static mut Frameb
         if handle.is_null() {
             return None;
         }
-        (handle as *mut Framebuffer).as_mut()
+        Some(MutPtr(handle as *mut Framebuffer))
     }
 }

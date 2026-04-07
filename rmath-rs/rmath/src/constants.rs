@@ -2,10 +2,12 @@
 
 #[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 pub const ML_POSINF: f64 = 1.0 / 0.0;
-#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 pub const ML_NEGINF: f64 = (-1.0) / 0.0;
-#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-pub const ML_NAN: f64 = 0.0 / 0.0;
+pub const ML_NAN: f64 = f64::NAN;
+
+pub const _M_LN_2PI: f64 = 1.837877066409345483560659472811;
+pub const M_SQRT_2PI: f64 = 2.50662827463100050241576528481104525301;
+pub const M_2PI: f64 = 6.283185307179586476925286766559;
 
 pub const ML_VALID: u32 = 0;
 pub const ME_DOMAIN: u32 = 1;

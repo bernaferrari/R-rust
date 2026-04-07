@@ -16,8 +16,7 @@
 
 use crate::sexp::ffi::SEXP;
 
-use std::fs::File;
-use std::io::{self, BufRead, BufReader, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::os::raw::c_int;
 
 // ---------------------------------------------------------------------------
@@ -124,7 +123,7 @@ pub fn R_ReadMagic(fp: &mut impl Read) -> c_int {
 pub fn defaultSaveVersion() -> c_int {
     match std::env::var("R_DEFAULT_SAVE_VERSION") {
         Ok(val) => match val.trim().parse::<c_int>() {
-            Ok(2 | 3) => val.trim().parse::<c_int>().unwrap(),
+            Ok(2 | 3) => val.trim().parse::<c_int>().expect("unwrap on None/Err"),
             _ => 3,
         },
         Err(_) => 3,
@@ -153,7 +152,7 @@ pub fn OutIntegerAscii(fp: &mut impl Write, x: c_int) -> io::Result<()> {
     if x == NA_INTEGER {
         fp.write_all(b"NA")
     } else {
-        write!(fp, "{}", x).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        write!(fp, "{}", x).map_err(io::Error::other)
     }
 }
 
@@ -168,13 +167,13 @@ pub fn OutDoubleAscii(fp: &mut impl Write, x: f64) -> io::Result<()> {
             fp.write_all(b"Inf")
         }
     } else {
-        write!(fp, "{:.16}", x).map_err(|e| io::Error::new(io::ErrorKind::Other, e))
+        write!(fp, "{:.16}", x).map_err(io::Error::other)
     }
 }
 
 /// Write a string in ASCII format with escape sequences.
 pub fn OutStringAscii(fp: &mut impl Write, s: &str) -> io::Result<()> {
-    write!(fp, "{} ", s.len()).map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+    write!(fp, "{} ", s.len()).map_err(io::Error::other)?;
     for &byte in s.as_bytes() {
         match byte {
             b'\n' => fp.write_all(b"\\n")?,
@@ -190,7 +189,7 @@ pub fn OutStringAscii(fp: &mut impl Write, s: &str) -> io::Result<()> {
             _ => {
                 if byte <= 32 || byte > 126 {
                     write!(fp, "\\{:03o}", byte)
-                        .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+                        .map_err(io::Error::other)?;
                 } else {
                     fp.write_all(&[byte])?;
                 }
@@ -255,7 +254,6 @@ pub fn InDoubleAscii(reader: &mut impl BufRead) -> io::Result<f64> {
 /// Stub for `do_save` — requires SEXP.
 pub unsafe fn do_save(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::*;
         use crate::sexp::globals::R_NilValue;
 
         // save(list, file, ascii=FALSE, version=2, envir=.GlobalEnv)
@@ -397,8 +395,8 @@ mod tests {
         let mut buf = Vec::new();
         OutComplexAscii(&mut buf, 1.0, 2.0).unwrap();
         let s = String::from_utf8_lossy(&buf);
-        assert!(s.contains("1.0") || s.contains("1"));
-        assert!(s.contains("2.0") || s.contains("2"));
+        assert!(s.contains("1.0") || s.contains('1'));
+        assert!(s.contains("2.0") || s.contains('2'));
 
         buf.clear();
         OutComplexAscii(&mut buf, f64::NAN, 0.0).unwrap();

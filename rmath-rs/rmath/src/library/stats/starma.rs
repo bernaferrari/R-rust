@@ -512,14 +512,14 @@ pub unsafe extern "C" fn forkal(
     let mut ind2: c_int;
 
     /* Allocate temporary storage */
-    let store_layout = Layout::array::<c_double>(rd as usize).unwrap();
+    let store_layout = Layout::array::<c_double>(rd as usize).expect("unwrap on None/Err");
     let store = alloc(store_layout) as *mut c_double;
     if store.is_null() {
         std::alloc::handle_alloc_error(store_layout);
     }
 
     /* Allocate new a and P arrays */
-    let a_layout = Layout::array::<c_double>(rd as usize).unwrap();
+    let a_layout = Layout::array::<c_double>(rd as usize).expect("unwrap on None/Err");
     let new_a = alloc(a_layout) as *mut c_double;
     if new_a.is_null() {
         dealloc(store as *mut u8, store_layout);
@@ -527,7 +527,7 @@ pub unsafe extern "C" fn forkal(
     }
     std::ptr::write_bytes(new_a, 0, rd as usize);
 
-    let p_layout = Layout::array::<c_double>(rz as usize).unwrap();
+    let p_layout = Layout::array::<c_double>(rz as usize).expect("unwrap on None/Err");
     let new_p = alloc(p_layout) as *mut c_double;
     if new_p.is_null() {
         dealloc(new_a as *mut u8, a_layout);

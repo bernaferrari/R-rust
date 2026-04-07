@@ -6,7 +6,7 @@
 //! which is replaced with a string that makes the filename unique.
 //! The directory is created with mode 0700.
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr;
 

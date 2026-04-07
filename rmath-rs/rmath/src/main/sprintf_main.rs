@@ -15,6 +15,7 @@
 //! they are exported here with `sprintf_` prefixes so they can be reused
 //! by other ports (e.g. formatC in util.c) and by tests.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -194,18 +195,31 @@ impl RStringBuffer {
     }
 }
 
-/// Thread-local string buffer (mirrors R's static outbuff).
-static mut OUTBUFF: *mut RStringBuffer = ptr::null_mut();
+thread_local! { static OUTBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
 
-/// Ensure OUTBUFF is initialized and return a mutable reference.
-unsafe fn get_outbuff() -> &'static mut RStringBuffer {
-    unsafe {
-        if OUTBUFF.is_null() {
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target { unsafe { &*self.0 } }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target { unsafe { &mut *self.0 } }
+}
+
+unsafe fn get_outbuff() -> MutPtr<RStringBuffer> {
+    MutPtr(OUTBUFF.with(|v| {
+        if v.get().is_null() {
             let buf = Box::new(RStringBuffer::new());
-            OUTBUFF = Box::into_raw(buf);
+            v.set(Box::into_raw(buf));
         }
-        &mut *OUTBUFF
-    }
+        v.get()
+    }))
+}
+        v.get()
+    })
 }
 
 /// Allocate or grow the string buffer to hold at least `buflen` characters.
@@ -511,13 +525,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        let outbuff = get_outbuff();
+        let mut outbuff = get_outbuff();
 
         // We do the format analysis a row at a time
         let mut ans: SEXP = ptr::null_mut();
 
         for ns in 0..maxlen as R_xlen_t {
-            let outputString = R_AllocStringBuffer(0, outbuff);
+            let outputString = R_AllocStringBuffer(0, &mut *outbuff);
             *outputString = 0; // NUL-terminate
 
             let use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
@@ -1047,7 +1061,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                 let append_str = if !ss.is_null() { ss } else { bit.as_ptr() };
                 let outputString = R_AllocStringBuffer(
                     (c_strlen(outputString) + c_strlen(append_str)) as i64,
-                    outbuff,
+                    &mut *outbuff,
                 );
                 c_strcat(outputString, append_str);
 
@@ -1102,7 +1116,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        R_FreeStringBufferL(outbuff);
+        R_FreeStringBufferL(&mut *outbuff);
         ans
     }
 }

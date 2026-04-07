@@ -1,4 +1,3 @@
-
 //! X11 graphics device driver (devX11.c)
 //!
 //! Port of R's X11 device driver. Provides the X11() graphics device,
@@ -14,6 +13,7 @@
 
 use crate::sexp::ffi::SEXP;
 use core::ffi::{c_char, c_double, c_int, c_uint, c_void};
+use std::cell::Cell;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -398,21 +398,21 @@ pub(crate) fn physical_to_pixel_size(
 // that would be initialised by Rf_setX11Display() in a real X11 build.
 
 /// Current display colour model
-static mut DISPLAY_COLOR_MODEL: XColorType = XColorType::TrueColor;
+thread_local! { static DISPLAY_COLOR_MODEL: Cell<XColorType> = Cell::new(XColorType::TrueColor); }
 
 /// Maximum colour cube size
-static mut MAX_CUBE_SIZE: c_int = 256;
+thread_local! { static MAX_CUBE_SIZE: Cell<c_int> = Cell::new(256); }
 
 /// Current display resolution (DPI)
-static mut DISPLAY_RES_DPI: c_int = 72;
+thread_local! { static DISPLAY_RES_DPI: Cell<c_int> = Cell::new(72); }
 
 /// Number of currently open X11 devices
-static mut NUM_X11_DEVICES: c_int = 0;
+thread_local! { static NUM_X11_DEVICES: Cell<c_int> = Cell::new(0); }
 
 /// Gamma correction values
-static mut RED_GAMMA: c_double = DEFAULT_RED_GAMMA;
-static mut GREEN_GAMMA: c_double = DEFAULT_GREEN_GAMMA;
-static mut BLUE_GAMMA: c_double = DEFAULT_BLUE_GAMMA;
+thread_local! { static RED_GAMMA: Cell<c_double> = Cell::new(DEFAULT_RED_GAMMA); }
+thread_local! { static GREEN_GAMMA: Cell<c_double> = Cell::new(DEFAULT_GREEN_GAMMA); }
+thread_local! { static BLUE_GAMMA: Cell<c_double> = Cell::new(DEFAULT_BLUE_GAMMA); }
 
 // ── Exported symbols (no_mangle) ──────────────────────────────────────
 
@@ -475,9 +475,9 @@ pub unsafe extern "C" fn Rf_setX11DeviceData(
 ) -> c_int {
     // Apply gamma correction even in stub mode
     if gamma_fac > 0.0 {
-        RED_GAMMA = gamma_fac;
-        GREEN_GAMMA = gamma_fac;
-        BLUE_GAMMA = gamma_fac;
+        RED_GAMMA.with(|v| v.set(gamma_fac));
+        GREEN_GAMMA.with(|v| v.set(gamma_fac));
+        BLUE_GAMMA.with(|v| v.set(gamma_fac));
     }
     0
 }
@@ -507,21 +507,23 @@ pub unsafe extern "C" fn Rf_setX11Display(
 ) -> c_int {
     // Apply settings even in stub mode
     if gamma_fac > 0.0 {
-        RED_GAMMA = gamma_fac;
-        GREEN_GAMMA = gamma_fac;
-        BLUE_GAMMA = gamma_fac;
+        RED_GAMMA.with(|v| v.set(gamma_fac));
+        GREEN_GAMMA.with(|v| v.set(gamma_fac));
+        BLUE_GAMMA.with(|v| v.set(gamma_fac));
     }
 
     // Set colour model
-    DISPLAY_COLOR_MODEL = match colormodel {
-        0 => XColorType::Monochrome,
-        1 => XColorType::Grayscale,
-        2 => XColorType::PseudoColor1,
-        3 => XColorType::PseudoColor2,
-        _ => XColorType::TrueColor,
-    };
+    DISPLAY_COLOR_MODEL.with(|v| {
+        v.set(match colormodel {
+            0 => XColorType::Monochrome,
+            1 => XColorType::Grayscale,
+            2 => XColorType::PseudoColor1,
+            3 => XColorType::PseudoColor2,
+            _ => XColorType::TrueColor,
+        })
+    });
 
-    MAX_CUBE_SIZE = maxcube;
+    MAX_CUBE_SIZE.with(|v| v.set(maxcube));
     0
 }
 

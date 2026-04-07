@@ -27,6 +27,7 @@ use libc::{
     close, htonl, htons, in_addr, listen, recv, send, setsockopt, size_t, sockaddr, sockaddr_in,
     socket, socklen_t, ssize_t,
 };
+use std::cell::Cell;
 
 // ============================================================
 // Constants
@@ -126,32 +127,15 @@ fn http_sig(c: &HttpdConn) -> &'static [u8] {
 // Static state
 // ============================================================
 
-/// List of currently active workers
-static mut WORKERS: [*mut HttpdConn; MAX_WORKERS] = [std::ptr::null_mut(); MAX_WORKERS];
-
-/// Whether one-time initialization has been performed
-static mut NEEDS_INIT: c_int = 1;
-
-/// Server socket
-static mut SRV_SOCK: c_int = INVALID_SOCKET;
-
-/// Flag to prevent re-entrance (Unix)
-static mut IN_PROCESS: c_int = 0;
-
-/// R_ignore_SIGPIPE - set to 1 to prevent SIGPIPE errors
-static mut R_IGNORE_SIGPIPE: c_int = 0;
-
-/// Cached symbol for content-type attribute
-static mut R_CONTENT_TYPE_NAME: SEXP = std::ptr::null_mut();
-
-/// Cached symbol for .httpd.handlers.env
-static mut R_HANDLERS_NAME: SEXP = std::ptr::null_mut();
-
-/// Cached custom handlers environment
-static mut CUSTOM_HANDLERS_ENV: SEXP = std::ptr::null_mut();
-
-/// Server input handler (Unix)
-static mut SRV_HANDLER: *mut c_void = std::ptr::null_mut();
+thread_local! { static WORKERS: Cell<[*mut HttpdConn; MAX_WORKERS]> = Cell::new([std::ptr::null_mut(); MAX_WORKERS]); }
+thread_local! { static NEEDS_INIT: Cell<c_int> = Cell::new(1); }
+thread_local! { static SRV_SOCK: Cell<c_int> = Cell::new(INVALID_SOCKET); }
+thread_local! { static IN_PROCESS: Cell<c_int> = Cell::new(0); }
+thread_local! { static R_IGNORE_SIGPIPE: Cell<c_int> = Cell::new(0); }
+thread_local! { static R_CONTENT_TYPE_NAME: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static R_HANDLERS_NAME: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static CUSTOM_HANDLERS_ENV: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static SRV_HANDLER: Cell<*mut c_void> = Cell::new(std::ptr::null_mut()); }
 
 // ============================================================
 // External R functions (declared via unsafe extern "C")
@@ -190,8 +174,8 @@ unsafe extern "C" {
 // ============================================================
 
 /// One-time initialization (Unix: no-op beyond setting flag)
-unsafe fn first_init() {
-    NEEDS_INIT = 0;
+fn first_init() {
+    NEEDS_INIT.with(|v| v.set(0));
 }
 
 // ============================================================
@@ -341,8 +325,8 @@ unsafe fn finalize_worker(c: *mut HttpdConn) {
 unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
     let mut i: c_uint = 0;
     while i < MAX_WORKERS as c_uint {
-        if WORKERS[i as usize].is_null() {
-            WORKERS[i as usize] = c;
+        if WORKERS.with(|v| v[i as usize].is_null()) {
+            WORKERS.with(|v| v[i as usize] = c);
             return 0;
         }
         i += 1;
@@ -366,8 +350,8 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
     finalize_worker(c);
     let mut i: c_uint = 0;
     while i < MAX_WORKERS as c_uint {
-        if WORKERS[i as usize] == c {
-            WORKERS[i as usize] = std::ptr::null_mut();
+        if WORKERS.with(|v| v[i as usize]) == c {
+            WORKERS.with(|v| v[i as usize] = std::ptr::null_mut());
         }
         i += 1;
     }
@@ -395,7 +379,7 @@ unsafe fn build_sin(sa: *mut sockaddr_in, ip: *const c_char, port: c_int) -> *mu
 /// Send data on a socket, handling SIGPIPE
 unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
     let mut i: c_uint = 0;
-    R_IGNORE_SIGPIPE = 1;
+    R_IGNORE_SIGPIPE.with(|v| v.set(1));
     while i < len as c_uint {
         let flags: c_int = 0;
         let n = send(
@@ -405,12 +389,12 @@ unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
             flags,
         );
         if n < 1 {
-            R_IGNORE_SIGPIPE = 0;
+            R_IGNORE_SIGPIPE.with(|v| v.set(0));
             return -1;
         }
         i += n as c_uint;
     }
-    R_IGNORE_SIGPIPE = 0;
+    R_IGNORE_SIGPIPE.with(|v| v.set(0));
     0
 }
 
@@ -429,9 +413,9 @@ unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
         libc::strcpy(local_buf.as_mut_ptr().offset(8), text);
         send_response((*c).sock, local_buf.as_ptr(), l + 8);
     } else {
-        R_IGNORE_SIGPIPE = 1;
+        R_IGNORE_SIGPIPE.with(|v| v.set(1));
         let res = send((*c).sock, sig.as_ptr() as *const c_void, 8, 0);
-        R_IGNORE_SIGPIPE = 0;
+        R_IGNORE_SIGPIPE.with(|v| v.set(0));
         if res < 8 {
             return;
         }
@@ -616,10 +600,15 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
             );
         }
         if !(*c).content_type.is_null() {
-            if R_CONTENT_TYPE_NAME.is_null() {
-                R_CONTENT_TYPE_NAME = install(b"content-type\0".as_ptr() as *const c_char);
+            if R_CONTENT_TYPE_NAME.with(|v| v.get()).is_null() {
+                R_CONTENT_TYPE_NAME
+                    .with(|v| v.set(install(b"content-type\0".as_ptr() as *const c_char)));
             }
-            setAttrib(res, R_CONTENT_TYPE_NAME, mkString((*c).content_type));
+            setAttrib(
+                res,
+                R_CONTENT_TYPE_NAME.with(|v| v.get()),
+                mkString((*c).content_type),
+            );
         }
         Rf_unprotect(1);
         res
@@ -660,22 +649,24 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
             *fn_buf.as_mut_ptr().offset(name_len) = 0;
 
             // Cache custom_handlers_env
-            if CUSTOM_HANDLERS_ENV.is_null() {
-                if R_HANDLERS_NAME.is_null() {
-                    R_HANDLERS_NAME = install(b".httpd.handlers.env\0".as_ptr() as *const c_char);
+            if CUSTOM_HANDLERS_ENV.with(|v| v.get()).is_null() {
+                if R_HANDLERS_NAME.with(|v| v.get()).is_null() {
+                    R_HANDLERS_NAME.with(|v| {
+                        v.set(install(b".httpd.handlers.env\0".as_ptr() as *const c_char))
+                    });
                 }
                 let tools_ns = Rf_protect(R_FindNamespace(mkString(
                     b"tools\0".as_ptr() as *const c_char
                 )));
                 let eval_sym = install(b"eval\0".as_ptr() as *const c_char);
-                let call = Rf_protect(lang3(eval_sym, R_HANDLERS_NAME, tools_ns));
-                CUSTOM_HANDLERS_ENV = Rf_eval(call, R_NilValue());
+                let call = Rf_protect(lang3(eval_sym, R_HANDLERS_NAME.with(|v| v.get()), tools_ns));
+                CUSTOM_HANDLERS_ENV.with(|v| v.set(Rf_eval(call, R_NilValue())));
                 Rf_unprotect(2);
             }
             // Only proceed if .httpd.handlers.env really exists
-            if TYPEOF(CUSTOM_HANDLERS_ENV) == SEXPTYPE::ENVSXP.0 {
+            if TYPEOF(CUSTOM_HANDLERS_ENV.with(|v| v.get())) == SEXPTYPE::ENVSXP.0 {
                 let cl = findVarInFrame(
-                    CUSTOM_HANDLERS_ENV,
+                    CUSTOM_HANDLERS_ENV.with(|v| v.get()),
                     install(fn_buf.as_ptr() as *const c_char),
                 );
                 if cl != R_UnboundValue() && TYPEOF(cl) == SEXPTYPE::CLOSXP.0 {
@@ -961,9 +952,9 @@ unsafe extern "C" fn process_request_(ptr: *mut c_void) {
 
 /// Process request - wraps the actual call with ToplevelExec
 unsafe fn process_request(c: *mut HttpdConn) {
-    IN_PROCESS = 1;
+    IN_PROCESS.with(|v| v.set(1));
     R_ToplevelExec(Some(process_request_), c as *mut c_void);
-    IN_PROCESS = 0;
+    IN_PROCESS.with(|v| v.set(0));
 }
 
 // ============================================================
@@ -1106,7 +1097,7 @@ unsafe extern "C" fn worker_input_handler(data: *mut c_void) {
         return;
     }
 
-    if IN_PROCESS != 0 {
+    if IN_PROCESS.with(|v| v.get()) != 0 {
         return; // don't allow recursive entrance
     }
 
@@ -1583,7 +1574,7 @@ unsafe extern "C" fn srv_input_handler(_data: *mut c_void) {
     let mut peer_sa: sockaddr_in = std::mem::zeroed();
     let mut peer_sal: socklen_t = core::mem::size_of::<sockaddr_in>() as socklen_t;
     let cl_sock = accept(
-        SRV_SOCK,
+        SRV_SOCK.with(|v| v.get()),
         &mut peer_sa as *mut sockaddr_in as *mut sockaddr,
         &mut peer_sal,
     );
@@ -1623,25 +1614,25 @@ pub(crate) unsafe extern "C" fn in_R_HTTPDCreate(ip: *const c_char, port: c_int)
     let reuse: c_int = 1;
     let mut srv_sa: sockaddr_in = std::mem::zeroed();
 
-    if NEEDS_INIT != 0 {
+    if NEEDS_INIT.with(|v| v.get()) != 0 {
         first_init();
     }
 
     // If already in use, close the current socket
-    if SRV_SOCK != INVALID_SOCKET {
-        close(SRV_SOCK);
+    if SRV_SOCK.with(|v| v.get()) != INVALID_SOCKET {
+        close(SRV_SOCK.with(|v| v.get()));
     }
 
     // Create a new socket
-    SRV_SOCK = socket(AF_INET, SOCK_STREAM, 0);
-    if SRV_SOCK == INVALID_SOCKET {
+    SRV_SOCK.with(|v| v.set(socket(AF_INET, SOCK_STREAM, 0)));
+    if SRV_SOCK.with(|v| v.get()) == INVALID_SOCKET {
         Rf_error(b"unable to create socket\0".as_ptr() as *const c_char);
         unreachable!();
     }
 
     // Set socket for reuse
     setsockopt(
-        SRV_SOCK,
+        SRV_SOCK.with(|v| v.get()),
         SOL_SOCKET,
         SO_REUSEADDR,
         &reuse as *const c_int as *const c_void,
@@ -1650,39 +1641,39 @@ pub(crate) unsafe extern "C" fn in_R_HTTPDCreate(ip: *const c_char, port: c_int)
 
     // Bind to the desired port
     if bind(
-        SRV_SOCK,
+        SRV_SOCK.with(|v| v.get()),
         build_sin(&mut srv_sa, ip, port),
         core::mem::size_of::<sockaddr_in>() as u32,
     ) != 0
     {
         let err = *__error();
         if err == libc::EADDRINUSE {
-            close(SRV_SOCK);
-            SRV_SOCK = INVALID_SOCKET;
+            close(SRV_SOCK.with(|v| v.get()));
+            SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
             return -2;
         } else {
-            close(SRV_SOCK);
-            SRV_SOCK = INVALID_SOCKET;
+            close(SRV_SOCK.with(|v| v.get()));
+            SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
             Rf_error(b"unable to bind socket to TCP port\0".as_ptr() as *const c_char);
             unreachable!();
         }
     }
 
     // Setup listen
-    if listen(SRV_SOCK, 8) != 0 {
-        close(SRV_SOCK);
-        SRV_SOCK = INVALID_SOCKET;
+    if listen(SRV_SOCK.with(|v| v.get()), 8) != 0 {
+        close(SRV_SOCK.with(|v| v.get()));
+        SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
         Rf_error(b"cannot listen to TCP port\0".as_ptr() as *const c_char);
         unreachable!();
     }
 
     // Register the socket as an input handler
-    if !SRV_HANDLER.is_null() {
-        removeInputHandler(R_InputHandlers(), SRV_HANDLER);
+    if !SRV_HANDLER.with(|v| v.get()).is_null() {
+        removeInputHandler(R_InputHandlers(), SRV_HANDLER.with(|v| v.get()));
     }
-    SRV_HANDLER = addInputHandler(
+    SRV_HANDLER.with(|v| v.set(addInputHandler(
         R_InputHandlers(),
-        SRV_SOCK,
+        SRV_SOCK.with(|v| v.get()),
         Some(srv_input_handler),
         HttpdServerActivity,
     );
@@ -1693,13 +1684,13 @@ pub(crate) unsafe extern "C" fn in_R_HTTPDCreate(ip: *const c_char, port: c_int)
 /// Stop the HTTP daemon.
 #[unsafe(no_mangle)]
 pub(crate) unsafe extern "C" fn in_R_HTTPDStop() {
-    if SRV_SOCK != INVALID_SOCKET {
-        close(SRV_SOCK);
-        SRV_SOCK = INVALID_SOCKET;
+    if SRV_SOCK.with(|v| v.get()) != INVALID_SOCKET {
+        close(SRV_SOCK.with(|v| v.get()));
+        SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
     }
-    if !SRV_HANDLER.is_null() {
-        removeInputHandler(R_InputHandlers(), SRV_HANDLER);
-        SRV_HANDLER = std::ptr::null_mut();
+    if !SRV_HANDLER.with(|v| v.get()).is_null() {
+        removeInputHandler(R_InputHandlers(), SRV_HANDLER.with(|v| v.get()));
+        SRV_HANDLER.with(|v| v.set(std::ptr::null_mut()));
     }
 }
 

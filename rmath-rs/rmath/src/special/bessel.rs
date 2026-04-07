@@ -15,6 +15,7 @@ use crate::special::bessel_k::bessel_k as bessel_k_impl;
 use crate::special::bessel_y::bessel_y as bessel_y_impl;
 
 /// Modified Bessel function of the first kind, I_alpha(x).
+#[must_use]
 ///
 /// When `expo` is true, returns exp(-x) * I_alpha(x) (exponentially scaled).
 ///
@@ -28,6 +29,7 @@ pub fn bessel_i(x: f64, alpha: f64, expo: bool) -> f64 {
 }
 
 /// Bessel function of the first kind, J_alpha(x).
+#[must_use]
 ///
 /// # Arguments
 /// * `x`     - Non-negative argument
@@ -37,6 +39,7 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
 }
 
 /// Modified Bessel function of the third kind, K_alpha(x).
+#[must_use]
 ///
 /// When `expo` is true, returns exp(x) * K_alpha(x) (exponentially scaled).
 ///
@@ -50,6 +53,7 @@ pub fn bessel_k(x: f64, alpha: f64, expo: bool) -> f64 {
 }
 
 /// Bessel function of the second kind, Y_alpha(x).
+#[must_use]
 ///
 /// # Arguments
 /// * `x`     - Non-negative argument
@@ -69,6 +73,7 @@ mod ffi {
     use std::os::raw::{c_double, c_int};
 
     /// C FFI shim: Rf_bessel_i(x, alpha, expo)
+    #[must_use]
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
     #[unsafe(no_mangle)]
@@ -77,6 +82,7 @@ mod ffi {
     }
 
     /// C FFI shim: bessel_i(x, alpha, expo)
+    #[must_use]
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
     #[unsafe(no_mangle)]
@@ -85,18 +91,21 @@ mod ffi {
     }
 
     /// C FFI shim: Rf_bessel_j(x, alpha)
+    #[must_use]
     #[unsafe(no_mangle)]
     pub extern "C" fn Rf_bessel_j(x: c_double, alpha: c_double) -> c_double {
         super::bessel_j(x, alpha)
     }
 
     /// C FFI shim: bessel_j(x, alpha)
+    #[must_use]
     #[unsafe(no_mangle)]
     pub extern "C" fn bessel_j(x: c_double, alpha: c_double) -> c_double {
         super::bessel_j(x, alpha)
     }
 
     /// C FFI shim: Rf_bessel_k(x, alpha, expo)
+    #[must_use]
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
     #[unsafe(no_mangle)]
@@ -105,6 +114,7 @@ mod ffi {
     }
 
     /// C FFI shim: bessel_k(x, alpha, expo)
+    #[must_use]
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
     #[unsafe(no_mangle)]
@@ -113,12 +123,14 @@ mod ffi {
     }
 
     /// C FFI shim: Rf_bessel_y(x, alpha)
+    #[must_use]
     #[unsafe(no_mangle)]
     pub extern "C" fn Rf_bessel_y(x: c_double, alpha: c_double) -> c_double {
         super::bessel_y(x, alpha)
     }
 
     /// C FFI shim: bessel_y(x, alpha)
+    #[must_use]
     #[unsafe(no_mangle)]
     pub extern "C" fn bessel_y(x: c_double, alpha: c_double) -> c_double {
         super::bessel_y(x, alpha)

@@ -8,6 +8,7 @@
 
 #![allow(non_snake_case)]
 
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::os::raw::c_char;
 use std::ptr;
@@ -16,36 +17,36 @@ use std::ptr;
 // Encoding name constants
 // ---------------------------------------------------------------------------
 
-static mut ENC_ARMSCII_8: &[u8] = b"ARMSCII-8";
-static mut ENC_BIG5: &[u8] = b"BIG5";
-static mut ENC_BIG5_HKSCS: &[u8] = b"BIG5-HKSCS";
-static mut ENC_C: &[u8] = b"C";
-static mut ENC_CP1251: &[u8] = b"CP1251";
-static mut ENC_CP1255: &[u8] = b"CP1255";
-static mut ENC_CP1256: &[u8] = b"CP1256";
-static mut ENC_EUC_CN: &[u8] = b"EUC-CN";
-static mut ENC_EUC_JP: &[u8] = b"EUC-JP";
-static mut ENC_EUC_KR: &[u8] = b"EUC-KR";
-static mut ENC_EUC_TW: &[u8] = b"EUC-TW";
-static mut ENC_GB2312: &[u8] = b"GB2312";
-static mut ENC_GBK: &[u8] = b"GBK";
-static mut ENC_GEORGIAN_ACADEMY: &[u8] = b"GEORGIAN-ACADEMY";
-static mut ENC_ISO8859_1: &[u8] = b"ISO8859-1";
-static mut ENC_ISO8859_10: &[u8] = b"ISO8859-10";
-static mut ENC_ISO8859_11: &[u8] = b"ISO8859-11";
-static mut ENC_ISO8859_13: &[u8] = b"ISO8859-13";
-static mut ENC_ISO8859_15: &[u8] = b"ISO8859-15";
-static mut ENC_ISO8859_2: &[u8] = b"ISO8859-2";
-static mut ENC_ISO8859_3: &[u8] = b"ISO8859-3";
-static mut ENC_ISO8859_5: &[u8] = b"ISO8859-5";
-static mut ENC_ISO8859_6: &[u8] = b"ISO8859-6";
-static mut ENC_ISO8859_7: &[u8] = b"ISO8859-7";
-static mut ENC_ISO8859_8: &[u8] = b"ISO8859-8";
-static mut ENC_ISO8859_9: &[u8] = b"ISO8859-9";
-static mut ENC_KOI8_R: &[u8] = b"KOI8-R";
-static mut ENC_KOI8_U: &[u8] = b"KOI8-U";
-static mut ENC_TCVN: &[u8] = b"TCVN";
-static mut ENC_UTF_8: &[u8] = b"UTF-8";
+thread_local! { static ENC_ARMSCII_8: Cell<&[u8]> = Cell::new(b"ARMSCII-8"); }
+thread_local! { static ENC_BIG5: Cell<&[u8]> = Cell::new(b"BIG5"); }
+thread_local! { static ENC_BIG5_HKSCS: Cell<&[u8]> = Cell::new(b"BIG5-HKSCS"); }
+thread_local! { static ENC_C: Cell<&[u8]> = Cell::new(b"C"); }
+thread_local! { static ENC_CP1251: Cell<&[u8]> = Cell::new(b"CP1251"); }
+thread_local! { static ENC_CP1255: Cell<&[u8]> = Cell::new(b"CP1255"); }
+thread_local! { static ENC_CP1256: Cell<&[u8]> = Cell::new(b"CP1256"); }
+thread_local! { static ENC_EUC_CN: Cell<&[u8]> = Cell::new(b"EUC-CN"); }
+thread_local! { static ENC_EUC_JP: Cell<&[u8]> = Cell::new(b"EUC-JP"); }
+thread_local! { static ENC_EUC_KR: Cell<&[u8]> = Cell::new(b"EUC-KR"); }
+thread_local! { static ENC_EUC_TW: Cell<&[u8]> = Cell::new(b"EUC-TW"); }
+thread_local! { static ENC_GB2312: Cell<&[u8]> = Cell::new(b"GB2312"); }
+thread_local! { static ENC_GBK: Cell<&[u8]> = Cell::new(b"GBK"); }
+thread_local! { static ENC_GEORGIAN_ACADEMY: Cell<&[u8]> = Cell::new(b"GEORGIAN-ACADEMY"); }
+thread_local! { static ENC_ISO8859_1: Cell<&[u8]> = Cell::new(b"ISO8859-1"); }
+thread_local! { static ENC_ISO8859_10: Cell<&[u8]> = Cell::new(b"ISO8859-10"); }
+thread_local! { static ENC_ISO8859_11: Cell<&[u8]> = Cell::new(b"ISO8859-11"); }
+thread_local! { static ENC_ISO8859_13: Cell<&[u8]> = Cell::new(b"ISO8859-13"); }
+thread_local! { static ENC_ISO8859_15: Cell<&[u8]> = Cell::new(b"ISO8859-15"); }
+thread_local! { static ENC_ISO8859_2: Cell<&[u8]> = Cell::new(b"ISO8859-2"); }
+thread_local! { static ENC_ISO8859_3: Cell<&[u8]> = Cell::new(b"ISO8859-3"); }
+thread_local! { static ENC_ISO8859_5: Cell<&[u8]> = Cell::new(b"ISO8859-5"); }
+thread_local! { static ENC_ISO8859_6: Cell<&[u8]> = Cell::new(b"ISO8859-6"); }
+thread_local! { static ENC_ISO8859_7: Cell<&[u8]> = Cell::new(b"ISO8859-7"); }
+thread_local! { static ENC_ISO8859_8: Cell<&[u8]> = Cell::new(b"ISO8859-8"); }
+thread_local! { static ENC_ISO8859_9: Cell<&[u8]> = Cell::new(b"ISO8859-9"); }
+thread_local! { static ENC_KOI8_R: Cell<&[u8]> = Cell::new(b"KOI8-R"); }
+thread_local! { static ENC_KOI8_U: Cell<&[u8]> = Cell::new(b"KOI8-U"); }
+thread_local! { static ENC_TCVN: Cell<&[u8]> = Cell::new(b"TCVN"); }
+thread_local! { static ENC_UTF_8: Cell<&[u8]> = Cell::new(b"UTF-8"); }
 
 // ---------------------------------------------------------------------------
 // Lookup table for locale -> charset guessing (non-Apple platforms)
@@ -53,293 +54,291 @@ static mut ENC_UTF_8: &[u8] = b"UTF-8";
 
 struct NameValue {
     name: &'static [u8],
-    value: *const u8,
+    get_value: fn() -> *const u8,
 }
 
 #[cfg(not(target_os = "macos"))]
 static GUESS: &[NameValue] = &[
-    // Sorted by name for binary search
-    nv(b"Cextend", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"English_United-States.437", || unsafe { ENC_C.as_ptr() }),
-    nv(b"ISO-8859-1", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ISO8859-1", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"Japanese-EUC", || unsafe { ENC_EUC_JP.as_ptr() }),
-    nv(b"Jp_JP", || unsafe { ENC_EUC_JP.as_ptr() }),
-    nv(b"POSIX", || unsafe { ENC_C.as_ptr() }),
-    nv(b"POSIX-UTF2", || unsafe { ENC_C.as_ptr() }),
-    nv(b"aa_DJ", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"aa_ER", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"aa_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"af", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"af_ZA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"am", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"am_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"an_ES", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"ar", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_AA", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_AE", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_BH", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_DZ", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_EG", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"ar_IQ", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_JO", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_KW", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_LB", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_LY", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_MA", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_OM", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_QA", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_SA", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_SD", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_SY", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_TN", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"ar_YE", || unsafe { ENC_ISO8859_6.as_ptr() }),
-    nv(b"be", || unsafe { ENC_CP1251.as_ptr() }),
-    nv(b"be_BY", || unsafe { ENC_CP1251.as_ptr() }),
-    nv(b"bg", || unsafe { ENC_CP1251.as_ptr() }),
-    nv(b"bg_BG", || unsafe { ENC_CP1251.as_ptr() }),
-    nv(b"bn_BD", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"bn_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"br", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"br_FR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"br_FR@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"bs_BA", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"ca", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ca_ES", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ca_ES@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"chinese-s", || unsafe { ENC_EUC_CN.as_ptr() }),
-    nv(b"chinese-t", || unsafe { ENC_EUC_TW.as_ptr() }),
-    nv(b"cs", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"cs_CZ", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"cy", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"cy_GB", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"cz", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"da", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"da_DK", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_AT", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_AT@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"de_BE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_BE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"de_CH", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_DE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_DE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"de_LI", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_LI@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"de_LU", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"de_LU@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"el", || unsafe { ENC_ISO8859_7.as_ptr() }),
-    nv(b"el_GR", || unsafe { ENC_ISO8859_7.as_ptr() }),
-    nv(b"en", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_AU", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_BW", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_CA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_DK", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_GB", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_HK", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_IE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_IE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"en_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"en_NZ", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_PH", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_SG", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_UK", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_US", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_ZA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"en_ZW", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_AR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_BO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_CL", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_CO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_CR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_DO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_EC", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_ES", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_ES@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"es_GT", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_HN", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_MX", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_NI", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_PA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_PE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_PR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_PY", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_SV", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_US", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_UY", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"es_VE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"et", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"et_EE", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"eu", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"eu_ES", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"eu_ES@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"eu_FR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"eu_FR@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"fa", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"fa_IR", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"fi", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fi_FI", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fi_FI@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"fo", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fo_FO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr_BE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr_BE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"fr_CA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr_CH", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr_FR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr_FR@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"fr_LU", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"fr_LU@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"ga", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ga_IE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ga_IE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"gd", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"gd_GB", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"gez_ER", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"gez_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"gl", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"gl_ES", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"gl_ES@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"gu_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"gv", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"gv_GB", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"he", || unsafe { ENC_ISO8859_8.as_ptr() }),
-    nv(b"he_IL", || unsafe { ENC_ISO8859_8.as_ptr() }),
-    nv(b"hr", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"hr_HR", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"hu", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"hu_HU", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"hy", || unsafe { ENC_ARMSCII_8.as_ptr() }),
-    nv(b"hy_AM", || unsafe { ENC_ARMSCII_8.as_ptr() }),
-    nv(b"id", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"id_ID", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"is", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"is_IS", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"it", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"it_CH", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"it_IT", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"it_IT@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"ja", || unsafe { ENC_EUC_JP.as_ptr() }),
-    nv(b"ja_JP", || unsafe { ENC_EUC_JP.as_ptr() }),
-    nv(b"ka", || unsafe { ENC_GEORGIAN_ACADEMY.as_ptr() }),
-    nv(b"ka_GE", || unsafe { ENC_GEORGIAN_ACADEMY.as_ptr() }),
-    nv(b"kl", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"kl_GL", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"kn_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"ko", || unsafe { ENC_EUC_KR.as_ptr() }),
-    nv(b"ko_KR", || unsafe { ENC_EUC_KR.as_ptr() }),
-    nv(b"kw", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"kw_GB", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"lg_UG", || unsafe { ENC_ISO8859_10.as_ptr() }),
-    nv(b"lt", || unsafe { ENC_ISO8859_13.as_ptr() }),
-    nv(b"lt_LT", || unsafe { ENC_ISO8859_13.as_ptr() }),
-    nv(b"lv", || unsafe { ENC_ISO8859_13.as_ptr() }),
-    nv(b"lv_LV", || unsafe { ENC_ISO8859_13.as_ptr() }),
-    nv(b"mi", || unsafe { ENC_ISO8859_13.as_ptr() }),
-    nv(b"mi_NZ", || unsafe { ENC_ISO8859_13.as_ptr() }),
-    nv(b"mk", || unsafe { ENC_ISO8859_5.as_ptr() }),
-    nv(b"mk_MK", || unsafe { ENC_ISO8859_5.as_ptr() }),
-    nv(b"ml_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"mn_MN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"mr_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"ms", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ms_MY", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"mt", || unsafe { ENC_ISO8859_3.as_ptr() }),
-    nv(b"mt_MT", || unsafe { ENC_ISO8859_3.as_ptr() }),
-    nv(b"nb", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"nb_NO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ne_NP", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"nl", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"nl_BE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"nl_BE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"nl_NL", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"nl_NL@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"nn", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"nn_NO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"no", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"no_NO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"oc", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"oc_FR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"oc_FR@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"om_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"om_KE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"pa_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"ph", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"ph_PH", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"pl", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"pl_PL", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"pt", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"pt_BR", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"pt_PT", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"pt_PT@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"ro", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"ro_RO", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"ru", || unsafe { ENC_KOI8_R.as_ptr() }),
-    nv(b"ru_RU", || unsafe { ENC_KOI8_R.as_ptr() }),
-    nv(b"ru_UA", || unsafe { ENC_KOI8_U.as_ptr() }),
-    nv(b"se_NO", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"sh", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sh_SP", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sh_YU", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sid_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"sk", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sk_SK", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sl", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sl_SI", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"so_DJ", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"so_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"so_KE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"so_SO", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"sq", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sq_AL", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sr", || unsafe { ENC_ISO8859_5.as_ptr() }),
-    nv(b"sr_SP", || unsafe { ENC_ISO8859_2.as_ptr() }),
-    nv(b"sr_YU", || unsafe { ENC_ISO8859_5.as_ptr() }),
-    nv(b"st_ZA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"sv", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"sv_FI", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"sv_FI@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"sv_SE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"sv_SE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"te_IN", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"th", || unsafe { ENC_ISO8859_11.as_ptr() }),
-    nv(b"th_TH", || unsafe { ENC_ISO8859_11.as_ptr() }),
-    nv(b"ti_ER", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"ti_ET", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"tig_ER", || unsafe { ENC_UTF_8.as_ptr() }),
-    nv(b"tl", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"tl_PH", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"tr", || unsafe { ENC_ISO8859_9.as_ptr() }),
-    nv(b"tr_TR", || unsafe { ENC_ISO8859_9.as_ptr() }),
-    nv(b"uk", || unsafe { ENC_KOI8_U.as_ptr() }),
-    nv(b"uk_UA", || unsafe { ENC_KOI8_U.as_ptr() }),
-    nv(b"ur", || unsafe { ENC_CP1256.as_ptr() }),
-    nv(b"ur_PK", || unsafe { ENC_CP1256.as_ptr() }),
-    nv(b"uz_UZ", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"vi", || unsafe { ENC_TCVN.as_ptr() }),
-    nv(b"vi_VN", || unsafe { ENC_TCVN.as_ptr() }),
-    nv(b"wa", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"wa_BE", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"wa_BE@euro", || unsafe { ENC_ISO8859_15.as_ptr() }),
-    nv(b"xh_ZA", || unsafe { ENC_ISO8859_1.as_ptr() }),
-    nv(b"yi", || unsafe { ENC_CP1255.as_ptr() }),
-    nv(b"yi_US", || unsafe { ENC_CP1255.as_ptr() }),
-    nv(b"zh_CN", || unsafe { ENC_GBK.as_ptr() }),
-    nv(b"zh_HK", || unsafe { ENC_BIG5_HKSCS.as_ptr() }),
-    nv(b"zh_SG", || unsafe { ENC_GB2312.as_ptr() }),
-    nv(b"zh_TW", || unsafe { ENC_BIG5.as_ptr() }),
-    nv(b"zu_ZA", || unsafe { ENC_ISO8859_1.as_ptr() }),
+    nv(b"Cextend", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"English_United-States.437", || {
+        ENC_C.with(|v| v.get().as_ptr())
+    }),
+    nv(b"ISO-8859-1", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ISO8859-1", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"Japanese-EUC", || ENC_EUC_JP.with(|v| v.get().as_ptr())),
+    nv(b"Jp_JP", || ENC_EUC_JP.with(|v| v.get().as_ptr())),
+    nv(b"POSIX", || ENC_C.with(|v| v.get().as_ptr())),
+    nv(b"POSIX-UTF2", || ENC_C.with(|v| v.get().as_ptr())),
+    nv(b"aa_DJ", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"aa_ER", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"aa_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"af", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"af_ZA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"am", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"am_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"an_ES", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"ar", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_AA", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_AE", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_BH", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_DZ", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_EG", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"ar_IQ", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_JO", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_KW", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_LB", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_LY", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_MA", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_OM", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_QA", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_SA", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_SD", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_SY", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_TN", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"ar_YE", || ENC_ISO8859_6.with(|v| v.get().as_ptr())),
+    nv(b"be", || ENC_CP1251.with(|v| v.get().as_ptr())),
+    nv(b"be_BY", || ENC_CP1251.with(|v| v.get().as_ptr())),
+    nv(b"bg", || ENC_CP1251.with(|v| v.get().as_ptr())),
+    nv(b"bg_BG", || ENC_CP1251.with(|v| v.get().as_ptr())),
+    nv(b"bn_BD", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"bn_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"br", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"br_FR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"br_FR@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"bs_BA", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"ca", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ca_ES", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ca_ES@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"chinese-s", || ENC_EUC_CN.with(|v| v.get().as_ptr())),
+    nv(b"chinese-t", || ENC_EUC_TW.with(|v| v.get().as_ptr())),
+    nv(b"cs", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"cs_CZ", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"cy", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"cy_GB", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"cz", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"da", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"da_DK", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_AT", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_AT@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"de_BE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_BE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"de_CH", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_DE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_DE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"de_LI", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_LI@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"de_LU", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"de_LU@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"el", || ENC_ISO8859_7.with(|v| v.get().as_ptr())),
+    nv(b"el_GR", || ENC_ISO8859_7.with(|v| v.get().as_ptr())),
+    nv(b"en", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_AU", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_BW", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_CA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_DK", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_GB", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_HK", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_IE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_IE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"en_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"en_NZ", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_PH", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_SG", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_UK", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_US", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_ZA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"en_ZW", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_AR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_BO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_CL", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_CO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_CR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_DO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_EC", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_ES", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_ES@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"es_GT", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_HN", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_MX", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_NI", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_PA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_PE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_PR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_PY", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_SV", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_US", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_UY", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"es_VE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"et", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"et_EE", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"eu", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"eu_ES", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"eu_ES@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"eu_FR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"eu_FR@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"fa", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"fa_IR", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"fi", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fi_FI", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fi_FI@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"fo", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fo_FO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr_BE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr_BE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"fr_CA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr_CH", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr_FR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr_FR@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"fr_LU", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"fr_LU@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"ga", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ga_IE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ga_IE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"gd", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"gd_GB", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"gez_ER", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"gez_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"gl", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"gl_ES", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"gl_ES@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"gu_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"gv", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"gv_GB", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"he", || ENC_ISO8859_8.with(|v| v.get().as_ptr())),
+    nv(b"he_IL", || ENC_ISO8859_8.with(|v| v.get().as_ptr())),
+    nv(b"hr", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"hr_HR", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"hu", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"hu_HU", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"hy", || ENC_ARMSCII_8.with(|v| v.get().as_ptr())),
+    nv(b"hy_AM", || ENC_ARMSCII_8.with(|v| v.get().as_ptr())),
+    nv(b"id", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"id_ID", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"is", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"is_IS", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"it", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"it_CH", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"it_IT", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"it_IT@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"ja", || ENC_EUC_JP.with(|v| v.get().as_ptr())),
+    nv(b"ja_JP", || ENC_EUC_JP.with(|v| v.get().as_ptr())),
+    nv(b"ka", || ENC_GEORGIAN_ACADEMY.with(|v| v.get().as_ptr())),
+    nv(b"ka_GE", || ENC_GEORGIAN_ACADEMY.with(|v| v.get().as_ptr())),
+    nv(b"kl", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"kl_GL", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"kn_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"ko", || ENC_EUC_KR.with(|v| v.get().as_ptr())),
+    nv(b"ko_KR", || ENC_EUC_KR.with(|v| v.get().as_ptr())),
+    nv(b"kw", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"kw_GB", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"lg_UG", || ENC_ISO8859_10.with(|v| v.get().as_ptr())),
+    nv(b"lt", || ENC_ISO8859_13.with(|v| v.get().as_ptr())),
+    nv(b"lt_LT", || ENC_ISO8859_13.with(|v| v.get().as_ptr())),
+    nv(b"lv", || ENC_ISO8859_13.with(|v| v.get().as_ptr())),
+    nv(b"lv_LV", || ENC_ISO8859_13.with(|v| v.get().as_ptr())),
+    nv(b"mi", || ENC_ISO8859_13.with(|v| v.get().as_ptr())),
+    nv(b"mi_NZ", || ENC_ISO8859_13.with(|v| v.get().as_ptr())),
+    nv(b"mk", || ENC_ISO8859_5.with(|v| v.get().as_ptr())),
+    nv(b"mk_MK", || ENC_ISO8859_5.with(|v| v.get().as_ptr())),
+    nv(b"ml_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"mn_MN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"mr_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"ms", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ms_MY", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"mt", || ENC_ISO8859_3.with(|v| v.get().as_ptr())),
+    nv(b"mt_MT", || ENC_ISO8859_3.with(|v| v.get().as_ptr())),
+    nv(b"nb", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"nb_NO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ne_NP", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"nl", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"nl_BE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"nl_BE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"nl_NL", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"nl_NL@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"nn", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"nn_NO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"no", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"no_NO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"oc", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"oc_FR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"oc_FR@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"om_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"om_KE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"pa_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"ph", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"ph_PH", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"pl", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"pl_PL", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"pt", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"pt_BR", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"pt_PT", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"pt_PT@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"ro", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"ro_RO", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"ru", || ENC_KOI8_R.with(|v| v.get().as_ptr())),
+    nv(b"ru_RU", || ENC_KOI8_R.with(|v| v.get().as_ptr())),
+    nv(b"ru_UA", || ENC_KOI8_U.with(|v| v.get().as_ptr())),
+    nv(b"se_NO", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"sh", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sh_SP", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sh_YU", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sid_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"sk", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sk_SK", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sl", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sl_SI", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"so_DJ", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"so_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"so_KE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"so_SO", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"sq", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sq_AL", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sr", || ENC_ISO8859_5.with(|v| v.get().as_ptr())),
+    nv(b"sr_SP", || ENC_ISO8859_2.with(|v| v.get().as_ptr())),
+    nv(b"sr_YU", || ENC_ISO8859_5.with(|v| v.get().as_ptr())),
+    nv(b"st_ZA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"sv", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"sv_FI", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"sv_FI@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"sv_SE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"sv_SE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"te_IN", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"th", || ENC_ISO8859_11.with(|v| v.get().as_ptr())),
+    nv(b"th_TH", || ENC_ISO8859_11.with(|v| v.get().as_ptr())),
+    nv(b"ti_ER", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"ti_ET", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"tig_ER", || ENC_UTF_8.with(|v| v.get().as_ptr())),
+    nv(b"tl", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"tl_PH", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"tr", || ENC_ISO8859_9.with(|v| v.get().as_ptr())),
+    nv(b"tr_TR", || ENC_ISO8859_9.with(|v| v.get().as_ptr())),
+    nv(b"uk", || ENC_KOI8_U.with(|v| v.get().as_ptr())),
+    nv(b"uk_UA", || ENC_KOI8_U.with(|v| v.get().as_ptr())),
+    nv(b"ur", || ENC_CP1256.with(|v| v.get().as_ptr())),
+    nv(b"ur_PK", || ENC_CP1256.with(|v| v.get().as_ptr())),
+    nv(b"uz_UZ", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"vi", || ENC_TCVN.with(|v| v.get().as_ptr())),
+    nv(b"vi_VN", || ENC_TCVN.with(|v| v.get().as_ptr())),
+    nv(b"wa", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"wa_BE", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"wa_BE@euro", || ENC_ISO8859_15.with(|v| v.get().as_ptr())),
+    nv(b"xh_ZA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
+    nv(b"yi", || ENC_CP1255.with(|v| v.get().as_ptr())),
+    nv(b"yi_US", || ENC_CP1255.with(|v| v.get().as_ptr())),
+    nv(b"zh_CN", || ENC_GBK.with(|v| v.get().as_ptr())),
+    nv(b"zh_HK", || ENC_BIG5_HKSCS.with(|v| v.get().as_ptr())),
+    nv(b"zh_SG", || ENC_GB2312.with(|v| v.get().as_ptr())),
+    nv(b"zh_TW", || ENC_BIG5.with(|v| v.get().as_ptr())),
+    nv(b"zu_ZA", || ENC_ISO8859_1.with(|v| v.get().as_ptr())),
 ];
 
 #[cfg(not(target_os = "macos"))]
-const fn nv(name: &'static [u8], value: fn() -> *const u8) -> NameValue {
-    NameValue {
-        name,
-        value: value(),
-    }
+const fn nv(name: &'static [u8], get_value: fn() -> *const u8) -> NameValue {
+    NameValue { name, get_value }
 }
 
 // Known encoding mappings
@@ -425,7 +424,7 @@ fn name_value_search(name: &[u8], table: &[NameValue]) -> Option<*const u8> {
             }
             max = mid - 1;
         } else {
-            return Some(table[mid].value);
+            return Some((table[mid].get_value)());
         }
     }
     None
@@ -435,18 +434,12 @@ fn name_value_search(name: &[u8], table: &[NameValue]) -> Option<*const u8> {
 // locale2charset - main entry point
 // ---------------------------------------------------------------------------
 
-/// Convert a locale name to a charset/encoding name.
-///
-/// Ported from R's src/main/localecharset.c.
-/// Returns "ASCII" for C/POSIX/unknown locales.
-/// On macOS, all real locales without an explicit encoding are UTF-8.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char {
     unsafe {
-        static mut CHARSET_BUF: [u8; 128] = [0u8; 128];
+        thread_local! { static CHARSET_BUF: RefCell<[u8; 128]> = RefCell::new([0u8; 128]); }
 
         let locale = if locale.is_null() {
-            // Fall back to ASCII when locale is null and we can't query the system
             return b"ASCII\0".as_ptr() as *const c_char;
         } else {
             let s = CStr::from_ptr(locale).to_bytes();
@@ -456,12 +449,10 @@ pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char 
             s
         };
 
-        // C and POSIX -> ASCII
         if locale == b"C" || locale == b"POSIX" {
             return b"ASCII\0".as_ptr() as *const c_char;
         }
 
-        // Find the encoding part after the last dot
         let mut enc: &[u8] = b"";
         let mut la_loc: &[u8] = locale;
 
@@ -470,7 +461,6 @@ pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char 
             la_loc = &locale[..dot_pos];
         }
 
-        // Check for UTF-8 in encoding part
         if !enc.is_empty() {
             let enc_lower: Vec<u8> = enc.iter().map(|&c| c.to_ascii_lowercase()).collect();
             if enc_lower == b"utf-8" || enc_lower == b"utf8" {
@@ -478,7 +468,6 @@ pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char 
             }
         }
 
-        // If there's an encoding part, try to match it against known encodings
         if !enc.is_empty() && !(enc.len() == 4 && &enc[..4] == b"utf8") {
             let enc_lower: Vec<u8> = enc.iter().map(|&c| c.to_ascii_lowercase()).collect();
 
@@ -488,31 +477,32 @@ pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char 
                 }
             }
 
-            // Handle cp- prefix
             if enc_lower.starts_with(b"cp-") {
                 let cp_str: String = enc_lower[3..].iter().map(|&c| c as char).collect();
                 if let Ok(cp) = cp_str.parse::<u32>() {
                     let s = format!("CP{}", cp);
-                    let buf = std::ptr::addr_of_mut!(CHARSET_BUF);
-                    ptr::copy_nonoverlapping(s.as_ptr(), (*buf).as_mut_ptr(), s.len());
-                    *(*buf).as_mut_ptr().add(s.len()) = 0;
-                    return (*buf).as_ptr() as *const c_char;
+                    return CHARSET_BUF.with(|cell| {
+                        let mut buf = cell.borrow_mut();
+                        ptr::copy_nonoverlapping(s.as_ptr(), buf.as_mut_ptr(), s.len());
+                        buf[s.len()] = 0;
+                        buf.as_ptr() as *const c_char
+                    });
                 }
             }
 
-            // Handle IBM- prefix
             if enc_lower.starts_with(b"ibm") {
                 let ibm_str: String = enc_lower[3..].iter().map(|&c| c as char).collect();
                 if let Ok(cp) = ibm_str.parse::<i32>() {
                     if cp != 0 {
                         let s = format!("IBM-{}", cp.abs());
-                        let buf = std::ptr::addr_of_mut!(CHARSET_BUF);
-                        ptr::copy_nonoverlapping(s.as_ptr(), (*buf).as_mut_ptr(), s.len());
-                        *(*buf).as_mut_ptr().add(s.len()) = 0;
-                        return (*buf).as_ptr() as *const c_char;
+                        return CHARSET_BUF.with(|cell| {
+                            let mut buf = cell.borrow_mut();
+                            ptr::copy_nonoverlapping(s.as_ptr(), buf.as_mut_ptr(), s.len());
+                            buf[s.len()] = 0;
+                            buf.as_ptr() as *const c_char
+                        });
                     }
                 }
-                // IBM-eucXX case
                 let euc_part = if enc_lower.len() > 3 && enc_lower[3] == b'-' {
                     &enc_lower[4..]
                 } else {
@@ -536,18 +526,19 @@ pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char 
                                 .collect::<String>(),
                         );
                     }
-                    let buf = std::ptr::addr_of_mut!(CHARSET_BUF);
-                    ptr::copy_nonoverlapping(
-                        charset_str.as_ptr(),
-                        (*buf).as_mut_ptr(),
-                        charset_str.len(),
-                    );
-                    *(*buf).as_mut_ptr().add(charset_str.len()) = 0;
-                    return (*buf).as_ptr() as *const c_char;
+                    return CHARSET_BUF.with(|cell| {
+                        let mut buf = cell.borrow_mut();
+                        ptr::copy_nonoverlapping(
+                            charset_str.as_ptr(),
+                            buf.as_mut_ptr(),
+                            charset_str.len(),
+                        );
+                        buf[charset_str.len()] = 0;
+                        buf.as_ptr() as *const c_char
+                    });
                 }
             }
 
-            // Handle "euc" encoding
             if enc_lower == b"euc" {
                 if la_loc.len() >= 3
                     && la_loc[0].is_ascii_alphabetic()
@@ -567,16 +558,13 @@ pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char 
             }
         }
 
-        // Platform-specific behavior
         #[cfg(target_os = "macos")]
         {
-            // On macOS, all real locales without encoding part are UTF-8
             b"UTF-8\0".as_ptr() as *const c_char
         }
 
         #[cfg(not(target_os = "macos"))]
         {
-            // On non-Apple, try to look up the locale in the guess table
             if let Some(value) = name_value_search(la_loc, GUESS) {
                 value as *const c_char
             } else {

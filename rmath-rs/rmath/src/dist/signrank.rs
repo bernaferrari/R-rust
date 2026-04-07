@@ -76,6 +76,7 @@ fn csignrank(k: i32, n: i32) -> f64 {
 // dsignrank
 // =====================================================================
 
+#[must_use]
 pub fn dsignrank_inner(x: f64, n: f64, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(n) {
@@ -104,6 +105,7 @@ pub fn dsignrank_inner(x: f64, n: f64, log_p: bool) -> f64 {
 // psignrank
 // =====================================================================
 
+#[must_use]
 pub fn psignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(n) {
@@ -149,6 +151,7 @@ pub fn psignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
 // qsignrank
 // =====================================================================
 
+#[must_use]
 pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(n) {
@@ -237,6 +240,7 @@ pub fn qsignrank_inner(x: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
 // rsignrank
 // =====================================================================
 
+#[must_use]
 pub fn rsignrank_inner(n: f64) -> f64 {
     // IEEE_754
     if isnan(n) {
@@ -265,11 +269,13 @@ pub fn rsignrank_inner(n: f64) -> f64 {
 // FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
     dsignrank_inner(x, n, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
     dsignrank_inner(x, n, give_log != 0)
@@ -285,6 +291,7 @@ pub extern "C" fn Rf_psignrank(
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
@@ -300,16 +307,19 @@ pub extern "C" fn Rf_qsignrank(
     qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)

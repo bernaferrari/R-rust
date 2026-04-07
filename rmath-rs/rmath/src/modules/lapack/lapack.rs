@@ -458,7 +458,7 @@ pub(crate) fn La_norm_type(typstr: &str) -> u8 {
             "argument type[1]='{}' must be a character string of string length 1",
             typstr
         );
-        let cmsg = std::ffi::CString::new(msg).unwrap();
+        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
         unsafe {
             Rf_error1(
                 b"invalid argument\0".as_ptr() as *const c_char,
@@ -477,7 +477,7 @@ pub(crate) fn La_norm_type(typstr: &str) -> u8 {
                 "argument type[1]='{}' must be one of 'M','1','O','I','F' or 'E'",
                 typstr
             );
-            let cmsg = std::ffi::CString::new(msg).unwrap();
+            let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
             unsafe {
                 Rf_error1(
                     b"invalid argument\0".as_ptr() as *const c_char,
@@ -502,7 +502,7 @@ pub(crate) fn La_rcond_type(typstr: &str) -> u8 {
             "argument type[1]='{}' must be a character string of string length 1",
             typstr
         );
-        let cmsg = std::ffi::CString::new(msg).unwrap();
+        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
         unsafe {
             Rf_error1(
                 b"invalid argument\0".as_ptr() as *const c_char,
@@ -520,7 +520,7 @@ pub(crate) fn La_rcond_type(typstr: &str) -> u8 {
                 "argument type[1]='{}' must be one of '1','O', or 'I'",
                 typstr
             );
-            let cmsg = std::ffi::CString::new(msg).unwrap();
+            let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
             unsafe {
                 Rf_error1(
                     b"invalid argument\0".as_ptr() as *const c_char,
@@ -544,7 +544,7 @@ pub(crate) fn La_valid_uplo(uplostr: &str) -> u8 {
             "argument type[1]='{}' must be a character string of string length 1",
             uplostr
         );
-        let cmsg = std::ffi::CString::new(msg).unwrap();
+        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
         unsafe {
             Rf_error1(
                 b"invalid argument\0".as_ptr() as *const c_char,
@@ -558,7 +558,7 @@ pub(crate) fn La_valid_uplo(uplostr: &str) -> u8 {
         b'U' | b'L' => uplo,
         _ => {
             let msg = format!("argument type[1]='{}' must be 'U' or 'L'", uplostr);
-            let cmsg = std::ffi::CString::new(msg).unwrap();
+            let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
             unsafe {
                 Rf_error1(
                     b"invalid argument\0".as_ptr() as *const c_char,

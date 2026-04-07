@@ -29,6 +29,7 @@ fn lfastchoose(n: f64, k: f64) -> f64 {
 
 // ---- dhyper ----
 
+#[must_use]
 pub fn dhyper_inner(x: f64, r: f64, b: f64, n: f64, give_log: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(r) || isnan(b) || isnan(n) {
@@ -91,6 +92,7 @@ fn pdhyper(mut x: f64, nr: f64, nb: f64, n: f64, log_p: bool) -> f64 {
     if log_p { log1p(ss) } else { 1.0 + ss }
 }
 
+#[must_use]
 pub fn phyper_inner(x: f64, nr: f64, nb: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // Sample of n balls from NR red and NB black ones; x are red
 
@@ -143,6 +145,7 @@ pub fn phyper_inner(x: f64, nr: f64, nb: f64, n: f64, lower_tail: bool, log_p: b
 
 // ---- qhyper ----
 
+#[must_use]
 pub fn qhyper_inner(p: f64, nr: f64, nb: f64, n: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(p) || isnan(nr) || isnan(nb) || isnan(n) {
@@ -303,6 +306,7 @@ impl RhyperState {
 
 thread_local!(static RHYPER_STATE: RefCell<RhyperState> = RefCell::new(RhyperState::new()));
 
+#[must_use]
 pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     let int_max = i32::MAX as f64;
 
@@ -574,41 +578,49 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
     dhyper_inner(x, r, b, n, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
     dhyper_inner(x, r, b, n, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     phyper_inner(x, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     phyper_inner(x, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     qhyper_inner(p, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     qhyper_inner(p, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
     rhyper_inner(nn1, nn2, kk)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
     rhyper_inner(nn1, nn2, kk)

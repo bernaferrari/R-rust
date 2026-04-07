@@ -16,28 +16,28 @@ pub unsafe extern "C" fn newmdimenu() -> menu {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn newpopup(fn_: actionfn) -> menu {
+pub unsafe extern "C" fn newpopup(_fn_: actionfn) -> menu {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gmenubar(fn_: actionfn, items: *mut MenuItem) -> menubar {
+pub unsafe extern "C" fn gmenubar(_fn_: actionfn, _items: *mut MenuItem) -> menubar {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpopup(fn_: actionfn, items: *mut MenuItem) -> menu {
+pub unsafe extern "C" fn gpopup(_fn_: actionfn, _items: *mut MenuItem) -> menu {
     ptr::null_mut()
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gchangepopup(w: window, p: menu) { /* TODO */
+pub unsafe extern "C" fn gchangepopup(_w: window, _p: menu) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gchangemenubar(mb: menubar) { /* TODO */
+pub unsafe extern "C" fn gchangemenubar(_mb: menubar) { /* TODO */
 }
 
-pub unsafe fn adjust_menu(wparam: usize) { /* TODO */
+pub unsafe fn adjust_menu(_wparam: usize) { /* TODO */
 }
-pub unsafe fn handle_menu_id(wparam: usize) { /* TODO */
+pub unsafe fn handle_menu_id(_wparam: usize) { /* TODO */
 }
-pub unsafe fn handle_menu_key(wparam: usize) -> c_int {
+pub unsafe fn handle_menu_key(_wparam: usize) -> c_int {
     0
 }

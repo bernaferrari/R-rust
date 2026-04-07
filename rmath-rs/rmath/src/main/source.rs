@@ -18,6 +18,7 @@
 //! Functions depending on the Bison parser (gram.y) remain stubs:
 //! `R_ParseVector` (in gram_main.rs), `R_ParseBuffer`, `R_ParseConn`, `do_parse`.
 
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -39,14 +40,14 @@ pub const PARSE_CONTEXT_SIZE: c_int = 256;
 // Parse error state -- line where parse error occurred
 // ---------------------------------------------------------------------------
 
-static mut R_ParseError_val: c_int = 0;
+thread_local! { static R_ParseError_val: Cell<c_int> = Cell::new(0); }
 
 /// Get parse error line number.
 ///
 /// Equivalent to reading the C global `R_ParseError`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseError() -> c_int {
-    unsafe { R_ParseError_val }
+    R_ParseError_val.with(|v| v.get())
 }
 
 /// Set parse error line number.
@@ -54,49 +55,43 @@ pub unsafe extern "C" fn R_GetParseError() -> c_int {
 /// Equivalent to writing the C global `R_ParseError`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetParseError(v: c_int) {
-    unsafe {
-        R_ParseError_val = v;
-    }
+    R_ParseError_val.with(|c| c.set(v));
 }
 
 // ---------------------------------------------------------------------------
 // Parse error column
 // ---------------------------------------------------------------------------
 
-static mut R_ParseErrorCol_val: c_int = 0;
+thread_local! { static R_ParseErrorCol_val: Cell<c_int> = Cell::new(0); }
 
 /// Get parse error column number.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseErrorCol() -> c_int {
-    unsafe { R_ParseErrorCol_val }
+    R_ParseErrorCol_val.with(|v| v.get())
 }
 
 /// Set parse error column number.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetParseErrorCol(v: c_int) {
-    unsafe {
-        R_ParseErrorCol_val = v;
-    }
+    R_ParseErrorCol_val.with(|c| c.set(v));
 }
 
 // ---------------------------------------------------------------------------
 // Parse error file
 // ---------------------------------------------------------------------------
 
-static mut R_ParseErrorFile_val: SEXP = ptr::null_mut();
+thread_local! { static R_ParseErrorFile_val: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /// Get parse error file (STRSXP or SrcFile ENVSXP, or R_NilValue).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseErrorFile() -> SEXP {
-    unsafe { R_ParseErrorFile_val }
+    R_ParseErrorFile_val.with(|v| v.get())
 }
 
 /// Set parse error file.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetParseErrorFile(v: SEXP) {
-    unsafe {
-        R_ParseErrorFile_val = v;
-    }
+    R_ParseErrorFile_val.with(|c| c.set(v));
 }
 
 // ---------------------------------------------------------------------------
@@ -104,47 +99,42 @@ pub unsafe extern "C" fn R_SetParseErrorFile(v: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Circular buffer that holds recent parse context characters.
-static mut R_ParseContext_buf: [u8; PARSE_CONTEXT_SIZE as usize] =
-    [0u8; PARSE_CONTEXT_SIZE as usize];
+thread_local! { static R_ParseContext_buf: RefCell<[u8; PARSE_CONTEXT_SIZE as usize]> = RefCell::new([0u8; PARSE_CONTEXT_SIZE as usize]); }
 
 /// Index of the last character written to the parse context buffer.
-static mut R_ParseContextLast_val: c_int = 0;
+thread_local! { static R_ParseContextLast_val: Cell<c_int> = Cell::new(0); }
 
 /// Line number of the context buffer content.
-static mut R_ParseContextLine_val: c_int = 0;
+thread_local! { static R_ParseContextLine_val: Cell<c_int> = Cell::new(0); }
 
 /// Get parse context line number.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseContextLine() -> c_int {
-    unsafe { R_ParseContextLine_val }
+    R_ParseContextLine_val.with(|v| v.get())
 }
 
 /// Set parse context line number.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetParseContextLine(v: c_int) {
-    unsafe {
-        R_ParseContextLine_val = v;
-    }
+    R_ParseContextLine_val.with(|c| c.set(v));
 }
 
 /// Get the index of the last character in the parse context buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseContextLast() -> c_int {
-    unsafe { R_ParseContextLast_val }
+    R_ParseContextLast_val.with(|v| v.get())
 }
 
 /// Set the index of the last character in the parse context buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetParseContextLast(v: c_int) {
-    unsafe {
-        R_ParseContextLast_val = v;
-    }
+    R_ParseContextLast_val.with(|c| c.set(v));
 }
 
 /// Get pointer to the parse context circular buffer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseContextBuf() -> *mut u8 {
-    std::ptr::addr_of_mut!(R_ParseContext_buf) as *mut u8
+    R_ParseContext_buf.with(|v| v.as_ptr().cast::<u8>())
 }
 
 // ---------------------------------------------------------------------------
@@ -167,12 +157,12 @@ pub unsafe fn getParseContext() -> SEXP {
         context[last] = 0; // NUL-terminate at the end
 
         // Read backwards from R_ParseContextLast in the circular buffer
-        let mut i = R_ParseContextLast_val as usize;
+        let mut i = R_ParseContextLast_val.with(|v| v.get()) as usize;
         let mut pos = last;
         while pos > 0 {
             i = i % (PARSE_CONTEXT_SIZE as usize);
             pos -= 1;
-            context[pos] = *std::ptr::addr_of!(R_ParseContext_buf).cast::<u8>().add(i);
+            context[pos] = R_ParseContext_buf.with(|v| (*v.borrow())[i]);
             if context[pos] == 0 {
                 pos += 1; // skip the NUL, start from next position
                 break;
@@ -224,10 +214,7 @@ pub unsafe fn getParseContext() -> SEXP {
             let last_line = STRING_ELT(ans, (nread - 1) as R_xlen_t);
             if Rf_length(last_line) == 0 {
                 nread -= 1;
-                std::ptr::write(
-                    std::ptr::addr_of_mut!(R_ParseContextLine_val),
-                    R_ParseContextLine_val - 1,
-                );
+                R_ParseContextLine_val.with(|v| v.set(v.get() - 1));
             }
         }
 
@@ -250,7 +237,7 @@ pub unsafe fn getParseContext() -> SEXP {
 unsafe fn getParseFilename(buffer: &mut [u8]) {
     unsafe {
         buffer[0] = 0;
-        let file = R_ParseErrorFile_val;
+        let file = R_ParseErrorFile_val.with(|v| v.get());
         if file.is_null() {
             return;
         }
@@ -376,8 +363,8 @@ pub unsafe fn parseError(_call: SEXP, linenum: c_int) {
         let len = Rf_length(context);
 
         // Read static values through raw pointers (mutable statics)
-        let parse_col = std::ptr::read(std::ptr::addr_of!(R_ParseErrorCol_val));
-        let parse_line = std::ptr::read(std::ptr::addr_of!(R_ParseContextLine_val));
+        let parse_col = R_ParseErrorCol_val.with(|v| v.get());
+        let parse_line = R_ParseContextLine_val.with(|v| v.get());
 
         let mut filename_buf = [0u8; 128];
         getParseFilename(&mut filename_buf);
@@ -485,8 +472,10 @@ unsafe fn STRING_ELT_to_string(vec: SEXP, i: R_xlen_t) -> String {
 unsafe fn Rf_error_cstr(msg: &str) {
     // Rf_error takes a C format string; for a simple string with no %,
     // we can pass it directly. Use a NUL-terminated temporary.
-    let cmsg = std::ffi::CString::new(msg)
-        .unwrap_or_else(|_| std::ffi::CString::new("<error message contained NUL>").unwrap());
+    let cmsg = std::ffi::CString::new(msg).unwrap_or_else(|_| {
+        std::ffi::CString::new("<error message contained NUL>")
+            .expect("CString::new failed: contains null byte")
+    });
     crate::main::errors::Rf_error(cmsg.as_ptr());
 }
 

@@ -5,23 +5,21 @@
 //! This is a minimal stub since the actual main() is provided by the
 //! embedding application or the unix/system module.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 
-/// Flag indicating R is running as the main program.
-static mut R_running_as_main_program: c_int = 0;
+thread_local! { static R_running_as_main_program: Cell<c_int> = Cell::new(0); }
 
 /// Set the running-as-main-program flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetRunningAsMainProgram(v: c_int) {
-    unsafe {
-        R_running_as_main_program = v;
-    }
+    R_running_as_main_program.with(|v_| v_.set(v));
 }
 
 /// Get the running-as-main-program flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_RunningAsMainProgram() -> c_int {
-    unsafe { R_running_as_main_program }
+    R_running_as_main_program.with(|v| v.get())
 }
 
 /// FORTRAN compatibility stub.

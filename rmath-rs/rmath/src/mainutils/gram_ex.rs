@@ -15,7 +15,6 @@
 //! real `FILE *` wrapper.  This module provides an FFI-compatible stub.
 
 use std::os::raw::{c_int, c_void};
-use std::ptr;
 
 /// Stub for `R_fgetc` -- R's wrapper around `fgetc`.
 ///

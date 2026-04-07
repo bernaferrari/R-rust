@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1998--2026  The R Core Team
@@ -27,6 +26,7 @@
  *  R_NilValue().
  */
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -95,7 +95,6 @@ const max_contour_segments: c_int = 25000;
 // NA_STRING sentinel (non-null pointer for NA character).
 // This is a stub; the real value comes from R internals.
 // Not used directly in our stubs; defined only to prevent linker errors.
-// static mut NA_STRING: SEXP = std::ptr::null_mut();
 
 /* Stub extern declarations for GE functions not yet ported */
 
@@ -231,16 +230,16 @@ type Vector3d = [c_double; 4];
 type Trans3d = [[c_double; 4]; 4];
 
 /// The viewing transformation matrix (module-level state, matching C static).
-static mut VT: Trans3d = [[0.0; 4]; 4];
+thread_local! { static VT: Cell<Trans3d> = Cell::new([[0.0; 4]; 4]); }
 
 /// Light source direction vector (module-level state).
-static mut Light: [c_double; 4] = [0.0; 4];
+thread_local! { static Light: Cell<[c_double; 4]> = Cell::new([0.0; 4]); }
 
 /// Shade exponent for lighting.
-static mut Shade: c_double = 1.0;
+thread_local! { static Shade: Cell<c_double> = Cell::new(1.0); }
 
 /// Whether lighting is enabled.
-static mut DoLighting: bool = false;
+thread_local! { static DoLighting: Cell<bool> = Cell::new(false); }
 
 /// Transform a 3D vector by a 4x4 transformation matrix.
 /// Real implementation of the matrix-vector product.
@@ -259,24 +258,20 @@ fn TransVector(u: &Vector3d, t: *const Trans3d, v: &mut Vector3d) {
 /// Accumulate (right-multiply) a transformation into the global VT matrix.
 /// VT := VT * T
 fn Accumulate(t: &Trans3d) {
-    unsafe {
-        let vt = std::ptr::addr_of_mut!(VT);
+    VT.with(|v| {
+        let vt = v.get();
         let mut u: Trans3d = [[0.0; 4]; 4];
         for i in 0..4 {
             for j in 0..4 {
                 let mut sum = 0.0;
                 for k in 0..4 {
-                    sum += (*vt)[i][k] * t[k][j];
+                    sum += vt[i][k] * t[k][j];
                 }
                 u[i][j] = sum;
             }
         }
-        for i in 0..4 {
-            for j in 0..4 {
-                (*vt)[i][j] = u[i][j];
-            }
-        }
-    }
+        v.set(u);
+    });
 }
 
 /// Set a 4x4 transformation matrix to the identity.
@@ -368,17 +363,22 @@ fn Perspective(d: c_double) {
 /// Set up the light source direction from spherical coordinates.
 fn SetUpLight(theta: c_double, phi: c_double) {
     let u: Vector3d = [0.0, -1.0, 0.0, 1.0];
-    SetToIdentity(std::ptr::addr_of_mut!(VT));
+    VT.with(|v| {
+        let mut m = v.get();
+        for i in 0..4 {
+            for j in 0..4 {
+                m[i][j] = 0.0;
+            }
+            m[i][i] = 1.0;
+        }
+        v.set(m);
+    });
     XRotate(-phi);
     ZRotate(theta);
-    unsafe {
-        let mut light: [c_double; 4] = [0.0; 4];
-        TransVector(&u, std::ptr::addr_of!(VT), &mut light);
-        Light[0] = light[0];
-        Light[1] = light[1];
-        Light[2] = light[2];
-        Light[3] = light[3];
-    }
+    let vt_val = VT.with(|v| v.get());
+    let mut light: [c_double; 4] = [0.0; 4];
+    TransVector(&u, &vt_val, &mut light);
+    Light.with(|v| v.set(light));
 }
 
 /// Compute the shading factor for a facet given two edge vectors.
@@ -393,10 +393,12 @@ fn FacetShade(u: &[c_double], v: &[c_double]) -> c_double {
     let nx = nx / sum;
     let ny = ny / sum;
     let nz = nz / sum;
-    unsafe {
-        let s = 0.5 * (nx * Light[0] + ny * Light[1] + nz * Light[2] + 1.0);
-        s.powf(Shade)
-    }
+    let s = 0.5
+        * (nx * Light.with(|v| v.get())[0]
+            + ny * Light.with(|v| v.get())[1]
+            + nz * Light.with(|v| v.get())[2]
+            + 1.0);
+    s.powf(Shade.with(|v| v.get()))
 }
 
 /* ========================================================================
@@ -567,7 +569,8 @@ fn DepthOrder(
                     u[2] = 0.0;
                     u[3] = 1.0;
                     if u[0].is_finite() && u[1].is_finite() && u[2].is_finite() {
-                        TransVector(&u, std::ptr::addr_of!(VT), &mut v);
+                        let vt_val = VT.with(|v| v.get());
+                        TransVector(&u, &vt_val, &mut v);
                         if v[3] > d {
                             d = v[3];
                         }
@@ -1158,7 +1161,7 @@ pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
     _args = CDR(_args);
     let _lphi = asReal(CAR(_args));
     _args = CDR(_args);
-    Shade = asReal(CAR(_args));
+    Shade.with(|v| v.set(asReal(CAR(_args))));
     _args = CDR(_args);
     let _dobox = asLogical(CAR(_args));
     _args = CDR(_args);
@@ -1175,13 +1178,14 @@ pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
     let _zlab = CAR(_args);
     _args = CDR(_args);
 
-    if Shade.is_finite() && Shade <= 0.0 {
-        Shade = 1.0;
+    let shade_val = Shade.with(|v| v.get());
+    if shade_val.is_finite() && shade_val <= 0.0 {
+        Shade.with(|v| v.set(1.0));
     }
-    if _ltheta.is_finite() && _lphi.is_finite() && Shade.is_finite() {
-        DoLighting = true;
+    if _ltheta.is_finite() && _lphi.is_finite() && Shade.with(|v| v.get()).is_finite() {
+        DoLighting.with(|v| v.set(true));
     } else {
-        DoLighting = false;
+        DoLighting.with(|v| v.set(false));
     }
 
     let mut _xs2 = _xs;
@@ -1217,7 +1221,16 @@ pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
     }
 
     /* Set up the viewing transformation (real math) */
-    SetToIdentity(std::ptr::addr_of_mut!(VT));
+    VT.with(|v| {
+        let mut m = v.get();
+        for i in 0..4 {
+            for j in 0..4 {
+                m[i][j] = 0.0;
+            }
+            m[i][i] = 1.0;
+        }
+        v.set(m);
+    });
     Translate(-_xc, -_yc, -_zc);
     Scale(1.0 / _xs2, 1.0 / _ys2, _expand / _zs2);
     XRotate(-90.0);
@@ -1227,11 +1240,11 @@ pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
     Perspective(_d);
 
     /* Set up lighting (real math) */
-    if DoLighting {
+    if DoLighting.with(|v| v.get()) {
         /* Save VT, set up light direction, then restore VT */
-        let saved_vt = VT;
+        let saved_vt = VT.with(|v| v.get());
         SetUpLight(_ltheta, _lphi);
-        VT = saved_vt;
+        VT.with(|v| v.set(saved_vt));
     }
 
     /* Compute depth order (real algorithm) */
@@ -1255,7 +1268,7 @@ pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
     let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 2));
     for i in 0..4 {
         for j in 0..4 {
-            *REAL(result).add(i + j * 4) = VT[i][j];
+            *REAL(result).add(i + j * 4) = VT.with(|v| v.get())[i][j];
         }
     }
     *INTEGER(dim).add(0) = 4;

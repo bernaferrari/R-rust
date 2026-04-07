@@ -15,6 +15,7 @@
 //!
 //! Ported from r-source/src/main/localecharset.c
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::c_char;
 
@@ -466,7 +467,7 @@ fn guess_lookup(name: &[u8]) -> Option<&'static [u8]> {
 /// * The appropriate encoding name otherwise
 #[allow(unreachable_code)]
 pub unsafe fn locale2charset(locale: *const c_char) -> *const c_char {
-    static mut CHARSET_BUF: [u8; 128] = [0; 128];
+    thread_local! { static CHARSET_BUF: RefCell<[u8; 128]> = RefCell::new([0; 128]); }
 
     let locale_str = if locale.is_null() || {
         let s = CStr::from_ptr(locale).to_str().unwrap_or("");
@@ -539,11 +540,13 @@ pub unsafe fn locale2charset(locale: *const c_char) -> *const c_char {
     if enc_lower.starts_with(b"cp-") {
         let cp_num = &enc[3..];
         let result = format!("CP{}", cp_num);
-        let buf = std::ptr::addr_of_mut!(CHARSET_BUF) as *mut u8;
-        let bytes = result.as_bytes();
-        std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
-        *buf.add(result.len()) = 0;
-        return buf.cast::<c_char>();
+        CHARSET_BUF.with(|v| {
+            let mut buf = v.borrow_mut();
+            let bytes = result.as_bytes();
+            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
+            buf[result.len()] = 0;
+        });
+        return CHARSET_BUF.with(|v| v.borrow().as_ptr()) as *const c_char;
     }
 
     // Check for ibm- prefix (IBM codepages)
@@ -559,11 +562,13 @@ pub unsafe fn locale2charset(locale: *const c_char) -> *const c_char {
             if _cp != 0 {
                 // IBM-NNNN case
                 let result = format!("IBM-{}", _cp.abs());
-                let buf = std::ptr::addr_of_mut!(CHARSET_BUF) as *mut u8;
-                let bytes = result.as_bytes();
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
-                *buf.add(result.len()) = 0;
-                return buf.cast::<c_char>();
+                CHARSET_BUF.with(|v| {
+                    let mut buf = v.borrow_mut();
+                    let bytes = result.as_bytes();
+                    std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
+                    buf[result.len()] = 0;
+                });
+                return CHARSET_BUF.with(|v| v.borrow().as_ptr()) as *const c_char;
             }
         }
         // IBM-eucXX case
@@ -575,11 +580,13 @@ pub unsafe fn locale2charset(locale: *const c_char) -> *const c_char {
         if euc_str.starts_with("euc") && euc_str.len() > 3 {
             let mut result = String::from("EUC-");
             result.push_str(&euc_str[3..].to_uppercase());
-            let buf = std::ptr::addr_of_mut!(CHARSET_BUF) as *mut u8;
-            let bytes = result.as_bytes();
-            std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
-            *buf.add(result.len()) = 0;
-            return buf.cast::<c_char>();
+            CHARSET_BUF.with(|v| {
+                let mut buf = v.borrow_mut();
+                let bytes = result.as_bytes();
+                std::ptr::copy_nonoverlapping(bytes.as_ptr(), buf.as_mut_ptr(), bytes.len());
+                buf[result.len()] = 0;
+            });
+            return CHARSET_BUF.with(|v| v.borrow().as_ptr()) as *const c_char;
         }
     }
 

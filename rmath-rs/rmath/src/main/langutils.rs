@@ -60,7 +60,7 @@ pub unsafe fn do_missing(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         if TYPEOF(sym) == SEXPTYPE::STRSXP.0 && LENGTH(sym) == 1 {
             let s = CStr::from_ptr(CHAR(STRING_ELT(sym, 0)));
             let name = s.to_str().unwrap_or("");
-            let cs = CString::new(name).unwrap();
+            let cs = CString::new(name).expect("CString::new failed: contains null byte");
             sym = Rf_install(cs.as_ptr());
         }
         if TYPEOF(sym) != SEXPTYPE::SYMSXP.0 {
@@ -615,7 +615,7 @@ pub unsafe fn do_get0(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let s = CStr::from_ptr(CHAR(STRING_ELT(sym_arg, 0)))
                 .to_str()
                 .unwrap_or("");
-            let cs = CString::new(s).unwrap();
+            let cs = CString::new(s).expect("CString::new failed: contains null byte");
             let sym = Rf_install(cs.as_ptr());
             let val = crate::sexp::envir::findVar(sym, env);
             if val == R_UnboundValue() {
@@ -650,7 +650,7 @@ pub unsafe fn do_mget(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         for i in 0..n as R_xlen_t {
             let name_cstr = CStr::from_ptr(CHAR(STRING_ELT(x, i)));
             let name = name_cstr.to_str().unwrap_or("");
-            let cs = CString::new(name).unwrap();
+            let cs = CString::new(name).expect("CString::new failed: contains null byte");
             let sym = Rf_install(cs.as_ptr());
             let val = crate::sexp::envir::findVar(sym, env);
             if val == R_UnboundValue() {
@@ -698,7 +698,7 @@ pub unsafe fn do_list2env(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 let name_str = CStr::from_ptr(CHAR(STRING_ELT(names, i as R_xlen_t)));
                 let name = name_str.to_str().unwrap_or("");
                 if !name.is_empty() {
-                    let cs = CString::new(name).unwrap();
+                    let cs = CString::new(name).expect("CString::new failed: contains null byte");
                     let sym = Rf_install(cs.as_ptr());
                     crate::sexp::envir::defineVar(sym, val, envir);
                 }
@@ -830,12 +830,12 @@ pub unsafe fn do_Version(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEX
             SET_STRING_ELT(
                 ans,
                 i as R_xlen_t,
-                Rf_mkChar(CString::new(*val).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(*val).expect("CString::new failed: contains null byte").as_ptr()),
             );
             SET_STRING_ELT(
                 cn,
                 i as R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(CString::new(*name).expect("CString::new failed: contains null byte").as_ptr()),
             );
         }
 
@@ -850,7 +850,7 @@ pub unsafe fn do_Version(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_internalsID(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe { Rf_mkString(CString::new("R 4.4.0").unwrap().as_ptr()) }
+    unsafe { Rf_mkString(CString::new("R 4.4.0").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -1059,7 +1059,7 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     let name_str = CStr::from_ptr(CHAR(STRING_ELT(arg_names, i as R_xlen_t)));
                     let name = name_str.to_str().unwrap_or("");
                     if !name.is_empty() {
-                        let cs = CString::new(name).unwrap();
+                        let cs = CString::new(name).expect("CString::new failed: contains null byte");
                         SETTAG(new_cons, Rf_install(cs.as_ptr()));
                     }
                 }
@@ -1087,7 +1087,7 @@ pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         // Simplified: return the string as a symbol
         let s = CStr::from_ptr(CHAR(STRING_ELT(text, 0)));
         let name = s.to_str().unwrap_or("");
-        Rf_install(CString::new(name).unwrap().as_ptr()) as SEXP
+        Rf_install(CString::new(name).expect("CString::new failed: contains null byte").as_ptr()) as SEXP
     }
 }
 
@@ -1109,7 +1109,7 @@ pub unsafe fn do_str2expression(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             SET_VECTOR_ELT(
                 ans,
                 i as R_xlen_t,
-                Rf_install(CString::new(name).unwrap().as_ptr()) as SEXP,
+                Rf_install(CString::new(name).expect("CString::new failed: contains null byte").as_ptr()) as SEXP,
             );
         }
         Rf_unprotect(1);
@@ -1208,7 +1208,7 @@ pub unsafe fn do_substr_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             }
 
             let result_len = result.len();
-            let cs = CString::new(result).unwrap();
+            let cs = CString::new(result).expect("CString::new failed: contains null byte");
             let ch = Rf_mkCharLen(cs.as_ptr(), result_len as c_int);
             SET_STRING_ELT(y, i as R_xlen_t, ch);
         }
@@ -1268,7 +1268,7 @@ pub unsafe fn do_strsplit(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 SET_STRING_ELT(
                     vec,
                     j as R_xlen_t,
-                    Rf_mkChar(CString::new(part.as_str()).unwrap().as_ptr()),
+                    Rf_mkChar(CString::new(part.as_str()).expect("CString::new failed: contains null byte").as_ptr()),
                 );
             }
             SET_VECTOR_ELT(ans, i as R_xlen_t, vec);
@@ -1405,7 +1405,7 @@ pub unsafe fn do_as_function_default(_call: SEXP, _op: SEXP, args: SEXP, _env: S
             let s = CStr::from_ptr(CHAR(STRING_ELT(x, 0)))
                 .to_str()
                 .unwrap_or("");
-            let cs = CString::new(s).unwrap();
+            let cs = CString::new(s).expect("CString::new failed: contains null byte");
             let fun = Rf_install(cs.as_ptr());
             let val = crate::sexp::envir::findFun(fun, _env);
             if !val.is_null() && val != R_UnboundValue() {
@@ -1544,7 +1544,7 @@ pub unsafe fn do_eapply(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         for (i, name_sexp) in names_vec.iter().enumerate() {
             let name_str = CStr::from_ptr(CHAR(*name_sexp));
             let name = name_str.to_str().unwrap_or("");
-            let cs = CString::new(name).unwrap();
+            let cs = CString::new(name).expect("CString::new failed: contains null byte");
             let sym = Rf_install(cs.as_ptr());
             let val = crate::sexp::envir::findVar(sym, env_arg);
             if val != R_UnboundValue() && TYPEOF(val) != SEXPTYPE::PROMSXP.0 {
@@ -1621,7 +1621,7 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                         SET_STRING_ELT(
                             ans,
                             i as R_xlen_t,
-                            Rf_mkChar(CString::new(*line).unwrap().as_ptr()),
+                            Rf_mkChar(CString::new(*line).expect("CString::new failed: contains null byte").as_ptr()),
                         );
                     }
                     Rf_unprotect(1);
@@ -1750,7 +1750,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     SET_STRING_ELT(
                         ans,
                         i as R_xlen_t,
-                        Rf_mkChar(CString::new(v.as_str()).unwrap().as_ptr()),
+                        Rf_mkChar(CString::new(v.as_str()).expect("CString::new failed: contains null byte").as_ptr()),
                     );
                 }
                 Rf_unprotect(1);
@@ -1967,7 +1967,7 @@ pub unsafe fn do_at(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 return R_NilValue();
             }
 
-            let sym = Rf_install(CString::new(name_str).unwrap().as_ptr());
+            let sym = Rf_install(CString::new(name_str).expect("CString::new failed: contains null byte").as_ptr());
             let val = crate::attrib_core::getAttrib(obj, sym);
             if !val.is_null() && val != R_NilValue() {
                 return val;
@@ -2139,7 +2139,7 @@ pub unsafe fn do_dotsNames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     let name_cstr = CStr::from_ptr(name_ch);
                     let name_str = name_cstr.to_str().unwrap_or("");
                     let name_rstr = crate::sexp::constructors::Rf_mkChar(
-                        CString::new(name_str).unwrap().as_ptr(),
+                        CString::new(name_str).expect("CString::new failed: contains null byte").as_ptr(),
                     );
                     SET_STRING_ELT(result, i, name_rstr);
                 }
@@ -2488,7 +2488,7 @@ pub unsafe fn do_makenames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             let cleaned = collapsed.trim_end_matches('.');
 
             let rstr =
-                crate::sexp::constructors::Rf_mkChar(CString::new(cleaned).unwrap().as_ptr());
+                crate::sexp::constructors::Rf_mkChar(CString::new(cleaned).expect("CString::new failed: contains null byte").as_ptr());
             SET_STRING_ELT(result, i as R_xlen_t, rstr);
         }
 
@@ -2536,7 +2536,7 @@ pub unsafe fn do_makeunique(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
                     let candidate = format!("{}{}{}", name, sep, j);
                     if !seen.contains(&candidate) {
                         let rstr = crate::sexp::constructors::Rf_mkChar(
-                            CString::new(candidate.as_str()).unwrap().as_ptr(),
+                            CString::new(candidate.as_str()).expect("CString::new failed: contains null byte").as_ptr(),
                         );
                         SET_STRING_ELT(result, i as R_xlen_t, rstr);
                         seen.insert(candidate);
@@ -2546,7 +2546,7 @@ pub unsafe fn do_makeunique(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
                 }
             } else {
                 let rstr = crate::sexp::constructors::Rf_mkChar(
-                    CString::new(name.as_str()).unwrap().as_ptr(),
+                    CString::new(name.as_str()).expect("CString::new failed: contains null byte").as_ptr(),
                 );
                 SET_STRING_ELT(result, i as R_xlen_t, rstr);
                 seen.insert(name);
@@ -2646,7 +2646,7 @@ pub unsafe fn do_substrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             };
 
             let rstr =
-                crate::sexp::constructors::Rf_mkChar(CString::new(new_str).unwrap().as_ptr());
+                crate::sexp::constructors::Rf_mkChar(CString::new(new_str).expect("CString::new failed: contains null byte").as_ptr());
             SET_STRING_ELT(result, i as R_xlen_t, rstr);
         }
 

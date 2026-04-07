@@ -12,7 +12,7 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(dweibull_inner(0.0, -1.0, 1.0, false), "dweibull(0,-1,1)");
     assert_nan(dweibull_inner(0.0, 1.0, 0.0, false), "dweibull(0,1,0)");
     assert_nan(dweibull_inner(0.0, 1.0, -1.0, false), "dweibull(0,1,-1)");
-    if !(dweibull_inner(1.0, 1.0, 1.0, false) > 0.0) {
+    if dweibull_inner(1.0, 1.0, 1.0, false) <= 0.0 {
         return Err("dweibull(1,1,1) > 0".into());
     }
     assert_equiv(dweibull_inner(0.0, 1.0, 1.0, false), 1.0, "dweibull(0,1,1)");
@@ -49,7 +49,7 @@ pub fn run_tests() -> Result<(), String> {
         1.0,
         "pweibull(0,1,1,upper)",
     );
-    if !(pweibull_inner(1.0, 1.0, 1.0, true, false) > 0.63) {
+    if pweibull_inner(1.0, 1.0, 1.0, true, false) <= 0.63 {
         return Err("pweibull(1,1,1)~0.632".into());
     }
 
@@ -83,7 +83,7 @@ pub fn run_tests() -> Result<(), String> {
     // rweibull tests
     set_seed(42, 24);
     let r1 = rweibull_inner(1.0, 1.0);
-    if !(r1 >= 0.0) {
+    if r1 < 0.0 {
         return Err("rweibull(1,1) >= 0".into());
     }
     set_seed(42, 24);

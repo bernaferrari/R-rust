@@ -7,6 +7,7 @@
 #![allow(non_snake_case, non_camel_case_types)]
 
 use std::alloc::{self, Layout};
+use std::cell::Cell;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
@@ -731,14 +732,14 @@ mod tests {
             );
 
             // Walk the tree - just ensure it doesn't crash.
-            static mut VISIT_COUNT: c_int = 0;
+            thread_local! { static VISIT_COUNT: Cell<c_int> = Cell::new(0); }
             unsafe extern "C" fn count_visits(_node: *const c_void, _visit: VISIT, _level: c_int) {
-                *std::ptr::addr_of_mut!(VISIT_COUNT) += 1;
+                VISIT_COUNT.with(|v| v.set(v.get() + 1));
             }
-            *std::ptr::addr_of_mut!(VISIT_COUNT) = 0;
+            VISIT_COUNT.with(|v| v.set(0));
             twalk(*rootp as *const c_void, Some(count_visits));
             // With 3 nodes: 1 internal (3 visits) + 2 leaves (1 each) = 5.
-            assert_eq!(*std::ptr::addr_of!(VISIT_COUNT), 5);
+            assert_eq!(VISIT_COUNT.with(|v| v.get()), 5);
 
             // Cleanup.
             tdestroy(*rootp as *mut c_void, Some(free_int_key));

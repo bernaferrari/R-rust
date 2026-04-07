@@ -55,55 +55,55 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 /// Get the "dim" symbol (install if needed).
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("dim").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("names").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 unsafe fn sym_DimNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("dimnames").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("class").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
 #[inline]
 unsafe fn sym_Srcref() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("srcref").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("srcref").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "tsp" symbol.
 #[inline]
 unsafe fn sym_Tsp() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("tsp").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "drop" symbol.
 #[inline]
 unsafe fn sym_Drop() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("drop").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("drop").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "exact" symbol.
 #[inline]
 unsafe fn sym_Exact() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("exact").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("exact").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 /// Get the "row.names" symbol.
 #[inline]
 unsafe fn sym_RowNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("row.names").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("row.names").expect("CString::new failed: contains null byte").as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -870,7 +870,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if s == R_NilValue() || TYPEOF(s) == SEXPTYPE::SYMSXP.0 {
             // Missing arg check
-            let missing_sym = Rf_install(std::ffi::CString::new("").unwrap().as_ptr());
+            let missing_sym = Rf_install(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
             if s == R_NilValue() {
                 return Rf_protect(crate::main::duplicate::duplicate(x));
             }

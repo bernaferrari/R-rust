@@ -1,8 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/summary.c — numeric summary algorithms.
 //!
@@ -16,14 +14,13 @@
 //!   real_mean, integer_mean (mean with overflow protection)
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, SETCDR, SETTAG, STRING_ELT,
-    TAG, TYPEOF, XLENGTH,
+    CAR, CDR, COMPLEX, INTEGER, LOGICAL, REAL, SETCDR, SETTAG, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarComplex, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
+    Rf_ScalarComplex, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
 use crate::sexp::ffi::SEXP;
-use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, Rcomplex, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
@@ -402,6 +399,7 @@ pub fn integer_mean(x: &[c_int]) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// NA_REAL: R's special NaN bit pattern for NA.
+#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
 
 /// R_PosInf constant.
@@ -1013,7 +1011,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 t if t == SEXPTYPE::CPLXSXP.0 => return complex_mean_sexp(x),
                 _ => {
                     std::panic::panic_any(crate::sexp::context::RError {
-                        message: format!("invalid 'type' of argument"),
+                        message: "invalid 'type' of argument".to_string(),
                     });
                 }
             }
@@ -1048,7 +1046,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     let bad = CAR(a);
                     Rf_unprotect(2);
                     std::panic::panic_any(crate::sexp::context::RError {
-                        message: format!("invalid 'type' of argument"),
+                        message: "invalid 'type' of argument".to_string(),
                     });
                 }
             }
@@ -1126,13 +1124,12 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
                                 if updated != 0 {
                                     if ans_type == SEXPTYPE::INTSXP.0 {
-                                        if icum != NA_INTEGER {
-                                            if itmp == NA_INTEGER
+                                        if icum != NA_INTEGER
+                                            && (itmp == NA_INTEGER
                                                 || (iop == 2 && itmp < icum)
-                                                || (iop == 3 && itmp > icum)
-                                            {
-                                                icum = itmp;
-                                            }
+                                                || (iop == 3 && itmp > icum))
+                                        {
+                                            icum = itmp;
                                         }
                                     } else if ans_type == SEXPTYPE::REALSXP.0 {
                                         let tmp = Int2Real(itmp);
@@ -1429,7 +1426,7 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             t if t == SEXPTYPE::CPLXSXP.0 => complex_mean_sexp(x),
             _ => {
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: format!("invalid 'type' of argument"),
+                    message: "invalid 'type' of argument".to_string(),
                 });
             }
         }

@@ -11,6 +11,7 @@
  *  This should be regarded as part of the graphics engine.
  */
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
@@ -49,22 +50,22 @@ const TRUE: c_int = 1;
 // ---------------------------------------------------------------------------
 
 /// Index returned by GEregisterSystem for the base system.
-pub static mut baseRegisterIndex: c_int = -1;
+thread_local! { pub static baseRegisterIndex: Cell<c_int> = Cell::new(-1); }
 
 /// Index of the current device (0 = null device).
-static mut R_CurrentDevice: c_int = 0;
+thread_local! { static R_CurrentDevice: Cell<c_int> = Cell::new(0); }
 
 /// Number of active devices (including null device at slot 0).
-static mut R_NumDevices: c_int = 1;
+thread_local! { static R_NumDevices: Cell<c_int> = Cell::new(1); }
 
 /// Device array. Slot 0 is the null device, slot 63 is a sentinel.
-static mut R_Devices: [pGEDevDesc; R_MaxDevices as usize] = [ptr::null_mut(); 64];
+thread_local! { static R_Devices: RefCell<[pGEDevDesc; R_MaxDevices as usize]> = RefCell::new([ptr::null_mut(); 64]); }
 
 /// Whether each slot is active.
-static mut active: [c_int; R_MaxDevices as usize] = [0; 64];
+thread_local! { static active: RefCell<[c_int; R_MaxDevices as usize]> = RefCell::new([0; 64]); }
 
 /// Dummy null device description (never dereferenced for real ops).
-static mut nullDevice: GEDevDesc = GEDevDesc {
+thread_local! { static nullDevice: RefCell<GEDevDesc> = RefCell::new(GEDevDesc {
     dev: ptr::null_mut(),
     displayListOn: 0,
     displayList: ptr::null_mut(),
@@ -76,7 +77,40 @@ static mut nullDevice: GEDevDesc = GEDevDesc {
     gesd: [ptr::null_mut(); MAX_GRAPHICS_SYSTEMS as usize],
     ask: 0,
     appending: 0,
-};
+}); }
+
+#[inline(always)]
+unsafe fn get_current_device_index() -> c_int {
+    R_CurrentDevice.with(|v| v.get())
+}
+#[inline(always)]
+unsafe fn set_current_device_index(v: c_int) {
+    R_CurrentDevice.with(|c| c.set(v));
+}
+#[inline(always)]
+unsafe fn get_num_devices() -> c_int {
+    R_NumDevices.with(|v| v.get())
+}
+#[inline(always)]
+unsafe fn set_num_devices(v: c_int) {
+    R_NumDevices.with(|c| c.set(v));
+}
+#[inline(always)]
+unsafe fn get_device_slot(i: c_int) -> pGEDevDesc {
+    R_Devices.with(|v| v.borrow()[i as usize])
+}
+#[inline(always)]
+unsafe fn set_device_slot(i: c_int, dev: pGEDevDesc) {
+    R_Devices.with(|v| v.borrow_mut()[i as usize] = dev);
+}
+#[inline(always)]
+unsafe fn get_active_slot(i: c_int) -> c_int {
+    active.with(|v| v.borrow()[i as usize])
+}
+#[inline(always)]
+unsafe fn set_active_slot(i: c_int, val: c_int) {
+    active.with(|v| v.borrow_mut()[i as usize] = val);
+}
 
 // ---------------------------------------------------------------------------
 // Helper: getSymbolValue
@@ -114,7 +148,7 @@ unsafe fn R_DevicesSymbol() -> SEXP {
 /// Used in grid.
 pub unsafe fn NoDevices() -> c_int {
     unsafe {
-        if R_NumDevices == 1 || R_CurrentDevice == 0 {
+        if get_num_devices() == 1 || get_current_device_index() == 0 {
             TRUE
         } else {
             FALSE
@@ -124,7 +158,7 @@ pub unsafe fn NoDevices() -> c_int {
 
 /// Returns the number of devices (including null device).
 pub unsafe fn NumDevices() -> c_int {
-    unsafe { R_NumDevices }
+    unsafe { get_num_devices() }
 }
 
 /// Get the current device descriptor. If there are no active devices,
@@ -172,24 +206,18 @@ pub unsafe fn GEcurrentDevice() -> pGEDevDesc {
                 );
             }
         }
-        *ptr::addr_of_mut!(R_Devices)
-            .cast::<pGEDevDesc>()
-            .add(R_CurrentDevice as usize)
+        get_device_slot(get_current_device_index())
     }
 }
 
 /// Get device by index.
 pub unsafe fn GEgetDevice(i: c_int) -> pGEDevDesc {
-    unsafe {
-        *ptr::addr_of_mut!(R_Devices)
-            .cast::<pGEDevDesc>()
-            .add(i as usize)
-    }
+    unsafe { get_device_slot(i) }
 }
 
 /// Get the current device number.
 pub unsafe fn curDevice() -> c_int {
-    unsafe { R_CurrentDevice }
+    unsafe { get_current_device_index() }
 }
 
 // ---------------------------------------------------------------------------
@@ -199,14 +227,14 @@ pub unsafe fn curDevice() -> c_int {
 /// Find the next active device after `from`.
 pub unsafe fn nextDevice(from: c_int) -> c_int {
     unsafe {
-        if R_NumDevices == 1 {
+        if get_num_devices() == 1 {
             return 0;
         }
         let mut i = from;
         let mut nextDev: c_int = 0;
         while i < (R_MaxDevices - 1) && nextDev == 0 {
             i += 1;
-            if *ptr::addr_of_mut!(active).cast::<c_int>().add(i as usize) != 0 {
+            if get_active_slot(i) != 0 {
                 nextDev = i;
             }
         }
@@ -214,7 +242,7 @@ pub unsafe fn nextDevice(from: c_int) -> c_int {
             i = 0;
             while i < (R_MaxDevices - 1) && nextDev == 0 {
                 i += 1;
-                if *ptr::addr_of_mut!(active).cast::<c_int>().add(i as usize) != 0 {
+                if get_active_slot(i) != 0 {
                     nextDev = i;
                 }
             }
@@ -226,7 +254,7 @@ pub unsafe fn nextDevice(from: c_int) -> c_int {
 /// Find the previous active device before `from`.
 pub unsafe fn prevDevice(from: c_int) -> c_int {
     unsafe {
-        if R_NumDevices == 1 {
+        if get_num_devices() == 1 {
             return 0;
         }
         let mut i = from;
@@ -234,7 +262,7 @@ pub unsafe fn prevDevice(from: c_int) -> c_int {
         if i < R_MaxDevices {
             while i > 1 && prevDev == 0 {
                 i -= 1;
-                if *ptr::addr_of_mut!(active).cast::<c_int>().add(i as usize) != 0 {
+                if get_active_slot(i) != 0 {
                     prevDev = i;
                 }
             }
@@ -243,7 +271,7 @@ pub unsafe fn prevDevice(from: c_int) -> c_int {
             i = R_MaxDevices;
             while i > 1 && prevDev == 0 {
                 i -= 1;
-                if *ptr::addr_of_mut!(active).cast::<c_int>().add(i as usize) != 0 {
+                if get_active_slot(i) != 0 {
                     prevDev = i;
                 }
             }

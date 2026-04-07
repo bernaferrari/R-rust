@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/printvector.c -- vector printing.
 //!
@@ -19,7 +18,7 @@
 //!   PrintValue, PrintValueEnv, PrintValueRec -- in print.rs
 //!   XLENGTH -- in sexp/accessors.rs
 
-use std::ffi::CStr;
+use std::cell::RefCell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -76,8 +75,7 @@ impl Default for R_PrintData {
     }
 }
 
-/// Module-level print parameter storage.
-static mut R_PRINT_DATA: R_PrintData = R_PrintData {
+thread_local! { static R_PRINT_DATA: RefCell<R_PrintData> = RefCell::new(R_PrintData {
     width: 80,
     gap: 1,
     digits: 4,
@@ -89,14 +87,30 @@ static mut R_PRINT_DATA: R_PrintData = R_PrintData {
     na_width_noquote: 4,
     na_string: ptr::null_mut(),
     na_string_noquote: ptr::null_mut(),
-};
+}); }
+
+#[repr(transparent)]
+pub struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
 
 /// Get the global print data (full R_print parameters).
 ///
 /// Named `get_R_PrintData` to avoid collision with `get_R_print` in
 /// printutils.rs (which returns the smaller `RPrint` struct).
-pub unsafe fn get_R_PrintData() -> &'static mut R_PrintData {
-    unsafe { &mut *std::ptr::addr_of_mut!(R_PRINT_DATA) }
+pub unsafe fn get_R_PrintData() -> MutPtr<R_PrintData> {
+    MutPtr(R_PRINT_DATA.with(|v| v.as_ptr() as *mut R_PrintData))
 }
 
 // ---------------------------------------------------------------------------
@@ -636,7 +650,8 @@ unsafe fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // printVector -- exported
 // ---------------------------------------------------------------------------
 
-pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn printVector(x: SEXP, indx: c_int, quote: c_int) {
     unsafe {
         if x.is_null() {
             return;
@@ -1172,7 +1187,8 @@ pub unsafe fn type2str_nowarn(stype: c_int) -> *const c_char {
 // GetMatrixDimnames
 // ---------------------------------------------------------------------------
 
-pub unsafe fn GetMatrixDimnames(
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn GetMatrixDimnames(
     x: SEXP,
     rl: *mut SEXP,
     cl: *mut SEXP,
@@ -1183,10 +1199,10 @@ pub unsafe fn GetMatrixDimnames(
         // Extract dimnames[[1]], dimnames[[2]], names(dimnames)[1], names(dimnames)[2]
         // This requires getAttrib which is in attrib_core.rs
         unsafe extern "C" {
-            fn getAttrib(x: SEXP, what: SEXP) -> SEXP;
             fn Rf_install(name: *const c_char) -> SEXP;
             fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
         }
+        use crate::eval::attrib_core::getAttrib;
 
         // Initialize outputs to NilValue/null
         if !rl.is_null() {

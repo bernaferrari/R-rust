@@ -8,7 +8,7 @@
 
 use std::ffi::CString;
 use std::fs;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::*;
@@ -282,8 +282,8 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                             if field_fold {
                                 // Remove trailing whitespace, skip leading whitespace
                                 let trimmed = line.trim();
-                                if !trimmed.is_empty() {
-                                    if let Some(ref mut val) = current_record[idx] {
+                                if !trimmed.is_empty()
+                                    && let Some(ref mut val) = current_record[idx] {
                                         // Add newlines for any accumulated empty blank lines
                                         if !val.is_empty() {
                                             val.push('\n');
@@ -294,7 +294,6 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                         n_eblanklines = 0;
                                         val.push_str(trimmed);
                                     }
-                                }
                             } else {
                                 // Non-foldable: preserve as-is
                                 if let Some(ref mut val) = current_record[idx] {
@@ -315,7 +314,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                     let whatlen = field_names[m].len();
                     if line.len() > whatlen
                         && line.chars().nth(whatlen) == Some(':')
-                        && &line[..whatlen] == field_names[m]
+                        && line[..whatlen] == field_names[m]
                     {
                         matched_field_idx = Some(m);
                         break;

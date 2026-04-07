@@ -5,6 +5,7 @@
 //!
 //! Ported from init.c - library initialisation code.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -16,60 +17,52 @@ use super::menus;
 use super::objects;
 use super::types::*;
 
-static mut APP_INITIALISED: c_int = 0;
-static mut APP_NAME: *mut c_char = ptr::null_mut();
+thread_local! { static APP_INITIALISED: Cell<c_int> = Cell::new(0); }
+thread_local! { static APP_NAME: Cell<*mut c_char> = Cell::new(ptr::null_mut()); }
 
 pub unsafe fn get_app_name() -> *mut c_char {
-    unsafe { APP_NAME }
+    APP_NAME.with(|v| v.get())
 }
 
 pub unsafe fn get_app_initialised() -> c_int {
-    unsafe { APP_INITIALISED }
+    APP_INITIALISED.with(|v| v.get())
 }
 
 pub unsafe fn set_app_initialised(val: c_int) {
-    unsafe {
-        APP_INITIALISED = val;
-    }
+    APP_INITIALISED.with(|v| v.set(val));
 }
 
 /// Initialise the GraphApp library.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
-    unsafe {
-        if APP_INITIALISED == 0 {
-            APP_INITIALISED = 1;
-            objects::init_objects();
-            events::init_events();
-            fonts::init_fonts();
-            cursors::init_cursors();
-            context::init_contexts();
-            menus::init_menus();
-        }
-        if argc < 1 { 1 } else { argc }
+    if APP_INITIALISED.with(|v| v.get()) == 0 {
+        APP_INITIALISED.with(|v| v.set(1));
+        objects::init_objects();
+        events::init_events();
+        fonts::init_fonts();
+        cursors::init_cursors();
+        context::init_contexts();
+        menus::init_menus();
     }
+    if argc < 1 { 1 } else { argc }
 }
 
 /// Clean up the GraphApp library.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn app_cleanup() {
-    unsafe {
-        if APP_INITIALISED != 0 {
-            APP_INITIALISED = 0;
-            context::finish_contexts();
-            objects::finish_objects();
-            events::finish_events();
-        }
+    if APP_INITIALISED.with(|v| v.get()) != 0 {
+        APP_INITIALISED.with(|v| v.set(0));
+        context::finish_contexts();
+        objects::finish_objects();
+        events::finish_events();
     }
 }
 
 /// Exit the application.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn exitapp() {
-    unsafe {
-        app_cleanup();
-        std::process::exit(0);
-    }
+    app_cleanup();
+    std::process::exit(0);
 }
 
 /// Play an error sound.
@@ -91,10 +84,8 @@ pub unsafe extern "C" fn startgraphapp(
     _prev_instance: *mut c_void,
     _cmd_show: c_int,
 ) {
-    unsafe {
-        // TODO: Platform-specific
-        initapp(0, ptr::null_mut());
-    }
+    // TODO: Platform-specific
+    initapp(0, ptr::null_mut());
 }
 
 /// Check if topmost.
@@ -111,12 +102,10 @@ pub unsafe extern "C" fn BringToTop(_w: window, _stay: c_int) { /* TODO */
 /// Get window handle.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getHandle(w: window) -> *mut c_void {
-    unsafe {
-        if w.is_null() {
-            ptr::null_mut()
-        } else {
-            (*w).handle
-        }
+    if w.is_null() {
+        ptr::null_mut()
+    } else {
+        (*w).handle
     }
 }
 
@@ -126,18 +115,18 @@ pub unsafe extern "C" fn GA_msgWindow(_c: window, _typ: c_int) { /* TODO */
 }
 
 /// Topmost dialogs flag.
-pub static mut TopmostDialogs: c_int = 0;
+thread_local! { pub static TopmostDialogs: Cell<c_int> = Cell::new(0); }
 
 /// MDI-related globals
-pub static mut MDIFrame: object = ptr::null_mut();
-pub static mut MDIToolbar: object = ptr::null_mut();
-pub static mut MDIStatus: *mut c_void = ptr::null_mut();
-pub static mut hwndMain: *mut c_void = ptr::null_mut();
-pub static mut hwndFrame: *mut c_void = ptr::null_mut();
-pub static mut hwndClient: *mut c_void = ptr::null_mut();
+thread_local! { pub static MDIFrame: Cell<object> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static MDIToolbar: Cell<object> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static MDIStatus: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static hwndMain: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static hwndFrame: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static hwndClient: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
 
-pub static mut this_instance: *mut c_void = ptr::null_mut();
-pub static mut prev_instance: *mut c_void = ptr::null_mut();
-pub static mut menus_active: c_int = 1;
-pub static mut localeCP: std::os::raw::c_uint = 0;
-pub static mut is_NT: c_int = 1;
+thread_local! { pub static this_instance: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static prev_instance: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
+thread_local! { pub static menus_active: Cell<c_int> = Cell::new(1); }
+thread_local! { pub static localeCP: Cell<std::os::raw::c_uint> = Cell::new(0); }
+thread_local! { pub static is_NT: Cell<c_int> = Cell::new(1); }

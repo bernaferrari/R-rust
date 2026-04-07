@@ -6,14 +6,14 @@
 //! Ported from objects.c - maintains internal info about graphical objects
 //! using a linked-list hierarchy with reference counting.
 
+use std::cell::Cell;
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::memory;
 use super::types::*;
 
-/// Global base object at the top of the object hierarchy.
-static mut BASE_OBJECT: object = ptr::null_mut();
+thread_local! { static BASE_OBJECT: Cell<object> = Cell::new(ptr::null_mut()); }
 
 /// Deletion list node.
 struct DelNode {
@@ -22,12 +22,12 @@ struct DelNode {
     prev: *mut DelNode,
 }
 
-static mut DEL_BASE: *mut DelNode = ptr::null_mut();
+thread_local! { static DEL_BASE: Cell<*mut DelNode> = Cell::new(ptr::null_mut()); }
 
 /// Initialise the base object and set the list to be empty.
 pub unsafe fn init_objects() {
     unsafe {
-        if !BASE_OBJECT.is_null() {
+        if !BASE_OBJECT.with(|v| v.get()).is_null() {
             return;
         }
         let obj = memory::memalloc(std::mem::size_of::<ObjInfo>() as i64) as object;
@@ -40,14 +40,14 @@ pub unsafe fn init_objects() {
         (*obj).prev = obj;
         (*obj).parent = ptr::null_mut();
         (*obj).child = ptr::null_mut();
-        BASE_OBJECT = obj;
+        BASE_OBJECT.with(|v| v.set(obj));
     }
 }
 
 unsafe fn add_object(obj: object, parent: object) {
     unsafe {
         let parent = if parent.is_null() {
-            BASE_OBJECT
+            BASE_OBJECT.with(|v| v.get())
         } else {
             parent
         };
@@ -107,7 +107,7 @@ pub unsafe extern "C" fn apply_to_list(first: object, fn_: actionfn) {
         let start = (*(*first).parent).child;
         let mut obj = first;
         loop {
-            fn_.unwrap()(obj);
+            fn_.expect("unwrap on None/Err")(obj);
             obj = (*obj).next;
             if obj == start {
                 break;
@@ -140,13 +140,14 @@ pub unsafe extern "C" fn decrease_refcount(obj: object) {
         (*new_node).next = new_node;
         (*new_node).prev = new_node;
 
-        if !DEL_BASE.is_null() {
-            (*new_node).prev = (*DEL_BASE).prev;
-            (*new_node).next = DEL_BASE;
+        if !DEL_BASE.with(|v| v.get()).is_null() {
+            let del_base = DEL_BASE.with(|v| v.get());
+            (*new_node).prev = (*del_base).prev;
+            (*new_node).next = del_base;
             (*(*new_node).prev).next = new_node;
             (*(*new_node).next).prev = new_node;
         } else {
-            DEL_BASE = new_node;
+            DEL_BASE.with(|v| v.set(new_node));
         }
     }
 }
@@ -176,9 +177,9 @@ unsafe fn remove_delnode(n: *mut DelNode) {
         (*(*n).prev).next = (*n).next;
         (*(*n).next).prev = (*n).prev;
         if n == (*n).next {
-            DEL_BASE = ptr::null_mut();
-        } else if n == DEL_BASE {
-            DEL_BASE = (*n).next;
+            DEL_BASE.with(|v| v.set(ptr::null_mut()));
+        } else if n == DEL_BASE.with(|v| v.get()) {
+            DEL_BASE.with(|v| v.set((*n).next));
         }
         memory::memfree(n as *mut u8);
     }
@@ -186,11 +187,11 @@ unsafe fn remove_delnode(n: *mut DelNode) {
 
 unsafe fn remove_deleted_object(obj: object) {
     unsafe {
-        if DEL_BASE.is_null() {
+        if DEL_BASE.with(|v| v.get()).is_null() {
             return;
         }
-        let mut next = DEL_BASE;
-        let last = (*DEL_BASE).prev;
+        let mut next = DEL_BASE.with(|v| v.get());
+        let last = (*next).prev;
         loop {
             let n = next;
             next = (*n).next;
@@ -227,12 +228,12 @@ unsafe fn free_private(obj: object) {
     unsafe {
         remove_object(obj);
         if !(*obj).call.is_null() && !(*(*obj).call).die.is_none() {
-            (*(*obj).call).die.unwrap()(obj);
+            (*(*obj).call).die.expect("unwrap on None/Err")(obj);
         }
         update_app_globals(obj);
         // del_context(obj); // handled by context module
         if !(*obj).die.is_none() {
-            (*obj).die.unwrap()(obj);
+            (*obj).die.expect("unwrap on None/Err")(obj);
         }
         remove_deleted_object(obj);
     }
@@ -258,11 +259,12 @@ unsafe fn free_object(obj: object) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn deletion_traversal() {
     unsafe {
-        static mut LEVEL: c_int = 0;
-        LEVEL += 1;
-        if LEVEL == 1 {
-            while !DEL_BASE.is_null() {
-                let obj = (*DEL_BASE).obj;
+        thread_local! { static LEVEL: Cell<c_int> = Cell::new(0); }
+        LEVEL.with(|v| v.set(v.get() + 1));
+        if LEVEL.with(|v| v.get()) == 1 {
+            while !DEL_BASE.with(|v| v.get()).is_null() {
+                let del_base = DEL_BASE.with(|v| v.get());
+                let obj = (*del_base).obj;
                 if !obj.is_null() {
                     if (*obj).refcount == 0 {
                         del_object(obj);
@@ -272,7 +274,7 @@ pub unsafe extern "C" fn deletion_traversal() {
                 }
             }
         }
-        LEVEL -= 1;
+        LEVEL.with(|v| v.set(v.get() - 1));
     }
 }
 
@@ -372,7 +374,7 @@ pub unsafe extern "C" fn tree_search(
 /// Find an object in the tree.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
-    unsafe { tree_search(BASE_OBJECT, handle, id, key) }
+    unsafe { tree_search(BASE_OBJECT.with(|v| v.get()), handle, id, key) }
 }
 
 /// Remove a menu item from the hierarchy.
@@ -383,7 +385,7 @@ pub unsafe extern "C" fn remove_menu_item(obj: object) {
             return;
         }
         if !(*obj).die.is_none() {
-            (*obj).die.unwrap()(obj);
+            (*obj).die.expect("unwrap on None/Err")(obj);
         }
         remove_object(obj);
         remove_deleted_object(obj);
@@ -393,13 +395,13 @@ pub unsafe extern "C" fn remove_menu_item(obj: object) {
 /// Finish objects (cleanup at application exit).
 pub unsafe fn finish_objects() {
     unsafe {
-        if !BASE_OBJECT.is_null() {
-            // Walk children and free
-            while !(*BASE_OBJECT).child.is_null() {
-                free_object((*BASE_OBJECT).child);
+        let base = BASE_OBJECT.with(|v| v.get());
+        if !base.is_null() {
+            while !(*base).child.is_null() {
+                free_object((*base).child);
             }
-            free_object(BASE_OBJECT);
-            BASE_OBJECT = ptr::null_mut();
+            free_object(base);
+            BASE_OBJECT.with(|v| v.set(ptr::null_mut()));
         }
     }
 }

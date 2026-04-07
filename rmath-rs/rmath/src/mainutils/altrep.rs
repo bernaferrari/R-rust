@@ -5,12 +5,10 @@
 //! ALTREP provides a mechanism for lazy/delayed computation of R vectors.
 //! This module provides stubs for the ALTREP API.
 
-use std::os::raw::{c_int, c_void};
-use std::ptr;
+use std::os::raw::c_int;
 
 use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -194,6 +192,8 @@ pub unsafe extern "C" fn R_set_altrep_coerce_method(
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

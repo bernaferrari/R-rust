@@ -153,6 +153,7 @@ pub(crate) fn log1pmx(x: f64) -> f64 {
 }
 
 /// Compute log(gamma(a+1)) accurately also for small a (0 < a < 0.5).
+#[must_use]
 pub fn lgammafn1p(a: f64) -> f64 {
     if fabs(a) >= 0.5 {
         return lgammafn(a + 1.0);
@@ -229,6 +230,7 @@ pub fn lgammafn1p(a: f64) -> f64 {
 // =====================================================================
 
 /// This function computes the value of the gamma function.
+#[must_use]
 ///
 /// This function is a translation into C of a Fortran subroutine
 /// by W. Fullerton of Los Alamos Scientific Laboratory.
@@ -355,12 +357,14 @@ pub fn gammafn(x: f64) -> f64 {
 }
 
 /// C FFI wrapper for gammafn
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn gammafn_c(x: f64) -> f64 {
     gammafn(x)
 }
 
 /// C FFI wrapper for lgammafn1p
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn lgammafn1p_c(a: f64) -> f64 {
     lgammafn1p(a)
@@ -378,6 +382,7 @@ const LG_DXREL: f64 = 1.490116119384765625e-8;
 const M_LN_SQRT_PId2: f64 = 0.225791352644727432363097614947; // log(sqrt(pi/2))
 
 /// Compute log|gamma(x)|.
+#[must_use]
 pub fn lgammafn(x: f64) -> f64 {
     if isnan(x) {
         return x;
@@ -435,12 +440,14 @@ pub fn lgammafn(x: f64) -> f64 {
 }
 
 /// C FFI wrapper for lgammafn
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn lgammafn_c(x: f64) -> f64 {
     lgammafn(x)
 }
 
 /// Compute log|gamma(x)| and optionally the sign of gamma(x).
+#[must_use]
 /// Ported from R's lgammafn_sign() in lgamma.c.
 ///
 /// If `sgn` is non-null, stores the sign of gamma(x) there.
@@ -468,22 +475,26 @@ pub fn lgammafn_sign(x: f64, sgn: Option<&mut i32>) -> f64 {
 // Rf_ prefixed FFI shims (R-compatible symbol names)
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_gammafn(x: f64) -> f64 {
     gammafn(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammafn(x: f64) -> f64 {
     lgammafn(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammafn1p(a: f64) -> f64 {
     lgammafn1p(a)
 }
 
 /// C FFI for lgammafn_sign: returns log|gamma(x)|, stores sign in *sgn if sgn is non-null.
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammafn_sign(x: f64, sgn: *mut i32) -> f64 {
     let sgn_opt = if sgn.is_null() {

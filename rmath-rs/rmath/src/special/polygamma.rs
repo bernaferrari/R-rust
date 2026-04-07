@@ -404,6 +404,7 @@ fn dpsifn(x: f64, n: i32, kode: i32, m: i32) -> (Vec<f64>, i32, i32) {
 mod imp {
     use super::*;
 
+    #[must_use]
     pub fn psigamma(x: f64, deriv: f64) -> f64 {
         if isnan(x) {
             return x;
@@ -424,6 +425,7 @@ mod imp {
         ans
     }
 
+    #[must_use]
     pub fn digamma(x: f64) -> f64 {
         if isnan(x) {
             return x;
@@ -435,6 +437,7 @@ mod imp {
         -ans_vec[0]
     }
 
+    #[must_use]
     pub fn trigamma(x: f64) -> f64 {
         if isnan(x) {
             return x;
@@ -446,6 +449,7 @@ mod imp {
         ans_vec[0]
     }
 
+    #[must_use]
     pub fn tetragamma(x: f64) -> f64 {
         if isnan(x) {
             return x;
@@ -457,6 +461,7 @@ mod imp {
         -2.0 * ans_vec[0]
     }
 
+    #[must_use]
     pub fn pentagamma(x: f64) -> f64 {
         if isnan(x) {
             return x;
@@ -474,11 +479,13 @@ mod imp {
 // =====================================================================
 
 /// n-th derivative of psi(x); e.g., psigamma(x, 0) == digamma(x).
+#[must_use]
 pub fn psigamma(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)
 }
 
 /// The digamma function: psi(x) = d/dx ln(gamma(x)).
+#[must_use]
 /// Uses the asymptotic expansion for large x, and the recurrence
 /// relation psi(x) = psi(x+1) - 1/x for small x.
 pub fn digamma(x: f64) -> f64 {
@@ -509,16 +516,19 @@ pub fn digamma(x: f64) -> f64 {
 }
 
 /// The trigamma function: psi'(x) = d^2/dx^2 ln(gamma(x)).
+#[must_use]
 pub fn trigamma(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
 /// The tetragamma function: psi''(x) = d^3/dx^3 ln(gamma(x)).
+#[must_use]
 pub fn tetragamma(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
 /// The pentagamma function: psi'''(x) = d^4/dx^4 ln(gamma(x)).
+#[must_use]
 pub fn pentagamma(x: f64) -> f64 {
     imp::pentagamma(x)
 }
@@ -527,51 +537,61 @@ pub fn pentagamma(x: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_digamma(x: f64) -> f64 {
     imp::digamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn digamma_c(x: f64) -> f64 {
     imp::digamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_trigamma(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn trigamma_c(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_tetragamma(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn tetragamma_c(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pentagamma(x: f64) -> f64 {
     imp::pentagamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pentagamma_c(x: f64) -> f64 {
     imp::pentagamma(x)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_psigamma(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn psigamma_c(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)

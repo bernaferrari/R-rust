@@ -28,6 +28,7 @@
  *  that allow the package to load without a real Tcl/Tk installation.
  */
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -43,7 +44,7 @@ use crate::sexp::protect::*;
 
 /// Opaque placeholder for a Tcl interpreter pointer.
 /// In the real implementation this is `*mut Tcl_Interp`.
-pub static mut RTcl_interp: *mut c_void = ptr::null_mut();
+pub thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // tcltk_init -- called on package load (Unix path)

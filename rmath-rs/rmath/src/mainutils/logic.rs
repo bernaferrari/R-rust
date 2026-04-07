@@ -12,14 +12,13 @@
 //! SEXP-dependent functions:
 //!   do_logic (& | !), do_logic2 (&& ||), do_logic3 (any all)
 
-use std::os::raw::{c_double, c_int, c_void};
-use std::ptr;
+use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, COMPLEX, DATAPTR, INTEGER, LENGTH, LOGICAL, RAW, REAL, TYPEOF, XLENGTH,
+    ATTRIB, CADR, CAR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
-use crate::sexp::ffi::{FALSE, ISNAN, NA_INTEGER, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, ISNAN, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::protect::Rf_unprotect;
@@ -755,11 +754,10 @@ pub unsafe fn do_logic3(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 }
 
                 // Early exit on definitive result
-                if !has_na {
-                    if (code == 2 && val == TRUE) || (code == 1 && val == FALSE) {
+                if !has_na
+                    && ((code == 2 && val == TRUE) || (code == 1 && val == FALSE)) {
                         break;
                     }
-                }
             }
 
             s = CDR(s);

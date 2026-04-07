@@ -9,7 +9,7 @@
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::sexp::accessors::{ATTRIB, LENGTH, SET_STRING_ELT, TYPEOF, VECTOR_ELT};
+use crate::sexp::accessors::SET_STRING_ELT;
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
@@ -103,6 +103,8 @@ pub unsafe extern "C" fn R_setX11Routines(_routines: *mut c_void) -> *mut c_void
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::accessors::*;
+
     use super::*;
 
     #[test]

@@ -6,7 +6,7 @@
 //! The actual version numbers come from Rversion.h; here we provide
 //! FFI-compatible stubs that can be overridden at link time.
 
-use std::ffi::{CStr, CString};
+use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 

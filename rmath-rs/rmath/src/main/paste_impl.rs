@@ -13,6 +13,7 @@
 //! stubs.
 
 use super::printutils::EncodeComplex;
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -218,29 +219,29 @@ unsafe fn EncodeReal0(
 }
 
 unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 16] = [0; 16];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
+    BUF.with(|buf| {
+        let mut b = buf.borrow_mut();
         let s = "<environment>\0".as_ptr() as *const c_char;
         for i in 0..14 {
-            (*buf)[i] = *s.add(i);
+            b[i] = *s.add(i);
         }
-        (*buf)[14] = 0;
-        buf.cast()
-    }
+        b[14] = 0;
+        b.as_ptr() as *const c_char
+    })
 }
 
 unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 16] = [0; 16];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
+    BUF.with(|buf| {
+        let mut b = buf.borrow_mut();
         let s = "<externalptr>\0".as_ptr() as *const c_char;
         for i in 0..13 {
-            (*buf)[i] = *s.add(i);
+            b[i] = *s.add(i);
         }
-        (*buf)[13] = 0;
-        buf.cast()
-    }
+        b[13] = 0;
+        b.as_ptr() as *const c_char
+    })
 }
 
 unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
@@ -465,17 +466,36 @@ impl RStringBuffer {
 }
 
 /// Thread-local string buffer (mirrors R's static cbuff).
-static mut CBUFF: *mut RStringBuffer = ptr::null_mut();
+thread_local! { static CBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
 
-/// Ensure CBUFF is initialized and return a mutable reference.
-unsafe fn get_cbuff() -> &'static mut RStringBuffer {
-    unsafe {
-        if CBUFF.is_null() {
-            let buf = Box::new(RStringBuffer::new());
-            CBUFF = Box::into_raw(buf);
-        }
-        &mut *CBUFF
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
     }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
+unsafe fn get_cbuff() -> MutPtr<RStringBuffer> {
+    MutPtr(CBUFF.with(|v| {
+        let ptr = v.get();
+        if ptr.is_null() {
+            let buf = Box::new(RStringBuffer::new());
+            let raw = Box::into_raw(buf);
+            v.set(raw);
+            raw
+        } else {
+            ptr
+        }
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -715,7 +735,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, maxlen as c_int);
 
-        let cbuff = get_cbuff();
+        let mut cbuff = get_cbuff();
 
         for i in 0..maxlen {
             let mut allKnown: bool = true;
@@ -776,7 +796,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 return ptr::null_mut();
             }
 
-            let buf = R_AllocStringBuffer(pwidth, cbuff);
+            let buf = R_AllocStringBuffer(pwidth, &mut *cbuff);
             let cbuf = buf;
             let mut buf_ptr = buf;
 
@@ -867,7 +887,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     return ptr::null_mut();
                 }
 
-                let buf = R_AllocStringBuffer(pwidth, cbuff);
+                let buf = R_AllocStringBuffer(pwidth, &mut *cbuff);
                 let cbuf = buf;
                 let mut buf_ptr = buf;
 
@@ -984,7 +1004,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, maxlen as c_int);
-        let cbuff = get_cbuff();
+        let mut cbuff = get_cbuff();
 
         for i in 0..maxlen {
             let use_UTF8: bool = true;
@@ -1001,7 +1021,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
             pwidth += (nx - 1) * sepw as i64;
 
-            let buf = R_AllocStringBuffer(pwidth, cbuff);
+            let buf = R_AllocStringBuffer(pwidth, &mut *cbuff);
             let cbuf = buf;
             let mut buf_ptr = buf;
 

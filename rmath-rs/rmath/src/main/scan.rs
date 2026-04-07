@@ -1259,14 +1259,14 @@ pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         if args.is_null() {
             // No arguments -- return empty string
-            return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+            return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
         }
 
         let prompt = CAR(args);
 
         // If prompt is NULL, return empty string
         if scan_isNull(prompt) {
-            return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+            return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
         }
 
         // If prompt is a string, treat the first element as a file path
@@ -1279,7 +1279,7 @@ pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         Ok(f) => f,
                         Err(_) => {
                             // Cannot open file -- return empty string
-                            return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+                            return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
                         }
                     };
 
@@ -1297,14 +1297,14 @@ pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     }
 
                     if lines.is_empty() {
-                        return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+                        return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
                     }
 
                     // Return a character vector with all lines
                     let n = lines.len() as i32;
                     let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
                     if ans.is_null() {
-                        return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+                        return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
                     }
 
                     for (i, line) in lines.iter().enumerate() {
@@ -1314,14 +1314,14 @@ pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
                     ans
                 }
-                None => Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr()),
+                None => Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr()),
             }
         } else if TYPEOF(prompt) == SEXPTYPE::INTSXP.0 || TYPEOF(prompt) == SEXPTYPE::REALSXP.0 {
             // Integer argument: treat as file descriptor (0 = stdin)
             let fd = scan_asInteger(prompt);
             if fd == 0 {
                 // stdin: not supported in this port, return empty string
-                return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+                return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
             } else if fd > 0 {
                 // On Unix, try to open /dev/fd/N
                 #[cfg(unix)]
@@ -1331,14 +1331,14 @@ pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
                 #[cfg(not(unix))]
                 {
-                    return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+                    return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
                 }
             } else {
-                Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr())
+                Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr())
             }
         } else {
             // Unknown argument type -- return empty string
-            Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr())
+            Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr())
         }
     }
 }
@@ -1349,7 +1349,7 @@ unsafe fn do_readln_file(path: &str) -> SEXP {
         let file = match std::fs::File::open(path) {
             Ok(f) => f,
             Err(_) => {
-                return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+                return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
             }
         };
 
@@ -1366,13 +1366,13 @@ unsafe fn do_readln_file(path: &str) -> SEXP {
         }
 
         if lines.is_empty() {
-            return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+            return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
         }
 
         let n = lines.len() as i32;
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
         if ans.is_null() {
-            return Rf_mkString(std::ffi::CString::new("").unwrap().as_ptr());
+            return Rf_mkString(std::ffi::CString::new("").expect("CString::new failed: contains null byte").as_ptr());
         }
 
         for (i, line) in lines.iter().enumerate() {

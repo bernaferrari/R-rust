@@ -192,7 +192,7 @@ pub unsafe extern "C" fn spline_value(
     let der = crate::main::coerce::asInteger(deriv);
 
     if ord == NA_INTEGER || ord <= 0 {
-        let msg = std::ffi::CString::new("'ord' must be a positive integer").unwrap();
+        let msg = std::ffi::CString::new("'ord' must be a positive integer").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
     }
 
@@ -314,7 +314,7 @@ pub unsafe extern "C" fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, der
                         "derivs = {} >= ord = {}, but should be in {{0,..,ord-1}}",
                         der_i, ord
                     ))
-                    .unwrap()
+                    .expect("unwrap on None/Err")
                 } else {
                     std::ffi::CString::new(format!(
                         "derivs[{}] = {} >= ord = {}, but should be in {{0,..,ord-1}}",
@@ -322,7 +322,7 @@ pub unsafe extern "C" fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, der
                         der_i,
                         ord
                     ))
-                    .unwrap()
+                    .expect("unwrap on None/Err")
                 };
                 Rf_error(msg.as_ptr());
             }

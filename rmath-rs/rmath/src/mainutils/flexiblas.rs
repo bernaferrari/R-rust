@@ -4,10 +4,6 @@
 //!
 //! Implements `R_flexiblas_info` which queries the current FlexiBLAS backend.
 
-use std::os::raw::c_void;
-use std::ptr;
-
-use crate::sexp::constructors::Rf_mkChar;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 

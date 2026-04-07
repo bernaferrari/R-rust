@@ -16,18 +16,11 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{
-    BODY, CADDR, CAR, CDDR, CDR, CLOENV, FORMALS, LENGTH, Rf_isNull, SET_CLOENV, SET_NAMED, SETCAR,
-    SETCDR, SETTAG, TAG, TYPEOF,
-};
-use crate::sexp::context::{Rf_begincontext, Rf_endcontext, ctxt_flags};
-use crate::sexp::envir::{
-    CheckFormals, addMissingVarsToNewEnv, defineVar, forcePromise, matchArgs,
-};
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, set_R_Visible};
+use crate::sexp::accessors::{BODY, TYPEOF};
+use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::NewEnvironment;
-use crate::sexp::protect::Rf_protect;
 use crate::sexp::safe::{PairlistIter, Sexp};
 
 use super::eval::Rf_eval;
@@ -64,11 +57,11 @@ pub fn apply_closure_safe<'a>(
     // Bind the matched arguments into the new environment
     if let Some(frame) = new_env.frame() {
         for cell in PairlistIter::new(frame) {
-            if let Some(sym) = cell.tag() {
-                if let Some(val) = cell.car() {
-                    unsafe {
-                        defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
-                    }
+            if let Some(sym) = cell.tag()
+                && let Some(val) = cell.car()
+            {
+                unsafe {
+                    defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
                 }
             }
         }
@@ -226,10 +219,10 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                 // Bind arguments
                 if let Some(frame) = new_env.frame() {
                     for cell in PairlistIter::new(frame) {
-                        if let Some(sym) = cell.tag() {
-                            if let Some(val) = cell.car() {
-                                defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
-                            }
+                        if let Some(sym) = cell.tag()
+                            && let Some(val) = cell.car()
+                        {
+                            defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
                         }
                     }
                 }

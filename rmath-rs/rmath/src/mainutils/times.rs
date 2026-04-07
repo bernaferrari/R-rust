@@ -24,7 +24,7 @@
 
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-use std::os::raw::{c_int, c_uint};
+use std::os::raw::c_uint;
 use std::time::SystemTime;
 
 /// Returns the current time as a double (seconds since the Unix epoch,

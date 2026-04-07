@@ -16,13 +16,11 @@
 // String copy utility
 // ---------------------------------------------------------------------------
 
-use std::os::raw::{c_char, c_int};
-use std::ptr;
+use std::os::raw::c_int;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use crate::sexp::safe::Sexp;
 
@@ -113,7 +111,7 @@ pub fn tr_build_spec(s: &[u8]) -> Option<Box<TrSpec>> {
         }
 
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
     }
 
     // Remaining characters (0, 1, or 2 left)
@@ -126,7 +124,7 @@ pub fn tr_build_spec(s: &[u8]) -> Option<Box<TrSpec>> {
             last: None,
         });
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
         i += 1;
     }
 
@@ -233,7 +231,7 @@ pub fn wtr_build_spec(s: &[char]) -> Option<Box<WtrSpec>> {
         }
 
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
     }
 
     while i < len {
@@ -245,7 +243,7 @@ pub fn wtr_build_spec(s: &[char]) -> Option<Box<WtrSpec>> {
             last: None,
         });
         *tail = Some(node);
-        tail = &mut tail.as_mut().unwrap().next;
+        tail = &mut tail.as_mut().expect("expected Some, got None").next;
         i += 1;
     }
 
@@ -480,7 +478,7 @@ unsafe fn make_charsxp(bytes: &[u8]) -> SEXP {
         if bytes.is_empty() {
             return Rf_mkCharLen(c"".as_ptr(), 0);
         }
-        let cs = std::ffi::CString::new(bytes).unwrap();
+        let cs = std::ffi::CString::new(bytes).expect("CString::new failed: contains null byte");
         Rf_mkCharLen(cs.as_ptr(), bytes.len() as c_int)
     }
 }
@@ -499,7 +497,7 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
     if old.typeof_() != SEXPTYPE::STRSXP {
         return Err("invalid 'old' argument".into());
     }
-    if old.len() < 1 {
+    if old.is_empty() {
         return Err("invalid 'old' argument".into());
     }
     let old_first = old.string_elt(0).ok_or("invalid 'old' argument")?;
@@ -510,7 +508,7 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
     if new.typeof_() != SEXPTYPE::STRSXP {
         return Err("invalid 'new' argument".into());
     }
-    if new.len() < 1 {
+    if new.is_empty() {
         return Err("invalid 'new' argument".into());
     }
     let new_first = new.string_elt(0).ok_or("invalid 'new' argument")?;
@@ -816,9 +814,9 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 None => return crate::sexp::globals::R_NilValue(),
             };
 
-            let type_ = if stype.typeof_() != SEXPTYPE::STRSXP || stype.len() != 1 {
+            if stype.typeof_() != SEXPTYPE::STRSXP || stype.len() != 1 {
                 return crate::sexp::globals::R_NilValue();
-            };
+            }
             let type_char = match stype.string_elt(0) {
                 Some(s) => s,
                 None => return crate::sexp::globals::R_NilValue(),
@@ -904,15 +902,14 @@ pub fn substr_safe<'a>(
 
     let len = x.len();
 
-    if starts.typeof_() != SEXPTYPE::INTSXP || starts.len() == 0 {
+    if starts.typeof_() != SEXPTYPE::INTSXP || starts.is_empty() {
         return Err("invalid substring arguments".into());
     }
 
-    if let Some(ref stops) = stops {
-        if stops.typeof_() != SEXPTYPE::INTSXP || stops.len() == 0 {
+    if let Some(ref stops) = stops
+        && (stops.typeof_() != SEXPTYPE::INTSXP || stops.is_empty()) {
             return Err("invalid substring arguments".into());
         }
-    }
 
     let k = starts.len();
     let l_val = stops.as_ref().map(|s| s.len()).unwrap_or(1);
@@ -1022,6 +1019,9 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::globals::*;
+    use std::ptr;
+
     use super::*;
 
     #[test]

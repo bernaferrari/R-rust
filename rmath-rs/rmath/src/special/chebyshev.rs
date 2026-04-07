@@ -67,6 +67,7 @@ pub extern "C" fn Rf_chebyshev_init(
     chebyshev_init(dos_slice, nos as usize, eta) as std::os::raw::c_int
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_chebyshev_eval(x: f64, a: *const f64, n: std::os::raw::c_int) -> f64 {
     let a_slice = unsafe { std::slice::from_raw_parts(a, n as usize) };

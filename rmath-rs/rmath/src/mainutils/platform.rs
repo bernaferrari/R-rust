@@ -12,7 +12,6 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int};
 use std::process;
-use std::ptr;
 use std::sync::Mutex;
 
 use crate::sexp::ffi::SEXP;
@@ -45,7 +44,7 @@ pub unsafe extern "C" fn R_Date() -> *mut c_char {
 
         // Use C-compatible time formatting via libc-like logic.
         // We convert epoch seconds to a struct tm manually to avoid libc.
-        let mut tm = gmtime_from_epoch(epoch_secs);
+        let tm = gmtime_from_epoch(epoch_secs);
 
         // ctime format: "Wed Jun 30 21:49:08 1993\n"
         let days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -218,7 +217,7 @@ static CODESET_BUF: Mutex<[u8; R_CODESET_MAX + 1]> = Mutex::new([0u8; R_CODESET_
 /// The encoding is initialized by `R_check_locale()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_nativeEncoding() -> *const c_char {
-    let enc = NATIVE_ENC.lock().unwrap();
+    let enc = NATIVE_ENC.lock().expect("NATIVE_ENC lock poisoned");
     enc.as_ptr() as *const c_char
 }
 
@@ -230,14 +229,14 @@ pub unsafe extern "C" fn R_nativeEncoding() -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_check_locale() {
     {
-        let mut enc = NATIVE_ENC.lock().unwrap();
+        let mut enc = NATIVE_ENC.lock().expect("NATIVE_ENC lock poisoned");
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         enc[..len].copy_from_slice(&bytes[..len]);
         enc[len] = 0;
     }
     {
-        let mut cs = CODESET_BUF.lock().unwrap();
+        let mut cs = CODESET_BUF.lock().expect("CODESET_BUF lock poisoned");
         let bytes = b"UTF-8\0";
         let len = bytes.len().min(R_CODESET_MAX);
         cs[..len].copy_from_slice(&bytes[..len]);
@@ -256,7 +255,11 @@ pub unsafe fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
         let date_str = R_Date();
         let s = CStr::from_ptr(date_str);
         let formatted = s.to_str().unwrap_or("").trim_end();
-        Rf_mkString(CString::new(formatted).unwrap().as_ptr())
+        Rf_mkString(
+            CString::new(formatted)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
     }
 }
 
@@ -264,10 +267,7 @@ pub unsafe fn do_date(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, LENGTH, LOGICAL, STRING_ELT};
-        use crate::sexp::constructors::Rf_allocVector3;
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
 
         let files = CAR(args);
@@ -313,9 +313,9 @@ pub unsafe fn do_fileshow(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `file.append()` — append files.
 pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
+        use crate::sexp::accessors::{CADDR, CADR, CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_ScalarLogical;
+        use crate::sexp::ffi::{FALSE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs::OpenOptions;
@@ -354,8 +354,8 @@ pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             let c = CStr::from_ptr(crate::sexp::accessors::CHAR(elt));
             let path = c.to_str().unwrap_or("");
-            if let Ok(data) = std::fs::read(path) {
-                if let Ok(mut file) = OpenOptions::new()
+            if let Ok(data) = std::fs::read(path)
+                && let Ok(mut file) = OpenOptions::new()
                     .create(true)
                     .write(true)
                     .append(do_append)
@@ -364,7 +364,6 @@ pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                     let _ = file.write_all(&data);
                     *crate::sexp::accessors::LOGICAL(ans) = TRUE;
                 }
-            }
         }
         Rf_unprotect(1);
         ans
@@ -375,7 +374,7 @@ pub unsafe fn do_fileappend(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -415,13 +414,12 @@ pub unsafe fn do_filecreate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `file.remove()` — remove file(s).
 pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
-        use std::path::Path;
 
         let s = CAR(args);
         let ans = Rf_protect(Rf_allocVector3(
@@ -452,8 +450,8 @@ pub unsafe fn do_fileremove(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `Sys.junction()` (Windows) / `file.link()` — create symbolic links.
 pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -491,8 +489,8 @@ pub unsafe fn do_filesymlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 /// R's `file.link()` — create hard links.
 pub unsafe fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -534,8 +532,8 @@ pub unsafe fn do_filelink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `file.rename()` — rename file(s).
 pub unsafe fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -578,16 +576,13 @@ pub unsafe fn do_filerename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{
-            CADR, CAR, CDR, LENGTH, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
+            CADR, CAR, LENGTH, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
         };
-        use crate::sexp::constructors::{
-            Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_mkChar,
-        };
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
-        use std::path::Path;
 
         let files = CAR(args);
         let extra_cols = CADR(args);
@@ -751,8 +746,8 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 /// R's `dir.exists()` — check if directory exists.
 pub unsafe fn do_direxists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -876,7 +871,11 @@ pub unsafe fn do_listfiles(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(name.as_str()).unwrap().as_ptr()),
+                Rf_mkChar(
+                    CString::new(name.as_str())
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
         }
         Rf_unprotect(1);
@@ -950,7 +949,11 @@ pub unsafe fn do_listdirs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(name.as_str()).unwrap().as_ptr()),
+                Rf_mkChar(
+                    CString::new(name.as_str())
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
         }
         Rf_unprotect(1);
@@ -969,22 +972,25 @@ pub unsafe fn do_Rhome(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
 
         let home = env::var("R_HOME").unwrap_or_else(|_| {
             // Try to find R home relative to this executable
-            if let Ok(exe) = env::current_exe() {
-                if let Some(parent) = exe.parent().and_then(|p| p.parent()) {
+            if let Ok(exe) = env::current_exe()
+                && let Some(parent) = exe.parent().and_then(|p| p.parent()) {
                     return parent.to_string_lossy().to_string();
                 }
-            }
             "/usr/lib/R".to_string()
         });
-        Rf_mkString(CString::new(home).unwrap().as_ptr())
+        Rf_mkString(
+            CString::new(home)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
     }
 }
 
 /// R's `file.exists()` — check if file exists.
 pub unsafe fn do_fileexists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -1028,7 +1034,7 @@ pub unsafe fn do_filechoose(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 /// R's `file.access()` — check file access permissions.
 pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, INTEGER, LENGTH, LOGICAL, STRING_ELT};
+        use crate::sexp::accessors::{CADR, CAR, INTEGER, LENGTH, STRING_ELT};
         use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
@@ -1117,11 +1123,9 @@ pub unsafe fn do_fileaccess(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `unlink()` — remove files or directories.
 pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADDR, CADR, CAR, CDR, LENGTH, LOGICAL, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3};
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
+        use crate::sexp::accessors::{CADDR, CADR, CAR, LENGTH, LOGICAL, STRING_ELT};
+        use crate::sexp::constructors::Rf_ScalarInteger;
         use crate::sexp::globals::R_NilValue;
-        use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let x = CAR(args);
         let recursive = CADR(args);
@@ -1192,14 +1196,18 @@ pub unsafe fn do_getlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             _ => String::new(),
         };
 
-        Rf_mkString(CString::new(val).unwrap().as_ptr())
+        Rf_mkString(
+            CString::new(val)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
     }
 }
 
 /// R's `Sys.setlocale()` — set locale.
 pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, CHAR, INTEGER, STRING_ELT};
+        use crate::sexp::accessors::{CADR, CAR, CHAR, INTEGER, STRING_ELT};
         use crate::sexp::constructors::Rf_mkString;
         use crate::sexp::globals::R_NilValue;
         use std::ffi::CStr;
@@ -1264,7 +1272,7 @@ pub unsafe fn do_setlocale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 /// R's `Sys.localeconv()` — locale conventions.
 pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
+        use crate::sexp::accessors::SET_STRING_ELT;
         use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -1296,7 +1304,11 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
             SET_STRING_ELT(
                 names,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(
+                    CString::new(*name)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
             if !val.is_null() {
                 let s = CStr::from_ptr(*val);
@@ -1364,7 +1376,11 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 crate::sexp::accessors::SET_STRING_ELT(
                     ans,
                     i as crate::sexp::ffi::R_xlen_t,
-                    Rf_mkChar(CString::new(expanded).unwrap().as_ptr()),
+                    Rf_mkChar(
+                        CString::new(expanded)
+                            .expect("CString::new failed: contains null byte")
+                            .as_ptr(),
+                    ),
                 );
             }
         }
@@ -1376,8 +1392,8 @@ pub unsafe fn do_pathexpand(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 /// R's `capabilities()` — query platform capabilities.
 pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
+        use crate::sexp::accessors::SET_STRING_ELT;
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -1436,7 +1452,11 @@ pub unsafe fn do_capabilities(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
             SET_STRING_ELT(
                 cn,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(
+                    CString::new(*name)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
         }
 
@@ -1458,12 +1478,11 @@ pub unsafe fn do_sysgetpid(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
         use std::fs;
-        use std::path::Path;
 
         let s = CAR(args);
         let recursive = CADR(args);
@@ -1504,8 +1523,8 @@ pub unsafe fn do_dircreate(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 /// R's `file.copy()` — copy file(s).
 pub unsafe fn do_filecopy(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, LENGTH, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CADR, CAR, LENGTH, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -1549,7 +1568,7 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
     unsafe {
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
         use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3, Rf_mkChar};
-        use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
+        use crate::sexp::ffi::{SEXPTYPE, TRUE};
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         // Returns a named list with 3 elements: MBCS, UTF-8, Latin-1
@@ -1572,8 +1591,8 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
 /// R's `Sys.chmod()` — change file permissions.
 pub unsafe fn do_syschmod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{CADR, CAR, CDR, INTEGER, LENGTH, LOGICAL, STRING_ELT};
-        use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
+        use crate::sexp::accessors::{CADR, CAR, INTEGER, LENGTH, LOGICAL, STRING_ELT};
+        use crate::sexp::constructors::Rf_allocVector3;
         use crate::sexp::ffi::{FALSE, SEXPTYPE, TRUE};
         use crate::sexp::globals::R_NilValue;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -1658,7 +1677,7 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
                             i as crate::sexp::ffi::R_xlen_t,
                             Rf_mkChar(
                                 CString::new(target.to_str().unwrap_or(""))
-                                    .unwrap()
+                                    .expect("unwrap on None/Err")
                                     .as_ptr(),
                             ),
                         );
@@ -1682,9 +1701,7 @@ pub unsafe fn do_readlink(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
-        use crate::sexp::constructors::{
-            Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3, Rf_mkChar,
-        };
+        use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -1714,8 +1731,8 @@ pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 /// R's `.Platform` — external software version information.
 pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
-        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar, Rf_mkString};
+        use crate::sexp::accessors::SET_STRING_ELT;
+        use crate::sexp::constructors::{Rf_allocVector3, Rf_mkChar};
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -1749,12 +1766,20 @@ pub unsafe fn do_eSoftVersion(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -
             SET_STRING_ELT(
                 ans,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*val).unwrap().as_ptr()),
+                Rf_mkChar(
+                    CString::new(*val)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
             SET_STRING_ELT(
                 cn,
                 i as crate::sexp::ffi::R_xlen_t,
-                Rf_mkChar(CString::new(*name).unwrap().as_ptr()),
+                Rf_mkChar(
+                    CString::new(*name)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                ),
             );
         }
 

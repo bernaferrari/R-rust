@@ -9,9 +9,7 @@
 //! This file handles the core parser entry points.
 
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
-use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -138,6 +136,8 @@ pub unsafe extern "C" fn R_ParseVectorBuffer(
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

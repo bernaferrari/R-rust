@@ -1,4 +1,3 @@
-
 //! X11 rotated text support (rotated.c)
 //!
 //! Port of the xvertext 5.0 library used by R's X11 device for
@@ -18,6 +17,7 @@
 
 use core::ffi::{c_char, c_double, c_int, c_void};
 use libc::{free, malloc, strlen};
+use std::cell::RefCell;
 
 // ── Constants ────────────────────────────────────────────────────────
 
@@ -57,10 +57,7 @@ struct StyleState {
 
 /// Safety: Only modified through XRotSetMagnification / XRotSetBoundingBoxPad
 /// which are called from the graphics engine in a single-threaded context.
-static mut STYLE: StyleState = StyleState {
-    magnify: 1.0,
-    bbx_pad: 0,
-};
+thread_local! { static STYLE: RefCell<StyleState> = RefCell::new(StyleState { magnify: 1.0, bbx_pad: 0 }); }
 
 // ── Helper functions ─────────────────────────────────────────────────
 
@@ -252,8 +249,8 @@ pub(crate) unsafe fn compute_text_extents(
     let cols_in = max_width;
     let rows_in = nl * height;
 
-    let magnify = STYLE.magnify;
-    let bbx_pad = STYLE.bbx_pad;
+    let magnify = STYLE.with(|v| v.borrow().magnify);
+    let bbx_pad = STYLE.with(|v| v.borrow().bbx_pad);
 
     let (hot_x, hot_y) = compute_hotspot(align, max_width, rows_in, font_descent, magnify);
 
@@ -316,7 +313,7 @@ pub unsafe extern "C" fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn XRotSetMagnification(m: c_double) {
     if m > 0.0 {
-        STYLE.magnify = m;
+        STYLE.with(|v| v.borrow_mut().magnify = m);
     }
 }
 
@@ -325,7 +322,7 @@ pub unsafe extern "C" fn XRotSetMagnification(m: c_double) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn XRotSetBoundingBoxPad(p: c_int) {
     if p >= 0 {
-        STYLE.bbx_pad = p;
+        STYLE.with(|v| v.borrow_mut().bbx_pad = p);
     }
 }
 

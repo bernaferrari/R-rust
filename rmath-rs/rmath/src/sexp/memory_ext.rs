@@ -11,11 +11,10 @@
 //! - R_alloc/vmaxget/vmaxset (transient memory from C stack)
 
 use std::alloc::{Layout, alloc, dealloc};
-use std::ffi::CString;
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_int, c_void};
 use std::ptr;
 
-use super::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData, Vecsxp};
+use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
 use super::memory;
 
@@ -269,8 +268,11 @@ pub unsafe extern "C" fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
         if total == 0 {
             return ptr::null_mut();
         }
-        let layout = Layout::from_size_align(total, std::mem::align_of::<u64>())
-            .unwrap_or_else(|_| Layout::from_size_align(total, 1).unwrap());
+        let layout =
+            Layout::from_size_align(total, std::mem::align_of::<u64>()).unwrap_or_else(|_| {
+                Layout::from_size_align(total, 1)
+                    .expect("Layout::from_size_align with align=1 must succeed")
+            });
         let ptr = alloc(layout);
         if ptr.is_null() {
             return ptr::null_mut();

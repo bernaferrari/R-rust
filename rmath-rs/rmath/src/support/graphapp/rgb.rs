@@ -5,6 +5,7 @@
 //!
 //! Ported from rgb.c - provides named colour lookup and system colour access.
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_ulong};
 
@@ -1395,7 +1396,7 @@ pub unsafe extern "C" fn nametorgb(name: *const c_char) -> rgb {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn rgbtoname(in_val: rgb) -> *const c_char {
     unsafe {
-        static mut NAME_BUF: [c_char; 256] = [0; 256];
+        thread_local! { static NAME_BUF: Cell<[c_char; 256]> = Cell::new([0; 256]); }
 
         for i in 0..RGBCOLORS {
             let v = &RgbValue[i];
@@ -1404,11 +1405,16 @@ pub unsafe extern "C" fn rgbtoname(in_val: rgb) -> *const c_char {
                 let name = ColorName[i];
                 let bytes = name.as_bytes();
                 let len = bytes.len().min(255);
+                let mut buf = NAME_BUF.with(|v| v.get());
                 for j in 0..len {
-                    NAME_BUF[j] = bytes[j] as c_char;
+                    buf[j] = bytes[j] as c_char;
                 }
-                NAME_BUF[len] = 0;
-                return std::ptr::addr_of!(NAME_BUF) as *const c_char;
+                buf[len] = 0;
+                NAME_BUF.with(|v| v.set(buf));
+                return NAME_BUF.with(|v| {
+                    let b = v.get();
+                    std::ptr::addr_of!(b) as *const c_char
+                });
             }
         }
 

@@ -26,6 +26,7 @@ const DBL_MIN: f64 = 2.2250738585072014e-308;
 // dnbeta
 // =====================================================================
 
+#[must_use]
 pub fn dnbeta_inner(x: f64, a: f64, b: f64, ncp: f64, log_p: bool) -> f64 {
     let eps = 1e-15;
 
@@ -198,6 +199,7 @@ fn pnbeta2(x: f64, o_x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: 
     }
 }
 
+#[must_use]
 pub fn pnbeta_inner(x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(a) || isnan(b) || isnan(ncp) {
@@ -225,6 +227,7 @@ pub fn pnbeta_inner(x: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: b
 // qnbeta
 // =====================================================================
 
+#[must_use]
 pub fn qnbeta_inner(p: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f64 {
     let accu = 1e-15;
     let eps = 1e-14;
@@ -304,31 +307,37 @@ pub fn qnbeta_inner(p: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: b
 // FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnbeta(x: f64, a: f64, b: f64, ncp: f64, give_log: i32) -> f64 {
     dnbeta_inner(x, a, b, ncp, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dnbeta(x: f64, a: f64, b: f64, ncp: f64, give_log: i32) -> f64 {
     dnbeta_inner(x, a, b, ncp, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnbeta(x: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnbeta_inner(x, a, b, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pnbeta(x: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnbeta_inner(x, a, b, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnbeta(p: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnbeta_inner(p, a, b, ncp, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qnbeta(p: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnbeta_inner(p, a, b, ncp, lower_tail != 0, log_p != 0)

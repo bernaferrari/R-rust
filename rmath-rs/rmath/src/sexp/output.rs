@@ -25,15 +25,25 @@ thread_local! {
 
 /// Start capturing R output.
 pub fn start_capture() {
-    CAPTURE_STDOUT.with(|c| *c.lock().unwrap() = Some(String::new()));
-    CAPTURE_STDERR.with(|c| *c.lock().unwrap() = Some(String::new()));
+    CAPTURE_STDOUT.with(|c| *c.lock().expect("c lock poisoned") = Some(String::new()));
+    CAPTURE_STDERR.with(|c| *c.lock().expect("c lock poisoned") = Some(String::new()));
     IS_CAPTURING.with(|c| c.set(true));
 }
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    let stdout = CAPTURE_STDOUT.with(|c| c.lock().unwrap().take().unwrap_or_default());
-    let stderr = CAPTURE_STDERR.with(|c| c.lock().unwrap().take().unwrap_or_default());
+    let stdout = CAPTURE_STDOUT.with(|c| {
+        c.lock()
+            .expect("c lock poisoned")
+            .take()
+            .unwrap_or_default()
+    });
+    let stderr = CAPTURE_STDERR.with(|c| {
+        c.lock()
+            .expect("c lock poisoned")
+            .take()
+            .unwrap_or_default()
+    });
     IS_CAPTURING.with(|c| c.set(false));
     RCapturedOutput { stdout, stderr }
 }
@@ -47,7 +57,7 @@ pub fn is_capturing() -> bool {
 pub fn capture_stdout(msg: &str) {
     if is_capturing() {
         CAPTURE_STDOUT.with(|c| {
-            if let Some(s) = c.lock().unwrap().as_mut() {
+            if let Some(s) = c.lock().expect("c lock poisoned").as_mut() {
                 s.push_str(msg);
             }
         });
@@ -58,7 +68,7 @@ pub fn capture_stdout(msg: &str) {
 pub fn capture_stderr(msg: &str) {
     if is_capturing() {
         CAPTURE_STDERR.with(|c| {
-            if let Some(s) = c.lock().unwrap().as_mut() {
+            if let Some(s) = c.lock().expect("c lock poisoned").as_mut() {
                 s.push_str(msg);
             }
         });

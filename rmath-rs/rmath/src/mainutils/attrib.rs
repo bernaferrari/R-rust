@@ -19,11 +19,9 @@
 //!   do_classgets, do_namesgets, do_isobject, R_getAttributes, dimgets
 
 use std::os::raw::c_int;
-use std::ptr;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADDR, CADR, CAR, CDR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG,
-    VECTOR_ELT,
+    ATTRIB, CADDR, CADR, CAR, CDR, PRINTNAME, SET_STRING_ELT, SET_VECTOR_ELT, TAG,
 };
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
@@ -128,8 +126,11 @@ pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
 
-        let comment_sym =
-            crate::sexp::symbol::Rf_install(std::ffi::CString::new("comment").unwrap().as_ptr());
+        let comment_sym = crate::sexp::symbol::Rf_install(
+            std::ffi::CString::new("comment")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
 
         if Rf_length(args) == 1 {
             let x = CAR(args);
@@ -153,8 +154,11 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
         let x = CAR(args);
         let val = CADR(args);
-        let comment_sym =
-            crate::sexp::symbol::Rf_install(std::ffi::CString::new("comment").unwrap().as_ptr());
+        let comment_sym = crate::sexp::symbol::Rf_install(
+            std::ffi::CString::new("comment")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
         crate::eval::attrib_core::setAttrib(x, comment_sym, val);
         x
     }
@@ -346,6 +350,8 @@ pub unsafe fn dimgets(vec: SEXP, val: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

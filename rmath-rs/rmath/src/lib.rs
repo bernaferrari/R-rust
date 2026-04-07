@@ -104,6 +104,7 @@
 #![allow(clippy::needless_lifetimes)]
 #![allow(clippy::needless_continue)]
 #![allow(clippy::print_literal)]
+#![allow(unsafe_op_in_unsafe_fn)]
 #![allow(unknown_lints)]
 
 pub mod appl;
@@ -121,65 +122,17 @@ pub mod tzone_strftime;
 pub mod utils;
 pub mod xdr;
 
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types)]
 pub mod eval;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types)]
 pub mod graphapp;
 pub mod intl;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types)]
 pub mod mainutils;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types)]
 pub mod sexp;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types)]
 pub mod tre;
 pub mod trio;
-#[allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    clippy::all
-)]
+#[allow(dead_code, non_camel_case_types)]
 pub mod unix;

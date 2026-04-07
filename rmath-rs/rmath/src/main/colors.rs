@@ -13,6 +13,7 @@
 //! and `savePalette` depend on function pointers being set at runtime.
 //! `RGBpar3` and `RGBpar` additionally take `SEXP` parameters and are stubbed.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 
 // ---------------------------------------------------------------------------
@@ -40,16 +41,10 @@ type F4 = unsafe extern "C" fn(c_int);
 // ---------------------------------------------------------------------------
 
 /// Function pointer for the RGBpar3 implementation in grDevices.
-static mut ptr_RGBpar3: Option<F1> = None;
-
-/// Function pointer for the col2name implementation in grDevices.
-static mut ptr_col2name: Option<F2> = None;
-
-/// Function pointer for the R_GE_str2col implementation in grDevices.
-static mut ptr_R_GE_str2col: Option<F3> = None;
-
-/// Function pointer for the savePalette implementation in grDevices.
-static mut ptr_savePalette: Option<F4> = None;
+thread_local! { static ptr_RGBpar3: Cell<Option<F1>> = Cell::new(None); }
+thread_local! { static ptr_col2name: Cell<Option<F2>> = Cell::new(None); }
+thread_local! { static ptr_R_GE_str2col: Cell<Option<F3>> = Cell::new(None); }
+thread_local! { static ptr_savePalette: Cell<Option<F4>> = Cell::new(None); }
 
 // ---------------------------------------------------------------------------
 // Standalone functions
@@ -66,18 +61,11 @@ static mut ptr_savePalette: Option<F4> = None;
 /// # Safety
 /// All four function pointers must be valid (non-null) and must remain valid
 /// for as long as they may be called through this module.
-pub unsafe fn Rg_set_col_ptrs(
-    f1: Option<F1>,
-    f2: Option<F2>,
-    f3: Option<F3>,
-    f4: Option<F4>,
-) {
-    unsafe {
-        ptr_RGBpar3 = f1;
-        ptr_col2name = f2;
-        ptr_R_GE_str2col = f3;
-        ptr_savePalette = f4;
-    }
+pub unsafe fn Rg_set_col_ptrs(f1: Option<F1>, f2: Option<F2>, f3: Option<F3>, f4: Option<F4>) {
+    ptr_RGBpar3.with(|v| v.set(f1));
+    ptr_col2name.with(|v| v.set(f2));
+    ptr_R_GE_str2col.with(|v| v.set(f3));
+    ptr_savePalette.with(|v| v.set(f4));
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +81,7 @@ pub unsafe fn Rg_set_col_ptrs(
 /// `ptr_col2name` must have been set via `Rg_set_col_ptrs`.
 pub unsafe fn col2name(col: std::os::raw::c_uint) -> *const c_char {
     unsafe {
-        match ptr_col2name {
+        match ptr_col2name.with(|v| v.get()) {
             Some(f) => f(col),
             None => std::ptr::null(),
         }
@@ -109,7 +97,7 @@ pub unsafe fn col2name(col: std::os::raw::c_uint) -> *const c_char {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint {
     unsafe {
-        match ptr_R_GE_str2col {
+        match ptr_R_GE_str2col.with(|v| v.get()) {
             Some(f) => f(s),
             None => 0,
         }
@@ -124,7 +112,7 @@ pub unsafe extern "C" fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint 
 /// `ptr_savePalette` must have been set via `Rg_set_col_ptrs`.
 pub unsafe fn savePalette(save: c_int) {
     unsafe {
-        match ptr_savePalette {
+        match ptr_savePalette.with(|v| v.get()) {
             Some(f) => f(save),
             None => {}
         }

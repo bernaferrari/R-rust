@@ -24,26 +24,21 @@ pub unsafe extern "C" fn libintl_textdomain(domainname: *const c_char) -> *mut c
     unsafe {
         // A NULL pointer requests the current setting.
         if domainname.is_null() {
-            return types::_nl_current_default_domain as *mut c_char;
+            return types::_nl_current_default_domain.with(|v| v.get()) as *mut c_char;
         }
 
         types::nl_state_lock_wrlock();
 
-        let old_domain = types::_nl_current_default_domain;
+        let old_domain = types::_nl_current_default_domain.with(|v| v.get());
 
         // If domain name is the null string, set to default domain "messages".
-        if *domainname == 0
-            || ptr::eq(
-                domainname,
-                (*std::ptr::addr_of!(types::_nl_default_default_domain)).as_ptr(),
-            )
-        {
-            types::_nl_current_default_domain =
-                (*std::ptr::addr_of!(types::_nl_default_default_domain)).as_ptr();
-            let new_domain = types::_nl_current_default_domain as *mut c_char;
+        if *domainname == 0 || ptr::eq(domainname, types::_nl_default_default_domain.as_ptr()) {
+            types::_nl_current_default_domain
+                .with(|v| v.set(types::_nl_default_default_domain.as_ptr()));
+            let new_domain = types::_nl_current_default_domain.with(|v| v.get()) as *mut c_char;
 
             // Signal a change of the loaded catalogs.
-            types::_nl_msg_cat_cntr += 1;
+            types::_nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
 
             types::nl_state_lock_unlock();
             return new_domain;
@@ -72,21 +67,18 @@ pub unsafe extern "C" fn libintl_textdomain(domainname: *const c_char) -> *mut c
             new_domain = c_strdup(domainname);
 
             if !new_domain.is_null() {
-                types::_nl_current_default_domain = new_domain;
+                types::_nl_current_default_domain.with(|v| v.set(new_domain));
             }
         }
 
         // Signal a change of the loaded catalogs if the call was successful.
         if !new_domain.is_null() {
-            types::_nl_msg_cat_cntr += 1;
+            types::_nl_msg_cat_cntr.with(|v| v.set(v.get() + 1));
 
             // Free old domain if it was dynamically allocated.
             if old_domain != new_domain as *const c_char
                 && !old_domain.is_null()
-                && !ptr::eq(
-                    old_domain,
-                    (*std::ptr::addr_of!(types::_nl_default_default_domain)).as_ptr(),
-                )
+                && !ptr::eq(old_domain, types::_nl_default_default_domain.as_ptr())
             {
                 c_free(old_domain as *mut c_char);
             }
@@ -161,10 +153,10 @@ mod tests {
             let empty = b"\0" as *const u8 as *const c_char;
             let _ = libintl_textdomain(empty);
 
-            let before = types::_nl_msg_cat_cntr;
+            let before = types::_nl_msg_cat_cntr.with(|v| v.get());
             let custom = b"counter_test\0" as *const u8 as *const c_char;
             let _ = libintl_textdomain(custom);
-            assert!(types::_nl_msg_cat_cntr > before);
+            assert!(types::_nl_msg_cat_cntr.with(|v| v.get()) > before);
 
             // Clean up.
             let _ = libintl_textdomain(empty);

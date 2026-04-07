@@ -8,7 +8,7 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(dlogis_inner(0.0, f64::NAN, 1.0, false), "dlogis(0,NaN,1)");
     assert_nan(dlogis_inner(0.0, 0.0, 0.0, false), "dlogis(0,0,0)");
     assert_nan(dlogis_inner(0.0, 0.0, -1.0, false), "dlogis(0,0,-1)");
-    if !(dlogis_inner(0.0, 0.0, 1.0, false) > 0.0) {
+    if dlogis_inner(0.0, 0.0, 1.0, false) <= 0.0 {
         return Err("dlogis(0,0,1) > 0".into());
     }
 
@@ -23,10 +23,10 @@ pub fn run_tests() -> Result<(), String> {
         0.5,
         "plogis(0,0,1,upper)",
     );
-    if !(plogis_inner(10.0, 0.0, 1.0, true, false) > 0.999) {
+    if plogis_inner(10.0, 0.0, 1.0, true, false) <= 0.999 {
         return Err("plogis(10)~1".into());
     }
-    if !(plogis_inner(-10.0, 0.0, 1.0, true, false) < 0.001) {
+    if plogis_inner(-10.0, 0.0, 1.0, true, false) >= 0.001 {
         return Err("plogis(-10)~0".into());
     }
     assert_nan(plogis_inner(f64::NAN, 0.0, 1.0, true, false), "plogis(NaN)");

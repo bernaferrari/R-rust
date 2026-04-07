@@ -20,6 +20,7 @@ use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 
 struct SymbolTableInner {
     symbols: HashMap<String, SEXP>,
+    #[allow(clippy::vec_box)]
     nodes: Vec<Box<SexprecCore>>,
 }
 
@@ -81,7 +82,7 @@ pub unsafe extern "C" fn Rf_install(name: *const c_char) -> SEXP {
             Err(_) => return ptr::null_mut(),
         };
 
-        let mut table = get_symbol_table().lock().unwrap();
+        let mut table = get_symbol_table().lock().expect("lock poisoned");
 
         if let Some(&existing) = table.symbols.get(&name_str) {
             return existing;
@@ -131,7 +132,7 @@ pub unsafe extern "C" fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> S
             Err(_) => return ptr::null_mut(),
         };
 
-        let mut table = get_symbol_table().lock().unwrap();
+        let mut table = get_symbol_table().lock().expect("lock poisoned");
 
         if let Some(&existing) = table.symbols.get(&name_str) {
             return existing;
@@ -173,121 +174,241 @@ pub unsafe extern "C" fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> S
 /// Get or create the "base" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_BaseSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("base").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("base")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "{ brace" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_BraceSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("{").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("{")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "[[" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Bracket2Symbol() -> SEXP {
-    unsafe { Rf_install(CString::new("[[").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("[[")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "[" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_BracketSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("[").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("[")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "function" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_FunctionSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("function").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("function")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "while" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_WhileSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("while").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("while")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "for" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_ForSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("for").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("for")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "if" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_IfSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("if").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("if")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "repeat" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_RepeatSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("repeat").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("repeat")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "break" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_BreakSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("break").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("break")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "next" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_NextSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("next").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("next")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "..." symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_DotsSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("...").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("...")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "double colon" symbol (::).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_DoubleColonSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("::").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("::")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "triple colon" symbol (:::).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_TripleColonSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new(":::").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new(":::")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "$" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_DollarSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("$").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("$")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "@" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_AtSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("@").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("@")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "=" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_EqSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("=").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("=")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "<-" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_LeftAssignSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("<-").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("<-")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "<<" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_DoubleLeftAssignSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("<<-").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("<<-")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get or create the "as" symbol.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_AsSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("as").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            CString::new("as")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------

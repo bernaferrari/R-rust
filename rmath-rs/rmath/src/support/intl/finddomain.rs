@@ -5,28 +5,18 @@
 
 #![allow(non_snake_case)]
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use super::types::*;
 
-// ---------------------------------------------------------------------------
-// Lock stubs
-// ---------------------------------------------------------------------------
+fn gl_rwlock_rdlock(_: &mut [u8; 0]) {}
+fn gl_rwlock_wrlock(_: &mut [u8; 0]) {}
+fn gl_rwlock_unlock(_: &mut [u8; 0]) {}
 
-static mut LOCK: [u8; 0] = [];
-
-unsafe fn gl_rwlock_rdlock(_lock: &mut [u8; 0]) {}
-unsafe fn gl_rwlock_wrlock(_lock: &mut [u8; 0]) {}
-unsafe fn gl_rwlock_unlock(_lock: &mut [u8; 0]) {}
-
-// ---------------------------------------------------------------------------
-// Module-level state
-// ---------------------------------------------------------------------------
-
-/// List of already loaded domains.
-static mut _nl_loaded_domains: *mut loaded_l10nfile = ptr::null_mut();
+thread_local! { static _nl_loaded_domains: RefCell<*mut loaded_l10nfile> = RefCell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Internal helpers (matching external functions declared in loadinfo.h)
@@ -149,7 +139,7 @@ pub unsafe extern "C" fn _nl_find_domain(
         let mask: c_int;
 
         // Take the read lock and see if we already have a matching entry.
-        gl_rwlock_rdlock(&mut *std::ptr::addr_of_mut!(LOCK));
+        gl_rwlock_rdlock(&mut []);
 
         let dirname_len = if dirname.is_null() {
             0
@@ -158,7 +148,7 @@ pub unsafe extern "C" fn _nl_find_domain(
         };
 
         retval = _nl_make_l10nflist(
-            std::ptr::addr_of_mut!(_nl_loaded_domains),
+            _nl_loaded_domains.with(|v| std::ptr::addr_of_mut!(*v.borrow_mut())),
             dirname,
             dirname_len,
             0,
@@ -171,7 +161,7 @@ pub unsafe extern "C" fn _nl_find_domain(
             0,
         );
 
-        gl_rwlock_unlock(&mut *std::ptr::addr_of_mut!(LOCK));
+        gl_rwlock_unlock(&mut []);
 
         if !retval.is_null() {
             // We already know about this locale.
@@ -213,10 +203,10 @@ pub unsafe extern "C" fn _nl_find_domain(
         }
 
         // Take the write lock and create locale entries.
-        gl_rwlock_wrlock(&mut *std::ptr::addr_of_mut!(LOCK));
+        gl_rwlock_wrlock(&mut []);
 
         retval = _nl_make_l10nflist(
-            std::ptr::addr_of_mut!(_nl_loaded_domains),
+            _nl_loaded_domains.with(|v| std::ptr::addr_of_mut!(*v.borrow_mut())),
             dirname,
             dirname_len,
             mask,
@@ -229,7 +219,7 @@ pub unsafe extern "C" fn _nl_find_domain(
             1,
         );
 
-        gl_rwlock_unlock(&mut *std::ptr::addr_of_mut!(LOCK));
+        gl_rwlock_unlock(&mut []);
 
         if retval.is_null() {
             // Out of memory.
@@ -255,7 +245,7 @@ pub unsafe extern "C" fn _nl_find_domain(
         // Free the normalized_codeset if it was dynamically allocated.
         if (mask & XPG_NORM_CODESET) != 0 && !normalized_codeset.is_null() {
             let len = CStr::from_ptr(normalized_codeset).to_bytes().len() + 1;
-            let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+            let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
             std::alloc::dealloc(normalized_codeset as *mut u8, layout);
         }
 

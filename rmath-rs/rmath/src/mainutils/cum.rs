@@ -22,9 +22,7 @@ use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::mainutils::errors::{Rf_error, Rf_warning};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{
-    NA_INTEGER, NA_REAL, R_FINITE, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXP, SEXPTYPE,
-};
+use crate::sexp::ffi::{NA_INTEGER, R_NA_BIT_PATTERN, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
@@ -73,6 +71,7 @@ pub fn handle_nan_double(x: &[f64], s: &mut [f64]) {
 ///
 /// `r_is_n`: whether the real part had NaN
 /// `i_is_n`: whether the imaginary part had NaN
+#[allow(clippy::if_same_then_else)]
 pub fn chandle_nan_complex(x: &[Rcomplex], s: &mut [Rcomplex], r_is_n: bool, i_is_n: bool) {
     let mut has_na = false;
     let mut has_nan = false;
@@ -361,7 +360,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                     // Integer overflow — issue warning and stop
                     let msg =
                         CString::new("integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'")
-                            .unwrap();
+                            .expect("unwrap on None/Err");
                     Rf_warning(msg.as_ptr());
                     break;
                 }
@@ -464,7 +463,8 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP.0 {
             // R errors: "'cummax' not defined for complex numbers"
-            let msg = CString::new("'cummax' not defined for complex numbers").unwrap();
+            let msg = CString::new("'cummax' not defined for complex numbers")
+                .expect("CString::new failed: contains null byte");
             Rf_error(msg.as_ptr());
             unreachable!()
         } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
@@ -542,7 +542,8 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP.0 {
             // R errors: "'cummin' not defined for complex numbers"
-            let msg = CString::new("'cummin' not defined for complex numbers").unwrap();
+            let msg = CString::new("'cummin' not defined for complex numbers")
+                .expect("CString::new failed: contains null byte");
             Rf_error(msg.as_ptr());
             unreachable!()
         } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {

@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of standalone functions from R's src/main/util.c
 //!
@@ -134,7 +133,7 @@ fn to_lower(c: u8) -> u8 {
 #[inline]
 unsafe fn libc_malloc(size: usize) -> *mut c_void {
     unsafe {
-        let layout = std::alloc::Layout::from_size_align(size, 1).unwrap();
+        let layout = std::alloc::Layout::from_size_align(size, 1).expect("unwrap on None/Err");
         std::alloc::alloc(layout) as *mut c_void
     }
 }
@@ -508,6 +507,7 @@ pub unsafe fn Rwcrtomb32(s: *mut c_char, mut cvalue: R_wchar_t, n: usize) -> usi
 // ---------------------------------------------------------------------------
 
 /// Check if two consecutive wide chars form a surrogate pair.
+#[allow(clippy::bad_bit_mask)]
 #[inline]
 fn is_surrogate_pair(high: u32, low: u32) -> bool {
     is_high_surrogate(high) && (low & IS_HIGH_SURROGATE_MASK) == LOW_SURROGATE_START
@@ -521,6 +521,7 @@ fn is_surrogate_pair(high: u32, low: u32) -> bool {
 /// still null-terminated.
 ///
 /// Port of R's `wcstoutf8` from util.c.
+#[allow(clippy::bad_bit_mask)]
 pub unsafe fn wcstoutf8(s: *mut c_char, wc: *const u32, n: usize) -> usize {
     unsafe {
         if n == 0 {
@@ -782,6 +783,7 @@ const MAX_EXPONENT_PREFIX: c_int = 9999;
 /// "NA" acceptance, and exactness checking.
 ///
 /// Port of R's `R_strtod5` from util.c.
+#[allow(clippy::overly_complex_bool_expr)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_strtod5(
     str: *const c_char,
@@ -876,15 +878,13 @@ pub unsafe extern "C" fn R_strtod5(
             }
 
             // EXACT clause
-            if exact != 0 && exact != 1 && ans > MAX_EXACT_DOUBLE {
-                if exact == 1 {
-                    ans = R_NA_REAL;
-                    p = str;
-                    if !endptr.is_null() {
-                        *endptr = p as *mut c_char;
-                    }
-                    return sign as c_double * ans;
+            if exact != 0 && exact != 1 && ans > MAX_EXACT_DOUBLE && exact == 1 {
+                ans = R_NA_REAL;
+                p = str;
+                if !endptr.is_null() {
+                    *endptr = p as *mut c_char;
                 }
+                return sign as c_double * ans;
             }
 
             // Binary exponent
@@ -998,15 +998,13 @@ pub unsafe extern "C" fn R_strtod5(
         }
 
         // EXACT clause for decimal
-        if exact != 0 && exact != 1 && ans > MAX_EXACT_DOUBLE {
-            if exact == 1 {
-                ans = R_NA_REAL;
-                p = str;
-                if !endptr.is_null() {
-                    *endptr = p as *mut c_char;
-                }
-                return sign as c_double * ans;
+        if exact != 0 && exact != 1 && ans > MAX_EXACT_DOUBLE && exact == 1 {
+            ans = R_NA_REAL;
+            p = str;
+            if !endptr.is_null() {
+                *endptr = p as *mut c_char;
             }
+            return sign as c_double * ans;
         }
 
         // Exponent
@@ -1341,10 +1339,10 @@ pub unsafe fn isUnordered(s: *const c_void) -> Rboolean {
             let p = CHAR(elt);
             if !p.is_null() {
                 let cs = CStr::from_ptr(p);
-                if let Ok(s) = cs.to_str() {
-                    if s == "unordered" || s == "factor" {
-                        return TRUE;
-                    }
+                if let Ok(s) = cs.to_str()
+                    && (s == "unordered" || s == "factor")
+                {
+                    return TRUE;
                 }
             }
         }
@@ -1374,10 +1372,10 @@ pub unsafe fn isOrdered(s: *const c_void) -> Rboolean {
             let p = CHAR(elt);
             if !p.is_null() {
                 let cs = CStr::from_ptr(p);
-                if let Ok(s) = cs.to_str() {
-                    if s == "ordered" {
-                        return TRUE;
-                    }
+                if let Ok(s) = cs.to_str()
+                    && s == "ordered"
+                {
+                    return TRUE;
                 }
             }
         }
@@ -1587,13 +1585,11 @@ pub unsafe fn mbcsToUcs2(in_: *const c_char, out: *mut u16, nout: c_int, enc: c_
                     let cp = (((b0 as u32) & 0x0F) << 12)
                         | (((b1 as u32) & 0x3F) << 6)
                         | ((b2 as u32) & 0x3F);
-                    if cp >= 0x800 {
-                        if cp < 0xD800 || cp >= 0xE000 {
-                            *out.add(oi) = cp as u16;
-                            oi += 1;
-                        }
-                        // Surrogates would need special handling; skip for now
+                    if cp >= 0x800 && (cp < 0xD800 || cp >= 0xE000) {
+                        *out.add(oi) = cp as u16;
+                        oi += 1;
                     }
+                    // Surrogates would need special handling; skip for now
                     si += 3;
                 } else if clen == 4 && si + 3 < usize::MAX {
                     // 4-byte: code point > 0xFFFF, needs surrogate pair — skip

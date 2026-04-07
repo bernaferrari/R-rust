@@ -178,7 +178,7 @@ pub unsafe extern "C" fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
         Rf_unprotect(1);
         return ans;
     }
-    let f1_path = f1_name.unwrap();
+    let f1_path = f1_name.expect("unwrap on None/Err");
 
     // Open f1 for append
     use std::fs::OpenOptions;
@@ -208,7 +208,7 @@ pub unsafe extern "C" fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
         if f2_name.is_none() {
             continue;
         }
-        let f2_path = f2_name.unwrap();
+        let f2_path = f2_name.expect("unwrap on None/Err");
 
         let fp2_file = match std::fs::File::open(&f2_path) {
             Ok(f) => BufReader::new(f),

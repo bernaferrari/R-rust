@@ -15,7 +15,7 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::collections::HashMap;
 use std::ptr;
 
-use super::ffi::{SEXP, SEXPTYPE, SexprecCore, SxpInfo};
+use super::ffi::{SEXP, SEXPTYPE};
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
     update_preserve_stack_refs, update_protect_stack_refs, with_preserved_objects,
@@ -208,7 +208,7 @@ impl CardTable {
                 };
             }
 
-            let card_count = (heap_size + CARD_SIZE - 1) / CARD_SIZE;
+            let card_count = heap_size.div_ceil(CARD_SIZE);
             let layout = match Layout::from_size_align(card_count, 64) {
                 Ok(l) => l,
                 Err(_) => {
@@ -285,11 +285,12 @@ impl CardTable {
 
 impl Drop for CardTable {
     fn drop(&mut self) {
-        if !self.base.is_null() && self.size > 0 {
-            if let Ok(layout) = Layout::from_size_align(self.size, 64) {
-                unsafe {
-                    dealloc(self.base, layout);
-                }
+        if !self.base.is_null()
+            && self.size > 0
+            && let Ok(layout) = Layout::from_size_align(self.size, 64)
+        {
+            unsafe {
+                dealloc(self.base, layout);
             }
         }
     }
@@ -318,7 +319,7 @@ impl RememberedSet {
 
             if !(*obj).sxpinfo.mark() {
                 (*obj).sxpinfo.set_mark(true);
-                if let Err(_) = self.entries.try_reserve(1) {
+                if self.entries.try_reserve(1).is_err() {
                     return;
                 }
                 self.entries.push(obj);
@@ -341,6 +342,7 @@ impl RememberedSet {
         self.entries.iter().copied()
     }
 
+    #[allow(clippy::len_without_is_empty)]
     pub fn len(&self) -> usize {
         self.entries.len()
     }
@@ -546,7 +548,7 @@ pub fn minor_gc() -> (usize, usize) {
 
     verify_gc_invariants();
 
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_minor_gc()));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(do_minor_gc));
 
     match result {
         Ok((promoted, freed)) => {
@@ -592,7 +594,7 @@ fn do_minor_gc() -> (usize, usize) {
 
     REMBERED_SET.with(|rs| {
         let rs = rs.borrow();
-        let entries: Vec<SEXP> = rs.entries.iter().copied().collect();
+        let entries: Vec<SEXP> = rs.entries.clone();
         for obj in entries {
             if !obj.is_null() {
                 unsafe {
@@ -841,10 +843,7 @@ fn compact_all_objects_safe() -> usize {
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_compact(&snapshot)));
 
-    match result {
-        Ok(count) => count,
-        Err(_) => 0,
-    }
+    result.unwrap_or_default()
 }
 
 fn do_compact(snapshot: &CompactionSnapshot) -> usize {

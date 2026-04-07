@@ -48,7 +48,7 @@ pub fn run_tests() -> Result<(), String> {
     );
     // Valid density with ncp > 0
     let d_ncp = dnbeta_inner(0.5, 2.0, 3.0, 2.0, false);
-    if !(d_ncp > 0.0) {
+    if d_ncp <= 0.0 {
         return Err(format!("dnbeta(0.5,2,3,2) = {}, expected > 0", d_ncp));
     }
 

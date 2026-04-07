@@ -5,6 +5,7 @@
 //! Processes .Renviron files to set environment variables.
 //! Supports ${FOO-bar} and ${FOO:-bar} substitution syntax.
 
+use std::cell::RefCell;
 use std::ffi::CStr;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
@@ -53,7 +54,7 @@ unsafe fn rmspace(s: *mut c_char) -> *mut c_char {
 /// Returns empty string on error.
 unsafe fn subterm(s: *mut c_char) -> *const c_char {
     unsafe {
-        static mut ANS: [c_char; BUF_SIZE] = [0; BUF_SIZE];
+        thread_local! { static ANS: RefCell<[c_char; BUF_SIZE]> = RefCell::new([0; BUF_SIZE]); }
 
         let len = libc::strlen(s);
         if len < 3 {
@@ -119,12 +120,15 @@ unsafe fn subterm(s: *mut c_char) -> *const c_char {
             let mut tmp = [0i8; BUF_SIZE];
             ptr::copy_nonoverlapping(q, tmp.as_mut_ptr(), qlen.min(BUF_SIZE - 1));
             subterm(tmp.as_mut_ptr());
-            ptr::copy_nonoverlapping(
-                tmp.as_ptr(),
-                core::ptr::addr_of_mut!(ANS) as *mut c_char,
-                libc::strlen(tmp.as_ptr()),
-            );
-            return core::ptr::addr_of!(ANS) as *const c_char;
+            ANS.with(|v| {
+                let mut ans = v.borrow_mut();
+                ptr::copy_nonoverlapping(
+                    tmp.as_ptr(),
+                    ans.as_mut_ptr(),
+                    libc::strlen(tmp.as_ptr()),
+                );
+            });
+            return ANS.with(|v| v.borrow().as_ptr()) as *const c_char;
         }
 
         b"\0".as_ptr() as *const c_char
@@ -362,7 +366,7 @@ pub unsafe fn process_Renviron(filename: *const c_char) -> c_int {
                 continue;
             }
 
-            let eq = eq_pos.unwrap();
+            let eq = eq_pos.expect("unwrap on None/Err");
             // Split at '='
             *s.add(eq) = 0; // null-terminate the key
             let lhs = rmspace(s);
@@ -394,7 +398,11 @@ pub unsafe fn process_system_Renviron() {
         // For now, try the common location
         let r_home = std::env::var("R_HOME").unwrap_or_default();
         let path = format!("{}/etc/Renviron", r_home);
-        process_Renviron(std::ffi::CString::new(path).unwrap().as_ptr());
+        process_Renviron(
+            std::ffi::CString::new(path)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
     }
 }
 
@@ -403,13 +411,21 @@ pub unsafe fn process_site_Renviron() {
     unsafe {
         if let Ok(p) = std::env::var("R_ENVIRON") {
             if !p.is_empty() {
-                process_Renviron(std::ffi::CString::new(p).unwrap().as_ptr());
+                process_Renviron(
+                    std::ffi::CString::new(p)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                );
                 return;
             }
         }
         let r_home = std::env::var("R_HOME").unwrap_or_default();
         let path = format!("{}/etc/Renviron.site", r_home);
-        process_Renviron(std::ffi::CString::new(path).unwrap().as_ptr());
+        process_Renviron(
+            std::ffi::CString::new(path)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
     }
 }
 
@@ -418,7 +434,11 @@ pub unsafe fn process_user_Renviron() {
     unsafe {
         if let Ok(s) = std::env::var("R_ENVIRON_USER") {
             if !s.is_empty() {
-                process_Renviron(std::ffi::CString::new(s).unwrap().as_ptr());
+                process_Renviron(
+                    std::ffi::CString::new(s)
+                        .expect("CString::new failed: contains null byte")
+                        .as_ptr(),
+                );
                 return;
             }
         }
@@ -427,7 +447,11 @@ pub unsafe fn process_user_Renviron() {
         // Try ~/.Renviron
         if let Ok(home) = std::env::var("HOME") {
             let path = format!("{}/.Renviron", home);
-            process_Renviron(std::ffi::CString::new(path).unwrap().as_ptr());
+            process_Renviron(
+                std::ffi::CString::new(path)
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            );
         }
     }
 }
@@ -446,7 +470,11 @@ pub unsafe fn do_readEnviron(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
         let fn_c = translateChar(elt);
         let fn_str = CStr::from_ptr(fn_c).to_string_lossy();
-        let res = process_Renviron(std::ffi::CString::new(fn_str.as_ref()).unwrap().as_ptr());
+        let res = process_Renviron(
+            std::ffi::CString::new(fn_str.as_ref())
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
         ScalarLogical(if res != 0 { 1 } else { 0 })
     }
 }

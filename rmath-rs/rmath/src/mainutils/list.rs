@@ -4,14 +4,14 @@
 //!
 //! Implements `all.names()` / `all.vars()` via `do_allnames()`.
 
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, LENGTH, PRINTNAME, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, PRINTNAME, SET_STRING_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_allocVector, Rf_isNull};
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::constructors::Rf_allocVector;
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -153,7 +153,7 @@ pub unsafe fn do_allnames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let _ = (call, env);
         checkArity(op, args);
 
-        let mut expr = CAR(args);
+        let expr = CAR(args);
         let mut args_rest = CDR(args);
 
         let mut data = NameWalkData {

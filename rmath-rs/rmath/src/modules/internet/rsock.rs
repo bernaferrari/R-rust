@@ -1,10 +1,10 @@
-
 // Port of R's modules/internet/Rsock.c (705 lines)
 // R socket interface: Sock_open/listen/connect/close/read/write for R level
 // and R_SockOpen/Listen/Connect/Close/Read/Write for connection-level use.
 // Unix implementation using libc system calls and lower-level sock.rs functions.
 
 use crate::sexp::*;
+use core::cell::Cell;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use libc::{
     AF_INET,
@@ -94,12 +94,9 @@ unsafe extern "C" {
     fn gethostbyname(name: *const c_char) -> *mut hostent;
 }
 
-// Local mutable static to track socket initialization (matches C: static int sock_inited)
-static mut sock_inited: c_int = 0;
+thread_local! { static sock_inited: Cell<c_int> = Cell::new(0); }
 
-// R_wait_usec global: polling interval in microseconds for select().
-// In the full R implementation this is set by the event loop. Default 0 means "use timeout directly".
-static mut R_wait_usec_val: c_int = 0;
+thread_local! { static R_wait_usec_val: Cell<c_int> = Cell::new(0); }
 
 // --- Internal helper functions (module-private, no #[no_mangle]) ---
 
@@ -125,18 +122,22 @@ unsafe fn close_sock(fd: c_int) -> c_int {
 }
 
 /// check_init - ensure socket subsystem is initialized (once)
-unsafe fn check_init() {
-    if core::ptr::addr_of_mut!(sock_inited).read() == 0 {
-        Sock_init();
-        core::ptr::addr_of_mut!(sock_inited).write(1);
-    }
+fn check_init() {
+    sock_inited.with(|v| {
+        if v.get() == 0 {
+            unsafe {
+                Sock_init();
+            }
+            v.set(1);
+        }
+    });
 }
 
 /// set_timeval - populate a timeval struct for select(), respecting R_wait_usec
 /// When R_wait_usec > 0, each select() polls for that interval; otherwise
 /// the full timeout is used.
 unsafe fn set_timeval(tv: *mut timeval, timeout: c_int) {
-    let wait_usec = core::ptr::addr_of_mut!(R_wait_usec_val).read();
+    let wait_usec = R_wait_usec_val.with(|v| v.get());
     if wait_usec > 0 {
         (*tv).tv_sec = (wait_usec / 1_000_000) as libc::time_t;
         (*tv).tv_usec = (wait_usec - (wait_usec / 1_000_000) * 1_000_000) as libc::suseconds_t;
@@ -399,7 +400,7 @@ pub(crate) unsafe extern "C" fn R_SocketWaitMultiple(
         let mut maxfd: c_int = 0;
 
         // Compute timeout for this iteration
-        let wait_usec = core::ptr::addr_of_mut!(R_wait_usec_val).read();
+        let wait_usec = R_wait_usec_val.with(|v| v.get());
         tv = core::mem::zeroed();
         if wait_usec > 0 {
             let delta = if mytimeout < 0.0 || (wait_usec as c_double) / 1e6 < mytimeout - used {

@@ -356,7 +356,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                     // Integer overflow — issue warning and stop
                     let msg =
                         CString::new("integer overflow in 'cumsum'; use 'cumsum(as.numeric(.))'")
-                            .unwrap();
+                            .expect("unwrap on None/Err");
                     Rf_warning(msg.as_ptr());
                     break;
                 }
@@ -453,7 +453,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP.0 {
             // R errors: "'cummax' not defined for complex numbers"
-            let msg = CString::new("'cummax' not defined for complex numbers").unwrap();
+            let msg = CString::new("'cummax' not defined for complex numbers").expect("CString::new failed: contains null byte");
             Rf_error(msg.as_ptr());
             unreachable!()
         } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
@@ -525,7 +525,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP.0 {
             // R errors: "'cummin' not defined for complex numbers"
-            let msg = CString::new("'cummin' not defined for complex numbers").unwrap();
+            let msg = CString::new("'cummin' not defined for complex numbers").expect("CString::new failed: contains null byte");
             Rf_error(msg.as_ptr());
             unreachable!()
         } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {

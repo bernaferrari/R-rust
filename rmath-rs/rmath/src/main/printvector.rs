@@ -16,6 +16,7 @@
 //!   PrintValue, PrintValueEnv, PrintValueRec -- in print.rs
 //!   XLENGTH -- in sexp/accessors.rs
 
+use std::cell::RefCell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -72,8 +73,7 @@ impl Default for R_PrintData {
     }
 }
 
-/// Module-level print parameter storage.
-static mut R_PRINT_DATA: R_PrintData = R_PrintData {
+thread_local! { static R_PRINT_DATA: RefCell<R_PrintData> = RefCell::new(R_PrintData {
     width: 80,
     gap: 1,
     digits: 4,
@@ -85,14 +85,26 @@ static mut R_PRINT_DATA: R_PrintData = R_PrintData {
     na_width_noquote: 4,
     na_string: ptr::null_mut(),
     na_string_noquote: ptr::null_mut(),
-};
+}); }
 
-/// Get the global print data (full R_print parameters).
-///
-/// Named `get_R_PrintData` to avoid collision with `get_R_print` in
-/// printutils.rs (which returns the smaller `RPrint` struct).
-pub unsafe fn get_R_PrintData() -> &'static mut R_PrintData {
-    unsafe { &mut *std::ptr::addr_of_mut!(R_PRINT_DATA) }
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
+pub unsafe fn get_R_PrintData() -> MutPtr<R_PrintData> {
+    MutPtr(R_PRINT_DATA.with(|v| v.as_ptr() as *mut R_PrintData))
 }
 
 // ---------------------------------------------------------------------------
@@ -1061,12 +1073,7 @@ unsafe fn printNamedRawVectorS(x: SEXP, n: R_xlen_t, names: SEXP) {
 // printNamedVector -- exported
 // ---------------------------------------------------------------------------
 
-pub unsafe fn printNamedVector(
-    x: SEXP,
-    names: SEXP,
-    quote: c_int,
-    title: *const c_char,
-) {
+pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const c_char) {
     unsafe {
         if !title.is_null() {
             let s = std::ffi::CStr::from_ptr(title).to_str().unwrap_or("");

@@ -679,11 +679,11 @@ pub unsafe fn findcontext(mask: c_int, env: SEXP, val: SEXP) -> ! {
 
         if (mask & ctxt_flags::CTXT_LOOP) != 0 {
             let msg =
-                std::ffi::CString::new("no loop for break/next, jumping to top level").unwrap();
+                std::ffi::CString::new("no loop for break/next, jumping to top level").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         } else {
             let msg =
-                std::ffi::CString::new("no function to return from, jumping to top level").unwrap();
+                std::ffi::CString::new("no function to return from, jumping to top level").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
     }
@@ -721,7 +721,7 @@ pub unsafe extern "C" fn R_JumpToContext(
             R_jumpctxt_impl(target, mask, val);
         }
 
-        let msg = std::ffi::CString::new("target context is not on the stack").unwrap();
+        let msg = std::ffi::CString::new("target context is not on the stack").expect("CString::new failed: contains null byte");
         error(msg.as_ptr());
     }
 }
@@ -737,14 +737,14 @@ pub unsafe fn R_sysframe(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP {
         }
 
         if n == crate::sexp::ffi::NA_INTEGER {
-            let msg = std::ffi::CString::new("NA argument is invalid").unwrap();
+            let msg = std::ffi::CString::new("NA argument is invalid").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 
         let mut n = if n > 0 { ctx_framedepth() - n } else { -n };
 
         if n < 0 {
-            let msg = std::ffi::CString::new("not that many frames on the stack").unwrap();
+            let msg = std::ffi::CString::new("not that many frames on the stack").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 
@@ -764,7 +764,7 @@ pub unsafe fn R_sysframe(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP {
                         return R_GlobalEnv();
                     } else {
                         let msg =
-                            std::ffi::CString::new("not that many frames on the stack").unwrap();
+                            std::ffi::CString::new("not that many frames on the stack").expect("CString::new failed: contains null byte");
                         error(msg.as_ptr());
                     }
                 }
@@ -792,7 +792,7 @@ pub unsafe fn R_sysparent(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> c_int {
             } else {
                 (*toplevel).call
             };
-            let msg = std::ffi::CString::new("only positive values of 'n' are allowed").unwrap();
+            let msg = std::ffi::CString::new("only positive values of 'n' are allowed").expect("CString::new failed: contains null byte");
             errorcall(call, msg.as_ptr());
         }
 
@@ -901,7 +901,7 @@ pub unsafe fn R_syscall(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP {
         let mut n = if n > 0 { ctx_framedepth() - n } else { -n };
 
         if n < 0 {
-            let msg = std::ffi::CString::new("not that many frames on the stack").unwrap();
+            let msg = std::ffi::CString::new("not that many frames on the stack").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 
@@ -919,7 +919,7 @@ pub unsafe fn R_syscall(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP {
                     if n == 0 {
                         return getCallWithSrcref(&**ctx as *const _ as *mut sexp_context::RCNTXT);
                     }
-                    let msg = std::ffi::CString::new("not that many frames on the stack").unwrap();
+                    let msg = std::ffi::CString::new("not that many frames on the stack").expect("CString::new failed: contains null byte");
                     error(msg.as_ptr());
                 }
             }
@@ -942,7 +942,7 @@ pub unsafe fn R_sysfunction(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP 
         let mut n = if n > 0 { ctx_framedepth() - n } else { -n };
 
         if n < 0 {
-            let msg = std::ffi::CString::new("not that many frames on the stack").unwrap();
+            let msg = std::ffi::CString::new("not that many frames on the stack").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 
@@ -960,7 +960,7 @@ pub unsafe fn R_sysfunction(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP 
                     if n == 0 {
                         return duplicate(ctx.closure);
                     }
-                    let msg = std::ffi::CString::new("not that many frames on the stack").unwrap();
+                    let msg = std::ffi::CString::new("not that many frames on the stack").expect("CString::new failed: contains null byte");
                     error(msg.as_ptr());
                 }
             }
@@ -1019,7 +1019,7 @@ pub unsafe fn do_sysbrowser(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
         checkArity(op, args);
         let n = asInteger(CAR(args));
         if n < 1 {
-            let msg = std::ffi::CString::new("number of contexts must be positive").unwrap();
+            let msg = std::ffi::CString::new("number of contexts must be positive").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 
@@ -1041,7 +1041,7 @@ pub unsafe fn do_sysbrowser(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
         });
 
         if found_browser.is_null() || (*found_browser).callflag != ctxt_flags::CTXT_BROWSER {
-            let msg = std::ffi::CString::new("no browser context to query").unwrap();
+            let msg = std::ffi::CString::new("no browser context to query").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 
@@ -1073,7 +1073,7 @@ pub unsafe fn do_sysbrowser(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
                     {
                         let msg =
                             std::ffi::CString::new("not that many calls to browser are active")
-                                .unwrap();
+                                .expect("unwrap on None/Err");
                         error(msg.as_ptr());
                     }
                     found_browser = target_browser;
@@ -1114,7 +1114,7 @@ pub unsafe fn do_sysbrowser(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 });
                 if target_fn.is_null() || ((*target_fn).callflag & ctxt_flags::CTXT_FUNCTION) == 0 {
                     let msg = std::ffi::CString::new("not that many functions on the call stack")
-                        .unwrap();
+                        .expect("unwrap on None/Err");
                     error(msg.as_ptr());
                 }
                 SET_RDEBUG((*target_fn).cloenv, 1);
@@ -1206,7 +1206,7 @@ pub unsafe fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             1 => {
                 // parent
                 if n == crate::sexp::ffi::NA_INTEGER {
-                    let msg = std::ffi::CString::new("invalid 'n' argument").unwrap();
+                    let msg = std::ffi::CString::new("invalid 'n' argument").expect("CString::new failed: contains null byte");
                     error(msg.as_ptr());
                 }
                 let nframe = ctx_framedepth();
@@ -1221,7 +1221,7 @@ pub unsafe fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             2 => {
                 // call
                 if n == crate::sexp::ffi::NA_INTEGER {
-                    let msg = std::ffi::CString::new("invalid 'which' argument").unwrap();
+                    let msg = std::ffi::CString::new("invalid 'which' argument").expect("CString::new failed: contains null byte");
                     error(msg.as_ptr());
                 }
                 R_syscall(n, cptr)
@@ -1229,7 +1229,7 @@ pub unsafe fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             3 => {
                 // frame
                 if n == crate::sexp::ffi::NA_INTEGER {
-                    let msg = std::ffi::CString::new("invalid 'which' argument").unwrap();
+                    let msg = std::ffi::CString::new("invalid 'which' argument").expect("CString::new failed: contains null byte");
                     error(msg.as_ptr());
                 }
                 R_sysframe(n, cptr)
@@ -1297,13 +1297,13 @@ pub unsafe fn do_sys(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             9 => {
                 // sys.function
                 if n == crate::sexp::ffi::NA_INTEGER {
-                    let msg = std::ffi::CString::new("invalid 'which' value").unwrap();
+                    let msg = std::ffi::CString::new("invalid 'which' value").expect("CString::new failed: contains null byte");
                     error(msg.as_ptr());
                 }
                 R_sysfunction(n, cptr)
             }
             _ => {
-                let msg = std::ffi::CString::new("internal error in 'do_sys'").unwrap();
+                let msg = std::ffi::CString::new("internal error in 'do_sys'").expect("CString::new failed: contains null byte");
                 error(msg.as_ptr());
             }
         }
@@ -1319,7 +1319,7 @@ pub unsafe fn do_parentframe(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> S
         checkArity(op, args);
         let n = asInteger(CAR(args));
         if n == crate::sexp::ffi::NA_INTEGER || n < 1 {
-            let msg = std::ffi::CString::new("invalid 'n' value").unwrap();
+            let msg = std::ffi::CString::new("invalid 'n' value").expect("CString::new failed: contains null byte");
             error(msg.as_ptr());
         }
 

@@ -6,7 +6,6 @@
 //! recognition and special form dispatch.
 
 use std::ffi::CString;
-use std::ptr;
 
 use crate::sexp::ffi::SEXP;
 use crate::sexp::symbol::Rf_install;

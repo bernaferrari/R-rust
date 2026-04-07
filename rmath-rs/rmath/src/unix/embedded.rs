@@ -5,6 +5,7 @@
 //! Provides `Rf_initEmbeddedR` and `Rf_endEmbeddedR` for embedding
 //! R within another application via libR.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_int};
 
 // ---------------------------------------------------------------------------
@@ -33,7 +34,7 @@ unsafe fn PrintWarnings() {}
 // R_Interactive global
 // ---------------------------------------------------------------------------
 
-static mut R_Interactive: c_int = 0;
+thread_local! { static R_Interactive: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -50,7 +51,7 @@ static mut R_Interactive: c_int = 0;
 pub unsafe extern "C" fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
     unsafe {
         Rf_initialize_R(argc, argv);
-        R_Interactive = 1; /* TRUE */
+        R_Interactive.with(|v| v.set(1)); /* TRUE */
         setup_Rmainloop();
         1
     }
@@ -91,7 +92,7 @@ mod tests {
             let argv: &mut [*mut c_char] = &mut [];
             let result = Rf_initEmbeddedR(0, argv.as_mut_ptr());
             assert_eq!(result, 1);
-            assert_eq!(*std::ptr::addr_of!(R_Interactive), 1);
+            assert_eq!(R_Interactive.with(|v| v.get()), 1);
         }
     }
 

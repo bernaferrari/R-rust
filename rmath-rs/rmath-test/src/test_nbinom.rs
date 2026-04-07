@@ -21,12 +21,12 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(dnbinom_inner(1.0, 2.0, 1.0, false), "dnbinom(1,2,1)");
     // Valid density should be > 0
     let d1 = dnbinom_inner(2.0, 3.0, 0.5, false);
-    if !(d1 > 0.0) {
+    if d1 <= 0.0 {
         return Err(format!("dnbinom(2,3,0.5) = {}, expected > 0", d1));
     }
     // Log-scale check: log(density) should match log_p version
     let d1_log = dnbinom_inner(2.0, 3.0, 0.5, true);
-    if !(d1_log < 0.0) {
+    if d1_log >= 0.0 {
         return Err(format!("dnbinom(2,3,0.5,log) = {}, expected < 0", d1_log));
     }
     // Negative x => 0
@@ -81,24 +81,24 @@ pub fn run_tests() -> Result<(), String> {
     );
     // qnbinom(0.5, size, prob) should give a non-negative integer
     let q1 = qnbinom_inner(0.5, 3.0, 0.5, true, false);
-    if !(q1 >= 0.0) {
+    if q1 < 0.0 {
         return Err(format!("qnbinom(0.5,3,0.5) = {}, expected >= 0", q1));
     }
     // qnbinom(0) boundary: returns a value <= 0
     let q0 = qnbinom_inner(0.0, 3.0, 0.5, true, false);
-    if !(q0 <= 0.0) {
+    if q0 > 0.0 {
         return Err(format!("qnbinom(0,3,0.5) = {}, expected <= 0", q0));
     }
     // qnbinom(1) should give a large positive value
     let q1_big = qnbinom_inner(1.0, 3.0, 0.5, true, false);
-    if !(q1_big > 0.0) {
+    if q1_big <= 0.0 {
         return Err(format!("qnbinom(1,3,0.5) = {}, expected > 0", q1_big));
     }
 
     // rnbinom tests
     rmath::rng::set_seed(42, 24);
     let r1 = rnbinom_inner(3.0, 0.5);
-    if !(r1 >= 0.0) {
+    if r1 < 0.0 {
         return Err(format!("rnbinom(3,0.5) = {}, expected >= 0", r1));
     }
     rmath::rng::set_seed(42, 24);

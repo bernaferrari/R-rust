@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/radixsort.c
 //!
@@ -11,6 +10,7 @@
 //! This module ports the core integer radix sort algorithm as standalone
 //! Rust functions, plus the full do_radixsort SEXP wrapper.
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_int, c_void};
 use std::ptr;
 
@@ -43,140 +43,126 @@ const NA_INTEGER: i32 = i32::MIN;
 // gs = groupsizes e.g. 23, 12, 87, 2, 1, 34,...
 // Two vectors flip-flopped: flip and 1 - flip.
 
-static mut GS: [*mut c_int; 2] = [ptr::null_mut(); 2];
-static mut FLIP: c_int = 0;
-static mut GSALLOC: [c_int; 2] = [0; 2];
-static mut GSNGRP: [c_int; 2] = [0; 2];
-/// Max group size so far.
-static mut GSMAX: [c_int; 2] = [0; 2];
-/// Max size of stack, set by the caller to nrows.
-static mut GSMAXALLOC: c_int = 0;
-
-/// Switched off for last arg unless retGrp==TRUE.
-static mut STACKGRPS: bool = true;
-/// TRUE for setkey, FALSE for by=.
-static mut SORTSTR: bool = true;
-/// Used to reorder order. Not needed if narg==1.
-static mut NEWO: *mut c_int = ptr::null_mut();
-/// =1, 0, -1 for TRUE, NA, FALSE respectively.
-static mut NALAST: c_int = -1;
-/// =1, -1 for ascending and descending order respectively.
-static mut ORDER: c_int = 1;
-
-/// Used by both icount and the sort dispatch.
-static mut RANGE: c_int = NA_INTEGER;
-static mut XMIN: c_int = NA_INTEGER;
-
-/// Static counts array for icount (counting sort).
-/// counts are set back to 0 at the end efficiently. 1e5 = 0.4MB i.e. tiny.
-static mut COUNTS: [u32; N_RANGE as usize + 1] = [0; N_RANGE as usize + 1];
-
-/// 4 are used for iradix, 8 for dradix and i64radix.
-/// Global because iradix and iradix_r interact and are called repetitively.
-/// Counts are set back to 0 after each use.
-static mut RADIXCOUNTS: [[u32; 257]; 8] = [[0; 257]; 8];
-static mut SKIP: [c_int; 8] = [0; 8];
-static mut RADIX_XSUB: *mut c_void = ptr::null_mut();
-static mut RADIX_XSUBALLOC: usize = 0;
-
-static mut OTMP: *mut c_int = ptr::null_mut();
-static mut OTMP_ALLOC: usize = 0;
-static mut XTMP: *mut c_void = ptr::null_mut();
-static mut XTMP_ALLOC: usize = 0;
+thread_local! {
+    static GS: Cell<[*mut c_int; 2]> = Cell::new([ptr::null_mut(); 2]);
+    static FLIP: Cell<c_int> = Cell::new(0);
+    static GSALLOC: RefCell<[c_int; 2]> = RefCell::new([0; 2]);
+    static GSNGRP: RefCell<[c_int; 2]> = RefCell::new([0; 2]);
+    static GSMAX: RefCell<[c_int; 2]> = RefCell::new([0; 2]);
+    static GSMAXALLOC: Cell<c_int> = Cell::new(0);
+    static STACKGRPS: Cell<bool> = Cell::new(true);
+    static SORTSTR: Cell<bool> = Cell::new(true);
+    static NEWO: Cell<*mut c_int> = Cell::new(ptr::null_mut());
+    static NALAST: Cell<c_int> = Cell::new(-1);
+    static ORDER: Cell<c_int> = Cell::new(1);
+    static RANGE: Cell<c_int> = Cell::new(NA_INTEGER);
+    static XMIN: Cell<c_int> = Cell::new(NA_INTEGER);
+    static COUNTS: RefCell<[u32; N_RANGE as usize + 1]> = RefCell::new([0; N_RANGE as usize + 1]);
+    static RADIXCOUNTS: RefCell<[[u32; 257]; 8]> = RefCell::new([[0; 257]; 8]);
+    static SKIP: RefCell<[c_int; 8]> = RefCell::new([0; 8]);
+    static RADIX_XSUB: Cell<*mut c_void> = Cell::new(ptr::null_mut());
+    static RADIX_XSUBALLOC: Cell<usize> = Cell::new(0);
+    static OTMP: Cell<*mut c_int> = Cell::new(ptr::null_mut());
+    static OTMP_ALLOC: Cell<usize> = Cell::new(0);
+    static XTMP: Cell<*mut c_void> = Cell::new(ptr::null_mut());
+    static XTMP_ALLOC: Cell<usize> = Cell::new(0);
+}
 
 // ---------------------------------------------------------------------------
 // Group stack helpers
 // ---------------------------------------------------------------------------
 
 unsafe fn growstack(newlen: u64) {
-    unsafe {
-        // No link to icount range restriction,
-        // just 100,000 seems a good minimum at 0.4MB
-        let mut newlen = if newlen == 0 { 100000 } else { newlen };
-        let gs = std::ptr::addr_of_mut!(GS);
-        let flip = std::ptr::addr_of_mut!(FLIP);
-        let gsalloc = std::ptr::addr_of_mut!(GSALLOC);
-        let gsmaxalloc = std::ptr::addr_of_mut!(GSMAXALLOC);
-        if newlen > (*gsmaxalloc) as u64 {
-            newlen = (*gsmaxalloc) as u64;
-        }
-        (*gs)[(*flip) as usize] = libc_realloc(
-            (*gs)[(*flip) as usize] as *mut c_void,
-            newlen as usize * std::mem::size_of::<c_int>(),
-        ) as *mut c_int;
-        if (*gs)[(*flip) as usize].is_null() {
-            eprintln!(
-                "Failed to realloc working memory stack to {}*4bytes (flip={})",
-                newlen,
-                (*flip)
-            );
-            return;
-        }
-        (*gsalloc)[(*flip) as usize] = newlen as c_int;
+    let mut newlen = if newlen == 0 { 100000 } else { newlen };
+    let flip = FLIP.with(|v| v.get()) as usize;
+    let gsmaxalloc = GSMAXALLOC.with(|v| v.get());
+    if newlen > gsmaxalloc as u64 {
+        newlen = gsmaxalloc as u64;
     }
+    let gs = GS.with(|v| v.get());
+    let old_ptr = gs[flip];
+    let new_ptr = libc_realloc(
+        old_ptr as *mut c_void,
+        newlen as usize * std::mem::size_of::<c_int>(),
+    ) as *mut c_int;
+    GS.with(|v| {
+        let mut a = v.get();
+        a[flip] = new_ptr;
+        v.set(a);
+    });
+    if new_ptr.is_null() {
+        eprintln!(
+            "Failed to realloc working memory stack to {}*4bytes (flip={})",
+            newlen, flip
+        );
+        return;
+    }
+    GSALLOC.with(|v| v.borrow_mut()[flip] = newlen as c_int);
 }
 
 unsafe fn push(x: c_int) {
-    unsafe {
-        if !STACKGRPS || x == 0 {
-            return;
-        }
-        if GSALLOC[FLIP as usize] == GSNGRP[FLIP as usize] {
-            growstack((GSNGRP[FLIP as usize] as u64) * 2);
-        }
-        *GS[FLIP as usize].add(GSNGRP[FLIP as usize] as usize) = x;
-        GSNGRP[FLIP as usize] += 1;
-        if x > GSMAX[FLIP as usize] {
-            GSMAX[FLIP as usize] = x;
-        }
+    if !STACKGRPS.with(|v| v.get()) || x == 0 {
+        return;
+    }
+    let flip = FLIP.with(|v| v.get()) as usize;
+    let ngrp = GSNGRP.with(|v| v.borrow()[flip]);
+    let alloc = GSALLOC.with(|v| v.borrow()[flip]);
+    if alloc == ngrp {
+        growstack((ngrp as u64) * 2);
+    }
+    let gs = GS.with(|v| v.get());
+    *gs[flip].add(ngrp as usize) = x;
+    GSNGRP.with(|v| v.borrow_mut()[flip] = ngrp + 1);
+    if x > GSMAX.with(|v| v.borrow()[flip]) {
+        GSMAX.with(|v| v.borrow_mut()[flip] = x);
     }
 }
 
 unsafe fn mpush(x: c_int, n: c_int) {
-    unsafe {
-        if !STACKGRPS || x == 0 {
-            return;
-        }
-        if GSALLOC[FLIP as usize] < GSNGRP[FLIP as usize] + n {
-            growstack(((GSNGRP[FLIP as usize] as u64) + n as u64) * 2);
-        }
-        for i in 0..n {
-            *GS[FLIP as usize].add(GSNGRP[FLIP as usize] as usize) = x;
-            GSNGRP[FLIP as usize] += 1;
-        }
-        if x > GSMAX[FLIP as usize] {
-            GSMAX[FLIP as usize] = x;
-        }
+    if !STACKGRPS.with(|v| v.get()) || x == 0 {
+        return;
+    }
+    let flip = FLIP.with(|v| v.get()) as usize;
+    let ngrp = GSNGRP.with(|v| v.borrow()[flip]);
+    let alloc = GSALLOC.with(|v| v.borrow()[flip]);
+    if alloc < ngrp + n {
+        growstack(((ngrp as u64) + n as u64) * 2);
+    }
+    let gs = GS.with(|v| v.get());
+    let mut cur_ngrp = ngrp;
+    for _i in 0..n {
+        *gs[flip].add(cur_ngrp as usize) = x;
+        cur_ngrp += 1;
+    }
+    GSNGRP.with(|v| v.borrow_mut()[flip] = cur_ngrp);
+    if x > GSMAX.with(|v| v.borrow()[flip]) {
+        GSMAX.with(|v| v.borrow_mut()[flip] = x);
     }
 }
 
 unsafe fn flipflop() {
-    unsafe {
-        FLIP = 1 - FLIP;
-        GSNGRP[FLIP as usize] = 0;
-        GSMAX[FLIP as usize] = 0;
-        if GSALLOC[FLIP as usize] < GSALLOC[(1 - FLIP) as usize] {
-            growstack(GSALLOC[(1 - FLIP) as usize] as u64 * 2);
-        }
+    FLIP.with(|v| v.set(1 - v.get()));
+    let flip = FLIP.with(|v| v.get()) as usize;
+    GSNGRP.with(|v| v.borrow_mut()[flip] = 0);
+    GSMAX.with(|v| v.borrow_mut()[flip] = 0);
+    let alloc = GSALLOC.with(|v| v.borrow()[flip]);
+    let other_alloc = GSALLOC.with(|v| v.borrow()[1 - flip]);
+    if alloc < other_alloc {
+        growstack(other_alloc as u64 * 2);
     }
 }
 
 /// Free all group-stack memory.
 pub unsafe fn gsfree() {
-    unsafe {
-        libc_free(GS[0] as *mut c_void);
-        libc_free(GS[1] as *mut c_void);
-        GS[0] = ptr::null_mut();
-        GS[1] = ptr::null_mut();
-        FLIP = 0;
-        GSALLOC[0] = 0;
-        GSALLOC[1] = 0;
-        GSNGRP[0] = 0;
-        GSNGRP[1] = 0;
-        GSMAX[0] = 0;
-        GSMAX[1] = 0;
-        GSMAXALLOC = 0;
-    }
+    let gs = GS.with(|v| v.get());
+    libc_free(gs[0] as *mut c_void);
+    libc_free(gs[1] as *mut c_void);
+    GS.with(|v| v.set([ptr::null_mut(); 2]));
+    FLIP.with(|v| v.set(0));
+    GSALLOC.with(|v| *v.borrow_mut() = [0; 2]);
+    GSNGRP.with(|v| *v.borrow_mut() = [0; 2]);
+    GSMAX.with(|v| *v.borrow_mut() = [0; 2]);
+    GSMAXALLOC.with(|v| v.set(0));
 }
 
 // ---------------------------------------------------------------------------
@@ -184,43 +170,43 @@ pub unsafe fn gsfree() {
 // ---------------------------------------------------------------------------
 
 unsafe fn alloc_otmp(n: c_int) {
-    unsafe {
-        if OTMP_ALLOC >= n as usize {
-            return;
-        }
-        OTMP = libc_realloc(
-            OTMP as *mut c_void,
-            n as usize * std::mem::size_of::<c_int>(),
-        ) as *mut c_int;
-        if OTMP.is_null() {
-            eprintln!(
-                "Failed to allocate working memory for otmp. Requested {} * {} bytes",
-                n,
-                std::mem::size_of::<c_int>()
-            );
-            return;
-        }
-        OTMP_ALLOC = n as usize;
+    if OTMP_ALLOC.with(|v| v.get()) >= n as usize {
+        return;
     }
+    let old = OTMP.with(|v| v.get());
+    let new_ptr = libc_realloc(
+        old as *mut c_void,
+        n as usize * std::mem::size_of::<c_int>(),
+    ) as *mut c_int;
+    if new_ptr.is_null() {
+        eprintln!(
+            "Failed to allocate working memory for otmp. Requested {} * {} bytes",
+            n,
+            std::mem::size_of::<c_int>()
+        );
+        return;
+    }
+    OTMP.with(|v| v.set(new_ptr));
+    OTMP_ALLOC.with(|v| v.set(n as usize));
 }
 
 unsafe fn alloc_xtmp(n: c_int) {
-    unsafe {
-        if XTMP_ALLOC >= n as usize {
-            return;
-        }
-        // Currently always the largest type (double) but could be int if that's all needed.
-        XTMP = libc_realloc(XTMP, n as usize * std::mem::size_of::<f64>());
-        if XTMP.is_null() {
-            eprintln!(
-                "Failed to allocate working memory for xtmp. Requested {} * {} bytes",
-                n,
-                std::mem::size_of::<f64>()
-            );
-            return;
-        }
-        XTMP_ALLOC = n as usize;
+    if XTMP_ALLOC.with(|v| v.get()) >= n as usize {
+        return;
     }
+    // Currently always the largest type (double) but could be int if that's all needed.
+    let old = XTMP.with(|v| v.get());
+    let new_ptr = libc_realloc(old, n as usize * std::mem::size_of::<f64>());
+    if new_ptr.is_null() {
+        eprintln!(
+            "Failed to allocate working memory for xtmp. Requested {} * {} bytes",
+            n,
+            std::mem::size_of::<f64>()
+        );
+        return;
+    }
+    XTMP.with(|v| v.set(new_ptr));
+    XTMP_ALLOC.with(|v| v.set(n as usize));
 }
 
 // ---------------------------------------------------------------------------
@@ -230,45 +216,43 @@ unsafe fn alloc_xtmp(n: c_int) {
 /// Compute the minimum value and range of an integer array, skipping
 /// NA_INTEGER values. Sets module-level `XMIN` and `RANGE`.
 pub unsafe fn setRange(x: *const c_int, n: c_int) {
-    unsafe {
-        XMIN = NA_INTEGER;
-        let mut xmax: c_int = NA_INTEGER;
-        let mut overflow: f64;
+    XMIN.with(|v| v.set(NA_INTEGER));
+    let mut xmax: c_int = NA_INTEGER;
+    let overflow: f64;
 
-        let mut i: c_int = 0;
-        while i < n && *x.add(i as usize) == NA_INTEGER {
-            i += 1;
-        }
-        if i < n {
-            xmax = *x.add(i as usize);
-            XMIN = xmax;
-        }
-        for ii in i..n {
-            let tmp = *x.add(ii as usize);
-            if tmp == NA_INTEGER {
-                continue;
-            }
-            if tmp > xmax {
-                xmax = tmp;
-            } else if tmp < XMIN {
-                XMIN = tmp;
-            }
-        }
-        // all NAs, nothing to do
-        if XMIN == NA_INTEGER {
-            RANGE = NA_INTEGER;
-            return;
-        }
-        // ex: x=c(-2147483647L, NA_integer_, 1L) results in overflowing int range.
-        overflow = (xmax as f64) - (XMIN as f64) + 1.0;
-        // detect and force iradix here, since icount is out of the picture
-        if overflow > (c_int::MAX as f64) {
-            RANGE = c_int::MAX;
-            return;
-        }
-
-        RANGE = xmax - XMIN + 1;
+    let mut i: c_int = 0;
+    while i < n && *x.add(i as usize) == NA_INTEGER {
+        i += 1;
     }
+    if i < n {
+        xmax = *x.add(i as usize);
+        XMIN.with(|v| v.set(xmax));
+    }
+    for ii in i..n {
+        let tmp = *x.add(ii as usize);
+        if tmp == NA_INTEGER {
+            continue;
+        }
+        if tmp > xmax {
+            xmax = tmp;
+        } else if tmp < XMIN.with(|v| v.get()) {
+            XMIN.with(|v| v.set(tmp));
+        }
+    }
+    // all NAs, nothing to do
+    if XMIN.with(|v| v.get()) == NA_INTEGER {
+        RANGE.with(|v| v.set(NA_INTEGER));
+        return;
+    }
+    // ex: x=c(-2147483647L, NA_integer_, 1L) results in overflowing int range.
+    overflow = (xmax as f64) - (XMIN.with(|v| v.get()) as f64) + 1.0;
+    // detect and force iradix here, since icount is out of the picture
+    if overflow > (c_int::MAX as f64) {
+        RANGE.with(|v| v.set(c_int::MAX));
+        return;
+    }
+
+    RANGE.with(|v| v.set(xmax - XMIN.with(|v| v.get()) + 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -279,16 +263,16 @@ pub unsafe fn setRange(x: *const c_int, n: c_int) {
 /// so careful to avoid that here.
 #[inline]
 unsafe fn icheck(x: c_int) -> c_int {
-    unsafe {
-        // if nalast == 1, NAs must go last.
-        if NALAST != 1 {
-            if x != NA_INTEGER { x * ORDER } else { x }
+    let nalast = NALAST.with(|v| v.get());
+    let order = ORDER.with(|v| v.get());
+    // if nalast == 1, NAs must go last.
+    if nalast != 1 {
+        if x != NA_INTEGER { x * order } else { x }
+    } else {
+        if x != NA_INTEGER {
+            x * order - 1
         } else {
-            if x != NA_INTEGER {
-                x * ORDER - 1
-            } else {
-                c_int::MAX
-            }
+            c_int::MAX
         }
     }
 }
@@ -309,88 +293,86 @@ unsafe fn icheck(x: c_int) -> c_int {
 /// - `RANGE` and `XMIN` must be set correctly (via `setRange`) before calling.
 /// - `NALAST` and `ORDER` module-level state must be configured.
 pub unsafe fn icount(x: *const c_int, o: *mut c_int, n: c_int) {
-    unsafe {
-        let range = std::ptr::addr_of_mut!(RANGE);
-        let xmin = std::ptr::addr_of_mut!(XMIN);
-        let counts = std::ptr::addr_of_mut!(COUNTS);
-        let nalast = std::ptr::addr_of_mut!(NALAST);
-        let order = std::ptr::addr_of_mut!(ORDER);
+    let range = RANGE.with(|v| v.get());
+    let xmin = XMIN.with(|v| v.get());
+    let nalast = NALAST.with(|v| v.get());
+    let order = ORDER.with(|v| v.get());
 
-        let napos = *range; // NA's always counted in last bin
-        // static is IMPORTANT, counting sort is called repetitively.
+    let napos = range; // NA's always counted in last bin
+    // static is IMPORTANT, counting sort is called repetitively.
 
-        if *range > N_RANGE {
-            eprintln!(
-                "Internal error: range = {}; isorted cannot handle range > {}",
-                *range, N_RANGE
-            );
-            return;
+    if range > N_RANGE {
+        eprintln!(
+            "Internal error: range = {}; isorted cannot handle range > {}",
+            range, N_RANGE
+        );
+        return;
+    }
+    for i in 0..n as usize {
+        if *x.add(i) == NA_INTEGER {
+            COUNTS.with(|v| v.borrow_mut()[napos as usize] += 1);
+        } else {
+            COUNTS.with(|v| v.borrow_mut()[(*x.add(i) - xmin) as usize] += 1);
         }
+    }
+
+    let mut tmp: c_int = 0;
+    if nalast != 1 && COUNTS.with(|v| v.borrow()[napos as usize]) != 0 {
+        push(COUNTS.with(|v| v.borrow()[napos as usize]) as c_int);
+        tmp += COUNTS.with(|v| v.borrow()[napos as usize]) as c_int;
+    }
+    let mut w: c_int = if order == 1 { 0 } else { range - 1 };
+    for _i in 0..range {
+        let cw = COUNTS.with(|v| v.borrow()[w as usize]);
+        if cw != 0 {
+            // cumulate but not through 0's.
+            // Helps resetting zeros when n < range, below.
+            push(cw as c_int);
+            tmp += cw as c_int;
+            COUNTS.with(|v| v.borrow_mut()[w as usize] = tmp as u32);
+        }
+        w += order; // order is +1 or -1
+    }
+    if nalast == 1 && COUNTS.with(|v| v.borrow()[napos as usize]) != 0 {
+        push(COUNTS.with(|v| v.borrow()[napos as usize]) as c_int);
+        tmp += COUNTS.with(|v| v.borrow()[napos as usize]) as c_int;
+        COUNTS.with(|v| v.borrow_mut()[napos as usize] = tmp as u32);
+    }
+    for i in (0..n as usize).rev() {
+        let idx = if *x.add(i) == NA_INTEGER {
+            napos as usize
+        } else {
+            (*x.add(i) - xmin) as usize
+        };
+        COUNTS.with(|v| v.borrow_mut()[idx] -= 1);
+        *o.add(COUNTS.with(|v| v.borrow()[idx]) as usize) = (i + 1) as c_int;
+    }
+    // nalast = 1, -1 are both taken care already.
+    if nalast == 0 {
+        // nalast = 0 is dealt with separately as it just sets o to 0
         for i in 0..n as usize {
-            if *x.add(i) == NA_INTEGER {
-                (*counts)[napos as usize] += 1;
-            } else {
-                (*counts)[(*x.add(i) - *xmin) as usize] += 1;
+            if *x.add(*o.add(i) as usize - 1) == NA_INTEGER {
+                *o.add(i) = 0;
             }
         }
+        // at those indices where x is NA. x[o[i]-1] because x is not modified here.
+    }
 
-        let mut tmp: c_int = 0;
-        if *nalast != 1 && (*counts)[napos as usize] != 0 {
-            push((*counts)[napos as usize] as c_int);
-            tmp += (*counts)[napos as usize] as c_int;
-        }
-        let mut w: c_int = if *order == 1 { 0 } else { *range - 1 };
-        for _i in 0..*range {
-            if (*counts)[w as usize] != 0 {
-                // cumulate but not through 0's.
-                // Helps resetting zeros when n < range, below.
-                push((*counts)[w as usize] as c_int);
-                tmp += (*counts)[w as usize] as c_int;
-                (*counts)[w as usize] = tmp as u32;
+    /* counts were cumulated above so leaves non zero.
+    Faster to clear up now ready for next time. */
+    if (n as usize) < (range) as usize {
+        /* Many zeros in counts already. Loop through n instead,
+        doesn't matter if we set to 0 several times on any repeats */
+        COUNTS.with(|v| v.borrow_mut()[napos as usize] = 0);
+        for i in 0..n as usize {
+            if *x.add(i) != NA_INTEGER {
+                COUNTS.with(|v| v.borrow_mut()[(*x.add(i) - xmin) as usize] = 0);
             }
-            w += *order; // order is +1 or -1
         }
-        if *nalast == 1 && (*counts)[napos as usize] != 0 {
-            push((*counts)[napos as usize] as c_int);
-            tmp += (*counts)[napos as usize] as c_int;
-            (*counts)[napos as usize] = tmp as u32;
-        }
-        for i in (0..n as usize).rev() {
-            let idx = if *x.add(i) == NA_INTEGER {
-                napos as usize
-            } else {
-                (*x.add(i) - *xmin) as usize
-            };
-            (*counts)[idx] -= 1;
-            *o.add((*counts)[idx] as usize) = (i + 1) as c_int;
-        }
-        // nalast = 1, -1 are both taken care already.
-        if *nalast == 0 {
-            // nalast = 0 is dealt with separately as it just sets o to 0
-            for i in 0..n as usize {
-                if *x.add(*o.add(i) as usize - 1) == NA_INTEGER {
-                    *o.add(i) = 0;
-                }
-            }
-            // at those indices where x is NA. x[o[i]-1] because x is not modified here.
-        }
-
-        /* counts were cumulated above so leaves non zero.
-        Faster to clear up now ready for next time. */
-        if (n as usize) < (*range) as usize {
-            /* Many zeros in counts already. Loop through n instead,
-            doesn't matter if we set to 0 several times on any repeats */
-            (*counts)[napos as usize] = 0;
-            for i in 0..n as usize {
-                if *x.add(i) != NA_INTEGER {
-                    (*counts)[(*x.add(i) - *xmin) as usize] = 0;
-                }
-            }
-        } else if *range + 1 > 0 {
-            // memset counts to 0
-            for j in 0..=(*range as usize) {
-                (*counts)[j] = 0;
-            }
+    } else if range + 1 > 0 {
+        // memset counts to 0
+        for j in 0..=(range as usize) {
+            COUNTS.with(|v| v.borrow_mut()[j] = 0);
         }
     }
 }
@@ -408,32 +390,30 @@ pub unsafe fn icount(x: *const c_int, o: *mut c_int, n: c_int) {
 /// # Safety
 /// - `x` and `o` must each point to at least `n` valid i32 values.
 pub unsafe fn iinsert(x: *mut c_int, o: *mut c_int, n: c_int) {
-    unsafe {
-        for i in 1..n as usize {
-            let xtmp = *x.add(i);
-            if xtmp < *x.add(i - 1) {
-                let mut j = (i - 1) as isize;
-                let otmp = *o.add(i);
-                while j >= 0 && xtmp < *x.add(j as usize) {
-                    *x.add((j + 1) as usize) = *x.add(j as usize);
-                    *o.add((j + 1) as usize) = *o.add(j as usize);
-                    j -= 1;
-                }
-                *x.add((j + 1) as usize) = xtmp;
-                *o.add((j + 1) as usize) = otmp;
+    for i in 1..n as usize {
+        let xtmp = *x.add(i);
+        if xtmp < *x.add(i - 1) {
+            let mut j = (i - 1) as isize;
+            let otmp = *o.add(i);
+            while j >= 0 && xtmp < *x.add(j as usize) {
+                *x.add((j + 1) as usize) = *x.add(j as usize);
+                *o.add((j + 1) as usize) = *o.add(j as usize);
+                j -= 1;
             }
+            *x.add((j + 1) as usize) = xtmp;
+            *o.add((j + 1) as usize) = otmp;
         }
-        let mut tt: c_int = 0;
-        for i in 1..n as usize {
-            if *x.add(i) == *x.add(i - 1) {
-                tt += 1;
-            } else {
-                push(tt + 1);
-                tt = 0;
-            }
-        }
-        push(tt + 1);
     }
+    let mut tt: c_int = 0;
+    for i in 1..n as usize {
+        if *x.add(i) == *x.add(i - 1) {
+            tt += 1;
+        } else {
+            push(tt + 1);
+            tt = 0;
+        }
+    }
+    push(tt + 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -483,161 +463,165 @@ pub unsafe fn iinsert(x: *mut c_int, o: *mut c_int, n: c_int) {
 /// - `o` must point to at least `n` valid i32 values (written to).
 /// - Module-level state (NALAST, ORDER, etc.) must be configured.
 pub unsafe fn iradix(x: *const c_int, o: *mut c_int, n: c_int) {
-    unsafe {
-        let mut nextradix: c_int;
-        let mut itmp: c_int;
-        let mut thisgrpn: c_int;
-        let mut maxgrpn: c_int;
-        let mut thisx: u32 = 0;
-        let shift: u32;
-        let thiscounts: *mut u32;
+    let mut nextradix: c_int;
+    let mut itmp: c_int;
+    let mut thisgrpn: c_int;
+    let mut maxgrpn: c_int;
+    let mut thisx: u32 = 0;
+    let shift: u32;
+    let thiscounts: *mut u32;
 
-        for i in 0..n as usize {
-            /* parallel histogramming pass; i.e. count occurrences of
-            0:255 in each byte. Sequential so almost negligible. */
-            // relies on overflow behaviour. And shouldn't -INT_MIN be up in iradix?
-            thisx = (icheck(*x.add(i)) as u32).wrapping_sub(c_int::MIN as u32);
-            // unrolled since inside n-loop
-            RADIXCOUNTS[0][(thisx & 0xFF) as usize] += 1;
-            RADIXCOUNTS[1][((thisx >> 8) & 0xFF) as usize] += 1;
-            RADIXCOUNTS[2][((thisx >> 16) & 0xFF) as usize] += 1;
-            RADIXCOUNTS[3][((thisx >> 24) & 0xFF) as usize] += 1;
+    for i in 0..n as usize {
+        /* parallel histogramming pass; i.e. count occurrences of
+        0:255 in each byte. Sequential so almost negligible. */
+        // relies on overflow behaviour. And shouldn't -INT_MIN be up in iradix?
+        thisx = (icheck(*x.add(i)) as u32).wrapping_sub(c_int::MIN as u32);
+        // unrolled since inside n-loop
+        RADIXCOUNTS.with(|v| v.borrow_mut()[0][(thisx & 0xFF) as usize] += 1);
+        RADIXCOUNTS.with(|v| v.borrow_mut()[1][((thisx >> 8) & 0xFF) as usize] += 1);
+        RADIXCOUNTS.with(|v| v.borrow_mut()[2][((thisx >> 16) & 0xFF) as usize] += 1);
+        RADIXCOUNTS.with(|v| v.borrow_mut()[3][((thisx >> 24) & 0xFF) as usize] += 1);
+    }
+    for radix in 0..4 {
+        /* any(count == n) => all radix must have been that value =>
+        last x (still thisx) was that value */
+        let idx = ((thisx >> (radix * 8)) & 0xFF) as usize;
+        let skip_val = if RADIXCOUNTS.with(|v| v.borrow()[radix][idx]) == n as u32 {
+            1
+        } else {
+            0
+        };
+        SKIP.with(|v| v.borrow_mut()[radix] = skip_val);
+        // clear it now, the other counts must be 0 already
+        if skip_val != 0 {
+            RADIXCOUNTS.with(|v| v.borrow_mut()[radix][idx] = 0);
         }
-        for radix in 0..4 {
-            /* any(count == n) => all radix must have been that value =>
-            last x (still thisx) was that value */
-            let idx = ((thisx >> (radix * 8)) & 0xFF) as usize;
-            SKIP[radix] = if RADIXCOUNTS[radix][idx] == n as u32 {
-                1
-            } else {
-                0
-            };
-            // clear it now, the other counts must be 0 already
-            if SKIP[radix] != 0 {
-                RADIXCOUNTS[radix][idx] = 0;
+    }
+
+    let mut radix: c_int = 3; // MSD
+    while radix >= 0 && SKIP.with(|v| v.borrow()[radix as usize]) != 0 {
+        radix -= 1;
+    }
+    if radix == -1 {
+        // All radix are skipped; one number repeated n times.
+        if NALAST.with(|v| v.get()) == 0 && *x.add(0) == NA_INTEGER {
+            for i in 0..n as usize {
+                *o.add(i) = 0;
+            }
+        } else {
+            for i in 0..n as usize {
+                *o.add(i) = (i + 1) as c_int;
             }
         }
-
-        let mut radix: c_int = 3; // MSD
-        while radix >= 0 && SKIP[radix as usize] != 0 {
-            radix -= 1;
-        }
-        if radix == -1 {
-            // All radix are skipped; one number repeated n times.
-            if NALAST == 0 && *x.add(0) == NA_INTEGER {
-                for i in 0..n as usize {
-                    *o.add(i) = 0;
-                }
-            } else {
-                for i in 0..n as usize {
-                    *o.add(i) = (i + 1) as c_int;
-                }
-            }
-            push(n);
-            return;
-        }
-        for i in (0..radix as usize).rev() {
-            if SKIP[i] == 0 {
-                // clear the counts as we only needed the parallel pass for skip[]
-                // and we're going to use radixcounts again below.
-                for j in 0..257 {
-                    RADIXCOUNTS[i][j] = 0;
-                }
+        push(n);
+        return;
+    }
+    for i in (0..radix as usize).rev() {
+        if SKIP.with(|v| v.borrow()[i]) == 0 {
+            // clear the counts as we only needed the parallel pass for skip[]
+            // and we're going to use radixcounts again below.
+            for j in 0..257 {
+                RADIXCOUNTS.with(|v| v.borrow_mut()[i][j] = 0);
             }
         }
-        thiscounts = RADIXCOUNTS[radix as usize].as_mut_ptr();
-        shift = (radix * 8) as u32;
+    }
+    thiscounts = RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize].as_mut_ptr());
+    shift = (radix * 8) as u32;
 
-        itmp = RADIXCOUNTS[radix as usize][0] as c_int;
-        maxgrpn = itmp;
-        let mut ii: usize = 1;
-        while itmp < n && ii < 256 {
-            thisgrpn = RADIXCOUNTS[radix as usize][ii] as c_int;
-            if thisgrpn != 0 {
-                // don't cumulate through 0s, important below.
-                if thisgrpn > maxgrpn {
-                    maxgrpn = thisgrpn;
-                }
-                itmp += thisgrpn;
-                RADIXCOUNTS[radix as usize][ii] = itmp as u32;
+    itmp = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][0]) as c_int;
+    maxgrpn = itmp;
+    let mut ii: usize = 1;
+    while itmp < n && ii < 256 {
+        thisgrpn = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) as c_int;
+        if thisgrpn != 0 {
+            // don't cumulate through 0s, important below.
+            if thisgrpn > maxgrpn {
+                maxgrpn = thisgrpn;
             }
-            ii += 1;
+            itmp += thisgrpn;
+            RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][ii] = itmp as u32);
         }
-        for i in (0..n as usize).rev() {
-            thisx = (icheck(*x.add(i)) as u32).wrapping_sub(c_int::MIN as u32);
-            let bucket = ((thisx >> shift) & 0xFF) as usize;
-            RADIXCOUNTS[radix as usize][bucket] -= 1;
-            *o.add(RADIXCOUNTS[radix as usize][bucket] as usize) = (i + 1) as c_int;
-        }
+        ii += 1;
+    }
+    for i in (0..n as usize).rev() {
+        thisx = (icheck(*x.add(i)) as u32).wrapping_sub(c_int::MIN as u32);
+        let bucket = ((thisx >> shift) & 0xFF) as usize;
+        RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][bucket] -= 1);
+        *o.add(RADIXCOUNTS.with(|v| v.borrow()[radix as usize][bucket]) as usize) =
+            (i + 1) as c_int;
+    }
 
-        if RADIX_XSUBALLOC < maxgrpn as usize {
-            // The largest group according to the first non-skipped radix,
-            // so could be big (if radix is needed on first arg).
-            RADIX_XSUB = libc_realloc(RADIX_XSUB, maxgrpn as usize * std::mem::size_of::<f64>());
-            if RADIX_XSUB.is_null() {
-                eprintln!(
-                    "Failed to realloc working memory {}*8bytes (xsub in iradix), radix={}",
-                    maxgrpn, radix
-                );
-                return;
-            }
-            RADIX_XSUBALLOC = maxgrpn as usize;
-        }
-
-        alloc_otmp(maxgrpn);
-        alloc_xtmp(maxgrpn);
-
-        nextradix = radix - 1;
-        while nextradix >= 0 && SKIP[nextradix as usize] != 0 {
-            nextradix -= 1;
-        }
-        if RADIXCOUNTS[radix as usize][0] != 0 {
+    if RADIX_XSUBALLOC.with(|v| v.get()) < maxgrpn as usize {
+        // The largest group according to the first non-skipped radix,
+        // so could be big (if radix is needed on first arg).
+        let old_xsub = RADIX_XSUB.with(|v| v.get());
+        let new_xsub = libc_realloc(old_xsub, maxgrpn as usize * std::mem::size_of::<f64>());
+        if new_xsub.is_null() {
             eprintln!(
-                "Internal error. thiscounts[0]={} but should have been decremented to 0. iradix={}",
-                RADIXCOUNTS[radix as usize][0], radix
+                "Failed to realloc working memory {}*8bytes (xsub in iradix), radix={}",
+                maxgrpn, radix
             );
             return;
         }
-        RADIXCOUNTS[radix as usize][256] = n as u32;
-        itmp = 0;
-        let mut ii: usize = 1;
-        while itmp < n && ii <= 256 {
-            if RADIXCOUNTS[radix as usize][ii] == 0 {
-                ii += 1;
-                continue;
-            }
-            let thisgrpn = RADIXCOUNTS[radix as usize][ii] as c_int - itmp; // undo cumulate; i.e. diff
-            if thisgrpn == 1 || nextradix == -1 {
-                push(thisgrpn);
-            } else {
-                for j in 0..thisgrpn as usize {
-                    // this is why this xsub here can't be the same memory as
-                    // xsub in do_radixsort.
-                    *(RADIX_XSUB as *mut c_int).add(j) =
-                        icheck(*x.add(*o.add((itmp + j as c_int) as usize) as usize - 1));
-                }
-                // changes xsub and o by reference recursively.
-                iradix_r(
-                    RADIX_XSUB as *mut c_int,
-                    o.add(itmp as usize),
-                    thisgrpn,
-                    nextradix,
-                );
-            }
-            itmp = RADIXCOUNTS[radix as usize][ii] as c_int;
-            RADIXCOUNTS[radix as usize][ii] = 0;
+        RADIX_XSUB.with(|v| v.set(new_xsub));
+        RADIX_XSUBALLOC.with(|v| v.set(maxgrpn as usize));
+    }
+
+    alloc_otmp(maxgrpn);
+    alloc_xtmp(maxgrpn);
+
+    nextradix = radix - 1;
+    while nextradix >= 0 && SKIP.with(|v| v.borrow()[nextradix as usize]) != 0 {
+        nextradix -= 1;
+    }
+    if RADIXCOUNTS.with(|v| v.borrow()[radix as usize][0]) != 0 {
+        eprintln!(
+            "Internal error. thiscounts[0]={} but should have been decremented to 0. iradix={}",
+            RADIXCOUNTS.with(|v| v.borrow()[radix as usize][0]),
+            radix
+        );
+        return;
+    }
+    RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][256] = n as u32);
+    itmp = 0;
+    let mut ii: usize = 1;
+    while itmp < n && ii <= 256 {
+        if RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) == 0 {
             ii += 1;
+            continue;
         }
-        if NALAST == 0 {
-            // nalast = 0 is dealt with separately as it just sets o to 0
-            for i in 0..n as usize {
-                if *x.add(*o.add(i) as usize - 1) == NA_INTEGER {
-                    *o.add(i) = 0;
-                }
+        let thisgrpn = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) as c_int - itmp; // undo cumulate; i.e. diff
+        if thisgrpn == 1 || nextradix == -1 {
+            push(thisgrpn);
+        } else {
+            let xsub = RADIX_XSUB.with(|v| v.get());
+            for j in 0..thisgrpn as usize {
+                // this is why this xsub here can't be the same memory as
+                // xsub in do_radixsort.
+                *(xsub as *mut c_int).add(j) =
+                    icheck(*x.add(*o.add((itmp + j as c_int) as usize) as usize - 1));
             }
-            // at those indices where x is NA. x[o[i]-1] because x is not
-            // modified by reference unlike iinsert or iradix_r
+            // changes xsub and o by reference recursively.
+            iradix_r(
+                xsub as *mut c_int,
+                o.add(itmp as usize),
+                thisgrpn,
+                nextradix,
+            );
         }
+        itmp = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) as c_int;
+        RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][ii] = 0);
+        ii += 1;
+    }
+    if NALAST.with(|v| v.get()) == 0 {
+        // nalast = 0 is dealt with separately as it just sets o to 0
+        for i in 0..n as usize {
+            if *x.add(*o.add(i) as usize - 1) == NA_INTEGER {
+                *o.add(i) = 0;
+            }
+        }
+        // at those indices where x is NA. x[o[i]-1] because x is not
+        // modified by reference unlike iinsert or iradix_r
     }
 }
 
@@ -651,79 +635,81 @@ pub unsafe fn iradix(x: *const c_int, o: *mut c_int, n: c_int) {
 /// iradix, reordered by reference. `osub` is an offset into the main
 /// answer `o`, reordered by reference. `radix` iterates 3, 2, 1, 0.
 unsafe fn iradix_r(xsub: *mut c_int, osub: *mut c_int, n: c_int, radix: c_int) {
-    unsafe {
-        // N_SMALL=200 is guess based on limited testing. Needs calibrate().
-        // Was 50 based on sum(1:50)=1275 worst -vs- 256 cumulate + 256 memset +
-        // allowance since reverse order is unlikely.
-        // when nalast==0, iinsert will be called only from within iradix.
-        if (n as usize) < N_SMALL {
-            iinsert(xsub, osub, n);
-            return;
-        }
+    // N_SMALL=200 is guess based on limited testing. Needs calibrate().
+    // Was 50 based on sum(1:50)=1275 worst -vs- 256 cumulate + 256 memset +
+    // allowance since reverse order is unlikely.
+    // when nalast==0, iinsert will be called only from within iradix.
+    if (n as usize) < N_SMALL {
+        iinsert(xsub, osub, n);
+        return;
+    }
 
-        let shift = (radix * 8) as u32;
-        let thiscounts = RADIXCOUNTS[radix as usize].as_mut_ptr();
+    let shift = (radix * 8) as u32;
+    let thiscounts = RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize].as_mut_ptr());
 
-        for i in 0..n as usize {
-            let thisx = (*xsub.add(i) as u32).wrapping_sub(c_int::MIN as u32);
-            RADIXCOUNTS[radix as usize][((thisx >> shift) & 0xFF) as usize] += 1;
+    for i in 0..n as usize {
+        let thisx = (*xsub.add(i) as u32).wrapping_sub(c_int::MIN as u32);
+        RADIXCOUNTS
+            .with(|v| v.borrow_mut()[radix as usize][((thisx >> shift) & 0xFF) as usize] += 1);
+    }
+    let mut itmp = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][0]) as c_int;
+    let mut ii: usize = 1;
+    while itmp < n && ii < 256 {
+        // don't cumulate through 0s, important below
+        if RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) != 0 {
+            itmp += RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) as c_int;
+            RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][ii] = itmp as u32);
         }
-        let mut itmp = RADIXCOUNTS[radix as usize][0] as c_int;
-        let mut ii: usize = 1;
-        while itmp < n && ii < 256 {
-            // don't cumulate through 0s, important below
-            if RADIXCOUNTS[radix as usize][ii] != 0 {
-                itmp += RADIXCOUNTS[radix as usize][ii] as c_int;
-                RADIXCOUNTS[radix as usize][ii] = itmp as u32;
-            }
+        ii += 1;
+    }
+    let otmp = OTMP.with(|v| v.get());
+    let xtmp = XTMP.with(|v| v.get());
+    for i in (0..n as usize).rev() {
+        let thisx = (*xsub.add(i) as u32).wrapping_sub(c_int::MIN as u32);
+        let bucket = ((thisx >> shift) & 0xFF) as usize;
+        RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][bucket] -= 1);
+        let j = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][bucket]) as usize;
+        *otmp.add(j) = *osub.add(i);
+        *(xtmp as *mut c_int).add(j) = *xsub.add(i);
+    }
+    ptr::copy_nonoverlapping(otmp, osub, n as usize);
+    ptr::copy_nonoverlapping(xtmp as *const c_int, xsub, n as usize);
+
+    let mut nextradix = radix - 1;
+    while nextradix >= 0 && SKIP.with(|v| v.borrow()[nextradix as usize]) != 0 {
+        nextradix -= 1;
+    }
+
+    if RADIXCOUNTS.with(|v| v.borrow()[radix as usize][0]) != 0 {
+        eprintln!(
+            "Logical error. thiscounts[0]={} but should have been decremented to 0. radix={}",
+            RADIXCOUNTS.with(|v| v.borrow()[radix as usize][0]),
+            radix
+        );
+        return;
+    }
+    RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][256] = n as u32);
+    itmp = 0;
+    let mut ii: usize = 1;
+    while itmp < n && ii <= 256 {
+        if RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) == 0 {
             ii += 1;
+            continue;
         }
-        for i in (0..n as usize).rev() {
-            let thisx = (*xsub.add(i) as u32).wrapping_sub(c_int::MIN as u32);
-            let bucket = ((thisx >> shift) & 0xFF) as usize;
-            RADIXCOUNTS[radix as usize][bucket] -= 1;
-            let j = RADIXCOUNTS[radix as usize][bucket] as usize;
-            *OTMP.add(j) = *osub.add(i);
-            *(XTMP as *mut c_int).add(j) = *xsub.add(i);
-        }
-        ptr::copy_nonoverlapping(OTMP, osub, n as usize);
-        ptr::copy_nonoverlapping(XTMP as *const c_int, xsub, n as usize);
-
-        let mut nextradix = radix - 1;
-        while nextradix >= 0 && SKIP[nextradix as usize] != 0 {
-            nextradix -= 1;
-        }
-
-        if RADIXCOUNTS[radix as usize][0] != 0 {
-            eprintln!(
-                "Logical error. thiscounts[0]={} but should have been decremented to 0. radix={}",
-                RADIXCOUNTS[radix as usize][0], radix
+        let thisgrpn = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) as c_int - itmp; // undo cumulate; i.e. diff
+        if thisgrpn == 1 || nextradix == -1 {
+            push(thisgrpn);
+        } else {
+            iradix_r(
+                xsub.add(itmp as usize),
+                osub.add(itmp as usize),
+                thisgrpn,
+                nextradix,
             );
-            return;
         }
-        RADIXCOUNTS[radix as usize][256] = n as u32;
-        itmp = 0;
-        let mut ii: usize = 1;
-        while itmp < n && ii <= 256 {
-            if RADIXCOUNTS[radix as usize][ii] == 0 {
-                ii += 1;
-                continue;
-            }
-            let thisgrpn = RADIXCOUNTS[radix as usize][ii] as c_int - itmp; // undo cumulate; i.e. diff
-            if thisgrpn == 1 || nextradix == -1 {
-                push(thisgrpn);
-            } else {
-                iradix_r(
-                    xsub.add(itmp as usize),
-                    osub.add(itmp as usize),
-                    thisgrpn,
-                    nextradix,
-                );
-            }
-            itmp = RADIXCOUNTS[radix as usize][ii] as c_int;
-            RADIXCOUNTS[radix as usize][ii] = 0;
-            ii += 1;
-        }
+        itmp = RADIXCOUNTS.with(|v| v.borrow()[radix as usize][ii]) as c_int;
+        RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][ii] = 0);
+        ii += 1;
     }
 }
 
@@ -744,63 +730,63 @@ unsafe fn iradix_r(xsub: *mut c_int, osub: *mut c_int, n: c_int, radix: c_int) {
 /// # Safety
 /// - `x` must point to at least `n` valid i32 values.
 pub unsafe fn isorted(x: *const c_int, n: c_int) -> c_int {
-    unsafe {
-        let mut j: c_int = 0;
-        // when nalast = NA,
-        // all NAs ? return special value to replace all o's values with '0'
-        // any NAs ? return 0 = unsorted and leave it
-        //   to sort routines to replace o's with 0's
-        // no NAs ? continue to check rest of isorted - the same routine as usual
-        if NALAST == 0 {
-            for k in 0..n as usize {
-                if *x.add(k) != NA_INTEGER {
-                    j += 1;
-                }
-            }
-            if j == 0 {
-                push(n);
-                return -2;
-            }
-            if j != n {
-                return 0;
+    let mut j: c_int = 0;
+    let nalast = NALAST.with(|v| v.get());
+    // when nalast = NA,
+    // all NAs ? return special value to replace all o's values with '0'
+    // any NAs ? return 0 = unsorted and leave it
+    //   to sort routines to replace o's with 0's
+    // no NAs ? continue to check rest of isorted - the same routine as usual
+    if nalast == 0 {
+        for k in 0..n as usize {
+            if *x.add(k) != NA_INTEGER {
+                j += 1;
             }
         }
-        if n <= 1 {
+        if j == 0 {
             push(n);
-            return 1;
+            return -2;
         }
-        if icheck(*x.add(1)) < icheck(*x.add(0)) {
-            let mut i = 2;
-            while i < n && icheck(*x.add(i as usize)) < icheck(*x.add((i - 1) as usize)) {
-                i += 1;
-            }
-            // strictly opposite to expected 'order', no ties;
-            if i == n {
-                mpush(1, n);
-                return -1;
-            }
-            // e.g. no more than one NA at the beginning/end (for order=-1/1)
+        if j != n {
             return 0;
         }
-        let old = GSNGRP[FLIP as usize];
-        let mut tt: c_int = 1;
-        for i in 1..n as usize {
-            if icheck(*x.add(i)) < icheck(*x.add(i - 1)) {
-                GSNGRP[FLIP as usize] = old;
-                return 0;
-            }
-            if *x.add(i) == *x.add(i - 1) {
-                tt += 1;
-            } else {
-                push(tt);
-                tt = 1;
-            }
-        }
-        push(tt);
-        // same as 'order', NAs at the beginning for order=1, at end for
-        // order=-1, possibly with ties
-        1
     }
+    if n <= 1 {
+        push(n);
+        return 1;
+    }
+    if icheck(*x.add(1)) < icheck(*x.add(0)) {
+        let mut i = 2;
+        while i < n && icheck(*x.add(i as usize)) < icheck(*x.add((i - 1) as usize)) {
+            i += 1;
+        }
+        // strictly opposite to expected 'order', no ties;
+        if i == n {
+            mpush(1, n);
+            return -1;
+        }
+        // e.g. no more than one NA at the beginning/end (for order=-1/1)
+        return 0;
+    }
+    let flip = FLIP.with(|v| v.get()) as usize;
+    let old = GSNGRP.with(|v| v.borrow()[flip]);
+    let mut tt: c_int = 1;
+    for i in 1..n as usize {
+        if icheck(*x.add(i)) < icheck(*x.add(i - 1)) {
+            GSNGRP.with(|v| v.borrow_mut()[flip] = old);
+            return 0;
+        }
+        if *x.add(i) == *x.add(i - 1) {
+            tt += 1;
+        } else {
+            push(tt);
+            tt = 1;
+        }
+    }
+    push(tt);
+    // same as 'order', NAs at the beginning for order=1, at end for
+    // order=-1, possibly with ties
+    1
 }
 
 // ---------------------------------------------------------------------------
@@ -814,64 +800,66 @@ pub unsafe fn isorted(x: *const c_int, n: c_int) -> c_int {
 /// - `x` must point to at least `n` valid i32 values.
 /// - `o` must point to at least `n` valid i32 values.
 pub unsafe fn isort(x: *mut c_int, o: *mut c_int, n: c_int) {
-    unsafe {
-        if n <= 2 {
-            // nalast = 0 and n == 2 (check bottom of this file for explanation)
-            if NALAST == 0 && n == 2 {
-                if *o.add(0) == -1 {
-                    *o.add(0) = 1;
-                    *o.add(1) = 2;
+    if n <= 2 {
+        // nalast = 0 and n == 2 (check bottom of this file for explanation)
+        if NALAST.with(|v| v.get()) == 0 && n == 2 {
+            if *o.add(0) == -1 {
+                *o.add(0) = 1;
+                *o.add(1) = 2;
+            }
+            for i in 0..n as usize {
+                if *x.add(i) == NA_INTEGER {
+                    *o.add(i) = 0;
                 }
-                for i in 0..n as usize {
-                    if *x.add(i) == NA_INTEGER {
-                        *o.add(i) = 0;
-                    }
-                }
-                push(1);
-                push(1);
-                return;
-            } else {
-                eprintln!(
-                    "Internal error: isort received n={}. isorted should have dealt with this already",
-                    n
-                );
-                return;
+            }
+            push(1);
+            push(1);
+            return;
+        } else {
+            eprintln!(
+                "Internal error: isort received n={}. isorted should have dealt with this already",
+                n
+            );
+            return;
+        }
+    }
+    let nalast = NALAST.with(|v| v.get());
+    let order = ORDER.with(|v| v.get());
+    if (n as usize) < N_SMALL && *o.add(0) != -1 && nalast != 0 {
+        // see comment above in iradix_r on N_SMALL=200.
+        if order != 1 || nalast != -1 {
+            // so that default case, i.e., order=1, nalast=FALSE will
+            // not be affected (ex: `setkey`)
+            for i in 0..n as usize {
+                *x.add(i) = icheck(*x.add(i));
             }
         }
-        if (n as usize) < N_SMALL && *o.add(0) != -1 && NALAST != 0 {
-            // see comment above in iradix_r on N_SMALL=200.
-            if ORDER != 1 || NALAST != -1 {
-                // so that default case, i.e., order=1, nalast=FALSE will
-                // not be affected (ex: `setkey`)
-                for i in 0..n as usize {
-                    *x.add(i) = icheck(*x.add(i));
-                }
-            }
-            iinsert(x, o, n);
+        iinsert(x, o, n);
+    } else {
+        /* Tighter range (e.g. copes better with a few abnormally large
+        values in some groups), but also, when setRange was once at
+        arg level that caused an extra scan of (long) x
+        first. 10,000 calls to setRange takes just 0.04s
+        i.e. negligible. */
+        setRange(x, n);
+        let range = RANGE.with(|v| v.get());
+        if range == NA_INTEGER {
+            eprintln!(
+                "Internal error: isort passed all-NA. isorted should have caught this before this point"
+            );
+            return;
+        }
+        let newo = NEWO.with(|v| v.get());
+        let target = if *o.add(0) != -1 { newo } else { o };
+        // was range < 10000 for subgroups, but 1e5 for the first
+        // arg, tried to generalise here.  1e4 rather than 1e5 here
+        // because iterated was (thisgrpn < 200 || range > 20000) then
+        // radix a short vector with large range can bite icount when
+        // iterated (BLOCK 4 and 6)
+        if range <= N_RANGE && range <= n {
+            icount(x, target, n);
         } else {
-            /* Tighter range (e.g. copes better with a few abnormally large
-            values in some groups), but also, when setRange was once at
-            arg level that caused an extra scan of (long) x
-            first. 10,000 calls to setRange takes just 0.04s
-            i.e. negligible. */
-            setRange(x, n);
-            if RANGE == NA_INTEGER {
-                eprintln!(
-                    "Internal error: isort passed all-NA. isorted should have caught this before this point"
-                );
-                return;
-            }
-            let target = if *o.add(0) != -1 { NEWO } else { o };
-            // was range < 10000 for subgroups, but 1e5 for the first
-            // arg, tried to generalise here.  1e4 rather than 1e5 here
-            // because iterated was (thisgrpn < 200 || range > 20000) then
-            // radix a short vector with large range can bite icount when
-            // iterated (BLOCK 4 and 6)
-            if RANGE <= N_RANGE && RANGE <= n {
-                icount(x, target, n);
-            } else {
-                iradix(x, target, n);
-            }
+            iradix(x, target, n);
         }
     }
 }
@@ -885,69 +873,59 @@ pub unsafe fn isort(x: *mut c_int, o: *mut c_int, n: c_int) {
 /// - `0` = NA (remove NAs)
 /// - `-1` = FALSE (NAs first, the default)
 pub unsafe fn set_nalast(val: c_int) {
-    unsafe {
-        NALAST = val;
-    }
+    NALAST.with(|v| v.set(val));
 }
 
 /// Get the current `nalast` value.
 pub unsafe fn get_nalast() -> c_int {
-    unsafe { NALAST }
+    NALAST.with(|v| v.get())
 }
 
 /// Configure the `order` parameter.
 /// - `1` = ascending
 /// - `-1` = descending
 pub unsafe fn set_order(val: c_int) {
-    unsafe {
-        ORDER = val;
-    }
+    ORDER.with(|v| v.set(val));
 }
 
 /// Get the current `order` value.
 pub unsafe fn get_order() -> c_int {
-    unsafe { ORDER }
+    ORDER.with(|v| v.get())
 }
 
 /// Configure whether groups should be pushed onto the stack.
 pub unsafe fn set_stackgrps(val: bool) {
-    unsafe {
-        STACKGRPS = val;
-    }
+    STACKGRPS.with(|v| v.set(val));
 }
 
 /// Get the current `stackgrps` value.
 pub unsafe fn get_stackgrps() -> bool {
-    unsafe { STACKGRPS }
+    STACKGRPS.with(|v| v.get())
 }
 
 /// Set the maximum stack allocation.
 pub unsafe fn set_gsmaxalloc(val: c_int) {
-    unsafe {
-        GSMAXALLOC = val;
-    }
+    GSMAXALLOC.with(|v| v.set(val));
 }
 
 /// Get the current `gsmaxalloc` value.
 pub unsafe fn get_gsmaxalloc() -> c_int {
-    unsafe { GSMAXALLOC }
+    GSMAXALLOC.with(|v| v.get())
 }
 
 /// Get the current flip index.
 pub unsafe fn get_flip() -> c_int {
-    unsafe { FLIP }
+    FLIP.with(|v| v.get())
 }
 
 /// Set the `newo` pointer (used for reordering order in multi-arg sort).
 pub unsafe fn set_newo(ptr: *mut c_int) {
-    unsafe {
-        NEWO = ptr;
-    }
+    NEWO.with(|v| v.set(ptr));
 }
 
 /// Get the current `newo` pointer.
 pub unsafe fn get_newo() -> *mut c_int {
-    unsafe { NEWO }
+    NEWO.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -964,443 +942,473 @@ pub unsafe fn get_newo() -> *mut c_int {
 /// Currently supports INTSXP and LGLSXP vectors.
 /// REALSXP and STRSXP are not yet implemented.
 pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe {
-        let mut n: c_int = -1;
-        let mut narg: c_int = 0;
-        let mut ngrp: c_int;
-        let mut tmp: c_int;
-        let mut isSorted: bool = true;
-        let mut retGrp: bool;
+    let mut n: c_int = -1;
+    let mut narg: c_int = 0;
+    let mut ngrp: c_int;
+    let mut tmp: c_int;
+    let mut isSorted: bool = true;
+    let retGrp: bool;
 
-        // --- Parse first 4 fixed arguments ---
+    // --- Parse first 4 fixed arguments ---
 
-        // arg 1: nalast
-        let nalast_val = asLogical_local(CAR(args));
-        NALAST = if nalast_val == NA_LOGICAL {
+    // arg 1: nalast
+    let nalast_val = asLogical_local(CAR(args));
+    NALAST.with(|v| {
+        v.set(if nalast_val == NA_LOGICAL {
             0 // NA -> 0
         } else if nalast_val == 1 {
             1 // TRUE -> 1
         } else {
             -1 // FALSE -> -1
-        };
-        args = CDR(args);
+        })
+    });
+    args = CDR(args);
 
-        // arg 2: decreasing
-        let decreasing = CAR(args);
-        args = CDR(args);
+    // arg 2: decreasing
+    let decreasing = CAR(args);
+    args = CDR(args);
 
-        // arg 3: retGrp
-        retGrp = asBool_local(CAR(args)) != 0;
-        args = CDR(args);
+    // arg 3: retGrp
+    retGrp = asBool_local(CAR(args)) != 0;
+    args = CDR(args);
 
-        // arg 4: sortStr (not used for integer sort, but parsed)
-        let _sortStr_val = asBool_local(CAR(args));
-        SORTSTR = _sortStr_val != 0;
-        args = CDR(args);
+    // arg 4: sortStr (not used for integer sort, but parsed)
+    let _sortStr_val = asBool_local(CAR(args));
+    SORTSTR.with(|v| v.set(_sortStr_val != 0));
+    args = CDR(args);
 
-        // If no vectors to sort, return NULL
-        if args == R_NilValue() {
+    // If no vectors to sort, return NULL
+    if args == R_NilValue() {
+        return R_NilValue();
+    }
+
+    // Get the length from the first vector
+    let nl: R_xlen_t = if Rf_isVectorAtomic(CAR(args)) != 0 {
+        XLENGTH(CAR(args))
+    } else {
+        LENGTH(CAR(args)) as R_xlen_t
+    };
+
+    // Validate all vector arguments
+    let mut ap = args;
+    while !ap.is_null() && ap != R_NilValue() {
+        if Rf_isVectorAtomic(CAR(ap)) == 0 {
+            eprintln!("argument {} is not a vector", narg + 1);
             return R_NilValue();
         }
-
-        // Get the length from the first vector
-        let mut nl: R_xlen_t = if Rf_isVectorAtomic(CAR(args)) != 0 {
-            XLENGTH(CAR(args))
-        } else {
-            LENGTH(CAR(args)) as R_xlen_t
-        };
-
-        // Validate all vector arguments
-        let mut ap = args;
-        while !ap.is_null() && ap != R_NilValue() {
-            if Rf_isVectorAtomic(CAR(ap)) == 0 {
-                eprintln!("argument {} is not a vector", narg + 1);
-                return R_NilValue();
-            }
-            let this_len = XLENGTH(CAR(ap));
-            if this_len != nl {
-                eprintln!("argument lengths differ");
-                return R_NilValue();
-            }
-            ap = CDR(ap);
-            narg += 1;
-        }
-
-        // Validate decreasing length
-        if narg != Rf_length(decreasing) {
-            eprintln!("length(decreasing) must match the number of order arguments");
+        let this_len = XLENGTH(CAR(ap));
+        if this_len != nl {
+            eprintln!("argument lengths differ");
             return R_NilValue();
         }
-        for i in 0..narg {
-            if *LOGICAL(decreasing).add(i as usize) == NA_LOGICAL {
-                eprintln!("'decreasing' elements must be TRUE or FALSE");
-                return R_NilValue();
-            }
-        }
+        ap = CDR(ap);
+        narg += 1;
+    }
 
-        ORDER = if *LOGICAL(decreasing).add(0) != 0 {
+    // Validate decreasing length
+    if narg != Rf_length(decreasing) {
+        eprintln!("length(decreasing) must match the number of order arguments");
+        return R_NilValue();
+    }
+    for i in 0..narg {
+        if *LOGICAL(decreasing).add(i as usize) == NA_LOGICAL {
+            eprintln!("'decreasing' elements must be TRUE or FALSE");
+            return R_NilValue();
+        }
+    }
+
+    ORDER.with(|v| {
+        v.set(if *LOGICAL(decreasing).add(0) != 0 {
             -1
         } else {
             1
-        };
+        })
+    });
 
-        let mut x = CAR(args);
-        args = CDR(args);
+    let mut x = CAR(args);
+    args = CDR(args);
 
-        // Long vector check
-        if nl > c_int::MAX as R_xlen_t {
-            eprintln!("long vectors not supported");
+    // Long vector check
+    if nl > c_int::MAX as R_xlen_t {
+        eprintln!("long vectors not supported");
+        return R_NilValue();
+    }
+    n = nl as c_int;
+
+    // Upper limit for group stack size
+    GSMAXALLOC.with(|v| v.set(n));
+
+    // Allocate result vector
+    let mut ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nl));
+    let o: *mut c_int = INTEGER(ans);
+    if n > 0 {
+        *o = -1;
+    }
+    let xd: *mut c_void = DATAPTR(x);
+
+    STACKGRPS.with(|v| v.set(narg > 1 || retGrp));
+
+    // Dispatch on first arg type
+    let xtype = TYPEOF(x);
+    match xtype {
+        t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 => {
+            tmp = isorted(xd as *const c_int, n);
+        }
+        t if t == SEXPTYPE::REALSXP.0 => {
+            // TODO: implement dsorted
+            eprintln!("REALSXP radix sort not yet implemented");
+            Rf_unprotect(1);
             return R_NilValue();
         }
-        n = nl as c_int;
-
-        // Upper limit for group stack size
-        GSMAXALLOC = n;
-
-        // Allocate result vector
-        let mut ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nl));
-        let o: *mut c_int = INTEGER(ans);
-        if n > 0 {
-            *o = -1;
+        t if t == SEXPTYPE::STRSXP.0 => {
+            // TODO: implement csorted
+            eprintln!("STRSXP radix sort not yet implemented");
+            Rf_unprotect(1);
+            return R_NilValue();
         }
-        let xd: *mut c_void = DATAPTR(x);
+        _ => {
+            eprintln!("First arg is type '{}', not yet supported", xtype);
+            Rf_unprotect(1);
+            return R_NilValue();
+        }
+    }
 
-        STACKGRPS = narg > 1 || retGrp;
-
-        // Dispatch on first arg type
+    let nalast = NALAST.with(|v| v.get());
+    if tmp != 0 {
+        // -1, 1, or -2
+        if tmp == 1 {
+            // Sorted as expected
+            isSorted = true;
+            for i in 0..n as usize {
+                *o.add(i) = (i + 1) as c_int;
+            }
+        } else if tmp == -1 {
+            // Strictly opposite order
+            isSorted = false;
+            for i in 0..n as usize {
+                *o.add(i) = n - i as c_int;
+            }
+        } else if nalast == 0 && tmp == -2 {
+            // All NAs, nalast=NA
+            isSorted = false;
+            for i in 0..n as usize {
+                *o.add(i) = 0;
+            }
+        }
+    } else {
+        isSorted = false;
         let xtype = TYPEOF(x);
         match xtype {
             t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 => {
-                tmp = isorted(xd as *const c_int, n);
+                isort(xd as *mut c_int, o, n);
             }
             t if t == SEXPTYPE::REALSXP.0 => {
-                // TODO: implement dsorted
-                eprintln!("REALSXP radix sort not yet implemented");
+                // TODO: implement dsort
                 Rf_unprotect(1);
                 return R_NilValue();
             }
             t if t == SEXPTYPE::STRSXP.0 => {
-                // TODO: implement csorted
-                eprintln!("STRSXP radix sort not yet implemented");
+                // TODO: implement csort/cgroup
                 Rf_unprotect(1);
                 return R_NilValue();
             }
             _ => {
-                eprintln!("First arg is type '{}', not yet supported", xtype);
                 Rf_unprotect(1);
                 return R_NilValue();
             }
         }
+    }
 
-        if tmp != 0 {
-            // -1, 1, or -2
-            if tmp == 1 {
-                // Sorted as expected
-                isSorted = true;
-                for i in 0..n as usize {
-                    *o.add(i) = (i + 1) as c_int;
-                }
-            } else if tmp == -1 {
-                // Strictly opposite order
-                isSorted = false;
-                for i in 0..n as usize {
-                    *o.add(i) = n - i as c_int;
-                }
-            } else if NALAST == 0 && tmp == -2 {
-                // All NAs, nalast=NA
-                isSorted = false;
-                for i in 0..n as usize {
-                    *o.add(i) = 0;
-                }
-            }
-        } else {
-            isSorted = false;
-            let xtype = TYPEOF(x);
-            match xtype {
-                t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 => {
-                    isort(xd as *mut c_int, o, n);
-                }
-                t if t == SEXPTYPE::REALSXP.0 => {
-                    // TODO: implement dsort
-                    Rf_unprotect(1);
-                    return R_NilValue();
-                }
-                t if t == SEXPTYPE::STRSXP.0 => {
-                    // TODO: implement csort/cgroup
-                    Rf_unprotect(1);
-                    return R_NilValue();
-                }
-                _ => {
-                    Rf_unprotect(1);
-                    return R_NilValue();
-                }
-            }
+    // --- Multi-column sort (col >= 2) ---
+    let flip = FLIP.with(|v| v.get()) as usize;
+    let maxgrpn_first: c_int = GSMAX.with(|v| v.borrow()[flip]);
+
+    // Allocate xsub and newo for multi-arg sorting
+    let mut xsub: *mut c_void = ptr::null_mut();
+    let ngrp_val = GSNGRP.with(|v| v.borrow()[flip]);
+    if narg > 1 && ngrp_val < n {
+        // double is the largest type, 8
+        xsub = libc_alloc(maxgrpn_first as usize * std::mem::size_of::<f64>());
+        if xsub.is_null() {
+            eprintln!(
+                "Couldn't allocate xsub in do_radixsort, requested {} * {} bytes.",
+                maxgrpn_first,
+                std::mem::size_of::<f64>()
+            );
+            Rf_unprotect(1);
+            gsfree();
+            return R_NilValue();
         }
-
-        // --- Multi-column sort (col >= 2) ---
-        let maxgrpn_first: c_int = GSMAX[FLIP as usize];
-
-        // Allocate xsub and newo for multi-arg sorting
-        let mut xsub: *mut c_void = ptr::null_mut();
-        if narg > 1 && GSNGRP[FLIP as usize] < n {
-            // double is the largest type, 8
-            xsub = libc_alloc(maxgrpn_first as usize * std::mem::size_of::<f64>());
-            if xsub.is_null() {
-                eprintln!(
-                    "Couldn't allocate xsub in do_radixsort, requested {} * {} bytes.",
-                    maxgrpn_first,
-                    std::mem::size_of::<f64>()
-                );
-                Rf_unprotect(1);
-                gsfree();
-                return R_NilValue();
-            }
-            NEWO = libc_alloc(maxgrpn_first as usize * std::mem::size_of::<c_int>()) as *mut c_int;
-            if NEWO.is_null() {
-                eprintln!(
-                    "Couldn't allocate newo in do_radixsort, requested {} * {} bytes.",
-                    maxgrpn_first,
-                    std::mem::size_of::<c_int>()
-                );
-                libc_free(xsub);
-                Rf_unprotect(1);
-                gsfree();
-                return R_NilValue();
-            }
+        let newo = libc_alloc(maxgrpn_first as usize * std::mem::size_of::<c_int>()) as *mut c_int;
+        if newo.is_null() {
+            eprintln!(
+                "Couldn't allocate newo in do_radixsort, requested {} * {} bytes.",
+                maxgrpn_first,
+                std::mem::size_of::<c_int>()
+            );
+            libc_free(xsub);
+            Rf_unprotect(1);
+            gsfree();
+            return R_NilValue();
         }
+        NEWO.with(|v| v.set(newo));
+    }
 
-        let mut col: c_int = 2;
-        while col <= narg {
-            x = CAR(args);
-            args = CDR(args);
-            let xd_col: *mut c_void = DATAPTR(x);
-            ngrp = GSNGRP[FLIP as usize];
-            if ngrp == n && NALAST != 0 {
-                break;
-            }
-            flipflop();
-            STACKGRPS = col != narg || retGrp;
-            ORDER = if *LOGICAL(decreasing).add((col - 1) as usize) != 0 {
+    let mut col: c_int = 2;
+    while col <= narg {
+        x = CAR(args);
+        args = CDR(args);
+        let xd_col: *mut c_void = DATAPTR(x);
+        ngrp = GSNGRP.with(|v| v.borrow()[FLIP.with(|v| v.get()) as usize]);
+        if ngrp == n && NALAST.with(|v| v.get()) != 0 {
+            break;
+        }
+        flipflop();
+        STACKGRPS.with(|v| v.set(col != narg || retGrp));
+        ORDER.with(|v| {
+            v.set(if *LOGICAL(decreasing).add((col - 1) as usize) != 0 {
                 -1
             } else {
                 1
-            };
+            })
+        });
 
-            let xtype = TYPEOF(x);
-            // Only handle INTSXP/LGLSXP for multi-column
-            if xtype != SEXPTYPE::INTSXP.0 && xtype != SEXPTYPE::LGLSXP.0 {
-                eprintln!("Arg {} is type '{}', not yet supported", col, xtype);
-                break;
+        let xtype = TYPEOF(x);
+        // Only handle INTSXP/LGLSXP for multi-column
+        if xtype != SEXPTYPE::INTSXP.0 && xtype != SEXPTYPE::LGLSXP.0 {
+            eprintln!("Arg {} is type '{}', not yet supported", col, xtype);
+            break;
+        }
+
+        let mut idx: c_int = 0;
+        let mut grp: c_int = 0;
+        let cur_flip = FLIP.with(|v| v.get());
+        while grp < ngrp {
+            let gs = GS.with(|v| v.get());
+            let thisgrpn: c_int = gs[(1 - cur_flip) as usize].add(grp as usize).read();
+            if thisgrpn == 1 {
+                // Single-element group: check NA for nalast==0
+                if NALAST.with(|v| v.get()) == 0 {
+                    if *o.add(idx as usize) == 0 {
+                        isSorted = false;
+                    } else if (xtype == SEXPTYPE::INTSXP.0 || xtype == SEXPTYPE::LGLSXP.0)
+                        && *INTEGER(x).add(*o.add(idx as usize) as usize - 1) == NA_INTEGER {
+                            isSorted = false;
+                            *o.add(idx as usize) = 0;
+                        }
+                }
+                idx += 1;
+                push(1);
+                grp += 1;
+                continue;
             }
 
-            let mut idx: c_int = 0;
-            let mut grp: c_int = 0;
-            while grp < ngrp {
-                let mut thisgrpn: c_int = GS[(1 - FLIP) as usize].add(grp as usize).read();
-                if thisgrpn == 1 {
-                    // Single-element group: check NA for nalast==0
-                    if NALAST == 0 {
-                        if *o.add(idx as usize) == 0 {
-                            isSorted = false;
-                        } else if xtype == SEXPTYPE::INTSXP.0 || xtype == SEXPTYPE::LGLSXP.0 {
-                            if *INTEGER(x).add(*o.add(idx as usize) as usize - 1) == NA_INTEGER {
-                                isSorted = false;
-                                *o.add(idx as usize) = 0;
-                            }
-                        }
+            let osub = o.add(idx as usize);
+
+            // Build xsub from xd using order in osub
+            for j in 0..thisgrpn as usize {
+                *(xsub as *mut c_int).add(j) =
+                    *(xd_col as *const c_int).add(*o.add((idx + j as c_int) as usize) as usize - 1);
+            }
+            idx += thisgrpn;
+
+            // Check sortedness
+            tmp = isorted(xsub as *const c_int, thisgrpn);
+
+            if tmp != 0 {
+                // Already sorted
+                if tmp == -1 {
+                    // Strictly opposite: reverse in-place
+                    isSorted = false;
+                    for k in 0..(thisgrpn / 2) as usize {
+                        let t = *osub.add(k);
+                        *osub.add(k) = *osub.add((thisgrpn - 1 - k as c_int) as usize);
+                        *osub.add((thisgrpn - 1 - k as c_int) as usize) = t;
                     }
-                    idx += 1;
-                    push(1);
-                    grp += 1;
-                    continue;
-                }
-
-                let osub = o.add(idx as usize);
-
-                // Build xsub from xd using order in osub
-                for j in 0..thisgrpn as usize {
-                    *(xsub as *mut c_int).add(j) = *(xd_col as *const c_int)
-                        .add(*o.add((idx + j as c_int) as usize) as usize - 1);
-                }
-                idx += thisgrpn;
-
-                // Check sortedness
-                tmp = isorted(xsub as *const c_int, thisgrpn);
-
-                if tmp != 0 {
-                    // Already sorted
-                    if tmp == -1 {
-                        // Strictly opposite: reverse in-place
-                        isSorted = false;
-                        for k in 0..(thisgrpn / 2) as usize {
-                            let t = *osub.add(k);
-                            *osub.add(k) = *osub.add((thisgrpn - 1 - k as c_int) as usize);
-                            *osub.add((thisgrpn - 1 - k as c_int) as usize) = t;
-                        }
-                    } else if NALAST == 0 && tmp == -2 {
-                        // All NAs
-                        isSorted = false;
-                        for k in 0..thisgrpn as usize {
-                            *osub.add(k) = 0;
-                        }
+                } else if NALAST.with(|v| v.get()) == 0 && tmp == -2 {
+                    // All NAs
+                    isSorted = false;
+                    for k in 0..thisgrpn as usize {
+                        *osub.add(k) = 0;
                     }
-                    grp += 1;
-                    continue;
-                }
-
-                isSorted = false;
-                *NEWO = -1;
-                isort(xsub as *mut c_int, osub, thisgrpn);
-
-                if *NEWO != -1 {
-                    // Reorder osub using newo
-                    if NALAST != 0 {
-                        for j in 0..thisgrpn as usize {
-                            *(xsub as *mut c_int).add(j) = *osub.add(*NEWO.add(j) as usize - 1);
-                        }
-                    } else {
-                        for j in 0..thisgrpn as usize {
-                            *(xsub as *mut c_int).add(j) = if *NEWO.add(j) == 0 {
-                                0
-                            } else {
-                                *osub.add(*NEWO.add(j) as usize - 1)
-                            };
-                        }
-                    }
-                    ptr::copy_nonoverlapping(xsub as *const c_int, osub, thisgrpn as usize);
                 }
                 grp += 1;
+                continue;
             }
-            col += 1;
-        }
 
-        // --- Build retGrp result if requested ---
-        if retGrp {
-            let mut maxgrpn: c_int = NA_INTEGER;
-            ngrp = GSNGRP[FLIP as usize];
-            let s_ends = Rf_install(std::ffi::CString::new("ends").unwrap().as_ptr());
-            let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP.0, ngrp as R_xlen_t);
-            Rf_protect(x_ends);
-            setAttrib(ans, s_ends, x_ends);
-            if ngrp > 0 {
-                *INTEGER(x_ends).add(0) = GS[FLIP as usize].add(0).read();
-                for i in 1..ngrp as usize {
-                    let prev = *INTEGER(x_ends).add(i - 1);
-                    let cur = prev + GS[FLIP as usize].add(i).read();
-                    *INTEGER(x_ends).add(i) = cur;
-                }
-                maxgrpn = GSMAX[FLIP as usize];
-            }
-            let s_maxgrpn = Rf_install(std::ffi::CString::new("maxgrpn").unwrap().as_ptr());
-            let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
-            Rf_protect(scalar_maxgrpn);
-            setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
-            // Set class c("grouping", "integer")
-            let nms = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
-            Rf_protect(nms);
-            SET_STRING_ELT(
-                nms,
-                0,
-                Rf_mkChar(std::ffi::CString::new("grouping").unwrap().as_ptr()),
-            );
-            SET_STRING_ELT(
-                nms,
-                1,
-                Rf_mkChar(std::ffi::CString::new("integer").unwrap().as_ptr()),
-            );
-            let class_sym = Rf_install(std::ffi::CString::new("class").unwrap().as_ptr());
-            setAttrib(ans, class_sym, nms);
-            Rf_unprotect(3);
-        }
+            isSorted = false;
+            let newo = NEWO.with(|v| v.get());
+            *newo = -1;
+            isort(xsub as *mut c_int, osub, thisgrpn);
 
-        // --- Handle nalast==0: drop zeros ---
-        let dropZeros = !retGrp && !isSorted && NALAST == 0;
-        if dropZeros {
-            let mut zeros: c_int = 0;
-            for i in 0..n as usize {
-                if *o.add(i) == 0 {
-                    zeros += 1;
-                }
-            }
-            if zeros > 0 {
-                let new_ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, (n - zeros) as R_xlen_t);
-                Rf_protect(new_ans);
-                let o2 = INTEGER(new_ans);
-                let mut i2: c_int = 0;
-                for i in 0..n as usize {
-                    if *o.add(i) > 0 {
-                        *o2.add(i2 as usize) = *o.add(i);
-                        i2 += 1;
+            let newo = NEWO.with(|v| v.get());
+            if *newo != -1 {
+                // Reorder osub using newo
+                if NALAST.with(|v| v.get()) != 0 {
+                    for j in 0..thisgrpn as usize {
+                        *(xsub as *mut c_int).add(j) = *osub.add(*newo.add(j) as usize - 1);
+                    }
+                } else {
+                    for j in 0..thisgrpn as usize {
+                        *(xsub as *mut c_int).add(j) = if *newo.add(j) == 0 {
+                            0
+                        } else {
+                            *osub.add(*newo.add(j) as usize - 1)
+                        };
                     }
                 }
-                Rf_unprotect(1);
-                ans = new_ans;
+                ptr::copy_nonoverlapping(xsub as *const c_int, osub, thisgrpn as usize);
+            }
+            grp += 1;
+        }
+        col += 1;
+    }
+
+    // --- Build retGrp result if requested ---
+    if retGrp {
+        let mut maxgrpn: c_int = NA_INTEGER;
+        let flip = FLIP.with(|v| v.get()) as usize;
+        ngrp = GSNGRP.with(|v| v.borrow()[flip]);
+        let s_ends = Rf_install(
+            std::ffi::CString::new("ends")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
+        let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP.0, ngrp as R_xlen_t);
+        Rf_protect(x_ends);
+        setAttrib(ans, s_ends, x_ends);
+        if ngrp > 0 {
+            let gs = GS.with(|v| v.get());
+            *INTEGER(x_ends).add(0) = gs[flip].add(0).read();
+            for i in 1..ngrp as usize {
+                let prev = *INTEGER(x_ends).add(i - 1);
+                let cur = prev + gs[flip].add(i).read();
+                *INTEGER(x_ends).add(i) = cur;
+            }
+            maxgrpn = GSMAX.with(|v| v.borrow()[flip]);
+        }
+        let s_maxgrpn = Rf_install(
+            std::ffi::CString::new("maxgrpn")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
+        let scalar_maxgrpn = Rf_ScalarInteger(maxgrpn);
+        Rf_protect(scalar_maxgrpn);
+        setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
+        // Set class c("grouping", "integer")
+        let nms = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+        Rf_protect(nms);
+        SET_STRING_ELT(
+            nms,
+            0,
+            Rf_mkChar(
+                std::ffi::CString::new("grouping")
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            ),
+        );
+        SET_STRING_ELT(
+            nms,
+            1,
+            Rf_mkChar(
+                std::ffi::CString::new("integer")
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            ),
+        );
+        let class_sym = Rf_install(
+            std::ffi::CString::new("class")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        );
+        setAttrib(ans, class_sym, nms);
+        Rf_unprotect(3);
+    }
+
+    // --- Handle nalast==0: drop zeros ---
+    let nalast = NALAST.with(|v| v.get());
+    let dropZeros = !retGrp && !isSorted && nalast == 0;
+    if dropZeros {
+        let mut zeros: c_int = 0;
+        for i in 0..n as usize {
+            if *o.add(i) == 0 {
+                zeros += 1;
             }
         }
-
-        // --- Cleanup ---
-        gsfree();
-        libc_free(RADIX_XSUB);
-        RADIX_XSUB = ptr::null_mut();
-        RADIX_XSUBALLOC = 0;
-        libc_free(xsub);
-        libc_free(NEWO as *mut c_void);
-        NEWO = ptr::null_mut();
-        libc_free(XTMP);
-        XTMP = ptr::null_mut();
-        XTMP_ALLOC = 0;
-        libc_free(OTMP as *mut c_void);
-        OTMP = ptr::null_mut();
-        OTMP_ALLOC = 0;
-
-        Rf_unprotect(1);
-        ans
+        if zeros > 0 {
+            let new_ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, (n - zeros) as R_xlen_t);
+            Rf_protect(new_ans);
+            let o2 = INTEGER(new_ans);
+            let mut i2: c_int = 0;
+            for i in 0..n as usize {
+                if *o.add(i) > 0 {
+                    *o2.add(i2 as usize) = *o.add(i);
+                    i2 += 1;
+                }
+            }
+            Rf_unprotect(1);
+            ans = new_ans;
+        }
     }
+
+    // --- Cleanup ---
+    gsfree();
+    libc_free(RADIX_XSUB.with(|v| v.get()));
+    RADIX_XSUB.with(|v| v.set(ptr::null_mut()));
+    RADIX_XSUBALLOC.with(|v| v.set(0));
+    libc_free(xsub);
+    libc_free(NEWO.with(|v| v.get()) as *mut c_void);
+    NEWO.with(|v| v.set(ptr::null_mut()));
+    libc_free(XTMP.with(|v| v.get()));
+    XTMP.with(|v| v.set(ptr::null_mut()));
+    XTMP_ALLOC.with(|v| v.set(0));
+    libc_free(OTMP.with(|v| v.get()) as *mut c_void);
+    OTMP.with(|v| v.set(ptr::null_mut()));
+    OTMP_ALLOC.with(|v| v.set(0));
+
+    Rf_unprotect(1);
+    ans
 }
 
 /// Local `asLogical` helper for do_radixsort.
 unsafe fn asLogical_local(x: SEXP) -> c_int {
-    unsafe {
-        if Rf_isNull(x) != 0 {
-            return NA_LOGICAL;
-        }
-        let len = LENGTH(x);
-        if len == 0 {
-            return NA_LOGICAL;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
-            LOGICAL_ELT(x, 0)
-        } else if t == SEXPTYPE::INTSXP.0 {
-            let v = INTEGER_ELT(x, 0);
-            if v == NA_INTEGER {
-                NA_LOGICAL
-            } else if v != 0 {
-                1
-            } else {
-                0
-            }
-        } else if t == SEXPTYPE::REALSXP.0 {
-            let v = REAL_ELT(x, 0);
-            if v.is_nan() {
-                NA_LOGICAL
-            } else if v != 0.0 {
-                1
-            } else {
-                0
-            }
-        } else {
+    if Rf_isNull(x) != 0 {
+        return NA_LOGICAL;
+    }
+    let len = LENGTH(x);
+    if len == 0 {
+        return NA_LOGICAL;
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LGLSXP.0 {
+        LOGICAL_ELT(x, 0)
+    } else if t == SEXPTYPE::INTSXP.0 {
+        let v = INTEGER_ELT(x, 0);
+        if v == NA_INTEGER {
             NA_LOGICAL
+        } else if v != 0 {
+            1
+        } else {
+            0
         }
+    } else if t == SEXPTYPE::REALSXP.0 {
+        let v = REAL_ELT(x, 0);
+        if v.is_nan() {
+            NA_LOGICAL
+        } else if v != 0.0 {
+            1
+        } else {
+            0
+        }
+    } else {
+        NA_LOGICAL
     }
 }
 
 /// Local `asBool` helper for do_radixsort.
 unsafe fn asBool_local(x: SEXP) -> c_int {
-    unsafe {
-        let v = asLogical_local(x);
-        if v == NA_LOGICAL { 0 } else { v }
-    }
+    let v = asLogical_local(x);
+    if v == NA_LOGICAL { 0 } else { v }
 }
 
 /// 8-pass LSD radix sort for doubles.
@@ -1418,109 +1426,107 @@ unsafe fn asBool_local(x: SEXP) -> c_int {
 /// - `o` must point to at least `n` valid i32 values (written to).
 /// - Module-level NALAST and ORDER must be configured.
 pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
-    unsafe {
-        if n <= 1 {
-            if n == 1 {
-                *o = 1;
-            }
-            return x;
+    if n <= 1 {
+        if n == 1 {
+            *o = 1;
         }
-
-        let xd = x as *mut f64;
-
-        // Check for trivially sorted cases first
-        let sorted = dsorted(x, n);
-        if sorted == 1 {
-            // Already sorted in expected order
-            for i in 0..n as usize {
-                *o.add(i) = (i + 1) as c_int;
-            }
-            return x;
-        } else if sorted == -1 {
-            // Strictly opposite order
-            for i in 0..n as usize {
-                *o.add(i) = (n - i as c_int) as c_int;
-            }
-            return x;
-        }
-
-        // Transform doubles to unsigned 64-bit for radix sort.
-        // IEEE 754 doubles can be compared as integers if we flip the sign bit
-        // for negative numbers and flip all bits for positive numbers.
-        // This maps: -Inf -> 0, ..., -0.0, NaN, ..., +0.0, ..., +Inf -> u64::MAX
-        let mut tmp: Vec<u64> = Vec::with_capacity(n as usize);
-        for i in 0..n as usize {
-            let v = *xd.add(i);
-            let bits = v.to_bits();
-            let mapped = if bits >> 63 != 0 {
-                // Negative: flip sign bit only
-                bits ^ 0x8000_0000_0000_0000
-            } else {
-                // Non-negative: flip all bits
-                !bits
-            };
-            tmp.push(mapped);
-        }
-
-        // Allocate working memory
-        alloc_otmp(n);
-        alloc_xtmp(n);
-
-        // 8-pass LSD radix sort (from MSB to LSB)
-        let mut src = tmp.as_mut_ptr();
-        let mut dst = XTMP as *mut u64;
-        let mut src_o = o;
-        let mut dst_o = OTMP;
-
-        for pass in (0..8).rev() {
-            // Counting pass
-            let mut counts: [usize; 257] = [0; 257];
-            for i in 0..n as usize {
-                let byte = ((*src.add(i) >> (pass * 8)) & 0xFF) as usize;
-                counts[byte + 1] += 1;
-            }
-            // Cumulate
-            for i in 1..257 {
-                counts[i] += counts[i - 1];
-            }
-            // Scatter
-            for i in 0..n as usize {
-                let byte = ((*src.add(i) >> (pass * 8)) & 0xFF) as usize;
-                let pos = counts[byte];
-                *dst.add(pos) = *src.add(i);
-                *dst_o.add(pos) = *src_o.add(i);
-                counts[byte] += 1;
-            }
-            // Swap src/dst
-            let t = src;
-            src = dst;
-            dst = t;
-            let t_o = src_o;
-            src_o = dst_o;
-            dst_o = t_o;
-        }
-
-        // If final result is in XTMP (not tmp), copy back to o
-        if src_o != o {
-            ptr::copy_nonoverlapping(src_o, o, n as usize);
-        }
-
-        // Push group sizes
-        if STACKGRPS {
-            let mut tt: c_int = 1;
-            for i in 1..n as usize {
-                if *xd.add(*o.add(i) as usize - 1) == *xd.add(*o.add(i - 1) as usize - 1) {
-                    tt += 1;
-                } else {
-                    push(tt);
-                    tt = 1;
-                }
-            }
-            push(tt);
-        }
-
-        x
+        return x;
     }
+
+    let xd = x as *mut f64;
+
+    // Check for trivially sorted cases first
+    let sorted = dsorted(x, n);
+    if sorted == 1 {
+        // Already sorted in expected order
+        for i in 0..n as usize {
+            *o.add(i) = (i + 1) as c_int;
+        }
+        return x;
+    } else if sorted == -1 {
+        // Strictly opposite order
+        for i in 0..n as usize {
+            *o.add(i) = (n - i as c_int) as c_int;
+        }
+        return x;
+    }
+
+    // Transform doubles to unsigned 64-bit for radix sort.
+    // IEEE 754 doubles can be compared as integers if we flip the sign bit
+    // for negative numbers and flip all bits for positive numbers.
+    // This maps: -Inf -> 0, ..., -0.0, NaN, ..., +0.0, ..., +Inf -> u64::MAX
+    let mut tmp: Vec<u64> = Vec::with_capacity(n as usize);
+    for i in 0..n as usize {
+        let v = *xd.add(i);
+        let bits = v.to_bits();
+        let mapped = if bits >> 63 != 0 {
+            // Negative: flip sign bit only
+            bits ^ 0x8000_0000_0000_0000
+        } else {
+            // Non-negative: flip all bits
+            !bits
+        };
+        tmp.push(mapped);
+    }
+
+    // Allocate working memory
+    alloc_otmp(n);
+    alloc_xtmp(n);
+
+    // 8-pass LSD radix sort (from MSB to LSB)
+    let mut src = tmp.as_mut_ptr();
+    let mut dst = XTMP.with(|v| v.get()) as *mut u64;
+    let mut src_o = o;
+    let mut dst_o = OTMP.with(|v| v.get());
+
+    for pass in (0..8).rev() {
+        // Counting pass
+        let mut counts: [usize; 257] = [0; 257];
+        for i in 0..n as usize {
+            let byte = ((*src.add(i) >> (pass * 8)) & 0xFF) as usize;
+            counts[byte + 1] += 1;
+        }
+        // Cumulate
+        for i in 1..257 {
+            counts[i] += counts[i - 1];
+        }
+        // Scatter
+        for i in 0..n as usize {
+            let byte = ((*src.add(i) >> (pass * 8)) & 0xFF) as usize;
+            let pos = counts[byte];
+            *dst.add(pos) = *src.add(i);
+            *dst_o.add(pos) = *src_o.add(i);
+            counts[byte] += 1;
+        }
+        // Swap src/dst
+        let t = src;
+        src = dst;
+        dst = t;
+        let t_o = src_o;
+        src_o = dst_o;
+        dst_o = t_o;
+    }
+
+    // If final result is in XTMP (not tmp), copy back to o
+    if src_o != o {
+        ptr::copy_nonoverlapping(src_o, o, n as usize);
+    }
+
+    // Push group sizes
+    if STACKGRPS.with(|v| v.get()) {
+        let mut tt: c_int = 1;
+        for i in 1..n as usize {
+            if *xd.add(*o.add(i) as usize - 1) == *xd.add(*o.add(i - 1) as usize - 1) {
+                tt += 1;
+            } else {
+                push(tt);
+                tt = 1;
+            }
+        }
+        push(tt);
+    }
+
+    x
 }
 
 /// Sort dispatcher for doubles.
@@ -1533,29 +1539,27 @@ pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 ///   caller, but internally modified and restored).
 /// - `o` must point to at least `n` valid i32 values.
 pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
-    unsafe {
-        if n <= 1 {
-            if n == 1 {
-                *o = 1;
-            }
-            return x;
+    if n <= 1 {
+        if n == 1 {
+            *o = 1;
         }
-
-        let sorted = dsorted(x, n);
-        if sorted == 1 {
-            for i in 0..n as usize {
-                *o.add(i) = (i + 1) as c_int;
-            }
-        } else if sorted == -1 {
-            for i in 0..n as usize {
-                *o.add(i) = (n - i as c_int) as c_int;
-            }
-        } else {
-            // Use dradix for the actual sort
-            dradix(x, o, n);
-        }
-        x
+        return x;
     }
+
+    let sorted = dsorted(x, n);
+    if sorted == 1 {
+        for i in 0..n as usize {
+            *o.add(i) = (i + 1) as c_int;
+        }
+    } else if sorted == -1 {
+        for i in 0..n as usize {
+            *o.add(i) = (n - i as c_int) as c_int;
+        }
+    } else {
+        // Use dradix for the actual sort
+        dradix(x, o, n);
+    }
+    x
 }
 
 /// Test whether a double vector is already sorted.
@@ -1571,96 +1575,97 @@ pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 /// # Safety
 /// - `x` must point to at least `n` valid f64 values.
 pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
-    unsafe {
-        let xd = x as *const f64;
+    let xd = x as *const f64;
 
-        if n <= 1 {
-            push(n);
-            return 1;
-        }
+    if n <= 1 {
+        push(n);
+        return 1;
+    }
 
-        // Helper: transform double for comparison based on ORDER and NALAST
-        let dcheck = |v: f64| -> f64 {
-            if v.is_nan() {
-                // NA_REAL or NaN
-                if NALAST == 1 {
-                    // NAs last: map to +Inf for ascending, -Inf for descending
-                    if ORDER == 1 {
-                        f64::INFINITY
-                    } else {
-                        f64::NEG_INFINITY
-                    }
-                } else if NALAST == -1 {
-                    // NAs first
-                    if ORDER == 1 {
-                        f64::NEG_INFINITY
-                    } else {
-                        f64::INFINITY
-                    }
+    // Helper: transform double for comparison based on ORDER and NALAST
+    let nalast = NALAST.with(|v| v.get());
+    let order = ORDER.with(|v| v.get());
+    let dcheck = |v: f64| -> f64 {
+        if v.is_nan() {
+            // NA_REAL or NaN
+            if nalast == 1 {
+                // NAs last: map to +Inf for ascending, -Inf for descending
+                if order == 1 {
+                    f64::INFINITY
                 } else {
-                    // nalast = 0 (NA): NAs are removed, but for sortedness check
-                    // treat as very negative
                     f64::NEG_INFINITY
                 }
-            } else {
-                v * ORDER as f64
-            }
-        };
-
-        // Check if all NA/NaN (for nalast==0)
-        if NALAST == 0 {
-            let mut all_na = true;
-            for i in 0..n as usize {
-                if !(*xd.add(i)).is_nan() {
-                    all_na = false;
-                    break;
+            } else if nalast == -1 {
+                // NAs first
+                if order == 1 {
+                    f64::NEG_INFINITY
+                } else {
+                    f64::INFINITY
                 }
+            } else {
+                // nalast = 0 (NA): NAs are removed, but for sortedness check
+                // treat as very negative
+                f64::NEG_INFINITY
             }
-            if all_na {
-                push(n);
-                return -2;
+        } else {
+            v * order as f64
+        }
+    };
+
+    // Check if all NA/NaN (for nalast==0)
+    if nalast == 0 {
+        let mut all_na = true;
+        for i in 0..n as usize {
+            if !(*xd.add(i)).is_nan() {
+                all_na = false;
+                break;
             }
         }
+        if all_na {
+            push(n);
+            return -2;
+        }
+    }
 
-        let v0 = dcheck(*xd.add(0));
-        let v1 = dcheck(*xd.add(1));
+    let v0 = dcheck(*xd.add(0));
+    let v1 = dcheck(*xd.add(1));
 
-        // Check if possibly in opposite order
-        if v1 < v0 {
-            let mut all_opp = true;
-            for i in 2..n as usize {
-                if dcheck(*xd.add(i)) >= dcheck(*xd.add(i - 1)) {
-                    all_opp = false;
-                    break;
-                }
+    // Check if possibly in opposite order
+    if v1 < v0 {
+        let mut all_opp = true;
+        for i in 2..n as usize {
+            if dcheck(*xd.add(i)) >= dcheck(*xd.add(i - 1)) {
+                all_opp = false;
+                break;
             }
-            if all_opp {
-                mpush(1, n);
-                return -1;
-            }
+        }
+        if all_opp {
+            mpush(1, n);
+            return -1;
+        }
+        return 0;
+    }
+
+    // Check if sorted in expected order
+    let flip = FLIP.with(|v| v.get()) as usize;
+    let old = GSNGRP.with(|v| v.borrow()[flip]);
+    let mut tt: c_int = 1;
+    for i in 1..n as usize {
+        let vi = dcheck(*xd.add(i));
+        let vi_prev = dcheck(*xd.add(i - 1));
+        if vi < vi_prev {
+            GSNGRP.with(|v| v.borrow_mut()[flip] = old);
             return 0;
         }
-
-        // Check if sorted in expected order
-        let old = GSNGRP[FLIP as usize];
-        let mut tt: c_int = 1;
-        for i in 1..n as usize {
-            let vi = dcheck(*xd.add(i));
-            let vi_prev = dcheck(*xd.add(i - 1));
-            if vi < vi_prev {
-                GSNGRP[FLIP as usize] = old;
-                return 0;
-            }
-            if (*xd.add(i)).to_bits() == (*xd.add(i - 1)).to_bits() {
-                tt += 1;
-            } else {
-                push(tt);
-                tt = 1;
-            }
+        if (*xd.add(i)).to_bits() == (*xd.add(i - 1)).to_bits() {
+            tt += 1;
+        } else {
+            push(tt);
+            tt = 1;
         }
-        push(tt);
-        1
     }
+    push(tt);
+    1
 }
 
 /// Recursive radix sort for character strings (STRSXP vectors).
@@ -1708,33 +1713,29 @@ pub unsafe fn csorted(_x: *mut c_void, _n: c_int) -> c_int {
 // ---------------------------------------------------------------------------
 
 unsafe fn libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
-    unsafe {
-        if ptr.is_null() {
-            libc_alloc(size)
-        } else {
-            let new_ptr = libc_alloc(size);
-            if !new_ptr.is_null() {
-                // We don't know the old size, so this is best-effort.
-                // The caller must ensure new_size >= old_size.
-                ptr::copy_nonoverlapping(ptr as *const u8, new_ptr as *mut u8, size);
-                libc_free(ptr);
-            }
-            new_ptr
+    if ptr.is_null() {
+        libc_alloc(size)
+    } else {
+        let new_ptr = libc_alloc(size);
+        if !new_ptr.is_null() {
+            // We don't know the old size, so this is best-effort.
+            // The caller must ensure new_size >= old_size.
+            ptr::copy_nonoverlapping(ptr as *const u8, new_ptr as *mut u8, size);
+            libc_free(ptr);
         }
+        new_ptr
     }
 }
 
 unsafe fn libc_alloc(size: usize) -> *mut c_void {
-    unsafe {
-        if size == 0 {
-            return ptr::null_mut();
-        }
-        let layout = std::alloc::Layout::from_size_align(size, 8).unwrap_or_else(|_| {
-            // Fallback to minimal alignment
-            std::alloc::Layout::from_size_align(size, 1).unwrap()
-        });
-        std::alloc::alloc(layout) as *mut c_void
+    if size == 0 {
+        return ptr::null_mut();
     }
+    let layout = std::alloc::Layout::from_size_align(size, 8).unwrap_or_else(|_| {
+        // Fallback to minimal alignment
+        std::alloc::Layout::from_size_align(size, 1).expect("unwrap on None/Err")
+    });
+    std::alloc::alloc(layout) as *mut c_void
 }
 
 unsafe fn libc_free(ptr: *mut c_void) {
@@ -1774,28 +1775,28 @@ pub fn integer_radixsort(data: &[i32], decreasing: bool, na_last: Option<bool>) 
     // The pointers we pass are valid for the duration of this function.
     unsafe {
         // Initialize group stack
-        GSMAXALLOC = n;
-        FLIP = 0;
-        GSNGRP[0] = 0;
-        GSNGRP[1] = 0;
-        GSMAX[0] = 0;
-        GSMAX[1] = 0;
-        STACKGRPS = false;
+        GSMAXALLOC.with(|v| v.set(n));
+        FLIP.with(|v| v.set(0));
+        GSNGRP.with(|v| *v.borrow_mut() = [0; 2]);
+        GSMAX.with(|v| *v.borrow_mut() = [0; 2]);
+        STACKGRPS.with(|v| v.set(false));
 
         // Set nalast: 1=TRUE, 0=NA, -1=FALSE
-        NALAST = match na_last {
-            Some(true) => 1,
-            Some(false) => -1,
-            None => 0,
-        };
+        NALAST.with(|v| {
+            v.set(match na_last {
+                Some(true) => 1,
+                Some(false) => -1,
+                None => 0,
+            })
+        });
 
         // Set order
-        ORDER = if decreasing { -1 } else { 1 };
+        ORDER.with(|v| v.set(if decreasing { -1 } else { 1 }));
 
         // Reset module-level state that may persist from prior calls
-        RANGE = NA_INTEGER;
-        XMIN = NA_INTEGER;
-        NEWO = ptr::null_mut();
+        RANGE.with(|v| v.set(NA_INTEGER));
+        XMIN.with(|v| v.set(NA_INTEGER));
+        NEWO.with(|v| v.set(ptr::null_mut()));
 
         let x_ptr = data.as_ptr();
         let mut o: Vec<c_int> = vec![-1; n as usize];
@@ -1803,6 +1804,7 @@ pub fn integer_radixsort(data: &[i32], decreasing: bool, na_last: Option<bool>) 
 
         // Check if already sorted
         let tmp = isorted(x_ptr, n);
+        let nalast = NALAST.with(|v| v.get());
         if tmp == 1 {
             for i in 0..n as usize {
                 o[i] = (i + 1) as c_int;
@@ -1811,7 +1813,7 @@ pub fn integer_radixsort(data: &[i32], decreasing: bool, na_last: Option<bool>) 
             for i in 0..n as usize {
                 o[i] = n - i as c_int;
             }
-        } else if NALAST == 0 && tmp == -2 {
+        } else if nalast == 0 && tmp == -2 {
             for i in 0..n as usize {
                 o[i] = 0;
             }
@@ -1822,7 +1824,7 @@ pub fn integer_radixsort(data: &[i32], decreasing: bool, na_last: Option<bool>) 
         }
 
         // Handle nalast=0: filter out zeros
-        if NALAST == 0 {
+        if nalast == 0 {
             let filtered: Vec<c_int> = o.into_iter().filter(|&v| v != 0).collect();
             gsfree();
             return filtered;

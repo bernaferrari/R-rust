@@ -11,7 +11,7 @@
 //! follows R's serialization protocol structure: format header, version
 //! info, then recursive WriteItem/ReadItem.
 
-use std::io::{self, Read as IoRead, Write};
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 use std::slice;
@@ -38,13 +38,13 @@ const R_DEFAULT_SERIALIZE_VERSION: c_int = 3;
 const R_VERSION: c_int = 4;
 
 /// R version (4, 5, 0) packed as integer.
-const R_VERSION_450: c_int = (4 << 16) | (5 << 8) | 0;
+const R_VERSION_450: c_int = (4 << 16) | (5 << 8);
 
 /// R version (2, 3, 0) packed as integer.
-const R_VERSION_230: c_int = (2 << 16) | (3 << 8) | 0;
+const R_VERSION_230: c_int = (2 << 16) | (3 << 8);
 
 /// R version (3, 5, 0) packed as integer.
-const R_VERSION_350: c_int = (3 << 16) | (5 << 8) | 0;
+const R_VERSION_350: c_int = (3 << 16) | (5 << 8);
 
 /// Chunk size for vector I/O.
 const CHUNK_SIZE: usize = 512;
@@ -140,14 +140,13 @@ pub type R_inpstream_t = *mut R_inpstream_st;
 // Global state for lazy-load database cache
 // ---------------------------------------------------------------------------
 
-static mut USED: usize = 0;
+thread_local! { static USED: Cell<usize> = Cell::new(0); }
 
-static mut CACHE_NAMES: [*mut c_char; NC] = [ptr::null_mut(); NC];
+thread_local! { static CACHE_NAMES: Cell<[*mut c_char; NC]> = Cell::new([ptr::null_mut(); NC]); }
 
-static mut CACHE_PTRS: [*mut c_char; NC] = [ptr::null_mut(); NC];
+thread_local! { static CACHE_PTRS: Cell<[*mut c_char; NC]> = Cell::new([ptr::null_mut(); NC]); }
 
-/// Global tracking for read recursion depth.
-static mut R_ReadItemDepth: c_int = 0;
+thread_local! { static R_ReadItemDepth: Cell<c_int> = Cell::new(0); }
 
 // ---------------------------------------------------------------------------
 // Internal binary writer/reader (Vec<u8> based)
@@ -211,7 +210,9 @@ impl<'a> BinaryReader<'a> {
         if self.remaining() < 4 {
             return Err("read error: not enough bytes for i32".into());
         }
-        let bytes: [u8; 4] = self.data[self.pos..self.pos + 4].try_into().unwrap();
+        let bytes: [u8; 4] = self.data[self.pos..self.pos + 4]
+            .try_into()
+            .expect("unwrap on None/Err");
         self.pos += 4;
         Ok(i32::from_ne_bytes(bytes))
     }
@@ -220,7 +221,9 @@ impl<'a> BinaryReader<'a> {
         if self.remaining() < 8 {
             return Err("read error: not enough bytes for f64".into());
         }
-        let bytes: [u8; 8] = self.data[self.pos..self.pos + 8].try_into().unwrap();
+        let bytes: [u8; 8] = self.data[self.pos..self.pos + 8]
+            .try_into()
+            .expect("unwrap on None/Err");
         self.pos += 8;
         Ok(f64::from_ne_bytes(bytes))
     }
@@ -398,7 +401,7 @@ unsafe fn DecodeVersion(packed: c_int, v: *mut c_int, p: *mut c_int, s: *mut c_i
         if !p.is_null() {
             *p = rem / 256;
         }
-        rem = rem % 256;
+        rem %= 256;
         if !s.is_null() {
             *s = rem;
         }
@@ -849,8 +852,8 @@ pub unsafe extern "C" fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 
         // Stream out the serialized bytes
         let data = writer.into_vec();
-        if !data.is_empty() {
-            if let Some(out_bytes) = (*stream).OutBytes {
+        if !data.is_empty()
+            && let Some(out_bytes) = (*stream).OutBytes {
                 // Write in chunks to avoid c_int overflow
                 let mut offset = 0usize;
                 while offset < data.len() {
@@ -867,7 +870,6 @@ pub unsafe extern "C" fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
                     offset += chunk_len;
                 }
             }
-        }
     }
 }
 
@@ -920,8 +922,8 @@ pub unsafe extern "C" fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
         let mut ref_table = WriteHashTable::new();
         WriteItemInternal(s, &mut ref_table, &mut writer);
         let data = writer.into_vec();
-        if !data.is_empty() {
-            if let Some(out_bytes) = (*stream).OutBytes {
+        if !data.is_empty()
+            && let Some(out_bytes) = (*stream).OutBytes {
                 let mut offset = 0usize;
                 while offset < data.len() {
                     let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
@@ -937,7 +939,6 @@ pub unsafe extern "C" fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
                     offset += chunk_len;
                 }
             }
-        }
     }
 }
 
@@ -2024,15 +2025,15 @@ mod tests {
 
             // Type with object flag
             let flags = PackFlags(14, 0, 1, 0, 0);
-            assert_eq!(flags, 14 | IS_OBJECT_BIT_MASK);
+            assert_eq!(flags, 0b1110 | IS_OBJECT_BIT_MASK);
 
             // Type with attr and tag flags
             let flags = PackFlags(19, 0, 0, 1, 1);
-            assert_eq!(flags, 19 | HAS_ATTR_BIT_MASK | HAS_TAG_BIT_MASK);
+            assert_eq!(flags, 0b10011 | HAS_ATTR_BIT_MASK | HAS_TAG_BIT_MASK);
 
             // Type with levels
             let flags = PackFlags(10, 3, 0, 0, 0);
-            assert_eq!(flags, 10 | (3 << 12));
+            assert_eq!(flags, 0b1010 | (3 << 12));
         }
     }
 
@@ -2045,7 +2046,7 @@ mod tests {
             let mut phasattr = 0i32;
             let mut phastag = 0i32;
 
-            let flags = 19 | HAS_ATTR_BIT_MASK | HAS_TAG_BIT_MASK | (2 << 12);
+            let flags = 0b10011 | HAS_ATTR_BIT_MASK | HAS_TAG_BIT_MASK | (2 << 12);
             UnpackFlags(
                 flags,
                 &mut ptype,

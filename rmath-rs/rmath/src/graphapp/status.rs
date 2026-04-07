@@ -3,7 +3,6 @@
 
 //! Status bar functions for GraphApp.
 
-use super::types::*;
 use std::os::raw::c_int;
 
 #[unsafe(no_mangle)]
@@ -15,8 +14,8 @@ pub unsafe extern "C" fn delstatusbar() -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setstatus(text: *const std::os::raw::c_char) { /* TODO */
+pub unsafe extern "C" fn setstatus(_text: *const std::os::raw::c_char) { /* TODO */
 }
 
-pub unsafe fn updatestatus(text: *const std::os::raw::c_char) { /* TODO */
+pub unsafe fn updatestatus(_text: *const std::os::raw::c_char) { /* TODO */
 }

@@ -53,6 +53,7 @@ fn gamma_sign(x: f64) -> i32 {
 mod imp {
     use super::*;
 
+    #[must_use]
     pub fn lchoose(n: f64, k: f64) -> f64 {
         let _k0 = k;
         let k = r_forceint(k);
@@ -96,6 +97,7 @@ mod imp {
         lfastchoose(n, k)
     }
 
+    #[must_use]
     pub fn choose(n: f64, k: f64) -> f64 {
         let _k0 = k;
         let k = r_forceint(k);
@@ -157,12 +159,14 @@ mod imp {
 // =====================================================================
 
 /// Log of the absolute value of the binomial coefficient.
+#[must_use]
 /// lchoose(n, k) := log(|choose(n, k)|)
 pub fn lchoose(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
 
 /// Binomial coefficient C(n, k).
+#[must_use]
 pub fn choose(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
@@ -171,27 +175,32 @@ pub fn choose(n: f64, k: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_choose(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn choose_c(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lchoose(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn lchoose_c(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
 
 /// Rf_lfastchoose: fast version of lchoose(n, k) for integer k.
+#[must_use]
 /// Returns log|choose(n,k)|. The sign argument is for compatibility only.
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lfastchoose(n: f64, k: f64, _sgn: *mut std::os::raw::c_int) -> f64 {

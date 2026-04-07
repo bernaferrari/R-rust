@@ -26,16 +26,13 @@
 //!   raw `SEXP` pointers to `Sexp<'a>`, delegate to the safe layer, and
 //!   convert back.
 
-use std::os::raw::{c_char, c_int};
-use std::ptr;
+use std::os::raw::c_int;
 
-use crate::mainutils::errors::R_MissingArgError;
-use crate::sexp::accessors::{CAR, CDR, PRIMOFFSET, TYPEOF};
-use crate::sexp::envir::{R_findVar, findFun, forcePromise};
+use crate::sexp::accessors::{PRIMOFFSET, TYPEOF};
+use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_EvalDepth, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
+use crate::sexp::globals::{R_EvalDepth, R_NilValue, set_R_Visible};
 use crate::sexp::memory_ext::vmaxget;
-use crate::sexp::protect::Rf_protect;
 use crate::sexp::safe::{PairlistIter, Sexp};
 use crate::sexp::symbol::R_DotsSymbol;
 
@@ -241,7 +238,7 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 }
 
 /// Safe evaluation of a language object (function call).
-fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
+pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let fun = e.car().ok_or("empty call")?;
     let args = e.cdr().ok_or("missing args")?;
 
@@ -273,10 +270,10 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
         }
         let frame = current.frame()?;
         for cell in PairlistIter::new(frame) {
-            if let Some(tag) = cell.tag() {
-                if tag == symbol {
-                    return cell.car();
-                }
+            if let Some(tag) = cell.tag()
+                && tag == symbol
+            {
+                return cell.car();
             }
         }
         current = current.enclos()?;
@@ -286,10 +283,10 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
 /// Safe promise evaluation.
 fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
-    if let Some(val) = prom.prvalue() {
-        if val.typeof_() != SEXPTYPE::PROMSXP {
-            return Ok(val);
-        }
+    if let Some(val) = prom.prvalue()
+        && val.typeof_() != SEXPTYPE::PROMSXP
+    {
+        return Ok(val);
     }
 
     // Force the promise
@@ -390,7 +387,7 @@ fn apply_builtin_safe<'a>(
 /// Evaluate an R expression in an environment.
 ///
 /// This wraps the raw FFI `Rf_eval` and provides a `Result` return type.
-#[must_use]
+#[must_use = "eval returns a Result that should be checked"]
 pub fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     eval_safe(e, rho)
 }

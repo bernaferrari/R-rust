@@ -27,7 +27,7 @@ pub(crate) const M_LN2: f64 = 0.693147180559945309417232121458;
 pub(crate) const DBL_EPSILON: f64 = 2.220446049250313e-16;
 pub(crate) const DBL_MIN: f64 = 2.2250738585072014e-308;
 pub(crate) const DBL_MAX_EXP: i32 = 1024;
-const M_LN_2PI: f64 = 1.837877066409345483560659472811;
+const _M_LN_2PI: f64 = 1.837877066409345483560659472811;
 const M_SQRT_2PI: f64 = 2.50662827463100050241576528481104525301;
 const X_LRG: f64 = 2.86111748575702815380240589208115399625e+307; // = 2^1023 / pi
 
@@ -110,7 +110,7 @@ pub(crate) fn dpois_raw(x: f64, lambda: f64, give_log: bool) -> f64 {
     let r = if lrg_x {
         M_SQRT_2PI * sqrt(x)
     } else {
-        M_LN_2PI * x
+        M_2PI * x
     };
     if give_log {
         -yl - yh - (if lrg_x { log(r) } else { 0.5 * log(r) })
@@ -438,6 +438,7 @@ pub(crate) fn pgamma_raw(x: f64, alph: f64, lower_tail: bool, log_p: bool) -> f6
 // dgamma
 // =====================================================================
 
+#[must_use]
 pub fn dgamma_inner(x: f64, shape: f64, scale: f64, give_log: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(shape) || isnan(scale) {
@@ -497,6 +498,7 @@ pub fn dgamma_inner(x: f64, shape: f64, scale: f64, give_log: bool) -> f64 {
 // pgamma
 // =====================================================================
 
+#[must_use]
 pub fn pgamma_inner(x: f64, alph: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(alph) || isnan(scale) {
@@ -588,6 +590,7 @@ fn qchisq_appr(p: f64, nu: f64, g: f64, lower_tail: bool, log_p: bool, tol: f64)
     }
 }
 
+#[must_use]
 pub fn qgamma_inner(p: f64, alpha: f64, scale: f64, lower_tail: bool, log_p: bool) -> f64 {
     const EPS1: f64 = 1e-2;
     const EPS2: f64 = 5e-7; // final precision of AS 91
@@ -796,6 +799,7 @@ thread_local! {
     static RG_C: Cell<f64> = Cell::new(0.0);
 }
 
+#[must_use]
 pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     // Constants
     const SQRT32: f64 = 5.656854;
@@ -976,41 +980,49 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
 // FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dgamma(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dgamma_inner(x, shape, scale, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dgamma(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dgamma_inner(x, shape, scale, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_pgamma(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pgamma_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn pgamma(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pgamma_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgamma_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgamma_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)

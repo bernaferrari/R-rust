@@ -225,26 +225,21 @@ mod tests {
 
     #[test]
     fn test_once_initialization() {
+        use std::cell::Cell;
         unsafe {
-            static mut INIT_CALLED: AtomicBool = AtomicBool::new(false);
+            thread_local! { static INIT_CALLED: Cell<bool> = Cell::new(false); }
             unsafe extern "C" fn init_fn() {
-                (*std::ptr::addr_of!(INIT_CALLED)).store(true, Ordering::Relaxed);
+                INIT_CALLED.with(|v| v.set(true));
             }
 
             let mut once = gl_once_t::new();
             glthread_once(&mut once, Some(init_fn));
-            assert_eq!(
-                (*std::ptr::addr_of!(INIT_CALLED)).load(Ordering::Relaxed),
-                true
-            );
+            assert_eq!(INIT_CALLED.with(|v| v.get()), true);
 
             // Calling again should not re-initialize.
-            (*std::ptr::addr_of!(INIT_CALLED)).store(false, Ordering::Relaxed);
+            INIT_CALLED.with(|v| v.set(false));
             glthread_once(&mut once, Some(init_fn));
-            assert_eq!(
-                (*std::ptr::addr_of!(INIT_CALLED)).load(Ordering::Relaxed),
-                false
-            );
+            assert_eq!(INIT_CALLED.with(|v| v.get()), false);
         }
     }
 

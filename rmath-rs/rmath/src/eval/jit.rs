@@ -13,6 +13,7 @@
 //! - R_init_jit_enabled: initialize JIT from environment variables
 //! - R_CheckJIT: check if a function should be JIT-compiled
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -29,22 +30,22 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// Minimum score for JIT compilation.
-static mut MIN_JIT_SCORE: c_int = 50;
+thread_local! { static MIN_JIT_SCORE: Cell<c_int> = Cell::new(50); }
 
 /// Loop JIT score threshold.
-static mut LOOP_JIT_SCORE: c_int = 50;
+thread_local! { static LOOP_JIT_SCORE: Cell<c_int> = Cell::new(50); }
 
 /// Whether JIT is enabled (0 = disabled, 3 = default enabled).
-static mut R_jit_enabled: c_int = 0;
+thread_local! { static R_jit_enabled: Cell<c_int> = Cell::new(0); }
 
 /// Whether to compile package code.
-static mut R_compile_pkgs: c_int = 0;
+thread_local! { static R_compile_pkgs: Cell<c_int> = Cell::new(0); }
 
 /// Whether bytecode is disabled.
-static mut R_disable_bytecode: c_int = 0;
+thread_local! { static R_disable_bytecode: Cell<c_int> = Cell::new(0); }
 
 /// Constant checking level (0 = no checking, default).
-static mut R_check_constants: c_int = 0;
+thread_local! { static R_check_constants: Cell<c_int> = Cell::new(0); }
 
 /// JIT statistics.
 #[derive(Default)]
@@ -54,11 +55,7 @@ struct JitInfo {
     bdcount: u64,
 }
 
-static mut jit_info: JitInfo = JitInfo {
-    count: 0,
-    envcount: 0,
-    bdcount: 0,
-};
+thread_local! { static jit_info: RefCell<JitInfo> = RefCell::new(JitInfo::default()); }
 
 // ---------------------------------------------------------------------------
 // JIT scoring
@@ -406,19 +403,19 @@ pub unsafe fn R_init_jit_enabled() {
             //         // loadCompilerNamespace(); // stub: not yet implemented // stub: not yet implemented
             checkCompilerOptions(val);
         }
-        R_jit_enabled = val;
+        R_jit_enabled.with(|v| v.set(val));
 
         // Check _R_COMPILE_PKGS_
         if let Ok(compile) = std::env::var("_R_COMPILE_PKGS_") {
             if let Ok(v) = compile.parse::<c_int>() {
-                R_compile_pkgs = if v > 0 { TRUE } else { FALSE };
+                R_compile_pkgs.with(|v| v.set(if v > 0 { TRUE } else { FALSE }));
             }
         }
 
         // Check R_DISABLE_BYTECODE
         if let Ok(disable) = std::env::var("R_DISABLE_BYTECODE") {
             if let Ok(v) = disable.parse::<c_int>() {
-                R_disable_bytecode = if v > 0 { TRUE } else { FALSE };
+                R_disable_bytecode.with(|v| v.set(if v > 0 { TRUE } else { FALSE }));
             }
         }
     }
@@ -431,7 +428,7 @@ pub unsafe fn R_init_jit_enabled() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_CheckJIT(op: SEXP) -> c_int {
     unsafe {
-        if R_jit_enabled == 0 || R_disable_bytecode != 0 {
+        if R_jit_enabled.with(|v| v.get()) == 0 || R_disable_bytecode.with(|v| v.get()) != 0 {
             return FALSE;
         }
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
@@ -442,7 +439,7 @@ pub unsafe extern "C" fn R_CheckJIT(op: SEXP) -> c_int {
             return FALSE; // Already compiled
         }
         let score = JIT_score(op);
-        if score >= MIN_JIT_SCORE {
+        if score >= MIN_JIT_SCORE.with(|v| v.get()) {
             R_cmpfun(op);
             TRUE
         } else {
@@ -453,29 +450,27 @@ pub unsafe extern "C" fn R_CheckJIT(op: SEXP) -> c_int {
 
 /// Get whether JIT is enabled.
 pub unsafe fn get_R_jit_enabled() -> c_int {
-    unsafe { R_jit_enabled }
+    R_jit_enabled.with(|v| v.get())
 }
 
 /// Set whether JIT is enabled.
 pub unsafe fn set_R_jit_enabled(val: c_int) {
-    unsafe {
-        R_jit_enabled = val;
-    }
+    R_jit_enabled.with(|v| v.set(val));
 }
 
 /// Get whether to compile packages.
 pub unsafe fn get_R_compile_pkgs() -> c_int {
-    unsafe { R_compile_pkgs }
+    R_compile_pkgs.with(|v| v.get())
 }
 
 /// Get whether bytecode is disabled.
 pub unsafe fn get_R_disable_bytecode() -> c_int {
-    unsafe { R_disable_bytecode }
+    R_disable_bytecode.with(|v| v.get())
 }
 
 /// Get the constant checking level.
 pub unsafe fn get_R_check_constants() -> c_int {
-    unsafe { R_check_constants }
+    R_check_constants.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -483,16 +478,14 @@ pub unsafe fn get_R_check_constants() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Token used for tail call (Exec) optimization.
-static mut R_exec_token: SEXP = ptr::null_mut();
+thread_local! { static R_exec_token: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /// Initialize the exec token for tail call support.
 pub unsafe fn init_exec_token() {
-    unsafe {
-        let sym = Rf_install(b".__EXEC__.\x00".as_ptr() as *const c_char);
-        let token = Rf_cons(sym, R_NilValue());
-        R_exec_token = token;
-        // In the full implementation, R_PreserveObject would be called here
-    }
+    let sym = Rf_install(b".__EXEC__.\x00".as_ptr() as *const c_char);
+    let token = Rf_cons(sym, R_NilValue());
+    R_exec_token.with(|v| v.set(token));
+    // In the full implementation, R_PreserveObject would be called here
 }
 
 /// Check if a value is an exec continuation (for tail call optimization).
@@ -505,11 +498,12 @@ pub unsafe fn is_exec_continuation(val: SEXP) -> c_int {
         if len != 4 {
             return FALSE;
         }
-        if R_exec_token.is_null() {
+        if R_exec_token.with(|v| v.get()).is_null() {
             return FALSE;
         }
         let elt = crate::sexp::accessors::VECTOR_ELT(val, 0);
-        if elt == R_exec_token { TRUE } else { FALSE }
+        let token = R_exec_token.with(|v| v.get());
+        if elt == token { TRUE } else { FALSE }
     }
 }
 

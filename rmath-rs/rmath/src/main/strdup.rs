@@ -21,7 +21,7 @@ pub unsafe fn strdup(str: *const c_char) -> *mut c_char {
         let bytes = cstr.to_bytes_with_nul();
         let len = bytes.len();
 
-        let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+        let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
         let newstr = std::alloc::alloc(layout) as *mut c_char;
         if newstr.is_null() {
             return ptr::null_mut();

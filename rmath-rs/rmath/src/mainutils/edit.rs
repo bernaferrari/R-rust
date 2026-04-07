@@ -5,17 +5,16 @@
 //! Provides do_edit for interactive editing of R objects.
 //! Currently stubbed since it depends on the parser, file I/O, and system editor.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 
-/// Default file name for editing.
-static mut DefaultFileName: *mut std::os::raw::c_char = ptr::null_mut();
+thread_local! { static DefaultFileName: Cell<*mut std::os::raw::c_char> = Cell::new(ptr::null_mut()); }
 
-/// Whether the edit file has been used.
-static mut EdFileUsed: c_int = 0;
+thread_local! { static EdFileUsed: Cell<c_int> = Cell::new(0); }
 
 /// Initialize the edit subsystem.
 pub unsafe fn InitEd() {

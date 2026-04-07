@@ -23,7 +23,7 @@ pub const CHAR_HASH_MASK: u32 = CHAR_HASH_SIZE - 1;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_ScalarLogical;
-use crate::sexp::ffi::{FALSE, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use std::os::raw::{c_char, c_int};
 
@@ -278,8 +278,6 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::mainutils::coerce::asLogical;
         use crate::sexp::constructors::Rf_allocVector;
-        use crate::sexp::protect::Rf_protect;
-        use crate::sexp::protect::Rf_unprotect;
 
         if args.is_null() || args == R_NilValue() {
             return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
@@ -312,7 +310,6 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// - inherits controls parent environment search
 pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::sexp::constructors::Rf_ScalarString;
         use crate::sexp::envir::R_findVarInFrame;
         use crate::sexp::symbol::Rf_install;
 
@@ -423,7 +420,6 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// `.Internal(assign(x, value, envir, inherits))`
 pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::mainutils::coerce::asLogical;
         use crate::sexp::envir::{defineVar, setVar};
         use crate::sexp::protect::Rf_protect;
         use crate::sexp::protect::Rf_unprotect;
@@ -493,8 +489,6 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// `.Internal(remove(list, envir, inherits))`
 pub unsafe fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::mainutils::coerce::asLogical;
-        use crate::sexp::accessors::SETCDR;
         use crate::sexp::symbol::Rf_install;
 
         if args.is_null() || args == R_NilValue() {
@@ -577,9 +571,6 @@ pub unsafe fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::{getAttrib, setAttrib};
-        use crate::mainutils::coerce::asInteger;
-        use crate::sexp::accessors::SETCDR;
-        use crate::sexp::constructors::Rf_cons;
         use crate::sexp::envir::defineVar;
         use crate::sexp::memory_ext::allocSExp;
         use crate::sexp::protect::Rf_protect;
@@ -610,9 +601,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let name_arg = CADDR(args);
 
         // Create a new environment
-        let s = allocSExp(SEXPTYPE {
-            0: SEXPTYPE::ENVSXP.0,
-        });
+        let s = allocSExp(SEXPTYPE(SEXPTYPE::ENVSXP.0));
         if s.is_null() {
             return R_NilValue();
         }
@@ -697,8 +686,6 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// Removes the environment at position `pos` from the search list.
 pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        use crate::mainutils::coerce::asInteger;
-        use crate::sexp::accessors::SETCDR;
         use crate::sexp::protect::Rf_protect;
         use crate::sexp::protect::Rf_unprotect;
 

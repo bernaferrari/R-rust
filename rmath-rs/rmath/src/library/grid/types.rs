@@ -1,8 +1,8 @@
-
 //! Grid package shared types (equivalent to grid.h).
 //!
 //! Defines all constants, types, and stubs used across grid modules.
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -287,7 +287,6 @@ pub type GEevent = c_int;
 /* ==================== Global state ==================== */
 
 /// Grid registration index (set by the graphics engine).
-pub static mut gridRegisterIndex: c_int = 0;
+pub thread_local! { static gridRegisterIndex: Cell<c_int> = Cell::new(0); }
 
-/// Grid evaluation environment.
-pub static mut R_gridEvalEnv: SEXP = std::ptr::null_mut();
+pub thread_local! { static R_gridEvalEnv: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }

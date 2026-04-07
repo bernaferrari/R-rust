@@ -9,6 +9,7 @@
  * providing FFI-compatible entry points for R's datetime functionality.
  */
 
+use std::cell::{Cell, UnsafeCell};
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -273,16 +274,11 @@ fn get_tz_globals() -> &'static Mutex<TzGlobals> {
 static WILDABBR: &[u8] = b"   ";
 static GMT_NAME: &[u8] = b"GMT";
 
-/// Exposed as `R_tzname` -- a pair of raw pointers to C strings.
-/// The C code declares: `extern char *R_tzname[2];`
-/// We store two raw pointers that are updated by `settzname`.
-static mut R_TZNAME: [*mut i8; 2] = [std::ptr::null_mut(), std::ptr::null_mut()];
+thread_local! { static R_TZNAME: UnsafeCell<[*mut i8; 2]> = UnsafeCell::new([std::ptr::null_mut(); 2]); }
 
 // Static buffers for the tzname pointers. These are written to by settzname.
-// In the C code, tzname[0/1] point into sp->chars. We can't easily do that
-// across Mutex boundaries, so we maintain dedicated buffers.
-static mut TZNAME_BUF0: [u8; TZ_MAX_CHARS + 1] = [0u8; TZ_MAX_CHARS + 1];
-static mut TZNAME_BUF1: [u8; TZ_MAX_CHARS + 1] = [0u8; TZ_MAX_CHARS + 1];
+thread_local! { static TZNAME_BUF0: Cell<[u8; TZ_MAX_CHARS + 1]> = Cell::new([0u8; TZ_MAX_CHARS + 1]); }
+thread_local! { static TZNAME_BUF1: Cell<[u8; TZ_MAX_CHARS + 1]> = Cell::new([0u8; TZ_MAX_CHARS + 1]); }
 
 // ---------------------------------------------------------------------------
 // Helper macros / inline functions
@@ -495,23 +491,27 @@ fn get_abbr<'a>(sp: &'a state, ind: usize) -> &'a [u8] {
 fn settzname(g: &mut TzGlobals) {
     let sp = &mut g.lclmem;
 
-    // Copy wildabbr into the static tzname buffers
-    unsafe {
-        let buf0 = std::ptr::addr_of_mut!(TZNAME_BUF0);
-        let buf1 = std::ptr::addr_of_mut!(TZNAME_BUF1);
+    TZNAME_BUF0.with(|v| {
+        let mut buf = v.get();
         for i in 0..TZ_MAX_CHARS + 1 {
-            (*buf0)[i] = 0;
+            buf[i] = 0;
         }
         for i in 0..WILDABBR.len() {
-            (*buf0)[i] = WILDABBR[i];
+            buf[i] = WILDABBR[i];
         }
+        v.set(buf);
+    });
+
+    TZNAME_BUF1.with(|v| {
+        let mut buf = v.get();
         for i in 0..TZ_MAX_CHARS + 1 {
-            (*buf1)[i] = 0;
+            buf[i] = 0;
         }
         for i in 0..WILDABBR.len() {
-            (*buf1)[i] = WILDABBR[i];
+            buf[i] = WILDABBR[i];
         }
-    }
+        v.set(buf);
+    });
 
     // Get the latest zone names
     for i in 0..sp.typecnt as usize {
@@ -561,27 +561,35 @@ fn settzname(g: &mut TzGlobals) {
     }
 
     // Update the raw pointers
-    unsafe {
-        let rtz = std::ptr::addr_of_mut!(R_TZNAME);
-        let buf0 = std::ptr::addr_of_mut!(TZNAME_BUF0);
-        let buf1 = std::ptr::addr_of_mut!(TZNAME_BUF1);
-        (*rtz)[0] = (*buf0).as_mut_ptr() as *mut i8;
-        (*rtz)[1] = (*buf1).as_mut_ptr() as *mut i8;
-    }
+    let buf0_val = TZNAME_BUF0.with(|v| v.get());
+    let buf1_val = TZNAME_BUF1.with(|v| v.get());
+    R_TZNAME.with(|v| unsafe {
+        let arr = &mut *v.get();
+        arr[0] = buf0_val.as_mut_ptr() as *mut i8;
+        arr[1] = buf1_val.as_mut_ptr() as *mut i8;
+    });
 }
 
 fn copy_to_tzname_buf(which: usize, abbr: &[u8]) {
-    let buf = if which == 0 {
-        std::ptr::addr_of_mut!(TZNAME_BUF0)
-    } else {
-        std::ptr::addr_of_mut!(TZNAME_BUF1)
-    };
     let len = abbr.len().min(TZ_MAX_CHARS);
-    unsafe {
-        for i in 0..len {
-            (*buf)[i] = abbr[i];
-        }
-        (*buf)[len] = 0;
+    if which == 0 {
+        TZNAME_BUF0.with(|v| {
+            let mut buf = v.get();
+            for i in 0..len {
+                buf[i] = abbr[i];
+            }
+            buf[len] = 0;
+            v.set(buf);
+        });
+    } else {
+        TZNAME_BUF1.with(|v| {
+            let mut buf = v.get();
+            for i in 0..len {
+                buf[i] = abbr[i];
+            }
+            buf[len] = 0;
+            v.set(buf);
+        });
     }
 }
 
@@ -1648,8 +1656,8 @@ fn localsub(g: &mut TzGlobals, timep: &i64, _offset: i32, tmp: &mut stm) -> Opti
     if (goback != 0 && ats_first.map_or(false, |a| t < a))
         || (goahead != 0 && ats_last.map_or(false, |a| t > a))
     {
-        let ats_first = ats_first.unwrap();
-        let ats_last = ats_last.unwrap();
+        let ats_first = ats_first.expect("unwrap on None/Err");
+        let ats_last = ats_last.expect("unwrap on None/Err");
         let mut newt = t;
         let seconds = if t < ats_first {
             ats_first - t
@@ -2080,7 +2088,7 @@ fn r_tzset_impl(g: &mut TzGlobals) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gmtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("lock poisoned");
         r_tzset_impl(&mut g);
         let t = if timep.is_null() { 0 } else { *timep };
         let mut tmp = stm::default();
@@ -2098,7 +2106,7 @@ pub unsafe extern "C" fn R_gmtime(timep: *const i64) -> *mut stm {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("lock poisoned");
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
@@ -2118,7 +2126,7 @@ pub unsafe extern "C" fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut st
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_localtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("lock poisoned");
         r_tzset_impl(&mut g);
         let t = if timep.is_null() { 0 } else { *timep };
         let mut tmp = stm::default();
@@ -2136,7 +2144,7 @@ pub unsafe extern "C" fn R_localtime(timep: *const i64) -> *mut stm {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("lock poisoned");
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
@@ -2156,7 +2164,7 @@ pub unsafe extern "C" fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_mktime(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("lock poisoned");
         r_tzset_impl(&mut g);
         if tmp.is_null() {
             return WRONG;
@@ -2170,7 +2178,7 @@ pub unsafe extern "C" fn R_mktime(tmp: *mut stm) -> i64 {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_timegm(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap();
+        let mut g = get_tz_globals().lock().expect("lock poisoned");
         if tmp.is_null() {
             return WRONG;
         }
@@ -2183,14 +2191,14 @@ pub unsafe extern "C" fn R_timegm(tmp: *mut stm) -> i64 {
 /// `R_tzset` -- set timezone from TZ environment variable.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_tzset() {
-    let mut g = get_tz_globals().lock().unwrap();
+    let mut g = get_tz_globals().lock().expect("lock poisoned");
     r_tzset_impl(&mut g);
 }
 
 /// `R_tzsetwall` -- set timezone from system wall clock.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_tzsetwall() {
-    let mut g = get_tz_globals().lock().unwrap();
+    let mut g = get_tz_globals().lock().expect("lock poisoned");
     r_tzsetwall(&mut g);
 }
 
@@ -2198,11 +2206,10 @@ pub unsafe extern "C" fn R_tzsetwall() {
 /// pointers (standard, daylight).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_tzname() -> *mut *mut i8 {
-    // Ensure tzset has been called so the names are populated
-    let mut g = get_tz_globals().lock().unwrap();
+    let mut g = get_tz_globals().lock().expect("lock poisoned");
     r_tzset_impl(&mut g);
     drop(g);
-    std::ptr::addr_of_mut!(R_TZNAME) as *mut *mut i8
+    R_TZNAME.with(|v| v.get() as *mut *mut i8)
 }
 
 // ---------------------------------------------------------------------------

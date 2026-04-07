@@ -13,8 +13,9 @@
 //! The readline integration (~400 lines) is stubbed since it requires
 //! FFI to libreadline/libedit which may not be available.
 
-use std::io::{self, BufRead, Read, Write};
-use std::os::raw::{c_char, c_int, c_void};
+use std::cell::Cell;
+use std::io::{self, BufRead, Write};
+use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 // ---------------------------------------------------------------------------
@@ -72,7 +73,7 @@ pub unsafe extern "C" fn Rstd_ReadConsole(
         }
 
         // Read from stdin
-        let mut stdin = io::stdin();
+        let stdin = io::stdin();
         let mut handle = stdin.lock();
         let mut line = String::new();
 
@@ -236,13 +237,9 @@ pub unsafe extern "C" fn Rstd_read_history(_file: *const c_char) {}
 // Event loop stubs
 // ---------------------------------------------------------------------------
 
-/// Polled events callback (no-op by default).
-#[unsafe(no_mangle)]
-pub static mut R_PolledEvents: Option<unsafe extern "C" fn()> = None;
+thread_local! { pub static R_PolledEvents: Cell<Option<unsafe extern "C" fn()>> = Cell::new(None); }
 
-/// Graphics polled events callback (no-op by default).
-#[unsafe(no_mangle)]
-pub static mut Rg_PolledEvents: Option<unsafe extern "C" fn()> = None;
+thread_local! { pub static Rg_PolledEvents: Cell<Option<unsafe extern "C" fn()>> = Cell::new(None); }
 
 /// Wait for the specified number of microseconds.
 #[unsafe(no_mangle)]

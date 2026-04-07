@@ -9,11 +9,10 @@
 //! - R_jump_to_top: jump to top-level context
 
 use std::os::raw::c_int;
-use std::ptr;
 
 use crate::sexp::context as sexp_context;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
+use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // R_run_onexits — run on.exit handlers

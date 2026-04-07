@@ -22,6 +22,7 @@
 //! unix/system.rs, unix/embedded.rs, and main/main.rs are provided
 //! as pub(crate) functions WITHOUT #[unsafe(no_mangle)] to avoid duplicate symbol errors.
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_long, c_void};
 use std::ptr;
 
@@ -34,16 +35,16 @@ use crate::sexp::globals::R_NilValue;
 // GC control
 // ---------------------------------------------------------------------------
 
-static mut R_in_gc: c_int = 0;
-static mut gc_reporting: c_int = 0;
-static mut gc_count: c_int = 0;
+thread_local! { static R_in_gc: Cell<c_int> = Cell::new(0); }
+thread_local! { static gc_reporting: Cell<c_int> = Cell::new(0); }
+thread_local! { static gc_count: Cell<c_int> = Cell::new(0); }
 
 /// Returns whether a GC is currently running.
 ///
 /// This is the equivalent of R's `R_gc_running()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gc_running() -> c_int {
-    unsafe { R_in_gc }
+    unsafe { R_in_gc.with(|v| v.get()) }
 }
 
 /// Trigger a full garbage collection.
@@ -52,7 +53,7 @@ pub unsafe extern "C" fn R_gc_running() -> c_int {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gc() {
     unsafe {
-        gc_count += 1;
+        gc_count.with(|v| v.set(v.get() + 1));
         // No actual GC implementation yet; stub.
     }
 }
@@ -63,7 +64,7 @@ pub unsafe extern "C" fn R_gc() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gc_lite() {
     unsafe {
-        gc_count += 1;
+        gc_count.with(|v| v.set(v.get() + 1));
         // No actual GC implementation yet; stub.
     }
 }
@@ -324,11 +325,7 @@ pub(crate) unsafe fn Rf_isSymbol_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::SYMSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::SYMSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -340,11 +337,7 @@ pub(crate) unsafe fn Rf_isLogical_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::LGLSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::LGLSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -356,11 +349,7 @@ pub(crate) unsafe fn Rf_isReal_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::REALSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::REALSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -372,11 +361,7 @@ pub(crate) unsafe fn Rf_isComplex_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::CPLXSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::CPLXSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -388,11 +373,7 @@ pub(crate) unsafe fn Rf_isExpression_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::EXPRSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::EXPRSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -404,11 +385,7 @@ pub(crate) unsafe fn Rf_isEnvironment_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::ENVSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::ENVSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -420,11 +397,7 @@ pub(crate) unsafe fn Rf_isString_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::STRSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::STRSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -436,11 +409,7 @@ pub(crate) unsafe fn Rf_isObject_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::OBJSXP.0 {
-                1
-            } else {
-                0
-            }
+            if t == SEXPTYPE::OBJSXP.0 { 1 } else { 0 }
         }
     }
 }
@@ -1019,7 +988,7 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `do_gcinfo()`.
 pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(gc_reporting) }
+    unsafe { Rf_ScalarLogical(gc_reporting.with(|v| v.get())) }
 }
 
 /// gctorture() implementation (stub).

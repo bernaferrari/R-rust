@@ -26,7 +26,7 @@
 use std::os::raw::c_double;
 use std::os::raw::c_int;
 
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use super::memory::with_arena;
 use super::safe::Sexp;
 
@@ -406,7 +406,23 @@ fn altrep_data(x: SEXP) -> Option<&'static AltrepData> {
 }
 
 /// Get a mutable reference to the ALTREP data payload from an object.
-fn altrep_data_mut(x: SEXP) -> Option<&'static mut AltrepData> {
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
+    }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
+fn altrep_data_mut(x: SEXP) -> Option<MutPtr<AltrepData>> {
     if !is_altrep(x) {
         return None;
     }
@@ -420,7 +436,7 @@ fn altrep_data_mut(x: SEXP) -> Option<&'static mut AltrepData> {
         if (*data2_ptr).is_null() {
             return None;
         }
-        Some(&mut *(*data2_ptr as *mut AltrepData))
+        Some(MutPtr(*data2_ptr as *mut AltrepData))
     }
 }
 
@@ -448,8 +464,8 @@ pub fn altrep_elt(x: SEXP, i: i64) -> Option<SEXP> {
 /// full vector if `writable` is true.
 pub fn altrep_dataptr(x: SEXP, writable: bool) -> Option<*mut std::os::raw::c_void> {
     let class = altrep_class(x)?;
-    let data = altrep_data_mut(x)?;
-    let ptr = (class.get_dataptr)(data, writable);
+    let mut data = altrep_data_mut(x)?;
+    let ptr = (class.get_dataptr)(&mut data, writable);
     if ptr.is_null() { None } else { Some(ptr) }
 }
 
@@ -541,21 +557,19 @@ pub fn dataptr(x: SEXP) -> *mut std::os::raw::c_void {
 
     if is_altrep(x) {
         // Try ALTREP's get_dataptr first
-        if let Some(ptr) = altrep_dataptr(x, false) {
-            if !ptr.is_null() {
+        if let Some(ptr) = altrep_dataptr(x, false)
+            && !ptr.is_null() {
                 return ptr;
             }
-        }
 
         // Fall back to materialization
-        if let Some(class) = altrep_class(x) {
-            if let Some(data) = altrep_data(x) {
+        if let Some(class) = altrep_class(x)
+            && let Some(data) = altrep_data(x) {
                 let materialized = (class.materialize)(data);
                 if !materialized.is_null() {
                     return unsafe { (*materialized).gengc_next_node as *mut std::os::raw::c_void };
                 }
             }
-        }
 
         return std::ptr::null_mut();
     }
@@ -586,11 +600,10 @@ pub fn force_materialization(x: SEXP) -> SEXP {
     if x.is_null() || !is_altrep(x) {
         return x;
     }
-    if let Some(class) = altrep_class(x) {
-        if let Some(data) = altrep_data(x) {
+    if let Some(class) = altrep_class(x)
+        && let Some(data) = altrep_data(x) {
             return (class.materialize)(data);
         }
-    }
     x
 }
 

@@ -21,9 +21,8 @@ use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
-use crate::sexp::symbol::Rf_install;
 use std::cell::Cell;
-use std::os::raw::{c_char, c_double, c_int, c_uint};
+use std::os::raw::{c_double, c_int};
 use std::ptr;
 
 // ---------------------------------------------------------------------------
@@ -134,7 +133,7 @@ struct RNGState {
 
 impl RNGState {
     fn new() -> Self {
-        let mut rng_table: [RNGTab; 8] = [
+        let rng_table: [RNGTab; 8] = [
             RNGTab {
                 kind: RNGtype::WICHMANN_HILL,
                 n_seed: 3,
@@ -368,9 +367,7 @@ fn ran_start(rng: &mut RNGState, seed: i64) {
     for j in 0..KT_LL {
         rng.kt_x[j + KT_KK - KT_LL] = x[j];
     }
-    for j in KT_LL..KT_KK {
-        rng.kt_x[j - KT_LL] = x[j];
-    }
+    rng.kt_x[..(KT_KK - KT_LL)].copy_from_slice(&x[KT_LL..KT_KK]);
     // Warm things up
     for _ in 0..10 {
         kt_ran_array(rng, &mut x, KT_KK + KT_KK - 1);
@@ -544,14 +541,14 @@ fn RNG_Init(rng: &mut RNGState, kind: RNGtype, seed: i64) {
 }
 
 fn RNG_Init_KT(rng: &mut RNGState, seed: i64) {
-    let s = ((seed % 1073741821) + 1073741821) % 1073741821;
+    let s = seed.rem_euclid(1073741821);
     ran_start(rng, s);
     rng.kt_pos.set(100);
     rng.rng_table[RNGtype::KNUTH_TAOCP as usize].i_seed[KT_KK] = 100;
 }
 
 fn RNG_Init_KT2(rng: &mut RNGState, seed: i64) {
-    let s = ((seed % 1073741821) + 1073741821) % 1073741821;
+    let s = seed.rem_euclid(1073741821);
     ran_start(rng, s);
     rng.kt_pos.set(100);
     rng.rng_table[RNGtype::KNUTH_TAOCP2 as usize].i_seed[KT_KK] = 100;
@@ -1302,6 +1299,7 @@ unsafe fn asReal_local(x: SEXP) -> c_double {
     }
 }
 
+#[allow(clippy::if_same_then_else)]
 unsafe fn asLogical_local(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -1676,21 +1674,18 @@ pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
         let primval = PRIMVAL_local(op);
 
-        match primval {
-            0 => {
-                let _ = random3_call(
-                    crate::dist::hypergeometric::rhyper,
-                    REAL(a),
-                    na,
-                    REAL(b),
-                    nb,
-                    REAL(c),
-                    nc,
-                    REAL(x),
-                    n,
-                );
-            }
-            _ => {}
+        if primval == 0 {
+            let _ = random3_call(
+                crate::dist::hypergeometric::rhyper,
+                REAL(a),
+                na,
+                REAL(b),
+                nb,
+                REAL(c),
+                nc,
+                REAL(x),
+                n,
+            );
         }
 
         PutRNGstate();

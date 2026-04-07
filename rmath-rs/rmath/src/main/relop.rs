@@ -22,6 +22,7 @@
 //!   isNumeric, conformable, UNIMPLEMENTED_TYPE, COMPLEX_RO,
 //!   INTEGER_RO, RAW_RO, IS_SIMPLE_SCALAR
 
+use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
 
@@ -520,13 +521,13 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Check if two language objects are equal for == and != operators.
-static mut RELOP_LANG_OPTION: c_int = 0; // UNINITIALIZED
+thread_local! { static RELOP_LANG_OPTION: Cell<c_int> = Cell::new(0); }
 
 /// Initialize the language comparison option from environment.
 unsafe fn init_relop_lang_option() {
     unsafe {
         // Option 1 = EQONLY (default)
-        RELOP_LANG_OPTION = 1;
+        RELOP_LANG_OPTION.with(|v| v.set(1));
         // Note: getenv not available in no_std context, keep EQONLY default
     }
 }
@@ -561,11 +562,11 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
 /// Handle language object comparison based on `_R_COMPARE_LANG_OBJECTS` option.
 unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP {
     unsafe {
-        if RELOP_LANG_OPTION == 0 {
+        if RELOP_LANG_OPTION.with(|v| v.get()) == 0 {
             init_relop_lang_option();
         }
 
-        match RELOP_LANG_OPTION {
+        match RELOP_LANG_OPTION.with(|v| v.get()) {
             // EQONLY
             1 => {
                 match PRIMVAL(op) {

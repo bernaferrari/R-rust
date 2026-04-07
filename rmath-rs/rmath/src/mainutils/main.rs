@@ -6,28 +6,27 @@
 //! core REPL functions. Currently stubbed since it depends on the parser,
 //! readline, and the full evaluation system.
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{SET_SYMVALUE, TYPEOF};
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue, R_Visible, set_R_Visible};
+use crate::sexp::ffi::{FALSE, SEXP, TRUE};
+use crate::sexp::globals::{R_NilValue, R_Visible, set_R_Visible};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // Global REPL state
 // ---------------------------------------------------------------------------
 
-static mut R_NoEcho_val: c_int = 0;
-static mut R_Quiet_val: c_int = 0;
-static mut R_Interactive_val: c_int = 1;
-static mut R_Verbose_val: c_int = 0;
+thread_local! { static R_NoEcho_val: Cell<c_int> = Cell::new(0); }
+thread_local! { static R_Quiet_val: Cell<c_int> = Cell::new(0); }
+thread_local! { static R_Interactive_val: Cell<c_int> = Cell::new(1); }
+thread_local! { static R_Verbose_val: Cell<c_int> = Cell::new(0); }
 
 /// Console buffer size.
 pub const CONSOLE_BUFFER_SIZE: usize = 1024;
 
-/// R_Parse1File stub.
-static mut R_CurrentExpr: SEXP = ptr::null_mut();
+thread_local! { static R_CurrentExpr: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Global symbols (initialized lazily)
@@ -35,12 +34,24 @@ static mut R_CurrentExpr: SEXP = ptr::null_mut();
 
 /// Get the .Last.value symbol.
 pub unsafe fn R_LastvalueSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new(".Last.value").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new(".Last.value")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the .Random.seed symbol.
 pub unsafe fn R_SeedsSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new(".Random.seed").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new(".Random.seed")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -64,101 +75,91 @@ pub unsafe extern "C" fn R_SetVisible(v: c_int) {
 /// Get R_Interactive flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Interactive() -> c_int {
-    unsafe { R_Interactive_val }
+    R_Interactive_val.with(|v| v.get())
 }
 
 /// Set R_Interactive flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetInteractive(v: c_int) {
-    unsafe {
-        R_Interactive_val = v;
-    }
+    R_Interactive_val.with(|c| c.set(v));
 }
 
 /// Get R_Quiet flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Quiet() -> c_int {
-    unsafe { R_Quiet_val }
+    R_Quiet_val.with(|v| v.get())
 }
 
 /// Set R_Quiet flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetQuiet(v: c_int) {
-    unsafe {
-        R_Quiet_val = v;
-    }
+    R_Quiet_val.with(|c| c.set(v));
 }
 
 /// Get R_NoEcho flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_NoEcho() -> c_int {
-    unsafe { R_NoEcho_val }
+    R_NoEcho_val.with(|v| v.get())
 }
 
 /// Get R_Verbose flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Verbose() -> c_int {
-    unsafe { R_Verbose_val }
+    R_Verbose_val.with(|v| v.get())
 }
 
 // ---------------------------------------------------------------------------
 // R_EvalDepth
 // ---------------------------------------------------------------------------
 
-static mut R_EvalDepth_val: c_int = 0;
+thread_local! { static R_EvalDepth_val: Cell<c_int> = Cell::new(0); }
 
 /// Get evaluation depth.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetEvalDepth() -> c_int {
-    unsafe { R_EvalDepth_val }
+    R_EvalDepth_val.with(|v| v.get())
 }
 
 /// Set evaluation depth.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetEvalDepth(v: c_int) {
-    unsafe {
-        R_EvalDepth_val = v;
-    }
+    R_EvalDepth_val.with(|c| c.set(v));
 }
 
 // ---------------------------------------------------------------------------
 // R_PPStackTop
 // ---------------------------------------------------------------------------
 
-static mut R_PPStackTop_val: c_int = 0;
+thread_local! { static R_PPStackTop_val: Cell<c_int> = Cell::new(0); }
 
 /// Get protection stack top.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_PPStackTop() -> c_int {
-    unsafe { R_PPStackTop_val }
+    R_PPStackTop_val.with(|v| v.get())
 }
 
 /// Set protection stack top.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetPPStackTop(v: c_int) {
-    unsafe {
-        R_PPStackTop_val = v;
-    }
+    R_PPStackTop_val.with(|c| c.set(v));
 }
 
 // ---------------------------------------------------------------------------
 // Warnings
 // ---------------------------------------------------------------------------
 
-static mut R_CollectWarnings: c_int = 0;
+thread_local! { static R_CollectWarnings: Cell<c_int> = Cell::new(0); }
 
 /// Get warnings collection flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetCollectWarnings() -> c_int {
-    unsafe { R_CollectWarnings }
+    R_CollectWarnings.with(|v| v.get())
 }
 
 /// Set warnings collection flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_SetCollectWarnings(v: c_int) {
-    unsafe {
-        R_CollectWarnings = v;
-    }
+    R_CollectWarnings.with(|c| c.set(v));
 }
 
 // ---------------------------------------------------------------------------
@@ -197,12 +198,11 @@ pub const PARSE_ERROR: c_int = 2;
 pub const PARSE_EOF: c_int = 3;
 pub const PARSE_NULL: c_int = 4;
 
-/// R_ParseErrorMsg buffer (owned here; R_GetParseError lives in source.rs).
-static mut R_ParseErrorMsg: [u8; 256] = [0; 256];
+thread_local! { static R_ParseErrorMsg: Cell<[u8; 256]> = Cell::new([0; 256]); }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
-    std::ptr::addr_of!(R_ParseErrorMsg).cast::<std::os::raw::c_char>()
+    R_ParseErrorMsg.with(|v| std::ptr::addr_of!(*v).cast::<std::os::raw::c_char>())
 }
 
 // ---------------------------------------------------------------------------

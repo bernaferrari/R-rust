@@ -1,6 +1,5 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
 /*
   tre/match_approx.rs - TRE approximate regex matching engine
 
@@ -96,7 +95,7 @@ unsafe fn tre_set_params(
     default_params: regaparams_t,
 ) {
     unsafe {
-        let value = *pa.offset(TRE_PARAM_DEPTH as isize);
+        let value = *pa.add(TRE_PARAM_DEPTH);
         if value > (*reach).depth {
             for i in ((*reach).depth as usize + 1)..=value as usize {
                 for j in 0..TRE_M_LAST {
@@ -106,56 +105,56 @@ unsafe fn tre_set_params(
         }
         (*reach).depth = value;
 
-        let mut v = *pa.offset(TRE_PARAM_COST_INS as isize);
+        let mut v = *pa.add(TRE_PARAM_COST_INS);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.cost_ins = default_params.cost_ins;
         } else if v != TRE_PARAM_UNSET {
             (*reach).params.cost_ins = v;
         }
 
-        v = *pa.offset(TRE_PARAM_COST_DEL as isize);
+        v = *pa.add(TRE_PARAM_COST_DEL);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.cost_del = default_params.cost_del;
         } else if v != TRE_PARAM_UNSET {
             (*reach).params.cost_del = v;
         }
 
-        v = *pa.offset(TRE_PARAM_COST_SUBST as isize);
+        v = *pa.add(TRE_PARAM_COST_SUBST);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.cost_subst = default_params.cost_subst;
         } else {
             (*reach).params.cost_subst = v;
         }
 
-        v = *pa.offset(TRE_PARAM_COST_MAX as isize);
+        v = *pa.add(TRE_PARAM_COST_MAX);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.max_cost = default_params.max_cost;
         } else if v != TRE_PARAM_UNSET {
             (*reach).params.max_cost = v;
         }
 
-        v = *pa.offset(TRE_PARAM_MAX_INS as isize);
+        v = *pa.add(TRE_PARAM_MAX_INS);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.max_ins = default_params.max_ins;
         } else if v != TRE_PARAM_UNSET {
             (*reach).params.max_ins = v;
         }
 
-        v = *pa.offset(TRE_PARAM_MAX_DEL as isize);
+        v = *pa.add(TRE_PARAM_MAX_DEL);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.max_del = default_params.max_del;
         } else if v != TRE_PARAM_UNSET {
             (*reach).params.max_del = v;
         }
 
-        v = *pa.offset(TRE_PARAM_MAX_SUBST as isize);
+        v = *pa.add(TRE_PARAM_MAX_SUBST);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.max_subst = default_params.max_subst;
         } else if v != TRE_PARAM_UNSET {
             (*reach).params.max_subst = v;
         }
 
-        v = *pa.offset(TRE_PARAM_MAX_ERR as isize);
+        v = *pa.add(TRE_PARAM_MAX_ERR);
         if v == TRE_PARAM_DEFAULT {
             (*reach).params.max_err = default_params.max_err;
         } else if v != TRE_PARAM_UNSET {
@@ -164,6 +163,7 @@ unsafe fn tre_set_params(
     }
 }
 
+#[allow(clippy::manual_memcpy)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tre_tnfa_run_approx(
     tnfa: *const tre_tnfa_t,
@@ -179,7 +179,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
     unsafe {
         let str_byte = string as *const u8;
         let mut pos: c_int = -1;
-        let mut pos_add_next: u32 = 1;
+        let pos_add_next: u32 = 1;
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
         let reg_newline = (*tnfa).cflags & REG_NEWLINE;
@@ -398,7 +398,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                     if (*reach_next.offset(id as isize)).pos != pos {
                         continue;
                     }
-                    *ringbuffer.offset(deque_end as isize) = reach_next.offset(id as isize);
+                    *ringbuffer.add(deque_end) = reach_next.offset(id as isize);
                     deque_end += 1;
                     if deque_end >= rb_size {
                         rb_size += 512;
@@ -418,7 +418,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                 }
 
                 while deque_end != deque_start {
-                    let reach_p = *ringbuffer.offset(deque_start as isize);
+                    let reach_p = *ringbuffer.add(deque_start);
                     let id = (reach_p as isize - reach_next as isize)
                         / std::mem::size_of::<tre_tnfa_approx_reach_t>() as isize;
                     let depth = (*reach_p).depth as usize;
@@ -548,8 +548,7 @@ pub unsafe extern "C" fn tre_tnfa_run_approx(
                             }
                         }
 
-                        *ringbuffer.offset(deque_end as isize) =
-                            reach_next.offset(dest_id as isize);
+                        *ringbuffer.add(deque_end) = reach_next.offset(dest_id as isize);
                         deque_end += 1;
                         if deque_end >= rb_size {
                             deque_end = 0;

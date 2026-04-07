@@ -21,12 +21,12 @@ use crate::sexp::protect::*;
 pub unsafe extern "C" fn R_get_primname(object: SEXP) -> SEXP {
     let t = TYPEOF(object);
     if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
-        let msg = CString::new("'R_get_primname' called on a non-primitive").unwrap();
+        let msg = CString::new("'R_get_primname' called on a non-primitive").expect("CString::new failed: contains null byte");
         crate::main::errors::Rf_error(msg.as_ptr());
     }
     let name = crate::main::names::getPRIMNAME(object);
     if name.is_null() {
-        let s = CString::new("").unwrap();
+        let s = CString::new("").expect("CString::new failed: contains null byte");
         Rf_mkString(s.as_ptr())
     } else {
         Rf_mkString(name)

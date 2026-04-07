@@ -180,9 +180,9 @@ pub unsafe extern "C" fn tre_regncomp(
         let str = regex as *const u8;
         let wstr = wregex;
         for i in 0..n {
-            *wstr.offset(i as isize) = *str.offset(i as isize) as tre_char_t;
+            *wstr.add(i) = *str.add(i) as tre_char_t;
         }
-        *wstr.offset(n as isize) = 0;
+        *wstr.add(n) = 0;
 
         let ret = compile::tre_compile(preg, wregex, n, cflags);
         mem::xfree(wregex as *mut c_void);
@@ -205,7 +205,7 @@ pub unsafe extern "C" fn tre_regncompb(
 
         let str = regex as *const u8;
         for i in 0..n {
-            *wregex.offset(i as isize) = *str.offset(i as isize) as tre_char_t;
+            *wregex.add(i) = *str.add(i) as tre_char_t;
         }
 
         let ret = compile::tre_compile(preg, wregex, n, cflags | REG_USEBYTES);
@@ -259,9 +259,9 @@ pub unsafe extern "C" fn tre_regcompb(
         let str = regex as *const u8;
         let wstr = wregex;
         for i in 0..n {
-            *wstr.offset(i as isize) = *str.offset(i as isize) as tre_char_t;
+            *wstr.add(i) = *str.add(i) as tre_char_t;
         }
-        *wstr.offset(n as isize) = 0;
+        *wstr.add(n) = 0;
 
         let ret = compile::tre_compile(preg, wregex, n, cflags | REG_USEBYTES);
         mem::xfree(wregex as *mut c_void);
@@ -395,14 +395,14 @@ pub unsafe extern "C" fn tre_regerror(
         if errbuf_size > 0 && !errbuf.is_null() {
             if err_len > errbuf_size {
                 for i in 0..errbuf_size - 1 {
-                    *errbuf.offset(i as isize) = err.as_bytes()[i] as c_char;
+                    *errbuf.add(i) = err.as_bytes()[i] as c_char;
                 }
-                *errbuf.offset((errbuf_size - 1) as isize) = 0;
+                *errbuf.add(errbuf_size - 1) = 0;
             } else {
                 for (i, &b) in err.as_bytes().iter().enumerate() {
-                    *errbuf.offset(i as isize) = b as c_char;
+                    *errbuf.add(i) = b as c_char;
                 }
-                *errbuf.offset(err.len() as isize) = 0;
+                *errbuf.add(err.len()) = 0;
             }
         }
 

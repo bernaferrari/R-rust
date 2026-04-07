@@ -11,17 +11,13 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{
-    CADDR, CADR, CAR, CDDR, CDR, INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, TYPEOF,
-};
+use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, Rf_isNull, TYPEOF};
 use crate::sexp::constructors::*;
-use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar, forcePromise, matchArgs};
-use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
-use crate::sexp::memory_ext::NewEnvironment;
+use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::globals::{R_NilValue, R_UnboundValue, set_R_Visible};
 
 use super::bc_stack::R_bcstack_t;
-use super::eval::Rf_eval;
 
 // ---------------------------------------------------------------------------
 // Bytecode opcodes

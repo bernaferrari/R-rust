@@ -87,7 +87,7 @@ pub(crate) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
             // Convert warning to error
             IN_WARNING.store(0, Ordering::Relaxed);
             let full_msg = format!("(converted from warning) {}", fmt_str);
-            let c_msg = std::ffi::CString::new(full_msg).unwrap();
+            let c_msg = std::ffi::CString::new(full_msg).expect("CString::new failed: contains null byte");
             errorcall(call, c_msg.as_ptr());
         } else if w == 1 || IMMEDIATE_WARNING.load(Ordering::Relaxed) {
             // Print warnings immediately
@@ -142,7 +142,7 @@ pub(crate) fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_vo
                                 msg_to_store.push_str(&tr);
                             }
                         }
-                        let c_msg = std::ffi::CString::new(msg_to_store).unwrap();
+                        let c_msg = std::ffi::CString::new(msg_to_store).expect("CString::new failed: contains null byte");
                         let ch = Rf_mkChar(c_msg.as_ptr());
                         SET_STRING_ELT(names, cw as R_xlen_t, ch);
                     }
@@ -210,7 +210,7 @@ pub fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
         } else {
             CStr::from_ptr(msg).to_str().unwrap_or("")
         };
-        let c_msg = std::ffi::CString::new(msg_str).unwrap();
+        let c_msg = std::ffi::CString::new(msg_str).expect("CString::new failed: contains null byte");
         warningcall(call, c_msg.as_ptr());
     }
 }
@@ -404,12 +404,12 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !isNull(CAR(args)) != 0 {
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.0));
             if isValidString(CAR(args)) == 0 {
-                let c_msg = std::ffi::CString::new(" [invalid string in warning(.)]").unwrap();
+                let c_msg = std::ffi::CString::new(" [invalid string in warning(.)]").expect("CString::new failed: contains null byte");
                 warningcall(c_call, c_msg.as_ptr());
             } else {
                 let msg = translateChar(STRING_ELT(CAR(args), 0));
                 let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                let c_msg = std::ffi::CString::new(msg_str).unwrap();
+                let c_msg = std::ffi::CString::new(msg_str).expect("CString::new failed: contains null byte");
                 warningcall(c_call, c_msg.as_ptr());
             }
         } else {
@@ -443,7 +443,7 @@ pub unsafe fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_cha
             messages.len() - 1
         };
 
-        let c_msg = std::ffi::CString::new(messages[idx]).unwrap();
+        let c_msg = std::ffi::CString::new(messages[idx]).expect("CString::new failed: contains null byte");
         warningcall(call, c_msg.as_ptr());
     }
 }

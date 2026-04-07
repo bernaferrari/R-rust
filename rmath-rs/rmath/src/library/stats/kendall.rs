@@ -50,7 +50,7 @@ unsafe fn ckendall(k: c_int, n: c_int, w: *mut *mut c_double) -> c_double {
     }
 
     if (*w.add(n as usize)).is_null() {
-        let layout = std::alloc::Layout::array::<c_double>((u + 1) as usize).unwrap();
+        let layout = std::alloc::Layout::array::<c_double>((u + 1) as usize).expect("unwrap on None/Err");
         let ptr = std::alloc::alloc(layout) as *mut c_double;
         if ptr.is_null() {
             std::alloc::handle_alloc_error(layout);
@@ -84,7 +84,7 @@ unsafe fn ckendall(k: c_int, n: c_int, w: *mut *mut c_double) -> c_double {
 // ---------------------------------------------------------------------------
 
 unsafe fn pkendall(len: c_int, q: *const c_double, p: *mut c_double, n: c_int) {
-    let layout = std::alloc::Layout::array::<*mut c_double>((n + 1) as usize).unwrap();
+    let layout = std::alloc::Layout::array::<*mut c_double>((n + 1) as usize).expect("unwrap on None/Err");
     let w = std::alloc::alloc(layout) as *mut *mut c_double;
     if w.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -117,7 +117,7 @@ unsafe fn pkendall(len: c_int, q: *const c_double, p: *mut c_double, n: c_int) {
         let wn = *w.add(i);
         if !wn.is_null() {
             let u = i * (i - 1) / 2;
-            let dealloc_layout = std::alloc::Layout::array::<c_double>((u + 1) as usize).unwrap();
+            let dealloc_layout = std::alloc::Layout::array::<c_double>((u + 1) as usize).expect("unwrap on None/Err");
             std::alloc::dealloc(wn as *mut u8, dealloc_layout);
         }
     }

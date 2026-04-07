@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1997--2025  The R Core Team
@@ -26,6 +25,7 @@
  *  implementations that call into these GE stubs.
  */
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
@@ -1560,12 +1560,12 @@ pub unsafe extern "C" fn C_path(args: SEXP) -> SEXP {
  * C_dend -- dendrogram plotting
  * ======================================================================== */
 
-static mut dnd_lptr: *mut c_int = std::ptr::null_mut();
-static mut dnd_rptr: *mut c_int = std::ptr::null_mut();
-static mut dnd_hght: *mut c_double = std::ptr::null_mut();
-static mut dnd_xpos: *mut c_double = std::ptr::null_mut();
-static mut dnd_hang: c_double = 0.0;
-static mut dnd_offset: c_double = 0.0;
+thread_local! { static dnd_lptr: Cell<*mut c_int> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static dnd_rptr: Cell<*mut c_int> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static dnd_hght: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static dnd_xpos: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static dnd_hang: Cell<c_double> = Cell::new(0.0); }
+thread_local! { static dnd_offset: Cell<c_double> = Cell::new(0.0); }
 
 unsafe fn drawdend(
     node: c_int,
@@ -1582,19 +1582,23 @@ unsafe fn drawdend(
     let mut yy = [0.0; 4];
     let mut k: c_int;
 
-    *y = *dnd_hght.add((node - 1) as usize);
+    *y = *dnd_hght.with(|v| v.get()).add((node - 1) as usize);
 
     /* left part */
-    k = *dnd_lptr.add((node - 1) as usize);
+    k = *dnd_lptr.with(|v| v.get()).add((node - 1) as usize);
     if k > 0 {
         drawdend(k, &mut xl, &mut yl, dnd_llabels, dd);
     } else {
-        xl = *dnd_xpos.add((-k - 1) as usize);
-        yl = if dnd_hang >= 0.0 { *y - dnd_hang } else { 0.0 };
+        xl = *dnd_xpos.with(|v| v.get()).add((-k - 1) as usize);
+        yl = if dnd_hang.with(|v| v.get()) >= 0.0 {
+            *y - dnd_hang.with(|v| v.get())
+        } else {
+            0.0
+        };
         if STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t) != NA_STRING {
             GText(
                 xl,
-                yl - dnd_offset,
+                yl - dnd_offset.with(|v| v.get()),
                 USER,
                 CHAR(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
                 getCharCE(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
@@ -1607,16 +1611,20 @@ unsafe fn drawdend(
     }
 
     /* right part */
-    k = *dnd_rptr.add((node - 1) as usize);
+    k = *dnd_rptr.with(|v| v.get()).add((node - 1) as usize);
     if k > 0 {
         drawdend(k, &mut xr, &mut yr, dnd_llabels, dd);
     } else {
-        xr = *dnd_xpos.add((-k - 1) as usize);
-        yr = if dnd_hang >= 0.0 { *y - dnd_hang } else { 0.0 };
+        xr = *dnd_xpos.with(|v| v.get()).add((-k - 1) as usize);
+        yr = if dnd_hang.with(|v| v.get()) >= 0.0 {
+            *y - dnd_hang.with(|v| v.get())
+        } else {
+            0.0
+        };
         if STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t) != NA_STRING {
             GText(
                 xr,
-                yr - dnd_offset,
+                yr - dnd_offset.with(|v| v.get()),
                 USER,
                 CHAR(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
                 getCharCE(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
@@ -1673,15 +1681,15 @@ pub unsafe extern "C" fn C_dend(args: SEXP) -> SEXP {
     if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP.0 || length(CAR(args)) != 2 * n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    dnd_lptr = &mut *INTEGER(CAR(args)).add(0);
-    dnd_rptr = &mut *INTEGER(CAR(args)).add(n as usize);
+    dnd_lptr.with(|v| v.set(&mut *INTEGER(CAR(args)).add(0)));
+    dnd_rptr.with(|v| v.set(&mut *INTEGER(CAR(args)).add(n as usize)));
     args = CDR(args);
 
     /* height */
     if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP.0 || length(CAR(args)) != n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    dnd_hght = &mut *REAL(CAR(args)).add(0);
+    dnd_hght.with(|v| v.set(&mut *REAL(CAR(args)).add(0)));
     args = CDR(args);
 
     /* ord */
@@ -1689,15 +1697,21 @@ pub unsafe extern "C" fn C_dend(args: SEXP) -> SEXP {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     let xpos = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
-    dnd_xpos = &mut *REAL(xpos).add(0);
+    dnd_xpos.with(|v| v.set(&mut *REAL(xpos).add(0)));
     args = CDR(args);
 
     /* hang */
-    dnd_hang = asReal(CAR(args));
-    if R_FINITE(dnd_hang) == 0 {
+    dnd_hang.with(|v| v.set(asReal(CAR(args))));
+    if R_FINITE(dnd_hang.with(|v| v.get())) == 0 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    dnd_hang = dnd_hang * (*dnd_hght.add((n - 1) as usize) - *dnd_hght.add(0));
+    dnd_hang.with(|v| {
+        v.set(
+            v.get()
+                * (*dnd_hght.with(|h| h.get()).add((n - 1) as usize)
+                    - *dnd_hght.with(|h| h.get()).add(0)),
+        )
+    });
     args = CDR(args);
 
     /* labels */
@@ -1711,12 +1725,14 @@ pub unsafe extern "C" fn C_dend(args: SEXP) -> SEXP {
     ProcessInlinePars(args, dd);
     let gp = gpptr(dd) as *mut GPar;
     (*gp).cex = (*gp).cexbase * (*gp).cex;
-    dnd_offset = GConvertYUnits(
-        GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd),
-        INCHES,
-        USER,
-        dd,
-    );
+    dnd_offset.with(|v| {
+        v.set(GConvertYUnits(
+            GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd),
+            INCHES,
+            USER,
+            dd,
+        ))
+    });
 
     if (*gp).xpd < 1 {
         (*gp).xpd = 1;
@@ -1774,8 +1790,8 @@ pub unsafe extern "C" fn C_dendwindow(args: SEXP) -> SEXP {
     }
     height = CAR(args);
     args = CDR(args);
-    dnd_hang = asReal(CAR(args));
-    if R_FINITE(dnd_hang) == 0 {
+    dnd_hang.with(|v| v.set(asReal(CAR(args))));
+    if R_FINITE(dnd_hang.with(|v| v.get())) == 0 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     args = CDR(args);
@@ -1789,13 +1805,20 @@ pub unsafe extern "C" fn C_dendwindow(args: SEXP) -> SEXP {
     ProcessInlinePars(args, dd);
     let gp = gpptr(dd) as *mut GPar;
     (*gp).cex = (*gp).cexbase * (*gp).cex;
-    dnd_offset = GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd);
+    dnd_offset.with(|v| {
+        v.set(GStrWidth(
+            b"m\0".as_ptr() as *const c_char,
+            CE_ANY,
+            INCHES,
+            dd,
+        ))
+    });
     let vmax = vmaxget();
 
     y = R_alloc((n + 1) as usize, std::mem::size_of::<c_double>()) as *mut c_double;
     ll = R_alloc((n + 1) as usize, std::mem::size_of::<c_double>()) as *mut c_double;
-    dnd_lptr = &mut *INTEGER(merge).add(0);
-    dnd_rptr = &mut *INTEGER(merge).add(n as usize);
+    dnd_lptr.with(|v| v.set(&mut *INTEGER(merge).add(0)));
+    dnd_rptr.with(|v| v.set(&mut *INTEGER(merge).add(n as usize)));
 
     ymax = *REAL(height).add(0);
     ymin = ymax;
@@ -1814,21 +1837,21 @@ pub unsafe extern "C" fn C_dendwindow(args: SEXP) -> SEXP {
         *ll.add(i) = if str == NA_STRING {
             0.0
         } else {
-            GStrWidth(CHAR(str), getCharCE(str), INCHES, dd) + dnd_offset
+            GStrWidth(CHAR(str), getCharCE(str), INCHES, dd) + dnd_offset.with(|v| v.get())
         };
     }
 
     yval = -DBL_MAX;
-    if dnd_hang >= 0.0 {
-        ymin = ymax - (1.0 + dnd_hang) * (ymax - ymin);
+    if dnd_hang.with(|v| v.get()) >= 0.0 {
+        ymin = ymax - (1.0 + dnd_hang.with(|v| v.get())) * (ymax - ymin);
         yrange = ymax - ymin;
         /* determine leaf heights */
         for i in 0..n as usize {
-            if *dnd_lptr.add(i) < 0 {
-                *y.add((-*dnd_lptr.add(i) - 1) as usize) = *REAL(height).add(i);
+            if *dnd_lptr.with(|v| v.get()).add(i) < 0 {
+                *y.add((-*dnd_lptr.with(|v| v.get()).add(i) - 1) as usize) = *REAL(height).add(i);
             }
-            if *dnd_rptr.add(i) < 0 {
-                *y.add((-*dnd_rptr.add(i) - 1) as usize) = *REAL(height).add(i);
+            if *dnd_rptr.with(|v| v.get()).add(i) < 0 {
+                *y.add((-*dnd_rptr.with(|v| v.get()).add(i) - 1) as usize) = *REAL(height).add(i);
             }
         }
         for i in 0..=(n as usize) {

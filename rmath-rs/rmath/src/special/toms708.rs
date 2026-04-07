@@ -61,6 +61,7 @@ fn logspace_add(logx: f64, logy: f64) -> f64 {
 // We'll pass log_p explicitly
 
 /// Main entry point for the incomplete beta function.
+#[must_use]
 ///
 /// Evaluates I_x(a,b) and 1 - I_x(a,b).
 ///

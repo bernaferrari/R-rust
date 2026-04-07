@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/paste.c (755 lines)
 //!
@@ -16,23 +15,20 @@
 //! stubs.
 
 use super::printutils::EncodeComplex;
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    ATTRIB, CADDDR, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, NAMED, OBJECT,
-    RAW, REAL, SET_ATTRIB, SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, STRING_ELT, TAG, TYPEOF,
-    VECTOR_ELT, XLENGTH,
+    CADDDR, CADDR, CADR, CAR, CDR, CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT,
+    SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_allocVector, Rf_isEnvironment, Rf_isInteger, Rf_isLogical, Rf_isNull,
-    Rf_isReal, Rf_isString, Rf_isSymbol, Rf_isVector, Rf_isVectorAtomic, Rf_length, Rf_mkChar,
-    Rf_mkString,
+    Rf_allocVector, Rf_isEnvironment, Rf_isLogical, Rf_isNull, Rf_isString, Rf_isSymbol,
+    Rf_isVectorAtomic, Rf_length, Rf_mkChar, Rf_mkString,
 };
-use crate::sexp::ffi::{
-    ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_IsNA, R_xlen_t, SEXP, SEXPTYPE, SexprecCore,
-};
-use crate::sexp::globals::{R_MissingArg, R_NilValue};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::globals::R_NilValue;
 
 // Import PRIMVAL/PRIMNAME from relop (they are stubs there).
 use crate::mainutils::relop::PRIMVAL;
@@ -208,29 +204,29 @@ unsafe fn EncodeReal0(
 }
 
 unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 16] = [0; 16];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
+    BUF.with(|buf| {
+        let mut b = buf.borrow_mut();
         let s = "<environment>\0".as_ptr() as *const c_char;
         for i in 0..14 {
-            (*buf)[i] = *s.add(i);
+            b[i] = *s.add(i);
         }
-        (*buf)[14] = 0;
-        buf.cast()
-    }
+        b[14] = 0;
+        b.as_ptr() as *const c_char
+    })
 }
 
 unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    unsafe {
-        static mut BUF: [c_char; 16] = [0; 16];
-        let buf = std::ptr::addr_of_mut!(BUF);
+    thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
+    BUF.with(|buf| {
+        let mut b = buf.borrow_mut();
         let s = "<externalptr>\0".as_ptr() as *const c_char;
         for i in 0..13 {
-            (*buf)[i] = *s.add(i);
+            b[i] = *s.add(i);
         }
-        (*buf)[13] = 0;
-        buf.cast()
-    }
+        b[13] = 0;
+        b.as_ptr() as *const c_char
+    })
 }
 
 unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
@@ -450,18 +446,36 @@ impl RStringBuffer {
     }
 }
 
-/// Thread-local string buffer (mirrors R's static cbuff).
-static mut CBUFF: *mut RStringBuffer = ptr::null_mut();
+thread_local! { static CBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
 
-/// Ensure CBUFF is initialized and return a mutable reference.
-unsafe fn get_cbuff() -> &'static mut RStringBuffer {
-    unsafe {
-        if CBUFF.is_null() {
-            let buf = Box::new(RStringBuffer::new());
-            CBUFF = Box::into_raw(buf);
-        }
-        &mut *CBUFF
+#[repr(transparent)]
+struct MutPtr<T>(*mut T);
+
+impl<T> std::ops::Deref for MutPtr<T> {
+    type Target = T;
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.0 }
     }
+}
+
+impl<T> std::ops::DerefMut for MutPtr<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.0 }
+    }
+}
+
+unsafe fn get_cbuff() -> MutPtr<RStringBuffer> {
+    MutPtr(CBUFF.with(|v| {
+        let ptr = v.get();
+        if ptr.is_null() {
+            let buf = Box::new(RStringBuffer::new());
+            let raw = Box::into_raw(buf);
+            v.set(raw);
+            raw
+        } else {
+            ptr
+        }
+    }))
 }
 
 // ---------------------------------------------------------------------------
@@ -582,7 +596,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// .Internal(paste0(args,      collapse, recycle0))
 pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let mut collapse: SEXP;
+        let collapse: SEXP;
         let sep: SEXP;
 
         // Check arity
@@ -637,14 +651,13 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let do_collapse = !Rf_isNull(collapse) != 0;
 
-        if do_collapse {
-            if Rf_isString(collapse) == 0
+        if do_collapse
+            && (Rf_isString(collapse) == 0
                 || LENGTH(collapse) <= 0
-                || isNA_STRING(STRING_ELT(collapse, 0))
+                || isNA_STRING(STRING_ELT(collapse, 0)))
             {
                 return ptr::null_mut();
             }
-        }
 
         // Macro: zero_return
         let zero_return = |do_collapse: bool| -> SEXP {
@@ -701,7 +714,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, maxlen as c_int);
 
-        let cbuff = get_cbuff();
+        let mut cbuff = get_cbuff();
 
         for i in 0..maxlen {
             let mut allKnown: bool = true;
@@ -762,7 +775,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 return ptr::null_mut();
             }
 
-            let buf = R_AllocStringBuffer(pwidth, cbuff);
+            let buf = R_AllocStringBuffer(pwidth, &mut cbuff);
             let cbuf = buf;
             let mut buf_ptr = buf;
 
@@ -811,7 +824,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Now collapse, if required.
         if do_collapse {
-            let mut nx2 = XLENGTH(ans);
+            let nx2 = XLENGTH(ans);
             if nx2 > 0 {
                 let sep_el = STRING_ELT(collapse, 0);
                 let mut use_UTF8 = IS_UTF8(sep_el);
@@ -853,7 +866,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     return ptr::null_mut();
                 }
 
-                let buf = R_AllocStringBuffer(pwidth, cbuff);
+                let buf = R_AllocStringBuffer(pwidth, &mut cbuff);
                 let cbuf = buf;
                 let mut buf_ptr = buf;
 
@@ -970,7 +983,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, maxlen as c_int);
-        let cbuff = get_cbuff();
+        let mut cbuff = get_cbuff();
 
         for i in 0..maxlen {
             let use_UTF8: bool = true;
@@ -987,7 +1000,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
             pwidth += (nx - 1) * sepw as i64;
 
-            let buf = R_AllocStringBuffer(pwidth, cbuff);
+            let buf = R_AllocStringBuffer(pwidth, &mut cbuff);
             let cbuf = buf;
             let mut buf_ptr = buf;
 
@@ -1162,8 +1175,8 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
                 REALSXP => {
                     let mut fmt_w: c_int = 0;
-                    let mut fmt_d: c_int = 0;
-                    let mut fmt_e: c_int = 0;
+                    let fmt_d: c_int = 0;
+                    let fmt_e: c_int = 0;
                     // formatReal(REAL(x), n, &mut fmt_w, &mut fmt_d, &mut fmt_e, nsmall);
                     if trim != 0 {
                         fmt_w = 0;
@@ -1184,8 +1197,8 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
                 CPLXSXP => {
                     let mut wi: c_int = 0;
-                    let mut di: c_int = 0;
-                    let mut ei: c_int = 0;
+                    let di: c_int = 0;
+                    let ei: c_int = 0;
                     // formatComplex(COMPLEX(x), n, &mut w, &mut d, &mut e,
                     //              &mut wi, &mut di, &mut ei, nsmall);
                     if trim != 0 {

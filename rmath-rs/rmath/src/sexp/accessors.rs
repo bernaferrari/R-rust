@@ -959,16 +959,14 @@ mod tests {
     use super::super::ffi::*;
     use super::*;
 
-    fn make_test_vector() -> Box<SexprecCore> {
-        let mut node = Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 3));
-        unsafe {
-            node.data = SexprecData {
-                vecsxp: Vecsxp {
-                    length: 3,
-                    truelength: 3,
-                },
-            };
-        }
+    fn make_test_vector() -> SexprecCore {
+        let mut node = SexprecCore::new_vector(SEXPTYPE::REALSXP, 3);
+        node.data = SexprecData {
+            vecsxp: Vecsxp {
+                length: 3,
+                truelength: 3,
+            },
+        };
         node
     }
 
@@ -983,7 +981,7 @@ mod tests {
     fn test_typeof_vector() {
         let node = make_test_vector();
         unsafe {
-            assert_eq!(TYPEOF(node.as_ref() as *const _ as SEXP), 14); // REALSXP
+            assert_eq!(TYPEOF(&node as *const _ as SEXP), 14); // REALSXP
         }
     }
 
@@ -991,8 +989,8 @@ mod tests {
     fn test_length_vector() {
         let node = make_test_vector();
         unsafe {
-            assert_eq!(LENGTH(node.as_ref() as *const _ as SEXP), 3);
-            assert_eq!(XLENGTH(node.as_ref() as *const _ as SEXP), 3);
+            assert_eq!(LENGTH(&node as *const _ as SEXP), 3);
+            assert_eq!(XLENGTH(&node as *const _ as SEXP), 3);
         }
     }
 
@@ -1016,7 +1014,7 @@ mod tests {
         let node = make_test_vector();
         unsafe {
             assert_eq!(Rf_isNull(ptr::null_mut()), 1);
-            assert_eq!(Rf_isNull(node.as_ref() as *const _ as SEXP), 0);
+            assert_eq!(Rf_isNull(&node as *const _ as SEXP), 0);
         }
     }
 
@@ -1024,7 +1022,7 @@ mod tests {
     fn test_set_attrib() {
         let mut node = make_test_vector();
         unsafe {
-            let ptr = node.as_mut() as *mut _ as SEXP;
+            let ptr = &mut node as *mut _ as SEXP;
             assert!(ATTRIB(ptr).is_null());
             SET_ATTRIB(ptr, ptr); // self-referential for test
             assert_eq!(ATTRIB(ptr), ptr);
@@ -1036,7 +1034,7 @@ mod tests {
     fn test_named() {
         let mut node = make_test_vector();
         unsafe {
-            let ptr = node.as_mut() as *mut _ as SEXP;
+            let ptr = &mut node as *mut _ as SEXP;
             assert_eq!(NAMED(ptr), 0);
             SET_NAMED(ptr, 2);
             assert_eq!(NAMED(ptr), 2);
@@ -1047,7 +1045,7 @@ mod tests {
     fn test_object_flag() {
         let mut node = make_test_vector();
         unsafe {
-            let ptr = node.as_mut() as *mut _ as SEXP;
+            let ptr = &mut node as *mut _ as SEXP;
             assert_eq!(OBJECT(ptr), 0);
             SET_OBJECT(ptr, 1);
             assert_eq!(OBJECT(ptr), 1);
@@ -1058,7 +1056,7 @@ mod tests {
     fn test_set_truelength() {
         let mut node = make_test_vector();
         unsafe {
-            let ptr = node.as_mut() as *mut _ as SEXP;
+            let ptr = &mut node as *mut _ as SEXP;
             assert_eq!(TRUELENGTH(ptr), 3);
             SET_TRUELENGTH(ptr, 10);
             assert_eq!(TRUELENGTH(ptr), 10);

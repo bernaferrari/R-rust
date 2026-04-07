@@ -49,7 +49,7 @@ unsafe fn SETCADR(x: SEXP, y: SEXP) {
 // ---------------------------------------------------------------------------
 
 unsafe fn vect(n: c_int) -> *mut c_double {
-    let layout = std::alloc::Layout::array::<c_double>(n as usize).unwrap();
+    let layout = std::alloc::Layout::array::<c_double>(n as usize).expect("unwrap on None/Err");
     let ptr = std::alloc::alloc(layout) as *mut c_double;
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -59,7 +59,7 @@ unsafe fn vect(n: c_int) -> *mut c_double {
 
 /// Allocate a vector of ints (replaces R_alloc for int arrays).
 unsafe fn vect_int(n: c_int) -> *mut c_int {
-    let layout = std::alloc::Layout::array::<c_int>(n as usize).unwrap();
+    let layout = std::alloc::Layout::array::<c_int>(n as usize).expect("unwrap on None/Err");
     let ptr = std::alloc::alloc(layout) as *mut c_int;
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -411,7 +411,7 @@ unsafe fn genptry(
         *xp.add(i) = *REAL(s).add(i);
     }
 
-    let fminfn = fminfn.unwrap();
+    let fminfn = fminfn.expect("unwrap on None/Err");
     let y = fminfn(n, xp, ex);
 
     R_Reprotect(s, pi);
@@ -450,7 +450,7 @@ unsafe fn samin(
     let mut nfcnev = 0;
 
     /* Evaluate at the initial point */
-    *ybest = (fminfn.unwrap())(n, sb, ex);
+    *ybest = (fminfn.expect("unwrap on None/Err"))(n, sb, ex);
     nfcnev += 1;
 
     /* perform the annealing */
@@ -562,13 +562,13 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 
     let trace = as_integer(getListElement(
         options,
-        CString::new("trace").unwrap().as_ptr(),
+        CString::new("trace").expect("CString::new failed: contains null byte").as_ptr(),
     ));
     (*os_ptr).fnscale = as_real(getListElement(
         options,
-        CString::new("fnscale").unwrap().as_ptr(),
+        CString::new("fnscale").expect("CString::new failed: contains null byte").as_ptr(),
     ));
-    let tmp = getListElement(options, CString::new("parscale").unwrap().as_ptr());
+    let tmp = getListElement(options, CString::new("parscale").expect("CString::new failed: contains null byte").as_ptr());
     if LENGTH(tmp) != npar {
         Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
     }
@@ -584,22 +584,22 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 
     let res = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 5));
     let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 5));
-    SET_STRING_ELT(names, 0, Rf_mkChar(CString::new("par").unwrap().as_ptr()));
-    SET_STRING_ELT(names, 1, Rf_mkChar(CString::new("value").unwrap().as_ptr()));
+    SET_STRING_ELT(names, 0, Rf_mkChar(CString::new("par").expect("CString::new failed: contains null byte").as_ptr()));
+    SET_STRING_ELT(names, 1, Rf_mkChar(CString::new("value").expect("CString::new failed: contains null byte").as_ptr()));
     SET_STRING_ELT(
         names,
         2,
-        Rf_mkChar(CString::new("counts").unwrap().as_ptr()),
+        Rf_mkChar(CString::new("counts").expect("CString::new failed: contains null byte").as_ptr()),
     );
     SET_STRING_ELT(
         names,
         3,
-        Rf_mkChar(CString::new("convergence").unwrap().as_ptr()),
+        Rf_mkChar(CString::new("convergence").expect("CString::new failed: contains null byte").as_ptr()),
     );
     SET_STRING_ELT(
         names,
         4,
-        Rf_mkChar(CString::new("message").unwrap().as_ptr()),
+        Rf_mkChar(CString::new("message").expect("CString::new failed: contains null byte").as_ptr()),
     );
     setAttrib(res, R_NamesSymbol(), names);
     Rf_unprotect(1);
@@ -610,12 +610,12 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     SET_STRING_ELT(
         countnames,
         0,
-        Rf_mkChar(CString::new("function").unwrap().as_ptr()),
+        Rf_mkChar(CString::new("function").expect("CString::new failed: contains null byte").as_ptr()),
     );
     SET_STRING_ELT(
         countnames,
         1,
-        Rf_mkChar(CString::new("gradient").unwrap().as_ptr()),
+        Rf_mkChar(CString::new("gradient").expect("CString::new failed: contains null byte").as_ptr()),
     );
     setAttrib(counts, R_NamesSymbol(), countnames);
     Rf_unprotect(1);
@@ -623,15 +623,15 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     let _conv = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
     let abstol = as_real(getListElement(
         options,
-        CString::new("abstol").unwrap().as_ptr(),
+        CString::new("abstol").expect("CString::new failed: contains null byte").as_ptr(),
     ));
     let reltol = as_real(getListElement(
         options,
-        CString::new("reltol").unwrap().as_ptr(),
+        CString::new("reltol").expect("CString::new failed: contains null byte").as_ptr(),
     ));
     let maxit = as_integer(getListElement(
         options,
-        CString::new("maxit").unwrap().as_ptr(),
+        CString::new("maxit").expect("CString::new failed: contains null byte").as_ptr(),
     ));
     if maxit == NA_INTEGER {
         Rf_error(b"'maxit' is not an integer\0".as_ptr() as *const _);
@@ -645,15 +645,15 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     if tn == b"Nelder-Mead" {
         let alpha = as_real(getListElement(
             options,
-            CString::new("alpha").unwrap().as_ptr(),
+            CString::new("alpha").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let beta = as_real(getListElement(
             options,
-            CString::new("beta").unwrap().as_ptr(),
+            CString::new("beta").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let gamm = as_real(getListElement(
             options,
-            CString::new("gamma").unwrap().as_ptr(),
+            CString::new("gamma").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         nmmin(
             npar,
@@ -680,16 +680,16 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     } else if tn == b"SANN" {
         let tmax = as_integer(getListElement(
             options,
-            CString::new("tmax").unwrap().as_ptr(),
+            CString::new("tmax").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let temp = as_real(getListElement(
             options,
-            CString::new("temp").unwrap().as_ptr(),
+            CString::new("temp").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let trace_val = if trace != 0 {
             as_integer(getListElement(
                 options,
-                CString::new("REPORT").unwrap().as_ptr(),
+                CString::new("REPORT").expect("CString::new failed: contains null byte").as_ptr(),
             ))
         } else {
             0
@@ -727,7 +727,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     } else if tn == b"BFGS" {
         let nREPORT = as_integer(getListElement(
             options,
-            CString::new("REPORT").unwrap().as_ptr(),
+            CString::new("REPORT").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         if Rf_isNull(gr) == 0 {
             if !is_function(gr) {
@@ -736,7 +736,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
             (*os_ptr).R_gcall = Rf_lang2(gr, R_NilValue());
         } else {
             (*os_ptr).R_gcall = R_NilValue();
-            let ndeps = getListElement(options, CString::new("ndeps").unwrap().as_ptr());
+            let ndeps = getListElement(options, CString::new("ndeps").expect("CString::new failed: contains null byte").as_ptr());
             if LENGTH(ndeps) != npar {
                 Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
             }
@@ -777,7 +777,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     } else if tn == b"CG" {
         let type_val = as_integer(getListElement(
             options,
-            CString::new("type").unwrap().as_ptr(),
+            CString::new("type").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         if Rf_isNull(gr) == 0 {
             if !is_function(gr) {
@@ -786,7 +786,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
             (*os_ptr).R_gcall = Rf_lang2(gr, R_NilValue());
         } else {
             (*os_ptr).R_gcall = R_NilValue();
-            let ndeps = getListElement(options, CString::new("ndeps").unwrap().as_ptr());
+            let ndeps = getListElement(options, CString::new("ndeps").expect("CString::new failed: contains null byte").as_ptr());
             if LENGTH(ndeps) != npar {
                 Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
             }
@@ -823,19 +823,19 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     } else if tn == b"L-BFGS-B" {
         let nREPORT = as_integer(getListElement(
             options,
-            CString::new("REPORT").unwrap().as_ptr(),
+            CString::new("REPORT").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let factr = as_real(getListElement(
             options,
-            CString::new("factr").unwrap().as_ptr(),
+            CString::new("factr").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let pgtol = as_real(getListElement(
             options,
-            CString::new("pgtol").unwrap().as_ptr(),
+            CString::new("pgtol").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         let lmm = as_integer(getListElement(
             options,
-            CString::new("lmm").unwrap().as_ptr(),
+            CString::new("lmm").expect("CString::new failed: contains null byte").as_ptr(),
         ));
         if Rf_isNull(gr) == 0 {
             if !is_function(gr) {
@@ -844,7 +844,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
             (*os_ptr).R_gcall = Rf_lang2(gr, R_NilValue());
         } else {
             (*os_ptr).R_gcall = R_NilValue();
-            let ndeps = getListElement(options, CString::new("ndeps").unwrap().as_ptr());
+            let ndeps = getListElement(options, CString::new("ndeps").expect("CString::new failed: contains null byte").as_ptr());
             if LENGTH(ndeps) != npar {
                 Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
             }
@@ -976,7 +976,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
         let msg_len = lmsg.iter().position(|&c| c == 0).unwrap_or(60);
         let msg_str = String::from_utf8_lossy(&lmsg[..msg_len]);
         let smsg = Rf_protect(Rf_mkString(
-            CString::new(msg_str.as_ref()).unwrap().as_ptr(),
+            CString::new(msg_str.as_ref()).expect("CString::new failed: contains null byte").as_ptr(),
         ));
         SET_VECTOR_ELT(res, 4, smsg);
         Rf_unprotect(1);
@@ -1038,9 +1038,9 @@ pub unsafe extern "C" fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 
     (*os_ptr).fnscale = as_real(getListElement(
         options,
-        CString::new("fnscale").unwrap().as_ptr(),
+        CString::new("fnscale").expect("CString::new failed: contains null byte").as_ptr(),
     ));
-    let tmp = getListElement(options, CString::new("parscale").unwrap().as_ptr());
+    let tmp = getListElement(options, CString::new("parscale").expect("CString::new failed: contains null byte").as_ptr());
     if LENGTH(tmp) != npar {
         Rf_error(b"'parscale' is of the wrong length\0".as_ptr() as *const _);
     }
@@ -1065,7 +1065,7 @@ pub unsafe extern "C" fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
     }
     Rf_protect((*os_ptr).R_gcall);
 
-    let ndeps = getListElement(options, CString::new("ndeps").unwrap().as_ptr());
+    let ndeps = getListElement(options, CString::new("ndeps").expect("CString::new failed: contains null byte").as_ptr());
     if LENGTH(ndeps) != npar {
         Rf_error(b"'ndeps' is of the wrong length\0".as_ptr() as *const _);
     }

@@ -5,6 +5,7 @@
 //! Provides do_parse() for .Internal(parse(...)).
 //! Currently stubbed since it depends on the parser (gram.y).
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -36,45 +37,37 @@ pub unsafe fn getParseContext() -> SEXP {
 /// Parse context buffer size.
 pub const PARSE_CONTEXT_SIZE: c_int = 256;
 
-/// Parse error state (stub).
-static mut R_ParseError_val: c_int = 0;
+thread_local! { static R_ParseError_val: Cell<c_int> = Cell::new(0); }
 
-/// Get parse error line number.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseError() -> c_int {
-    unsafe { R_ParseError_val }
+    R_ParseError_val.with(|v| v.get())
 }
 
-/// Set parse error line number.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetParseError(v: c_int) {
-    unsafe {
-        R_ParseError_val = v;
-    }
+pub unsafe extern "C" fn R_SetParseError(val: c_int) {
+    R_ParseError_val.with(|v| v.set(val));
 }
 
-/// Parse error column (stub).
-static mut R_ParseErrorCol_val: c_int = 0;
+thread_local! { static R_ParseErrorCol_val: Cell<c_int> = Cell::new(0); }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseErrorCol() -> c_int {
-    unsafe { R_ParseErrorCol_val }
+    R_ParseErrorCol_val.with(|v| v.get())
 }
 
-/// Parse error file (stub).
-static mut R_ParseErrorFile_val: SEXP = ptr::null_mut();
+thread_local! { static R_ParseErrorFile_val: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseErrorFile() -> SEXP {
-    unsafe { R_ParseErrorFile_val }
+    R_ParseErrorFile_val.with(|v| v.get())
 }
 
-/// Parse context line (stub).
-static mut R_ParseContextLine_val: c_int = 0;
+thread_local! { static R_ParseContextLine_val: Cell<c_int> = Cell::new(0); }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetParseContextLine() -> c_int {
-    unsafe { R_ParseContextLine_val }
+    R_ParseContextLine_val.with(|v| v.get())
 }
 
 #[cfg(test)]
@@ -98,7 +91,7 @@ mod tests {
     fn test_parse_error_state() {
         unsafe {
             R_SetParseError(42);
-            assert_eq!(R_GetParseError(), 42);
         }
+        assert_eq!(unsafe { R_GetParseError() }, 42);
     }
 }

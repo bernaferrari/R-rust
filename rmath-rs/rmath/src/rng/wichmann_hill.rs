@@ -19,6 +19,7 @@ fn fixup(x: f64) -> f64 {
 }
 
 impl WichmannHill {
+    #[must_use]
     pub fn new() -> Self {
         Self {
             i1: 1,
@@ -53,6 +54,7 @@ impl WichmannHill {
         }
     }
 
+    #[must_use]
     pub fn get_rand(&mut self) -> f64 {
         self.i1 = self.i1.wrapping_mul(171) % 30269;
         self.i2 = self.i2.wrapping_mul(172) % 30307;

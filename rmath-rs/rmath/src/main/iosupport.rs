@@ -6,6 +6,7 @@
 //! a uniform interface for reading data from the console, files, and
 //! internal text strings.
 
+use std::cell::RefCell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -81,7 +82,7 @@ pub struct IoBuffer {
 }
 
 /// Console IO Buffer (global mutable).
-pub static mut R_ConsoleIob: IoBuffer = IoBuffer {
+pub thread_local! { static R_ConsoleIob: RefCell<IoBuffer> = RefCell::new(IoBuffer {
     start_buf: ptr::null_mut(),
     write_buf: ptr::null_mut(),
     write_ptr: ptr::null_mut(),
@@ -89,7 +90,7 @@ pub static mut R_ConsoleIob: IoBuffer = IoBuffer {
     read_buf: ptr::null_mut(),
     read_ptr: ptr::null_mut(),
     read_offset: 0,
-};
+}); }
 
 // ---------------------------------------------------------------------------
 // TextBuffer

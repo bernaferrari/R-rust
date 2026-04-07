@@ -19,6 +19,7 @@
 //! functions defined elsewhere (DllInfo, SEXP, etc.). Where the real
 //! implementation depends on full R internals, stubs are provided.
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -66,10 +67,10 @@ unsafe extern "C" {
 // ---------------------------------------------------------------------------
 
 /// Maximum number of DLLs that can be loaded.
-static mut MaxNumDLLs: c_int = 0;
+thread_local! { static MaxNumDLLs: Cell<c_int> = Cell::new(0); }
 
 /// Current number of loaded DLLs.
-static mut CountDLL: c_int = 0;
+thread_local! { static CountDLL: Cell<c_int> = Cell::new(0); }
 
 /// R_MAX_NUM_DLLS env var
 const R_MAX_NUM_DLLS_ENV: &[u8] = b"R_MAX_NUM_DLLS\0";
@@ -80,7 +81,7 @@ const DLLERR_BUFSIZE: usize = 1000;
 #[cfg(target_os = "windows")]
 const DLLERR_BUFSIZE: usize = 4000;
 
-static mut DLLerror: [c_char; DLLERR_BUFSIZE] = [0; DLLERR_BUFSIZE];
+thread_local! { static DLLerror: Cell<[c_char; DLLERR_BUFSIZE]> = Cell::new([0; DLLERR_BUFSIZE]); }
 
 // RDYN_SHLIB_EXT and RDYN_FILESEP for Unix (prefixed to avoid conflicts)
 #[cfg(all(unix, not(target_os = "macos")))]
@@ -249,6 +250,7 @@ pub struct DllInfo {
 
 /// OS-specific dynamic symbol operations.
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct OSDynSymbol {
     pub loadLibrary:
         Option<unsafe extern "C" fn(*const c_char, c_int, c_int, *const c_char) -> *mut c_void>,
@@ -265,7 +267,7 @@ pub struct OSDynSymbol {
 }
 
 /// Global OS dynamic symbol vtable.
-static mut Rf_osDynSymbol: OSDynSymbol = OSDynSymbol::new();
+thread_local! { static Rf_osDynSymbol: Cell<OSDynSymbol> = Cell::new(OSDynSymbol::new()); }
 
 impl OSDynSymbol {
     const fn new() -> Self {
@@ -284,23 +286,23 @@ impl OSDynSymbol {
 
 /// Pointer to the global OS dynamic symbol vtable (for C compat).
 /// TODO: This is initialized by InitFunctionHashing in unix/dynload.rs.
-pub static mut R_osDynSymbol_ptr: *mut OSDynSymbol = ptr::null_mut();
+pub thread_local! { static R_osDynSymbol_ptr: Cell<*mut OSDynSymbol> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // Global DLL table
 // ---------------------------------------------------------------------------
 
 /// Array of currently loaded DllInfo pointers.
-static mut LoadedDLL: *mut *mut DllInfo = ptr::null_mut();
+thread_local! { static LoadedDLL: Cell<*mut *mut DllInfo> = Cell::new(ptr::null_mut()); }
 
 /// Cache of external pointers to DllInfo objects (VECSXP).
-static mut DLLInfoEptrs: SEXP = ptr::null_mut();
+thread_local! { static DLLInfoEptrs: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /// Weak list of symbol external pointers.
-static mut SymbolEptrs: SEXP = ptr::null_mut();
+thread_local! { static SymbolEptrs: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /// CEntryTable for R_RegisterCCallable / R_GetCCallable.
-static mut CEntryTable: SEXP = ptr::null_mut();
+thread_local! { static CEntryTable: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // initLoadedDLL / InitDynload
@@ -308,104 +310,99 @@ static mut CEntryTable: SEXP = ptr::null_mut();
 
 /// Initialize the dynamic loading subsystem.
 pub unsafe fn InitDynload() {
-    unsafe {
-        initLoadedDLL();
-        let which = addDLL(
-            Rstrdup(b"base\0".as_ptr() as *const c_char),
-            b"base\0".as_ptr() as *mut c_char,
-            ptr::null_mut(),
-        );
-        let dll = *LoadedDLL.add(which as usize);
-        R_init_base(dll);
-        InitFunctionHashing();
-    }
+    initLoadedDLL();
+    let which = addDLL(
+        Rstrdup(b"base\0".as_ptr() as *const c_char),
+        b"base\0".as_ptr() as *mut c_char,
+        ptr::null_mut(),
+    );
+    let dll = *LoadedDLL.with(|v| v.get()).add(which as usize);
+    R_init_base(dll);
+    InitFunctionHashing();
 }
 
 /// Allocate the DLL table and associated R objects.
 unsafe fn initLoadedDLL() {
-    unsafe {
-        if CountDLL != 0 || !LoadedDLL.is_null() {
-            R_Suicide(b"DLL table corruption detected\0".as_ptr() as *const c_char);
-        }
-
-        let req = libc::getenv(R_MAX_NUM_DLLS_ENV.as_ptr() as *const c_char);
-        if !req.is_null() {
-            let reqlimit = atoi(req);
-            if reqlimit < 100 {
-                let mut msg = [0i8; 128];
-                snprintf_buf(
-                    &mut msg,
-                    b"R_MAX_NUM_DLLS must be at least %d\0".as_ptr() as *const c_char,
-                    100,
-                );
-                R_Suicide(msg.as_ptr());
-            }
-            if reqlimit > 1000 {
-                let mut msg = [0i8; 128];
-                snprintf_buf(
-                    &mut msg,
-                    b"R_MAX_NUM_DLLS cannot be bigger than %d\0".as_ptr() as *const c_char,
-                    1000,
-                );
-                R_Suicide(msg.as_ptr());
-            }
-            let needed_fds = ((reqlimit as f64) / 0.6).ceil() as c_int;
-            let fdlimit = R_EnsureFDLimit(needed_fds);
-            if fdlimit < 0 && reqlimit > 100 {
-                let mut msg = [0i8; 128];
-                snprintf_buf(
-                    &mut msg,
-                    b"R_MAX_NUM_DLLS cannot be bigger than %d when fd limit is not known\0".as_ptr()
-                        as *const c_char,
-                    100,
-                );
-                R_Suicide(msg.as_ptr());
-            } else if fdlimit >= 0 && fdlimit < needed_fds {
-                let maxdlllimit = (0.6 * fdlimit as f64) as c_int;
-                if maxdlllimit < 100 {
-                    R_Suicide(
-                        b"the limit on the number of open files is too low\0".as_ptr()
-                            as *const c_char,
-                    );
-                }
-                let mut msg = [0i8; 128];
-                snprintf_buf(
-                    &mut msg,
-                    b"R_MAX_NUM_DLLS bigger than %d may exhaust open files limit\0".as_ptr()
-                        as *const c_char,
-                    maxdlllimit,
-                );
-                R_Suicide(msg.as_ptr());
-            }
-            MaxNumDLLs = reqlimit;
-        } else {
-            let needed_fds: c_int = 1024;
-            let fdlimit = R_EnsureFDLimit(needed_fds);
-            if fdlimit < 0 {
-                MaxNumDLLs = 100;
-            } else {
-                MaxNumDLLs = (0.6 * fdlimit as f64) as c_int;
-                if MaxNumDLLs < 100 {
-                    R_Suicide(
-                        b"the limit on the number of open files is too low\0".as_ptr()
-                            as *const c_char,
-                    );
-                }
-            }
-        }
-
-        // Allocate the DLL table
-        LoadedDLL = libc::calloc(MaxNumDLLs as usize, std::mem::size_of::<*mut DllInfo>())
-            as *mut *mut DllInfo;
-        if LoadedDLL.is_null() {
-            R_Suicide(b"could not allocate space for DLL table\0".as_ptr() as *const c_char);
-        }
-
-        // Create DLLInfoEptrs and SymbolEptrs R objects
-        // TODO: These need proper SEXP allocation - using stub for now
-        DLLInfoEptrs = ptr::null_mut();
-        SymbolEptrs = ptr::null_mut();
+    if CountDLL.with(|v| v.get()) != 0 || !LoadedDLL.with(|v| v.get()).is_null() {
+        R_Suicide(b"DLL table corruption detected\0".as_ptr() as *const c_char);
     }
+
+    let req = libc::getenv(R_MAX_NUM_DLLS_ENV.as_ptr() as *const c_char);
+    if !req.is_null() {
+        let reqlimit = atoi(req);
+        if reqlimit < 100 {
+            let mut msg = [0i8; 128];
+            snprintf_buf(
+                &mut msg,
+                b"R_MAX_NUM_DLLS must be at least %d\0".as_ptr() as *const c_char,
+                100,
+            );
+            R_Suicide(msg.as_ptr());
+        }
+        if reqlimit > 1000 {
+            let mut msg = [0i8; 128];
+            snprintf_buf(
+                &mut msg,
+                b"R_MAX_NUM_DLLS cannot be bigger than %d\0".as_ptr() as *const c_char,
+                1000,
+            );
+            R_Suicide(msg.as_ptr());
+        }
+        let needed_fds = ((reqlimit as f64) / 0.6).ceil() as c_int;
+        let fdlimit = R_EnsureFDLimit(needed_fds);
+        if fdlimit < 0 && reqlimit > 100 {
+            let mut msg = [0i8; 128];
+            snprintf_buf(
+                &mut msg,
+                b"R_MAX_NUM_DLLS cannot be bigger than %d when fd limit is not known\0".as_ptr()
+                    as *const c_char,
+                100,
+            );
+            R_Suicide(msg.as_ptr());
+        } else if fdlimit >= 0 && fdlimit < needed_fds {
+            let maxdlllimit = (0.6 * fdlimit as f64) as c_int;
+            if maxdlllimit < 100 {
+                R_Suicide(
+                    b"the limit on the number of open files is too low\0".as_ptr()
+                        as *const c_char,
+                );
+            }
+            let mut msg = [0i8; 128];
+            snprintf_buf(
+                &mut msg,
+                b"R_MAX_NUM_DLLS bigger than %d may exhaust open files limit\0".as_ptr()
+                    as *const c_char,
+                maxdlllimit,
+            );
+            R_Suicide(msg.as_ptr());
+        }
+        MaxNumDLLs.with(|v| v.set(reqlimit));
+    } else {
+        let needed_fds: c_int = 1024;
+        let fdlimit = R_EnsureFDLimit(needed_fds);
+        if fdlimit < 0 {
+            MaxNumDLLs.with(|v| v.set(100));
+        } else {
+            MaxNumDLLs.with(|v| v.set((0.6 * fdlimit as f64) as c_int));
+            if MaxNumDLLs.with(|v| v.get()) < 100 {
+                R_Suicide(
+                    b"the limit on the number of open files is too low\0".as_ptr()
+                        as *const c_char,
+                );
+            }
+        }
+    }
+
+    LoadedDLL.with(|v| v.set(
+        libc::calloc(MaxNumDLLs.with(|v| v.get()) as usize, std::mem::size_of::<*mut DllInfo>())
+            as *mut *mut DllInfo
+    ));
+    if LoadedDLL.with(|v| v.get()).is_null() {
+        R_Suicide(b"could not allocate space for DLL table\0".as_ptr() as *const c_char);
+    }
+
+    DLLInfoEptrs.with(|v| v.set(ptr::null_mut()));
+    SymbolEptrs.with(|v| v.set(ptr::null_mut()));
 }
 
 /// Simple snprintf helper.
@@ -441,15 +438,15 @@ unsafe fn atoi(s: *const c_char) -> c_int {
 /// Add a DLL to the table. Returns the index or 0 on failure.
 unsafe fn addDLL(dpath: *mut c_char, DLLname: *mut c_char, handle: *mut c_void) -> c_int {
     unsafe {
-        let ans = CountDLL;
+        let ans = CountDLL.with(|v| v.get());
         let name = libc::malloc(libc::strlen(DLLname) + 1) as *mut c_char;
         if name.is_null() {
             libc::strcpy(
-                std::ptr::addr_of_mut!(DLLerror) as *mut c_char,
+                DLLerror.with(|v| v.as_ptr() as *mut c_char),
                 b"could not allocate space for 'name'\0".as_ptr() as *const c_char,
             );
             if !handle.is_null() {
-                if let Some(f) = (*R_osDynSymbol_ptr).closeLibrary {
+                if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).closeLibrary {
                     f(handle);
                 }
             }
@@ -461,11 +458,11 @@ unsafe fn addDLL(dpath: *mut c_char, DLLname: *mut c_char, handle: *mut c_void) 
         let info = libc::malloc(std::mem::size_of::<DllInfo>()) as *mut DllInfo;
         if info.is_null() {
             libc::strcpy(
-                std::ptr::addr_of_mut!(DLLerror) as *mut c_char,
+                DLLerror.with(|v| v.as_ptr() as *mut c_char),
                 b"could not allocate space for 'DllInfo'\0".as_ptr() as *const c_char,
             );
             if !handle.is_null() {
-                if let Some(f) = (*R_osDynSymbol_ptr).closeLibrary {
+                if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).closeLibrary {
                     f(handle);
                 }
             }
@@ -487,8 +484,8 @@ unsafe fn addDLL(dpath: *mut c_char, DLLname: *mut c_char, handle: *mut c_void) 
         (*info).FortranSymbols = ptr::null_mut();
         (*info).ExternalSymbols = ptr::null_mut();
 
-        *LoadedDLL.add(CountDLL as usize) = info;
-        CountDLL += 1;
+        *LoadedDLL.with(|v| v.get()).add(CountDLL.with(|v| v.get()) as usize) = info;
+        CountDLL.with(|v| v.set(v.get() + 1));
 
         ans
     }
@@ -496,42 +493,42 @@ unsafe fn addDLL(dpath: *mut c_char, DLLname: *mut c_char, handle: *mut c_void) 
 
 /// Delete a DLL from the table. Returns 1 if found and removed, 0 otherwise.
 unsafe fn DeleteDLL(path: *const c_char) -> c_int {
-    unsafe {
-        let mut loc: c_int = -1;
-        for i in 0..CountDLL {
-            let dll = *LoadedDLL.add(i as usize);
-            if libc::strcmp(path, (*dll).path) == 0 {
-                loc = i;
-                break;
-            }
+    let mut loc: c_int = -1;
+    let count_dll = CountDLL.with(|v| v.get());
+    let loaded_dll = LoadedDLL.with(|v| v.get());
+    for i in 0..count_dll {
+        let dll = *loaded_dll.add(i as usize);
+        if libc::strcmp(path, (*dll).path) == 0 {
+            loc = i;
+            break;
         }
-        if loc < 0 {
-            return 0;
-        }
-
-        // Delete cached symbols (Windows-only, stub)
-        if let Some(f) = (*R_osDynSymbol_ptr).deleteCachedSymbols {
-            f(*LoadedDLL.add(loc as usize));
-        }
-
-        R_reinit_altrep_classes(*LoadedDLL.add(loc as usize));
-        R_callDLLUnload(*LoadedDLL.add(loc as usize));
-
-        if let Some(f) = (*R_osDynSymbol_ptr).closeLibrary {
-            f((*(*LoadedDLL.add(loc as usize))).handle);
-        }
-
-        Rf_freeDllInfo(*LoadedDLL.add(loc as usize));
-
-        // Compact the table
-        for i in (loc + 1)..CountDLL {
-            *LoadedDLL.add((i - 1) as usize) = *LoadedDLL.add(i as usize);
-        }
-        CountDLL -= 1;
-        *LoadedDLL.add(CountDLL as usize) = ptr::null_mut();
-
-        1
     }
+    if loc < 0 {
+        return 0;
+    }
+
+    // Delete cached symbols (Windows-only, stub)
+    if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).deleteCachedSymbols {
+        f(*loaded_dll.add(loc as usize));
+    }
+
+    R_reinit_altrep_classes(*loaded_dll.add(loc as usize));
+    R_callDLLUnload(*loaded_dll.add(loc as usize));
+
+    if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).closeLibrary {
+        f((*(*loaded_dll.add(loc as usize))).handle);
+    }
+
+    Rf_freeDllInfo(*loaded_dll.add(loc as usize));
+
+    // Compact the table
+    for i in (loc + 1)..count_dll {
+        *loaded_dll.add((i - 1) as usize) = *loaded_dll.add(i as usize);
+    }
+    CountDLL.with(|v| v.set(count_dll - 1));
+    *loaded_dll.add((count_dll - 1) as usize) = ptr::null_mut();
+
+    1
 }
 
 // ---------------------------------------------------------------------------
@@ -544,17 +541,17 @@ unsafe fn R_RegisterDLL(handle: *mut c_void, path: *const c_char) -> *mut DllInf
         let dpath = libc::malloc(libc::strlen(path) + 1) as *mut c_char;
         if dpath.is_null() {
             libc::strcpy(
-                std::ptr::addr_of_mut!(DLLerror) as *mut c_char,
+                DLLerror.with(|v| v.as_ptr() as *mut c_char),
                 b"could not allocate space for 'path'\0".as_ptr() as *const c_char,
             );
-            if let Some(f) = (*R_osDynSymbol_ptr).closeLibrary {
+            if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).closeLibrary {
                 f(handle);
             }
             return ptr::null_mut();
         }
         libc::strcpy(dpath, path);
 
-        if let Some(f) = (*R_osDynSymbol_ptr).fixPath {
+        if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).fixPath {
             f(dpath);
         }
 
@@ -585,7 +582,7 @@ unsafe fn R_RegisterDLL(handle: *mut c_void, path: *const c_char) -> *mut DllInf
         }
 
         if addDLL(dpath, DLLname.as_mut_ptr(), handle) != 0 {
-            let info = *LoadedDLL.add((CountDLL - 1) as usize);
+            let info = *LoadedDLL.with(|v| v.get()).add((CountDLL.with(|v| v.get()) - 1) as usize);
             (*info).useDynamicLookup = TRUE;
             (*info).forceSymbols = FALSE;
             return info;
@@ -604,8 +601,10 @@ unsafe fn AddDLL(
     unsafe {
         // Check if already loaded
         let mut loc: c_int = -1;
-        for i in 0..CountDLL {
-            let dll = *LoadedDLL.add(i as usize);
+        let count_dll = CountDLL.with(|v| v.get());
+        let loaded_dll = LoadedDLL.with(|v| v.get());
+        for i in 0..count_dll {
+            let dll = *loaded_dll.add(i as usize);
             if libc::strcmp(path, (*dll).path) == 0 {
                 loc = i;
                 break;
@@ -614,32 +613,32 @@ unsafe fn AddDLL(
 
         if loc >= 0 {
             // Already loaded, move to head
-            let info = *LoadedDLL.add(loc as usize);
-            for i in (loc + 1)..CountDLL {
-                *LoadedDLL.add((i - 1) as usize) = *LoadedDLL.add(i as usize);
+            let info = *loaded_dll.add(loc as usize);
+            for i in (loc + 1)..count_dll {
+                *loaded_dll.add((i - 1) as usize) = *loaded_dll.add(i as usize);
             }
-            *LoadedDLL.add((CountDLL - 1) as usize) = info;
+            *loaded_dll.add((count_dll - 1) as usize) = info;
             return info;
         }
 
-        if CountDLL == MaxNumDLLs {
+        if count_dll == MaxNumDLLs.with(|v| v.get()) {
             libc::strcpy(
-                std::ptr::addr_of_mut!(DLLerror) as *mut c_char,
+                DLLerror.with(|v| v.as_ptr() as *mut c_char),
                 b"maximal number of DLLs reached...\0".as_ptr() as *const c_char,
             );
             return ptr::null_mut();
         }
 
-        let handle = if let Some(f) = (*R_osDynSymbol_ptr).loadLibrary {
+        let handle = if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).loadLibrary {
             f(path, asLocal, now, DLLsearchpath)
         } else {
             ptr::null_mut()
         };
 
         if handle.is_null() {
-            if let Some(f) = (*R_osDynSymbol_ptr).getError {
+            if let Some(f) = (*R_osDynSymbol_ptr.with(|v| v.get())).getError {
                 f(
-                    std::ptr::addr_of_mut!(DLLerror) as *mut c_char,
+                    DLLerror.with(|v| v.as_ptr() as *mut c_char),
                     DLLERR_BUFSIZE as c_int,
                 );
             }
@@ -662,7 +661,7 @@ unsafe fn AddDLL(
             );
 
             let mut f: Option<unsafe extern "C" fn(*mut DllInfo)> = None;
-            if let Some(dlsym_fn) = (*R_osDynSymbol_ptr).dlsym_fn {
+            if let Some(dlsym_fn) = (*R_osDynSymbol_ptr.with(|v| v.get())).dlsym_fn {
                 let func = dlsym_fn(info, tmp.as_ptr());
                 if let Some(func_raw) = func {
                     // SAFETY: func_raw is a symbol resolved via dlsym, expected to be
@@ -679,7 +678,7 @@ unsafe fn AddDLL(
                         *ch = b'_' as i8;
                     }
                 }
-                if let Some(dlsym_fn) = (*R_osDynSymbol_ptr).dlsym_fn {
+                if let Some(dlsym_fn) = (*R_osDynSymbol_ptr.with(|v| v.get())).dlsym_fn {
                     let func = dlsym_fn(info, tmp.as_ptr());
                     if let Some(func_raw) = func {
                         // SAFETY: Same as above - dlsym-resolved R_init_<pkg> symbol
@@ -1210,7 +1209,7 @@ pub unsafe extern "C" fn R_dlsym(
         );
 
         let mut f = None;
-        if let Some(dlsym_fn) = (*R_osDynSymbol_ptr).dlsym_fn {
+        if let Some(dlsym_fn) = (*R_osDynSymbol_ptr.with(|v| v.get())).dlsym_fn {
             f = dlsym_fn(info, buf.as_ptr());
         }
 
@@ -1233,7 +1232,7 @@ pub unsafe extern "C" fn R_FindSymbol(
         let all_int: c_int = if all { 1 } else { 0 };
 
         // Check cache first
-        if let Some(lookup_fn) = (*R_osDynSymbol_ptr).lookupCachedSymbol {
+        if let Some(lookup_fn) = (*R_osDynSymbol_ptr.with(|v| v.get())).lookupCachedSymbol {
             let mut dll: *mut DllInfo = ptr::null_mut();
             let fcnptr = lookup_fn(name, pkg, all_int, &mut dll);
             if fcnptr.is_some() {
@@ -1244,20 +1243,21 @@ pub unsafe extern "C" fn R_FindSymbol(
             }
         }
 
-        let mut i: c_int = CountDLL - 1;
+        let mut i: c_int = CountDLL.with(|v| v.get()) - 1;
+        let loaded_dll = LoadedDLL.with(|v| v.get());
         while i >= 0 {
             let mut doit: c_int = all_int;
-            if doit == 0 && libc::strcmp(pkg, (*(*LoadedDLL.add(i as usize))).name) == 0 {
+            if doit == 0 && libc::strcmp(pkg, (*(*loaded_dll.add(i as usize))).name) == 0 {
                 doit = 2;
             }
-            if doit != 0 && (*(*LoadedDLL.add(i as usize))).forceSymbols != 0 {
+            if doit != 0 && (*(*loaded_dll.add(i as usize))).forceSymbols != 0 {
                 doit = 0;
             }
             if doit != 0 {
-                let fcnptr = R_dlsym(*LoadedDLL.add(i as usize), name, symbol);
+                let fcnptr = R_dlsym(*loaded_dll.add(i as usize), name, symbol);
                 if fcnptr.is_some() {
                     if !symbol.is_null() {
-                        (*symbol).dll = *LoadedDLL.add(i as usize);
+                        (*symbol).dll = *loaded_dll.add(i as usize);
                     }
                     return fcnptr;
                 }
@@ -1279,40 +1279,39 @@ pub unsafe extern "C" fn R_FindSymbol(
 /// Look up a DllInfo by path.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
-    unsafe {
-        for i in 0..CountDLL {
-            if libc::strcmp(path, (*(*LoadedDLL.add(i as usize))).path) == 0 {
-                return *LoadedDLL.add(i as usize);
-            }
+    let count_dll = CountDLL.with(|v| v.get());
+    let loaded_dll = LoadedDLL.with(|v| v.get());
+    for i in 0..count_dll {
+        if libc::strcmp(path, (*(*loaded_dll.add(i as usize))).path) == 0 {
+            return *loaded_dll.add(i as usize);
         }
-        ptr::null_mut()
     }
+    ptr::null_mut()
 }
 
 /// Get the index of a DllInfo in the loaded DLL table.
 unsafe fn R_getDllIndex(info: *mut DllInfo) -> c_int {
-    unsafe {
-        for i in 0..CountDLL {
-            if *LoadedDLL.add(i as usize) == info {
-                return i;
-            }
+    let count_dll = CountDLL.with(|v| v.get());
+    let loaded_dll = LoadedDLL.with(|v| v.get());
+    for i in 0..count_dll {
+        if *loaded_dll.add(i as usize) == info {
+            return i;
         }
-        -1
     }
+    -1
 }
 
 /// Get (or create) the embedding DllInfo.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_getEmbeddingDllInfo() -> *mut DllInfo {
-    unsafe {
-        let dll = R_getDllInfo(b"(embedding)\0".as_ptr() as *const c_char);
-        if dll.is_null() {
-            let which = addDLL(
-                Rstrdup(b"(embedding)\0".as_ptr() as *const c_char),
-                b"(embedding)\0".as_ptr() as *mut c_char,
-                ptr::null_mut(),
-            );
-            let dll2 = *LoadedDLL.add(which as usize);
+    let dll = R_getDllInfo(b"(embedding)\0".as_ptr() as *const c_char);
+    if dll.is_null() {
+        let which = addDLL(
+            Rstrdup(b"(embedding)\0".as_ptr() as *const c_char),
+            b"(embedding)\0".as_ptr() as *mut c_char,
+            ptr::null_mut(),
+        );
+        let dll2 = *LoadedDLL.with(|v| v.get()).add(which as usize);
             R_useDynamicSymbols(dll2, FALSE);
             return dll2;
         }
@@ -1495,17 +1494,11 @@ pub unsafe fn do_getRegisteredRoutines(call: SEXP, op: SEXP, args: SEXP, env: SE
 
 /// Get or create the per-package CEntry table environment.
 unsafe fn get_package_CEntry_table(package: *const c_char) -> SEXP {
-    unsafe {
-        if CEntryTable.is_null() {
-            // CEntryTable = R_NewHashedEnv(R_NilValue, 0);
-            // R_PreserveObject(CEntryTable);
-            CEntryTable = ptr::null_mut(); // TODO
-        }
-        let pname = install(package);
-        // let penv = R_findVarInFrame(CEntryTable, pname);
-        // TODO: full implementation
-        ptr::null_mut()
+    if CEntryTable.with(|v| v.get()).is_null() {
+        CEntryTable.with(|v| v.set(ptr::null_mut())); // TODO
     }
+    let pname = install(package);
+    ptr::null_mut()
 }
 
 /// Register a C-callable function for use from other packages.

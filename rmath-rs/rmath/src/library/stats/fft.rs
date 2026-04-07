@@ -18,14 +18,15 @@
 )]
 
 use libc::{c_double, c_int};
+use std::cell::{Cell, RefCell};
 
 // Module-level state (static in C)
-static mut OLD_N: c_int = 0;
-static mut NFAC: [c_int; 20] = [0; 20];
-static mut M_FAC: c_int = 0;
-static mut KT: c_int = 0;
-static mut MAXF: c_int = 0;
-static mut MAXP: c_int = 0;
+thread_local! { static OLD_N: Cell<c_int> = Cell::new(0); }
+thread_local! { static NFAC: RefCell<[c_int; 20]> = RefCell::new([0; 20]); }
+thread_local! { static M_FAC: Cell<c_int> = Cell::new(0); }
+thread_local! { static KT: Cell<c_int> = Cell::new(0); }
+thread_local! { static MAXF: Cell<c_int> = Cell::new(0); }
+thread_local! { static MAXP: Cell<c_int> = Cell::new(0); }
 
 /// fft_factor - factorization check and determination of memory
 /// requirements for the fft.
@@ -46,16 +47,16 @@ pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_i
 
     // check series length
     if n <= 0 {
-        OLD_N = 0;
+        OLD_N.with(|v| v.set(0));
         *pmaxf = 0;
         *pmaxp = 0;
         return;
     } else {
-        OLD_N = n;
+        OLD_N.with(|v| v.set(n));
     }
 
     // determine the factors of n
-    M_FAC = 0;
+    M_FAC.with(|v| v.set(0));
     k = n; // k := remaining unfactored factor of n
     if k == 1 {
         return;
@@ -66,8 +67,8 @@ pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_i
     // extract 4^2 = 16 separately
     // ==> at most one remaining factor 2^2 = 4, done below
     while k % 16 == 0 {
-        NFAC[M_FAC as usize] = 4;
-        M_FAC += 1;
+        NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = 4);
+        M_FAC.with(|v| v.set(v.get() + 1));
         k /= 16;
     }
 
@@ -78,8 +79,8 @@ pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_i
     while j <= sqrtk {
         jj = j * j;
         while k % jj == 0 {
-            NFAC[M_FAC as usize] = j;
-            M_FAC += 1;
+            NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = j);
+            M_FAC.with(|v| v.set(v.get() + 1));
             k /= jj;
             kchanged = 1;
         }
@@ -91,26 +92,31 @@ pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_i
     }
 
     if k <= 4 {
-        KT = M_FAC;
-        NFAC[M_FAC as usize] = k;
+        KT.with(|v| v.set(M_FAC.with(|m| m.get())));
+        NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = k);
         if k != 1 {
-            M_FAC += 1;
+            M_FAC.with(|v| v.set(v.get() + 1));
         }
     } else {
         if k % 4 == 0 {
-            NFAC[M_FAC as usize] = 2;
-            M_FAC += 1;
+            NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = 2);
+            M_FAC.with(|v| v.set(v.get() + 1));
             k /= 4;
         }
 
         // all square factors out now, but k >= 5 still
-        KT = M_FAC;
-        MAXP = std::cmp::max(KT + KT + 2, k - 1);
+        KT.with(|v| v.set(M_FAC.with(|m| m.get())));
+        MAXP.with(|v| {
+            v.set(std::cmp::max(
+                KT.with(|k| k.get()) + KT.with(|k| k.get()) + 2,
+                k - 1,
+            ))
+        });
         j = 2;
         loop {
             if k % j == 0 {
-                NFAC[M_FAC as usize] = j;
-                M_FAC += 1;
+                NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = j);
+                M_FAC.with(|v| v.set(v.get() + 1));
                 k /= j;
             }
             if j > c_int::MAX - 2 {
@@ -123,38 +129,58 @@ pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_i
         }
     }
 
-    if M_FAC <= KT + 1 {
-        MAXP = M_FAC + KT + 1;
+    if M_FAC.with(|v| v.get()) <= KT.with(|v| v.get()) + 1 {
+        MAXP.with(|v| v.set(M_FAC.with(|m| m.get()) + KT.with(|k| k.get()) + 1));
     }
-    if M_FAC + KT > 20 {
+    if M_FAC.with(|v| v.get()) + KT.with(|v| v.get()) > 20 {
         // error - too many factors
-        OLD_N = 0;
+        OLD_N.with(|v| v.set(0));
         *pmaxf = 0;
         *pmaxp = 0;
         return;
     } else {
-        if KT != 0 {
-            j = KT;
+        if KT.with(|v| v.get()) != 0 {
+            j = KT.with(|v| v.get());
             while j != 0 {
                 j -= 1;
-                NFAC[M_FAC as usize] = NFAC[j as usize];
-                M_FAC += 1;
+                let val = NFAC.with(|v| v.borrow()[j as usize]);
+                NFAC.with(|v| v.borrow_mut()[M_FAC.with(|m| m.get()) as usize] = val);
+                M_FAC.with(|v| v.set(v.get() + 1));
             }
         }
-        MAXF = NFAC[(M_FAC - KT - 1) as usize];
+        MAXF.with(|v| {
+            v.set(NFAC.with(|n| {
+                n.borrow()[(M_FAC.with(|m| m.get()) - KT.with(|k| k.get()) - 1) as usize]
+            }))
+        });
         // The last squared factor is not necessarily the largest PR#1429
-        if KT > 0 {
-            MAXF = std::cmp::max(NFAC[(KT - 1) as usize], MAXF);
+        if KT.with(|v| v.get()) > 0 {
+            MAXF.with(|v| {
+                v.set(std::cmp::max(
+                    NFAC.with(|n| n.borrow()[(KT.with(|k| k.get()) - 1) as usize]),
+                    v.get(),
+                ))
+            });
         }
-        if KT > 1 {
-            MAXF = std::cmp::max(NFAC[(KT - 2) as usize], MAXF);
+        if KT.with(|v| v.get()) > 1 {
+            MAXF.with(|v| {
+                v.set(std::cmp::max(
+                    NFAC.with(|n| n.borrow()[(KT.with(|k| k.get()) - 2) as usize]),
+                    v.get(),
+                ))
+            });
         }
-        if KT > 2 {
-            MAXF = std::cmp::max(NFAC[(KT - 3) as usize], MAXF);
+        if KT.with(|v| v.get()) > 2 {
+            MAXF.with(|v| {
+                v.set(std::cmp::max(
+                    NFAC.with(|n| n.borrow()[(KT.with(|k| k.get()) - 3) as usize]),
+                    v.get(),
+                ))
+            });
         }
     }
-    *pmaxf = MAXF;
-    *pmaxp = MAXP;
+    *pmaxf = MAXF.with(|v| v.get());
+    *pmaxp = MAXP.with(|v| v.get());
 }
 
 /// fft_work - perform the FFT transform.
@@ -173,17 +199,17 @@ pub unsafe extern "C" fn fft_work(
     iwork: *mut c_int,
 ) -> c_int {
     // check that factorization was successful
-    if OLD_N == 0 {
+    if OLD_N.with(|v| v.get()) == 0 {
         return 0;
     }
 
     // check that the parameters match those of the factorization call
-    if n != OLD_N || nseg <= 0 || nspn <= 0 || isn == 0 {
+    if n != OLD_N.with(|v| v.get()) || nseg <= 0 || nspn <= 0 || isn == 0 {
         return 0;
     }
 
     // perform the transform
-    let mf = MAXF as usize;
+    let mf = MAXF.with(|v| v.get()) as usize;
     let nspan = n * nspn;
     let ntot = nspan * nseg;
 
@@ -194,8 +220,8 @@ pub unsafe extern "C" fn fft_work(
         n,
         nspan,
         isn,
-        M_FAC,
-        KT,
+        M_FAC.with(|v| v.get()),
+        KT.with(|v| v.get()),
         work,
         work.add(mf),
         work.add(2 * mf),
@@ -316,12 +342,12 @@ unsafe fn fftmx(
     }
     macro_rules! NF {
         ($idx:expr) => {
-            NFAC[$idx as usize]
+            NFAC.with(|v| v.borrow()[$idx as usize])
         };
     }
     macro_rules! NF_set {
         ($idx:expr, $val:expr) => {
-            NFAC[$idx as usize] = $val
+            NFAC.with(|v| v.borrow_mut()[$idx as usize] = $val)
         };
     }
 
@@ -1033,7 +1059,10 @@ unsafe fn fftmx(
     NF_set!(nn, 1);
     let mut jj_loop = nn;
     while jj_loop > kt {
-        NFAC[jj_loop as usize - 1] *= NFAC[jj_loop as usize];
+        NFAC.with(|v| {
+            let next = v.borrow()[jj_loop as usize];
+            v.borrow_mut()[jj_loop as usize - 1] *= next;
+        });
         jj_loop -= 1;
     }
     // kt is modified locally (we use a local copy since we don't want to corrupt

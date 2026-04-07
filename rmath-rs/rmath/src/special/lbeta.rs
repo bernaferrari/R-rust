@@ -16,6 +16,7 @@ const M_LN_SQRT_2PI: f64 = 0.918938533204672741780329736406; // log(sqrt(2*pi))
 mod imp {
     use super::*;
 
+    #[must_use]
     pub fn lbeta(a: f64, b: f64) -> f64 {
         // NaNs propagated correctly
         if isnan(a) || isnan(b) {
@@ -66,6 +67,7 @@ mod imp {
 }
 
 /// Compute the log of the beta function: log B(a, b).
+#[must_use]
 pub fn lbeta(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)
 }
@@ -74,11 +76,13 @@ pub fn lbeta(a: f64, b: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_lbeta(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn lbeta_c(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)

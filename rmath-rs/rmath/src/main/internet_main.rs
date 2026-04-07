@@ -24,6 +24,7 @@
  *  function pointers loaded from the "internet" module.
  */
 
+use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_double, c_int, c_void};
 
 use crate::main::errors::Rf_error;
@@ -119,56 +120,58 @@ pub struct R_InternetRoutines {
     newcurlurl: Option<FnNewCurlUrl>,
 }
 
-static mut routines: R_InternetRoutines = R_InternetRoutines {
-    download: None,
-    newurl: None,
-    newsock: None,
-    newservsock: None,
-    HTTPDCreate: None,
-    HTTPDStop: None,
-    sockconnect: None,
-    sockread: None,
-    sockclose: None,
-    sockopen: None,
-    socklisten: None,
-    sockwrite: None,
-    sockselect: None,
-    curlVersion: None,
-    curlGetHeaders: None,
-    curlDownload: None,
-    newcurlurl: None,
-};
+thread_local! {
+    static routines: RefCell<R_InternetRoutines> = RefCell::new(R_InternetRoutines {
+        download: None,
+        newurl: None,
+        newsock: None,
+        newservsock: None,
+        HTTPDCreate: None,
+        HTTPDStop: None,
+        sockconnect: None,
+        sockread: None,
+        sockclose: None,
+        sockopen: None,
+        socklisten: None,
+        sockwrite: None,
+        sockselect: None,
+        curlVersion: None,
+        curlGetHeaders: None,
+        curlDownload: None,
+        newcurlurl: None,
+    });
 
-static mut ptr: *const R_InternetRoutines = std::ptr::null();
-static mut initialized: c_int = 0;
+    static ptr: Cell<*const R_InternetRoutines> = Cell::new(std::ptr::null());
+
+    static initialized: Cell<c_int> = Cell::new(0);
+}
 
 /// R_setInternetRoutines -- set the internet routines table.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_setInternetRoutines(
     new_routines: *const R_InternetRoutines,
 ) -> *const R_InternetRoutines {
-    unsafe {
-        let tmp = ptr;
-        ptr = new_routines;
-        tmp
-    }
+    let tmp = ptr.with(|v| v.get());
+    ptr.with(|v| v.set(new_routines));
+    tmp
 }
 
 /// internet_Init -- initialize internet module by loading the "internet" dynload module.
 unsafe fn internet_Init() {
     unsafe {
         let res = R_moduleCdynload(b"internet\0".as_ptr() as *const c_char, 1, 1);
-        initialized = -1;
+        initialized.with(|v| v.set(-1));
         if res == 0 {
             return;
         }
-        if ptr.is_null() {
+        let p = ptr.with(|v| v.get());
+        if p.is_null() {
             Rf_error(b"internet routines cannot be accessed in module\0".as_ptr() as *const c_char);
         }
-        if (*ptr).download.is_none() {
+        if (*p).download.is_none() {
             Rf_error(b"internet routines cannot be accessed in module\0".as_ptr() as *const c_char);
         }
-        initialized = 1;
+        initialized.with(|v| v.set(1));
     }
 }
 
@@ -176,10 +179,10 @@ unsafe fn internet_Init() {
 #[inline]
 unsafe fn ensure_internet() -> bool {
     unsafe {
-        if initialized == 0 {
+        if initialized.with(|v| v.get()) == 0 {
             internet_Init();
         }
-        initialized > 0
+        initialized.with(|v| v.get()) > 0
     }
 }
 
@@ -187,7 +190,8 @@ unsafe fn ensure_internet() -> bool {
 pub unsafe fn Rdownload(args: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).download {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).download {
                 return func(args);
             }
         }
@@ -205,7 +209,8 @@ pub unsafe extern "C" fn R_newurl(
 ) -> Rconnection {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).newurl {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).newurl {
                 return func(description, mode, headers, rtype);
             }
         }
@@ -226,7 +231,8 @@ pub unsafe extern "C" fn R_newsock(
 ) -> Rconnection {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).newsock {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).newsock {
                 return func(host, port, server, serverfd, mode, timeout, options);
             }
         }
@@ -239,7 +245,8 @@ pub unsafe extern "C" fn R_newsock(
 pub unsafe extern "C" fn R_newservsock(port: c_int) -> Rconnection {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).newservsock {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).newservsock {
                 return func(port);
             }
         }
@@ -251,12 +258,12 @@ pub unsafe extern "C" fn R_newservsock(port: c_int) -> Rconnection {
 pub unsafe fn extR_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).HTTPDCreate {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).HTTPDCreate {
                 return func(ip, port);
             }
         }
         Rf_error(b"internet routines cannot be loaded\0".as_ptr() as *const c_char);
-        -1
     }
 }
 
@@ -264,7 +271,8 @@ pub unsafe fn extR_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
 pub unsafe fn extR_HTTPDStop() {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).HTTPDStop {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).HTTPDStop {
                 func();
                 return;
             }
@@ -283,7 +291,8 @@ pub unsafe fn Rsockconnect(sport: SEXP, shost: SEXP) -> SEXP {
         let host_str = crate::main::sysutils::translateCharFP(STRING_ELT(shost, 0));
         let mut host_buf: *mut c_char = host_str as *mut c_char;
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).sockconnect {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).sockconnect {
                 func(&mut port, &mut host_buf);
                 return Rf_ScalarInteger(port);
             }
@@ -307,7 +316,8 @@ pub unsafe fn Rsockread(ssock: SEXP, smaxlen: SEXP) -> SEXP {
         let buf = RAW(rbuf) as *mut c_char;
         let mut abuf: *mut c_char = buf;
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).sockread {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).sockread {
                 func(&mut sock, &mut abuf, &mut maxlen);
             } else {
                 Rf_error(b"socket routines cannot be loaded\0".as_ptr() as *const c_char);
@@ -336,7 +346,8 @@ pub unsafe fn Rsockclose(ssock: SEXP) -> SEXP {
             Rf_error(b"attempt to close invalid socket\0".as_ptr() as *const c_char);
         }
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).sockclose {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).sockclose {
                 func(&mut sock);
                 return Rf_ScalarLogical(sock);
             }
@@ -353,7 +364,8 @@ pub unsafe fn Rsockopen(sport: SEXP) -> SEXP {
         }
         let mut port = asInteger(sport);
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).sockopen {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).sockopen {
                 func(&mut port);
                 return Rf_ScalarInteger(port);
             }
@@ -373,7 +385,8 @@ pub unsafe fn Rsocklisten(ssock: SEXP) -> SEXP {
         let mut buf: [c_char; 257] = [0; 257];
         let mut abuf: *mut c_char = buf.as_mut_ptr();
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).socklisten {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).socklisten {
                 func(&mut sock, &mut abuf, &mut len);
             } else {
                 Rf_error(b"socket routines cannot be loaded\0".as_ptr() as *const c_char);
@@ -410,7 +423,8 @@ pub unsafe fn Rsockwrite(ssock: SEXP, sstring: SEXP) -> SEXP {
         len = buf_len;
         let mut abuf: *mut c_char = buf as *mut c_char;
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).sockwrite {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).sockwrite {
                 func(&mut sock, &mut abuf, &mut start, &mut end, &mut len);
                 return Rf_ScalarInteger(len);
             }
@@ -429,12 +443,12 @@ pub unsafe fn Rsockselect(
 ) -> c_int {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).sockselect {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).sockselect {
                 return func(nsock, insockfd, ready, write, timeout);
             }
         }
         Rf_error(b"socket routines cannot be loaded\0".as_ptr() as *const c_char);
-        0
     }
 }
 
@@ -442,7 +456,8 @@ pub unsafe fn Rsockselect(
 pub unsafe fn do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).curlVersion {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).curlVersion {
                 return func(call, op, args, rho);
             }
         }
@@ -454,7 +469,8 @@ pub unsafe fn do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 pub unsafe fn do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).curlGetHeaders {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).curlGetHeaders {
                 return func(call, op, args, rho);
             }
         }
@@ -466,7 +482,8 @@ pub unsafe fn do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 pub unsafe fn do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).curlDownload {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).curlDownload {
                 return func(call, op, args, rho);
             }
         }
@@ -484,7 +501,8 @@ pub unsafe extern "C" fn R_newCurlUrl(
 ) -> Rconnection {
     unsafe {
         if ensure_internet() {
-            if let Some(ref func) = (*ptr).newcurlurl {
+            let p = ptr.with(|v| v.get());
+            if let Some(ref func) = (*p).newcurlurl {
                 return func(description, mode, headers, rtype);
             }
         }

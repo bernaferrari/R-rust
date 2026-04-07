@@ -22,28 +22,29 @@
 //! unix/system.rs, unix/embedded.rs, and mainutils/main.rs are provided
 //! as pub(crate) functions WITHOUT #[unsafe(no_mangle)] to avoid duplicate symbol errors.
 
-use std::os::raw::{c_char, c_double, c_int, c_long, c_uint, c_ulong, c_void};
+use std::cell::Cell;
+use std::os::raw::{c_char, c_double, c_int, c_long, c_void};
 use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // GC control
 // ---------------------------------------------------------------------------
 
-static mut R_in_gc: c_int = 0;
-static mut gc_reporting: c_int = 0;
-static mut gc_count: c_int = 0;
+thread_local! { static R_in_gc: Cell<c_int> = Cell::new(0); }
+thread_local! { static gc_reporting: Cell<c_int> = Cell::new(0); }
+thread_local! { static gc_count: Cell<c_int> = Cell::new(0); }
 
 /// Returns whether a GC is currently running.
 ///
 /// This is the equivalent of R's `R_gc_running()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gc_running() -> c_int {
-    unsafe { R_in_gc }
+    R_in_gc.with(|v| v.get())
 }
 
 /// Trigger a full garbage collection.
@@ -51,10 +52,8 @@ pub unsafe extern "C" fn R_gc_running() -> c_int {
 /// This is the equivalent of R's `R_gc()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gc() {
-    unsafe {
-        gc_count += 1;
-        // No actual GC implementation yet; stub.
-    }
+    gc_count.with(|v| v.set(v.get() + 1));
+    // No actual GC implementation yet; stub.
 }
 
 /// Trigger a lightweight garbage collection.
@@ -62,10 +61,8 @@ pub unsafe extern "C" fn R_gc() {
 /// This is the equivalent of R's `R_gc_lite()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_gc_lite() {
-    unsafe {
-        gc_count += 1;
-        // No actual GC implementation yet; stub.
-    }
+    gc_count.with(|v| v.set(v.get() + 1));
+    // No actual GC implementation yet; stub.
 }
 
 /// GC torture settings (no-op).
@@ -985,7 +982,7 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// This is the equivalent of R's `do_gcinfo()`.
 pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(gc_reporting) }
+    unsafe { Rf_ScalarLogical(gc_reporting.with(|v| v.get())) }
 }
 
 /// gctorture() implementation (stub).

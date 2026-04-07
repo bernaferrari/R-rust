@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/unique.c — hash and comparison utilities,
 //! plus `do_unique`, `do_duplicated`, `do_any`, `do_all`.
@@ -19,11 +19,10 @@ use crate::sexp::safe::Sexp;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{
-    CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LENGTH,
-    LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
-    TYPEOF, VECTOR_ELT, XLENGTH,
+    COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT,
+    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector3};
+use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector3};
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rcomplex, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -219,11 +218,7 @@ unsafe fn requal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
             xi == yj
         } else if R_IsNA(xi) && R_IsNA(yj) {
             true
-        } else if ISNAN(xi) && ISNAN(yj) {
-            true
-        } else {
-            false
-        }
+        } else { ISNAN(xi) && ISNAN(yj) }
     }
 }
 
@@ -602,20 +597,16 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         if current.is_nil() {
             break;
         }
-        if let Some(tag) = current.tag() {
-            if let Some(pname) = tag.printname() {
-                if let Some(name_bytes) = pname.data_ptr() {
+        if let Some(tag) = current.tag()
+            && let Some(pname) = tag.printname()
+                && let Some(name_bytes) = pname.data_ptr() {
                     let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
-                    if name_str.to_bytes() == b"na.rm" {
-                        if let Some(na_val) = current.car() {
-                            if let Some(nrm) = na_val.logical_elt(0) {
+                    if name_str.to_bytes() == b"na.rm"
+                        && let Some(na_val) = current.car()
+                            && let Some(nrm) = na_val.logical_elt(0) {
                                 na_rm = nrm == 1;
                             }
-                        }
-                    }
                 }
-            }
-        }
         arg_list = current.cdr();
     }
 
@@ -688,20 +679,16 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         if current.is_nil() {
             break;
         }
-        if let Some(tag) = current.tag() {
-            if let Some(pname) = tag.printname() {
-                if let Some(name_bytes) = pname.data_ptr() {
+        if let Some(tag) = current.tag()
+            && let Some(pname) = tag.printname()
+                && let Some(name_bytes) = pname.data_ptr() {
                     let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
-                    if name_str.to_bytes() == b"na.rm" {
-                        if let Some(na_val) = current.car() {
-                            if let Some(nrm) = na_val.logical_elt(0) {
+                    if name_str.to_bytes() == b"na.rm"
+                        && let Some(na_val) = current.car()
+                            && let Some(nrm) = na_val.logical_elt(0) {
                                 na_rm = nrm == 1;
                             }
-                        }
-                    }
                 }
-            }
-        }
         arg_list = current.cdr();
     }
 
@@ -849,6 +836,9 @@ pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::accessors::*;
+    use crate::sexp::constructors::*;
+
     use super::*;
 
     #[test]

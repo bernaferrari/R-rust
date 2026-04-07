@@ -6,13 +6,11 @@
 //! the function pointer dispatch table for system operations (console I/O,
 //! cleanup, file viewing), and FD limit utilities.
 
+use std::cell::Cell;
 use std::env;
 use std::io::{self, Write};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-
-use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -31,50 +29,21 @@ const SA_SUICIDE: c_int = 3;
 // Globals
 // ---------------------------------------------------------------------------
 
-/// Whether R is running interactively.
-static mut R_Interactive: c_int = 1;
-
-/// Whether readline is being used.
-static mut UsingReadline: c_int = 1;
-
-/// Whether running as the main program.
-static mut R_running_as_main_program: c_int = 0;
-
-/// R home directory.
-static mut R_Home: *const c_char = ptr::null();
-
-/// History file path.
-static mut R_HistoryFile: *const c_char = ptr::null();
-
-/// History size.
-static mut R_HistorySize: c_int = 512;
-
-/// Whether to restore history.
-static mut R_RestoreHistory: c_int = 1;
-
-/// Input file pointer (for -f/--file).
-static mut ifp: *mut libc::FILE = ptr::null_mut();
-
-/// Output file for R output.
-static mut R_Outputfile: *mut libc::FILE = ptr::null_mut();
-
-/// Console file for R console messages.
-static mut R_Consolefile: *mut libc::FILE = ptr::null_mut();
-
-/// GUI type string.
-static mut R_GUIType: *const c_char = ptr::null();
-
-/// Stack direction (1 = grows up, -1 = grows down).
-static mut R_CStackDir: c_int = -1;
-
-/// Stack limit.
-static mut R_CStackLimit: usize = 0;
-
-/// Stack start address.
-static mut R_CStackStart: usize = 0;
-
-/// Global context (stub).
-static mut R_GlobalContext: *mut c_void = ptr::null_mut();
+thread_local! { static R_Interactive: Cell<c_int> = Cell::new(1); }
+thread_local! { static UsingReadline: Cell<c_int> = Cell::new(1); }
+thread_local! { static R_running_as_main_program: Cell<c_int> = Cell::new(0); }
+thread_local! { static R_Home: Cell<*const c_char> = Cell::new(ptr::null()); }
+thread_local! { static R_HistoryFile: Cell<*const c_char> = Cell::new(ptr::null()); }
+thread_local! { static R_HistorySize: Cell<c_int> = Cell::new(512); }
+thread_local! { static R_RestoreHistory: Cell<c_int> = Cell::new(1); }
+thread_local! { static ifp: Cell<*mut libc::FILE> = Cell::new(ptr::null_mut()); }
+thread_local! { static R_Outputfile: Cell<*mut libc::FILE> = Cell::new(ptr::null_mut()); }
+thread_local! { static R_Consolefile: Cell<*mut libc::FILE> = Cell::new(ptr::null_mut()); }
+thread_local! { static R_GUIType: Cell<*const c_char> = Cell::new(ptr::null()); }
+thread_local! { static R_CStackDir: Cell<c_int> = Cell::new(-1); }
+thread_local! { static R_CStackLimit: Cell<usize> = Cell::new(0); }
+thread_local! { static R_CStackStart: Cell<usize> = Cell::new(0); }
+thread_local! { static R_GlobalContext: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
 
 /// C stack direction detection.
 const C_STACK_DIRECTION: c_int = -1;
@@ -113,22 +82,22 @@ type PtrEditFiles = Option<
 // System interface function pointers
 // ---------------------------------------------------------------------------
 
-static mut ptr_R_Suicide: PtrSuicide = None;
-static mut ptr_R_ShowMessage: PtrShowMessage = None;
-static mut ptr_R_ReadConsole: PtrReadConsole = None;
-static mut ptr_R_WriteConsole: PtrWriteConsole = None;
-static mut ptr_R_WriteConsoleEx: PtrWriteConsoleEx = None;
-static mut ptr_R_ResetConsole: PtrResetConsole = None;
-static mut ptr_R_FlushConsole: PtrFlushConsole = None;
-static mut ptr_R_ClearerrConsole: PtrClearerrConsole = None;
-static mut ptr_R_Busy: PtrBusy = None;
-static mut ptr_R_CleanUp: PtrCleanUp = None;
-static mut ptr_R_ShowFiles: PtrShowFiles = None;
-static mut ptr_R_ChooseFile: PtrChooseFile = None;
-static mut ptr_R_loadhistory: PtrHistory = None;
-static mut ptr_R_savehistory: PtrHistory = None;
-static mut ptr_R_addhistory: PtrHistory = None;
-static mut ptr_R_EditFiles: PtrEditFiles = None;
+thread_local! { static ptr_R_Suicide: Cell<PtrSuicide> = Cell::new(None); }
+thread_local! { static ptr_R_ShowMessage: Cell<PtrShowMessage> = Cell::new(None); }
+thread_local! { static ptr_R_ReadConsole: Cell<PtrReadConsole> = Cell::new(None); }
+thread_local! { static ptr_R_WriteConsole: Cell<PtrWriteConsole> = Cell::new(None); }
+thread_local! { static ptr_R_WriteConsoleEx: Cell<PtrWriteConsoleEx> = Cell::new(None); }
+thread_local! { static ptr_R_ResetConsole: Cell<PtrResetConsole> = Cell::new(None); }
+thread_local! { static ptr_R_FlushConsole: Cell<PtrFlushConsole> = Cell::new(None); }
+thread_local! { static ptr_R_ClearerrConsole: Cell<PtrClearerrConsole> = Cell::new(None); }
+thread_local! { static ptr_R_Busy: Cell<PtrBusy> = Cell::new(None); }
+thread_local! { static ptr_R_CleanUp: Cell<PtrCleanUp> = Cell::new(None); }
+thread_local! { static ptr_R_ShowFiles: Cell<PtrShowFiles> = Cell::new(None); }
+thread_local! { static ptr_R_ChooseFile: Cell<PtrChooseFile> = Cell::new(None); }
+thread_local! { static ptr_R_loadhistory: Cell<PtrHistory> = Cell::new(None); }
+thread_local! { static ptr_R_savehistory: Cell<PtrHistory> = Cell::new(None); }
+thread_local! { static ptr_R_addhistory: Cell<PtrHistory> = Cell::new(None); }
+thread_local! { static ptr_R_EditFiles: Cell<PtrEditFiles> = Cell::new(None); }
 
 // ---------------------------------------------------------------------------
 // Default implementations (Rstd_* equivalents)
@@ -210,7 +179,7 @@ unsafe extern "C" fn Rstd_read_history(_file: *const c_char) {}
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Suicide(s: *const c_char) {
     unsafe {
-        if let Some(f) = ptr_R_Suicide {
+        if let Some(f) = ptr_R_Suicide.with(|v| v.get()) {
             f(s);
         }
         std::process::exit(2);
@@ -220,7 +189,7 @@ pub unsafe extern "C" fn R_Suicide(s: *const c_char) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_ShowMessage(s: *const c_char) {
     unsafe {
-        if let Some(f) = ptr_R_ShowMessage {
+        if let Some(f) = ptr_R_ShowMessage.with(|v| v.get()) {
             f(s);
         }
     }
@@ -234,7 +203,7 @@ pub unsafe extern "C" fn R_ReadConsole(
     addtohistory: c_int,
 ) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_ReadConsole {
+        if let Some(f) = ptr_R_ReadConsole.with(|v| v.get()) {
             f(prompt, buf, len, addtohistory)
         } else {
             0
@@ -245,9 +214,9 @@ pub unsafe extern "C" fn R_ReadConsole(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_WriteConsole(buf: *const c_char, len: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_WriteConsole {
+        if let Some(f) = ptr_R_WriteConsole.with(|v| v.get()) {
             f(buf, len);
-        } else if let Some(f) = ptr_R_WriteConsoleEx {
+        } else if let Some(f) = ptr_R_WriteConsoleEx.with(|v| v.get()) {
             f(buf, len, 0);
         }
     }
@@ -256,9 +225,9 @@ pub unsafe extern "C" fn R_WriteConsole(buf: *const c_char, len: c_int) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_WriteConsole {
+        if let Some(f) = ptr_R_WriteConsole.with(|v| v.get()) {
             f(buf, len);
-        } else if let Some(f) = ptr_R_WriteConsoleEx {
+        } else if let Some(f) = ptr_R_WriteConsoleEx.with(|v| v.get()) {
             f(buf, len, otype);
         }
     }
@@ -267,7 +236,7 @@ pub unsafe extern "C" fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype:
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_ResetConsole() {
     unsafe {
-        if let Some(f) = ptr_R_ResetConsole {
+        if let Some(f) = ptr_R_ResetConsole.with(|v| v.get()) {
             f();
         }
     }
@@ -276,7 +245,7 @@ pub unsafe extern "C" fn R_ResetConsole() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_FlushConsole() {
     unsafe {
-        if let Some(f) = ptr_R_FlushConsole {
+        if let Some(f) = ptr_R_FlushConsole.with(|v| v.get()) {
             f();
         }
     }
@@ -285,7 +254,7 @@ pub unsafe extern "C" fn R_FlushConsole() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_ClearerrConsole() {
     unsafe {
-        if let Some(f) = ptr_R_ClearerrConsole {
+        if let Some(f) = ptr_R_ClearerrConsole.with(|v| v.get()) {
             f();
         }
     }
@@ -294,7 +263,7 @@ pub unsafe extern "C" fn R_ClearerrConsole() {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_Busy(which: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_Busy {
+        if let Some(f) = ptr_R_Busy.with(|v| v.get()) {
             f(which);
         }
     }
@@ -303,7 +272,7 @@ pub unsafe extern "C" fn R_Busy(which: c_int) {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
     unsafe {
-        if let Some(f) = ptr_R_CleanUp {
+        if let Some(f) = ptr_R_CleanUp.with(|v| v.get()) {
             f(saveact, status, runLast);
         }
         std::process::exit(status);
@@ -320,7 +289,7 @@ pub unsafe extern "C" fn R_ShowFiles(
     pager: *const c_char,
 ) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_ShowFiles {
+        if let Some(f) = ptr_R_ShowFiles.with(|v| v.get()) {
             f(nfile, file, headers, wtitle, del, pager)
         } else {
             0
@@ -331,7 +300,7 @@ pub unsafe extern "C" fn R_ShowFiles(
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_ChooseFile {
+        if let Some(f) = ptr_R_ChooseFile.with(|v| v.get()) {
             f(new, buf, len)
         } else {
             0
@@ -347,7 +316,7 @@ pub unsafe extern "C" fn R_EditFiles(
     editor: *const c_char,
 ) -> c_int {
     unsafe {
-        if let Some(f) = ptr_R_EditFiles {
+        if let Some(f) = ptr_R_EditFiles.with(|v| v.get()) {
             f(nfile, file, title, editor)
         } else {
             0
@@ -359,38 +328,30 @@ pub unsafe extern "C" fn R_EditFiles(
 // R_setupHistory
 // ---------------------------------------------------------------------------
 
-/// Set up history file and size from environment variables.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_setupHistory() {
-    unsafe {
-        let histfile = env::var("R_HISTFILE");
-        match histfile {
-            Ok(ref v) if !v.is_empty() => {
-                // Store the path — for now we use a static buffer
-                R_HistoryFile = v.as_ptr() as *const c_char;
-            }
-            _ => {
-                R_HistoryFile = b".Rhistory\0".as_ptr() as *const c_char;
-            }
+    let histfile = env::var("R_HISTFILE");
+    match histfile {
+        Ok(ref s) if !s.is_empty() => {
+            R_HistoryFile.with(|c| c.set(s.as_ptr() as *const c_char));
         }
-
-        R_HistorySize = 512;
-        if let Ok(v) = env::var("R_HISTSIZE") {
-            if let Ok(val) = v.parse::<c_int>() {
-                if val >= 0 {
-                    R_HistorySize = val;
-                }
-            }
+        _ => {
+            R_HistoryFile.with(|c| c.set(b".Rhistory\0".as_ptr() as *const c_char));
         }
     }
+
+    R_HistorySize.with(|c| c.set(512));
+    if let Ok(s) = env::var("R_HISTSIZE")
+        && let Ok(val) = s.parse::<c_int>()
+            && val >= 0 {
+                R_HistorySize.with(|c| c.set(val));
+            }
 }
 
 // ---------------------------------------------------------------------------
 // R_GetFDLimit / R_EnsureFDLimit
 // ---------------------------------------------------------------------------
 
-/// Get the system limit on the number of open files.
-/// Returns the limit on success, or a negative number on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_GetFDLimit() -> c_int {
     unsafe {
@@ -420,9 +381,6 @@ pub unsafe extern "C" fn R_GetFDLimit() -> c_int {
     }
 }
 
-/// Try to ensure the FD limit is at least `desired`.
-/// Returns `desired` on success, the current limit if it can't be raised,
-/// or a negative number on error.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn R_EnsureFDLimit(desired: c_int) -> c_int {
     unsafe {
@@ -440,7 +398,6 @@ pub unsafe extern "C" fn R_EnsureFDLimit(desired: c_int) -> c_int {
                 return desired;
             }
 
-            // Try to increase the limit
             if rlim.rlim_max == libc::RLIM_INFINITY || rlim.rlim_max >= desired_usize {
                 rlim.rlim_cur = desired_usize;
             } else {
@@ -465,7 +422,6 @@ pub unsafe extern "C" fn R_EnsureFDLimit(desired: c_int) -> c_int {
 // Rf_initialize_R
 // ---------------------------------------------------------------------------
 
-/// Undo escaping done by the R front end.
 unsafe fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
     unsafe {
         let mut q = dst;
@@ -497,89 +453,49 @@ unsafe fn unescape_arg(src: *const c_char, dst: *mut c_char) -> *mut c_char {
     }
 }
 
-/// Stub: R_Decode2Long
 unsafe fn R_Decode2Long(_s: *const c_char, _ierr: *mut c_int) -> i64 {
     0
 }
 
-/// Stub: R_HomeDir
 unsafe fn R_HomeDir() -> *const c_char {
     static HOME: &[u8] = b"/usr/lib/R\0";
     HOME.as_ptr() as *const c_char
 }
 
-/// Stub: BindDomain
 unsafe fn BindDomain(_home: *const c_char) {}
-
-/// Stub: process_system_Renviron
 unsafe fn process_system_Renviron() {}
-
-/// Stub: process_site_Renviron
 unsafe fn process_site_Renviron() {}
-
-/// Stub: process_user_Renviron
 unsafe fn process_user_Renviron() {}
-
-/// Stub: R_set_command_line_arguments
 unsafe fn R_set_command_line_arguments(_ac: c_int, _av: *mut *mut c_char) {}
-
-/// Stub: R_common_command_line
 unsafe fn R_common_command_line(_ac: *const c_int, _av: *mut *mut c_char, _rp: *mut c_void) {}
-
-/// Stub: R_DefParamsEx
 unsafe fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) {}
-
-/// Stub: R_SetParams
 unsafe fn R_SetParams(_rp: *mut c_void) {}
-
-/// Stub: R_SizeFromEnv
 unsafe fn R_SizeFromEnv(_rp: *mut c_void) {}
-
-/// Stub: R_isatty
 unsafe fn R_isatty(_fd: c_int) -> c_int {
     0
 }
-
-/// Stub: R_isWriteableDir
 unsafe fn R_isWriteableDir(_path: *const c_char) -> c_int {
     0
 }
-
-/// Stub: R_fopen
 unsafe fn R_fopen(_path: *const c_char, _mode: *const c_char) -> *mut libc::FILE {
     ptr::null_mut()
 }
-
-/// Stub: R_setStartTime
 unsafe fn R_setStartTime() {}
-
-/// Stub: fpu_setup
 unsafe fn fpu_setup(_start: c_int) {}
 
-/// Protection counter for initialization.
-static mut num_initialized: c_int = 0;
+thread_local! { static num_initialized: Cell<c_int> = Cell::new(0); }
 
-/// The main R initialization entry point.
-///
-/// This function:
-/// 1. Detects stack characteristics (direction, limit)
-/// 2. Sets up the function pointer dispatch table
-/// 3. Processes command line arguments
-/// 4. Configures interactive/non-interactive mode
-/// 5. Sets up history
-///
-/// Returns 0 on success.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
     unsafe {
-        if num_initialized != 0 {
+        if num_initialized.with(|v| v.get()) != 0 {
             eprintln!("R is already initialized\n");
             std::process::exit(1);
         }
-        num_initialized = 1;
+        num_initialized.with(|v| v.set(1));
 
         // --- Stack detection ---
-        R_CStackDir = C_STACK_DIRECTION;
+        R_CStackDir.with(|v| v.set(C_STACK_DIRECTION));
 
         #[cfg(all(unix, not(target_os = "macos")))]
         {
@@ -587,22 +503,19 @@ pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_i
             if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
                 let lim = rlim.rlim_cur;
                 if lim != libc::RLIM_INFINITY {
-                    R_CStackLimit = lim as usize;
+                    R_CStackLimit.with(|v| v.set(lim as usize));
                 }
             }
-            // On Linux, try to get stack start from /proc/self/maps
-            // For now, just use a reasonable default
-            if R_CStackStart == 0 {
-                R_CStackStart = 0; // Will be set properly by the stack detector
+            if R_CStackStart.with(|v| v.get()) == 0 {
+                R_CStackStart.with(|v| v.set(0));
             }
         }
 
         #[cfg(target_os = "macos")]
         {
-            // macOS: use KERN_USRSTACK to find stack start
             let mut base: usize = 0;
             let mut len: usize = std::mem::size_of::<*const c_void>();
-            let KERN_USRSTACK: libc::c_int = 33; // macOS-specific constant
+            let KERN_USRSTACK: libc::c_int = 33;
             let mut mib: [libc::c_int; 2] = [libc::CTL_KERN, KERN_USRSTACK];
             if libc::sysctl(
                 mib.as_mut_ptr(),
@@ -613,46 +526,46 @@ pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_i
                 0,
             ) == 0
             {
-                R_CStackStart = base;
+                R_CStackStart.with(|v| v.set(base));
             }
 
             let mut rlim: libc::rlimit = std::mem::zeroed();
             if libc::getrlimit(libc::RLIMIT_STACK, &mut rlim) == 0 {
                 let lim = rlim.rlim_cur;
                 if lim != libc::RLIM_INFINITY {
-                    R_CStackLimit = lim as usize;
+                    R_CStackLimit.with(|v| v.set(lim as usize));
                 }
             }
         }
 
-        if R_CStackStart == usize::MAX {
-            R_CStackLimit = usize::MAX; // never set
+        if R_CStackStart.with(|v| v.get()) == usize::MAX {
+            R_CStackLimit.with(|v| v.set(usize::MAX));
         }
 
         // --- Set up function pointer dispatch table ---
-        ptr_R_Suicide = Some(Rstd_Suicide);
-        ptr_R_ShowMessage = Some(Rstd_ShowMessage);
-        ptr_R_ReadConsole = Some(Rstd_ReadConsole);
-        ptr_R_WriteConsole = Some(Rstd_WriteConsole);
-        ptr_R_ResetConsole = Some(Rstd_ResetConsole);
-        ptr_R_FlushConsole = Some(Rstd_FlushConsole);
-        ptr_R_ClearerrConsole = Some(Rstd_ClearerrConsole);
-        ptr_R_Busy = Some(Rstd_Busy);
-        ptr_R_CleanUp = Some(Rstd_CleanUp);
-        ptr_R_ShowFiles = Some(Rstd_ShowFiles);
-        ptr_R_ChooseFile = Some(Rstd_ChooseFile);
-        ptr_R_loadhistory = Some(Rstd_loadhistory);
-        ptr_R_savehistory = Some(Rstd_savehistory);
-        ptr_R_addhistory = Some(Rstd_addhistory);
+        ptr_R_Suicide.with(|v| v.set(Some(Rstd_Suicide)));
+        ptr_R_ShowMessage.with(|v| v.set(Some(Rstd_ShowMessage)));
+        ptr_R_ReadConsole.with(|v| v.set(Some(Rstd_ReadConsole)));
+        ptr_R_WriteConsole.with(|v| v.set(Some(Rstd_WriteConsole)));
+        ptr_R_ResetConsole.with(|v| v.set(Some(Rstd_ResetConsole)));
+        ptr_R_FlushConsole.with(|v| v.set(Some(Rstd_FlushConsole)));
+        ptr_R_ClearerrConsole.with(|v| v.set(Some(Rstd_ClearerrConsole)));
+        ptr_R_Busy.with(|v| v.set(Some(Rstd_Busy)));
+        ptr_R_CleanUp.with(|v| v.set(Some(Rstd_CleanUp)));
+        ptr_R_ShowFiles.with(|v| v.set(Some(Rstd_ShowFiles)));
+        ptr_R_ChooseFile.with(|v| v.set(Some(Rstd_ChooseFile)));
+        ptr_R_loadhistory.with(|v| v.set(Some(Rstd_loadhistory)));
+        ptr_R_savehistory.with(|v| v.set(Some(Rstd_savehistory)));
+        ptr_R_addhistory.with(|v| v.set(Some(Rstd_addhistory)));
 
-        R_GlobalContext = ptr::null_mut();
+        R_GlobalContext.with(|v| v.set(ptr::null_mut()));
 
         // --- R home and environment ---
-        R_Home = R_HomeDir();
-        if R_Home.is_null() {
+        R_Home.with(|v| v.set(R_HomeDir()));
+        if R_Home.with(|v| v.get()).is_null() {
             R_Suicide(b"R home directory is not defined\0".as_ptr() as *const c_char);
         }
-        BindDomain(R_Home);
+        BindDomain(R_Home.with(|v| v.get()));
         process_system_Renviron();
         R_setStartTime();
 
@@ -662,7 +575,7 @@ pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_i
         R_common_command_line(&ac, av, ptr::null_mut());
 
         // Process remaining arguments
-        let mut argc = ac;
+        let argc = ac;
         let mut argv = av;
         let mut force_interactive: bool = false;
         let mut save_action: c_int = SA_DEFAULT;
@@ -677,7 +590,7 @@ pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_i
             }
             if *arg == b'-' as c_char {
                 if libc::strcmp(arg, b"--no-readline\0".as_ptr() as *const c_char) == 0 {
-                    UsingReadline = 0;
+                    UsingReadline.with(|v| v.set(0));
                 } else if libc::strcmp(arg, b"--vanilla\0".as_ptr() as *const c_char) == 0 {
                     save_action = SA_NOSAVE;
                 } else if libc::strcmp(arg, b"--save\0".as_ptr() as *const c_char) == 0 {
@@ -695,16 +608,19 @@ pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_i
 
         // --- Interactive mode ---
         if force_interactive || R_isatty(0) != 0 {
-            R_Interactive = 1;
+            R_Interactive.with(|v| v.set(1));
         } else {
-            R_Interactive = 0;
+            R_Interactive.with(|v| v.set(0));
         }
 
-        R_Outputfile = ptr::null_mut(); // stdout
-        R_Consolefile = ptr::null_mut(); // stderr
+        R_Outputfile.with(|v| v.set(ptr::null_mut()));
+        R_Consolefile.with(|v| v.set(ptr::null_mut()));
 
         // --- Save action check ---
-        if R_Interactive == 0 && save_action != SA_SAVE && save_action != SA_NOSAVE {
+        if R_Interactive.with(|v| v.get()) == 0
+            && save_action != SA_SAVE
+            && save_action != SA_NOSAVE
+        {
             R_Suicide(
                 b"you must specify '--save', '--no-save' or '--vanilla'\0".as_ptr()
                     as *const c_char,
@@ -732,7 +648,6 @@ mod tests {
     #[test]
     fn test_system_dispatch_nulls() {
         unsafe {
-            // These should not crash with null data
             R_ShowMessage(b"test\0".as_ptr() as *const c_char);
         }
     }
@@ -741,7 +656,7 @@ mod tests {
     fn test_setup_history() {
         unsafe {
             R_setupHistory();
-            assert_eq!(*std::ptr::addr_of!(R_HistorySize), 512);
+            assert_eq!(R_HistorySize.with(|v| v.get()), 512);
         }
     }
 
@@ -749,7 +664,6 @@ mod tests {
     fn test_get_fd_limit() {
         unsafe {
             let limit = R_GetFDLimit();
-            // On Unix, should be positive
             #[cfg(unix)]
             assert!(limit > 0);
         }
@@ -759,7 +673,6 @@ mod tests {
     fn test_ensure_fd_limit() {
         unsafe {
             let result = R_EnsureFDLimit(256);
-            // Should return at least 256 on success
             #[cfg(unix)]
             assert!(result > 0 || result == -1);
         }
@@ -772,7 +685,7 @@ mod tests {
             let mut dst = [0i8; 16];
             let end = unescape_arg(src.as_ptr() as *const c_char, dst.as_mut_ptr());
             let written = (end as usize) - (dst.as_mut_ptr() as usize);
-            assert_eq!(written, 11); // "hello world"
+            assert_eq!(written, 11);
             assert_eq!(&dst[..11], b"hello world".map(|b| b as i8));
         }
     }

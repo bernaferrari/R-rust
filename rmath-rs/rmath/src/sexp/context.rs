@@ -13,7 +13,7 @@ use std::os::raw::c_int;
 use std::ptr;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
+use super::ffi::{SEXP, SexprecCore};
 
 // ---------------------------------------------------------------------------
 // Context type constants (from Defn.h CTXT_* defines)
@@ -125,6 +125,7 @@ impl Default for RCNTXT {
 
 thread_local! {
     /// The thread-local context stack.
+    #[allow(clippy::vec_box)]
     static CONTEXT_STACK: RefCell<Vec<Box<RCNTXT>>> = RefCell::new(Vec::new());
 }
 

@@ -19,6 +19,7 @@ fn fixup(x: f64) -> f64 {
 }
 
 impl SuperDuper {
+    #[must_use]
     pub fn new() -> Self {
         Self { i1: 1, i2: 1 }
     }
@@ -39,6 +40,7 @@ impl SuperDuper {
         self.i2 |= 1;
     }
 
+    #[must_use]
     pub fn get_rand(&mut self) -> f64 {
         self.i1 ^= (self.i1 >> 15) & 0x1FFFF;
         self.i1 ^= self.i1 << 17;

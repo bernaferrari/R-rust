@@ -13,6 +13,7 @@ const M_1_SQRT_2PI: f64 = 0.398942280401432677939946059934; // 1/sqrt(2*pi)
 
 // ---- Inner implementations ----
 
+#[must_use]
 pub fn dlnorm_inner(x: f64, meanlog: f64, sdlog: f64, give_log: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(meanlog) || isnan(sdlog) {
@@ -43,6 +44,7 @@ pub fn dlnorm_inner(x: f64, meanlog: f64, sdlog: f64, give_log: bool) -> f64 {
     }
 }
 
+#[must_use]
 pub fn plnorm_inner(x: f64, meanlog: f64, sdlog: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(x) || isnan(meanlog) || isnan(sdlog) {
@@ -59,6 +61,7 @@ pub fn plnorm_inner(x: f64, meanlog: f64, sdlog: f64, lower_tail: bool, log_p: b
     }
 }
 
+#[must_use]
 pub fn qlnorm_inner(p: f64, meanlog: f64, sdlog: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754
     if isnan(p) || isnan(meanlog) || isnan(sdlog) {
@@ -90,6 +93,7 @@ pub fn qlnorm_inner(p: f64, meanlog: f64, sdlog: f64, lower_tail: bool, log_p: b
     exp(qnorm5_inner(p, meanlog, sdlog, lower_tail, log_p))
 }
 
+#[must_use]
 pub fn rlnorm_inner(meanlog: f64, sdlog: f64) -> f64 {
     if isnan(meanlog) || !r_finite(sdlog) || sdlog < 0.0 {
         return ml_warn_return_nan();
@@ -100,41 +104,49 @@ pub fn rlnorm_inner(meanlog: f64, sdlog: f64) -> f64 {
 
 // ---- FFI shims ----
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
     dlnorm_inner(x, meanlog, sdlog, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
     dlnorm_inner(x, meanlog, sdlog, give_log != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     plnorm_inner(x, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     plnorm_inner(x, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlnorm_inner(p, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlnorm_inner(p, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn Rf_rlnorm(meanlog: f64, sdlog: f64) -> f64 {
     rlnorm_inner(meanlog, sdlog)
 }
 
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn rlnorm(meanlog: f64, sdlog: f64) -> f64 {
     rlnorm_inner(meanlog, sdlog)

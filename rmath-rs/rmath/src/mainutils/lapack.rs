@@ -5,7 +5,7 @@
 //! Implements `do_lapack` which dispatches to the LAPACK module, and
 //! `R_setLapackRoutines` for registering LAPACK routine pointers.
 
-use std::os::raw::{c_int, c_void};
+use std::os::raw::c_void;
 use std::ptr;
 
 use crate::sexp::ffi::SEXP;

@@ -25,6 +25,7 @@
  * Ported from r-source/src/library/stats/src/loessc.c
  */
 
+use std::cell::Cell;
 use std::cmp;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
@@ -35,11 +36,11 @@ const GAUSSIAN: c_int = 1;
 const SYMMETRIC: c_int = 0;
 
 // Global variables (static in C)
-static mut IV: *mut c_int = std::ptr::null_mut();
-static mut LIV: c_int = 0;
-static mut LV: c_int = 0;
-static mut TAU: c_int = 0;
-static mut V: *mut c_double = std::ptr::null_mut();
+thread_local! { static IV: Cell<*mut c_int> = Cell::new(std::ptr::null_mut()); }
+thread_local! { static LIV: Cell<c_int> = Cell::new(0); }
+thread_local! { static LV: Cell<c_int> = Cell::new(0); }
+thread_local! { static TAU: Cell<c_int> = Cell::new(0); }
+thread_local! { static V: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
 
 fn r_min<T: Ord>(a: T, b: T) -> T {
     if a < b { a } else { b }
@@ -49,13 +50,17 @@ fn r_max<T: Ord>(a: T, b: T) -> T {
 }
 
 unsafe fn loess_free() {
-    if !V.is_null() {
-        let _ = Vec::from_raw_parts(V, LV as usize, LV as usize);
-        V = std::ptr::null_mut();
+    let v = V.with(|v| v.get());
+    let lv = LV.with(|v| v.get());
+    if !v.is_null() {
+        let _ = Vec::from_raw_parts(v, lv as usize, lv as usize);
+        V.with(|v| v.set(std::ptr::null_mut()));
     }
-    if !IV.is_null() {
-        let _ = Vec::from_raw_parts(IV, LIV as usize, LIV as usize);
-        IV = std::ptr::null_mut();
+    let iv = IV.with(|v| v.get());
+    let liv = LIV.with(|v| v.get());
+    if !iv.is_null() {
+        let _ = Vec::from_raw_parts(iv, liv as usize, liv as usize);
+        IV.with(|v| v.set(std::ptr::null_mut()));
     }
 }
 
@@ -173,6 +178,10 @@ pub unsafe extern "C" fn loess_raw(
 ) {
     use crate::main::errors::Rf_error;
 
+    let iv = IV.with(|v| v.get());
+    let v = V.with(|v| v.get());
+    let mut tau = TAU.with(|v| v.get());
+
     let mut i0: c_int = 0;
     let mut one: c_int = 1;
     let mut two: c_int = 2;
@@ -190,7 +199,10 @@ pub unsafe extern "C" fn loess_raw(
         *sum_drop_sqr,
         *setLf != 0,
     );
-    *V.add(1) = *cell;
+    {
+        let v = V.with(|v| v.get());
+        *v.add(1) = *cell;
+    }
 
     let surf = CStr::from_ptr(*surf_stat).to_str().unwrap_or("");
 
@@ -201,18 +213,18 @@ pub unsafe extern "C" fn loess_raw(
             robust,
             std::ptr::addr_of_mut!(d0),
             std::ptr::addr_of_mut!(i0),
-            IV,
-            V,
+            iv,
+            v,
         );
-        lowese(IV, V, n, x, surface);
+        lowese(iv, v, n, x, surface);
         loess_prune(parameter, a, xi, vert, vval);
     } else if strcmp_c(surf, "direct/none") {
         lowesf(
             x,
             y,
             robust,
-            IV,
-            V,
+            iv,
+            v,
             n,
             x,
             std::ptr::addr_of_mut!(d0),
@@ -220,9 +232,9 @@ pub unsafe extern "C" fn loess_raw(
             surface,
         );
     } else if strcmp_c(surf, "interpolate/1.approx") {
-        lowesb(x, y, weights, diagonal, std::ptr::addr_of_mut!(one), IV, V);
-        lowese(IV, V, n, x, surface);
-        let mut nsing = *IV.add(29);
+        lowesb(x, y, weights, diagonal, std::ptr::addr_of_mut!(one), iv, v);
+        lowese(iv, v, n, x, surface);
+        let mut nsing = *iv.add(29);
         for i in 0..(*n as usize) {
             *trL = *trL + *diagonal.add(i);
         }
@@ -230,7 +242,7 @@ pub unsafe extern "C" fn loess_raw(
             trL,
             n,
             d,
-            std::ptr::addr_of_mut!(TAU),
+            &mut tau,
             std::ptr::addr_of_mut!(nsing),
             one_delta,
             two_delta,
@@ -243,18 +255,18 @@ pub unsafe extern "C" fn loess_raw(
             weights,
             std::ptr::addr_of_mut!(d0),
             std::ptr::addr_of_mut!(i0),
-            IV,
-            V,
+            iv,
+            v,
         );
-        lowese(IV, V, n, x, surface);
-        let _nsing = *IV.add(29);
-        ehg196(std::ptr::addr_of_mut!(TAU), d, span, trL);
-        let mut nsing = *IV.add(29);
+        lowese(iv, v, n, x, surface);
+        let _nsing = *iv.add(29);
+        ehg196(&mut tau, d, span, trL);
+        let mut nsing = *iv.add(29);
         lowesa(
             trL,
             n,
             d,
-            std::ptr::addr_of_mut!(TAU),
+            &mut tau,
             std::ptr::addr_of_mut!(nsing),
             one_delta,
             two_delta,
@@ -265,15 +277,15 @@ pub unsafe extern "C" fn loess_raw(
             x,
             y,
             weights,
-            IV,
-            V,
+            iv,
+            v,
             n,
             x,
             diagonal,
             std::ptr::addr_of_mut!(one),
             surface,
         );
-        let mut nsing = *IV.add(29);
+        let mut nsing = *iv.add(29);
         for i in 0..(*n as usize) {
             *trL = *trL + *diagonal.add(i);
         }
@@ -281,7 +293,7 @@ pub unsafe extern "C" fn loess_raw(
             trL,
             n,
             d,
-            std::ptr::addr_of_mut!(TAU),
+            &mut tau,
             std::ptr::addr_of_mut!(nsing),
             one_delta,
             two_delta,
@@ -289,8 +301,8 @@ pub unsafe extern "C" fn loess_raw(
     } else if strcmp_c(surf, "interpolate/exact") {
         let hat_matrix = vec![0.0f64; (*n as usize) * (*n as usize)];
         let mut ll = vec![0.0f64; (*n as usize) * (*n as usize)];
-        lowesb(x, y, weights, diagonal, std::ptr::addr_of_mut!(one), IV, V);
-        lowesl(IV, V, n, x, hat_matrix.as_ptr() as *mut c_double);
+        lowesb(x, y, weights, diagonal, std::ptr::addr_of_mut!(one), iv, v);
+        lowesl(iv, v, n, x, hat_matrix.as_ptr() as *mut c_double);
         lowesc(
             n,
             hat_matrix.as_ptr() as *mut c_double,
@@ -299,7 +311,7 @@ pub unsafe extern "C" fn loess_raw(
             one_delta,
             two_delta,
         );
-        lowese(IV, V, n, x, surface);
+        lowese(iv, v, n, x, surface);
         loess_prune(parameter, a, xi, vert, vval);
     } else if strcmp_c(surf, "direct/exact") {
         let mut hat_matrix = vec![0.0f64; (*n as usize) * (*n as usize)];
@@ -308,8 +320,8 @@ pub unsafe extern "C" fn loess_raw(
             x,
             y,
             weights,
-            IV,
-            V,
+            iv,
+            v,
             n,
             x,
             hat_matrix.as_mut_ptr(),
@@ -331,6 +343,7 @@ pub unsafe extern "C" fn loess_raw(
     } else {
         Rf_error(b"invalid surface statistic type\0".as_ptr() as *const i8);
     }
+    TAU.with(|v| v.set(tau));
     loess_free();
 }
 
@@ -367,8 +380,8 @@ pub unsafe extern "C" fn loess_dfit(
         x,
         y,
         weights,
-        IV,
-        V,
+        IV.with(|v| v.get()),
+        V.with(|v| v.get()),
         m,
         x_evaluate,
         std::ptr::addr_of_mut!(d0),
@@ -409,13 +422,15 @@ pub unsafe extern "C" fn loess_dfitse(
     );
 
     let mut i2: c_int = 2;
+    let iv = IV.with(|v| v.get());
+    let v = V.with(|v| v.get());
     if *family == GAUSSIAN {
         lowesf(
             x,
             y,
             weights,
-            IV,
-            V,
+            iv,
+            v,
             m,
             x_evaluate,
             L,
@@ -429,8 +444,8 @@ pub unsafe extern "C" fn loess_dfitse(
             x,
             y,
             weights,
-            IV,
-            V,
+            iv,
+            v,
             m,
             x_evaluate,
             L,
@@ -441,8 +456,8 @@ pub unsafe extern "C" fn loess_dfitse(
             x,
             y,
             robust,
-            IV,
-            V,
+            iv,
+            v,
             m,
             x_evaluate,
             std::ptr::addr_of_mut!(d0),
@@ -465,7 +480,13 @@ pub unsafe extern "C" fn loess_ifit(
     fit: *mut c_double,
 ) {
     loess_grow(parameter, a, xi, vert, vval);
-    lowese(IV, V, m, x_evaluate, fit);
+    lowese(
+        IV.with(|v| v.get()),
+        V.with(|v| v.get()),
+        m,
+        x_evaluate,
+        fit,
+    );
     loess_free();
 }
 
@@ -500,17 +521,19 @@ pub unsafe extern "C" fn loess_ise(
 
     let mut i0: c_int = 0;
     let mut d0: c_double = 0.0;
-    *V.add(1) = *cell;
+    V.with(|v| {
+        *v.get().add(1) = *cell;
+    });
     lowesb(
         x,
         y,
         weights,
         std::ptr::addr_of_mut!(d0),
         std::ptr::addr_of_mut!(i0),
-        IV,
-        V,
+        IV.with(|v| v.get()),
+        V.with(|v| v.get()),
     );
-    lowesl(IV, V, m, x_evaluate, L);
+    lowesl(IV.with(|v| v.get()), V.with(|v| v.get()), m, x_evaluate, L);
     loess_free();
 }
 
@@ -538,37 +561,41 @@ unsafe fn loess_workspace(
     } else {
         d + 1
     };
-    TAU = tau0 - sum_drop_sqr;
+    TAU.with(|v| v.set(tau0 - sum_drop_sqr));
 
     let dlv = 50.0 + (3 * d + 3) as f64 * nvmax as f64 + n as f64 + (tau0 as f64 + 2.0) * nf as f64;
     let mut dliv = 50.0 + (R_pow_di(2.0, d) + 4.0) * nvmax as f64 + 2.0 * n as f64;
 
-    if set_lf {
-        // dlv is f64, we need to compute with it
+    let (new_lv, new_liv) = if set_lf {
         let dlv_extra = (d + 1) as f64 * nf as f64 * nvmax as f64;
         let dliv_extra = nf as f64 * nvmax as f64;
         let total_dlv = dlv + dlv_extra;
         let total_dliv = dliv + dliv_extra;
 
         if total_dlv < c_int::MAX as f64 && total_dliv < c_int::MAX as f64 {
-            LV = total_dlv as c_int;
-            LIV = total_dliv as c_int;
+            (total_dlv as c_int, total_dliv as c_int)
         } else {
             Rf_error(b"workspace required is too large\0".as_ptr() as *const i8);
+            unreachable!()
         }
     } else {
         if dlv < c_int::MAX as f64 && dliv < c_int::MAX as f64 {
-            LV = dlv as c_int;
-            LIV = dliv as c_int;
+            (dlv as c_int, dliv as c_int)
         } else {
             Rf_error(b"workspace required is too large\0".as_ptr() as *const i8);
+            unreachable!()
         }
-    }
+    };
 
-    let mut iv_vec = vec![0i32; LIV as usize];
-    let mut v_vec = vec![0.0f64; LV as usize];
-    IV = iv_vec.as_mut_ptr();
-    V = v_vec.as_mut_ptr();
+    LV.with(|v| v.set(new_lv));
+    LIV.with(|v| v.set(new_liv));
+
+    let liv_val = LIV.with(|v| v.get());
+    let lv_val = LV.with(|v| v.get());
+    let mut iv_vec = vec![0i32; liv_val as usize];
+    let mut v_vec = vec![0.0f64; lv_val as usize];
+    IV.with(|v| v.set(iv_vec.as_mut_ptr()));
+    V.with(|v| v.set(v_vec.as_mut_ptr()));
     std::mem::forget(iv_vec);
     std::mem::forget(v_vec);
 
@@ -579,11 +606,13 @@ unsafe fn loess_workspace(
     let mut degree_out = degree;
     let mut nf_out = nf;
     let mut nvmax_out = nvmax;
+    let mut liv_local = LIV.with(|v| v.get());
+    let mut lv_local = LV.with(|v| v.get());
     lowesd(
-        IV,
-        std::ptr::addr_of_mut!(LIV),
-        std::ptr::addr_of_mut!(LV),
-        V,
+        IV.with(|v| v.get()),
+        &mut liv_local,
+        &mut lv_local,
+        V.with(|v| v.get()),
         std::ptr::addr_of_mut!(d_out),
         std::ptr::addr_of_mut!(n_out),
         std::ptr::addr_of_mut!(span_out),
@@ -592,9 +621,12 @@ unsafe fn loess_workspace(
         std::ptr::addr_of_mut!(nvmax_out),
         std::ptr::addr_of_mut!(iset_lf),
     );
-    *IV.add(32) = nonparametric;
+    LIV.with(|v| v.set(liv_local));
+    LV.with(|v| v.set(lv_local));
+    let iv = IV.with(|v| v.get());
+    *iv.add(32) = nonparametric;
     for i in 0..(d as usize) {
-        *IV.add(40 + i) = *drop_square.add(i);
+        *iv.add(40 + i) = *drop_square.add(i);
     }
 }
 
@@ -605,34 +637,36 @@ unsafe fn loess_prune(
     vert: *mut c_double,
     vval: *mut c_double,
 ) {
-    let d = *IV.add(1);
-    let vc = *IV.add(3) - 1;
-    let nc = *IV.add(4);
-    let nv = *IV.add(5);
-    let a1 = *IV.add(6) - 1;
-    let v1 = *IV.add(10) - 1;
-    let xi1 = *IV.add(11) - 1;
-    let vv1 = *IV.add(12) - 1;
-    let nvmax = *IV.add(13);
+    let iv = IV.with(|v| v.get());
+    let v = V.with(|v| v.get());
+    let d = *iv.add(1);
+    let vc = *iv.add(3) - 1;
+    let nc = *iv.add(4);
+    let nv = *iv.add(5);
+    let a1 = *iv.add(6) - 1;
+    let v1 = *iv.add(10) - 1;
+    let xi1 = *iv.add(11) - 1;
+    let vv1 = *iv.add(12) - 1;
+    let nvmax = *iv.add(13);
 
     for i in 0..5 {
-        *parameter.add(i) = *IV.add(1 + i);
+        *parameter.add(i) = *iv.add(1 + i);
     }
-    *parameter.add(5) = *IV.add(21) - 1;
-    *parameter.add(6) = *IV.add(14) - 1;
+    *parameter.add(5) = *iv.add(21) - 1;
+    *parameter.add(6) = *iv.add(14) - 1;
 
     for i in 0..(d as usize) {
         let k = nvmax as usize * i;
-        *vert.add(i) = *V.add((v1 + k as c_int) as usize);
-        *vert.add(i + d as usize) = *V.add((v1 + vc + k as c_int) as usize);
+        *vert.add(i) = *v.add((v1 + k as c_int) as usize);
+        *vert.add(i + d as usize) = *v.add((v1 + vc + k as c_int) as usize);
     }
     for i in 0..(nc as usize) {
-        *xi.add(i) = *V.add(xi1 as usize + i);
-        *a.add(i) = *IV.add(a1 as usize + i);
+        *xi.add(i) = *v.add(xi1 as usize + i);
+        *a.add(i) = *iv.add(a1 as usize + i);
     }
     let k = (d + 1) * nv;
     for i in 0..(k as usize) {
-        *vval.add(i) = *V.add(vv1 as usize + i);
+        *vval.add(i) = *v.add(vv1 as usize + i);
     }
 }
 
@@ -647,49 +681,55 @@ unsafe fn loess_grow(
     let mut vc = *parameter.add(2);
     let mut nc = *parameter.add(3);
     let mut nv = *parameter.add(4);
-    LIV = *parameter.add(5);
-    LV = *parameter.add(6);
+    let new_liv = *parameter.add(5);
+    let new_lv = *parameter.add(6);
+    LIV.with(|v| v.set(new_liv));
+    LV.with(|v| v.set(new_lv));
 
-    let mut iv_vec = vec![0i32; LIV as usize];
-    let mut v_vec = vec![0.0f64; LV as usize];
-    IV = iv_vec.as_mut_ptr();
-    V = v_vec.as_mut_ptr();
+    let liv_val = LIV.with(|v| v.get());
+    let lv_val = LV.with(|v| v.get());
+    let mut iv_vec = vec![0i32; liv_val as usize];
+    let mut v_vec = vec![0.0f64; lv_val as usize];
+    IV.with(|v| v.set(iv_vec.as_mut_ptr()));
+    V.with(|v| v.set(v_vec.as_mut_ptr()));
     std::mem::forget(iv_vec);
     std::mem::forget(v_vec);
 
-    *IV.add(1) = d;
-    *IV.add(2) = *parameter.add(1);
-    *IV.add(3) = vc;
-    *IV.add(5) = nv;
-    *IV.add(13) = nv;
-    *IV.add(4) = nc;
-    *IV.add(16) = nc;
-    *IV.add(6) = 50;
-    *IV.add(7) = 50 + nc;
-    *IV.add(8) = 50 + nc + vc * nc;
-    *IV.add(9) = 50 + nc + vc * nc + nc;
-    *IV.add(10) = 50;
-    *IV.add(12) = 50 + nv * d;
-    *IV.add(11) = 50 + nv * d + (d + 1) * nv;
-    *IV.add(27) = 173;
+    let iv = IV.with(|v| v.get());
+    let v = V.with(|v| v.get());
+    *iv.add(1) = d;
+    *iv.add(2) = *parameter.add(1);
+    *iv.add(3) = vc;
+    *iv.add(5) = nv;
+    *iv.add(13) = nv;
+    *iv.add(4) = nc;
+    *iv.add(16) = nc;
+    *iv.add(6) = 50;
+    *iv.add(7) = 50 + nc;
+    *iv.add(8) = 50 + nc + vc * nc;
+    *iv.add(9) = 50 + nc + vc * nc + nc;
+    *iv.add(10) = 50;
+    *iv.add(12) = 50 + nv * d;
+    *iv.add(11) = 50 + nv * d + (d + 1) * nv;
+    *iv.add(27) = 173;
 
-    let v1 = *IV.add(10) - 1;
-    let xi1 = *IV.add(11) - 1;
-    let a1 = *IV.add(6) - 1;
-    let vv1 = *IV.add(12) - 1;
+    let v1 = *iv.add(10) - 1;
+    let xi1 = *iv.add(11) - 1;
+    let a1 = *iv.add(6) - 1;
+    let vv1 = *iv.add(12) - 1;
 
     for i in 0..(d as usize) {
         let k = nv as usize * i;
-        *V.add((v1 + k as c_int) as usize) = *vert.add(i);
-        *V.add((v1 + vc - 1 + k as c_int) as usize) = *vert.add(i + d as usize);
+        *v.add((v1 + k as c_int) as usize) = *vert.add(i);
+        *v.add((v1 + vc - 1 + k as c_int) as usize) = *vert.add(i + d as usize);
     }
     for i in 0..(nc as usize) {
-        *V.add(xi1 as usize + i) = *xi.add(i);
-        *IV.add(a1 as usize + i) = *a.add(i);
+        *v.add(xi1 as usize + i) = *xi.add(i);
+        *iv.add(a1 as usize + i) = *a.add(i);
     }
     let k = (d + 1) * nv;
     for i in 0..(k as usize) {
-        *V.add(vv1 as usize + i) = *vval.add(i);
+        *v.add(vv1 as usize + i) = *vval.add(i);
     }
 
     ehg169(
@@ -699,12 +739,12 @@ unsafe fn loess_grow(
         std::ptr::addr_of_mut!(nc),
         std::ptr::addr_of_mut!(nv),
         std::ptr::addr_of_mut!(nv),
-        V.add(v1 as usize),
-        IV.add(a1 as usize),
-        V.add(xi1 as usize),
-        IV.add(*IV.add(7) as usize - 1),
-        IV.add(*IV.add(8) as usize - 1),
-        IV.add(*IV.add(9) as usize - 1),
+        v.add(v1 as usize),
+        iv.add(a1 as usize),
+        v.add(xi1 as usize),
+        iv.add(*iv.add(7) as usize - 1),
+        iv.add(*iv.add(8) as usize - 1),
+        iv.add(*iv.add(9) as usize - 1),
     );
 }
 

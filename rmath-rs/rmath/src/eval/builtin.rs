@@ -7,12 +7,11 @@
 //! - PRIMFUN/PRIMNAME/PRIMPRINT accessors
 //! - R_InitBuiltinSlots: initialize builtin function slots
 
+use std::cell::RefCell;
 use std::os::raw::c_int;
-use std::ptr;
 
-use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, PRIMOFFSET, Rf_isNull, SET_PRIMOFFSET, TYPEOF};
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::accessors::{PRIMOFFSET, SET_PRIMOFFSET, TYPEOF};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::memory;
 
 // ---------------------------------------------------------------------------
@@ -42,20 +41,16 @@ pub struct FunTabEntry {
 // Function table (stub — populated at runtime)
 // ---------------------------------------------------------------------------
 
-/// R's master function table.
-///
-/// In the full implementation, this contains all ~400+ builtins and specials.
-/// For now, we provide a minimal set.
-static mut FUN_TAB: [FunTabEntry; 0] = [];
+thread_local! { static FUN_TAB: RefCell<[FunTabEntry; 0]> = RefCell::new([]); }
 
 /// Get the function table.
 pub unsafe fn R_FunTab() -> *const FunTabEntry {
-    std::ptr::addr_of!(FUN_TAB) as *const FunTabEntry
+    FUN_TAB.with(|v| v.borrow().as_ptr())
 }
 
 /// Get the function table length.
 pub unsafe fn R_FunTabSize() -> usize {
-    unsafe { (*std::ptr::addr_of!(FUN_TAB)).len() }
+    FUN_TAB.with(|v| v.borrow().len())
 }
 
 // ---------------------------------------------------------------------------
@@ -76,10 +71,11 @@ pub unsafe fn PRIMFUN(op: SEXP) -> Option<unsafe extern "C" fn(SEXP, SEXP, SEXP,
             return None;
         }
         let offset = PRIMOFFSET(op);
-        if offset < 0 || offset as usize >= (*std::ptr::addr_of!(FUN_TAB)).len() {
+        let len = FUN_TAB.with(|v| v.borrow().len());
+        if offset < 0 || offset as usize >= len {
             return None;
         }
-        (*std::ptr::addr_of!(FUN_TAB))[offset as usize].fun
+        FUN_TAB.with(|v| v.borrow()[offset as usize].fun)
     }
 }
 
@@ -96,10 +92,11 @@ pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
             return "unknown";
         }
         let offset = PRIMOFFSET(op);
-        if offset < 0 || offset as usize >= (*std::ptr::addr_of!(FUN_TAB)).len() {
+        let len = FUN_TAB.with(|v| v.borrow().len());
+        if offset < 0 || offset as usize >= len {
             return "unknown";
         }
-        (*std::ptr::addr_of!(FUN_TAB))[offset as usize].name
+        FUN_TAB.with(|v| v.borrow()[offset as usize].name)
     }
 }
 
@@ -146,6 +143,8 @@ pub unsafe fn R_mkPrim(name: *const std::os::raw::c_char, offset: c_int, kind: c
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

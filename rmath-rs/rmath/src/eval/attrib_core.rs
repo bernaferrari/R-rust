@@ -9,13 +9,10 @@
 //! - R_classgets: set the class of an object
 
 use std::os::raw::c_int;
-use std::ptr;
 
-use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDDR, CDR, LENGTH, Rf_isNull, SET_ATTRIB, SETCAR, TAG, TYPEOF,
-};
+use crate::sexp::accessors::{ATTRIB, CAR, CDR, SET_ATTRIB, SETCAR, TAG, TYPEOF};
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::symbol::Rf_install;
 
@@ -278,6 +275,8 @@ pub unsafe extern "C" fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     #[test]

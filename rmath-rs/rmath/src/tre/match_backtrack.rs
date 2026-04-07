@@ -1,6 +1,5 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(unused_assignments)]
 /*
   tre/match_backtrack.rs - TRE backtracking regex matching engine
 
@@ -91,6 +90,7 @@ unsafe fn CHECK_CHAR_CLASSES(
     }
 }
 
+#[allow(clippy::if_same_then_else)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn tre_tnfa_run_backtrack(
     tnfa: *const tre_tnfa_t,
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
     unsafe {
         let mut str_byte = string as *const u8;
         let mut pos: c_int = 0;
-        let mut pos_add_next: u32 = 1;
+        let pos_add_next: u32 = 1;
 
         let reg_notbol = eflags & REG_NOTBOL;
         let reg_noteol = eflags & REG_NOTEOL;
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
 
             // GET_NEXT_WCHAR
             prev_c = next_c;
-            pos = pos + 1;
+            pos += 1;
             if len >= 0 && pos >= len {
                 next_c = 0;
             } else if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
@@ -403,7 +403,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                 if !(*trans_i).state.is_null() && (*trans_i).assertions & ASSERT_BACKREF != 0 {
                     // Back reference
                     let bt = (*trans_i).u.get_backref();
-                    let mut bt_len: c_int;
+                    let bt_len: c_int;
 
                     // Get the substring to match against
                     super::regapi::tre_fill_pmatch(
@@ -418,7 +418,7 @@ pub unsafe extern "C" fn tre_tnfa_run_backtrack(
                     let eo = (*pmatch.offset(bt as isize)).rm_eo;
                     bt_len = eo - so;
 
-                    let mut result: c_int;
+                    let result: c_int;
                     if len < 0 {
                         if type_ == tre_str_type_t::STR_BYTE && !str_byte.is_null() {
                             result = libc_memcmp(

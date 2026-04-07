@@ -6,7 +6,7 @@
 //! with R's SEXPREC structures. Centralizes types that were previously
 //! duplicated across 8+ files in mainutils/.
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_double, c_int, c_void};
 
 // ---------------------------------------------------------------------------
 // Primitive type aliases (centralized from duplicates)

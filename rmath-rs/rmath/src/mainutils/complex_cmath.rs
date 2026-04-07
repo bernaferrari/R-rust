@@ -21,7 +21,7 @@ use num::Complex;
 
 use crate::fprec::fround;
 use crate::sexp::accessors::{
-    ATTRIB, CADDR, CADR, CAR, CDR, COMPLEX, INTEGER, LENGTH, REAL, SET_ATTRIB, TYPEOF, XLENGTH,
+    ATTRIB, CAR, CDR, COMPLEX, INTEGER, REAL, SET_ATTRIB, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_FINITE, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
@@ -65,7 +65,7 @@ pub fn R_cpow_n(x: Complex<f64>, k: i32) -> Complex<f64> {
         let mut k_val = k;
         while k_val > 0 {
             if (k_val & 1) != 0 {
-                z = z * x_val;
+                z *= x_val;
             }
             if k_val == 1 {
                 break;
@@ -463,10 +463,10 @@ pub fn z_atan2(r: &mut Rcomplex, csn: &Rcomplex, ccs: &Rcomplex) {
 
     let mut dr = catan(dcsn / dccs);
     if dccs.re < 0.0 {
-        dr = dr + std::f64::consts::PI;
+        dr += std::f64::consts::PI;
     }
     if dr.re > std::f64::consts::PI {
-        dr = dr - 2.0 * std::f64::consts::PI;
+        dr -= 2.0 * std::f64::consts::PI;
     }
     *r = from_complex(dr);
 }

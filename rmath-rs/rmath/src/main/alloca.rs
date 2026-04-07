@@ -29,8 +29,10 @@ pub unsafe fn alloca(size: usize) -> *mut c_void {
             return ptr::null_mut();
         }
 
-        let layout = std::alloc::Layout::from_size_align(size, 16)
-            .unwrap_or_else(|_| std::alloc::Layout::from_size_align(size, 1).unwrap());
+        let layout = std::alloc::Layout::from_size_align(size, 16).unwrap_or_else(|_| {
+            std::alloc::Layout::from_size_align(size, 1)
+                .expect("Layout::from_size_align with align=1 must succeed")
+        });
 
         let ptr = std::alloc::alloc(layout);
         if ptr.is_null() {

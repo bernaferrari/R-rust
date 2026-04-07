@@ -20,6 +20,7 @@
 //! are only exported on Windows here. On non-Windows they are provided
 //! by devcairo.rs.
 
+use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_uchar, c_uint, c_void};
 use std::ptr;
@@ -342,14 +343,14 @@ impl Default for gadesc {
 // Module-level state
 // ===========================================================================
 
-static mut fontnum: c_int = 0;
-static mut fontinitdone: c_int = 0;
-static mut fontname: [[c_char; 256]; MAXFONT as usize] = [[0; 256]; MAXFONT as usize];
-static mut fontstyle: [c_int; MAXFONT as usize] = [0; MAXFONT as usize];
-static mut GA_xd: *mut gadesc = ptr::null_mut();
-static mut GALastUpdate: u32 = 0;
-static mut TimerNo: usize = 0;
-static mut png_rows: c_int = 0;
+thread_local! { static fontnum: Cell<c_int> = Cell::new(0); }
+thread_local! { static fontinitdone: Cell<c_int> = Cell::new(0); }
+thread_local! { static fontname: RefCell<[[c_char; 256]; MAXFONT as usize]> = RefCell::new([[0; 256]; MAXFONT as usize]); }
+thread_local! { static fontstyle: RefCell<[c_int; MAXFONT as usize]> = RefCell::new([0; MAXFONT as usize]); }
+thread_local! { static GA_xd: Cell<*mut gadesc> = Cell::new(ptr::null_mut()); }
+thread_local! { static GALastUpdate: Cell<u32> = Cell::new(0); }
+thread_local! { static TimerNo: Cell<usize> = Cell::new(0); }
+thread_local! { static png_rows: Cell<c_int> = Cell::new(0); }
 
 // ===========================================================================
 // Helper functions
@@ -415,19 +416,11 @@ unsafe fn GArgb(color: c_int, gamma: c_double) -> c_uint {
 }
 
 fn imin2(a: c_int, b: c_int) -> c_int {
-    if a < b {
-        a
-    } else {
-        b
-    }
+    if a < b { a } else { b }
 }
 
 fn imax2(a: c_int, b: c_int) -> c_int {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 /// Safe CStr pointer helper: returns "" if null
@@ -449,22 +442,25 @@ unsafe fn RStandardFonts() {
     for i in 0..4 {
         ptr::copy_nonoverlapping(
             arial.as_ptr() as *const c_char,
-            fontname[i as usize].as_mut_ptr(),
+            fontname.with(|v| v.borrow_mut()[i as usize].as_mut_ptr()),
             arial.len(),
         );
     }
     ptr::copy_nonoverlapping(
         symbol.as_ptr() as *const c_char,
-        fontname[4].as_mut_ptr(),
+        fontname.with(|v| v.borrow_mut()[4].as_mut_ptr()),
         symbol.len(),
     );
-    fontstyle[0] = Plain;
-    fontstyle[4] = Plain;
-    fontstyle[1] = Bold;
-    fontstyle[2] = Italic;
-    fontstyle[3] = BoldItalic;
-    fontnum = 5;
-    fontinitdone = 2;
+    fontstyle.with(|v| {
+        let mut v = v.borrow_mut();
+        v[0] = Plain;
+        v[4] = Plain;
+        v[1] = Bold;
+        v[2] = Italic;
+        v[3] = BoldItalic;
+    });
+    fontnum.with(|v| v.set(5));
+    fontinitdone.with(|v| v.set(2));
 }
 
 unsafe fn RFontInit() {

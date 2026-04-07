@@ -1,6 +1,6 @@
 #![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/subset.c
 //!
@@ -26,7 +26,7 @@
 //!   VECTOR_ELT_FIX_NAMED(), R_DispatchOrEvalSP()
 //!   pstrmatch()
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::subscript::{get1index, int_arraySubscript, makeSubscript};
@@ -34,7 +34,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::envir::R_findVarInFrame;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -45,6 +45,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
+#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
 
 /// Maximum value for R_xlen_t (for overflow checking).
@@ -57,55 +58,109 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 /// Get the "dim" symbol (install if needed).
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dim")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 unsafe fn sym_DimNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dimnames")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("class")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "srcref" symbol.
 #[inline]
 unsafe fn sym_Srcref() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("srcref").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("srcref")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "tsp" symbol.
 #[inline]
 unsafe fn sym_Tsp() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("tsp")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "drop" symbol.
 #[inline]
 unsafe fn sym_Drop() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("drop").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("drop")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "exact" symbol.
 #[inline]
 unsafe fn sym_Exact() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("exact").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("exact")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "row.names" symbol.
 #[inline]
 unsafe fn sym_RowNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("row.names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("row.names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -675,6 +730,7 @@ unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
 ///
 /// This allocates the result and transfers elements from `x` to `result`
 /// according to integer or real subscripts in `indx`.
+#[allow(clippy::absurd_extreme_comparisons)]
 pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if isNull(x) {
@@ -837,7 +893,11 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
         if s == R_NilValue() || TYPEOF(s) == SEXPTYPE::SYMSXP.0 {
             // Missing arg check
-            let missing_sym = Rf_install(std::ffi::CString::new("").unwrap().as_ptr());
+            let missing_sym = Rf_install(
+                std::ffi::CString::new("")
+                    .expect("CString::new failed: contains null byte")
+                    .as_ptr(),
+            );
             if s == R_NilValue() {
                 return Rf_protect(crate::mainutils::duplicate::duplicate(x));
             }
@@ -922,6 +982,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Subset a matrix by row and column indices.
+#[allow(clippy::absurd_extreme_comparisons)]
 unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
     unsafe {
         let nr = nrows(x);
@@ -1264,7 +1325,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let dimnames = getAttrib(x, sym_DimNames());
         let dimnamesnames = Rf_protect(getAttrib(dimnames, sym_Names()));
         if !isNull(dimnames) {
-            let mut new_xdims = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, k as R_xlen_t));
+            let new_xdims = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, k as R_xlen_t));
             let mut jj = 0;
             if TYPEOF(dimnames) == SEXPTYPE::VECSXP.0 {
                 let mut rr = s;

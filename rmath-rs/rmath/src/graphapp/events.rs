@@ -5,23 +5,23 @@
 //!
 //! Ported from events.c - winprocs, timers, and event dispatch.
 
+use std::cell::Cell;
 use std::os::raw::{c_int, c_long, c_uint, c_void};
-use std::ptr;
 
 use super::types::*;
 
-static mut KEYSTATE: c_int = 0;
+thread_local! { static KEYSTATE: Cell<c_int> = Cell::new(0); }
 
 pub unsafe fn init_events() { /* TODO */
 }
 pub unsafe fn finish_events() { /* TODO */
 }
-pub unsafe fn handle_control(hwnd: *mut c_void, message: c_uint) { /* TODO */
+pub unsafe fn handle_control(_hwnd: *mut c_void, _message: c_uint) { /* TODO */
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn getkeystate() -> c_int {
-    unsafe { KEYSTATE }
+    KEYSTATE.with(|v| v.get())
 }
 
 #[unsafe(no_mangle)]
@@ -42,22 +42,22 @@ pub unsafe extern "C" fn doevent() -> c_int {
 pub unsafe extern "C" fn mainloop() { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn execapp(cmd: *mut std::os::raw::c_char) -> c_int {
+pub unsafe extern "C" fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn settimer(millisec: c_uint) -> c_int {
+pub unsafe extern "C" fn settimer(_millisec: c_uint) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn settimerfn(timeout: timerfn, data: *mut c_void) { /* TODO */
+pub unsafe extern "C" fn settimerfn(_timeout: timerfn, _data: *mut c_void) { /* TODO */
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn setmousetimer(millisec: c_uint) -> c_int {
+pub unsafe extern "C" fn setmousetimer(_millisec: c_uint) -> c_int {
     0
 }
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn delay(millisec: c_uint) { /* TODO */
+pub unsafe extern "C" fn delay(_millisec: c_uint) { /* TODO */
 }
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn currenttime() -> c_long {

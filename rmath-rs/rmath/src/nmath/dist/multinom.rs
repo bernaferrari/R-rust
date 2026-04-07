@@ -11,6 +11,7 @@ use std::os::raw::{c_double, c_int};
 // ---- rmultinom ----
 
 /// Generate a random vector from the multinomial distribution.
+#[must_use]
 /// `rn` is filled with `K` values where rn[j] ~ Bin(n, prob[j]),
 /// sum_j rn[j] == n, sum_j prob[j] == 1.
 pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {

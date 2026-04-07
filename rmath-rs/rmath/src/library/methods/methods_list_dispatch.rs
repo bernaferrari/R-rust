@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/methods/src/methods_list_dispatch.c
@@ -6,6 +5,7 @@
  *  Stubs for S4 method dispatch functions.
  */
 
+use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -113,22 +113,19 @@ pub unsafe extern "C" fn R_nextMethodCall(_matched_call: SEXP, _ev: SEXP) -> SEX
 
 /// R_clear_method_selection - clear the method selection cache.
 /// Ported from R's R_clear_method_selection() in methods_list_dispatch.c.
-static mut N_OV: c_int = 0;
+thread_local! { static N_OV: Cell<c_int> = Cell::new(0); }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_clear_method_selection() -> SEXP {
-    N_OV = 0;
+pub extern "C" fn R_clear_method_selection() -> SEXP {
+    N_OV.with(|v| v.set(0));
     R_NilValue()
 }
 
-/// R_set_method_dispatch - enable or disable table-based method dispatch.
-/// Ported from R's R_set_method_dispatch() in methods_list_dispatch.c.
-/// Returns the previous value (TRUE if was on, FALSE if was off).
-static mut TABLE_DISPATCH_ON: c_int = 0;
+thread_local! { static TABLE_DISPATCH_ON: Cell<c_int> = Cell::new(0); }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
-    let prev = TABLE_DISPATCH_ON;
+pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
+    let prev = TABLE_DISPATCH_ON.with(|v| v.get());
     let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP.0 && LENGTH(onOff) >= 1 {
         LOGICAL_ELT(onOff, 0)
     } else {
@@ -136,7 +133,7 @@ pub unsafe extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
     };
     if value != std::os::raw::c_int::MIN {
         // NA_LOGICAL == INT_MIN
-        TABLE_DISPATCH_ON = if value != 0 { 1 } else { 0 };
+        TABLE_DISPATCH_ON.with(|v| v.set(if value != 0 { 1 } else { 0 }));
     }
     Rf_ScalarLogical(prev)
 }
@@ -150,31 +147,19 @@ pub unsafe extern "C" fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg:
     let prefix_str =
         if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP.0 && LENGTH(prefix) >= 1 {
             let s = STRING_ELT(prefix, 0);
-            if !s.is_null() {
-                CHAR(s)
-            } else {
-                ptr::null()
-            }
+            if !s.is_null() { CHAR(s) } else { ptr::null() }
         } else {
             ptr::null()
         };
     let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) >= 1 {
         let s = STRING_ELT(name, 0);
-        if !s.is_null() {
-            CHAR(s)
-        } else {
-            ptr::null()
-        }
+        if !s.is_null() { CHAR(s) } else { ptr::null() }
     } else {
         ptr::null()
     };
     let pkg_str = if !pkg.is_null() && TYPEOF(pkg) == SEXPTYPE::STRSXP.0 && LENGTH(pkg) >= 1 {
         let s = STRING_ELT(pkg, 0);
-        if !s.is_null() {
-            CHAR(s)
-        } else {
-            ptr::null()
-        }
+        if !s.is_null() { CHAR(s) } else { ptr::null() }
     } else {
         ptr::null()
     };
@@ -201,8 +186,9 @@ pub unsafe extern "C" fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg:
         format!(".__{}__{}", prefix_c, name_c)
     };
 
-    let c_str =
-        std::ffi::CString::new(res_str).unwrap_or_else(|_| std::ffi::CString::new("").unwrap());
+    let c_str = std::ffi::CString::new(res_str).unwrap_or_else(|_| {
+        std::ffi::CString::new("").expect("CString::new failed: contains null byte")
+    });
     Rf_mkString(c_str.as_ptr())
 }
 

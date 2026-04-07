@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/grep.c
 //!
@@ -29,7 +28,7 @@ use std::ptr;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
@@ -237,11 +236,10 @@ fn fixed_search(haystack: &[u8], needle: &[u8], ignore_case: bool) -> Option<usi
         // Use memchr-like search for the first byte, then verify
         let first = needle[0];
         for i in 0..=(haystack.len() - needle.len()) {
-            if haystack[i] == first {
-                if &haystack[i..i + needle.len()] == needle {
+            if haystack[i] == first
+                && &haystack[i..i + needle.len()] == needle {
                     return Some(i);
                 }
-            }
         }
     }
     None
@@ -466,7 +464,7 @@ fn ere_match_at(nodes: &[EreNode], text: &[u8], pos: usize, ignore_case: bool) -
                 }
                 let tc = text[text_pos];
                 if ignore_case {
-                    if tc.to_ascii_lowercase() != (*b).to_ascii_lowercase() {
+                    if !tc.eq_ignore_ascii_case(b) {
                         return None;
                     }
                 } else {
@@ -593,13 +591,12 @@ fn ere_match_at(nodes: &[EreNode], text: &[u8], pos: usize, ignore_case: bool) -
                 let rest_after = find_alternation_end(&nodes[node_pos + 1..]);
                 // Try left side
                 let left_nodes = &nodes[node_pos + 1..node_pos + 1 + rest_after];
-                if !left_nodes.is_empty() {
-                    if let Some(end_pos) = ere_match_at(left_nodes, text, text_pos, ignore_case) {
+                if !left_nodes.is_empty()
+                    && let Some(end_pos) = ere_match_at(left_nodes, text, text_pos, ignore_case) {
                         text_pos = end_pos;
                         node_pos = node_pos + 1 + rest_after + 1;
                         continue;
                     }
-                }
                 // Try right side (everything after the alternation end)
                 let right_start = node_pos + 1 + rest_after + 1;
                 if right_start < nodes.len() {
@@ -629,7 +626,7 @@ fn match_single_node(node: &EreNode, text: &[u8], pos: usize, ignore_case: bool)
             }
             let tc = text[pos];
             if ignore_case {
-                if tc.to_ascii_lowercase() == (*b).to_ascii_lowercase() {
+                if tc.eq_ignore_ascii_case(b) {
                     Some(pos + 1)
                 } else {
                     None
@@ -878,7 +875,8 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 if m {
                     SET_STRING_ELT(ans, i as R_xlen_t, text_charsxp);
                 } else {
-                    let empty_str = std::ffi::CString::new("").unwrap();
+                    let empty_str = std::ffi::CString::new("")
+                        .expect("CString::new failed: contains null byte");
                     SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(empty_str.as_ptr()));
                 }
             }
@@ -1176,7 +1174,8 @@ pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Set match.length attribute
         // Use install for the attribute name
-        let match_len_str = std::ffi::CString::new("match.length").unwrap();
+        let match_len_str = std::ffi::CString::new("match.length")
+            .expect("CString::new failed: contains null byte");
         let names_sym = Rf_mkChar(match_len_str.as_ptr());
         setAttrib(ans as SEXP, names_sym, matchlen);
 
@@ -1560,7 +1559,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: '*' quantifier not yet implemented in ERE engine
+    #[ignore = "'*' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_star() {
         let nodes = compile_ere("ab*c").unwrap();
         let m = ere_search(&nodes, b"ac", false).unwrap();
@@ -1575,7 +1574,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: '+' quantifier not yet implemented in ERE engine
+    #[ignore = "'+' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_plus() {
         let nodes = compile_ere("ab+c").unwrap();
         assert!(ere_search(&nodes, b"ac", false).is_none());
@@ -1589,7 +1588,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore] // TODO: '?' quantifier not yet implemented in ERE engine
+    #[ignore = "'?' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_question() {
         let nodes = compile_ere("ab?c").unwrap();
         let m = ere_search(&nodes, b"ac", false).unwrap();

@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Port of R's src/main/subassign.c
 //!
@@ -19,7 +18,7 @@
 //!   do_subassign3, R_subassign3_dflt, SubassignTypeSym, SubassignDotsNames,
 //!   GetSubassignSxpVec, var_assign
 
-use std::os::raw::{c_char, c_double, c_int, c_void};
+use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::mainutils::subscript::{
@@ -28,12 +27,9 @@ use crate::mainutils::subscript::{
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::envir::defineVar;
-use crate::sexp::ffi::Rcomplex;
-use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, Rbyte, SEXP, SEXPTYPE, TRUE,
-};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::memory_ext::{CONS_NR, allocList, allocSExp};
+use crate::sexp::memory_ext::{allocList, allocSExp};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -42,6 +38,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
+#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
 const NA_REAL: c_double = 0.0_f64 / 0.0_f64;
 
 /// Maximum value for R_xlen_t.
@@ -82,31 +79,61 @@ const FUNSXP: c_int = 99;
 /// Get the "dim" symbol.
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dim")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 unsafe fn sym_DimNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dimnames")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("class")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "use.names" symbol (for subscript name passing).
 #[inline]
 unsafe fn sym_UseNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("use.names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("use.names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -718,8 +745,6 @@ unsafe fn getNames(x: SEXP) -> SEXP {
 /// allowing assignment past the end of a vector.
 unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
     unsafe {
-        use crate::eval::attrib_core::R_DimNamesSymbol;
-        use crate::eval::attrib_core::R_DimSymbol;
         use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
 
         let len = XLENGTH(x);
@@ -1056,25 +1081,22 @@ unsafe fn VECTOR_ELT_FIX_NAMED(y: SEXP, i: R_xlen_t) -> SEXP {
 unsafe fn VectorAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::R_DimSymbol;
-        use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
 
         // Quick return for simple scalar case
-        if isNull(ATTRIB(s)) {
-            if TYPEOF(x) == REALSXP && IS_SCALAR(y, REALSXP) != 0 {
-                if IS_SCALAR(s, INTSXP) != 0 {
-                    let ival = SCALAR_IVAL(s) as R_xlen_t;
+        if isNull(ATTRIB(s)) && TYPEOF(x) == REALSXP && IS_SCALAR(y, REALSXP) != 0 {
+            if IS_SCALAR(s, INTSXP) != 0 {
+                let ival = SCALAR_IVAL(s) as R_xlen_t;
+                if ival >= 1 && ival <= XLENGTH(x) {
+                    *REAL(x).add((ival - 1) as usize) = SCALAR_DVAL(y);
+                    return x;
+                }
+            } else if IS_SCALAR(s, REALSXP) != 0 {
+                let dval = SCALAR_DVAL(s);
+                if R_FINITE(dval) {
+                    let ival = dval as R_xlen_t;
                     if ival >= 1 && ival <= XLENGTH(x) {
                         *REAL(x).add((ival - 1) as usize) = SCALAR_DVAL(y);
                         return x;
-                    }
-                } else if IS_SCALAR(s, REALSXP) != 0 {
-                    let dval = SCALAR_DVAL(s);
-                    if R_FINITE(dval) {
-                        let ival = dval as R_xlen_t;
-                        if ival >= 1 && ival <= XLENGTH(x) {
-                            *REAL(x).add((ival - 1) as usize) = SCALAR_DVAL(y);
-                            return x;
-                        }
                     }
                 }
             }
@@ -2029,7 +2051,7 @@ unsafe fn errorNotSubsettable(x: SEXP) {
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("object of type '{}' is not subsettable", s);
-        let cmsg = std::ffi::CString::new(msg).unwrap();
+        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
         crate::mainutils::errors::Rf_error1(
             b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
             cmsg.as_ptr(),
@@ -2045,7 +2067,7 @@ unsafe fn errorMissingSubscript(x: SEXP) {
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("object of type '{}' is missing a subscript", s);
-        let cmsg = std::ffi::CString::new(msg).unwrap();
+        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
         crate::mainutils::errors::Rf_error1(
             b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
             cmsg.as_ptr(),
@@ -2061,7 +2083,7 @@ unsafe fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("subscript out of bounds: type '{}' index {}", s, subscript);
-        let cmsg = std::ffi::CString::new(msg).unwrap();
+        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
         crate::mainutils::errors::Rf_error1(
             b"subscript out of bounds\0".as_ptr() as *const core::ffi::c_char,
             cmsg.as_ptr(),
@@ -2168,11 +2190,9 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
             }
         }
 
-        if oldtype == LANGSXP {
-            if Rf_length(x) > 0 {
-                x = VectorToPairList(x);
-                SET_TYPEOF(x, LANGSXP);
-            }
+        if oldtype == LANGSXP && Rf_length(x) > 0 {
+            x = VectorToPairList(x);
+            SET_TYPEOF(x, LANGSXP);
         }
 
         Rf_unprotect(3);
@@ -2613,7 +2633,7 @@ pub unsafe extern "C" fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val
 
         let s4 = IS_S4_OBJECT(x);
         let mut xS4: SEXP = R_NilValue();
-        let mut nprotect = 0;
+        let nprotect = 0;
 
         if MAYBE_SHARED(x) {
             x = shallow_duplicate(x);
@@ -2788,7 +2808,13 @@ pub unsafe extern "C" fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val
 
 /// Port of `SubassignTypeSym()` -- used by the byte code compiler.
 pub unsafe fn SubassignTypeSym() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("SubassignTypeSym").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("SubassignTypeSym")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.
@@ -2885,12 +2911,10 @@ mod tests {
 
     #[test]
     fn test_do_subassign3_returns_nil() {
-        unsafe {
-            // do_subassign3 calls fixSubset3Args which panics with RError on nil args.
-            // Just verify the function exists and has the right signature.
-            // A full integration test would need proper SEXP arguments.
-            let _fn_ptr: unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP = do_subassign3;
-        }
+        // do_subassign3 calls fixSubset3Args which panics with RError on nil args.
+        // Just verify the function exists and has the right signature.
+        // A full integration test would need proper SEXP arguments.
+        let _fn_ptr: unsafe fn(SEXP, SEXP, SEXP, SEXP) -> SEXP = do_subassign3;
     }
 
     #[test]

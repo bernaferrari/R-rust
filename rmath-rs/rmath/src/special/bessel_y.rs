@@ -435,6 +435,7 @@ fn y_bessel(x: f64, alpha: f64, nb: i32, by: &mut [f64]) -> i32 {
 // =====================================================================
 
 /// Bessel function of the second kind, Y_nu(x).
+#[must_use]
 ///
 /// Ported from R's bessel_y() in bessel_y.c.
 ///
@@ -492,6 +493,7 @@ pub fn bessel_y(x: f64, alpha: f64) -> f64 {
 }
 
 /// C FFI wrapper for bessel_y
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn bessel_y_c(x: f64, alpha: f64) -> f64 {
     bessel_y(x, alpha)
@@ -502,6 +504,7 @@ pub extern "C" fn bessel_y_c(x: f64, alpha: f64) -> f64 {
 // =====================================================================
 
 /// Modified version of bessel_y(), accepting a work array instead of allocating one.
+#[must_use]
 ///
 /// # Arguments
 /// * `x` - Non-negative argument
@@ -557,6 +560,7 @@ pub fn bessel_y_ex(x: f64, alpha: f64, by: &mut [f64]) -> f64 {
 }
 
 /// C FFI wrapper for bessel_y_ex
+#[must_use]
 #[unsafe(no_mangle)]
 pub extern "C" fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
     if by.is_null() || nb <= 0 {

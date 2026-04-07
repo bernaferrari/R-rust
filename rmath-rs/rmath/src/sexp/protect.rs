@@ -9,7 +9,6 @@
 
 use std::cell::RefCell;
 use std::os::raw::c_int;
-use std::ptr;
 
 use super::ffi::SEXP;
 
@@ -93,7 +92,7 @@ pub unsafe extern "C" fn Rf_protect(s: SEXP) -> SEXP {
     if !s.is_null() {
         PROTECT_STACK.with(|ps| {
             let mut stack = ps.borrow_mut();
-            if let Err(_) = stack.stack.try_reserve(1) {
+            if stack.stack.try_reserve(1).is_err() {
                 return;
             }
             stack.stack.push(s);
@@ -220,7 +219,7 @@ pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
     let index = PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         if !s.is_null() {
-            if let Err(_) = stack.stack.try_reserve(1) {
+            if stack.stack.try_reserve(1).is_err() {
                 return usize::MAX;
             }
             stack.stack.push(s);
@@ -273,7 +272,7 @@ pub unsafe extern "C" fn R_PreserveObject(s: SEXP) {
     if !s.is_null() {
         PRESERVE_STACK.with(|ps| {
             let mut stack = ps.borrow_mut();
-            if let Err(_) = stack.try_reserve(1) {
+            if stack.try_reserve(1).is_err() {
                 return;
             }
             stack.push(s);
@@ -303,6 +302,8 @@ pub unsafe extern "C" fn R_ReleaseObject(s: SEXP) {
 
 #[cfg(test)]
 mod tests {
+    use std::ptr;
+
     use super::*;
 
     fn reset_protect_stack() {

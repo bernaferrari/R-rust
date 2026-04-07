@@ -1,7 +1,6 @@
 #![allow(unused_variables)]
-#![allow(unused_variables)]
 #![allow(unused_assignments)]
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
 //! Argument evaluation and dispatch — ports parts of eval.c.
 //!
@@ -16,15 +15,15 @@
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{R_ClassSymbol, getAttrib, isObject, setAttrib};
+use crate::eval::attrib_core::{R_ClassSymbol, getAttrib, isObject};
 use crate::sexp::accessors::{
-    CADR, CAR, CDR, CHAR, LENGTH, NAMED, OBJECT, PRINTNAME, Rf_isNull, SET_NAMED, SET_STRING_ELT,
-    SETCAR, SETCDR, SETTAG, STRING_ELT, TAG, TYPEOF,
+    CADR, CAR, CDR, CHAR, LENGTH, PRINTNAME, SET_STRING_ELT, SETCAR, SETCDR, SETTAG, STRING_ELT,
+    TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
-use crate::sexp::envir::{R_findVar, R_findVarInFrame, defineVar, forcePromise};
+use crate::sexp::envir::{R_findVar, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
+use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::R_DotsSymbol;
@@ -396,9 +395,9 @@ pub unsafe extern "C" fn R_forceAndCall(
 ) -> SEXP {
     unsafe {
         // Force the first n promises
-        let mut forced_args = args;
+        let forced_args = args;
         let mut count: c_int = 0;
-        let mut tail: SEXP = ptr::null_mut();
+        let tail: SEXP = ptr::null_mut();
 
         let mut current = args;
         while !current.is_null() && current != R_NilValue() && count < n {
