@@ -75,6 +75,23 @@ pub fn capture_stderr(msg: &str) {
     }
 }
 
+/// Format an R object as a string, capturing its print output.
+///
+/// This is a convenience wrapper that starts capture, prints, and stops.
+pub fn format_sexp(x: SEXP) -> String {
+    if x.is_null() {
+        return "NULL".to_string();
+    }
+    if let Some(sexp) = crate::sexp::safe::Sexp::from_raw(x) {
+        start_capture();
+        print_value(sexp);
+        let output = stop_capture();
+        output.stdout.trim().to_string()
+    } else {
+        "NULL".to_string()
+    }
+}
+
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
 /// This is the Rust implementation of R's Rf_PrintValue. For Android

@@ -40,7 +40,7 @@ use std::os::raw::{c_double, c_int};
 use std::ptr;
 
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
-use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue};
+use super::globals::R_NilValue;
 use super::memory::with_arena;
 use super::safe::Sexp;
 

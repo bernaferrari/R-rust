@@ -123,6 +123,7 @@ pub mod tzone_strftime;
 pub mod utils;
 pub mod xdr;
 
+pub mod android;
 #[allow(dead_code, non_camel_case_types)]
 pub mod eval;
 #[allow(dead_code, non_camel_case_types)]
