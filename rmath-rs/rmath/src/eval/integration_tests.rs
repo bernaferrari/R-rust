@@ -1,218 +1,332 @@
+#![allow(non_snake_case, non_upper_case_globals, unused_variables)]
+
 //! Integration tests for the eval pipeline.
+//!
+//! Tests the full lifecycle: construct SEXP -> evaluate -> read result.
 
-use crate::error::{catch_r, REvalError};
-use crate::eval::eval::Rf_eval;
-use crate::sexp::builder::{int_vec, logical_vec, real_vec, string_vec, PairlistBuilder};
+use std::os::raw::c_int;
+
+use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
-use crate::sexp::memory::RArena;
-use crate::sexp::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
-use crate::sexp::safe::{PairlistIter, Sexp};
-use crate::sexp::session::RSession;
-use std::ptr;
+use crate::sexp::globals::R_NilValue;
+use crate::sexp::memory::with_arena;
+use crate::sexp::output::{start_capture, stop_capture};
+use crate::sexp::safe::Sexp;
 
-#[test]
-fn test_builder_int_vec() {
-    let vec = int_vec(&[1, 2, 3, 4, 5]).unwrap();
-    assert_eq!(vec.len(), 5);
-    assert_eq!(vec.integer_elt(0), Some(1));
-    assert_eq!(vec.integer_elt(4), Some(5));
+fn make_test_env() -> SEXP {
+    unsafe {
+        let env = crate::sexp::memory_ext::allocSExp(SEXPTYPE::ENVSXP);
+        if env.is_null() {
+            return R_NilValue();
+        }
+        (*env).data.envsxp.frame = R_NilValue();
+        (*env).data.envsxp.enclos = R_NilValue();
+        (*env).data.envsxp.hashtab = R_NilValue();
+        env
+    }
 }
 
 #[test]
-fn test_builder_real_vec() {
-    let vec = real_vec(&[1.0, 2.0, 3.0]).unwrap();
-    assert_eq!(vec.len(), 3);
-    assert!((vec.real_elt(0).unwrap() - 1.0).abs() < f64::EPSILON);
+fn test_self_evaluating_integer() {
+    unsafe {
+        let val = Rf_ScalarInteger(42);
+        assert!(!val.is_null());
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(val, env);
+        assert!(!result.is_null());
+        assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+        let data = (*result).gengc_next_node as *const c_int;
+        assert_eq!(*data, 42);
+    }
 }
 
 #[test]
-fn test_builder_logical_vec() {
-    let vec = logical_vec(&[true, false, true]).unwrap();
-    assert_eq!(vec.len(), 3);
-    assert_eq!(vec.logical_elt(0), Some(1));
-    assert_eq!(vec.logical_elt(1), Some(0));
+fn test_self_evaluating_real() {
+    unsafe {
+        let val = Rf_ScalarReal(3.14);
+        assert!(!val.is_null());
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(val, env);
+        assert!(!result.is_null());
+        assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::REALSXP);
+        let data = (*result).gengc_next_node as *const f64;
+        assert!((*data - 3.14).abs() < 1e-10);
+    }
 }
 
 #[test]
-fn test_builder_string_vec() {
-    let vec = string_vec(&["hello", "world"]).unwrap();
-    assert_eq!(vec.len(), 2);
-    assert!(vec.string_elt(0).is_some());
-    assert!(vec.string_elt(1).is_some());
+fn test_self_evaluating_null() {
+    unsafe {
+        let val = R_NilValue();
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(val, env);
+        assert_eq!(result, R_NilValue());
+    }
 }
 
 #[test]
-fn test_session_lifecycle() {
-    let mut session = RSession::new();
-    assert!(session.is_active());
-    assert!(session.global_env().is_some());
-    session.close();
-    assert!(!session.is_active());
+fn test_self_evaluating_logical() {
+    unsafe {
+        let val = Rf_ScalarLogical(1);
+        assert!(!val.is_null());
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(val, env);
+        assert!(!result.is_null());
+        assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::LGLSXP);
+        let data = (*result).gengc_next_node as *const c_int;
+        assert_eq!(*data, 1);
+    }
 }
 
 #[test]
-fn test_eval_null_returns_nil() {
-    let result = catch_r(|| unsafe { Rf_eval(ptr::null_mut(), R_GlobalEnv()) });
+fn test_self_evaluating_string() {
+    unsafe {
+        let val = Rf_mkString(c"hello".as_ptr());
+        assert!(!val.is_null());
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(val, env);
+        assert!(!result.is_null());
+        assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::STRSXP);
+    }
+}
+
+#[test]
+fn test_eval_integer_vector() {
+    unsafe {
+        let vec = Rf_allocVector(SEXPTYPE::INTSXP.0, 5);
+        assert!(!vec.is_null());
+        let data = (*vec).gengc_next_node as *mut c_int;
+        for i in 0..5 {
+            *data.add(i) = ((i + 1) * 10) as c_int;
+        }
+
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(vec, env);
+        assert!(!result.is_null());
+        assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+
+        let s = Sexp::from_raw(result).unwrap();
+        assert_eq!(s.len(), 5);
+        assert_eq!(s.integer_elt(0), Some(10));
+        assert_eq!(s.integer_elt(4), Some(50));
+    }
+}
+
+#[test]
+fn test_eval_real_vector() {
+    unsafe {
+        let vec = Rf_allocVector(SEXPTYPE::REALSXP.0, 3);
+        assert!(!vec.is_null());
+        let data = (*vec).gengc_next_node as *mut f64;
+        *data = 1.1;
+        *data.add(1) = 2.2;
+        *data.add(2) = 3.3;
+
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(vec, env);
+        assert!(!result.is_null());
+
+        let s = Sexp::from_raw(result).unwrap();
+        assert_eq!(s.len(), 3);
+        assert!((s.real_elt(0).unwrap() - 1.1).abs() < 1e-10);
+        assert!((s.real_elt(2).unwrap() - 3.3).abs() < 1e-10);
+    }
+}
+
+#[test]
+fn test_eval_safe_wrapper() {
+    let env_raw = make_test_env();
+    let env = unsafe { Sexp::from_raw_unchecked(env_raw) };
+    let val = unsafe {
+        let v = Rf_ScalarInteger(99);
+        Sexp::from_raw_unchecked(v)
+    };
+
+    let result = crate::eval::eval::eval_safe(val, env);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap(), unsafe { R_NilValue() });
+    let r = result.unwrap();
+    assert_eq!(r.integer_elt(0), Some(99));
 }
 
 #[test]
-fn test_self_evaluating_types() {
-    let mut arena = RArena::new();
+fn test_eval_null_via_safe() {
+    let env_raw = make_test_env();
+    let env = unsafe { Sexp::from_raw_unchecked(env_raw) };
+    let null = unsafe { Sexp::from_raw_unchecked(R_NilValue()) };
 
-    // INTSXP should return itself
-    let int_vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-    let result = unsafe { Rf_eval(int_vec, R_GlobalEnv()) };
-    assert_eq!(result, int_vec);
-
-    // REALSXP should return itself
-    let real_vec = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-    let result = unsafe { Rf_eval(real_vec, R_GlobalEnv()) };
-    assert_eq!(result, real_vec);
-
-    // NILSXP should return itself
-    let nil = unsafe { R_NilValue() };
-    let result = unsafe { Rf_eval(nil, R_GlobalEnv()) };
-    assert_eq!(result, nil);
+    let result = crate::eval::eval::eval_safe(null, env);
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap().typeof_(), SEXPTYPE::NILSXP);
 }
 
 #[test]
-fn test_sexp_safe_wrapper_full_lifecycle() {
-    // Create vectors using builders
-    let int_v = int_vec(&[10, 20, 30]).unwrap();
-    let real_v = real_vec(&[1.5, 2.5]).unwrap();
-
-    // Test type predicates
-    assert!(int_v.is_vector());
-    assert!(int_v.is_atomic());
-    assert!(real_v.is_vector());
-    assert!(real_v.is_atomic());
-
-    // Test element access
-    assert_eq!(int_v.integer_elt(0), Some(10));
-    assert!((real_v.real_elt(0).unwrap() - 1.5).abs() < f64::EPSILON);
-
-    // Test mutation
-    assert!(int_v.set_integer_elt(0, 99));
-    assert_eq!(int_v.integer_elt(0), Some(99));
-
-    // Test slice views
-    let int_v2 = int_vec(&[1, 2, 3, 4]).unwrap();
-    let slice = int_v2.as_integer_slice().unwrap();
-    assert_eq!(slice, &[1, 2, 3, 4]);
-
-    // Test iterators
-    let int_v3 = int_vec(&[1, 2, 3, 4]).unwrap();
-    let values: Vec<_> = int_v3.iter_integer().collect();
-    assert_eq!(values, vec![1, 2, 3, 4]);
-}
-
-#[test]
-fn test_gc_integration() {
-    // Run GC and verify it doesn't panic
-    let session = RSession::new();
-    session.gc();
-
-    // Create some objects and run GC
-    let _int_v = int_vec(&[1, 2, 3, 4, 5]).unwrap();
-    let _real_v = real_vec(&[1.0, 2.0, 3.0]).unwrap();
-    session.gc();
-}
-
-#[test]
-fn test_protect_stack_integration() {
-    let depth_before = R_ProtectCount();
+fn test_altrep_compact_intseq() {
     unsafe {
-        Rf_protect(ptr::null_mut());
-        Rf_protect(ptr::null_mut());
-        Rf_protect(ptr::null_mut());
+        let seq = crate::mainutils::altrep::R_compact_intseq(1, 5);
+        assert!(!seq.is_null());
+
+        let elt = crate::mainutils::altrep::ALTINTEGER_ELT(seq, 0);
+        assert_eq!(elt, 1);
+
+        let elt2 = crate::mainutils::altrep::ALTINTEGER_ELT(seq, 4);
+        assert_eq!(elt2, 5);
     }
-    assert_eq!(R_ProtectCount(), depth_before);
+}
+
+#[test]
+fn test_altrep_compact_realseq() {
     unsafe {
-        Rf_unprotect(3);
+        let seq = crate::mainutils::altrep::R_compact_realseq(0.0, 1.0, 5);
+        assert!(!seq.is_null());
+
+        let elt = crate::mainutils::altrep::ALTREAL_ELT(seq, 0);
+        assert!((elt - 0.0).abs() < 1e-10);
+
+        let elt2 = crate::mainutils::altrep::ALTREAL_ELT(seq, 4);
+        assert!((elt2 - 4.0).abs() < 1e-10);
     }
-    assert_eq!(R_ProtectCount(), depth_before);
 }
 
 #[test]
-fn test_pairlist_builder_and_iteration() {
-    let mut arena = RArena::new();
-    let a = arena.alloc_node(SEXPTYPE::INTSXP);
-    let b = arena.alloc_node(SEXPTYPE::REALSXP);
-    let c = arena.alloc_node(SEXPTYPE::LGLSXP);
+fn test_altrep_new_altrep_data_roundtrip() {
+    unsafe {
+        let class_sym = Rf_ScalarInteger(42);
+        let data1 = Rf_ScalarInteger(100);
+        let data2 = Rf_ScalarReal(3.14);
+        let altrep = crate::mainutils::altrep::R_new_altrep(class_sym, data1, data2);
+        assert!(!altrep.is_null());
 
-    let list = PairlistBuilder::new()
-        .push_untagged(a)
-        .push_untagged(b)
-        .push_untagged(c)
-        .build()
-        .unwrap();
+        let d1 = crate::mainutils::altrep::R_altrep_data1(altrep);
+        assert!(!d1.is_null());
+        let d2 = crate::mainutils::altrep::R_altrep_data2(altrep);
+        assert!(!d2.is_null());
 
-    assert!(list.is_pairlist());
+        let d1_val = Sexp::from_raw_unchecked(d1);
+        assert_eq!(d1_val.integer_elt(0), Some(100));
 
-    let items: Vec<_> = PairlistIter::new(list).collect();
-    assert_eq!(items.len(), 3);
+        let d2_val = Sexp::from_raw_unchecked(d2);
+        assert!((d2_val.real_elt(0).unwrap() - 3.14).abs() < 1e-10);
+    }
 }
 
 #[test]
-fn test_rng_thread_safety() {
-    use crate::rng::{set_seed, unif_rand};
-    use std::sync::{Arc, Barrier};
-    use std::thread;
+fn test_output_capture_print_integer() {
+    unsafe {
+        start_capture();
+        let val = Rf_ScalarInteger(42);
+        crate::sexp::output::Rf_PrintValue(val);
+        let output = stop_capture();
+        assert!(
+            output.stdout.contains("42"),
+            "expected 42 in output, got: {}",
+            output.stdout
+        );
+    }
+}
 
-    // Set different seeds in different threads
-    let barrier = Arc::new(Barrier::new(4));
-    let handles: Vec<_> = (0..4)
-        .map(|i| {
-            let barrier = barrier.clone();
-            thread::spawn(move || {
-                set_seed(i as u32 + 1, 1234);
-                barrier.wait();
-                let mut values = Vec::new();
-                for _ in 0..100 {
-                    values.push(unif_rand());
-                }
-                values
-            })
-        })
-        .collect();
+#[test]
+fn test_output_capture_print_real() {
+    unsafe {
+        start_capture();
+        let val = Rf_ScalarReal(3.14);
+        crate::sexp::output::Rf_PrintValue(val);
+        let output = stop_capture();
+        assert!(
+            output.stdout.contains("3.14"),
+            "expected 3.14 in output, got: {}",
+            output.stdout
+        );
+    }
+}
 
-    let results: Vec<Vec<f64>> = handles.into_iter().map(|h| h.join().unwrap()).collect();
+#[test]
+fn test_output_capture_print_null() {
+    unsafe {
+        start_capture();
+        crate::sexp::output::Rf_PrintValue(R_NilValue());
+        let output = stop_capture();
+        assert!(
+            output.stdout.contains("NULL"),
+            "expected NULL in output, got: {}",
+            output.stdout
+        );
+    }
+}
 
-    for i in 0..results.len() {
-        for j in (i + 1)..results.len() {
-            assert_ne!(
-                results[i], results[j],
-                "Threads {} and {} produced identical random sequences",
-                i, j
-            );
+#[test]
+fn test_output_capture_print_logical() {
+    unsafe {
+        start_capture();
+        let val = Rf_ScalarLogical(1);
+        crate::sexp::output::Rf_PrintValue(val);
+        let output = stop_capture();
+        assert!(
+            output.stdout.contains("TRUE"),
+            "expected TRUE in output, got: {}",
+            output.stdout
+        );
+    }
+}
+
+#[test]
+fn test_pairlist_eval() {
+    unsafe {
+        let a = Rf_ScalarInteger(1);
+        let b = Rf_ScalarInteger(2);
+        let list = Rf_cons(a, Rf_cons(b, R_NilValue()));
+
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(list, env);
+        assert!(!result.is_null());
+    }
+}
+
+#[test]
+fn test_arena_alloc_and_eval() {
+    unsafe {
+        let vec = Rf_allocVector(SEXPTYPE::REALSXP.0, 4);
+        assert!(!vec.is_null());
+
+        let data = (*vec).gengc_next_node as *mut f64;
+        for i in 0..4 {
+            *data.add(i) = i as f64 * 2.0;
+        }
+
+        let env = make_test_env();
+        let result = crate::eval::eval::Rf_eval(vec, env);
+        assert!(!result.is_null());
+
+        let s = Sexp::from_raw_unchecked(result);
+        assert_eq!(s.len(), 4);
+        assert!((s.real_elt(0).unwrap() - 0.0).abs() < 1e-10);
+        assert!((s.real_elt(3).unwrap() - 6.0).abs() < 1e-10);
+    }
+}
+
+#[test]
+fn test_cons_and_car_cdr() {
+    unsafe {
+        let a = Rf_ScalarInteger(10);
+        let b = Rf_ScalarInteger(20);
+        let cell = Rf_cons(a, b);
+        assert!(!cell.is_null());
+
+        let s = Sexp::from_raw_unchecked(cell);
+        let car = s.car().unwrap();
+        let cdr = s.cdr().unwrap();
+
+        assert_eq!(car.integer_elt(0), Some(10));
+        assert_eq!(cdr.integer_elt(0), Some(20));
+    }
+}
+
+#[test]
+fn test_gc_after_allocations() {
+    unsafe {
+        for _ in 0..100 {
+            let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 10);
+            assert!(!v.is_null());
         }
     }
-}
-
-#[test]
-fn test_error_handling() {
-    let result = catch_r(|| {
-        panic!("test error");
-    });
-    assert!(result.is_err());
-    let err = result.unwrap_err();
-    assert!(err.message.contains("test error"));
-}
-
-#[test]
-fn test_arena_free_list_reuse() {
-    use crate::sexp::gengc::minor_gc;
-
-    let mut arena = RArena::new();
-    let initial_nodes = arena.node_count();
-
-    let _obj = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-    minor_gc();
-
-    let _obj2 = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-
-    assert!(arena.node_count() <= initial_nodes + 1);
+    crate::sexp::memory::reset_arena();
 }

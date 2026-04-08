@@ -77,41 +77,123 @@ pub fn capture_stderr(msg: &str) {
 
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
-/// This is the Rust implementation of R's Rf_PrintValue.
+/// This is the Rust implementation of R's Rf_PrintValue. For Android
+/// embedding, use [`start_capture`] before evaluation and [`stop_capture`]
+/// after to collect printed output as a string.
 pub fn print_value(x: Sexp<'_>) {
-    let type_name = match x.typeof_() {
-        SEXPTYPE::NILSXP => "NULL",
-        SEXPTYPE::INTSXP => "integer",
-        SEXPTYPE::REALSXP => "double",
-        SEXPTYPE::LGLSXP => "logical",
-        SEXPTYPE::STRSXP => "character",
-        SEXPTYPE::VECSXP => "list",
-        SEXPTYPE::EXPRSXP => "expression",
-        SEXPTYPE::RAWSXP => "raw",
-        SEXPTYPE::CPLXSXP => "complex",
-        SEXPTYPE::SYMSXP => "symbol",
-        SEXPTYPE::CLOSXP => "closure",
-        SEXPTYPE::ENVSXP => "environment",
-        SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
-        SEXPTYPE::CHARSXP => "charsxp",
-        SEXPTYPE::PROMSXP => "promise",
-        SEXPTYPE::DOTSXP => "...",
-        SEXPTYPE::SPECIALSXP => "special",
-        SEXPTYPE::BUILTINSXP => "builtin",
-        SEXPTYPE::EXTPTRSXP => "externalptr",
-        SEXPTYPE::WEAKREFSXP => "weakref",
-        SEXPTYPE::BCODESXP => "bytecode",
-        SEXPTYPE::OBJSXP => "object",
-        _ => "unknown",
-    };
+    match x.typeof_() {
+        SEXPTYPE::NILSXP => {
+            emit("NULL\n");
+        }
+        SEXPTYPE::INTSXP => {
+            if x.len() == 1 {
+                let v = x.integer_elt(0).unwrap_or(0);
+                emit(&format!("[1] {}\n", v));
+            } else {
+                let vals: Vec<String> = x.iter_integer().take(10).map(|v| v.to_string()).collect();
+                let suffix = if x.len() > 10 { " ..." } else { "" };
+                emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+            }
+        }
+        SEXPTYPE::REALSXP => {
+            if x.len() == 1 {
+                let v = x.real_elt(0).unwrap_or(0.0);
+                emit(&format!("[1] {}\n", v));
+            } else {
+                let vals: Vec<String> = x
+                    .iter_real()
+                    .take(10)
+                    .map(|v| format!("{:.6}", v))
+                    .collect();
+                let suffix = if x.len() > 10 { " ..." } else { "" };
+                emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+            }
+        }
+        SEXPTYPE::LGLSXP => {
+            let vals: Vec<&str> = x
+                .iter_integer()
+                .take(10)
+                .map(|v| match v {
+                    0 => "FALSE",
+                    1 => "TRUE",
+                    _ => "NA",
+                })
+                .collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+        }
+        SEXPTYPE::STRSXP => {
+            if x.len() == 1 {
+                if let Some(charsxp) = x.string_elt(0) {
+                    let raw = unsafe { super::accessors::CHAR(charsxp.as_raw()) };
+                    let s = if raw.is_null() {
+                        ""
+                    } else {
+                        unsafe { std::ffi::CStr::from_ptr(raw).to_str().unwrap_or("") }
+                    };
+                    emit(&format!("[1] \"{}\"\n", s));
+                } else {
+                    emit("[1] \"\"\n");
+                }
+            } else {
+                let vals: Vec<String> = (0..x.len().min(10))
+                    .map(|i| {
+                        if let Some(charsxp) = x.string_elt(i) {
+                            let raw = unsafe { super::accessors::CHAR(charsxp.as_raw()) };
+                            if raw.is_null() {
+                                "\"\"".to_string()
+                            } else {
+                                format!("\"{}\"", unsafe {
+                                    std::ffi::CStr::from_ptr(raw).to_str().unwrap_or("")
+                                })
+                            }
+                        } else {
+                            "\"\"".to_string()
+                        }
+                    })
+                    .collect();
+                let suffix = if x.len() > 10 { " ..." } else { "" };
+                emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+            }
+        }
+        SEXPTYPE::VECSXP => {
+            let type_name = "list";
+            let output = format!("[{}; length={}]", type_name, x.len());
+            emit(&output);
+            emit("\n");
+        }
+        tp => {
+            let type_name = match tp {
+                SEXPTYPE::EXPRSXP => "expression",
+                SEXPTYPE::RAWSXP => "raw",
+                SEXPTYPE::CPLXSXP => "complex",
+                SEXPTYPE::SYMSXP => "symbol",
+                SEXPTYPE::CLOSXP => "closure",
+                SEXPTYPE::ENVSXP => "environment",
+                SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => "pairlist",
+                SEXPTYPE::CHARSXP => "charsxp",
+                SEXPTYPE::PROMSXP => "promise",
+                SEXPTYPE::DOTSXP => "...",
+                SEXPTYPE::SPECIALSXP => "special",
+                SEXPTYPE::BUILTINSXP => "builtin",
+                SEXPTYPE::EXTPTRSXP => "externalptr",
+                SEXPTYPE::WEAKREFSXP => "weakref",
+                SEXPTYPE::BCODESXP => "bytecode",
+                SEXPTYPE::OBJSXP => "object",
+                _ => "unknown",
+            };
+            let output = format!("[{}; length={}]", type_name, x.len());
+            emit(&output);
+            emit("\n");
+        }
+    }
+}
 
-    let output = format!("[{}; length={}]", type_name, x.len());
-
+fn emit(msg: &str) {
     if is_capturing() {
-        capture_stdout(&output);
-        capture_stdout("\n");
+        capture_stdout(msg);
     } else {
-        println!("{}", output);
+        print!("{}", msg);
     }
 }
 

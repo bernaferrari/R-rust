@@ -23,3 +23,6 @@ pub mod dispatch;
 pub mod eval;
 pub mod special;
 pub mod symbols;
+
+#[cfg(test)]
+mod integration_tests;
