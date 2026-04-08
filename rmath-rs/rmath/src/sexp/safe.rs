@@ -527,6 +527,170 @@ impl<'a> Sexp<'a> {
         unsafe { (*self.ptr).sxpinfo.obj() }
     }
 
+    // --- Primitive/Builtin/Special accessors ---
+
+    #[inline]
+    pub fn is_special(self) -> bool {
+        self.typeof_() == SEXPTYPE::SPECIALSXP
+    }
+
+    #[inline]
+    pub fn is_builtin(self) -> bool {
+        self.typeof_() == SEXPTYPE::BUILTINSXP
+    }
+
+    #[inline]
+    pub fn is_primitive(self) -> bool {
+        let t = self.typeof_();
+        t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP
+    }
+
+    pub fn primoffset(self) -> Option<c_int> {
+        if self.is_primitive() {
+            Some(unsafe { (*self.ptr).data.primsxp.offset })
+        } else {
+            None
+        }
+    }
+
+    // --- CHARSXP accessors ---
+
+    #[inline]
+    pub fn is_charsxp(self) -> bool {
+        self.typeof_() == SEXPTYPE::CHARSXP
+    }
+
+    pub fn char_len(self) -> Option<R_xlen_t> {
+        if self.is_charsxp() {
+            Some(unsafe { (*self.ptr).data.charsxp_truelen })
+        } else {
+            None
+        }
+    }
+
+    pub fn as_bytes(self) -> Option<&'a [u8]> {
+        if self.is_charsxp() {
+            let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
+            let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
+            if data.is_null() || len == 0 {
+                Some(&[])
+            } else {
+                Some(unsafe { std::slice::from_raw_parts(data, len) })
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn as_str(self) -> Option<&'a str> {
+        self.as_bytes().and_then(|b| std::str::from_utf8(b).ok())
+    }
+
+    // --- Complex vector accessors ---
+
+    pub fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
+        if self.typeof_() == SEXPTYPE::CPLXSXP && i >= 0 && i < self.len() {
+            let data = unsafe { (*self.ptr).gengc_next_node as *mut Rcomplex };
+            if !data.is_null() {
+                unsafe { *data.add(i as usize) = v };
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn as_complex_slice(self) -> Option<&'a [Rcomplex]> {
+        if self.typeof_() == SEXPTYPE::CPLXSXP {
+            let len = self.len() as usize;
+            let data = unsafe { (*self.ptr).gengc_next_node as *const Rcomplex };
+            if data.is_null() || len == 0 {
+                Some(&[])
+            } else {
+                Some(unsafe { std::slice::from_raw_parts(data, len) })
+            }
+        } else {
+            None
+        }
+    }
+
+    pub fn iter_complex(self) -> impl Iterator<Item = Rcomplex> + 'a {
+        self.as_complex_slice().unwrap_or(&[]).iter().copied()
+    }
+
+    // --- Dot-dot-dot (DOTSXP) ---
+
+    #[inline]
+    pub fn is_dots(self) -> bool {
+        self.typeof_() == SEXPTYPE::DOTSXP
+    }
+
+    // --- Bytecode (BCODESXP) ---
+
+    #[inline]
+    pub fn is_bytecode(self) -> bool {
+        self.typeof_() == SEXPTYPE::BCODESXP
+    }
+
+    // --- External pointer (EXTPTRSXP) ---
+
+    #[inline]
+    pub fn is_extptr(self) -> bool {
+        self.typeof_() == SEXPTYPE::EXTPTRSXP
+    }
+
+    pub fn extptr_ptr(self) -> Option<*mut std::os::raw::c_void> {
+        if self.is_extptr() {
+            Some(unsafe { (*self.ptr).data.extptr[0] })
+        } else {
+            None
+        }
+    }
+
+    pub fn extptr_tag(self) -> Option<Sexp<'a>> {
+        if self.is_extptr() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.extptr[1] as SEXP })
+        } else {
+            None
+        }
+    }
+
+    pub fn extprot(self) -> Option<Sexp<'a>> {
+        if self.is_extptr() {
+            Sexp::from_raw(unsafe { (*self.ptr).data.extptr[2] as SEXP })
+        } else {
+            None
+        }
+    }
+
+    // --- Weak reference (WEAKREFSXP) ---
+
+    #[inline]
+    pub fn is_weakref(self) -> bool {
+        self.typeof_() == SEXPTYPE::WEAKREFSXP
+    }
+
+    // --- S4 object (OBJSXP) ---
+
+    #[inline]
+    pub fn is_s4(self) -> bool {
+        self.typeof_() == SEXPTYPE::OBJSXP
+    }
+
+    // --- Expression vector (EXPRSXP) ---
+
+    #[inline]
+    pub fn is_expression(self) -> bool {
+        self.typeof_() == SEXPTYPE::EXPRSXP
+    }
+
+    // --- Function (FUNSXP) ---
+
+    #[inline]
+    pub fn is_function(self) -> bool {
+        let t = self.typeof_();
+        t == SEXPTYPE::CLOSXP || t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP
+    }
+
     // --- Data pointer ---
 
     /// Get the raw data pointer for vector types.
@@ -1246,5 +1410,122 @@ mod tests {
         assert!(sexp.as_integer_slice().is_none());
         assert!(sexp.as_real_slice().is_none());
         assert!(sexp.as_raw_slice().is_none());
+    }
+
+    #[test]
+    fn test_sexp_primitive_accessors() {
+        let mut arena = RArena::new();
+        let special = arena.alloc_node(SEXPTYPE::SPECIALSXP);
+        unsafe {
+            (*special).data.primsxp.offset = 42;
+        }
+        let sexp = Sexp::from_raw(special).unwrap();
+        assert!(sexp.is_special());
+        assert!(sexp.is_primitive());
+        assert!(!sexp.is_builtin());
+        assert_eq!(sexp.primoffset(), Some(42));
+
+        let builtin = arena.alloc_node(SEXPTYPE::BUILTINSXP);
+        unsafe {
+            (*builtin).data.primsxp.offset = 7;
+        }
+        let sexp2 = Sexp::from_raw(builtin).unwrap();
+        assert!(sexp2.is_builtin());
+        assert!(sexp2.is_primitive());
+        assert!(!sexp2.is_special());
+        assert_eq!(sexp2.primoffset(), Some(7));
+
+        let other = arena.alloc_node(SEXPTYPE::INTSXP);
+        let sexp3 = Sexp::from_raw(other).unwrap();
+        assert!(!sexp3.is_primitive());
+        assert_eq!(sexp3.primoffset(), None);
+    }
+
+    #[test]
+    fn test_sexp_charsxp_accessors() {
+        let mut arena = RArena::new();
+        let charsxp = arena.alloc_charsxp(b"hello world");
+        let sexp = Sexp::from_raw(charsxp).unwrap();
+        assert!(sexp.is_charsxp());
+        assert_eq!(sexp.char_len(), Some(11));
+        assert_eq!(sexp.as_bytes(), Some(&b"hello world"[..]));
+        assert_eq!(sexp.as_str(), Some("hello world"));
+
+        let other = arena.alloc_node(SEXPTYPE::INTSXP);
+        let sexp2 = Sexp::from_raw(other).unwrap();
+        assert!(!sexp2.is_charsxp());
+        assert!(sexp2.as_bytes().is_none());
+        assert!(sexp2.as_str().is_none());
+    }
+
+    #[test]
+    fn test_sexp_complex_accessors() {
+        let mut arena = RArena::new();
+        let vec = arena.alloc_vector(SEXPTYPE::CPLXSXP, 3);
+        let sexp = Sexp::from_raw(vec).unwrap();
+
+        let c1 = Rcomplex { r: 1.0, i: 2.0 };
+        let c2 = Rcomplex { r: 3.0, i: 4.0 };
+        let c3 = Rcomplex { r: 5.0, i: 6.0 };
+
+        assert!(sexp.set_complex_elt(0, c1));
+        assert!(sexp.set_complex_elt(1, c2));
+        assert!(sexp.set_complex_elt(2, c3));
+        assert!(!sexp.set_complex_elt(3, c1)); // out of bounds
+
+        assert_eq!(sexp.complex_elt(0), Some(c1));
+        assert_eq!(sexp.complex_elt(1), Some(c2));
+        assert_eq!(sexp.complex_elt(2), Some(c3));
+
+        let slice = sexp.as_complex_slice().unwrap();
+        assert_eq!(slice.len(), 3);
+        assert_eq!(slice[0].r, 1.0);
+        assert_eq!(slice[2].i, 6.0);
+
+        let vals: Vec<Rcomplex> = sexp.iter_complex().collect();
+        assert_eq!(vals.len(), 3);
+    }
+
+    #[test]
+    fn test_sexp_new_type_predicates() {
+        let mut arena = RArena::new();
+
+        let dots = arena.alloc_node(SEXPTYPE::DOTSXP);
+        let sexp = Sexp::from_raw(dots).unwrap();
+        assert!(sexp.is_dots());
+
+        let bc = arena.alloc_node(SEXPTYPE::BCODESXP);
+        let sexp2 = Sexp::from_raw(bc).unwrap();
+        assert!(sexp2.is_bytecode());
+
+        let ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
+        unsafe {
+            (*ext).data.extptr = [
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            ];
+        }
+        let sexp3 = Sexp::from_raw(ext).unwrap();
+        assert!(sexp3.is_extptr());
+        assert!(sexp3.extptr_ptr().is_some());
+        assert!(sexp3.extptr_tag().is_none());
+
+        let wr = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
+        let sexp4 = Sexp::from_raw(wr).unwrap();
+        assert!(sexp4.is_weakref());
+
+        let s4 = arena.alloc_node(SEXPTYPE::OBJSXP);
+        let sexp5 = Sexp::from_raw(s4).unwrap();
+        assert!(sexp5.is_s4());
+
+        let expr = arena.alloc_vector(SEXPTYPE::EXPRSXP, 0);
+        let sexp6 = Sexp::from_raw(expr).unwrap();
+        assert!(sexp6.is_expression());
+
+        let clos = arena.alloc_node(SEXPTYPE::CLOSXP);
+        let sexp7 = Sexp::from_raw(clos).unwrap();
+        assert!(sexp7.is_function());
+        assert!(sexp.is_function() == false);
     }
 }

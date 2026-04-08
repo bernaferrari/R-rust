@@ -535,6 +535,204 @@ pub fn seq(start: f64, end: f64, step: f64) -> Option<Sexp<'static>> {
 }
 
 // ---------------------------------------------------------------------------
+// Safe scalar constructors
+// ---------------------------------------------------------------------------
+
+/// Create a scalar integer R object.
+pub fn scalar_integer(x: c_int) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
+        if data.is_null() {
+            return None;
+        }
+        unsafe { *data = x };
+        unsafe {
+            (*ptr).sxpinfo.set_scalar(true);
+        }
+        Sexp::from_raw(ptr)
+    })
+}
+
+/// Create a scalar real R object.
+pub fn scalar_real(x: c_double) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
+        if data.is_null() {
+            return None;
+        }
+        unsafe { *data = x };
+        unsafe {
+            (*ptr).sxpinfo.set_scalar(true);
+        }
+        Sexp::from_raw(ptr)
+    })
+}
+
+/// Create a scalar logical R object.
+pub fn scalar_logical(x: c_int) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
+        if data.is_null() {
+            return None;
+        }
+        unsafe { *data = x };
+        unsafe {
+            (*ptr).sxpinfo.set_scalar(true);
+        }
+        Sexp::from_raw(ptr)
+    })
+}
+
+/// Create a scalar raw byte R object.
+pub fn scalar_raw(x: Rbyte) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 1);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
+        if data.is_null() {
+            return None;
+        }
+        unsafe { *data = x };
+        unsafe {
+            (*ptr).sxpinfo.set_scalar(true);
+        }
+        Sexp::from_raw(ptr)
+    })
+}
+
+/// Create a scalar string R object (STRSXP of length 1).
+pub fn scalar_string(s: &str) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
+        if data.is_null() {
+            return None;
+        }
+        let charsxp = arena.alloc_charsxp(s.as_bytes());
+        unsafe {
+            *data = charsxp;
+        }
+        Sexp::from_raw(ptr)
+    })
+}
+
+/// Create a scalar complex R object.
+pub fn scalar_complex(r: c_double, i: c_double) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let ptr = arena.alloc_vector(SEXPTYPE::CPLXSXP, 1);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut super::ffi::Rcomplex };
+        if data.is_null() {
+            return None;
+        }
+        unsafe {
+            *data = super::ffi::Rcomplex { r, i };
+        }
+        unsafe {
+            (*ptr).sxpinfo.set_scalar(true);
+        }
+        Sexp::from_raw(ptr)
+    })
+}
+
+/// Create a CHARSXP from a byte slice.
+pub fn mk_char(s: &[u8]) -> Option<Sexp<'static>> {
+    with_arena(|arena| Sexp::from_raw(arena.alloc_charsxp(s)))
+}
+
+// ---------------------------------------------------------------------------
+// Safe language/pairlist constructors
+// ---------------------------------------------------------------------------
+
+/// Create a cons cell (LISTSXP) with car, cdr, and optional tag.
+pub fn cons(car: Sexp<'_>, cdr: Sexp<'_>, tag: Option<Sexp<'_>>) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let tag_raw = tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut());
+        Sexp::from_raw(arena.cons(car.as_raw(), cdr.as_raw(), tag_raw))
+    })
+}
+
+/// Create a language object (LANGSXP) — a function call.
+///
+/// The result is `car(cdr(...(R_NilValue)))` with LANGSXP type.
+pub fn lang2(car: Sexp<'_>, arg: Sexp<'_>) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
+        if cdr.is_null() {
+            return None;
+        }
+        unsafe {
+            (*cdr).data.listsxp.carval = arg.as_raw();
+            (*cdr).data.listsxp.cdrval = R_NilValue();
+            (*cdr).data.listsxp.tagval = ptr::null_mut();
+        }
+        let head = arena.alloc_node(SEXPTYPE::LANGSXP);
+        if head.is_null() {
+            return None;
+        }
+        unsafe {
+            (*head).data.listsxp.carval = car.as_raw();
+            (*head).data.listsxp.cdrval = cdr;
+            (*head).data.listsxp.tagval = ptr::null_mut();
+        }
+        Sexp::from_raw(head)
+    })
+}
+
+/// Create a language object with two arguments.
+pub fn lang3(car: Sexp<'_>, arg1: Sexp<'_>, arg2: Sexp<'_>) -> Option<Sexp<'static>> {
+    with_arena(|arena| {
+        let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
+        if c2.is_null() {
+            return None;
+        }
+        unsafe {
+            (*c2).data.listsxp.carval = arg2.as_raw();
+            (*c2).data.listsxp.cdrval = R_NilValue();
+            (*c2).data.listsxp.tagval = ptr::null_mut();
+        }
+        let c1 = arena.alloc_node(SEXPTYPE::LANGSXP);
+        if c1.is_null() {
+            return None;
+        }
+        unsafe {
+            (*c1).data.listsxp.carval = arg1.as_raw();
+            (*c1).data.listsxp.cdrval = c2;
+            (*c1).data.listsxp.tagval = ptr::null_mut();
+        }
+        let head = arena.alloc_node(SEXPTYPE::LANGSXP);
+        if head.is_null() {
+            return None;
+        }
+        unsafe {
+            (*head).data.listsxp.carval = car.as_raw();
+            (*head).data.listsxp.cdrval = c1;
+            (*head).data.listsxp.tagval = ptr::null_mut();
+        }
+        Sexp::from_raw(head)
+    })
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
@@ -665,5 +863,63 @@ mod tests {
 
         let v6 = seq(0.0, 2.0, 1.0).unwrap();
         assert_eq!(v6.len(), 3);
+    }
+
+    #[test]
+    fn test_scalar_constructors() {
+        let si = scalar_integer(42).unwrap();
+        assert_eq!(si.integer_elt(0), Some(42));
+        assert_eq!(si.len(), 1);
+
+        let sr = scalar_real(3.14).unwrap();
+        assert!((sr.real_elt(0).unwrap() - 3.14).abs() < f64::EPSILON);
+
+        let sl = scalar_logical(1).unwrap();
+        assert_eq!(sl.logical_elt(0), Some(1));
+
+        let sraw = scalar_raw(0xAB).unwrap();
+        assert_eq!(sraw.raw_elt(0), Some(0xAB));
+
+        let ss = scalar_string("hello").unwrap();
+        assert_eq!(ss.len(), 1);
+        assert!(ss.string_elt(0).is_some());
+
+        let sc = scalar_complex(1.0, 2.0).unwrap();
+        let c = sc.complex_elt(0).unwrap();
+        assert!((c.r - 1.0).abs() < f64::EPSILON);
+        assert!((c.i - 2.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_mk_char() {
+        let c = mk_char(b"hello").unwrap();
+        assert!(c.is_charsxp());
+        assert_eq!(c.as_str(), Some("hello"));
+        assert_eq!(c.as_bytes(), Some(&b"hello"[..]));
+    }
+
+    #[test]
+    fn test_cons_constructor() {
+        let car = scalar_integer(1).unwrap();
+        let cdr = scalar_real(2.0).unwrap();
+        let cell = cons(car, cdr, None).unwrap();
+        assert!(cell.is_pairlist());
+        assert!(cell.car().unwrap().is_vector());
+    }
+
+    #[test]
+    fn test_lang_constructors() {
+        let mut arena = crate::sexp::memory::RArena::new();
+        let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
+        let fun = Sexp::from_raw(sym).unwrap();
+        let arg = scalar_integer(1).unwrap();
+
+        let call = lang2(fun, arg).unwrap();
+        assert!(call.is_pairlist());
+
+        let arg2 = scalar_real(2.0).unwrap();
+        let call3 = lang3(fun, arg, arg2).unwrap();
+        assert!(call3.is_pairlist());
+        assert!(call3.car().is_some());
     }
 }
