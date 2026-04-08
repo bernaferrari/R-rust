@@ -80,14 +80,12 @@ thread_local! { static numGraphicsSystems: Cell<c_int> = Cell::new(0); }
 // ---------------------------------------------------------------------------
 
 /// Return the current graphics engine version number.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_getVersion() -> c_int {
+pub unsafe fn R_GE_getVersion() -> c_int {
     R_GE_version
 }
 
 /// Check that the given version matches the current engine version; panic on mismatch.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_checkVersionOrDie(version: c_int) {
+pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
     if version != R_GE_version {
         // In full implementation, this would call error().
         // For now, just ignore silently.
@@ -667,8 +665,7 @@ pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Scale a raster image using nearest-neighbour interpolation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterScale(
+pub unsafe fn R_GE_rasterScale(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -680,8 +677,7 @@ pub unsafe extern "C" fn R_GE_rasterScale(
 }
 
 /// Scale a raster image using bilinear interpolation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterInterpolate(
+pub unsafe fn R_GE_rasterInterpolate(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -693,8 +689,7 @@ pub unsafe extern "C" fn R_GE_rasterInterpolate(
 }
 
 /// Calculate the size needed for a rotated raster image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterRotatedSize(
+pub unsafe fn R_GE_rasterRotatedSize(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -712,8 +707,7 @@ pub unsafe extern "C" fn R_GE_rasterRotatedSize(
 }
 
 /// Calculate the offset for a rotated raster image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterRotatedOffset(
+pub unsafe fn R_GE_rasterRotatedOffset(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -732,8 +726,7 @@ pub unsafe extern "C" fn R_GE_rasterRotatedOffset(
 }
 
 /// Copy a raster image into the middle of a larger raster (for rotation).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterResizeForRotation(
+pub unsafe fn R_GE_rasterResizeForRotation(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -746,8 +739,7 @@ pub unsafe extern "C" fn R_GE_rasterResizeForRotation(
 }
 
 /// Rotate a raster image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterRotate(
+pub unsafe fn R_GE_rasterRotate(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -783,62 +775,52 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 // ---------------------------------------------------------------------------
 
 /// Get the glyphs component from a glyphInfo SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the fonts component from a glyphInfo SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph IDs from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph X positions from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph Y positions from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph font indices from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph sizes from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph colours from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the glyph rotations from a glyphs SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Check whether a glyphs SEXP has rotation information.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
+pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
     0 // FALSE
 }
 
@@ -847,65 +829,52 @@ pub unsafe extern "C" fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the font file path from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontFile(glyphFont: SEXP) -> *const c_char {
+pub unsafe fn R_GE_glyphFontFile(glyphFont: SEXP) -> *const c_char {
     ptr::null()
 }
 
 /// Get the font index from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
+pub unsafe fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
     0
 }
 
 /// Get the font family name from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontFamily(glyphFont: SEXP) -> *const c_char {
+pub unsafe fn R_GE_glyphFontFamily(glyphFont: SEXP) -> *const c_char {
     ptr::null()
 }
 
 /// Get the font weight from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
+pub unsafe fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
     0.0
 }
 
 /// Get the font style from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
+pub unsafe fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
     0
 }
 
 /// Get the font PostScript name from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontPSname(glyphFont: SEXP) -> *const c_char {
+pub unsafe fn R_GE_glyphFontPSname(glyphFont: SEXP) -> *const c_char {
     ptr::null()
 }
 
 /// Get the number of font variation axes from a glyphFont SEXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
+pub unsafe fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
     0
 }
 
 /// Get the axis name for a font variation axis.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_char {
+pub unsafe fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_char {
     ptr::null()
 }
 
 /// Get the axis value for a font variation axis.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
+pub unsafe fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
     0.0
 }
 
 /// Get the formatted value for a font variation axis.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontVarFormatted(
-    glyphFont: SEXP,
-    index: c_int,
-) -> *const c_char {
+pub unsafe fn R_GE_glyphFontVarFormatted(glyphFont: SEXP, index: c_int) -> *const c_char {
     ptr::null()
 }
 
@@ -933,8 +902,7 @@ pub unsafe fn GEGlyph(
 // ---------------------------------------------------------------------------
 
 /// Evaluate an expression within a graphics device context (with device locking).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
+pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
     unsafe { R_NilValue() }
 }
 

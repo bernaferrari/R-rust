@@ -434,8 +434,7 @@ unsafe fn spline_eval(
 // ---------------------------------------------------------------------------
 
 /// SplineCoef - compute spline coefficients.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
+pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
     let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.0));
     let n = XLENGTH(x) as usize;
@@ -491,8 +490,7 @@ pub unsafe extern "C" fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
 }
 
 /// SplineEval - evaluate a spline at given points.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
+pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
     let xout = Rf_protect(coerceVector(xout, SEXPTYPE::REALSXP.0));
     let nu = XLENGTH(xout) as usize;
     let z_n = getListElement(z, b"n\0".as_ptr() as *const c_char);

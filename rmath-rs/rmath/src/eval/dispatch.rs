@@ -202,6 +202,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 // Helper: isSymbol — check if SEXP is a symbol
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn isSymbol(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {
@@ -219,6 +220,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
 // Helper: translateChar — get C string from CHARSXP
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn translateChar(x: SEXP) -> *const c_char {
     unsafe {
         if x.is_null() {
@@ -232,6 +234,7 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 // Helper: streql — compare two C strings
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         if a.is_null() || b.is_null() {
@@ -385,14 +388,7 @@ unsafe fn R_BlankScalarString_val() -> SEXP {
 /// Force the first n promises in an argument list and call a function.
 ///
 /// This is the equivalent of R's `R_forceAndCall()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_forceAndCall(
-    e: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-    n: c_int,
-) -> SEXP {
+pub unsafe fn R_forceAndCall(e: SEXP, op: SEXP, args: SEXP, rho: SEXP, n: c_int) -> SEXP {
     unsafe {
         // Force the first n promises
         let forced_args = args;

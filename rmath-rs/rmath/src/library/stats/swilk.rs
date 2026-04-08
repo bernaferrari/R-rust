@@ -194,8 +194,7 @@ unsafe fn swilk(
     *pw = pnorm5_inner(y, m, s, false, false); // upper tail
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn SWilk(x: SEXP) -> SEXP {
+pub unsafe fn SWilk(x: SEXP) -> SEXP {
     let mut ifault: c_int = 0;
     let mut W: c_double = 0.0;
     let mut pw: c_double = 0.0;

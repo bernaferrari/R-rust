@@ -34,16 +34,14 @@ pub fn decrement_active_windows() {
     ACTIVE_WINDOWS.with(|v| v.set(v.get() - 1));
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newwindow(_name: *const c_char, _r: rect, _flags: c_long) -> window {
+pub unsafe fn newwindow(_name: *const c_char, _r: rect, _flags: c_long) -> window {
     unsafe {
         super::init::initapp(0, ptr::null_mut());
         ptr::null_mut() // TODO: Platform-specific
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn show(w: window) {
+pub unsafe fn show(w: window) {
     unsafe {
         if !w.is_null() {
             (*w).state |= GA_Visible;
@@ -51,8 +49,7 @@ pub unsafe extern "C" fn show(w: window) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn hide(w: window) {
+pub unsafe fn hide(w: window) {
     unsafe {
         if !w.is_null() {
             (*w).state &= !GA_Visible;
@@ -60,13 +57,11 @@ pub unsafe extern "C" fn hide(w: window) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ismdi() -> c_int {
+pub unsafe fn ismdi() -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isUnicodeWindow(obj: object) -> c_int {
+pub unsafe fn isUnicodeWindow(obj: object) -> c_int {
     unsafe {
         if obj.is_null() {
             0
@@ -80,13 +75,11 @@ pub unsafe extern "C" fn isUnicodeWindow(obj: object) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isiconic(_w: window) -> c_int {
+pub unsafe fn isiconic(_w: window) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetCurrentWinPos(obj: object) -> rect {
+pub unsafe fn GetCurrentWinPos(obj: object) -> rect {
     unsafe {
         if obj.is_null() {
             rect::default()

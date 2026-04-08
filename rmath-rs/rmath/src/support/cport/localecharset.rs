@@ -434,8 +434,7 @@ fn name_value_search(name: &[u8], table: &[NameValue]) -> Option<*const u8> {
 // locale2charset - main entry point
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn locale2charset(locale: *const c_char) -> *const c_char {
+pub unsafe fn locale2charset(locale: *const c_char) -> *const c_char {
     unsafe {
         thread_local! { static CHARSET_BUF: RefCell<[u8; 128]> = RefCell::new([0u8; 128]); }
 

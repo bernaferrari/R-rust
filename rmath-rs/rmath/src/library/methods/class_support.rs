@@ -17,8 +17,7 @@ use crate::sexp::protect::*;
 
 /// R_get_primname - get the name of a primitive function.
 /// Delegates to getPRIMNAME in main/names.rs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_primname(object: SEXP) -> SEXP {
+pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
     let t = TYPEOF(object);
     if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
         let msg = CString::new("'R_get_primname' called on a non-primitive").expect("CString::new failed: contains null byte");
@@ -36,6 +35,6 @@ pub unsafe extern "C" fn R_get_primname(object: SEXP) -> SEXP {
 /// new_object - create a new object from a class definition.
 /// Registered as .Call in the methods package.
 /// Note: not #[no_mangle] to avoid conflict with graphapp::new_object.
-pub(crate) unsafe extern "C" fn new_object(_class_def: SEXP) -> SEXP {
+pub(crate) unsafe fn new_object(_class_def: SEXP) -> SEXP {
     R_NilValue()
 }

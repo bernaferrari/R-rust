@@ -558,18 +558,20 @@ pub fn dataptr(x: SEXP) -> *mut std::os::raw::c_void {
     if is_altrep(x) {
         // Try ALTREP's get_dataptr first
         if let Some(ptr) = altrep_dataptr(x, false)
-            && !ptr.is_null() {
-                return ptr;
-            }
+            && !ptr.is_null()
+        {
+            return ptr;
+        }
 
         // Fall back to materialization
         if let Some(class) = altrep_class(x)
-            && let Some(data) = altrep_data(x) {
-                let materialized = (class.materialize)(data);
-                if !materialized.is_null() {
-                    return unsafe { (*materialized).gengc_next_node as *mut std::os::raw::c_void };
-                }
+            && let Some(data) = altrep_data(x)
+        {
+            let materialized = (class.materialize)(data);
+            if !materialized.is_null() {
+                return unsafe { (*materialized).gengc_next_node as *mut std::os::raw::c_void };
             }
+        }
 
         return std::ptr::null_mut();
     }
@@ -601,9 +603,10 @@ pub fn force_materialization(x: SEXP) -> SEXP {
         return x;
     }
     if let Some(class) = altrep_class(x)
-        && let Some(data) = altrep_data(x) {
-            return (class.materialize)(data);
-        }
+        && let Some(data) = altrep_data(x)
+    {
+        return (class.materialize)(data);
+    }
     x
 }
 

@@ -447,13 +447,11 @@ thread_local! { static registeredSystems: Cell<[*mut GESystemDesc; MAX_GRAPHICS_
 // R_GE_getVersion / R_GE_checkVersionOrDie
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_getVersion() -> c_int {
+pub unsafe fn R_GE_getVersion() -> c_int {
     R_GE_version
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_checkVersionOrDie(version: c_int) {
+pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
     if version != R_GE_version {
         // In full implementation, call error(). Silently ignore for now.
     }
@@ -560,6 +558,7 @@ pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
 // GEregisterSystem
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEregisterSystem(
     cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
     systemRegisterIndex: *mut c_int,
@@ -596,6 +595,7 @@ pub unsafe fn GEregisterSystem(
 // GEunregisterSystem
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
     if registerIndex < 0 {
         return;
@@ -727,6 +727,7 @@ pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_doub
     result
 }
 
+#[unsafe(no_mangle)]
 pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
@@ -821,6 +822,7 @@ pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_
     result
 }
 
+#[unsafe(no_mangle)]
 pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
@@ -878,6 +880,7 @@ pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c
     result
 }
 
+#[unsafe(no_mangle)]
 pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
     let mut result = value;
     if let Some(d) = dev_ptr(dd) {
@@ -978,6 +981,7 @@ pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
 // GESetClip
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         let dx1 = (*d).left;
@@ -1023,6 +1027,7 @@ pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, 
 // GELine
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GELine(
     x1: c_double,
     y1: c_double,
@@ -1042,6 +1047,7 @@ pub unsafe fn GELine(
 // GEPolyline
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEPolyline(
     n: c_int,
     x: *const c_double,
@@ -1060,6 +1066,7 @@ pub unsafe fn GEPolyline(
 // GEPolygon
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEPolygon(
     n: c_int,
     x: *const c_double,
@@ -1078,6 +1085,7 @@ pub unsafe fn GEPolygon(
 // GECircle
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GECircle(
     x: c_double,
     y: c_double,
@@ -1099,6 +1107,7 @@ pub unsafe fn GECircle(
 // GERect
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GERect(
     x0: c_double,
     y0: c_double,
@@ -1118,6 +1127,7 @@ pub unsafe fn GERect(
 // GEPath
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEPath(
     x: *mut c_double,
     y: *mut c_double,
@@ -1140,6 +1150,7 @@ pub unsafe fn GEPath(
 // GERaster
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GERaster(
     raster: *mut c_uint,
     w: c_int,
@@ -1191,6 +1202,7 @@ pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
 // GEText
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEText(
     x: c_double,
     y: c_double,
@@ -1217,6 +1229,7 @@ pub unsafe fn GEText(
 // GEXspline
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEXspline(
     n: c_int,
     x: *mut c_double,
@@ -1247,6 +1260,7 @@ pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 // GESymbol -- Draw one of the R special plotting symbols
 // ---------------------------------------------------------------------------
+
 
 const SMALL: c_double = 0.25;
 const RADIUS: c_double = 0.375;
@@ -1295,6 +1309,7 @@ pub unsafe fn GESymbol(
 // GEPretty
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     // Stub: R_pretty is in appl/pretty.c, not yet ported
     // For now, just do basic pretty axis calculation
@@ -1349,6 +1364,7 @@ pub unsafe fn GEMetricInfo(
 // GEStrWidth
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEStrWidth(
     str: *const c_char,
     enc: c_int,
@@ -1373,6 +1389,7 @@ pub unsafe fn GEStrWidth(
 // GEStrHeight
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEStrHeight(
     str: *const c_char,
     enc: c_int,
@@ -1404,6 +1421,7 @@ pub unsafe fn GEStrHeight(
 // GEStrMetric
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEStrMetric(
     str: *const c_char,
     enc: c_int,
@@ -1427,6 +1445,7 @@ pub unsafe fn GEStrMetric(
 // GENewPage
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     if let Some(d) = dev_ptr(dd) {
         let gdd = dd as pGEDevDesc;
@@ -1441,6 +1460,7 @@ pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
 // GEdeviceDirty / GEdirtyDevice / GEcleanDevice
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
@@ -1625,8 +1645,7 @@ pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
 // Raster image operations
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterScale(
+pub unsafe fn R_GE_rasterScale(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1651,8 +1670,7 @@ pub unsafe extern "C" fn R_GE_rasterScale(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterInterpolate(
+pub unsafe fn R_GE_rasterInterpolate(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1739,8 +1757,7 @@ pub unsafe extern "C" fn R_GE_rasterInterpolate(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterRotatedSize(
+pub unsafe fn R_GE_rasterRotatedSize(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -1769,8 +1786,7 @@ pub unsafe extern "C" fn R_GE_rasterRotatedSize(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterRotatedOffset(
+pub unsafe fn R_GE_rasterRotatedOffset(
     w: c_int,
     h: c_int,
     angle: c_double,
@@ -1806,8 +1822,7 @@ pub unsafe extern "C" fn R_GE_rasterRotatedOffset(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterResizeForRotation(
+pub unsafe fn R_GE_rasterResizeForRotation(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1847,8 +1862,7 @@ pub unsafe extern "C" fn R_GE_rasterResizeForRotation(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_rasterRotate(
+pub unsafe fn R_GE_rasterRotate(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1981,53 +1995,43 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 // Glyph info API
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
+pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
     0 // FALSE
 }
 
@@ -2035,53 +2039,43 @@ pub unsafe extern "C" fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
 // Glyph font info API
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontFile(glyphFont: SEXP) -> *const c_char {
+pub unsafe fn R_GE_glyphFontFile(glyphFont: SEXP) -> *const c_char {
     ptr::null()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
+pub unsafe fn R_GE_glyphFontIndex(glyphFont: SEXP) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontFamily(glyphFont: SEXP) -> *const c_char {
+pub unsafe fn R_GE_glyphFontFamily(glyphFont: SEXP) -> *const c_char {
     ptr::null()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
+pub unsafe fn R_GE_glyphFontWeight(glyphFont: SEXP) -> c_double {
     0.0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
+pub unsafe fn R_GE_glyphFontStyle(glyphFont: SEXP) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontPSname(glyphFont: SEXP) -> *const c_char {
+pub unsafe fn R_GE_glyphFontPSname(glyphFont: SEXP) -> *const c_char {
     ptr::null()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
+pub unsafe fn R_GE_glyphFontNumVar(glyphFont: SEXP) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_char {
+pub unsafe fn R_GE_glyphFontVarAxis(glyphFont: SEXP, index: c_int) -> *const c_char {
     ptr::null()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
+pub unsafe fn R_GE_glyphFontVarValue(glyphFont: SEXP, index: c_int) -> c_double {
     0.0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_glyphFontVarFormatted(
+pub unsafe fn R_GE_glyphFontVarFormatted(
     glyphFont: SEXP,
     index: c_int,
 ) -> *const c_char {
@@ -2116,8 +2110,7 @@ pub unsafe fn GEGlyph(
 // Rf_eval_with_gd
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
+pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
     R_NilValue()
 }
 

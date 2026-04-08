@@ -20,8 +20,7 @@ use crate::sexp::ffi::SEXP;
 ///
 /// # Safety
 /// A must be a valid REALSXP matrix pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn DoubleCentre(A: SEXP) -> SEXP {
+pub unsafe fn DoubleCentre(A: SEXP) -> SEXP {
     let n = nrows(A as *const std::ffi::c_void);
     let a = REAL(A);
     let n_s = n as usize;

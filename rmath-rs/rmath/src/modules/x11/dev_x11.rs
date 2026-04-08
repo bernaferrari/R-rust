@@ -425,8 +425,7 @@ thread_local! { static BLUE_GAMMA: Cell<c_double> = Cell::new(DEFAULT_BLUE_GAMMA
 /// 3. Creates an X11 window or pixmap
 /// 4. Allocates and initialises an X11Desc struct
 /// 5. Sets up all device driver callbacks in the pDevDesc
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn X11DeviceDriver(
+pub unsafe fn X11DeviceDriver(
     _dd: pDevDesc,
     _display: *const c_char,
     _width: c_double,
@@ -456,8 +455,7 @@ pub unsafe extern "C" fn X11DeviceDriver(
 /// In a real implementation, this allocates a zeroed X11Desc struct
 /// and initialises its fields to sensible defaults.
 /// Stub returns a null pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_allocX11DeviceDesc(ps: c_double) -> *mut c_void {
+pub unsafe fn Rf_allocX11DeviceDesc(ps: c_double) -> *mut c_void {
     let _ = ps; // would set default pointsize
     std::ptr::null_mut()
 }
@@ -467,8 +465,7 @@ pub unsafe extern "C" fn Rf_allocX11DeviceDesc(ps: c_double) -> *mut c_void {
 /// In a real implementation, this sets up gamma correction,
 /// colour model, and links the X11Desc to the pDevDesc.
 /// Stub returns 0 (failure).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_setX11DeviceData(
+pub unsafe fn Rf_setX11DeviceData(
     _dd: pDevDesc,
     gamma_fac: c_double,
     _xd: *mut c_void,
@@ -484,8 +481,7 @@ pub unsafe extern "C" fn Rf_setX11DeviceData(
 
 /// Rf_getX11Display - return the current X11 Display pointer.
 /// Stub returns null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_getX11Display() -> *mut c_void {
+pub unsafe fn Rf_getX11Display() -> *mut c_void {
     std::ptr::null_mut()
 }
 
@@ -497,8 +493,7 @@ pub unsafe extern "C" fn Rf_getX11Display() -> *mut c_void {
 /// 3. Configures the colour model
 /// 4. Installs event handlers
 /// Stub returns 0 (failure).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_setX11Display(
+pub unsafe fn Rf_setX11Display(
     _dpy: *mut c_void,
     gamma_fac: c_double,
     colormodel: c_int,
@@ -532,29 +527,25 @@ pub unsafe extern "C" fn Rf_setX11Display(
 ///
 /// In a real implementation, this fills in a table of function
 /// pointers for the X11 module (data entry, device creation, etc.).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_R_X11(_info: *mut c_void) {
+pub unsafe fn R_init_R_X11(_info: *mut c_void) {
     // no-op stub - would populate R_X11Routines
 }
 
 /// in_R_pngVersion - return the libpng version string.
 /// Empty string since libpng is not linked.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn in_R_pngVersion() -> *const c_char {
+pub unsafe fn in_R_pngVersion() -> *const c_char {
     b"\0".as_ptr() as *const c_char
 }
 
 /// in_R_jpegVersion - return the libjpeg version string.
 /// Empty string since libjpeg is not linked.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn in_R_jpegVersion() -> *const c_char {
+pub unsafe fn in_R_jpegVersion() -> *const c_char {
     b"\0".as_ptr() as *const c_char
 }
 
 /// in_R_tiffVersion - return the libtiff version string.
 /// Empty string since libtiff is not linked.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn in_R_tiffVersion() -> *const c_char {
+pub unsafe fn in_R_tiffVersion() -> *const c_char {
     b"\0".as_ptr() as *const c_char
 }
 
@@ -563,8 +554,7 @@ pub unsafe extern "C" fn in_R_tiffVersion() -> *const c_char {
 /// In a real implementation, this extracts the pixel data from the
 /// X11 pixmap associated with device number `d`.
 /// Stub returns FALSE.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn in_R_GetX11Image(
+pub unsafe fn in_R_GetX11Image(
     _d: c_int,
     _pximage: *mut c_void,
     _pwidth: *mut c_int,
@@ -578,8 +568,7 @@ pub unsafe extern "C" fn in_R_GetX11Image(
 /// In a real implementation, this opens a spreadsheet-style
 /// data editor window using X11/Xt widgets.
 /// Stub returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn in_RX11_dataentry(
+pub unsafe fn in_RX11_dataentry(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -592,8 +581,7 @@ pub unsafe extern "C" fn in_RX11_dataentry(
 ///
 /// In a real implementation, this opens a read-only data viewer.
 /// Stub returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn in_R_X11_dataviewer(
+pub unsafe fn in_R_X11_dataviewer(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -612,8 +600,7 @@ unsafe fn _R_setX11Routines(_routines: *mut c_void) -> *mut c_void {
 
 /// R_setdeRoutines - set the data-entry routine dispatch table.
 /// Stub returns null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setdeRoutines(_routines: *mut c_void) -> *mut c_void {
+pub unsafe fn R_setdeRoutines(_routines: *mut c_void) -> *mut c_void {
     std::ptr::null_mut()
 }
 

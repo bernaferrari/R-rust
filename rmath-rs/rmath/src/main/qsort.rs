@@ -560,8 +560,7 @@ pub fn scmp(_x: *const c_void, _y: *const c_void, _nalast: bool) -> c_int {
 ///
 /// `indx` is filled with 0-based indices that would sort `arglist`.
 /// `arglist` is a pointer to a Vec<SEXP> of vectors to sort by.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_orderVector(
+pub unsafe fn R_orderVector(
     indx: *mut c_int,
     n: usize,
     arglist: *mut c_void,
@@ -625,8 +624,7 @@ pub unsafe extern "C" fn R_orderVector(
 ///
 /// `indx` is filled with 0-based indices that would sort `x`.
 /// `x` is a pointer to the data array.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_orderVector1(
+pub unsafe fn R_orderVector1(
     indx: *mut c_int,
     n: usize,
     x: *mut c_void,
@@ -698,8 +696,7 @@ pub unsafe fn isUnsorted(x: *mut c_void, strictly: c_int) -> c_int {
 ///
 /// # Safety
 /// `v` and `indx` must point to valid arrays of at least `*jj` elements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_qsort_I_c(v: *mut f64, indx: *mut c_int, ii: c_int, jj: c_int) {
+pub unsafe fn R_qsort_I_c(v: *mut f64, indx: *mut c_int, ii: c_int, jj: c_int) {
     unsafe {
         if v.is_null() || indx.is_null() || ii < 1 || jj < ii {
             return;
@@ -720,8 +717,7 @@ pub unsafe extern "C" fn R_qsort_I_c(v: *mut f64, indx: *mut c_int, ii: c_int, j
 ///
 /// # Safety
 /// `v` must point to a valid array of at least `jj` elements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_qsort_c(v: *mut f64, ii: usize, jj: usize) {
+pub unsafe fn R_qsort_c(v: *mut f64, ii: usize, jj: usize) {
     unsafe {
         if v.is_null() || ii < 1 || jj < ii {
             return;

@@ -44,8 +44,7 @@ use libc::{_SC_NPROCESSORS_CONF, _SC_NPROCESSORS_ONLN, c_long, sysconf};
 ///   [0] = number of physical cores
 ///   [1] = number of logical processors (including hyperthreading)
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ncpus(_virtual: SEXP) -> SEXP {
+pub unsafe fn ncpus(_virtual: SEXP) -> SEXP {
     let res = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
     Rf_protect(res);
     let ians = INTEGER(res);

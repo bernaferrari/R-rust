@@ -37,8 +37,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 /// Start an HTTP daemon on the given IP and port.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn startHTTPD(sIP: SEXP, sPort: SEXP) -> SEXP {
+pub unsafe fn startHTTPD(sIP: SEXP, sPort: SEXP) -> SEXP {
     let ip: *const c_char = ptr::null();
     if !sIP.is_null() && sIP != R_NilValue() {
         if Rf_isString(sIP) == 0 || LENGTH(sIP) != 1 {
@@ -66,8 +65,7 @@ pub unsafe extern "C" fn startHTTPD(sIP: SEXP, sPort: SEXP) -> SEXP {
 }
 
 /// Stop the HTTP daemon.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn stopHTTPD() -> SEXP {
+pub unsafe fn stopHTTPD() -> SEXP {
     // extR_HTTPDStop is an external function not available in this port
     R_NilValue()
 }
@@ -177,8 +175,7 @@ fn remove_dot_segments(p: &str) -> String {
 }
 
 /// Wrapper for remove_dot_segments that operates on a character vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
+pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
     if x.is_null() {
         return R_NilValue();
     }

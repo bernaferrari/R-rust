@@ -120,7 +120,7 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 // fminfn -- objective function callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
+unsafe fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
     let os = &mut *(ex as *mut OptStruct);
     let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
     if Rf_isNull((*os).names) == 0 {
@@ -154,7 +154,7 @@ unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_voi
 // fmingr -- gradient callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn fmingr(
+unsafe fn fmingr(
     n: c_int,
     p: *mut c_double,
     df: *mut c_double,
@@ -514,8 +514,7 @@ unsafe fn samin(
 // optim -- main optimization entry point
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut args = CDR(args);
     let mut os = Box::new(OptStruct {
         R_fcall: ptr::null_mut(),
@@ -1003,8 +1002,7 @@ pub unsafe extern "C" fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 // optimhess -- numerical Hessian computation
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let mut args = CDR(args);
     let mut os = Box::new(OptStruct {
         R_fcall: ptr::null_mut(),

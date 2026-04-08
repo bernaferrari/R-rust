@@ -5,8 +5,7 @@
 
 use super::types::*;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bitmaptoimage(bm: bitmap) -> image {
+pub unsafe fn bitmaptoimage(bm: bitmap) -> image {
     if bm.is_null() {
         std::ptr::null_mut()
     } else {

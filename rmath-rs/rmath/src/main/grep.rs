@@ -755,8 +755,7 @@ fn ere_gsub(
 /// Returns byte offset of first match, or -1.
 ///
 /// Port of R's `R_grep_fixed` from grep.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_grep_fixed(
+pub unsafe fn R_grep_fixed(
     pat: *const c_char,
     target: *const c_char,
     ignore_case: c_int,
@@ -1368,8 +1367,7 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// In the full R implementation this performs approximate (fuzzy) string
 /// matching using TRE. This stub returns 0 (no match).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_agrep_fixed(
+pub unsafe fn R_agrep_fixed(
     _pat: *const c_char,
     _target: *const c_char,
     _max_distance: c_int,
@@ -1382,8 +1380,7 @@ pub unsafe extern "C" fn R_agrep_fixed(
 ///
 /// In the full R implementation this executes a PCRE regex against a subject
 /// string. This stub returns -1 (no match).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pcre_exec(
+pub unsafe fn R_pcre_exec(
     _re: *const std::ffi::c_void,
     _extra: *const std::ffi::c_void,
     _subject: *const c_char,
@@ -1399,8 +1396,7 @@ pub unsafe extern "C" fn R_pcre_exec(
 /// Stub for `R_pcre_config` -- PCRE configuration query.
 ///
 /// Returns 0 as a safe stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
+pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
     0
 }
 

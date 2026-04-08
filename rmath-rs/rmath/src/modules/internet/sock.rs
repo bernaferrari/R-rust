@@ -101,36 +101,31 @@ unsafe fn get_h_errno() -> c_int {
 
 /// R_close_socket - close a socket descriptor
 /// Signature: int R_close_socket(SOCKET s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_close_socket(s: c_int) -> c_int {
+pub(crate) unsafe fn R_close_socket(s: c_int) -> c_int {
     unsafe { close(s) }
 }
 
 /// R_socket_errno - get last socket error number
 /// Signature: int R_socket_errno(void)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_socket_errno() -> c_int {
+pub(crate) unsafe fn R_socket_errno() -> c_int {
     unsafe { get_errno() }
 }
 
 /// R_invalid_socket - check if a socket descriptor is invalid
 /// Signature: int R_invalid_socket(SOCKET s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_invalid_socket(s: c_int) -> c_int {
+pub(crate) unsafe fn R_invalid_socket(s: c_int) -> c_int {
     if s < 0 { 1 } else { 0 }
 }
 
 /// R_socket_error - check if a socket call returned an error
 /// Signature: int R_socket_error(int s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_socket_error(s: c_int) -> c_int {
+pub(crate) unsafe fn R_socket_error(s: c_int) -> c_int {
     if s < 0 { 1 } else { 0 }
 }
 
 /// R_invalid_socket_eintr - check if socket is invalid due to EINTR
 /// Signature: int R_invalid_socket_eintr(SOCKET s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_invalid_socket_eintr(s: c_int) -> c_int {
+pub(crate) unsafe fn R_invalid_socket_eintr(s: c_int) -> c_int {
     if s == -1 && get_errno() == EINTR {
         1
     } else {
@@ -140,8 +135,7 @@ pub(crate) unsafe extern "C" fn R_invalid_socket_eintr(s: c_int) -> c_int {
 
 /// R_socket_error_eintr - check if socket error is EINTR
 /// Signature: int R_socket_error_eintr(int s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_socket_error_eintr(s: c_int) -> c_int {
+pub(crate) unsafe fn R_socket_error_eintr(s: c_int) -> c_int {
     if s == -1 && get_errno() == EINTR {
         1
     } else {
@@ -151,15 +145,13 @@ pub(crate) unsafe extern "C" fn R_socket_error_eintr(s: c_int) -> c_int {
 
 /// R_socket_strerror - convert socket error number to string
 /// Signature: char *R_socket_strerror(int errnum)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_socket_strerror(errnum: c_int) -> *mut c_char {
+pub(crate) unsafe fn R_socket_strerror(errnum: c_int) -> *mut c_char {
     unsafe { libc::strerror(errnum) as *mut c_char }
 }
 
 /// R_set_nonblocking - set a socket to non-blocking mode
 /// Signature: int R_set_nonblocking(SOCKET s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_set_nonblocking(s: c_int) -> c_int {
+pub(crate) unsafe fn R_set_nonblocking(s: c_int) -> c_int {
     unsafe {
         let mut status = fcntl(s, F_GETFL, 0);
         if status == -1 {
@@ -177,8 +169,7 @@ pub(crate) unsafe extern "C" fn R_set_nonblocking(s: c_int) -> c_int {
 
 /// R_set_nodelay - set TCP_NODELAY on a socket
 /// Signature: int R_set_nodelay(SOCKET s)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_set_nodelay(s: c_int) -> c_int {
+pub(crate) unsafe fn R_set_nodelay(s: c_int) -> c_int {
     unsafe {
         let val: c_int = 1;
         setsockopt(
@@ -208,8 +199,7 @@ unsafe fn Sock_error(perr: *mut Sock_error_t, e: c_int, he: c_int) -> c_int {
 /// On Unix: ignore SIGPIPE so that writes to broken sockets return errors
 /// instead of terminating the process.
 /// Signature: int Sock_init(void)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_init() -> c_int {
+pub(crate) unsafe fn Sock_init() -> c_int {
     unsafe {
         let mut act: libc::sigaction = core::mem::zeroed();
         if sigaction(SIGPIPE, core::ptr::null_mut(), &mut act) < 0 {
@@ -227,8 +217,7 @@ pub(crate) unsafe extern "C" fn Sock_init() -> c_int {
 
 /// Sock_open - open a socket for listening (socket + bind + listen)
 /// Signature: int Sock_open(Sock_port_t port, int blocking, Sock_error_t perr)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_open(
+pub(crate) unsafe fn Sock_open(
     port: Sock_port_t,
     blocking: c_int,
     perr: *mut Sock_error_t,
@@ -297,8 +286,7 @@ pub(crate) unsafe extern "C" fn Sock_open(
 /// If cname is non-null and buflen > 0, writes the hostname of the connecting
 /// peer into cname (truncated to buflen-1 chars).
 /// Signature: int Sock_listen(int fd, char *cname, int buflen, Sock_error_t perr)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_listen(
+pub(crate) unsafe fn Sock_listen(
     fd: c_int,
     cname: *mut c_char,
     buflen: c_int,
@@ -351,8 +339,7 @@ pub(crate) unsafe extern "C" fn Sock_listen(
 
 /// Sock_connect - open and connect to a socket on a remote host
 /// Signature: int Sock_connect(Sock_port_t port, char *sname, Sock_error_t perr)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_connect(
+pub(crate) unsafe fn Sock_connect(
     port: Sock_port_t,
     sname: *mut c_char,
     perr: *mut Sock_error_t,
@@ -404,8 +391,7 @@ pub(crate) unsafe extern "C" fn Sock_connect(
 
 /// Sock_close - close a socket
 /// Signature: int Sock_close(int fd, Sock_error_t perr)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_close(fd: c_int, perr: *mut Sock_error_t) -> c_int {
+pub(crate) unsafe fn Sock_close(fd: c_int, perr: *mut Sock_error_t) -> c_int {
     unsafe {
         if close(fd) < 0 {
             Sock_error(perr, get_errno(), 0)
@@ -417,8 +403,7 @@ pub(crate) unsafe extern "C" fn Sock_close(fd: c_int, perr: *mut Sock_error_t) -
 
 /// Sock_read - read from a socket (using recv, with EINTR retry)
 /// Signature: ssize_t Sock_read(int fd, void *buf, size_t size, Sock_error_t perr)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_read(
+pub(crate) unsafe fn Sock_read(
     fd: c_int,
     buf: *mut c_void,
     sz: size_t,
@@ -442,8 +427,7 @@ pub(crate) unsafe extern "C" fn Sock_read(
 
 /// Sock_write - write to a socket (using send, with EINTR retry)
 /// Signature: ssize_t Sock_write(int fd, const void *buf, size_t size, Sock_error_t perr)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn Sock_write(
+pub(crate) unsafe fn Sock_write(
     fd: c_int,
     buf: *const c_void,
     sz: size_t,

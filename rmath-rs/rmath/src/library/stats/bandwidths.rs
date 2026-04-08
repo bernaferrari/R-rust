@@ -77,8 +77,7 @@ unsafe fn as_real(x: SEXP) -> c_double {
     NA_REAL
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
@@ -99,8 +98,7 @@ pub unsafe extern "C" fn bw_ucv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP
     Rf_ScalarReal(u)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
@@ -122,8 +120,7 @@ pub unsafe extern "C" fn bw_bcv(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP
     Rf_ScalarReal(u)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
@@ -146,8 +143,7 @@ pub unsafe extern "C" fn bw_phi4(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEX
     Rf_ScalarReal(u)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
+pub unsafe fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEXP {
     let h = as_real(sh);
     let d = as_real(sd);
     let n = as_integer(sn);
@@ -171,8 +167,7 @@ pub unsafe extern "C" fn bw_phi6(sn: SEXP, sd: SEXP, cnt: SEXP, sh: SEXP) -> SEX
     Rf_ScalarReal(u)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
+pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let nb = as_integer(nbin);
@@ -233,8 +228,7 @@ pub unsafe extern "C" fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bw_den_binned(sx: SEXP) -> SEXP {
+pub unsafe fn bw_den_binned(sx: SEXP) -> SEXP {
     let nb = LENGTH(sx);
     let x = INTEGER(sx);
 

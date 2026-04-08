@@ -635,49 +635,41 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dbinom(x: f64, n: f64, p: f64, give_log: i32) -> f64 {
     dbinom_inner(x, n, p, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dbinom(x: f64, n: f64, p: f64, give_log: i32) -> f64 {
     dbinom_inner(x, n, p, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pbinom(x: f64, n: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
     pbinom_inner(x, n, p, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pbinom(x: f64, n: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
     pbinom_inner(x, n, p, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qbinom(p: f64, n: f64, pr: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbinom_inner(p, n, pr, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qbinom(p: f64, n: f64, pr: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbinom_inner(p, n, pr, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rbinom(n: f64, p: f64) -> f64 {
     rbinom_inner(n, p)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rbinom(n: f64, p: f64) -> f64 {
     rbinom_inner(n, p)
 }

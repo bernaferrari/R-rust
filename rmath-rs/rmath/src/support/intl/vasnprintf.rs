@@ -435,8 +435,7 @@ unsafe fn format_string(
 ///
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_vasnprintf(
+pub unsafe fn libintl_vasnprintf(
     resultbuf: *mut c_char,
     lengthp: *mut usize,
     format: *const c_char,

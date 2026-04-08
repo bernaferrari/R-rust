@@ -39,7 +39,7 @@ struct IntStruct {
 // Rintfn -- the integrand function called by the quadrature routines
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
+unsafe fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
     let is = &*(ex as *const IntStruct);
 
     let args = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
@@ -214,8 +214,7 @@ unsafe fn build_integrate_result(
 // call_dqags -- finite interval integration
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn call_dqags(args: SEXP) -> SEXP {
+pub unsafe fn call_dqags(args: SEXP) -> SEXP {
     let mut is = IntStruct {
         f: ptr::null_mut(),
         env: ptr::null_mut(),
@@ -282,8 +281,7 @@ pub unsafe extern "C" fn call_dqags(args: SEXP) -> SEXP {
 // call_dqagi -- infinite interval integration
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn call_dqagi(args: SEXP) -> SEXP {
+pub unsafe fn call_dqagi(args: SEXP) -> SEXP {
     let mut is = IntStruct {
         f: ptr::null_mut(),
         env: ptr::null_mut(),

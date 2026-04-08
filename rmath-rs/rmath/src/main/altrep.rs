@@ -19,34 +19,28 @@ use crate::sexp::globals::R_NilValue;
 pub const R_ALTREP_CLASS_TYPE: c_int = 255;
 
 /// Get the ALTREP class.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_class(x: SEXP) -> SEXP {
+pub unsafe fn R_altrep_class(x: SEXP) -> SEXP {
     unsafe { if ALTREP(x) != 0 { x } else { R_NilValue() } }
 }
 
 /// Get the ALTREP data1 field.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_data1(x: SEXP) -> SEXP {
+pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the ALTREP data2 field.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_data2(x: SEXP) -> SEXP {
+pub unsafe fn R_altrep_data2(x: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Set the ALTREP data1 field.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_data1(_x: SEXP, _v: SEXP) {}
+pub unsafe fn R_set_altrep_data1(_x: SEXP, _v: SEXP) {}
 
 /// Set the ALTREP data2 field.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_data2(_x: SEXP, _v: SEXP) {}
+pub unsafe fn R_set_altrep_data2(_x: SEXP, _v: SEXP) {}
 
 /// Get the ALTREP length.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_length(x: SEXP) -> R_xlen_t {
+pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t {
     unsafe { if ALTREP(x) != 0 { XLENGTH(x) } else { 0 } }
 }
 
@@ -55,20 +49,17 @@ pub unsafe extern "C" fn R_altrep_length(x: SEXP) -> R_xlen_t {
 // ---------------------------------------------------------------------------
 
 /// Create a new ALTREP object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_new_altrep(_class: SEXP, _data1: SEXP, _data2: SEXP) -> SEXP {
+pub unsafe fn R_new_altrep(_class: SEXP, _data1: SEXP, _data2: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Create a compact integer sequence ALTREP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_intseq(_from: R_xlen_t, _to: R_xlen_t) -> SEXP {
+pub unsafe fn R_compact_intseq(_from: R_xlen_t, _to: R_xlen_t) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Create a compact real sequence ALTREP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_realseq(_from: f64, _by: f64, _length: R_xlen_t) -> SEXP {
+pub unsafe fn R_compact_realseq(_from: f64, _by: f64, _length: R_xlen_t) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -77,20 +68,17 @@ pub unsafe extern "C" fn R_compact_realseq(_from: f64, _by: f64, _length: R_xlen
 // ---------------------------------------------------------------------------
 
 /// Realize (materialize) an ALTREP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_realize(x: SEXP) -> SEXP {
+pub unsafe fn R_altrep_realize(x: SEXP) -> SEXP {
     x
 }
 
 /// Duplicate an ALTREP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_duplicate(_x: SEXP, _deep: c_int) -> SEXP {
+pub unsafe fn R_altrep_duplicate(_x: SEXP, _deep: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Inspect an ALTREP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_altrep_inspect(_x: SEXP, _pre: c_int, _deep: c_int) -> c_int {
+pub unsafe fn R_altrep_inspect(_x: SEXP, _pre: c_int, _deep: c_int) -> c_int {
     0
 }
 
@@ -143,32 +131,28 @@ pub unsafe fn ALTSTRING_SET_ELT(_x: SEXP, _i: R_xlen_t, _v: SEXP) {}
 // ---------------------------------------------------------------------------
 
 /// Register ALTREP finalizer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_finalizer(
+pub unsafe fn R_set_altrep_finalizer(
     _class: SEXP,
     _finalizer: Option<unsafe extern "C" fn(SEXP)>,
 ) {
 }
 
 /// Register ALTREP duplicate method.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_duplicate_method(
+pub unsafe fn R_set_altrep_duplicate_method(
     _class: SEXP,
     _method: Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>,
 ) {
 }
 
 /// Register ALTREP inspect method.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_inspect_method(
+pub unsafe fn R_set_altrep_inspect_method(
     _class: SEXP,
     _method: Option<unsafe extern "C" fn(SEXP, c_int, c_int) -> c_int>,
 ) {
 }
 
 /// Register ALTREP length method.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_length_method(
+pub unsafe fn R_set_altrep_length_method(
     _class: SEXP,
     _method: Option<unsafe extern "C" fn(SEXP) -> R_xlen_t>,
 ) {
@@ -179,8 +163,7 @@ pub unsafe extern "C" fn R_set_altrep_length_method(
 // ---------------------------------------------------------------------------
 
 /// Register ALTREP coerce method.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_altrep_coerce_method(
+pub unsafe fn R_set_altrep_coerce_method(
     _class: SEXP,
     _method: Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>,
 ) {

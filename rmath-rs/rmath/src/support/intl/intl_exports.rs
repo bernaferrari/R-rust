@@ -8,5 +8,4 @@
 
 /// Version string for libintl. Exported for ABI compatibility with the
 /// C library. This is a NUL-terminated byte string.
-#[unsafe(no_mangle)]
 pub static libintl_version: [u8; 5] = *b"0.21\0";

@@ -260,7 +260,7 @@ unsafe fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mod
 
 /// dummy_vfprintf - stub vfprintf for connections that don't support it.
 /// Matches C: int dummy_vfprintf(Rconnection con, const char *format, va_list ap)
-unsafe extern "C" fn dummy_vfprintf(
+unsafe fn dummy_vfprintf(
     _con: Rconnection,
     _format: *const c_char,
     _ap: *mut c_void,
@@ -270,7 +270,7 @@ unsafe extern "C" fn dummy_vfprintf(
 
 /// dummy_fgetc - stub fgetc for connections that use fgetc_internal instead.
 /// Matches C: int dummy_fgetc(Rconnection con)
-unsafe extern "C" fn dummy_fgetc(_con: Rconnection) -> c_int {
+unsafe fn dummy_fgetc(_con: Rconnection) -> c_int {
     R_EOF
 }
 
@@ -558,7 +558,7 @@ unsafe fn sock_fgetc_internal(con: Rconnection) -> c_int {
 
 /// sock_read - read `nitems` objects of `size` bytes each from socket.
 /// Matches C: static size_t sock_read(void *ptr, size_t size, size_t nitems, Rconnection con)
-unsafe extern "C" fn sock_read(
+unsafe fn sock_read(
     ptr: *mut c_void,
     size: size_t,
     nitems: size_t,
@@ -577,7 +577,7 @@ unsafe extern "C" fn sock_read(
 
 /// sock_write - write `nitems` objects of `size` bytes each to socket.
 /// Matches C: static size_t sock_write(const void *ptr, size_t size, size_t nitems, Rconnection con)
-unsafe extern "C" fn sock_write(
+unsafe fn sock_write(
     ptr: *const c_void,
     size: size_t,
     nitems: size_t,
@@ -603,22 +603,22 @@ unsafe extern "C" fn sock_write(
 // ---------------------------------------------------------------------------
 
 /// Trampoline for sock_open to match the Rconn.open function pointer signature.
-unsafe extern "C" fn sock_open_trampoline(con: *mut Rconn) -> c_int {
+unsafe fn sock_open_trampoline(con: *mut Rconn) -> c_int {
     sock_open(con)
 }
 
 /// Trampoline for sock_close to match the Rconn.close function pointer signature.
-unsafe extern "C" fn sock_close_trampoline(con: *mut Rconn) {
+unsafe fn sock_close_trampoline(con: *mut Rconn) {
     sock_close(con);
 }
 
 /// Trampoline for servsock_close to match the Rconn.close function pointer signature.
-unsafe extern "C" fn servsock_close_trampoline(con: *mut Rconn) {
+unsafe fn servsock_close_trampoline(con: *mut Rconn) {
     servsock_close(con);
 }
 
 /// Trampoline for sock_fgetc_internal to match the Rconn.fgetc_internal function pointer signature.
-unsafe extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
+unsafe fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
     sock_fgetc_internal(con)
 }
 
@@ -630,8 +630,7 @@ unsafe extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
 /// Allocates and initializes the Rconn struct with socket-specific fields.
 /// Matches C: Rconnection in_R_newsock(const char *host, int port, int server,
 ///              int serverfd, const char * const mode, int timeout, int options)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_R_newsock(
+pub(crate) unsafe fn in_R_newsock(
     host: *const c_char,
     port: c_int,
     server: c_int,
@@ -714,8 +713,7 @@ pub(crate) unsafe extern "C" fn in_R_newsock(
 /// in_R_newservsock - create a new server socket connection (Rconnection).
 /// Opens a listening socket on the given port.
 /// Matches C: Rconnection in_R_newservsock(int port)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_R_newservsock(port: c_int) -> Rconnection {
+pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
     // Allocate the Rconn struct
     let new = alloc_boxed::<Rconn>();
     if new.is_null() {

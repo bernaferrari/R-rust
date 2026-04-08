@@ -46,8 +46,7 @@ use std::os::raw::c_int;
 /// This is a placeholder for the R_init_stats function.
 /// In the Rust port, this is not needed since we link statically,
 /// but we keep the symbol for ABI compatibility.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_stats(_dll: *mut c_void) {
+pub unsafe fn R_init_stats(_dll: *mut c_void) {
     // No-op in the Rust static library port.
     // The registration tables from the C version are not needed here
     // since all functions are linked directly.

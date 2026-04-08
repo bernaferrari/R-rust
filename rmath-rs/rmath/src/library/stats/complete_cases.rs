@@ -45,6 +45,7 @@ unsafe fn isVector(x: SEXP) -> bool {
         || t == SEXPTYPE::EXPRSXP.0
 }
 
+#[unsafe(no_mangle)]
 unsafe fn isNewList(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::VECSXP.0
 }
@@ -102,8 +103,7 @@ unsafe fn check_vector_na(u: SEXP, rval: SEXP, len: c_int) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn compcases(args: SEXP) -> SEXP {
+pub unsafe fn compcases(args: SEXP) -> SEXP {
     let mut s: SEXP;
     let mut t: SEXP;
     let mut u: SEXP;

@@ -384,13 +384,7 @@ impl XdrC {
 ///   the returned `XdrC`.
 /// - The returned `XdrC` must eventually be freed by calling
 ///   `xdr_destroy` to avoid memory leaks.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdrmem_create(
-    xdrs: *mut XdrC,
-    addr: *mut c_void,
-    size: c_uint,
-    op: c_int,
-) {
+pub unsafe fn xdrmem_create(xdrs: *mut XdrC, addr: *mut c_void, size: c_uint, op: c_int) {
     unsafe {
         let addr = addr as *mut u8;
         let size = size as c_int;
@@ -431,8 +425,7 @@ pub unsafe extern "C" fn xdrmem_create(
 /// - The caller is responsible for ensuring the `File` outlives the XDR stream,
 ///   or for closing the file separately after destroying the XDR stream.
 /// - The returned `XdrC` must eventually be freed by calling `xdr_destroy`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdrstdio_create(xdrs: *mut XdrC, file: *mut File, op: c_int) {
+pub unsafe fn xdrstdio_create(xdrs: *mut XdrC, file: *mut File, op: c_int) {
     unsafe {
         let x_op = match op {
             0 => XdrOp::Encode,
@@ -468,8 +461,7 @@ pub unsafe extern "C" fn xdrstdio_create(xdrs: *mut XdrC, file: *mut File, op: c
 /// - `xdrs` must be a valid pointer to an `XdrC` that was created by
 ///   `xdrmem_create` or `xdrstdio_create`.
 /// - After this call, `xdrs` must not be used.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_destroy(xdrs: *mut XdrC) {
+pub unsafe fn xdr_destroy(xdrs: *mut XdrC) {
     unsafe {
         if xdrs.is_null() {
             return;
@@ -495,8 +487,7 @@ pub unsafe extern "C" fn xdr_destroy(xdrs: *mut XdrC) {
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
 /// - `ip` must be a valid pointer to an `i32`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_int(xdrs: *mut XdrC, ip: *mut i32) -> c_int {
+pub unsafe fn xdr_int(xdrs: *mut XdrC, ip: *mut i32) -> c_int {
     unsafe {
         if xdrs.is_null() || ip.is_null() {
             return FALSE;
@@ -517,8 +508,7 @@ pub unsafe extern "C" fn xdr_int(xdrs: *mut XdrC, ip: *mut i32) -> c_int {
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
 /// - `up` must be a valid pointer to a `u32`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_u_int(xdrs: *mut XdrC, up: *mut u32) -> c_int {
+pub unsafe fn xdr_u_int(xdrs: *mut XdrC, up: *mut u32) -> c_int {
     unsafe {
         if xdrs.is_null() || up.is_null() {
             return FALSE;
@@ -541,8 +531,7 @@ pub unsafe extern "C" fn xdr_u_int(xdrs: *mut XdrC, up: *mut u32) -> c_int {
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
 /// - If `cnt > 0`, `cp` must be a valid pointer to at least `cnt` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_opaque(xdrs: *mut XdrC, cp: *mut c_void, cnt: c_uint) -> c_int {
+pub unsafe fn xdr_opaque(xdrs: *mut XdrC, cp: *mut c_void, cnt: c_uint) -> c_int {
     unsafe {
         if xdrs.is_null() {
             return FALSE;
@@ -597,8 +586,7 @@ pub unsafe extern "C" fn xdr_opaque(xdrs: *mut XdrC, cp: *mut c_void, cnt: c_uin
 /// - `xdrs` must be a valid pointer to an `XdrC`.
 /// - `cpp` must be a valid pointer to a `*mut c_char`.
 /// - `sizep` must be a valid pointer to a `u32`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_bytes(
+pub unsafe fn xdr_bytes(
     xdrs: *mut XdrC,
     cpp: *mut *mut u8,
     sizep: *mut c_uint,
@@ -666,8 +654,7 @@ pub unsafe extern "C" fn xdr_bytes(
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
 /// - `cpp` must be a valid pointer to a `*mut c_char`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) -> c_int {
+pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) -> c_int {
     unsafe {
         if xdrs.is_null() || cpp.is_null() {
             return FALSE;
@@ -752,8 +739,7 @@ pub unsafe extern "C" fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize:
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
 /// - `dp` must be a valid pointer to a `f64`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_double(xdrs: *mut XdrC, dp: *mut f64) -> c_int {
+pub unsafe fn xdr_double(xdrs: *mut XdrC, dp: *mut f64) -> c_int {
     unsafe {
         if xdrs.is_null() || dp.is_null() {
             return FALSE;
@@ -829,8 +815,7 @@ pub unsafe extern "C" fn xdr_double(xdrs: *mut XdrC, dp: *mut f64) -> c_int {
 ///
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_getpos(xdrs: *mut XdrC) -> c_uint {
+pub unsafe fn xdr_getpos(xdrs: *mut XdrC) -> c_uint {
     unsafe {
         if xdrs.is_null() {
             return 0;
@@ -843,8 +828,7 @@ pub unsafe extern "C" fn xdr_getpos(xdrs: *mut XdrC) -> c_uint {
 ///
 /// # Safety
 /// - `xdrs` must be a valid pointer to an `XdrC`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn xdr_setpos(xdrs: *mut XdrC, pos: c_uint) -> c_int {
+pub unsafe fn xdr_setpos(xdrs: *mut XdrC, pos: c_uint) -> c_int {
     unsafe {
         if xdrs.is_null() {
             return FALSE;

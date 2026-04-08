@@ -335,7 +335,7 @@ pub unsafe fn format_scientific(
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if !fieldwidth.is_null() {
             *fieldwidth = 2;
@@ -348,7 +348,7 @@ pub unsafe extern "C" fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: 
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if !fieldwidth.is_null() {
             *fieldwidth = 2;
@@ -364,12 +364,7 @@ pub unsafe extern "C" fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_i
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatString(
-    x: *const SEXP,
-    n: R_xlen_t,
-    fieldwidth: *mut c_int,
-    quote: c_int,
-) {
+pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
 
@@ -401,7 +396,7 @@ pub unsafe extern "C" fn formatString(
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
+pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
 
@@ -433,7 +428,7 @@ pub unsafe extern "C" fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             if !fieldwidth.is_null() {
@@ -473,7 +468,7 @@ pub unsafe extern "C" fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth:
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if fieldwidth.is_null() {
             return;
@@ -499,7 +494,7 @@ pub unsafe extern "C" fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
             if !fieldwidth.is_null() {
@@ -555,7 +550,7 @@ pub unsafe extern "C" fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth:
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
+pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         *fieldwidth = 1;
         if x.is_null() || n == 0 {
@@ -588,7 +583,7 @@ pub unsafe extern "C" fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c
 /// * `e`      - [out] exponent width (0 = fixed format, 1 = 2-digit exp, 2 = 3-digit)
 /// * `nsmall` - minimum number of decimal digits in fixed format
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatReal(
+pub unsafe fn formatReal(
     x: *const c_double,
     n: R_xlen_t,
     w: *mut c_int,
@@ -736,7 +731,7 @@ pub unsafe extern "C" fn formatReal(
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatRealS(
+pub unsafe fn formatRealS(
     x: SEXP,
     n: R_xlen_t,
     w: *mut c_int,
@@ -785,7 +780,7 @@ pub unsafe extern "C" fn formatRealS(
 ///
 /// Treats Re and Im parts independently via `formatReal`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatComplex(
+pub unsafe fn formatComplex(
     x: *const Rcomplex,
     n: R_xlen_t,
     wr: *mut c_int,
@@ -875,7 +870,7 @@ pub unsafe extern "C" fn formatComplex(
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn formatComplexS(
+pub unsafe fn formatComplexS(
     x: SEXP,
     n: R_xlen_t,
     wr: *mut c_int,

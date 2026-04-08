@@ -28,8 +28,7 @@ pub unsafe fn set_app_initialised(val: c_int) {
     APP_INITIALISED.with(|v| v.set(val));
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
+pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
     if APP_INITIALISED.with(|v| v.get()) == 0 {
         APP_INITIALISED.with(|v| v.set(1));
         objects::init_objects();
@@ -42,8 +41,7 @@ pub unsafe extern "C" fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int 
     if argc < 1 { 1 } else { argc }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn app_cleanup() {
+pub unsafe fn app_cleanup() {
     if APP_INITIALISED.with(|v| v.get()) != 0 {
         APP_INITIALISED.with(|v| v.set(0));
         context::finish_contexts();
@@ -52,37 +50,26 @@ pub unsafe extern "C" fn app_cleanup() {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn exitapp() {
+pub unsafe fn exitapp() {
     app_cleanup();
     std::process::exit(0);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabeep() {}
+pub unsafe fn gabeep() {}
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gamainloop() {}
+pub unsafe fn gamainloop() {}
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn startgraphapp(
-    _instance: *mut c_void,
-    _prev_instance: *mut c_void,
-    _cmd_show: c_int,
-) {
+pub unsafe fn startgraphapp(_instance: *mut c_void, _prev_instance: *mut c_void, _cmd_show: c_int) {
     initapp(0, ptr::null_mut());
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isTopmost(_w: window) -> c_int {
+pub unsafe fn isTopmost(_w: window) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn BringToTop(_w: window, _stay: c_int) {}
+pub unsafe fn BringToTop(_w: window, _stay: c_int) {}
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getHandle(w: window) -> *mut c_void {
+pub unsafe fn getHandle(w: window) -> *mut c_void {
     if w.is_null() {
         ptr::null_mut()
     } else {
@@ -90,8 +77,7 @@ pub unsafe extern "C" fn getHandle(w: window) -> *mut c_void {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GA_msgWindow(_c: window, _typ: c_int) {}
+pub unsafe fn GA_msgWindow(_c: window, _typ: c_int) {}
 
 thread_local! { pub static TopmostDialogs: Cell<c_int> = Cell::new(0); }
 

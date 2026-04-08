@@ -816,8 +816,7 @@ fn burg0(
 
 /// multi_burg - Burg's algorithm for multivariate autoregression.
 /// Interface to R, also handles model selection using AIC.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn multi_burg(
+pub unsafe fn multi_burg(
     pn: *mut c_int,
     x: *mut f64,
     pomax: *mut c_int,
@@ -1108,8 +1107,7 @@ fn whittle(
 
 /// multi_yw - Whittle's algorithm for multivariate autoregression.
 /// Interface to R, also handles model selection using AIC.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn multi_yw(
+pub unsafe fn multi_yw(
     acf: *mut f64,
     pn: *mut c_int,
     pomax: *mut c_int,

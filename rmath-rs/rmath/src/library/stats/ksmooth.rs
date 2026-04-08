@@ -137,13 +137,11 @@ unsafe fn BDRksmooth(
 // ---------------------------------------------------------------------------
 
 /// Called only from spline() in ./ppr.f
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bdrsplerr_() {
+pub unsafe fn bdrsplerr_() {
     error("only 2500 rows are allowed for sm.method=\"spline\"");
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn splineprt_(
+pub unsafe fn splineprt_(
     df: *mut c_double,
     gcvpen: *mut c_double,
     ismethod: *mut c_int,
@@ -157,8 +155,7 @@ pub unsafe extern "C" fn splineprt_(
 }
 
 /// Called only from smooth(..., trace=TRUE) in ./ppr.f
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn smoothprt_(
+pub unsafe fn smoothprt_(
     span: *mut c_double,
     iper: *mut c_int,
     var: *mut c_double,
@@ -174,8 +171,7 @@ pub unsafe extern "C" fn smoothprt_(
 // ksmooth: SEXP interface for kernel smoothing
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP {
+pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP {
     let krn = asInteger(skrn);
     let bw = asReal(sbw);
 

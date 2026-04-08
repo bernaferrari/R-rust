@@ -203,8 +203,7 @@ unsafe fn R_SocketWait(sockfd: c_int, write: c_int, timeout: c_int) -> c_int {
 
 /// in_Rsockopen - open a socket for listening (R .C interface)
 /// Signature: void in_Rsockopen(int *port)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsockopen(port: *mut c_int) {
+pub(crate) unsafe fn in_Rsockopen(port: *mut c_int) {
     if port.is_null() {
         return;
     }
@@ -226,8 +225,7 @@ pub(crate) unsafe extern "C" fn in_Rsockopen(port: *mut c_int) {
 
 /// in_Rsocklisten - listen on a socket (R .C interface)
 /// Signature: void in_Rsocklisten(int *sockp, char **buf, int *len)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsocklisten(
+pub(crate) unsafe fn in_Rsocklisten(
     sockp: *mut c_int,
     buf: *mut *mut c_char,
     len: *mut c_int,
@@ -252,8 +250,7 @@ pub(crate) unsafe extern "C" fn in_Rsocklisten(
 
 /// in_Rsockconnect - connect to a socket (R .C interface)
 /// Signature: void in_Rsockconnect(int *port, char **host)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsockconnect(port: *mut c_int, host: *mut *mut c_char) {
+pub(crate) unsafe fn in_Rsockconnect(port: *mut c_int, host: *mut *mut c_char) {
     if port.is_null() || host.is_null() {
         return;
     }
@@ -274,8 +271,7 @@ pub(crate) unsafe extern "C" fn in_Rsockconnect(port: *mut c_int, host: *mut *mu
 
 /// in_Rsockclose - close a socket (R .C interface)
 /// Signature: void in_Rsockclose(int *sockp)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsockclose(sockp: *mut c_int) {
+pub(crate) unsafe fn in_Rsockclose(sockp: *mut c_int) {
     if sockp.is_null() {
         return;
     }
@@ -285,8 +281,7 @@ pub(crate) unsafe extern "C" fn in_Rsockclose(sockp: *mut c_int) {
 /// in_Rsockread - read from a socket (R .C interface)
 /// Allocates a buffer via R_alloc, copies read data into it, writes pointer to *buf.
 /// Signature: void in_Rsockread(int *sockp, char **buf, int *maxlen)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsockread(
+pub(crate) unsafe fn in_Rsockread(
     sockp: *mut c_int,
     buf: *mut *mut c_char,
     maxlen: *mut c_int,
@@ -322,8 +317,7 @@ pub(crate) unsafe extern "C" fn in_Rsockread(
 
 /// in_Rsockwrite - write to a socket (R .C interface)
 /// Signature: void in_Rsockwrite(int *sockp, char **buf, int *start, int *end, int *len)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsockwrite(
+pub(crate) unsafe fn in_Rsockwrite(
     sockp: *mut c_int,
     buf: *mut *mut c_char,
     start: *mut c_int,
@@ -367,8 +361,7 @@ pub(crate) unsafe extern "C" fn in_Rsockwrite(
 
 /// in_Rsockselect - select on multiple sockets (R .C interface)
 /// Signature: int in_Rsockselect(int nsock, int *insockfd, int *ready, int *write, double timeout)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_Rsockselect(
+pub(crate) unsafe fn in_Rsockselect(
     nsock: c_int,
     insockfd: *mut c_int,
     ready: *mut c_int,
@@ -382,8 +375,7 @@ pub(crate) unsafe extern "C" fn in_Rsockselect(
 
 /// R_SocketWaitMultiple - wait for multiple sockets
 /// Signature: int R_SocketWaitMultiple(int nsock, int *insockfd, int *ready, int *write, double mytimeout)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SocketWaitMultiple(
+pub(crate) unsafe fn R_SocketWaitMultiple(
     nsock: c_int,
     insockfd: *mut c_int,
     ready: *mut c_int,
@@ -493,8 +485,7 @@ pub(crate) unsafe extern "C" fn R_SocketWaitMultiple(
 
 /// R_SockConnect - connect to a host:port with timeout (non-blocking connect + select)
 /// Signature: int R_SockConnect(int port, char *host, int timeout)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SockConnect(
+pub(crate) unsafe fn R_SockConnect(
     port: c_int,
     host: *mut c_char,
     timeout: c_int,
@@ -620,16 +611,14 @@ pub(crate) unsafe extern "C" fn R_SockConnect(
 
 /// R_SockClose - close a socket
 /// Signature: int R_SockClose(int sockp)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SockClose(sockp: c_int) -> c_int {
+pub(crate) unsafe fn R_SockClose(sockp: c_int) -> c_int {
     R_close_socket(sockp)
 }
 
 /// R_SockRead - read from a socket with optional blocking and timeout
 /// Uses recv() directly (not Sock_read) for non-blocking socket + select loop.
 /// Signature: ssize_t R_SockRead(int sockp, void *buf, size_t len, int blocking, int timeout)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SockRead(
+pub(crate) unsafe fn R_SockRead(
     sockp: c_int,
     buf: *mut c_void,
     len: size_t,
@@ -671,8 +660,7 @@ pub(crate) unsafe extern "C" fn R_SockRead(
 
 /// R_SockOpen - open a server socket (socket + bind + listen, non-blocking)
 /// Signature: int R_SockOpen(int port)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SockOpen(port: c_int) -> c_int {
+pub(crate) unsafe fn R_SockOpen(port: c_int) -> c_int {
     check_init();
     Sock_open(
         port as Sock_port_t,
@@ -683,8 +671,7 @@ pub(crate) unsafe extern "C" fn R_SockOpen(port: c_int) -> c_int {
 
 /// R_SockListen - listen on a server socket with timeout (accept via select)
 /// Signature: int R_SockListen(int sockp, char *buf, int len, int timeout)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SockListen(
+pub(crate) unsafe fn R_SockListen(
     sockp: c_int,
     buf: *mut c_char,
     len: c_int,
@@ -769,8 +756,7 @@ pub(crate) unsafe extern "C" fn R_SockListen(
 /// R_SockWrite - write to a socket with timeout (blocking)
 /// Loops until all data is written or an error/timeout occurs.
 /// Signature: ssize_t R_SockWrite(int sockp, const void *buf, size_t len, int timeout)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_SockWrite(
+pub(crate) unsafe fn R_SockWrite(
     sockp: c_int,
     mut buf: *const c_void,
     mut len: size_t,
@@ -812,8 +798,7 @@ pub(crate) unsafe extern "C" fn R_SockWrite(
 /// R_gethostbyname - get host entry by name (with localhost fallback)
 /// Falls back to "127.0.0.1" if "localhost" lookup fails.
 /// Signature: struct hostent *R_gethostbyname(const char *name)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_gethostbyname(name: *const c_char) -> *mut hostent {
+pub(crate) unsafe fn R_gethostbyname(name: *const c_char) -> *mut hostent {
     // Call libc's gethostbyname (declared via extern "C" above)
     let ans = gethostbyname(name);
 

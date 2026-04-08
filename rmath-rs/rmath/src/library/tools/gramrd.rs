@@ -79,38 +79,32 @@ mod yytokentype {
 /// R_ParseRd - parse an Rd file (stub).
 /// In the real implementation, this calls the Bison-generated yyparse()
 /// to produce a parsed Rd object (a list of Rd sections).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseRd(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn R_ParseRd(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     // Stub: return an empty list
     R_NilValue()
 }
 
 /// Rd2HTML - convert parsed Rd to HTML (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rd2HTML(_item: SEXP, _args: SEXP) -> SEXP {
+pub unsafe fn Rd2HTML(_item: SEXP, _args: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// Rd2TXT - convert parsed Rd to plain text (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rd2TXT(_item: SEXP, _args: SEXP) -> SEXP {
+pub unsafe fn Rd2TXT(_item: SEXP, _args: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// install_Rd2HTML - register Rd2HTML converter (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn install_Rd2HTML() {
+pub unsafe fn install_Rd2HTML() {
     // no-op
 }
 
 /// install_Rd2TXT - register Rd2TXT converter (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn install_Rd2TXT() {
+pub unsafe fn install_Rd2TXT() {
     // no-op
 }
 
 /// install_Rd2LaTeX - register Rd2LaTeX converter (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn install_Rd2LaTeX() {
+pub unsafe fn install_Rd2LaTeX() {
     // no-op
 }

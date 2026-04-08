@@ -10,13 +10,11 @@ use std::ptr;
 
 use super::types::*;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn textheight(_width: c_int, _text: *const std::os::raw::c_char) -> c_int {
+pub unsafe fn textheight(_width: c_int, _text: *const std::os::raw::c_char) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn drawtext(
+pub unsafe fn drawtext(
     _r: rect,
     _alignment: c_int,
     text: *const std::os::raw::c_char,
@@ -27,8 +25,7 @@ pub unsafe extern "C" fn drawtext(
     text
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gprintf(
+pub unsafe fn gprintf(
     _fmt: *const std::os::raw::c_char,
     _args: *const std::os::raw::c_void,
 ) -> c_int {

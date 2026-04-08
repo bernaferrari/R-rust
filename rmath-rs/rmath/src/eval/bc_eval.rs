@@ -348,8 +348,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Initialize the bytecode evaluation system.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_initialize_bcode() {
+pub unsafe fn R_initialize_bcode() {
     // In the full implementation, this sets up the bytecode interpreter
     // and registers the compiler.
 }

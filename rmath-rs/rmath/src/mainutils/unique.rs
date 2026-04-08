@@ -218,7 +218,9 @@ unsafe fn requal(x: SEXP, i: R_xlen_t, y: SEXP, j: R_xlen_t) -> bool {
             xi == yj
         } else if R_IsNA(xi) && R_IsNA(yj) {
             true
-        } else { ISNAN(xi) && ISNAN(yj) }
+        } else {
+            ISNAN(xi) && ISNAN(yj)
+        }
     }
 }
 
@@ -599,14 +601,16 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         }
         if let Some(tag) = current.tag()
             && let Some(pname) = tag.printname()
-                && let Some(name_bytes) = pname.data_ptr() {
-                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
-                    if name_str.to_bytes() == b"na.rm"
-                        && let Some(na_val) = current.car()
-                            && let Some(nrm) = na_val.logical_elt(0) {
-                                na_rm = nrm == 1;
-                            }
-                }
+            && let Some(name_bytes) = pname.data_ptr()
+        {
+            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+            if name_str.to_bytes() == b"na.rm"
+                && let Some(na_val) = current.car()
+                && let Some(nrm) = na_val.logical_elt(0)
+            {
+                na_rm = nrm == 1;
+            }
+        }
         arg_list = current.cdr();
     }
 
@@ -681,14 +685,16 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         }
         if let Some(tag) = current.tag()
             && let Some(pname) = tag.printname()
-                && let Some(name_bytes) = pname.data_ptr() {
-                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
-                    if name_str.to_bytes() == b"na.rm"
-                        && let Some(na_val) = current.car()
-                            && let Some(nrm) = na_val.logical_elt(0) {
-                                na_rm = nrm == 1;
-                            }
-                }
+            && let Some(name_bytes) = pname.data_ptr()
+        {
+            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+            if name_str.to_bytes() == b"na.rm"
+                && let Some(na_val) = current.car()
+                && let Some(nrm) = na_val.logical_elt(0)
+            {
+                na_rm = nrm == 1;
+            }
+        }
         arg_list = current.cdr();
     }
 

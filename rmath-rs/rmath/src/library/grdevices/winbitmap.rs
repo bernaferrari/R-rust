@@ -38,8 +38,7 @@ use std::ptr;
 /// Save device contents as PNG.
 /// Returns 1 on success, 0 on failure.
 /// Stub: always returns 0 (failure) since libpng is not linked.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveAsPng(
+pub unsafe fn R_SaveAsPng(
     _d: *mut std::ffi::c_void,
     _width: c_int,
     _height: c_int,
@@ -55,8 +54,7 @@ pub unsafe extern "C" fn R_SaveAsPng(
 /// Save device contents as JPEG.
 /// Returns 1 on success, 0 on failure.
 /// Stub: always returns 0 (failure) since libjpeg is not linked.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveAsJpeg(
+pub unsafe fn R_SaveAsJpeg(
     _d: *mut std::ffi::c_void,
     _width: c_int,
     _height: c_int,
@@ -72,8 +70,7 @@ pub unsafe extern "C" fn R_SaveAsJpeg(
 /// Save device contents as TIFF.
 /// Returns 1 on success, 0 on failure.
 /// Stub: always returns 0 (failure) since libtiff is not linked.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveAsTIFF(
+pub unsafe fn R_SaveAsTIFF(
     _d: *mut std::ffi::c_void,
     _width: c_int,
     _height: c_int,
@@ -94,8 +91,7 @@ pub unsafe extern "C" fn R_SaveAsTIFF(
 /// file with optional palette (256 colors) or 24-bit truecolor mode.
 /// It handles palette construction via binary search, writes the BMP
 /// header (54 bytes), palette entries, and pixel data with proper padding.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveAsBmp(
+pub unsafe fn R_SaveAsBmp(
     _d: *mut std::ffi::c_void,
     _width: c_int,
     _height: c_int,
@@ -108,22 +104,19 @@ pub unsafe extern "C" fn R_SaveAsBmp(
 }
 
 /// Return the libpng version string, or "" if not available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pngVersion() -> *const c_char {
+pub unsafe fn R_pngVersion() -> *const c_char {
     static VERSION: [c_char; 1] = [0];
     VERSION.as_ptr()
 }
 
 /// Return the libjpeg version string, or "" if not available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_jpegVersion() -> *const c_char {
+pub unsafe fn R_jpegVersion() -> *const c_char {
     static VERSION: [c_char; 1] = [0];
     VERSION.as_ptr()
 }
 
 /// Return the libtiff version string, or "" if not available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tiffVersion() -> *const c_char {
+pub unsafe fn R_tiffVersion() -> *const c_char {
     static VERSION: [c_char; 1] = [0];
     VERSION.as_ptr()
 }

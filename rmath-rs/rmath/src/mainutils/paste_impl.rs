@@ -484,8 +484,7 @@ unsafe fn get_cbuff() -> MutPtr<RStringBuffer> {
 
 /// Copy the C string `src` into `dest`, returning a pointer to the
 /// terminating NUL byte in `dest`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
+pub unsafe fn R_stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
     unsafe {
         if dest.is_null() || src.is_null() {
             return dest;
@@ -655,9 +654,9 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             && (Rf_isString(collapse) == 0
                 || LENGTH(collapse) <= 0
                 || isNA_STRING(STRING_ELT(collapse, 0)))
-            {
-                return ptr::null_mut();
-            }
+        {
+            return ptr::null_mut();
+        }
 
         // Macro: zero_return
         let zero_return = |do_collapse: bool| -> SEXP {

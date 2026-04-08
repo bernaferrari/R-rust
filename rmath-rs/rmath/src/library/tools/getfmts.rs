@@ -41,8 +41,7 @@ const MAXNARGS: usize = 100;
 ///
 /// Returns a character vector of format strings, one per argument.
 /// This is used by sprintf to determine the types of arguments needed.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getfmts(format: SEXP) -> SEXP {
+pub unsafe fn getfmts(format: SEXP) -> SEXP {
     if format.is_null() {
         return R_NilValue();
     }
@@ -266,6 +265,7 @@ pub unsafe extern "C" fn getfmts(format: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     crate::sexp::accessors::SET_STRING_ELT(x, i, val);
 }

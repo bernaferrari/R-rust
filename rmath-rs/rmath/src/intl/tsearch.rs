@@ -134,8 +134,7 @@ unsafe fn maybe_split_for_insert(
 /// If the key already exists in the tree, returns a pointer to the matching
 /// node.  Otherwise, inserts a new node for the key and returns it.
 /// Returns `null` if `vrootp` is null or memory allocation fails.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tsearch(
+pub unsafe fn tsearch(
     key: *const c_void,
     vrootp: *mut c_void,
     compar: Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>,
@@ -217,8 +216,7 @@ pub unsafe extern "C" fn tsearch(
 /// Find a datum in a search tree.
 ///
 /// Returns a pointer to the matching node, or `null` if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tfind(
+pub unsafe fn tfind(
     key: *const c_void,
     vrootp: *const c_void,
     compar: Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>,
@@ -258,8 +256,7 @@ pub unsafe extern "C" fn tfind(
 ///
 /// Returns a pointer to the parent of the deleted node, or `null` if the
 /// key was not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tdelete(
+pub unsafe fn tdelete(
     key: *const c_void,
     vrootp: *mut c_void,
     compar: Option<unsafe extern "C" fn(*const c_void, *const c_void) -> c_int>,
@@ -500,8 +497,7 @@ unsafe fn trecurse(vroot: *const c_void, action: action_fn_t, level: c_int) {
 ///
 /// For non-leaf nodes, `action` is called three times (preorder, postorder,
 /// endorder).  For leaf nodes, `action` is called once (leaf).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn twalk(
+pub unsafe fn twalk(
     vroot: *const c_void,
     action: Option<unsafe extern "C" fn(*const c_void, VISIT, c_int)>,
 ) {
@@ -542,11 +538,7 @@ unsafe fn tdestroy_recurse(root: *mut node_t, freefct: free_fn_t) {
 
 /// Destroy an entire tree, calling `freefct` on each node's key and then
 /// freeing the node itself.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tdestroy(
-    vroot: *mut c_void,
-    freefct: Option<unsafe extern "C" fn(*mut c_void)>,
-) {
+pub unsafe fn tdestroy(vroot: *mut c_void, freefct: Option<unsafe extern "C" fn(*mut c_void)>) {
     unsafe {
         if vroot.is_null() {
             return;

@@ -511,8 +511,7 @@ pub unsafe fn GetOption(name: *const c_char) -> SEXP {
 /// R_Options: get the options list as a pairlist.
 /// Reconstructs from the HashMap for FFI compatibility.
 /// The C code stores options as SYMVALUE(install(".Options")), a dotted-pair list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Options() -> SEXP {
+pub unsafe fn R_Options() -> SEXP {
     unsafe {
         let table = get_options_table()
             .lock()
@@ -609,8 +608,7 @@ unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
 }
 
 /// Set an option (FFI wrapper).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetOption(tag: SEXP, value: SEXP) -> SEXP {
+pub unsafe fn R_SetOption(tag: SEXP, value: SEXP) -> SEXP {
     unsafe { SetOption(tag, value) }
 }
 
@@ -635,8 +633,7 @@ pub unsafe fn GetOptionWidth() -> c_int {
 }
 
 /// Set the printing width option. Returns the previous value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetOptionWidth(w: c_int) -> c_int {
+pub unsafe fn R_SetOptionWidth(w: c_int) -> c_int {
     unsafe {
         let mut w = w;
         if w < R_MIN_WIDTH_OPT {
@@ -678,8 +675,7 @@ pub unsafe fn GetOptionCutoff() -> c_int {
 }
 
 /// Get the warn option value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ShowWarningOption() -> c_int {
+pub unsafe fn R_ShowWarningOption() -> c_int {
     unsafe {
         let val = GetOptionByName("warn");
         if val == R_NilValue() {
@@ -690,8 +686,7 @@ pub unsafe extern "C" fn R_ShowWarningOption() -> c_int {
 }
 
 /// Get the error option value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ShowErrorOption() -> c_int {
+pub unsafe fn R_ShowErrorOption() -> c_int {
     unsafe {
         let val = GetOptionByName("show.error.messages");
         if val == R_NilValue() {
@@ -702,8 +697,7 @@ pub unsafe extern "C" fn R_ShowErrorOption() -> c_int {
 }
 
 /// Set the warn option. Returns the previous value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetOptionWarn(w: c_int) -> c_int {
+pub unsafe fn R_SetOptionWarn(w: c_int) -> c_int {
     unsafe {
         let val = Rf_ScalarInteger(w);
         let _protected = Rf_protect(val);
@@ -715,8 +709,7 @@ pub unsafe extern "C" fn R_SetOptionWarn(w: c_int) -> c_int {
 }
 
 /// Get the device.ask.default option as a boolean.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_GetOptionDeviceAsk() -> Rboolean {
+pub unsafe fn Rf_GetOptionDeviceAsk() -> Rboolean {
     unsafe {
         let val = GetOptionByName("device.ask.default");
         if val == R_NilValue() {

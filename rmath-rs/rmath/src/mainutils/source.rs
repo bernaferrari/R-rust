@@ -39,34 +39,29 @@ pub const PARSE_CONTEXT_SIZE: c_int = 256;
 
 thread_local! { static R_ParseError_val: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetParseError() -> c_int {
+pub unsafe fn R_GetParseError() -> c_int {
     R_ParseError_val.with(|v| v.get())
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetParseError(val: c_int) {
+pub unsafe fn R_SetParseError(val: c_int) {
     R_ParseError_val.with(|v| v.set(val));
 }
 
 thread_local! { static R_ParseErrorCol_val: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetParseErrorCol() -> c_int {
+pub unsafe fn R_GetParseErrorCol() -> c_int {
     R_ParseErrorCol_val.with(|v| v.get())
 }
 
 thread_local! { static R_ParseErrorFile_val: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetParseErrorFile() -> SEXP {
+pub unsafe fn R_GetParseErrorFile() -> SEXP {
     R_ParseErrorFile_val.with(|v| v.get())
 }
 
 thread_local! { static R_ParseContextLine_val: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetParseContextLine() -> c_int {
+pub unsafe fn R_GetParseContextLine() -> c_int {
     R_ParseContextLine_val.with(|v| v.get())
 }
 

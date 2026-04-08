@@ -28,8 +28,7 @@ type LapackFn = Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
 
 /// Set the LAPACK routine dispatch table.
 /// Returns the previous pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setLapackRoutines(_routines: *const c_void) -> *const c_void {
+pub unsafe fn R_setLapackRoutines(_routines: *const c_void) -> *const c_void {
     ptr::null()
 }
 

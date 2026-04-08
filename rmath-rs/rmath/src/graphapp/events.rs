@@ -19,48 +19,36 @@ pub unsafe fn finish_events() { /* TODO */
 pub unsafe fn handle_control(_hwnd: *mut c_void, _message: c_uint) { /* TODO */
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getkeystate() -> c_int {
+pub unsafe fn getkeystate() -> c_int {
     KEYSTATE.with(|v| v.get())
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn drawall() { /* TODO */
+pub unsafe fn drawall() { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn peekevent() -> c_int {
+pub unsafe fn peekevent() -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn waitevent() { /* TODO */
+pub unsafe fn waitevent() { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doevent() -> c_int {
+pub unsafe fn doevent() -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mainloop() { /* TODO */
+pub unsafe fn mainloop() { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
+pub unsafe fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn settimer(_millisec: c_uint) -> c_int {
+pub unsafe fn settimer(_millisec: c_uint) -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn settimerfn(_timeout: timerfn, _data: *mut c_void) { /* TODO */
+pub unsafe fn settimerfn(_timeout: timerfn, _data: *mut c_void) { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setmousetimer(_millisec: c_uint) -> c_int {
+pub unsafe fn setmousetimer(_millisec: c_uint) -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn delay(_millisec: c_uint) { /* TODO */
+pub unsafe fn delay(_millisec: c_uint) { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn currenttime() -> c_long {
+pub unsafe fn currenttime() -> c_long {
     0
 }
 

@@ -146,6 +146,7 @@ unsafe fn R_DevicesSymbol() -> SEXP {
 
 /// Returns true if there are no active (non-null) devices.
 /// Used in grid.
+#[unsafe(no_mangle)]
 pub unsafe fn NoDevices() -> c_int {
     unsafe {
         if get_num_devices() == 1 || get_current_device_index() == 0 {
@@ -538,7 +539,7 @@ pub unsafe fn desc2GEDesc(dd: pDevDesc) -> pGEDevDesc {
 // Noop / default device callbacks
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" fn noopCircle(
+unsafe fn noopCircle(
     _x: c_double,
     _y: c_double,
     _r: c_double,
@@ -547,7 +548,7 @@ unsafe extern "C" fn noopCircle(
 ) {
 }
 
-unsafe extern "C" fn noopClip(
+unsafe fn noopClip(
     _x0: c_double,
     _x1: c_double,
     _y0: c_double,
@@ -556,9 +557,9 @@ unsafe extern "C" fn noopClip(
 ) {
 }
 
-unsafe extern "C" fn noopClose(_dd: pDevDesc) {}
+unsafe fn noopClose(_dd: pDevDesc) {}
 
-unsafe extern "C" fn noopLine(
+unsafe fn noopLine(
     _x1: c_double,
     _y1: c_double,
     _x2: c_double,
@@ -568,7 +569,7 @@ unsafe extern "C" fn noopLine(
 ) {
 }
 
-unsafe extern "C" fn defaultMetricInfo(
+unsafe fn defaultMetricInfo(
     _c: c_int,
     _gc: pGEcontext,
     ascent: *mut c_double,
@@ -589,9 +590,9 @@ unsafe extern "C" fn defaultMetricInfo(
     }
 }
 
-unsafe extern "C" fn noopNewPage(_gc: pGEcontext, _dd: pDevDesc) {}
+unsafe fn noopNewPage(_gc: pGEcontext, _dd: pDevDesc) {}
 
-unsafe extern "C" fn noopPolygon(
+unsafe fn noopPolygon(
     _n: c_int,
     _x: *const c_double,
     _y: *const c_double,
@@ -600,7 +601,7 @@ unsafe extern "C" fn noopPolygon(
 ) {
 }
 
-unsafe extern "C" fn noopPolyline(
+unsafe fn noopPolyline(
     _n: c_int,
     _x: *const c_double,
     _y: *const c_double,
@@ -609,7 +610,7 @@ unsafe extern "C" fn noopPolyline(
 ) {
 }
 
-unsafe extern "C" fn noopRect(
+unsafe fn noopRect(
     _x0: c_double,
     _y0: c_double,
     _x1: c_double,
@@ -619,7 +620,7 @@ unsafe extern "C" fn noopRect(
 ) {
 }
 
-unsafe extern "C" fn defaultStrWidth(
+unsafe fn defaultStrWidth(
     _str: *const c_char,
     _gc: pGEcontext,
     _dd: pDevDesc,
@@ -627,7 +628,7 @@ unsafe extern "C" fn defaultStrWidth(
     0.0
 }
 
-unsafe extern "C" fn noopText(
+unsafe fn noopText(
     _x: c_double,
     _y: c_double,
     _str: *const c_char,
@@ -638,11 +639,11 @@ unsafe extern "C" fn noopText(
 ) {
 }
 
-unsafe extern "C" fn defaultGetEvent(_eventRho: SEXP, _prompt: *const c_char) -> SEXP {
+unsafe fn defaultGetEvent(_eventRho: SEXP, _prompt: *const c_char) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-unsafe extern "C" fn noopTextUTF8(
+unsafe fn noopTextUTF8(
     _x: c_double,
     _y: c_double,
     _str: *const c_char,
@@ -653,7 +654,7 @@ unsafe extern "C" fn noopTextUTF8(
 ) {
 }
 
-unsafe extern "C" fn defaultStrWidthUTF8(
+unsafe fn defaultStrWidthUTF8(
     _str: *const c_char,
     _gc: pGEcontext,
     _dd: pDevDesc,
@@ -661,25 +662,25 @@ unsafe extern "C" fn defaultStrWidthUTF8(
     0.0
 }
 
-unsafe extern "C" fn defaultSetPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe fn defaultSetPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-unsafe extern "C" fn noopReleasePattern(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn noopReleasePattern(_ref: SEXP, _dd: pDevDesc) {}
 
-unsafe extern "C" fn defaultSetClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe fn defaultSetClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-unsafe extern "C" fn noopReleaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn noopReleaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
 
-unsafe extern "C" fn defaultSetMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe fn defaultSetMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-unsafe extern "C" fn noopReleaseMask(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn noopReleaseMask(_ref: SEXP, _dd: pDevDesc) {}
 
-unsafe extern "C" fn defaultDefineGroup(
+unsafe fn defaultDefineGroup(
     _source: SEXP,
     _op: c_int,
     _destination: SEXP,
@@ -688,21 +689,21 @@ unsafe extern "C" fn defaultDefineGroup(
     unsafe { R_NilValue() }
 }
 
-unsafe extern "C" fn noopUseGroup(_ref: SEXP, _trans: SEXP, _dd: pDevDesc) {}
+unsafe fn noopUseGroup(_ref: SEXP, _trans: SEXP, _dd: pDevDesc) {}
 
-unsafe extern "C" fn noopReleaseGroup(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn noopReleaseGroup(_ref: SEXP, _dd: pDevDesc) {}
 
-unsafe extern "C" fn noopStroke(_path: SEXP, _gc: pGEcontext, _dd: pDevDesc) {}
+unsafe fn noopStroke(_path: SEXP, _gc: pGEcontext, _dd: pDevDesc) {}
 
-unsafe extern "C" fn noopFill(_path: SEXP, _rule: c_int, _gc: pGEcontext, _dd: pDevDesc) {}
+unsafe fn noopFill(_path: SEXP, _rule: c_int, _gc: pGEcontext, _dd: pDevDesc) {}
 
-unsafe extern "C" fn noopFillStroke(_path: SEXP, _rule: c_int, _gc: pGEcontext, _dd: pDevDesc) {}
+unsafe fn noopFillStroke(_path: SEXP, _rule: c_int, _gc: pGEcontext, _dd: pDevDesc) {}
 
-unsafe extern "C" fn defaultCapabilities(cap: SEXP) -> SEXP {
+unsafe fn defaultCapabilities(cap: SEXP) -> SEXP {
     cap
 }
 
-unsafe extern "C" fn noopGlyph(
+unsafe fn noopGlyph(
     _n: c_int,
     _glyphs: *const c_int,
     _x: *const c_double,
@@ -830,8 +831,7 @@ pub unsafe fn GEfreeDD(dd: pDevDesc) {
 // R_CheckDeviceAvailable / R_CheckDeviceAvailableBool
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckDeviceAvailable() {
+pub unsafe fn R_CheckDeviceAvailable() {
     unsafe {
         if R_NumDevices >= R_MaxDevices - 1 {
             Rf_error(b"too many open devices\0".as_ptr() as *const c_char);
@@ -839,8 +839,7 @@ pub unsafe extern "C" fn R_CheckDeviceAvailable() {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckDeviceAvailableBool() -> c_int {
+pub unsafe fn R_CheckDeviceAvailableBool() -> c_int {
     unsafe {
         if R_NumDevices >= R_MaxDevices - 1 {
             FALSE
@@ -1036,6 +1035,7 @@ pub unsafe fn InitGraphics() {
 // ---------------------------------------------------------------------------
 
 /// Prompt the user to confirm a new frame (in interactive mode).
+#[unsafe(no_mangle)]
 pub unsafe fn NewFrameConfirm(dd: pDevDesc) {
     unsafe {
         use crate::main::main::R_Interactive;

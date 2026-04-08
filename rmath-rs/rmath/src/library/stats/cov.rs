@@ -35,6 +35,7 @@ unsafe fn asBool(x: SEXP) -> bool {
     v != 0 && v != crate::sexp::ffi::NA_INTEGER
 }
 
+#[unsafe(no_mangle)]
 unsafe fn length(x: SEXP) -> c_int {
     Rf_length(x)
 }
@@ -92,6 +93,7 @@ unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     crate::attrib_core::getAttrib(x, what)
 }
 
+#[unsafe(no_mangle)]
 unsafe fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::duplicate(x)
 }
@@ -1216,14 +1218,12 @@ unsafe fn cov_na_2(
 // ---------------------------------------------------------------------------
 
 /// cor(x, y, use, kendall) - compute correlation matrix
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+pub unsafe fn cor(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
     corcov(x, y, na_method, kendall, true)
 }
 
 /// cov(x, y, use, kendall) - compute covariance matrix
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
+pub unsafe fn cov(x: SEXP, y: SEXP, na_method: SEXP, kendall: SEXP) -> SEXP {
     corcov(x, y, na_method, kendall, false)
 }
 

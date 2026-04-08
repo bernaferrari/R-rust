@@ -63,8 +63,7 @@ pub unsafe fn get_workspace_name() -> *const c_char {
 }
 
 /// Restore the global environment from the workspace file.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RestoreGlobalEnv() {
+pub unsafe fn R_RestoreGlobalEnv() {
     if RestoreAction.with(|v| v.get()) == SA_RESTORE {
         let name = get_workspace_name();
         R_RestoreGlobalEnvFromFile(name, 0);
@@ -72,14 +71,12 @@ pub unsafe extern "C" fn R_RestoreGlobalEnv() {
 }
 
 /// Save the global environment to .RData.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveGlobalEnv() {
+pub unsafe fn R_SaveGlobalEnv() {
     // Stub: full implementation requires saveload integration
 }
 
 /// Initialize data (restore workspace).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitialData() {
+pub unsafe fn R_InitialData() {
     R_RestoreGlobalEnv();
 }
 
@@ -88,8 +85,7 @@ pub unsafe extern "C" fn R_InitialData() {
 // ---------------------------------------------------------------------------
 
 /// Open a library file relative to R_HOME/library/base/R/.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_OpenLibraryFile(file: *const c_char) -> *mut std::ffi::c_void {
+pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut std::ffi::c_void {
     if file.is_null() {
         return ptr::null_mut();
     }
@@ -106,8 +102,7 @@ pub unsafe extern "C" fn R_OpenLibraryFile(file: *const c_char) -> *mut std::ffi
 }
 
 /// Get the library file path into a buffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_LibraryFileName(
+pub unsafe fn R_LibraryFileName(
     file: *const c_char,
     buf: *mut c_char,
     bsize: usize,
@@ -129,8 +124,7 @@ pub unsafe extern "C" fn R_LibraryFileName(
 }
 
 /// Open the system init file (Rprofile).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_OpenSysInitFile() -> *mut std::ffi::c_void {
+pub unsafe fn R_OpenSysInitFile() -> *mut std::ffi::c_void {
     let r_home = env::var("R_HOME").unwrap_or_default();
     let path = format!("{}/library/base/R/Rprofile", r_home);
     match File::open(&path) {
@@ -140,8 +134,7 @@ pub unsafe extern "C" fn R_OpenSysInitFile() -> *mut std::ffi::c_void {
 }
 
 /// Open the site init file (Rprofile.site).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_OpenSiteFile() -> *mut std::ffi::c_void {
+pub unsafe fn R_OpenSiteFile() -> *mut std::ffi::c_void {
     if !LoadSiteFile.with(|v| v.get()) {
         return ptr::null_mut();
     }
@@ -166,7 +159,7 @@ pub unsafe extern "C" fn R_OpenSiteFile() -> *mut std::ffi::c_void {
 // Restore/Save from/to file (stubs — full implementation in saveload)
 // ---------------------------------------------------------------------------
 
-pub unsafe extern "C" fn _rmath_R_RestoreGlobalEnvFromFile(_name: *const c_char, _quiet: c_int) {
+pub unsafe fn _rmath_R_RestoreGlobalEnvFromFile(_name: *const c_char, _quiet: c_int) {
     // Stub: full implementation in saveload.rs
 }
 
@@ -177,48 +170,43 @@ pub unsafe extern "C" fn _rmath_R_RestoreGlobalEnvFromFile(_name: *const c_char,
 // ---------------------------------------------------------------------------
 
 /// Set default startup parameters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) -> c_int {
+pub unsafe fn R_DefParamsEx(_rp: *mut c_void, _version: c_int) -> c_int {
     0
 }
 
 /// Set default startup parameters (version 0).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DefParams(_rp: *mut c_void) {
+pub unsafe fn R_DefParams(_rp: *mut c_void) {
     R_DefParamsEx(_rp, 0);
 }
 
 /// Apply startup parameters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetParams(_rp: *mut c_void) {
+pub unsafe fn R_SetParams(_rp: *mut c_void) {
     // Stub: full implementation requires Rstart struct
 }
 
 /// Read sizes from environment variables.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SizeFromEnv(_rp: *mut c_void) {
+pub unsafe fn R_SizeFromEnv(_rp: *mut c_void) {
     // Stub: reads R_MAX_VSIZE, R_VSIZE, R_NSIZE from environment
 }
 
 /// Set max vector heap size.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_SetMaxVSize(_size: usize) -> c_int {
+pub unsafe fn R_SetMaxVSize(_size: usize) -> c_int {
     1 // success
 }
 
 /// Set max cons cell heap size.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_SetMaxNSize(_size: usize) -> c_int {
+pub unsafe fn R_SetMaxNSize(_size: usize) -> c_int {
     1 // success
 }
 
 /// Set pushdown stack size.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_SetPPSize(_size: usize) {}
+pub unsafe fn R_SetPPSize(_size: usize) {}
 
 /// Set max number of connections.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetNconn(_n: c_int) {}
+pub unsafe fn R_SetNconn(_n: c_int) {}
 
 // ---------------------------------------------------------------------------
 // Globals used by other modules

@@ -18,14 +18,12 @@ use crate::sexp::globals::R_NilValue;
 // ---------------------------------------------------------------------------
 
 /// Initialize the compact integer sequence ALTREP class.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_compact_intseq() -> SEXP {
+pub unsafe fn R_init_compact_intseq() -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Check if an SEXP is a compact integer sequence.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_intseq_check(x: SEXP) -> c_int {
+pub unsafe fn R_compact_intseq_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -37,14 +35,12 @@ pub unsafe extern "C" fn R_compact_intseq_check(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Initialize the compact real sequence ALTREP class.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_compact_realseq() -> SEXP {
+pub unsafe fn R_init_compact_realseq() -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Check if an SEXP is a compact real sequence.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_realseq_check(x: SEXP) -> c_int {
+pub unsafe fn R_compact_realseq_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -56,14 +52,12 @@ pub unsafe extern "C" fn R_compact_realseq_check(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Initialize the deferred string ALTREP class.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_deferred_string() -> SEXP {
+pub unsafe fn R_init_deferred_string() -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Check if an SEXP is a deferred string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_deferred_string_check(x: SEXP) -> c_int {
+pub unsafe fn R_deferred_string_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -75,14 +69,12 @@ pub unsafe extern "C" fn R_deferred_string_check(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Initialize the deferred names ALTREP class.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_deferred_names() -> SEXP {
+pub unsafe fn R_init_deferred_names() -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Check if an SEXP is a deferred names vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_deferred_names_check(x: SEXP) -> c_int {
+pub unsafe fn R_deferred_names_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -94,8 +86,7 @@ pub unsafe extern "C" fn R_deferred_names_check(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Initialize all built-in ALTREP classes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_altrep_classes() {
+pub unsafe fn R_init_altrep_classes() {
     unsafe {
         R_init_compact_intseq();
         R_init_compact_realseq();

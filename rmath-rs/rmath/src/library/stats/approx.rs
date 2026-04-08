@@ -155,8 +155,7 @@ unsafe fn R_approxfun(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
+pub unsafe fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
     let nx = XLENGTH(x);
     R_approxtest(
         REAL(x),
@@ -169,8 +168,7 @@ pub unsafe extern "C" fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Approx(
+pub unsafe fn Approx(
     x: SEXP,
     y: SEXP,
     v: SEXP,

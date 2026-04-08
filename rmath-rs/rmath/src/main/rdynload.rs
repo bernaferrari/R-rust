@@ -702,7 +702,7 @@ unsafe fn AddDLL(
 
 /// Register native routines for a DllInfo object.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_registerRoutines(
+pub unsafe fn R_registerRoutines(
     info: *mut DllInfo,
     croutines: *const R_CMethodDef,
     callRoutines: *const R_CallMethodDef,
@@ -823,7 +823,7 @@ pub unsafe extern "C" fn R_registerRoutines(
 
 /// Set whether dynamic lookup should be used for a DllInfo.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean {
+pub unsafe fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean {
     unsafe {
         let old = (*info).useDynamicLookup;
         (*info).useDynamicLookup = value;
@@ -832,8 +832,7 @@ pub unsafe extern "C" fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean
 }
 
 /// Set whether only registered symbols should be used.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean {
+pub unsafe fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean {
     unsafe {
         let old = (*info).forceSymbols;
         (*info).forceSymbols = value;
@@ -1181,8 +1180,7 @@ unsafe fn R_getDLLRegisteredSymbol(
 }
 
 /// R_dlsym: look up a symbol in a specific DLL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_dlsym(
+pub unsafe fn R_dlsym(
     info: *mut DllInfo,
     name: *const c_char,
     symbol: *mut R_RegisteredNativeSymbol,
@@ -1221,8 +1219,7 @@ pub unsafe extern "C" fn R_dlsym(
 }
 
 /// R_FindSymbol: look up a symbol across all loaded DLLs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FindSymbol(
+pub unsafe fn R_FindSymbol(
     name: *const c_char,
     pkg: *const c_char,
     symbol: *mut R_RegisteredNativeSymbol,
@@ -1277,8 +1274,7 @@ pub unsafe extern "C" fn R_FindSymbol(
 // ---------------------------------------------------------------------------
 
 /// Look up a DllInfo by path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
+pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
     let count_dll = CountDLL.with(|v| v.get());
     let loaded_dll = LoadedDLL.with(|v| v.get());
     for i in 0..count_dll {
@@ -1302,8 +1298,7 @@ unsafe fn R_getDllIndex(info: *mut DllInfo) -> c_int {
 }
 
 /// Get (or create) the embedding DllInfo.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getEmbeddingDllInfo() -> *mut DllInfo {
+pub unsafe fn R_getEmbeddingDllInfo() -> *mut DllInfo {
     let dll = R_getDllInfo(b"(embedding)\0".as_ptr() as *const c_char);
     if dll.is_null() {
         let which = addDLL(
@@ -1324,8 +1319,7 @@ pub unsafe extern "C" fn R_getEmbeddingDllInfo() -> *mut DllInfo {
 // ---------------------------------------------------------------------------
 
 /// Load a module DLL from the R modules directory.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_moduleCdynload(
+pub unsafe fn R_moduleCdynload(
     module: *const c_char,
     local: c_int,
     now: c_int,
@@ -1358,8 +1352,7 @@ pub unsafe extern "C" fn R_moduleCdynload(
 }
 
 /// Load the Cairo module DLL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
+pub unsafe fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
     unsafe {
         let mut dllpath = [0i8; R_PATH_MAX];
         let p = libc::getenv(b"R_HOME\0".as_ptr() as *const c_char);
@@ -1440,8 +1433,7 @@ pub unsafe fn do_dynunload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// R_getSymbolInfo: resolve a native symbol by name and package.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getSymbolInfo(
+pub unsafe fn R_getSymbolInfo(
     sname: SEXP,
     spackage: SEXP,
     withRegistrationInfo: SEXP,
@@ -1451,15 +1443,13 @@ pub unsafe extern "C" fn R_getSymbolInfo(
 }
 
 /// R_getDllTable: return the list of all loaded DLLs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getDllTable() -> SEXP {
+pub unsafe fn R_getDllTable() -> SEXP {
     // TODO: full implementation requires SEXP manipulation
     ptr::null_mut()
 }
 
 /// R_getRegisteredRoutines: get registered routines for a DLL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
+pub unsafe fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
     // TODO: full implementation requires SEXP manipulation
     ptr::null_mut()
 }
@@ -1502,8 +1492,7 @@ unsafe fn get_package_CEntry_table(package: *const c_char) -> SEXP {
 }
 
 /// Register a C-callable function for use from other packages.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RegisterCCallable(
+pub unsafe fn R_RegisterCCallable(
     package: *const c_char,
     name: *const c_char,
     fptr: DL_FUNC,
@@ -1520,8 +1509,7 @@ pub unsafe extern "C" fn R_RegisterCCallable(
 }
 
 /// Look up a C-callable function registered by another package.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetCCallable(package: *const c_char, name: *const c_char) -> DL_FUNC {
+pub unsafe fn R_GetCCallable(package: *const c_char, name: *const c_char) -> DL_FUNC {
     unsafe {
         let _penv = get_package_CEntry_table(package);
         // TODO: full implementation requires SEXP manipulation
@@ -1534,8 +1522,7 @@ pub unsafe extern "C" fn R_GetCCallable(package: *const c_char, name: *const c_c
 // ---------------------------------------------------------------------------
 
 /// Register routines from R-level symbol objects.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_registerRoutines(sSymbolList: SEXP) -> SEXP {
+pub unsafe fn Rf_registerRoutines(sSymbolList: SEXP) -> SEXP {
     // TODO: full implementation requires extensive SEXP manipulation
     // This is the R-level registration path, less critical for the Rust port
     ptr::null_mut()
@@ -1547,7 +1534,7 @@ pub unsafe extern "C" fn Rf_registerRoutines(sSymbolList: SEXP) -> SEXP {
 
 /// Look up a cached symbol (Windows-only).
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn Rf_lookupCachedSymbol(
+pub unsafe fn Rf_lookupCachedSymbol(
     name: *const c_char,
     pkg: *const c_char,
     _all: c_int,
@@ -1558,8 +1545,7 @@ pub unsafe extern "C" fn Rf_lookupCachedSymbol(
 }
 
 /// Delete cached symbols for a DLL (Windows-only).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_deleteCachedSymbols(_dll: *mut DllInfo) {
+pub unsafe fn Rf_deleteCachedSymbols(_dll: *mut DllInfo) {
     // CACHE_DLL_SYM is Windows-only
 }
 

@@ -27,7 +27,7 @@ thread_local! { static _nl_loaded_domains: RefCell<*mut loaded_l10nfile> = RefCe
 /// This corresponds to `_nl_make_l10nflist` in `l10nflist.c`.
 /// For the standalone port, we provide a simplified stub that allocates a
 /// `loaded_l10nfile` node if `do_allocate` is set.
-unsafe extern "C" fn _nl_make_l10nflist(
+unsafe fn _nl_make_l10nflist(
     l10nfile_list: *mut *mut loaded_l10nfile,
     _dirlist: *const c_char,
     _dirlist_len: usize,
@@ -73,7 +73,7 @@ unsafe extern "C" fn _nl_make_l10nflist(
 ///
 /// This corresponds to `_nl_load_domain` in `loadmsg.c`.
 /// For the standalone port we provide a stub that marks the domain as decided.
-unsafe extern "C" fn _nl_load_domain(domain: *mut loaded_l10nfile, _domainbinding: *mut binding) {
+unsafe fn _nl_load_domain(domain: *mut loaded_l10nfile, _domainbinding: *mut binding) {
     unsafe {
         if !domain.is_null() {
             (*domain).decided = 1;
@@ -85,7 +85,7 @@ unsafe extern "C" fn _nl_load_domain(domain: *mut loaded_l10nfile, _domainbindin
 ///
 /// This corresponds to `_nl_explode_name` in `explodename.c`.
 /// Returns a bitmask of XPG_* flags, or -1 on error (OOM).
-unsafe extern "C" fn _nl_explode_name(
+unsafe fn _nl_explode_name(
     _name: *mut c_char,
     language: *mut *const c_char,
     modifier: *mut *const c_char,
@@ -122,8 +122,7 @@ unsafe extern "C" fn _nl_explode_name(
 /// DOMAINNAME and LOCALE, respecting the currently established bindings.
 ///
 /// This is the Rust port of `_nl_find_domain()` from `finddomain.c`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_find_domain(
+pub unsafe fn _nl_find_domain(
     dirname: *const c_char,
     locale: *mut c_char,
     domainname: *const c_char,

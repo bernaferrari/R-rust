@@ -26,8 +26,7 @@ fn align4(size: c_long) -> c_long {
 
 /// Allocate zeroed memory of the given size.
 /// Returns a pointer to the usable memory area (after the header).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memalloc(size: c_long) -> *mut u8 {
+pub unsafe fn memalloc(size: c_long) -> *mut u8 {
     unsafe {
         let datasize = align4(size) as usize;
         let total = HEADER_SIZE + datasize;
@@ -55,8 +54,7 @@ pub unsafe extern "C" fn memalloc(size: c_long) -> *mut u8 {
 }
 
 /// Reallocate memory to a new size.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
+pub unsafe fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
     unsafe {
         if new_size <= 0 {
             if !a.is_null() {
@@ -113,8 +111,7 @@ pub unsafe extern "C" fn memrealloc(a: *mut u8, new_size: c_long) -> *mut u8 {
 }
 
 /// Get the length of an allocated block.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memlength(a: *mut u8) -> c_long {
+pub unsafe fn memlength(a: *mut u8) -> c_long {
     unsafe {
         if a.is_null() {
             0
@@ -125,8 +122,7 @@ pub unsafe extern "C" fn memlength(a: *mut u8) -> c_long {
 }
 
 /// Free a previously allocated block.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memfree(a: *mut u8) {
+pub unsafe fn memfree(a: *mut u8) {
     unsafe {
         if a.is_null() {
             return;
@@ -143,8 +139,7 @@ pub unsafe extern "C" fn memfree(a: *mut u8) {
 }
 
 /// Expand a block by appending extra bytes at the end.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
+pub unsafe fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
     unsafe {
         if extra == 0 {
             return a;
@@ -192,8 +187,7 @@ pub unsafe extern "C" fn memexpand(a: *mut u8, extra: c_long) -> *mut u8 {
 }
 
 /// Join two blocks: append b to a and return the result.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
+pub unsafe fn memjoin(a: *mut u8, b: *mut u8) -> *mut u8 {
     unsafe {
         let size = memlength(a);
         let extra = memlength(b);

@@ -471,9 +471,9 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 /// # Safety
 ///
 /// `e` and `rho` must be valid SEXP pointers (or null).
-#[unsafe(no_mangle)]
 #[must_use]
-pub unsafe extern "C" fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
+#[unsafe(no_mangle)]
+pub unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         set_R_Visible(TRUE);
 

@@ -198,7 +198,7 @@ unsafe fn close_non_child_fd(fd: c_int) {
 // ---------------------------------------------------------------------------
 
 #[cfg(unix)]
-unsafe extern "C" fn child_sig_handler(sig: c_int) {
+unsafe fn child_sig_handler(sig: c_int) {
     if sig == SIGUSR1 {
         child_can_exit.with(|v| v.set(1));
         if child_exit_status.with(|v| v.get()) >= 0 {
@@ -208,7 +208,7 @@ unsafe extern "C" fn child_sig_handler(sig: c_int) {
 }
 
 #[cfg(unix)]
-unsafe extern "C" fn parent_sig_handler(_sig: c_int) {
+unsafe fn parent_sig_handler(_sig: c_int) {
     let old_errno = *errno_ptr();
     let mut ci = children.with(|v| v.get());
     while !ci.is_null() {
@@ -436,8 +436,7 @@ unsafe fn mc_select(
 
 /// Insert a cleanup mark into the children list.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_prepare_cleanup() -> SEXP {
+pub unsafe fn mc_prepare_cleanup() -> SEXP {
     compact_children();
     let ci = libc::malloc(std::mem::size_of::<child_info_t>()) as *mut child_info_t;
     if ci.is_null() {
@@ -457,8 +456,7 @@ pub unsafe extern "C" fn mc_prepare_cleanup() -> SEXP {
 
 /// Terminate and detach all children up to the first cleanup mark.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
+pub unsafe fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
     use crate::main::coerce::{asInteger, asLogical};
 
     let mut sig: c_int = -1;
@@ -547,8 +545,7 @@ pub unsafe extern "C" fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP)
 ///   [1] = file descriptor of the data pipe (child->master)
 ///   [2] = file descriptor of the child-stdin pipe (master->child)
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_fork(sEstranged: SEXP) -> SEXP {
+pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let mut pipefd: [c_int; 2] = [-1, -1]; // write end, read end
@@ -665,8 +662,7 @@ pub unsafe extern "C" fn mc_fork(sEstranged: SEXP) -> SEXP {
 
 /// Close or redirect stdout.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_close_stdout(toNULL: SEXP) -> SEXP {
+pub unsafe fn mc_close_stdout(toNULL: SEXP) -> SEXP {
     use crate::main::coerce::asLogical;
 
     if asLogical(toNULL) == 1 {
@@ -685,8 +681,7 @@ pub unsafe extern "C" fn mc_close_stdout(toNULL: SEXP) -> SEXP {
 
 /// Close or redirect stderr.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_close_stderr(toNULL: SEXP) -> SEXP {
+pub unsafe fn mc_close_stderr(toNULL: SEXP) -> SEXP {
     use crate::main::coerce::asLogical;
 
     if asLogical(toNULL) == 1 {
@@ -705,8 +700,7 @@ pub unsafe extern "C" fn mc_close_stderr(toNULL: SEXP) -> SEXP {
 
 /// Close file descriptors.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_close_fds(sFDS: SEXP) -> SEXP {
+pub unsafe fn mc_close_fds(sFDS: SEXP) -> SEXP {
     if TYPEOF(sFDS) != SEXPTYPE::INTSXP.0 {
         crate::main::errors::Rf_error(b"descriptors must be integers\0".as_ptr() as *const c_char);
     }
@@ -722,8 +716,7 @@ pub unsafe extern "C" fn mc_close_fds(sFDS: SEXP) -> SEXP {
 
 /// Send data from child to master process.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_send_master(what: SEXP) -> SEXP {
+pub unsafe fn mc_send_master(what: SEXP) -> SEXP {
     if is_master.with(|v| v.get()) != 0 {
         crate::main::errors::Rf_error(
             b"only children can send data to the master process\0".as_ptr() as *const c_char,
@@ -783,8 +776,7 @@ pub unsafe extern "C" fn mc_send_master(what: SEXP) -> SEXP {
 
 /// Send data from master to child process stdin.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
+pub unsafe fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let pid = asInteger(sPid);
@@ -830,8 +822,7 @@ pub unsafe extern "C" fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
 
 /// Select children with data available to read.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
+pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
     use crate::main::coerce::{asInteger, asReal};
 
     let mut maxfd: c_int = -1;
@@ -1044,8 +1035,7 @@ unsafe fn read_child_ci(ci: *mut child_info_t) -> SEXP {
 
 /// Read data from a specific child.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_read_child(sPid: SEXP) -> SEXP {
+pub unsafe fn mc_read_child(sPid: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let pid = asInteger(sPid);
@@ -1065,8 +1055,7 @@ pub unsafe extern "C" fn mc_read_child(sPid: SEXP) -> SEXP {
 
 /// Read data from any available child.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_read_children(sTimeout: SEXP) -> SEXP {
+pub unsafe fn mc_read_children(sTimeout: SEXP) -> SEXP {
     use crate::main::coerce::asReal;
 
     let mut maxfd: c_int = 0;
@@ -1144,8 +1133,7 @@ pub unsafe extern "C" fn mc_read_children(sTimeout: SEXP) -> SEXP {
 
 /// Remove a child process.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_rm_child(sPid: SEXP) -> SEXP {
+pub unsafe fn mc_rm_child(sPid: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let pid = asInteger(sPid);
@@ -1154,8 +1142,7 @@ pub unsafe extern "C" fn mc_rm_child(sPid: SEXP) -> SEXP {
 
 /// Get list of attached children PIDs.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_children() -> SEXP {
+pub unsafe fn mc_children() -> SEXP {
     let mut ci = children.with(|v| v.get());
     let mut count: c_uint = 0;
     let ppid = libc::getpid();
@@ -1183,8 +1170,7 @@ pub unsafe extern "C" fn mc_children() -> SEXP {
 
 /// Get file descriptors of attached children.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_fds(sFdi: SEXP) -> SEXP {
+pub unsafe fn mc_fds(sFdi: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let fdi = asInteger(sFdi);
@@ -1215,15 +1201,13 @@ pub unsafe extern "C" fn mc_fds(sFdi: SEXP) -> SEXP {
 
 /// Get the master file descriptor (child side).
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_master_fd() -> SEXP {
+pub unsafe fn mc_master_fd() -> SEXP {
     Rf_ScalarInteger(master_fd.with(|v| v.get()))
 }
 
 /// Check if current process is a child.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_is_child() -> SEXP {
+pub unsafe fn mc_is_child() -> SEXP {
     Rf_ScalarLogical(if is_master.with(|v| v.get()) != 0 {
         0
     } else {
@@ -1233,8 +1217,7 @@ pub unsafe extern "C" fn mc_is_child() -> SEXP {
 
 /// Send a signal to a process.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
+pub unsafe fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let pid = asInteger(sPid);
@@ -1247,8 +1230,7 @@ pub unsafe extern "C" fn mc_kill(sPid: SEXP, sSig: SEXP) -> SEXP {
 
 /// Exit a child process.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_exit(sRes: SEXP) -> SEXP {
+pub unsafe fn mc_exit(sRes: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let res = asInteger(sRes);
@@ -1292,8 +1274,7 @@ pub unsafe extern "C" fn mc_exit(sRes: SEXP) -> SEXP {
 
 /// Get or set the interactive flag.
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_interactive(sWhat: SEXP) -> SEXP {
+pub unsafe fn mc_interactive(sWhat: SEXP) -> SEXP {
     use crate::main::coerce::asInteger;
 
     let what = asInteger(sWhat);
@@ -1305,8 +1286,7 @@ pub unsafe extern "C" fn mc_interactive(sWhat: SEXP) -> SEXP {
 
 /// Get or set CPU affinity (stub on non-Linux).
 #[cfg(unix)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_affinity(_req: SEXP) -> SEXP {
+pub unsafe fn mc_affinity(_req: SEXP) -> SEXP {
     // CPU affinity is Linux-specific with sched_setaffinity/sched_getaffinity.
     // On macOS/BSD, these APIs are not available. Return nil.
     R_NilValue()
@@ -1317,20 +1297,17 @@ pub unsafe extern "C" fn mc_affinity(_req: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_prepare_cleanup() -> SEXP {
+pub unsafe fn mc_prepare_cleanup() -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_cleanup(_sKill: SEXP, _sDetach: SEXP, _sShutdown: SEXP) -> SEXP {
+pub unsafe fn mc_cleanup(_sKill: SEXP, _sDetach: SEXP, _sShutdown: SEXP) -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_fork(_sEstranged: SEXP) -> SEXP {
+pub unsafe fn mc_fork(_sEstranged: SEXP) -> SEXP {
     crate::main::errors::Rf_error(
         b"forking is not available on this platform\0".as_ptr() as *const c_char
     );
@@ -1338,26 +1315,22 @@ pub unsafe extern "C" fn mc_fork(_sEstranged: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_close_stdout(_toNULL: SEXP) -> SEXP {
+pub unsafe fn mc_close_stdout(_toNULL: SEXP) -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_close_stderr(_toNULL: SEXP) -> SEXP {
+pub unsafe fn mc_close_stderr(_toNULL: SEXP) -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_close_fds(_sFDS: SEXP) -> SEXP {
+pub unsafe fn mc_close_fds(_sFDS: SEXP) -> SEXP {
     Rf_ScalarLogical(1)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_send_master(_what: SEXP) -> SEXP {
+pub unsafe fn mc_send_master(_what: SEXP) -> SEXP {
     crate::main::errors::Rf_error(
         b"only children can send data to the master process\0".as_ptr() as *const c_char,
     );
@@ -1365,8 +1338,7 @@ pub unsafe extern "C" fn mc_send_master(_what: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
+pub unsafe fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
     crate::main::errors::Rf_error(
         b"only the master process can send data to a child process\0".as_ptr() as *const c_char,
     );
@@ -1374,63 +1346,53 @@ pub unsafe extern "C" fn mc_send_child_stdin(_sPid: SEXP, _what: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_select_children(_sTimeout: SEXP, _sWhich: SEXP) -> SEXP {
+pub unsafe fn mc_select_children(_sTimeout: SEXP, _sWhich: SEXP) -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_read_child(_sPid: SEXP) -> SEXP {
+pub unsafe fn mc_read_child(_sPid: SEXP) -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_read_children(_sTimeout: SEXP) -> SEXP {
+pub unsafe fn mc_read_children(_sTimeout: SEXP) -> SEXP {
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_rm_child(_sPid: SEXP) -> SEXP {
+pub unsafe fn mc_rm_child(_sPid: SEXP) -> SEXP {
     Rf_ScalarLogical(0)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_children() -> SEXP {
+pub unsafe fn mc_children() -> SEXP {
     Rf_allocVector(SEXPTYPE::INTSXP.0, 0)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_fds(_sFdi: SEXP) -> SEXP {
+pub unsafe fn mc_fds(_sFdi: SEXP) -> SEXP {
     Rf_allocVector(SEXPTYPE::INTSXP.0, 0)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_master_fd() -> SEXP {
+pub unsafe fn mc_master_fd() -> SEXP {
     Rf_ScalarInteger(-1)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_is_child() -> SEXP {
+pub unsafe fn mc_is_child() -> SEXP {
     Rf_ScalarLogical(0)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
+pub unsafe fn mc_kill(_sPid: SEXP, _sSig: SEXP) -> SEXP {
     crate::main::errors::Rf_error(b"'mckill' failed\0".as_ptr() as *const c_char);
     R_NilValue()
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_exit(_sRes: SEXP) -> SEXP {
+pub unsafe fn mc_exit(_sRes: SEXP) -> SEXP {
     crate::main::errors::Rf_error(
         b"'mcexit' can only be used in a child process\0".as_ptr() as *const c_char
     );
@@ -1438,13 +1400,11 @@ pub unsafe extern "C" fn mc_exit(_sRes: SEXP) -> SEXP {
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_interactive(_sWhat: SEXP) -> SEXP {
+pub unsafe fn mc_interactive(_sWhat: SEXP) -> SEXP {
     Rf_ScalarLogical(0)
 }
 
 #[cfg(not(unix))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mc_affinity(_req: SEXP) -> SEXP {
+pub unsafe fn mc_affinity(_req: SEXP) -> SEXP {
     R_NilValue()
 }

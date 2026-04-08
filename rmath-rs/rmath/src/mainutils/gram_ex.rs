@@ -22,8 +22,7 @@ use std::os::raw::{c_int, c_void};
 /// strips CR from CRLF pairs, and on non-Windows platforms returns
 /// `R_EOF` when the stream is exhausted.  The stub simply returns `R_EOF`
 /// (represented as -1 here) unconditionally.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_fgetc(_fp: *mut c_void) -> c_int {
+pub unsafe fn R_fgetc(_fp: *mut c_void) -> c_int {
     // R_EOF is typically -1; return that as a safe stub.
     -1
 }

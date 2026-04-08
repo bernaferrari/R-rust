@@ -3218,8 +3218,7 @@ unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
 // ---------------------------------------------------------------------------
 
 /// Internal to external color representation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
+pub unsafe fn incol2name(col: c_uint) -> *const c_char {
     if R_OPAQUE(col) != 0 {
         for entry in COLOR_DATA_BASE.iter() {
             if entry.name.is_empty() {
@@ -3237,8 +3236,7 @@ pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
+pub unsafe fn inR_GE_str2col(s: *const c_char) -> c_uint {
     if streql(s, b"0\0".as_ptr() as *const c_char) != 0 {
         Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
     }
@@ -3246,8 +3244,7 @@ pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
 }
 
 /// Convert a sexp element to an R color desc.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
+pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
     let t = TYPEOF(x);
     let indx: c_int;
     match t {
@@ -3292,7 +3289,7 @@ pub unsafe extern "C" fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
 }
 
 /// Save/restore palette (NOT #[unsafe(no_mangle)] — main/colors.rs already exports it)
-unsafe extern "C" fn savePalette_impl(save: c_int) {
+unsafe fn savePalette_impl(save: c_int) {
     let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     if save != 0 {
         let mut i = 0usize;
@@ -3322,7 +3319,7 @@ unsafe extern "C" fn savePalette_impl(save: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Wrapper for inRGBpar3 with void pointer signature (for Rg_set_col_ptrs).
-unsafe extern "C" fn inRGBpar3_dispatch(
+unsafe fn inRGBpar3_dispatch(
     x: *mut std::os::raw::c_void,
     i: c_int,
     bg: c_uint,
@@ -3331,7 +3328,7 @@ unsafe extern "C" fn inRGBpar3_dispatch(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn initPalette() {
+pub unsafe fn initPalette() {
     crate::main::colors::Rg_set_col_ptrs(
         Some(inRGBpar3_dispatch),
         Some(incol2name),
@@ -3344,8 +3341,7 @@ pub unsafe extern "C" fn initPalette() {
 // SEXP-callable color functions
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
+pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
     let mut r: c_double = 0.0;
     let mut g: c_double = 0.0;
     let mut b: c_double = 0.0;
@@ -3438,8 +3434,7 @@ pub unsafe extern "C" fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
     c
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
+pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
     let fixup = asLogical(sfixup);
     let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.0));
     let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.0));
@@ -3552,8 +3547,7 @@ pub unsafe extern "C" fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP {
+pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -> SEXP {
     let mV = asReal(mcv);
     if !R_FINITE(mV) || mV == 0.0 {
         Rf_error(b"invalid value of 'maxColorValue'\0".as_ptr() as *const c_char);
@@ -3686,8 +3680,7 @@ pub unsafe extern "C" fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, n
     c
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
+pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
     let lev = Rf_protect(coerceVector(lev, SEXPTYPE::REALSXP.0));
     let nlev = LENGTH(lev) as usize;
     let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlev as c_int);
@@ -3746,8 +3739,7 @@ pub unsafe extern "C" fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_RGB2hsv(rgb: SEXP) -> SEXP {
+pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
     use crate::main::array::allocMatrix;
 
     let rgb = Rf_protect(coerceVector(rgb, SEXPTYPE::REALSXP.0));
@@ -3798,8 +3790,7 @@ pub unsafe extern "C" fn do_RGB2hsv(rgb: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
+pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
     use crate::main::array::allocMatrix;
 
     let alph = asLogical(alpha);
@@ -3853,8 +3844,7 @@ pub unsafe extern "C" fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_palette(val: SEXP) -> SEXP {
+pub unsafe fn do_palette(val: SEXP) -> SEXP {
     if Rf_isString(val) == 0 {
         Rf_error(b"invalid argument type\0".as_ptr() as *const c_char);
     }
@@ -3916,8 +3906,7 @@ pub unsafe extern "C" fn do_palette(val: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_palette2(val: SEXP) -> SEXP {
+pub unsafe fn do_palette2(val: SEXP) -> SEXP {
     let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, ps as c_int));
     let ians = INTEGER(ans);
@@ -3950,8 +3939,7 @@ pub unsafe extern "C" fn do_palette2(val: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_colors() -> SEXP {
+pub unsafe fn do_colors() -> SEXP {
     // Count entries
     let mut n = 0usize;
     for entry in COLOR_DATA_BASE.iter() {

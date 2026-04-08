@@ -150,8 +150,7 @@ unsafe fn IS_ABSOLUTE_PATH(p: *const c_char) -> bool {
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_make_l10nflist(
+pub unsafe fn _nl_make_l10nflist(
     l10nfile_list: *mut *mut loaded_l10nfile,
     dirlist: *const c_char,
     dirlist_len: usize,
@@ -337,8 +336,7 @@ pub unsafe extern "C" fn _nl_make_l10nflist(
 ///
 /// # Safety
 /// `codeset` must be a valid pointer to `name_len` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_normalize_codeset(
+pub unsafe fn _nl_normalize_codeset(
     codeset: *const c_char,
     name_len: usize,
 ) -> *const c_char {

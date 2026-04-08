@@ -170,14 +170,14 @@ unsafe extern "C" fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int
 unsafe extern "C" fn Rstd_loadhistory(_file: *const c_char) {}
 unsafe extern "C" fn Rstd_savehistory(_file: *const c_char) {}
 unsafe extern "C" fn Rstd_addhistory(_line: *const c_char) {}
-unsafe extern "C" fn Rstd_read_history(_file: *const c_char) {}
+unsafe fn Rstd_read_history(_file: *const c_char) {}
 
 // ---------------------------------------------------------------------------
 // Public system interface functions (dispatch through pointers)
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Suicide(s: *const c_char) {
+pub unsafe fn R_Suicide(s: *const c_char) {
     unsafe {
         if let Some(f) = ptr_R_Suicide.with(|v| v.get()) {
             f(s);
@@ -186,8 +186,7 @@ pub unsafe extern "C" fn R_Suicide(s: *const c_char) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ShowMessage(s: *const c_char) {
+pub unsafe fn R_ShowMessage(s: *const c_char) {
     unsafe {
         if let Some(f) = ptr_R_ShowMessage.with(|v| v.get()) {
             f(s);
@@ -196,7 +195,7 @@ pub unsafe extern "C" fn R_ShowMessage(s: *const c_char) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReadConsole(
+pub unsafe fn R_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
     len: c_int,
@@ -211,8 +210,7 @@ pub unsafe extern "C" fn R_ReadConsole(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WriteConsole(buf: *const c_char, len: c_int) {
+pub unsafe fn R_WriteConsole(buf: *const c_char, len: c_int) {
     unsafe {
         if let Some(f) = ptr_R_WriteConsole.with(|v| v.get()) {
             f(buf, len);
@@ -222,8 +220,7 @@ pub unsafe extern "C" fn R_WriteConsole(buf: *const c_char, len: c_int) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+pub unsafe fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     unsafe {
         if let Some(f) = ptr_R_WriteConsole.with(|v| v.get()) {
             f(buf, len);
@@ -233,8 +230,7 @@ pub unsafe extern "C" fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype:
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ResetConsole() {
+pub unsafe fn R_ResetConsole() {
     unsafe {
         if let Some(f) = ptr_R_ResetConsole.with(|v| v.get()) {
             f();
@@ -242,8 +238,7 @@ pub unsafe extern "C" fn R_ResetConsole() {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FlushConsole() {
+pub unsafe fn R_FlushConsole() {
     unsafe {
         if let Some(f) = ptr_R_FlushConsole.with(|v| v.get()) {
             f();
@@ -252,7 +247,7 @@ pub unsafe extern "C" fn R_FlushConsole() {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ClearerrConsole() {
+pub unsafe fn R_ClearerrConsole() {
     unsafe {
         if let Some(f) = ptr_R_ClearerrConsole.with(|v| v.get()) {
             f();
@@ -260,8 +255,7 @@ pub unsafe extern "C" fn R_ClearerrConsole() {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Busy(which: c_int) {
+pub unsafe fn R_Busy(which: c_int) {
     unsafe {
         if let Some(f) = ptr_R_Busy.with(|v| v.get()) {
             f(which);
@@ -269,8 +263,7 @@ pub unsafe extern "C" fn R_Busy(which: c_int) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
+pub unsafe fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int) {
     unsafe {
         if let Some(f) = ptr_R_CleanUp.with(|v| v.get()) {
             f(saveact, status, runLast);
@@ -279,8 +272,7 @@ pub unsafe extern "C" fn R_CleanUp(saveact: c_int, status: c_int, runLast: c_int
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ShowFiles(
+pub unsafe fn R_ShowFiles(
     nfile: c_int,
     file: *const *const c_char,
     headers: *const *const c_char,
@@ -297,8 +289,7 @@ pub unsafe extern "C" fn R_ShowFiles(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
+pub unsafe fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) -> c_int {
     unsafe {
         if let Some(f) = ptr_R_ChooseFile.with(|v| v.get()) {
             f(new, buf, len)
@@ -308,8 +299,7 @@ pub unsafe extern "C" fn R_ChooseFile(new: c_int, buf: *mut c_char, len: c_int) 
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_EditFiles(
+pub unsafe fn R_EditFiles(
     nfile: c_int,
     file: *const *const c_char,
     title: *const *const c_char,
@@ -328,8 +318,7 @@ pub unsafe extern "C" fn R_EditFiles(
 // R_setupHistory
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setupHistory() {
+pub unsafe fn R_setupHistory() {
     let histfile = env::var("R_HISTFILE");
     match histfile {
         Ok(ref s) if !s.is_empty() => {
@@ -343,17 +332,17 @@ pub unsafe extern "C" fn R_setupHistory() {
     R_HistorySize.with(|c| c.set(512));
     if let Ok(s) = env::var("R_HISTSIZE")
         && let Ok(val) = s.parse::<c_int>()
-            && val >= 0 {
-                R_HistorySize.with(|c| c.set(val));
-            }
+        && val >= 0
+    {
+        R_HistorySize.with(|c| c.set(val));
+    }
 }
 
 // ---------------------------------------------------------------------------
 // R_GetFDLimit / R_EnsureFDLimit
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetFDLimit() -> c_int {
+pub unsafe fn R_GetFDLimit() -> c_int {
     unsafe {
         #[cfg(all(unix, not(target_os = "macos")))]
         {
@@ -382,7 +371,7 @@ pub unsafe extern "C" fn R_GetFDLimit() -> c_int {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_EnsureFDLimit(desired: c_int) -> c_int {
+pub unsafe fn R_EnsureFDLimit(desired: c_int) -> c_int {
     unsafe {
         #[cfg(unix)]
         {
@@ -485,8 +474,7 @@ unsafe fn fpu_setup(_start: c_int) {}
 
 thread_local! { static num_initialized: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
+pub unsafe fn Rf_initialize_R(ac: c_int, av: *mut *mut c_char) -> c_int {
     unsafe {
         if num_initialized.with(|v| v.get()) != 0 {
             eprintln!("R is already initialized\n");

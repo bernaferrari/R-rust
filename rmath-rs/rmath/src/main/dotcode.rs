@@ -577,8 +577,7 @@ pub unsafe fn do_isloaded(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // R_dotCallFn
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
+pub unsafe fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
     unsafe {
         let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
         let mut fun: DL_FUNC = None;
@@ -591,8 +590,7 @@ pub unsafe extern "C" fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_
 // R_doDotCall -- dispatch .Call with 0..65 arguments
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_doDotCall(
+pub unsafe fn R_doDotCall(
     fun: DL_FUNC,
     nargs: c_int,
     cargs: *mut SEXP,

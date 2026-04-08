@@ -124,6 +124,7 @@ unsafe fn isDataFrame(x: SEXP) -> bool {
 // Helper: isLanguage, isSymbol, isMatrix
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn isLanguage(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::LANGSXP.0
 }
@@ -175,6 +176,7 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 // Local SETCADR / SETCADDR helpers
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn SETCADR(x: SEXP, y: SEXP) {
     if !x.is_null() {
         let cdr = CDR(x);
@@ -184,6 +186,7 @@ unsafe fn SETCADR(x: SEXP, y: SEXP) {
     }
 }
 
+#[unsafe(no_mangle)]
 unsafe fn SETCADDR(x: SEXP, y: SEXP) {
     if !x.is_null() {
         let cddr = CDR(CDR(x));
@@ -197,8 +200,7 @@ unsafe fn SETCADDR(x: SEXP, y: SEXP) {
 // model.frame
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     args = CDR(args);
     let terms = CAR(args);
     args = CDR(args);
@@ -476,8 +478,7 @@ unsafe fn ColumnNames(x: SEXP) -> SEXP {
 // modelmatrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     args = CDR(args);
 
     let terms = CAR(args);
@@ -829,8 +830,7 @@ pub unsafe extern "C" fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SE
 // updateform
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn updateform(old: SEXP, new_: SEXP) -> SEXP {
+pub unsafe fn updateform(old: SEXP, new_: SEXP) -> SEXP {
     let tildeSymbol = Rf_install("~");
     let plusSymbol = Rf_install("+");
     let minusSymbol = Rf_install("-");
@@ -1395,8 +1395,7 @@ unsafe fn TermCode(termlist: SEXP, thisterm: SEXP, whichbit: isize, term: SEXP) 
 // termsform - main entry point
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn termsform(args: SEXP) -> SEXP {
+pub unsafe fn termsform(args: SEXP) -> SEXP {
     let args = CDR(args);
 
     let tildeSymbol = Rf_install("~");

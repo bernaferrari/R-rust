@@ -279,8 +279,7 @@ pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get all attributes as a named list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getAttributes(x: SEXP) -> SEXP {
+pub unsafe fn R_getAttributes(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() {
             return R_NilValue();

@@ -5,16 +5,13 @@
 
 use std::os::raw::c_int;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn addstatusbar() -> c_int {
+pub unsafe fn addstatusbar() -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn delstatusbar() -> c_int {
+pub unsafe fn delstatusbar() -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setstatus(_text: *const std::os::raw::c_char) { /* TODO */
+pub unsafe fn setstatus(_text: *const std::os::raw::c_char) { /* TODO */
 }
 
 pub unsafe fn updatestatus(_text: *const std::os::raw::c_char) { /* TODO */

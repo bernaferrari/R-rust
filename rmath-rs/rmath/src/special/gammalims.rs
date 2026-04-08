@@ -23,8 +23,7 @@
 ///
 /// # Safety
 /// `xmin` and `xmax` must be valid non-null pointers to f64.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gammalims(xmin: *mut f64, xmax: *mut f64) {
+pub unsafe fn gammalims(xmin: *mut f64, xmax: *mut f64) {
     unsafe {
         if xmin.is_null() || xmax.is_null() {
             return;

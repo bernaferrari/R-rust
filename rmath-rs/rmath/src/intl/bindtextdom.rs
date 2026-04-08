@@ -266,8 +266,7 @@ unsafe fn set_binding_values(
 /// rather than in the system locale data base.
 ///
 /// Returns the current dirname for the domain (may be the newly set value).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_bindtextdomain(
+pub unsafe fn libintl_bindtextdomain(
     domainname: *const c_char,
     dirname: *const c_char,
 ) -> *mut c_char {
@@ -282,8 +281,7 @@ pub unsafe extern "C" fn libintl_bindtextdomain(
 /// message catalog will be returned.
 ///
 /// Returns the current codeset for the domain (may be the newly set value).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_bind_textdomain_codeset(
+pub unsafe fn libintl_bind_textdomain_codeset(
     domainname: *const c_char,
     codeset: *const c_char,
 ) -> *mut c_char {

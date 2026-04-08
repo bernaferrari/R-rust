@@ -339,18 +339,15 @@ pub fn rnt_inner(df: f64, ncp: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnt(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnt_inner(x, df, ncp, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dnt(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnt_inner(x, df, ncp, give_log != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnt(
     t: c_double,
     df: c_double,
@@ -361,7 +358,6 @@ pub extern "C" fn Rf_pnt(
     pnt_inner(t, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn pnt(
     t: c_double,
     df: c_double,
@@ -372,7 +368,6 @@ pub extern "C" fn pnt(
     pnt_inner(t, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnt(
     p: c_double,
     df: c_double,
@@ -383,7 +378,6 @@ pub extern "C" fn Rf_qnt(
     qnt_inner(p, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn qnt(
     p: c_double,
     df: c_double,
@@ -395,13 +389,11 @@ pub extern "C" fn qnt(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnt(df: c_double, ncp: c_double) -> c_double {
     rnt_inner(df, ncp)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rnt(df: c_double, ncp: c_double) -> c_double {
     rnt_inner(df, ncp)
 }

@@ -1355,8 +1355,7 @@ fn strcmpi(s1: &str, s2: &str) -> i32 {
 }
 
 /// Look up a colour by name. Returns Transparent if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nametorgb(name: *const c_char) -> rgb {
+pub unsafe fn nametorgb(name: *const c_char) -> rgb {
     unsafe {
         if name.is_null() {
             return Transparent;
@@ -1393,8 +1392,7 @@ pub unsafe extern "C" fn nametorgb(name: *const c_char) -> rgb {
 
 /// Get the name of a colour. Returns "" if not found.
 /// Prefers names that are not "gray100" or "grey100".
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rgbtoname(in_val: rgb) -> *const c_char {
+pub unsafe fn rgbtoname(in_val: rgb) -> *const c_char {
     thread_local! { static NAME_BUF: Cell<[c_char; 256]> = Cell::new([0; 256]); }
 
     for i in 0..RGBCOLORS {
@@ -1424,8 +1422,7 @@ pub unsafe extern "C" fn rgbtoname(in_val: rgb) -> *const c_char {
 
 /// Get the index of a colour in the named colour table.
 /// Returns -1 if not found.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rgbtonum(in_val: rgb) -> c_int {
+pub unsafe fn rgbtonum(in_val: rgb) -> c_int {
     for i in 0..RGBCOLORS {
         let v = &RgbValue[i];
         let rgb_val = rgb_make(v[0] as c_ulong, v[1] as c_ulong, v[2] as c_ulong);
@@ -1437,23 +1434,20 @@ pub unsafe extern "C" fn rgbtonum(in_val: rgb) -> c_int {
 }
 
 /// Get a system colour. Platform-specific stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn myGetSysColor(_x: c_int) -> rgb {
+pub unsafe fn myGetSysColor(_x: c_int) -> rgb {
     // TODO: Platform-specific implementation
     White
 }
 
 /// Get the dialog background colour.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dialog_bg() -> rgb {
+pub unsafe fn dialog_bg() -> rgb {
     unsafe {
         myGetSysColor(0) // COLOR_BTNFACE
     }
 }
 
 /// Darken a colour.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn darker(pixel: rgb) -> rgb {
+pub unsafe fn darker(pixel: rgb) -> rgb {
     if getalpha(pixel) > 0x7F {
         return Transparent;
     }
@@ -1464,8 +1458,7 @@ pub unsafe extern "C" fn darker(pixel: rgb) -> rgb {
 }
 
 /// Brighten a colour.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn brighter(pixel: rgb) -> rgb {
+pub unsafe fn brighter(pixel: rgb) -> rgb {
     if getalpha(pixel) > 0x7F {
         return Transparent;
     }

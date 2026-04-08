@@ -95,8 +95,7 @@ unsafe fn burg(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Burg(x: SEXP, order: SEXP) -> SEXP {
+pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
     let n = LENGTH(x);
     let pmax = asInteger(order);

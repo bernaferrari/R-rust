@@ -84,8 +84,7 @@ unsafe fn remove_object(obj: object) {
 }
 
 /// Bring an object to the front of its sibling list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn move_to_front(obj: object) {
+pub unsafe fn move_to_front(obj: object) {
     unsafe {
         if obj.is_null() {
             return;
@@ -98,8 +97,7 @@ pub unsafe extern "C" fn move_to_front(obj: object) {
 }
 
 /// Call a function on all objects in a sibling list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn apply_to_list(first: object, fn_: actionfn) {
+pub unsafe fn apply_to_list(first: object, fn_: actionfn) {
     unsafe {
         if first.is_null() || fn_.is_none() {
             return;
@@ -117,8 +115,7 @@ pub unsafe extern "C" fn apply_to_list(first: object, fn_: actionfn) {
 }
 
 /// Decrease the reference count of an object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn decrease_refcount(obj: object) {
+pub unsafe fn decrease_refcount(obj: object) {
     unsafe {
         if obj.is_null() {
             return;
@@ -153,8 +150,7 @@ pub unsafe extern "C" fn decrease_refcount(obj: object) {
 }
 
 /// Increase the reference count of an object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn increase_refcount(obj: object) {
+pub unsafe fn increase_refcount(obj: object) {
     unsafe {
         if !obj.is_null() && (*obj).refcount >= 0 {
             (*obj).refcount += 1;
@@ -163,8 +159,7 @@ pub unsafe extern "C" fn increase_refcount(obj: object) {
 }
 
 /// Protect an object from deletion by setting refcount to -1.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn protect_object(obj: object) {
+pub unsafe fn protect_object(obj: object) {
     unsafe {
         if !obj.is_null() {
             (*obj).refcount = -1;
@@ -256,8 +251,7 @@ unsafe fn free_object(obj: object) {
 }
 
 /// Traverse the deletion list and delete every object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn deletion_traversal() {
+pub unsafe fn deletion_traversal() {
     unsafe {
         thread_local! { static LEVEL: Cell<c_int> = Cell::new(0); }
         LEVEL.with(|v| v.set(v.get() + 1));
@@ -279,8 +273,7 @@ pub unsafe extern "C" fn deletion_traversal() {
 }
 
 /// Create and return a new object with a refcount of 1.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
+pub unsafe fn new_object(kind: c_int, handle: *mut c_void, parent: object) -> object {
     unsafe {
         let obj = memory::memalloc(std::mem::size_of::<ObjInfo>() as i64) as object;
         if obj.is_null() {
@@ -324,8 +317,7 @@ unsafe fn match_object(obj: object, handle: *mut c_void, id: c_int, key: c_int) 
 }
 
 /// Perform a multi-child tree traversal to find an object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tree_search(
+pub unsafe fn tree_search(
     top: object,
     handle: *mut c_void,
     id: c_int,
@@ -372,14 +364,12 @@ pub unsafe extern "C" fn tree_search(
 }
 
 /// Find an object in the tree.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
+pub unsafe fn find_object(handle: *mut c_void, id: c_int, key: c_int) -> object {
     unsafe { tree_search(BASE_OBJECT.with(|v| v.get()), handle, id, key) }
 }
 
 /// Remove a menu item from the hierarchy.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn remove_menu_item(obj: object) {
+pub unsafe fn remove_menu_item(obj: object) {
     unsafe {
         if obj.is_null() {
             return;
@@ -407,14 +397,12 @@ pub unsafe fn finish_objects() {
 }
 
 /// Find next valid sibling (visible, enabled, not a label).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn find_next_valid_sibling(obj: object) -> object {
+pub unsafe fn find_next_valid_sibling(obj: object) -> object {
     unsafe { find_valid_sibling(obj, true) }
 }
 
 /// Find previous valid sibling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn find_prev_valid_sibling(obj: object) -> object {
+pub unsafe fn find_prev_valid_sibling(obj: object) -> object {
     unsafe { find_valid_sibling(obj, false) }
 }
 
@@ -443,8 +431,7 @@ unsafe fn find_valid_sibling(obj: object, next_dir: bool) -> object {
 }
 
 /// Delete an object (public API).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn delobj(obj: objptr) {
+pub unsafe fn delobj(obj: objptr) {
     unsafe {
         if !obj.is_null() {
             decrease_refcount(obj);

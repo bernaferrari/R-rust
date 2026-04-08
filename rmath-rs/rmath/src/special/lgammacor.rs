@@ -56,7 +56,6 @@ pub(crate) fn lgammacor(x: f64) -> f64 {
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammacor(x: f64) -> f64 {
     lgammacor(x)
 }

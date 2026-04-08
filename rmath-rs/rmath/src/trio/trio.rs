@@ -2482,8 +2482,7 @@ pub unsafe fn trio_sscanf_fmt(buffer: *const c_char, format: &str, args: &mut Fo
 // ============================================================================
 
 /// String match (case-insensitive wildcard matching).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn trio_string_match(string: *const c_char, pattern: *const c_char) -> c_int {
+pub unsafe fn trio_string_match(string: *const c_char, pattern: *const c_char) -> c_int {
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let p = std::ffi::CStr::from_ptr(pattern).to_str().unwrap_or("");
@@ -2492,11 +2491,7 @@ pub unsafe extern "C" fn trio_string_match(string: *const c_char, pattern: *cons
 }
 
 /// String contains (substring search).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn trio_string_contains(
-    string: *const c_char,
-    substring: *const c_char,
-) -> c_int {
+pub unsafe fn trio_string_contains(string: *const c_char, substring: *const c_char) -> c_int {
     unsafe {
         let s = std::ffi::CStr::from_ptr(string).to_str().unwrap_or("");
         let sub = std::ffi::CStr::from_ptr(substring).to_str().unwrap_or("");

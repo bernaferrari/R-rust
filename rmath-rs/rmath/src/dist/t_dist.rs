@@ -437,49 +437,41 @@ pub fn rt_inner(df: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dt(x: f64, n: f64, give_log: i32) -> f64 {
     dt_inner(x, n, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dt(x: f64, n: f64, give_log: i32) -> f64 {
     dt_inner(x, n, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pt(x: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     pt_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pt(x: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     pt_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qt(p: f64, ndf: f64, lower_tail: i32, log_p: i32) -> f64 {
     qt_inner(p, ndf, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qt(p: f64, ndf: f64, lower_tail: i32, log_p: i32) -> f64 {
     qt_inner(p, ndf, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rt(df: f64) -> f64 {
     rt_inner(df)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rt(df: f64) -> f64 {
     rt_inner(df)
 }

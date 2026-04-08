@@ -136,8 +136,7 @@ thread_local! { pub static L_nullLayoutMode_ptr: Cell<c_int> = Cell::new(0); }
  * unit() -- construct a unit object
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unit(value: c_double, unit_id: c_int) -> SEXP {
+pub unsafe fn unit(value: c_double, unit_id: c_int) -> SEXP {
     let units = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 1));
     SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
     let u = VECTOR_ELT(units, 0);
@@ -173,8 +172,7 @@ unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
  * unitScalar -- extract underlying scalar unit list structure
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
+pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
     let l = LENGTH(unit);
     if l == 0 {
         // error in C, just return NilValue in stub
@@ -213,8 +211,7 @@ pub unsafe extern "C" fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
  * unitValue -- get value of unit at index
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unitValue(unit: SEXP, index: c_int) -> c_double {
+pub unsafe fn unitValue(unit: SEXP, index: c_int) -> c_double {
     if isSimpleUnit(unit) {
         return *REAL(unit).add((index % LENGTH(unit)) as usize);
     }
@@ -225,8 +222,7 @@ pub unsafe extern "C" fn unitValue(unit: SEXP, index: c_int) -> c_double {
  * unitUnit -- get unit type at index
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unitUnit(unit: SEXP, index: c_int) -> c_int {
+pub unsafe fn unitUnit(unit: SEXP, index: c_int) -> c_int {
     if isSimpleUnit(unit) {
         let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
         if TYPEOF(unit_attr) == SEXPTYPE::INTSXP.0 && LENGTH(unit_attr) > 0 {
@@ -241,8 +237,7 @@ pub unsafe extern "C" fn unitUnit(unit: SEXP, index: c_int) -> c_int {
  * unitData -- get data component of unit at index
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unitData(unit: SEXP, index: c_int) -> SEXP {
+pub unsafe fn unitData(unit: SEXP, index: c_int) -> SEXP {
     if isSimpleUnit(unit) {
         return R_NilValue();
     }
@@ -253,8 +248,7 @@ pub unsafe extern "C" fn unitData(unit: SEXP, index: c_int) -> SEXP {
  * unitLength -- get length of a unit object
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unitLength(u: SEXP) -> c_int {
+pub unsafe fn unitLength(u: SEXP) -> c_int {
     if isNewUnit(u) {
         return LENGTH(u);
     }
@@ -265,8 +259,7 @@ pub unsafe extern "C" fn unitLength(u: SEXP) -> c_int {
  * pureNullUnitValue -- evaluate null unit value
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
+pub unsafe fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
     let mut result: c_double = 0.0;
     let u = unitUnit(unit, index);
     let value = unitValue(unit, index);
@@ -315,8 +308,7 @@ pub unsafe extern "C" fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double
  * pureNullUnit -- check if a unit is "pure null"
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
+pub unsafe fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
     let u = unitUnit(unit, index);
     if isArith(u) {
         let data = unitData(unit, index);
@@ -368,8 +360,7 @@ unsafe fn evaluateNullUnit(
  * transformX -- transform x unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformX(
+pub unsafe fn transformX(
     x: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -387,8 +378,7 @@ pub unsafe extern "C" fn transformX(
  * transformY -- transform y unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformY(
+pub unsafe fn transformY(
     y: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -406,8 +396,7 @@ pub unsafe extern "C" fn transformY(
  * transformWidth -- transform width unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformWidth(
+pub unsafe fn transformWidth(
     width: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -425,8 +414,7 @@ pub unsafe extern "C" fn transformWidth(
  * transformHeight -- transform height unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformHeight(
+pub unsafe fn transformHeight(
     height: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -444,8 +432,7 @@ pub unsafe extern "C" fn transformHeight(
  * transformXtoINCHES -- transform x unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformXtoINCHES(
+pub unsafe fn transformXtoINCHES(
     x: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -491,8 +478,7 @@ pub unsafe extern "C" fn transformXtoINCHES(
  * transformYtoINCHES -- transform y unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformYtoINCHES(
+pub unsafe fn transformYtoINCHES(
     y: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -528,8 +514,7 @@ pub unsafe extern "C" fn transformYtoINCHES(
  * transformWidthtoINCHES -- transform width unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformWidthtoINCHES(
+pub unsafe fn transformWidthtoINCHES(
     w: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -565,8 +550,7 @@ pub unsafe extern "C" fn transformWidthtoINCHES(
  * transformHeighttoINCHES -- transform height unit to inches (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformHeighttoINCHES(
+pub unsafe fn transformHeighttoINCHES(
     h: SEXP,
     index: c_int,
     vpc: LViewportContext,
@@ -602,8 +586,7 @@ pub unsafe extern "C" fn transformHeighttoINCHES(
  * transformLocn -- transform x,y location (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformLocn(
+pub unsafe fn transformLocn(
     x: SEXP,
     y: SEXP,
     index: c_int,
@@ -624,8 +607,7 @@ pub unsafe extern "C" fn transformLocn(
  * transformDimn -- transform width,height dimensions (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformDimn(
+pub unsafe fn transformDimn(
     w: SEXP,
     h: SEXP,
     index: c_int,
@@ -646,8 +628,7 @@ pub unsafe extern "C" fn transformDimn(
  * transformXYFromINCHES -- convert inches to specified unit (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformXYFromINCHES(
+pub unsafe fn transformXYFromINCHES(
     location: c_double,
     unit_id: c_int,
     scalemin: c_double,
@@ -678,8 +659,7 @@ pub unsafe extern "C" fn transformXYFromINCHES(
  * transformWidthHeightFromINCHES -- convert inches to width/height unit (STUB)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformWidthHeightFromINCHES(
+pub unsafe fn transformWidthHeightFromINCHES(
     value: c_double,
     unit_id: c_int,
     scalemin: c_double,
@@ -706,8 +686,7 @@ pub unsafe extern "C" fn transformWidthHeightFromINCHES(
  * NPC conversion helpers
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformXYtoNPC(
+pub unsafe fn transformXYtoNPC(
     x: c_double,
     from: c_int,
     min: c_double,
@@ -723,8 +702,7 @@ pub unsafe extern "C" fn transformXYtoNPC(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformWHtoNPC(
+pub unsafe fn transformWHtoNPC(
     x: c_double,
     from: c_int,
     min: c_double,
@@ -740,8 +718,7 @@ pub unsafe extern "C" fn transformWHtoNPC(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformXYfromNPC(
+pub unsafe fn transformXYfromNPC(
     x: c_double,
     to: c_int,
     min: c_double,
@@ -757,8 +734,7 @@ pub unsafe extern "C" fn transformXYfromNPC(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn transformWHfromNPC(
+pub unsafe fn transformWHfromNPC(
     x: c_double,
     to: c_int,
     min: c_double,
@@ -778,62 +754,52 @@ pub unsafe extern "C" fn transformWHfromNPC(
  * R-callable unit construction/validation functions (STUBs)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn validUnits(_units: SEXP) -> SEXP {
+pub unsafe fn validUnits(_units: SEXP) -> SEXP {
     // STUB: should validate unit structure
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn constructUnits(_amount: SEXP, _data: SEXP, _unit: SEXP) -> SEXP {
+pub unsafe fn constructUnits(_amount: SEXP, _data: SEXP, _unit: SEXP) -> SEXP {
     // STUB: should construct unit objects
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn asUnit(_simpleUnit: SEXP) -> SEXP {
+pub unsafe fn asUnit(_simpleUnit: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn conformingUnits(_unitList: SEXP) -> SEXP {
+pub unsafe fn conformingUnits(_unitList: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchUnit(_units: SEXP, _unit: SEXP) -> SEXP {
+pub unsafe fn matchUnit(_units: SEXP, _unit: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn addUnits(_u1: SEXP, _u2: SEXP) -> SEXP {
+pub unsafe fn addUnits(_u1: SEXP, _u2: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn multUnits(_units: SEXP, _values: SEXP) -> SEXP {
+pub unsafe fn multUnits(_units: SEXP, _values: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn flipUnits(_units: SEXP) -> SEXP {
+pub unsafe fn flipUnits(_units: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn absoluteUnits(_units: SEXP) -> SEXP {
+pub unsafe fn absoluteUnits(_units: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn summaryUnits(_units: SEXP, _op_type: SEXP) -> SEXP {
+pub unsafe fn summaryUnits(_units: SEXP, _op_type: SEXP) -> SEXP {
     // STUB
     R_NilValue()
 }

@@ -18,8 +18,7 @@ use super::mem;
 
 // ===== tre_fill_pmatch =====
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_fill_pmatch(
+pub unsafe fn tre_fill_pmatch(
     nmatch: usize,
     pmatch: *mut regmatch_t,
     cflags: c_int,
@@ -164,8 +163,7 @@ unsafe fn tre_match(
 
 // ===== regcomp functions =====
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regncomp(
+pub unsafe fn tre_regncomp(
     preg: *mut regex_t,
     regex: *const c_char,
     n: usize,
@@ -190,8 +188,7 @@ pub unsafe extern "C" fn tre_regncomp(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regncompb(
+pub unsafe fn tre_regncompb(
     preg: *mut regex_t,
     regex: *const c_char,
     n: usize,
@@ -214,12 +211,7 @@ pub unsafe extern "C" fn tre_regncompb(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regcomp(
-    preg: *mut regex_t,
-    regex: *const c_char,
-    cflags: c_int,
-) -> c_int {
+pub unsafe fn tre_regcomp(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
     unsafe {
         let n: usize = if !regex.is_null() {
             let mut len: isize = 0;
@@ -234,12 +226,7 @@ pub unsafe extern "C" fn tre_regcomp(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regcompb(
-    preg: *mut regex_t,
-    regex: *const c_char,
-    cflags: c_int,
-) -> c_int {
+pub unsafe fn tre_regcompb(preg: *mut regex_t, regex: *const c_char, cflags: c_int) -> c_int {
     unsafe {
         let n: usize = if !regex.is_null() {
             let mut len: isize = 0;
@@ -269,8 +256,7 @@ pub unsafe extern "C" fn tre_regcompb(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regfree(preg: *mut regex_t) {
+pub unsafe fn tre_regfree(preg: *mut regex_t) {
     unsafe {
         compile::tre_free(preg);
     }
@@ -278,8 +264,7 @@ pub unsafe extern "C" fn tre_regfree(preg: *mut regex_t) {
 
 // ===== regexec functions =====
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regnexec(
+pub unsafe fn tre_regnexec(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -301,8 +286,7 @@ pub unsafe extern "C" fn tre_regnexec(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regexec(
+pub unsafe fn tre_regexec(
     preg: *const regex_t,
     str: *const c_char,
     nmatch: usize,
@@ -312,8 +296,7 @@ pub unsafe extern "C" fn tre_regexec(
     unsafe { tre_regnexec(preg, str, usize::MAX, nmatch, pmatch, eflags) }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regexecb(
+pub unsafe fn tre_regexecb(
     preg: *const regex_t,
     str: *const c_char,
     nmatch: usize,
@@ -334,8 +317,7 @@ pub unsafe extern "C" fn tre_regexecb(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regnexecb(
+pub unsafe fn tre_regnexecb(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -376,8 +358,7 @@ static TRE_ERROR_MESSAGES: [&str; 14] = [
     "Invalid use of repetition operators", // REG_BADRPT
 ];
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regerror(
+pub unsafe fn tre_regerror(
     errcode: c_int,
     preg: *const regex_t,
     errbuf: *mut c_char,
@@ -412,8 +393,7 @@ pub unsafe extern "C" fn tre_regerror(
 
 // ===== Approximate matching API =====
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regaparams_default(params: *mut regaparams_t) {
+pub unsafe fn tre_regaparams_default(params: *mut regaparams_t) {
     unsafe {
         ptr::write_bytes(params as *mut u8, 0, std::mem::size_of::<regaparams_t>());
         (*params).cost_ins = 1;
@@ -494,8 +474,7 @@ unsafe fn tre_match_approx(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_reganexec(
+pub unsafe fn tre_reganexec(
     preg: *const regex_t,
     str: *const c_char,
     len: usize,
@@ -517,8 +496,7 @@ pub unsafe extern "C" fn tre_reganexec(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regaexec(
+pub unsafe fn tre_regaexec(
     preg: *const regex_t,
     str: *const c_char,
     amatch: *mut regamatch_t,
@@ -528,8 +506,7 @@ pub unsafe extern "C" fn tre_regaexec(
     unsafe { tre_reganexec(preg, str, usize::MAX, amatch, params, eflags) }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_regaexecb(
+pub unsafe fn tre_regaexecb(
     preg: *const regex_t,
     str: *const c_char,
     amatch: *mut regamatch_t,

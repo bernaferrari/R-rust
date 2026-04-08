@@ -472,8 +472,7 @@ impl PluralParser {
 ///
 /// # Safety
 /// `arg` must be a valid pointer to a `parse_args` struct.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
+pub unsafe fn libintl_gettextparse(arg: *mut parse_args) -> c_int {
     unsafe {
         if arg.is_null() {
             return -1;

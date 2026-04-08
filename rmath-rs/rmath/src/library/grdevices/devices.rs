@@ -62,6 +62,7 @@ unsafe fn GEcurrentDevice() -> pGEDevDesc {
 }
 
 /// Stub: initialize display list for device. No-op.
+#[unsafe(no_mangle)]
 unsafe fn GEinitDisplayList(_gdd: pGEDevDesc) {
     // no-op
 }
@@ -102,6 +103,7 @@ unsafe fn GEgetDevice(_dev: c_int) -> pGEDevDesc {
 }
 
 /// Stub: capture device raster. Returns R_NilValue (unsupported).
+#[unsafe(no_mangle)]
 unsafe fn GECap(_gdd: pGEDevDesc) -> SEXP {
     R_NilValue()
 }
@@ -119,8 +121,7 @@ unsafe fn checkArity_length(args: SEXP) -> SEXP {
 }
 
 /// devcontrol(list) - enable/disable display list recording on current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devcontrol(args: SEXP) -> SEXP {
+pub unsafe fn devcontrol(args: SEXP) -> SEXP {
     let mut args = args;
     let listFlag = {
         args = CDR(args);
@@ -136,16 +137,14 @@ pub unsafe extern "C" fn devcontrol(args: SEXP) -> SEXP {
 }
 
 /// devdisplaylist() - query display list recording status on current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devdisplaylist(args: SEXP) -> SEXP {
+pub unsafe fn devdisplaylist(args: SEXP) -> SEXP {
     let _gdd = GEcurrentDevice();
     // Stub: cannot read displayListOn on void* gdd; return FALSE
     Rf_ScalarLogical(0)
 }
 
 /// devcopy(which) - copy display list from one device to another.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devcopy(args: SEXP) -> SEXP {
+pub unsafe fn devcopy(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = *INTEGER(CAR(args)).add(0) - 1;
     GEcopyDisplayList(dev_num);
@@ -153,14 +152,12 @@ pub unsafe extern "C" fn devcopy(args: SEXP) -> SEXP {
 }
 
 /// dev.cur() - return the number of the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devcur(args: SEXP) -> SEXP {
+pub unsafe fn devcur(args: SEXP) -> SEXP {
     Rf_ScalarInteger(curDevice() + 1)
 }
 
 /// dev.next(which) - return the number of the next device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devnext(args: SEXP) -> SEXP {
+pub unsafe fn devnext(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let nxt = *INTEGER(CAR(args)).add(0);
     if nxt == NA_INTEGER {
@@ -170,8 +167,7 @@ pub unsafe extern "C" fn devnext(args: SEXP) -> SEXP {
 }
 
 /// dev.prev(which) - return the number of the previous device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devprev(args: SEXP) -> SEXP {
+pub unsafe fn devprev(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let prev = *INTEGER(CAR(args)).add(0);
     if prev == NA_INTEGER {
@@ -181,8 +177,7 @@ pub unsafe extern "C" fn devprev(args: SEXP) -> SEXP {
 }
 
 /// dev.set(which) - set the specified device as the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devset(args: SEXP) -> SEXP {
+pub unsafe fn devset(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = *INTEGER(CAR(args)).add(0);
     if dev_num == NA_INTEGER {
@@ -192,8 +187,7 @@ pub unsafe extern "C" fn devset(args: SEXP) -> SEXP {
 }
 
 /// dev.off(which) - shut down the specified device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devoff(args: SEXP) -> SEXP {
+pub unsafe fn devoff(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = *INTEGER(CAR(args)).add(0);
     // Check device number is valid (64 is max num devices)
@@ -207,8 +201,7 @@ pub unsafe extern "C" fn devoff(args: SEXP) -> SEXP {
 }
 
 /// dev.size(units) - return the size of the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devsize(args: SEXP) -> SEXP {
+pub unsafe fn devsize(args: SEXP) -> SEXP {
     // Stub: GEcurrentDevice returns null, so we cannot call dd->size().
     // Return c(0, 0) as placeholder.
     let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
@@ -218,8 +211,7 @@ pub unsafe extern "C" fn devsize(args: SEXP) -> SEXP {
 }
 
 /// dev.holdflush(level) - hold/flush device output.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devholdflush(args: SEXP) -> SEXP {
+pub unsafe fn devholdflush(args: SEXP) -> SEXP {
     let mut args = args;
     args = CDR(args);
     let mut level = asInteger(CAR(args));
@@ -231,8 +223,7 @@ pub unsafe extern "C" fn devholdflush(args: SEXP) -> SEXP {
 }
 
 /// dev.capabilities() - query capabilities of the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devcap(args: SEXP) -> SEXP {
+pub unsafe fn devcap(args: SEXP) -> SEXP {
     let mut args = args;
     let capabilities;
     let trans;
@@ -362,8 +353,7 @@ pub unsafe extern "C" fn devcap(args: SEXP) -> SEXP {
 }
 
 /// dev.capture(native) - capture the current device contents as a raster.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devcapture(args: SEXP) -> SEXP {
+pub unsafe fn devcapture(args: SEXP) -> SEXP {
     let mut args = args;
     let _gdd = GEcurrentDevice();
     let mut raster;

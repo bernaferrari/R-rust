@@ -1005,7 +1005,6 @@ fn r_Samp_kind(kind: Sampletype) {
 // R scalar random generators (matching Rmath.h signatures)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_runif(a: c_double, b: c_double) -> c_double {
     if !a.is_finite() || !b.is_finite() {
         return f64::NAN;
@@ -1019,7 +1018,6 @@ pub extern "C" fn R_runif(a: c_double, b: c_double) -> c_double {
     a + (b - a) * r_unif_rand()
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
     if !sigma.is_finite() {
         return f64::NAN;
@@ -1030,107 +1028,86 @@ pub extern "C" fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
     mu + sigma * r_norm_rand()
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rbinom(n: c_double, p: c_double) -> c_double {
     crate::nmath::dist::binomial::rbinom(n, p)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rexp(rate: c_double) -> c_double {
     crate::nmath::dist::exponential::rexp(rate)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rpois(mu: c_double) -> c_double {
     crate::nmath::dist::poisson::rpois(mu)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rchisq(df: c_double) -> c_double {
     crate::nmath::dist::chisq::rchisq(df)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rgamma(shape: c_double, scale: c_double) -> c_double {
     crate::nmath::dist::gamma::rgamma(shape, scale)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rbeta(a: c_double, b: c_double) -> c_double {
     crate::nmath::dist::beta::rbeta(a, b)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rt(df: c_double) -> c_double {
     crate::nmath::dist::t_dist::rt(df)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rf(n1: c_double, n2: c_double) -> c_double {
     crate::nmath::dist::f_dist::rf(n1, n2)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rcauchy(location: c_double, scale: c_double) -> c_double {
     crate::nmath::dist::cauchy::rcauchy(location, scale)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rlnorm(meanlog: c_double, sdlog: c_double) -> c_double {
     crate::nmath::dist::lnorm::rlnorm(meanlog, sdlog)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rlogis(location: c_double, scale: c_double) -> c_double {
     crate::nmath::dist::logistic::rlogis(location, scale)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rweibull(shape: c_double, scale: c_double) -> c_double {
     crate::nmath::dist::weibull::rweibull(shape, scale)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rwilcox(m: c_double, n: c_double) -> c_double {
     crate::nmath::dist::wilcox::rwilcox(m, n)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rsignrank(n: c_double) -> c_double {
     crate::nmath::dist::signrank::rsignrank(n)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rnbinom(size: c_double, prob: c_double) -> c_double {
     crate::nmath::dist::nbinom::rnbinom(size, prob)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
     crate::nmath::dist::nbinom::rnbinom_mu(size, mu)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rnchisq(df: c_double, ncp: c_double) -> c_double {
     crate::nmath::dist::nchisq::rnchisq(df, ncp)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rhyper(nn1: c_double, nn2: c_double, kk: c_double) -> c_double {
     crate::nmath::dist::hypergeometric::rhyper(nn1, nn2, kk)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_rgeom(p: c_double) -> c_double {
     crate::nmath::dist::geometric::rgeom(p)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_unif_index(dn: c_double) -> c_double {
     r_R_unif_index(dn)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_sample_kind() -> c_int {
     r_sample_kind() as c_int
 }

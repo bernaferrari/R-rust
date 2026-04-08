@@ -234,8 +234,7 @@ unsafe fn R_minkowski(
     dist.powf(1.0 / p)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_distance(
+pub unsafe fn R_distance(
     x: *mut c_double,
     nr: *mut c_int,
     nc: *mut c_int,
@@ -335,8 +334,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
     1
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
+pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     let nr = nrows(x);
     let nc = ncols(x);
     let method = as_integer(smethod);

@@ -115,8 +115,7 @@ unsafe fn R_isHashtable(_x: SEXP) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn hashtab_Ext(args: SEXP) -> SEXP {
+pub unsafe fn hashtab_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 2);
     let _type = HT_TypeFromString(CAR(args));
     let _k = asInteger(CADR(args));
@@ -131,8 +130,7 @@ pub unsafe extern "C" fn hashtab_Ext(args: SEXP) -> SEXP {
     val
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gethash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn gethash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 3);
     let h = R_asHashtable(CAR(args));
     let key = CADR(args);
@@ -140,8 +138,7 @@ pub unsafe extern "C" fn gethash_Ext(args: SEXP) -> SEXP {
     R_gethash(h, key, nomatch)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sethash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn sethash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 3);
     let h = R_asHashtable(CAR(args));
     let key = CADR(args);
@@ -149,23 +146,20 @@ pub unsafe extern "C" fn sethash_Ext(args: SEXP) -> SEXP {
     R_sethash(h, key, value)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn remhash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn remhash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 2);
     let h = R_asHashtable(CAR(args));
     let key = CADR(args);
     Rf_ScalarLogical(R_remhash(h, key))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn numhash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn numhash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 1);
     let h = R_asHashtable(CAR(args));
     Rf_ScalarInteger(R_numhash(h))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn typhash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn typhash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 1);
     let h = R_asHashtable(CAR(args));
     match R_typhash(h) {
@@ -178,24 +172,21 @@ pub unsafe extern "C" fn typhash_Ext(args: SEXP) -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn maphash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn maphash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 2);
     let h = R_asHashtable(CAR(args));
     let fun = CADR(args);
     R_maphash(h, fun)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn clrhash_Ext(args: SEXP) -> SEXP {
+pub unsafe fn clrhash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 1);
     let h = R_asHashtable(CAR(args));
     R_clrhash(h);
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ishashtab_Ext(args: SEXP) -> SEXP {
+pub unsafe fn ishashtab_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 1);
     Rf_ScalarLogical(R_isHashtable(CAR(args)))
 }

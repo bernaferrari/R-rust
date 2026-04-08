@@ -706,8 +706,7 @@ thread_local! {
 // ---------------------------------------------------------------------------
 
 /// Get the current error buffer contents as a string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_curErrorBuf() -> *const std::os::raw::c_char {
+pub unsafe fn R_curErrorBuf() -> *const std::os::raw::c_char {
     ERRBUF.with(|buf| {
         let buf = buf.borrow();
         buf.as_ptr() as *const std::os::raw::c_char
@@ -735,8 +734,7 @@ pub fn R_SetErrmessage(s: &str) {
 }
 
 /// Set the error message buffer (C FFI).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetErrmessage_c(s: *const std::os::raw::c_char) {
+pub unsafe fn R_SetErrmessage_c(s: *const std::os::raw::c_char) {
     unsafe {
         if s.is_null() {
             return;

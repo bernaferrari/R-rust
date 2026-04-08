@@ -44,15 +44,13 @@ type pGEDevDesc = *mut c_void;
 
 /// C_strWidth -- compute the width of a string in the current device.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_strWidth(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
+pub unsafe fn C_strWidth(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
 /// C_strHeight -- compute the height of a string in the current device.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
+pub unsafe fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
@@ -62,8 +60,7 @@ pub unsafe extern "C" fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> 
 
 /// C_text -- draw text on the plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_text(
+pub unsafe fn C_text(
     _x: SEXP,
     _y: SEXP,
     _labels: SEXP,
@@ -80,8 +77,7 @@ pub unsafe extern "C" fn C_text(
 
 /// C_mtext -- draw text in the margins of the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_mtext(
+pub unsafe fn C_mtext(
     _text: SEXP,
     _side: SEXP,
     _line: SEXP,
@@ -98,8 +94,7 @@ pub unsafe extern "C" fn C_mtext(
 
 /// C_title -- add a title to the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_title(
+pub unsafe fn C_title(
     _main: SEXP,
     _sub: SEXP,
     _xlab: SEXP,
@@ -119,8 +114,7 @@ pub unsafe extern "C" fn C_title(
 
 /// C_axis -- draw an axis on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_axis(
+pub unsafe fn C_axis(
     _side: SEXP,
     _at: SEXP,
     _labels: SEXP,
@@ -142,8 +136,7 @@ pub unsafe extern "C" fn C_axis(
 
 /// C_box -- draw a box around the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_box(
+pub unsafe fn C_box(
     _which: SEXP,
     _lty: SEXP,
     _lwd: SEXP,
@@ -159,8 +152,7 @@ pub unsafe extern "C" fn C_box(
 
 /// C_arrows -- draw arrows between pairs of points.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_arrows(
+pub unsafe fn C_arrows(
     _x1: SEXP,
     _y1: SEXP,
     _x2: SEXP,
@@ -177,8 +169,7 @@ pub unsafe extern "C" fn C_arrows(
 
 /// C_segments -- draw line segments between pairs of points.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_segments(
+pub unsafe fn C_segments(
     _x1: SEXP,
     _y1: SEXP,
     _x2: SEXP,
@@ -192,8 +183,7 @@ pub unsafe extern "C" fn C_segments(
 
 /// C_abline -- add a line (or lines) to the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_abline(
+pub unsafe fn C_abline(
     _a: SEXP,
     _b: SEXP,
     _h: SEXP,
@@ -212,8 +202,7 @@ pub unsafe extern "C" fn C_abline(
 
 /// C_rect -- draw rectangles on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_rect(
+pub unsafe fn C_rect(
     _xleft: SEXP,
     _ybottom: SEXP,
     _xright: SEXP,
@@ -230,8 +219,7 @@ pub unsafe extern "C" fn C_rect(
 
 /// C_polygon -- draw a polygon on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_polygon(
+pub unsafe fn C_polygon(
     _x: SEXP,
     _y: SEXP,
     _density: SEXP,
@@ -246,8 +234,7 @@ pub unsafe extern "C" fn C_polygon(
 
 /// C_polypath -- draw a path (possibly with holes) on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_polypath(
+pub unsafe fn C_polypath(
     _x: SEXP,
     _y: SEXP,
     _perimeter: SEXP,
@@ -262,8 +249,7 @@ pub unsafe extern "C" fn C_polypath(
 
 /// C_xspline -- draw an X-spline (smooth curve) on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_xspline(
+pub unsafe fn C_xspline(
     _x: SEXP,
     _y: SEXP,
     _s: SEXP,
@@ -283,8 +269,7 @@ pub unsafe extern "C" fn C_xspline(
 
 /// C_symbols -- draw plotting symbols on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_symbols(
+pub unsafe fn C_symbols(
     _x: SEXP,
     _y: SEXP,
     _inches: SEXP,
@@ -309,8 +294,7 @@ pub unsafe extern "C" fn C_symbols(
 
 /// C_locator -- identify points on the plot interactively.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_locator(
+pub unsafe fn C_locator(
     _call: SEXP,
     _untyped: SEXP,
     _n: SEXP,
@@ -324,8 +308,7 @@ pub unsafe extern "C" fn C_locator(
 
 /// C_identify -- identify points on the plot interactively.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_identify(
+pub unsafe fn C_identify(
     _call: SEXP,
     _x: SEXP,
     _y: SEXP,
@@ -346,8 +329,7 @@ pub unsafe extern "C" fn C_identify(
 
 /// C_clip -- set clipping region on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_clip(_x1: SEXP, _y1: SEXP, _x2: SEXP, _y2: SEXP) -> SEXP {
+pub unsafe fn C_clip(_x1: SEXP, _y1: SEXP, _x2: SEXP, _y2: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -357,8 +339,7 @@ pub unsafe extern "C" fn C_clip(_x1: SEXP, _y1: SEXP, _x2: SEXP, _y2: SEXP) -> S
 
 /// C_plot_window -- set up the plot window (plot.new() / frame()).
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_plot_window(
+pub unsafe fn C_plot_window(
     _xlim: SEXP,
     _ylim: SEXP,
     _log: SEXP,
@@ -371,8 +352,7 @@ pub unsafe extern "C" fn C_plot_window(
 
 /// C_plot_xy -- set up the plot coordinates and draw the axes/frame.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_plot_xy(
+pub unsafe fn C_plot_xy(
     _x: SEXP,
     _y: SEXP,
     _type_: SEXP,
@@ -397,8 +377,7 @@ pub unsafe extern "C" fn C_plot_xy(
 
 /// C_raster -- draw a raster image on the plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_raster(
+pub unsafe fn C_raster(
     _x: SEXP,
     _y: SEXP,
     _width: SEXP,
@@ -415,8 +394,7 @@ pub unsafe extern "C" fn C_raster(
 
 /// C_grid -- draw a grid on the current plot.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_grid(_nx: SEXP, _ny: SEXP, _col: SEXP, _lty: SEXP, _lwd: SEXP) -> SEXP {
+pub unsafe fn C_grid(_nx: SEXP, _ny: SEXP, _col: SEXP, _lty: SEXP, _lwd: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -426,8 +404,7 @@ pub unsafe extern "C" fn C_grid(_nx: SEXP, _ny: SEXP, _col: SEXP, _lty: SEXP, _l
 
 /// C_contourLines -- compute contour lines.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_contourLines(_x: SEXP, _y: SEXP, _z: SEXP, _levels: SEXP) -> SEXP {
+pub unsafe fn C_contourLines(_x: SEXP, _y: SEXP, _z: SEXP, _levels: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -437,28 +414,24 @@ pub unsafe extern "C" fn C_contourLines(_x: SEXP, _y: SEXP, _z: SEXP, _levels: S
 
 /// C_HersheyStroke -- get the stroke for a Hershey glyph.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_HersheyStroke(_which: SEXP, _index: SEXP) -> SEXP {
+pub unsafe fn C_HersheyStroke(_which: SEXP, _index: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// C_HersheyWidth -- get the width of a Hershey glyph.
 /// Stub: returns 0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_HersheyWidth(_which: SEXP, _index: SEXP) -> c_double {
+pub unsafe fn C_HersheyWidth(_which: SEXP, _index: SEXP) -> c_double {
     0.0
 }
 
 /// C_HersheyList -- list all available Hershey fonts and glyphs.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_HersheyList() -> SEXP {
+pub unsafe fn C_HersheyList() -> SEXP {
     R_NilValue()
 }
 
 /// C_HersheyGlyph -- get a Hershey glyph as a character string.
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_HersheyGlyph(_which: SEXP, _index: SEXP) -> SEXP {
+pub unsafe fn C_HersheyGlyph(_which: SEXP, _index: SEXP) -> SEXP {
     R_NilValue()
 }

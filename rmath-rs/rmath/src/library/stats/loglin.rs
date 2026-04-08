@@ -429,8 +429,7 @@ unsafe fn loglin(
 // LogLin -- R interface
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn LogLin(
+pub unsafe fn LogLin(
     dtab: SEXP,
     conf: SEXP,
     table: SEXP,

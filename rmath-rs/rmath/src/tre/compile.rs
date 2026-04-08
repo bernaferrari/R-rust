@@ -240,32 +240,31 @@ unsafe fn tre_add_tags(
                     match (*node).type_ {
                         tre_ast_type_t::LITERAL => {
                             let lit = (*node).obj as *mut tre_literal_t;
-                            if (!IS_SPECIAL(&*lit) || IS_BACKREF(&*lit))
-                                && *regset >= 0 {
-                                    if !first_pass {
-                                        status = tre_add_tag_left(mem, node, tag);
-                                        *(*tnfa).tag_directions.offset(tag as isize) =
-                                            direction as c_int;
-                                        if minimal_tag >= 0 {
-                                            let mut i = 0;
-                                            while *(*tnfa).minimal_tags.offset(i) >= 0 {
-                                                i += 1;
-                                            }
-                                            *(*tnfa).minimal_tags.offset(i) = tag;
-                                            *(*tnfa).minimal_tags.offset(i + 1) = minimal_tag;
-                                            *(*tnfa).minimal_tags.offset(i + 2) = -1;
-                                            minimal_tag = -1;
-                                            num_minimals += 1;
+                            if (!IS_SPECIAL(&*lit) || IS_BACKREF(&*lit)) && *regset >= 0 {
+                                if !first_pass {
+                                    status = tre_add_tag_left(mem, node, tag);
+                                    *(*tnfa).tag_directions.offset(tag as isize) =
+                                        direction as c_int;
+                                    if minimal_tag >= 0 {
+                                        let mut i = 0;
+                                        while *(*tnfa).minimal_tags.offset(i) >= 0 {
+                                            i += 1;
                                         }
-                                        tre_purge_regset(regset, tnfa, tag);
-                                    } else {
-                                        (*node).num_tags = 1;
+                                        *(*tnfa).minimal_tags.offset(i) = tag;
+                                        *(*tnfa).minimal_tags.offset(i + 1) = minimal_tag;
+                                        *(*tnfa).minimal_tags.offset(i + 2) = -1;
+                                        minimal_tag = -1;
+                                        num_minimals += 1;
                                     }
-                                    *regset = -1;
-                                    tag = next_tag;
-                                    num_tags += 1;
-                                    next_tag += 1;
+                                    tre_purge_regset(regset, tnfa, tag);
+                                } else {
+                                    (*node).num_tags = 1;
                                 }
+                                *regset = -1;
+                                tag = next_tag;
+                                num_tags += 1;
+                                next_tag += 1;
+                            }
                         }
                         tre_ast_type_t::CATENATION => {
                             let cat = (*node).obj as *mut tre_catenation_t;
@@ -1548,18 +1547,14 @@ unsafe fn tre_make_trans(
                             for k in 0..TRE_PARAM_LAST {
                                 *(*t).params.add(k) = TRE_PARAM_UNSET;
                                 if !(*p1.offset(pi)).params.is_null()
-                                    && *(*p1.offset(pi)).params.add(k)
-                                        != TRE_PARAM_UNSET
+                                    && *(*p1.offset(pi)).params.add(k) != TRE_PARAM_UNSET
                                 {
-                                    *(*t).params.add(k) =
-                                        *(*p1.offset(pi)).params.add(k);
+                                    *(*t).params.add(k) = *(*p1.offset(pi)).params.add(k);
                                 }
                                 if !(*p2.offset(pj)).params.is_null()
-                                    && *(*p2.offset(pj)).params.add(k)
-                                        != TRE_PARAM_UNSET
+                                    && *(*p2.offset(pj)).params.add(k) != TRE_PARAM_UNSET
                                 {
-                                    *(*t).params.add(k) =
-                                        *(*p2.offset(pj)).params.add(k);
+                                    *(*t).params.add(k) = *(*p2.offset(pj)).params.add(k);
                                 }
                             }
                         }
@@ -1665,8 +1660,7 @@ unsafe fn tre_ast_to_tnfa(
 
 // ===== Main compile function =====
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_compile(
+pub unsafe fn tre_compile(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
@@ -1953,8 +1947,7 @@ unsafe fn goto_error(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_free(preg: *mut regex_t) {
+pub unsafe fn tre_free(preg: *mut regex_t) {
     unsafe {
         if preg.is_null() {
             return;

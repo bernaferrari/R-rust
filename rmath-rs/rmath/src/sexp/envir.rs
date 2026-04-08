@@ -90,9 +90,10 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
         }
 
         if let Some(sym_val) = symbol.symvalue()
-            && sym_val.typeof_() == SEXPTYPE::SPECIALSXP {
-                return Some(sym_val);
-            }
+            && sym_val.typeof_() == SEXPTYPE::SPECIALSXP
+        {
+            return Some(sym_val);
+        }
 
         current = current.enclos()?;
     }
@@ -318,9 +319,10 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
 
     if val.typeof_() == SEXPTYPE::PROMSXP
         && let Some(expr) = val.prcode()
-            && expr == missing_arg {
-                return true;
-            }
+        && expr == missing_arg
+    {
+        return true;
+    }
 
     false
 }
@@ -415,7 +417,7 @@ pub fn exists_var_in_frame_safe(rho: Sexp<'_>, symbol: Sexp<'_>) -> bool {
 ///
 /// FFI wrapper around [`find_var_in_frame_safe`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
+pub unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
     if rho.is_null() || symbol.is_null() {
         return R_UnboundValue();
     }
@@ -431,8 +433,7 @@ pub unsafe extern "C" fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
 /// Find a variable, searching through parent environments.
 ///
 /// FFI wrapper around [`find_var_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
     if symbol.is_null() {
         return R_UnboundValue();
     }
@@ -464,8 +465,7 @@ pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
 /// Define a variable in the given environment's frame.
 ///
 /// FFI wrapper around [`define_var_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
+pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
     if rho.is_null() || symbol.is_null() {
         return;
     }
@@ -482,8 +482,7 @@ pub unsafe extern "C" fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 /// Set a variable value, searching parent environments if needed.
 ///
 /// FFI wrapper around [`set_var_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
+pub unsafe fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
     if symbol.is_null() {
         return;
     }
@@ -501,7 +500,7 @@ pub unsafe extern "C" fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 ///
 /// FFI wrapper around [`find_fun_safe`].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
     if symbol.is_null() {
         return R_UnboundValue();
     }
@@ -515,8 +514,7 @@ pub unsafe extern "C" fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Find a function with error reporting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
     let fun = findFun(symbol, rho);
     if fun == R_UnboundValue() {
         // Could not find function — would error in real implementation
@@ -527,8 +525,7 @@ pub unsafe extern "C" fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
 /// Match actual arguments to formal parameters.
 ///
 /// FFI wrapper around [`match_args_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchArgs(formals: SEXP, args: SEXP, _call: SEXP) -> SEXP {
+pub unsafe fn matchArgs(formals: SEXP, args: SEXP, _call: SEXP) -> SEXP {
     if formals.is_null() || formals == R_NilValue() {
         return args;
     }
@@ -542,16 +539,14 @@ pub unsafe extern "C" fn matchArgs(formals: SEXP, args: SEXP, _call: SEXP) -> SE
 }
 
 /// Match arguments without renaming.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn matchArgs_NR(formals: SEXP, args: SEXP) -> SEXP {
+pub unsafe fn matchArgs_NR(formals: SEXP, args: SEXP) -> SEXP {
     unsafe { matchArgs(formals, args, ptr::null_mut()) }
 }
 
 /// Check if a symbol has a missing argument in the given environment.
 ///
 /// FFI wrapper around [`is_missing_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
+pub unsafe fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
     if symbol.is_null() || rho.is_null() {
         return 0;
     }
@@ -563,7 +558,7 @@ pub unsafe extern "C" fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
 }
 
 /// Report an error for a missing argument.
-pub(crate) unsafe extern "C" fn R_MissingArgError(symbol: SEXP, call: SEXP) {
+pub(crate) unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP) {
     let name = if !symbol.is_null() {
         let pname = PRINTNAME(symbol);
         if !pname.is_null() {
@@ -589,8 +584,7 @@ pub(crate) unsafe extern "C" fn R_MissingArgError(symbol: SEXP, call: SEXP) {
 /// Find a variable in the ... (dots) arguments.
 ///
 /// FFI wrapper around [`dd_find_var_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
     if symbol.is_null() || rho.is_null() {
         return R_UnboundValue();
     }
@@ -604,8 +598,7 @@ pub unsafe extern "C" fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
 }
 
 /// Convert a SEXPTYPE integer to its string representation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_typeToChar(stype: c_int) -> SEXP {
+pub unsafe fn R_typeToChar(stype: c_int) -> SEXP {
     let _name = match stype {
         0 => "NULL",
         1 => "symbol",
@@ -644,7 +637,7 @@ pub unsafe fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
 
 /// Create a new hashed environment.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
+pub unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
     NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut())
 }
 
@@ -653,10 +646,11 @@ pub unsafe extern "C" fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
 /// FFI wrapper around [`check_formals_safe`].
 pub unsafe fn CheckFormals(formals: SEXP) {
     if let Some(formals) = Sexp::from_raw(formals)
-        && let Err(msg) = check_formals_safe(formals) {
-            eprintln!("Error: {}", msg);
-            std::panic::panic_any(crate::sexp::context::RError { message: msg });
-        }
+        && let Err(msg) = check_formals_safe(formals)
+    {
+        eprintln!("Error: {}", msg);
+        std::panic::panic_any(crate::sexp::context::RError { message: msg });
+    }
 }
 
 /// Add missing variable bindings for unprovided arguments.
@@ -675,8 +669,7 @@ pub unsafe fn addMissingVarsToNewEnv(formals: SEXP, args: SEXP, newrho: SEXP) {
 /// Check if a variable exists in a given frame.
 ///
 /// FFI wrapper around [`exists_var_in_frame_safe`].
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> c_int {
+pub unsafe fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> c_int {
     if rho.is_null() || symbol.is_null() {
         return 0;
     }

@@ -88,7 +88,7 @@ impl ProtectStack {
 /// Pushes the pointer onto the protection stack. Returns the same pointer.
 /// This is the equivalent of R's `PROTECT()` macro.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_protect(s: SEXP) -> SEXP {
+pub unsafe fn Rf_protect(s: SEXP) -> SEXP {
     if !s.is_null() {
         PROTECT_STACK.with(|ps| {
             let mut stack = ps.borrow_mut();
@@ -110,7 +110,7 @@ pub unsafe extern "C" fn Rf_protect(s: SEXP) -> SEXP {
 /// This function will not panic. If n exceeds the stack depth,
 /// it unprotects all entries and returns gracefully.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_unprotect(n: c_int) {
+pub unsafe fn Rf_unprotect(n: c_int) {
     if n <= 0 {
         return;
     }
@@ -130,8 +130,7 @@ pub unsafe extern "C" fn Rf_unprotect(n: c_int) {
 /// Unprotect the top entry from the protection stack.
 ///
 /// This is the equivalent of R's `UNPROTECT_PTR()` macro.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_unprotect_ptr(s: SEXP) {
+pub unsafe fn Rf_unprotect_ptr(s: SEXP) {
     if s.is_null() {
         return;
     }
@@ -214,8 +213,7 @@ pub struct ProtectIndex {
 /// Protect an SEXP and return an index that can be used to unprotect it later.
 ///
 /// This is the equivalent of R's `R_ProtectWithIndex()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
+pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
     let index = PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         if !s.is_null() {
@@ -234,14 +232,12 @@ pub unsafe extern "C" fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
 /// Free a ProtectIndex returned by R_ProtectWithIndex.
 ///
 /// This is a no-op - the index was just a number, not an allocation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
+pub unsafe fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
 
 /// Unprotect the entry at the given index and replace it with a new value.
 ///
 /// This is the equivalent of R's `R_Reprotect()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
+pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
     if index.is_null() {
         return;
     }
@@ -267,8 +263,7 @@ thread_local! {
 ///
 /// Unlike Rf_protect, this protection persists until explicitly released.
 /// This is the equivalent of R's `R_PreserveObject()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_PreserveObject(s: SEXP) {
+pub unsafe fn R_PreserveObject(s: SEXP) {
     if !s.is_null() {
         PRESERVE_STACK.with(|ps| {
             let mut stack = ps.borrow_mut();
@@ -283,8 +278,7 @@ pub unsafe extern "C" fn R_PreserveObject(s: SEXP) {
 /// Release a previously preserved object.
 ///
 /// This is the equivalent of R's `R_ReleaseObject()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReleaseObject(s: SEXP) {
+pub unsafe fn R_ReleaseObject(s: SEXP) {
     if s.is_null() {
         return;
     }

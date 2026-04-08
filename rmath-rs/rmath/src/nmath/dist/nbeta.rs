@@ -308,37 +308,31 @@ pub fn qnbeta_inner(p: f64, a: f64, b: f64, ncp: f64, lower_tail: bool, log_p: b
 // =====================================================================
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnbeta(x: f64, a: f64, b: f64, ncp: f64, give_log: i32) -> f64 {
     dnbeta_inner(x, a, b, ncp, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dnbeta(x: f64, a: f64, b: f64, ncp: f64, give_log: i32) -> f64 {
     dnbeta_inner(x, a, b, ncp, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnbeta(x: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnbeta_inner(x, a, b, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pnbeta(x: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnbeta_inner(x, a, b, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnbeta(p: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnbeta_inner(p, a, b, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qnbeta(p: f64, a: f64, b: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnbeta_inner(p, a, b, ncp, lower_tail != 0, log_p != 0)
 }

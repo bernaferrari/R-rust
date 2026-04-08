@@ -43,8 +43,7 @@ const BIG: f64 = 1.0e+35;
 ///
 /// Based on Pascal code in J.C. Nash, 'Compact Numerical Methods for
 /// Computers', 2nd edition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn vmmin(
+pub unsafe fn vmmin(
     n0: std::os::raw::c_int,
     b: *mut f64,
     fmin: *mut f64,
@@ -267,8 +266,7 @@ pub unsafe extern "C" fn vmmin(
 ///
 /// Based on Pascal code in J.C. Nash, 'Compact Numerical Methods for
 /// Computers', 2nd edition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nmmin(
+pub unsafe fn nmmin(
     n: std::os::raw::c_int,
     bvec: *mut f64,
     x: *mut f64,
@@ -530,8 +528,7 @@ pub unsafe extern "C" fn nmmin(
 ///
 /// Supports three methods: Fletcher-Reeves (type=1), Polak-Ribiere (type=2),
 /// Beale-Sorenson (type=3).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cgmin(
+pub unsafe fn cgmin(
     n: std::os::raw::c_int,
     bvec: *mut f64,
     x: *mut f64,

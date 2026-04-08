@@ -45,6 +45,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// Check arity -- delegates to Rf_checkArityCall.
+#[unsafe(no_mangle)]
 unsafe fn checkArity(op: SEXP, args: SEXP) {
     crate::main::errors::Rf_checkArityCall(op, args, crate::main::errors::getCurrentCall());
 }
@@ -70,6 +71,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 }
 
 /// Coerce to boolean (TRUE/FALSE only, error on NA).
+#[unsafe(no_mangle)]
 unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
     unsafe {
         let v = asLogical(x);
@@ -156,6 +158,7 @@ unsafe fn INCREMENT_NAMED(x: SEXP) {
 }
 
 /// MAYBE_REFERENCED: true if namedness > 0 (potentially shared).
+#[unsafe(no_mangle)]
 unsafe fn MAYBE_REFERENCED(x: SEXP) -> bool {
     unsafe {
         if x.is_null() {
@@ -275,6 +278,7 @@ unsafe fn R_typeToChar_local(x: SEXP) -> *const c_char {
 }
 
 /// LCONS: create a cons cell with LANGSXP type (LCONS in R's C API).
+#[unsafe(no_mangle)]
 unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
     unsafe {
         let cell = Rf_cons(car, cdr);

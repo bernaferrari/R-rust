@@ -50,6 +50,7 @@ unsafe fn error(msg: &str) {
     Rf_error(c_msg.as_ptr());
 }
 
+#[unsafe(no_mangle)]
 unsafe fn mkChar(s: &str) -> SEXP {
     let c_str = CString::new(s).expect("CString::new failed: contains null byte");
     Rf_mkChar(c_str.as_ptr())
@@ -133,8 +134,7 @@ unsafe extern "C" {
 // influence: regression influence diagnostics
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
+pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
     let qr = getListElement(mqr, "qr");
     let qraux = getListElement(mqr, "qraux");
     let rank_val = getListElement(mqr, "rank");

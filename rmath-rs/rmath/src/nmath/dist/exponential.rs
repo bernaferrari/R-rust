@@ -12,7 +12,6 @@ use libm::*;
 /// exp_rand: random variate from the standard exponential distribution.
 #[must_use]
 /// Ahrens-Dieter (1972) algorithm.
-#[unsafe(no_mangle)]
 pub extern "C" fn exp_rand() -> f64 {
     // q[k-1] = sum(log(2)^k / k!)  k=1,..,n,
     // The highest n (here 16) is determined by q[n-1] = 1.0
@@ -148,55 +147,46 @@ pub fn rexp_inner(scale: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dexp(x: f64, scale: f64, give_log: i32) -> f64 {
     dexp_inner(x, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dexp(x: f64, scale: f64, give_log: i32) -> f64 {
     dexp_inner(x, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pexp(x: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pexp_inner(x, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pexp(x: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pexp_inner(x, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qexp(p: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qexp_inner(p, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qexp(p: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qexp_inner(p, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rexp(scale: f64) -> f64 {
     rexp_inner(scale)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rexp(scale: f64) -> f64 {
     rexp_inner(scale)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_exp_rand() -> f64 {
     exp_rand()
 }

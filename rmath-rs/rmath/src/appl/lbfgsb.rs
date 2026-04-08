@@ -352,8 +352,7 @@ thread_local! {
 // Public API: lbfgsb (= setulb)
 // =====================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lbfgsb(
+pub unsafe fn lbfgsb(
     n: c_int,
     m: c_int,
     x: *mut f64,

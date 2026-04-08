@@ -126,8 +126,7 @@ unsafe fn package_dependencies_scan_one(this: SEXP) -> SEXP {
 ///
 /// Takes a character vector and returns a character vector of all
 /// package names found across all elements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn package_dependencies_scan(x: SEXP) -> SEXP {
+pub unsafe fn package_dependencies_scan(x: SEXP) -> SEXP {
     if x.is_null() {
         return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
     }
@@ -187,6 +186,7 @@ unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 }
 
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     crate::sexp::accessors::VECTOR_ELT(x, i)
 }

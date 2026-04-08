@@ -104,8 +104,7 @@ thread_local! { static R_Srcfiles_buffer: Cell<SEXP> = Cell::new(ptr::null_mut()
 // ---------------------------------------------------------------------------
 
 /// Check whether R profiling is currently active.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Profiling_active() -> c_int {
+pub unsafe fn R_Profiling_active() -> c_int {
     R_Profiling.with(|v| v.get())
 }
 
@@ -114,8 +113,7 @@ pub unsafe extern "C" fn R_Profiling_active() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Check if R profiling is enabled (public API).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isRprofiling() -> c_int {
+pub unsafe fn R_isRprofiling() -> c_int {
     R_Profiling.with(|v| v.get())
 }
 
@@ -1043,6 +1041,7 @@ unsafe fn R_InitProfiling(
 /// When called with an empty filename, stops profiling.
 ///
 /// Ported from R's `do_Rprof()` in eval.c.
+#[unsafe(no_mangle)]
 pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // BC profiling check
@@ -1138,6 +1137,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofmem()` function for memory profiling.
+#[unsafe(no_mangle)]
 pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
@@ -1311,8 +1311,7 @@ pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 /// Write current profiling sample to the output file.
 ///
 /// Ported from R's `R_WriteProfile()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WriteProfile(_out: c_int) {
+pub unsafe fn R_WriteProfile(_out: c_int) {
     // Stub: used by external profiling tools
 }
 

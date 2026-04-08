@@ -89,8 +89,7 @@ unsafe fn CHECK_CHAR_CLASSES(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_tnfa_run_backtrack(
+pub unsafe fn tre_tnfa_run_backtrack(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,

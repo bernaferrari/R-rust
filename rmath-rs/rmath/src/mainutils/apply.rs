@@ -238,9 +238,10 @@ unsafe fn isFactor(x: SEXP) -> c_int {
                 if !s.is_null() {
                     let cs = std::ffi::CStr::from_ptr(s);
                     if let Ok(name) = cs.to_str()
-                        && (name == "factor" || name == "ordered") {
-                            return 1;
-                        }
+                        && (name == "factor" || name == "ordered")
+                    {
+                        return 1;
+                    }
                 }
             }
         }
@@ -863,9 +864,10 @@ pub(crate) unsafe fn do_one(
                 if !s.is_null() {
                     let cs = std::ffi::CStr::from_ptr(s);
                     if let Ok(name) = cs.to_str()
-                        && name == "ANY" {
-                            matched = true;
-                        }
+                        && name == "ANY"
+                    {
+                        matched = true;
+                    }
                 }
             }
         }

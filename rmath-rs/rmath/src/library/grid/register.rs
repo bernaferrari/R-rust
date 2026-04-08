@@ -32,7 +32,6 @@ use crate::main::registration::DllInfo;
 ///   L_stroke, L_fill, L_fillStroke, L_glyph,
 ///   validUnits, constructUnits, asUnit, conformingUnits, matchUnit,
 ///   addUnits, multUnits, flipUnits, absoluteUnits, summaryUnits
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_grid(_dll: *mut DllInfo) {
+pub unsafe fn R_init_grid(_dll: *mut DllInfo) {
     // Stub: actual registration deferred until grid .Call functions are ported.
 }

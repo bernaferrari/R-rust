@@ -28,18 +28,15 @@ use std::f64::consts::PI;
 type LLocation = [f64; 3];
 type LTransform = [[f64; 3]; 3];
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn locationX(l: *const LLocation) -> f64 {
+pub unsafe fn locationX(l: *const LLocation) -> f64 {
     (*l)[0]
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn locationY(l: *const LLocation) -> f64 {
+pub unsafe fn locationY(l: *const LLocation) -> f64 {
     (*l)[1]
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyTransform(t1: *const LTransform, t2: *mut LTransform) {
+pub unsafe fn copyTransform(t1: *const LTransform, t2: *mut LTransform) {
     for i in 0..3 {
         for j in 0..3 {
             (*t2)[i][j] = (*t1)[i][j];
@@ -47,8 +44,7 @@ pub unsafe extern "C" fn copyTransform(t1: *const LTransform, t2: *mut LTransfor
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn invTransform(t: *const LTransform, invt: *mut LTransform) {
+pub unsafe fn invTransform(t: *const LTransform, invt: *mut LTransform) {
     let t = &*t;
     let invt = &mut *invt;
     let det = t[0][0] * (t[2][2] * t[1][1] - t[2][1] * t[1][2])
@@ -70,8 +66,7 @@ pub unsafe extern "C" fn invTransform(t: *const LTransform, invt: *mut LTransfor
     invt[2][2] = inv_det * (t[1][1] * t[0][0] - t[1][0] * t[0][1]);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn identity(m: *mut LTransform) {
+pub unsafe fn identity(m: *mut LTransform) {
     let m = &mut *m;
     for i in 0..3 {
         for j in 0..3 {
@@ -84,24 +79,21 @@ pub unsafe extern "C" fn identity(m: *mut LTransform) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn translation(tx: f64, ty: f64, m: *mut LTransform) {
+pub unsafe fn translation(tx: f64, ty: f64, m: *mut LTransform) {
     let m = &mut *m;
     identity(m);
     m[2][0] = tx;
     m[2][1] = ty;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn scaling(sx: f64, sy: f64, m: *mut LTransform) {
+pub unsafe fn scaling(sx: f64, sy: f64, m: *mut LTransform) {
     let m = &mut *m;
     identity(m);
     m[0][0] = sx;
     m[1][1] = sy;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rotation(theta: f64, m: *mut LTransform) {
+pub unsafe fn rotation(theta: f64, m: *mut LTransform) {
     let m = &mut *m;
     let thetarad = theta / 180.0 * PI;
     let costheta = thetarad.cos();
@@ -113,8 +105,7 @@ pub unsafe extern "C" fn rotation(theta: f64, m: *mut LTransform) {
     m[1][1] = costheta;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn multiply(
+pub unsafe fn multiply(
     m1: *const LTransform,
     m2: *const LTransform,
     m: *mut LTransform,
@@ -133,16 +124,14 @@ pub unsafe extern "C" fn multiply(
     m[2][2] = m1[2][0] * m2[0][2] + m1[2][1] * m2[1][2] + m1[2][2] * m2[2][2];
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn location(x: f64, y: f64, v: *mut LLocation) {
+pub unsafe fn location(x: f64, y: f64, v: *mut LLocation) {
     let v = &mut *v;
     v[0] = x;
     v[1] = y;
     v[2] = 1.0;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn trans(vin: *const LLocation, m: *const LTransform, vout: *mut LLocation) {
+pub unsafe fn trans(vin: *const LLocation, m: *const LTransform, vout: *mut LLocation) {
     let vin = &*vin;
     let m = &*m;
     let vout = &mut *vout;

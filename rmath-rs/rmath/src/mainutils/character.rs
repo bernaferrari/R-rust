@@ -907,9 +907,10 @@ pub fn substr_safe<'a>(
     }
 
     if let Some(ref stops) = stops
-        && (stops.typeof_() != SEXPTYPE::INTSXP || stops.is_empty()) {
-            return Err("invalid substring arguments".into());
-        }
+        && (stops.typeof_() != SEXPTYPE::INTSXP || stops.is_empty())
+    {
+        return Err("invalid substring arguments".into());
+    }
 
     let k = starts.len();
     let l_val = stops.as_ref().map(|s| s.len()).unwrap_or(1);

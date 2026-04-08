@@ -140,49 +140,41 @@ pub fn rgeom_inner(p: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dgeom(x: f64, p: f64, give_log: i32) -> f64 {
     dgeom_inner(x, p, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dgeom(x: f64, p: f64, give_log: i32) -> f64 {
     dgeom_inner(x, p, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pgeom(x: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
     pgeom_inner(x, p, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pgeom(x: f64, p: f64, lower_tail: i32, log_p: i32) -> f64 {
     pgeom_inner(x, p, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qgeom(p: f64, prob: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgeom_inner(p, prob, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qgeom(p: f64, prob: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgeom_inner(p, prob, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rgeom(p: f64) -> f64 {
     rgeom_inner(p)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rgeom(p: f64) -> f64 {
     rgeom_inner(p)
 }

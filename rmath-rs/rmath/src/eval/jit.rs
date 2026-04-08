@@ -331,8 +331,7 @@ pub unsafe fn bytecodeExpr(e: SEXP) -> SEXP {
 }
 
 /// Get the bytecode expression (public API).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_BytecodeExpr(e: SEXP) -> SEXP {
+pub unsafe fn R_BytecodeExpr(e: SEXP) -> SEXP {
     unsafe { bytecodeExpr(e) }
 }
 
@@ -348,8 +347,7 @@ pub(crate) unsafe fn r_PromiseExpr(p: SEXP) -> SEXP {
 }
 
 /// Get the closure body expression.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ClosureExpr(p: SEXP) -> SEXP {
+pub unsafe fn R_ClosureExpr(p: SEXP) -> SEXP {
     unsafe {
         if p.is_null() || TYPEOF(p) != SEXPTYPE::CLOSXP.0 {
             return R_NilValue();
@@ -425,8 +423,7 @@ pub unsafe fn R_init_jit_enabled() {
 ///
 /// Ported from R's `R_CheckJIT()` in eval.c. Returns TRUE if the
 /// function should be compiled based on JIT settings and scoring.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckJIT(op: SEXP) -> c_int {
+pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
     unsafe {
         if R_jit_enabled.with(|v| v.get()) == 0 || R_disable_bytecode.with(|v| v.get()) != 0 {
             return FALSE;
@@ -544,6 +541,6 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_declare()` in eval.c.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_declare(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }

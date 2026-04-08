@@ -44,8 +44,7 @@ use crate::sexp::ffi::SEXP;
 /// and is not feasible to port without it.
 ///
 /// Returns 0 (no match) as a safe stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_agrep(
+pub unsafe fn R_agrep(
     _pattern: *const c_char,
     _text: *const c_char,
     _max_distance: c_int,

@@ -113,8 +113,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
     1
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) -> SEXP {
+pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     if TYPEOF(sx) != SEXPTYPE::REALSXP.0 || TYPEOF(sfilter) != SEXPTYPE::REALSXP.0 {
@@ -210,8 +209,7 @@ pub unsafe extern "C" fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircula
 }
 
 /* recursive filtering */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
+pub unsafe fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     if TYPEOF(x) != SEXPTYPE::REALSXP.0
@@ -317,8 +315,7 @@ unsafe fn acf0(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
+pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
     let nx = nrows(x);
     let ns = ncols(x);
     let lagmax = as_integer(lmax);

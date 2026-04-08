@@ -377,8 +377,7 @@ pub unsafe fn psmatch_case_insensitive(f: *const c_char, t: *const c_char, exact
 /// # Safety
 /// `x` must be a valid null-terminated C string.
 /// `table` must be a valid pointer to an array of `n` valid null-terminated C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pmatch(
+pub unsafe fn R_pmatch(
     x: *const c_char,
     table: *const *const c_char,
     n: c_int,

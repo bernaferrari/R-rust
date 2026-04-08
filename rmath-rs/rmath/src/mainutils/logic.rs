@@ -754,10 +754,9 @@ pub unsafe fn do_logic3(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 }
 
                 // Early exit on definitive result
-                if !has_na
-                    && ((code == 2 && val == TRUE) || (code == 1 && val == FALSE)) {
-                        break;
-                    }
+                if !has_na && ((code == 2 && val == TRUE) || (code == 1 && val == FALSE)) {
+                    break;
+                }
             }
 
             s = CDR(s);

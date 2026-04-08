@@ -229,8 +229,7 @@ pub unsafe fn isNull(x: SEXP) -> c_int {
 }
 
 /// Stub for isVector -- check if SEXP is a vector type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isVector(x: SEXP) -> c_int {
+pub unsafe fn isVector(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -240,8 +239,7 @@ pub unsafe extern "C" fn isVector(x: SEXP) -> c_int {
 }
 
 /// Stub for isSymbol -- check if SEXP is SYMSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isSymbol(x: SEXP) -> c_int {
+pub unsafe fn isSymbol(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -272,8 +270,7 @@ pub unsafe fn isVectorList(x: SEXP) -> c_int {
 }
 
 /// Stub for isString -- check if SEXP is STRSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isString(x: SEXP) -> c_int {
+pub unsafe fn isString(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -283,8 +280,7 @@ pub unsafe extern "C" fn isString(x: SEXP) -> c_int {
 }
 
 /// Stub for isComplex -- check if SEXP is CPLXSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isComplex(x: SEXP) -> c_int {
+pub unsafe fn isComplex(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -294,8 +290,7 @@ pub unsafe extern "C" fn isComplex(x: SEXP) -> c_int {
 }
 
 /// Stub for isReal -- check if SEXP is REALSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isReal(x: SEXP) -> c_int {
+pub unsafe fn isReal(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -305,8 +300,7 @@ pub unsafe extern "C" fn isReal(x: SEXP) -> c_int {
 }
 
 /// Stub for isInteger -- check if SEXP is INTSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isInteger(x: SEXP) -> c_int {
+pub unsafe fn isInteger(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -316,8 +310,7 @@ pub unsafe extern "C" fn isInteger(x: SEXP) -> c_int {
 }
 
 /// Stub for isLogical -- check if SEXP is LGLSXP.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isLogical(x: SEXP) -> c_int {
+pub unsafe fn isLogical(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
@@ -339,8 +332,7 @@ pub unsafe fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
 }
 
 /// Stub for ScalarLogical -- wraps Rf_ScalarLogical.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ScalarLogical(x: c_int) -> SEXP {
+pub unsafe fn ScalarLogical(x: c_int) -> SEXP {
     unsafe { Rf_ScalarLogical(x) }
 }
 
@@ -361,44 +353,37 @@ pub unsafe fn NA_STRING() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R_DimSymbol -- returns the dim symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DimSymbol() -> SEXP {
+pub unsafe fn R_DimSymbol() -> SEXP {
     unsafe { crate::attrib_core::R_DimSymbol() }
 }
 
 /// R_DimNamesSymbol -- returns the dimnames symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DimNamesSymbol() -> SEXP {
+pub unsafe fn R_DimNamesSymbol() -> SEXP {
     unsafe { crate::attrib_core::R_DimNamesSymbol() }
 }
 
 /// R_NamesSymbol -- returns the names symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_NamesSymbol() -> SEXP {
+pub unsafe fn R_NamesSymbol() -> SEXP {
     unsafe { crate::attrib_core::R_NamesSymbol() }
 }
 
 /// R_TspSymbol -- returns the tsp symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TspSymbol() -> SEXP {
+pub unsafe fn R_TspSymbol() -> SEXP {
     unsafe { crate::attrib_core::R_TspSymbol() }
 }
 
 /// R_ClassSymbol -- returns the class symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ClassSymbol() -> SEXP {
+pub unsafe fn R_ClassSymbol() -> SEXP {
     unsafe { crate::attrib_core::R_ClassSymbol() }
 }
 
 /// R_TrueValue -- returns the TRUE logical value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TrueValue() -> SEXP {
+pub unsafe fn R_TrueValue() -> SEXP {
     unsafe { Rf_ScalarLogical(1) }
 }
 
 /// R_FalseValue -- returns the FALSE logical value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FalseValue() -> SEXP {
+pub unsafe fn R_FalseValue() -> SEXP {
     unsafe { Rf_ScalarLogical(0) }
 }
 

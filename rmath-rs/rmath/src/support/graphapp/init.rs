@@ -33,8 +33,7 @@ pub unsafe fn set_app_initialised(val: c_int) {
 }
 
 /// Initialise the GraphApp library.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
+pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
     if APP_INITIALISED.with(|v| v.get()) == 0 {
         APP_INITIALISED.with(|v| v.set(1));
         objects::init_objects();
@@ -48,8 +47,7 @@ pub unsafe extern "C" fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int 
 }
 
 /// Clean up the GraphApp library.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn app_cleanup() {
+pub unsafe fn app_cleanup() {
     if APP_INITIALISED.with(|v| v.get()) != 0 {
         APP_INITIALISED.with(|v| v.set(0));
         context::finish_contexts();
@@ -59,27 +57,23 @@ pub unsafe extern "C" fn app_cleanup() {
 }
 
 /// Exit the application.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn exitapp() {
+pub unsafe fn exitapp() {
     app_cleanup();
     std::process::exit(0);
 }
 
 /// Play an error sound.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gabeep() {
+pub unsafe fn gabeep() {
     // TODO: Platform-specific
 }
 
 /// Main loop entry point.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gamainloop() {
+pub unsafe fn gamainloop() {
     // TODO: Platform-specific event loop
 }
 
 /// Start graphapp (for Windows entry point).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn startgraphapp(
+pub unsafe fn startgraphapp(
     _instance: *mut c_void,
     _prev_instance: *mut c_void,
     _cmd_show: c_int,
@@ -89,19 +83,16 @@ pub unsafe extern "C" fn startgraphapp(
 }
 
 /// Check if topmost.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isTopmost(_w: window) -> c_int {
+pub unsafe fn isTopmost(_w: window) -> c_int {
     0
 }
 
 /// Bring window to top.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn BringToTop(_w: window, _stay: c_int) { /* TODO */
+pub unsafe fn BringToTop(_w: window, _stay: c_int) { /* TODO */
 }
 
 /// Get window handle.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getHandle(w: window) -> *mut c_void {
+pub unsafe fn getHandle(w: window) -> *mut c_void {
     if w.is_null() {
         ptr::null_mut()
     } else {
@@ -110,8 +101,7 @@ pub unsafe extern "C" fn getHandle(w: window) -> *mut c_void {
 }
 
 /// Send a message window.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn GA_msgWindow(_c: window, _typ: c_int) { /* TODO */
+pub unsafe fn GA_msgWindow(_c: window, _typ: c_int) { /* TODO */
 }
 
 /// Topmost dialogs flag.

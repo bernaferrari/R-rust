@@ -174,8 +174,7 @@ unsafe fn get_locale_from_cf(category: c_int) -> *const c_char {
 ///
 /// # Safety
 /// The returned pointer is valid only until the next call to this function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_locale_name(category: c_int) -> *const c_char {
+pub unsafe fn _nl_locale_name(category: c_int) -> *const c_char {
     unsafe {
         // For LC_MESSAGES, use the cached value.
         if category == LC_MESSAGES && !_nl_locale_name_message.with(|v| v.get()).is_null() {
@@ -207,8 +206,7 @@ pub unsafe extern "C" fn _nl_locale_name(category: c_int) -> *const c_char {
 ///
 /// # Safety
 /// `name` must be a valid pointer to a mutable NUL-terminated C string buffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_locale_name_canonicalize(name: *mut c_char) {
+pub unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
     unsafe {
         if name.is_null() {
             return;

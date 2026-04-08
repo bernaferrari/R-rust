@@ -80,8 +80,7 @@ unsafe fn daxpy(n: c_int, da: f64, dx: *const f64, incx: c_int, dy: *mut f64, in
 ///
 /// # Safety
 /// `abd` must be valid for lda*n elements. `info` must be a valid pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dpbfa(abd: *mut f64, lda: c_int, n: c_int, m: c_int, info: *mut c_int) {
+pub unsafe fn dpbfa(abd: *mut f64, lda: c_int, n: c_int, m: c_int, info: *mut c_int) {
     let lda = lda as usize;
     let m = m as usize;
     let n = n as usize;
@@ -140,8 +139,7 @@ pub unsafe extern "C" fn dpbfa(abd: *mut f64, lda: c_int, n: c_int, m: c_int, in
 ///
 /// # Safety
 /// `abd` must be valid for lda*n elements, `b` for n elements.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dpbsl(abd: *const f64, lda: c_int, n: c_int, m: c_int, b: *mut f64) {
+pub unsafe fn dpbsl(abd: *const f64, lda: c_int, n: c_int, m: c_int, b: *mut f64) {
     let lda = lda as usize;
     let m = m as usize;
     let n = n as usize;

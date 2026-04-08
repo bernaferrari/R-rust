@@ -11,7 +11,7 @@ use crate::nmath::rng::unif_rand;
 ///
 /// Translated from R's C source: r-source/src/library/stats/src/rcont.c
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcont2(
+pub unsafe fn rcont2(
     nrow: c_int,
     ncol: c_int,
     nrowt: *const c_int,

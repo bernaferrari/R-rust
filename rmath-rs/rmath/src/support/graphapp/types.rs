@@ -460,13 +460,11 @@ pub const Lime: rgb = 0x0080FF00;
 // Point and rectangle arithmetic
 // ============================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newpoint(x: c_int, y: c_int) -> point {
+pub unsafe fn newpoint(x: c_int, y: c_int) -> point {
     point { x, y }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newrect(left: c_int, top: c_int, width: c_int, height: c_int) -> rect {
+pub unsafe fn newrect(left: c_int, top: c_int, width: c_int, height: c_int) -> rect {
     rect {
         x: left,
         y: top,
@@ -475,8 +473,7 @@ pub unsafe extern "C" fn newrect(left: c_int, top: c_int, width: c_int, height: 
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rpt(min: point, max: point) -> rect {
+pub unsafe fn rpt(min: point, max: point) -> rect {
     rect {
         x: min.x,
         y: min.y,
@@ -485,77 +482,67 @@ pub unsafe extern "C" fn rpt(min: point, max: point) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn topleft(r: rect) -> point {
+pub unsafe fn topleft(r: rect) -> point {
     point { x: r.x, y: r.y }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bottomright(r: rect) -> point {
+pub unsafe fn bottomright(r: rect) -> point {
     point {
         x: r.x + r.width,
         y: r.y + r.height,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn topright(r: rect) -> point {
+pub unsafe fn topright(r: rect) -> point {
     point {
         x: r.x + r.width,
         y: r.y,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bottomleft(r: rect) -> point {
+pub unsafe fn bottomleft(r: rect) -> point {
     point {
         x: r.x,
         y: r.y + r.height,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn addpt(p1: point, p2: point) -> point {
+pub unsafe fn addpt(p1: point, p2: point) -> point {
     point {
         x: p1.x + p2.x,
         y: p1.y + p2.y,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn subpt(p1: point, p2: point) -> point {
+pub unsafe fn subpt(p1: point, p2: point) -> point {
     point {
         x: p1.x - p2.x,
         y: p1.y - p2.y,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn midpt(p1: point, p2: point) -> point {
+pub unsafe fn midpt(p1: point, p2: point) -> point {
     point {
         x: (p1.x + p2.x) / 2,
         y: (p1.y + p2.y) / 2,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mulpt(p1: point, i: c_int) -> point {
+pub unsafe fn mulpt(p1: point, i: c_int) -> point {
     point {
         x: p1.x * i,
         y: p1.y * i,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn divpt(p1: point, i: c_int) -> point {
+pub unsafe fn divpt(p1: point, i: c_int) -> point {
     point {
         x: p1.x / i,
         y: p1.y / i,
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rmove(r: rect, p: point) -> rect {
+pub unsafe fn rmove(r: rect, p: point) -> rect {
     rect {
         x: r.x + p.x,
         y: r.y + p.y,
@@ -563,13 +550,11 @@ pub unsafe extern "C" fn rmove(r: rect, p: point) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn raddpt(r: rect, p: point) -> rect {
+pub unsafe fn raddpt(r: rect, p: point) -> rect {
     unsafe { rmove(r, p) }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rsubpt(r: rect, p: point) -> rect {
+pub unsafe fn rsubpt(r: rect, p: point) -> rect {
     rect {
         x: r.x - p.x,
         y: r.y - p.y,
@@ -577,8 +562,7 @@ pub unsafe extern "C" fn rsubpt(r: rect, p: point) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rmul(r: rect, i: c_int) -> rect {
+pub unsafe fn rmul(r: rect, i: c_int) -> rect {
     rect {
         x: r.x * i,
         y: r.y * i,
@@ -587,8 +571,7 @@ pub unsafe extern "C" fn rmul(r: rect, i: c_int) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rdiv(r: rect, i: c_int) -> rect {
+pub unsafe fn rdiv(r: rect, i: c_int) -> rect {
     rect {
         x: r.x / i,
         y: r.y / i,
@@ -597,8 +580,7 @@ pub unsafe extern "C" fn rdiv(r: rect, i: c_int) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn growr(r: rect, w: c_int, h: c_int) -> rect {
+pub unsafe fn growr(r: rect, w: c_int, h: c_int) -> rect {
     rect {
         x: r.x - w,
         y: r.y - h,
@@ -607,13 +589,11 @@ pub unsafe extern "C" fn growr(r: rect, w: c_int, h: c_int) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn insetr(r: rect, i: c_int) -> rect {
+pub unsafe fn insetr(r: rect, i: c_int) -> rect {
     unsafe { growr(r, -i, -i) }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcenter(r1: rect, r2: rect) -> rect {
+pub unsafe fn rcenter(r1: rect, r2: rect) -> rect {
     rect {
         x: r2.x + (r2.width - r1.width) / 2,
         y: r2.y + (r2.height - r1.height) / 2,
@@ -621,8 +601,7 @@ pub unsafe extern "C" fn rcenter(r1: rect, r2: rect) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ptinr(p: point, r: rect) -> c_int {
+pub unsafe fn ptinr(p: point, r: rect) -> c_int {
     if p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height {
         1
     } else {
@@ -630,8 +609,7 @@ pub unsafe extern "C" fn ptinr(p: point, r: rect) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rinr(r1: rect, r2: rect) -> c_int {
+pub unsafe fn rinr(r1: rect, r2: rect) -> c_int {
     if r1.x >= r2.x
         && r1.y >= r2.y
         && r1.x + r1.width <= r2.x + r2.width
@@ -643,8 +621,7 @@ pub unsafe extern "C" fn rinr(r1: rect, r2: rect) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rxr(r1: rect, r2: rect) -> c_int {
+pub unsafe fn rxr(r1: rect, r2: rect) -> c_int {
     if r1.x < r2.x + r2.width
         && r1.y < r2.y + r2.height
         && r1.x + r1.width > r2.x
@@ -656,13 +633,11 @@ pub unsafe extern "C" fn rxr(r1: rect, r2: rect) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn equalpt(p1: point, p2: point) -> c_int {
+pub unsafe fn equalpt(p1: point, p2: point) -> c_int {
     if p1.x == p2.x && p1.y == p2.y { 1 } else { 0 }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn equalr(r1: rect, r2: rect) -> c_int {
+pub unsafe fn equalr(r1: rect, r2: rect) -> c_int {
     if r1.x == r2.x && r1.y == r2.y && r1.width == r2.width && r1.height == r2.height {
         1
     } else {
@@ -670,8 +645,7 @@ pub unsafe extern "C" fn equalr(r1: rect, r2: rect) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn clipr(r1: rect, r2: rect) -> rect {
+pub unsafe fn clipr(r1: rect, r2: rect) -> rect {
     let x1 = r1.x.max(r2.x);
     let y1 = r1.y.max(r2.y);
     let x2 = (r1.x + r1.width).min(r2.x + r2.width);
@@ -693,8 +667,7 @@ pub unsafe extern "C" fn clipr(r1: rect, r2: rect) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rcanon(r: rect) -> rect {
+pub unsafe fn rcanon(r: rect) -> rect {
     let (x, y, w, h) = if r.width < 0 {
         (r.x + r.width, r.y, -r.width, r.height)
     } else {
@@ -717,13 +690,11 @@ pub unsafe extern "C" fn rcanon(r: rect) -> rect {
 // Object property accessors
 // ============================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn objdepth(obj: objptr) -> c_int {
+pub unsafe fn objdepth(obj: objptr) -> c_int {
     unsafe { if obj.is_null() { 0 } else { (*obj).depth } }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn objrect(obj: objptr) -> rect {
+pub unsafe fn objrect(obj: objptr) -> rect {
     unsafe {
         if obj.is_null() {
             rect::default()
@@ -733,13 +704,11 @@ pub unsafe extern "C" fn objrect(obj: objptr) -> rect {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn objwidth(obj: objptr) -> c_int {
+pub unsafe fn objwidth(obj: objptr) -> c_int {
     unsafe { if obj.is_null() { 0 } else { (*obj).rect.width } }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn objheight(obj: objptr) -> c_int {
+pub unsafe fn objheight(obj: objptr) -> c_int {
     unsafe { if obj.is_null() { 0 } else { (*obj).rect.height } }
 }
 

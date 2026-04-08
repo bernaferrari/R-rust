@@ -74,12 +74,10 @@ pub fn lbeta(a: f64, b: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lbeta(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn lbeta_c(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)
 }

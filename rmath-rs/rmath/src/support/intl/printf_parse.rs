@@ -98,8 +98,7 @@ fn size_overflow_p(size: usize) -> bool {
 /// # Safety
 /// `format` must be a valid pointer to a NUL-terminated C string.
 /// `d` and `a` must be valid pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn printf_parse(
+pub unsafe fn printf_parse(
     format: *const c_char,
     d: *mut char_directives,
     a: *mut arguments,

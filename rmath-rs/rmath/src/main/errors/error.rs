@@ -260,8 +260,7 @@ pub unsafe fn errorcall_cpy(call: SEXP, format: *const c_char) {
 }
 
 /// Report an error (without call).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_error(format: *const c_char) {
+pub unsafe fn Rf_error(format: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         errorcall(call, format);
@@ -312,8 +311,7 @@ pub unsafe fn WrongArgCount(s: *const c_char) {
 }
 
 /// Rf_checkArityCall -- check argument count matches the primitive's arity.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_checkArityCall(op: SEXP, args: SEXP, call: SEXP) {
+pub unsafe fn Rf_checkArityCall(op: SEXP, args: SEXP, call: SEXP) {
     unsafe {
         let arity = crate::main::names::PRIMARITY(op);
         if arity < 0 {
@@ -358,7 +356,7 @@ pub unsafe extern "C" fn Rf_checkArityCall(op: SEXP, args: SEXP, call: SEXP) {
 
 /// REprintf -- R's error printf (prints to stderr).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn REprintf(format: *const c_char) {
+pub unsafe fn REprintf(format: *const c_char) {
     unsafe {
         if format.is_null() {
             return;
@@ -373,8 +371,7 @@ pub unsafe extern "C" fn REprintf(format: *const c_char) {
 // ---------------------------------------------------------------------------
 
 /// Signal a C stack overflow.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SignalCStackOverflow(usage: isize) {
+pub unsafe fn R_SignalCStackOverflow(usage: isize) {
     unsafe {
         let cond = super::conditions::R_makeCStackOverflowError(globals::R_NilValue(), usage);
         if !cond.is_null() {
@@ -388,8 +385,7 @@ pub unsafe extern "C" fn R_SignalCStackOverflow(usage: isize) {
 }
 
 /// Check for stack overflow.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckStack() {
+pub unsafe fn R_CheckStack() {
     unsafe {
         let depth = globals::R_EvalDepth();
         let limit = globals::R_EvalDepthLimit();
@@ -400,8 +396,7 @@ pub unsafe extern "C" fn R_CheckStack() {
 }
 
 /// Check for stack overflow with extra space.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckStack2(_extra: usize) {
+pub unsafe fn R_CheckStack2(_extra: usize) {
     unsafe {
         R_CheckStack();
     }
@@ -409,7 +404,7 @@ pub unsafe extern "C" fn R_CheckStack2(_extra: usize) {
 
 /// Check for user interrupts.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckUserInterrupt() {
+pub unsafe fn R_CheckUserInterrupt() {
     unsafe {
         use super::R_INTERRUPTS_PENDING;
         use super::R_INTERRUPTS_SUSPENDED;
@@ -471,8 +466,7 @@ pub unsafe fn jump_to_toplevel() {
 // ---------------------------------------------------------------------------
 
 /// R_MissingArgError_c -- report a missing argument error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MissingArgError_c(
+pub unsafe fn R_MissingArgError_c(
     arg: *const c_char,
     call: SEXP,
     subclass: *const c_char,
@@ -499,8 +493,7 @@ pub unsafe extern "C" fn R_MissingArgError_c(
 }
 
 /// R_MissingArgError -- report a missing argument error from a symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
+pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
     unsafe {
         let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP.0 {
             "argument"
@@ -641,8 +634,7 @@ pub unsafe fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char
 // ---------------------------------------------------------------------------
 
 /// R_SignalError -- signal an error condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SignalError(call: SEXP, format: *const c_char) {
+pub unsafe fn R_SignalError(call: SEXP, format: *const c_char) {
     unsafe {
         errorcall(call, format);
     }

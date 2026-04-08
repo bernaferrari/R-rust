@@ -19,8 +19,7 @@ use crate::intl::types::{self, c_free, c_strdup};
 ///
 /// # Safety
 /// `domainname` must be a valid pointer to a NUL-terminated C string, or NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
+pub unsafe fn libintl_textdomain(domainname: *const c_char) -> *mut c_char {
     unsafe {
         // A NULL pointer requests the current setting.
         if domainname.is_null() {
@@ -91,8 +90,7 @@ pub unsafe extern "C" fn libintl_textdomain(domainname: *const c_char) -> *mut c
 }
 
 /// Alias for `libintl_textdomain` (unprefixed, for compatibility).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn textdomain(domainname: *const c_char) -> *mut c_char {
+pub unsafe fn textdomain(domainname: *const c_char) -> *mut c_char {
     unsafe { libintl_textdomain(domainname) }
 }
 

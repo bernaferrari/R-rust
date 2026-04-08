@@ -164,8 +164,7 @@ unsafe fn std_rWishart_factor(
 // rWishart: generate random Wishart matrices
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
+pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
     let dims = INTEGER(getAttrib(scal, R_DimSymbol()));
     let n = asInteger(ns);
     let nu = asReal(nuP);

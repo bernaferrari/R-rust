@@ -19,7 +19,7 @@ const R_EOF: c_int = -1;
 /// Ported from R's src/main/gram-ex.c `R_fgetc(FILE *fp)`.
 /// This implements the non-Windows code path.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_fgetc(fp: *mut c_void) -> c_int {
+pub unsafe fn R_fgetc(fp: *mut c_void) -> c_int {
     let fp = fp as *mut libc::FILE;
     if fp.is_null() {
         return R_EOF;

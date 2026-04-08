@@ -527,52 +527,42 @@ pub fn pentagamma(x: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_digamma(x: f64) -> f64 {
     imp::digamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn digamma_c(x: f64) -> f64 {
     imp::digamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_trigamma(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn trigamma_c(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_tetragamma(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn tetragamma_c(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pentagamma(x: f64) -> f64 {
     imp::pentagamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn pentagamma_c(x: f64) -> f64 {
     imp::pentagamma(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_psigamma(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn psigamma_c(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)
 }

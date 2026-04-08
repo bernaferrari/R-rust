@@ -49,6 +49,7 @@ unsafe fn getDevice() -> *const u8 {
 }
 
 /// gridStateElement — get a grid state element from device
+#[unsafe(no_mangle)]
 unsafe fn gridStateElement(_dd: *const u8, _elementIndex: c_int) -> SEXP {
     // STUB: requires state.c
     R_NilValue()
@@ -85,6 +86,7 @@ unsafe fn GEFillStroke(_path: SEXP, _rule: c_int, _gc: *const u8, _dd: *const u8
 }
 
 /// Rf_duplicate — deep copy an R object
+#[unsafe(no_mangle)]
 unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::Rf_duplicate(x)
 }
@@ -139,8 +141,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
 // L_stroke — stroke a path
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_stroke(path: SEXP) -> SEXP {
+pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     // R_GE_gcontext gc — opaque struct, allocated on stack
     let mut _gc: [u8; 256] = [0; 256]; // placeholder for R_GE_gcontext
     let dd = getDevice();
@@ -160,8 +161,7 @@ pub unsafe extern "C" fn L_stroke(path: SEXP) -> SEXP {
 // L_fill — fill a path
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
+pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = getDevice();
     let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
@@ -196,8 +196,7 @@ pub unsafe extern "C" fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
 // L_fillStroke — fill and stroke a path
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
+pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = getDevice();
     let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));

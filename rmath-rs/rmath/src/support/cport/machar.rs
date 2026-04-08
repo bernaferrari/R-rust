@@ -32,8 +32,7 @@ use std::os::raw::c_int;
 /// - `epsneg`: small positive number such that 1.0-epsneg != 1.0
 /// - `xmin`: smallest non-vanishing normalized floating-point power of the radix
 /// - `xmax`: largest finite floating-point number
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_machar(
+pub unsafe fn R_machar(
     ibeta: *mut c_int,
     it: *mut c_int,
     irnd: *mut c_int,

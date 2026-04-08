@@ -18,6 +18,7 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::*;
 
 /// Stub: CreateAtVector - create axis tick positions.
+#[unsafe(no_mangle)]
 unsafe fn CreateAtVector(
     _axp: *const c_double,
     _usr: *const c_double,
@@ -39,8 +40,7 @@ unsafe fn GAxisPars(
 }
 
 /// R_CreateAtVector - create an axis tick vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -> SEXP {
+pub unsafe fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -> SEXP {
     let nint_v = asInteger(nint);
     let logflag = asLogical(is_log);
 
@@ -59,8 +59,7 @@ pub unsafe extern "C" fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_l
 }
 
 /// R_GAxisPars - compute axis parameters (axp, n) from user range.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
+pub unsafe fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
     let usr = coerceVector(usr, SEXPTYPE::REALSXP.0);
     if LENGTH(usr) != 2 {
         Rf_error(b"'usr' must be numeric of length 2\0".as_ptr() as *const c_char);

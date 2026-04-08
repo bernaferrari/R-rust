@@ -276,11 +276,13 @@ unsafe fn asReal(x: SEXP) -> c_double {
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn ISNAN(x: c_double) -> bool {
     x.is_nan()
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn R_FINITE(x: c_double) -> bool {
     x.is_finite()
 }
@@ -545,12 +547,14 @@ unsafe fn R_ClosureExpr(_x: SEXP) -> SEXP {
     ptr::null_mut() // stub
 }
 
+#[unsafe(no_mangle)]
 /// PrintDefaults -- set default printing options.
 #[inline(always)]
 unsafe fn PrintDefaults() {
     // Stub -- no-op
 }
 
+#[unsafe(no_mangle)]
 /// Rstrlen -- get the display length of a string element.
 #[inline(always)]
 unsafe fn Rstrlen(x: SEXP, _quote: c_int) -> usize {
@@ -565,6 +569,7 @@ unsafe fn Rstrlen(x: SEXP, _quote: c_int) -> usize {
 }
 
 /// EncodeString -- encode a string for display.
+
 #[inline(always)]
 unsafe fn EncodeString(x: SEXP, _w: c_int, _quote: c_int, _adj: c_int) -> *const c_char {
     unsafe {
@@ -574,6 +579,7 @@ unsafe fn EncodeString(x: SEXP, _w: c_int, _quote: c_int, _adj: c_int) -> *const
 }
 
 /// EncodeElement0 -- encode a vector element for display.
+#[unsafe(no_mangle)]
 #[inline(always)]
 unsafe fn EncodeElement0(
     _x: SEXP,
@@ -615,6 +621,7 @@ unsafe fn R_ToplevelContext() -> *mut RCNTXT {
 
 /// nthcdr -- get the n-th cdr of a list.
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn nthcdr(x: SEXP, n: c_int) -> SEXP {
     unsafe {
         let mut r = x;
@@ -685,6 +692,7 @@ unsafe fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
 
 /// getConnection -- get a connection by index.
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn getConnection(_ifile: c_int) -> *mut c_void {
     ptr::null_mut() // stub
 }

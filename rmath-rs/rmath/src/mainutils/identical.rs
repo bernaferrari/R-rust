@@ -209,8 +209,7 @@ fn compute_strictness(flags: c_int) -> c_int {
 /// comparisons, NA handling, and attribute comparison.
 ///
 /// Returns 1 if identical, 0 if not.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
+pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
     unsafe {
         // Quick pointer equality check
         if x == y {
@@ -448,9 +447,10 @@ pub unsafe extern "C" fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> 
                 return 0;
             }
             if flags & IDENT_USE_CLOENV != 0
-                && R_compute_identical(CLOENV(x), CLOENV(y), flags) == 0 {
-                    return 0;
-                }
+                && R_compute_identical(CLOENV(x), CLOENV(y), flags) == 0
+            {
+                return 0;
+            }
             return 1;
         } else if t == SEXPTYPE::ENVSXP.0 || t == SEXPTYPE::SYMSXP.0 {
             // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
@@ -511,8 +511,7 @@ pub unsafe extern "C" fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> 
 /// Calls `R_compute_identical(s1, s2, 0)` with all default settings:
 /// numeric equality for numbers, single NA representation,
 /// attribute comparison as set.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
+pub unsafe fn R_identical(s1: SEXP, s2: SEXP) -> c_int {
     unsafe { R_compute_identical(s1, s2, 0) }
 }
 

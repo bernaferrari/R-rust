@@ -1844,8 +1844,7 @@ unsafe fn f11act(irow: *const c_int, i1: c_int, i2: c_int, new: *mut c_int) {
 ///
 /// # Safety
 /// All pointer arguments must be valid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fexact(
+pub unsafe fn fexact(
     nrow: c_int,
     ncol: c_int,
     table: *const c_int,
@@ -2008,8 +2007,7 @@ pub unsafe extern "C" fn fexact(
 ///
 /// # Safety
 /// x, pars, work, smult must be valid SEXP pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
+pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     let nr = crate::main::util_main::nrows(x as *const std::ffi::c_void);
     let nc = crate::main::util_main::ncols(x as *const std::ffi::c_void);
 

@@ -97,8 +97,7 @@ unsafe fn xlengthgets(x: SEXP, new_len: R_xlen_t) -> SEXP {
 // isoreg: isotonic regression
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isoreg(y: SEXP) -> SEXP {
+pub unsafe fn isoreg(y: SEXP) -> SEXP {
     let n = XLENGTH(y);
 
     let anms: [&str; 5] = ["y", "yc", "yf", "iKnots", ""];

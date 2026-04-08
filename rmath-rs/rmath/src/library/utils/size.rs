@@ -157,7 +157,6 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
     cnt
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn objectSize(x: SEXP) -> SEXP {
+pub unsafe fn objectSize(x: SEXP) -> SEXP {
     Rf_ScalarReal(objectsize(x) as f64)
 }

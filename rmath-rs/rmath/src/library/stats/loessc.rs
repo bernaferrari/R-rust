@@ -149,8 +149,7 @@ fn strcmp_c(s1: &str, s2: &str) -> bool {
     s1 == s2
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loess_raw(
+pub unsafe fn loess_raw(
     y: *mut c_double,
     x: *mut c_double,
     weights: *mut c_double,
@@ -347,8 +346,7 @@ pub unsafe extern "C" fn loess_raw(
     loess_free();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loess_dfit(
+pub unsafe fn loess_dfit(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -391,8 +389,7 @@ pub unsafe extern "C" fn loess_dfit(
     loess_free();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loess_dfitse(
+pub unsafe fn loess_dfitse(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -468,8 +465,7 @@ pub unsafe extern "C" fn loess_dfitse(
     loess_free();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loess_ifit(
+pub unsafe fn loess_ifit(
     parameter: *mut c_int,
     a: *mut c_int,
     xi: *mut c_double,
@@ -490,8 +486,7 @@ pub unsafe extern "C" fn loess_ifit(
     loess_free();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loess_ise(
+pub unsafe fn loess_ise(
     y: *mut c_double,
     x: *mut c_double,
     x_evaluate: *mut c_double,
@@ -750,8 +745,7 @@ unsafe fn loess_grow(
 
 /* begin ehg's FORTRAN-callable C-codes */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loesswarn(i: *mut c_int) {
+pub unsafe fn loesswarn(i: *mut c_int) {
     let msg = match *i {
         100 => "wrong version number in lowesd.   Probably typo in caller.",
         101 => "d>dMAX in ehg131.  Need to recompile with increased dimensions.",
@@ -797,8 +791,7 @@ pub unsafe extern "C" fn loesswarn(i: *mut c_int) {
     crate::main::errors::Rf_warning(format!("{}\0", msg).as_ptr() as *const i8);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ehg183a(
+pub unsafe fn ehg183a(
     s: *mut c_char,
     nc: *mut c_int,
     i: *mut c_int,
@@ -817,8 +810,7 @@ pub unsafe extern "C" fn ehg183a(
     crate::main::errors::Rf_warning(format!("{}\0", mess).as_ptr() as *const i8);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ehg184a(
+pub unsafe fn ehg184a(
     s: *mut c_char,
     nc: *mut c_int,
     x: *mut c_double,

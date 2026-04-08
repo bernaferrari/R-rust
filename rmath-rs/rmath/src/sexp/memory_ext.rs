@@ -25,8 +25,7 @@ use super::memory;
 /// Create a new environment with the given frame, enclosing env, and size.
 ///
 /// This is the equivalent of R's `NewEnvironment()` in memory.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let env = arena.alloc_node(SEXPTYPE::ENVSXP);
@@ -47,8 +46,7 @@ pub unsafe extern "C" fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP
 /// Create a promise (PROMSXP) from an expression and environment.
 ///
 /// This is the equivalent of R's `mkPROMISE()` in memory.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
@@ -65,8 +63,7 @@ pub unsafe extern "C" fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
 /// Create an already-evaluated promise (EVPROMISE).
 ///
 /// This is the equivalent of R's `R_mkEVPROMISE()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
+pub unsafe fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
     unsafe {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
@@ -89,8 +86,7 @@ pub unsafe extern "C" fn R_mkEVPROMISE(expr: SEXP, value: SEXP) -> SEXP {
 /// Allocate a scalar (non-vector) SEXP of the given type.
 ///
 /// This is the equivalent of R's `allocSExp()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
+pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
     memory::with_arena(|arena| arena.alloc_node(sexptype))
 }
 
@@ -223,16 +219,14 @@ pub unsafe fn allocFormalsList3(sym1: SEXP, sym2: SEXP, sym3: SEXP) -> SEXP {
 /// Allocate a pairlist (LISTSXP chain) of n elements.
 ///
 /// This is the equivalent of R's `allocList()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn allocList(n: c_int) -> SEXP {
+pub unsafe fn allocList(n: c_int) -> SEXP {
     memory::with_arena(|arena| arena.alloc_list_chain(n))
 }
 
 /// Allocate a lang (LANGSXP) pairlist of n elements.
 ///
 /// This is the equivalent of R's `allocLang()` in memory.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn allocLang(n: c_int) -> SEXP {
+pub unsafe fn allocLang(n: c_int) -> SEXP {
     unsafe {
         let list = allocList(n);
         if !list.is_null() {
@@ -262,7 +256,7 @@ thread_local! {
 /// This is the equivalent of R's `R_alloc()` which allocates on the C stack.
 /// In Rust, we use a thread-local buffer that's freed on vmaxset().
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
+pub unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
     unsafe {
         let total = _size.checked_mul(nelem).unwrap_or(0);
         if total == 0 {
@@ -289,8 +283,7 @@ pub unsafe extern "C" fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
 /// Get the current transient allocation watermark.
 ///
 /// Returns an opaque value to pass to vmaxset().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn vmaxget() -> *mut c_void {
+pub unsafe fn vmaxget() -> *mut c_void {
     VMAX.with(|vmax| {
         let len = vmax.borrow().len();
         len as *mut c_void
@@ -300,8 +293,7 @@ pub unsafe extern "C" fn vmaxget() -> *mut c_void {
 /// Reset transient allocations to the given watermark.
 ///
 /// Frees all transient allocations made since the corresponding vmaxget().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn vmaxset(value: *mut c_void) {
+pub unsafe fn vmaxset(value: *mut c_void) {
     let mark = value as usize;
     VMAX.with(|vmax| {
         let mut vmax = vmax.borrow_mut();

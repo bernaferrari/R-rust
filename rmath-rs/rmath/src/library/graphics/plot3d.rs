@@ -890,6 +890,7 @@ unsafe fn isMatrix(x: SEXP) -> bool {
 }
 
 /// Get the number of rows from a matrix's dim attribute.
+#[unsafe(no_mangle)]
 unsafe fn nrows(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
@@ -909,6 +910,7 @@ unsafe fn nrows(x: SEXP) -> c_int {
 }
 
 /// Get the number of columns from a matrix's dim attribute.
+#[unsafe(no_mangle)]
 unsafe fn ncols(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
@@ -930,8 +932,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
 /// C_filledcontour -- draw a filled contour plot.
 /// Ported from plot3d.c C_filledcontour().
 /// Uses real FindPolygonVertices algorithm; GE drawing calls are stubs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_filledcontour(args: SEXP) -> SEXP {
+pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
     let mut _args = CDR(args);
     if LENGTH(_args) < 5 {
         /* too few arguments - stub: no error reporting available */
@@ -1023,8 +1024,7 @@ pub unsafe extern "C" fn C_filledcontour(args: SEXP) -> SEXP {
 /// C_image -- draw an image plot.
 /// Ported from plot3d.c C_image().
 /// GE drawing calls (GRect) are stubs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_image(args: SEXP) -> SEXP {
+pub unsafe fn C_image(args: SEXP) -> SEXP {
     use crate::sexp::accessors::*;
 
     let mut _args = CDR(args);
@@ -1068,8 +1068,7 @@ pub unsafe extern "C" fn C_image(args: SEXP) -> SEXP {
 /// C_persp -- draw a 3D perspective surface plot.
 /// Ported from plot3d.c C_persp().
 /// GE drawing calls are stubs; transformation math is real.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
+pub unsafe fn C_persp(args: SEXP) -> SEXP {
     use crate::sexp::accessors::*;
 
     let mut _args = CDR(args);
@@ -1285,8 +1284,7 @@ pub unsafe extern "C" fn C_persp(args: SEXP) -> SEXP {
 
 /// C_contourDef -- return whether the current device supports rotated
 /// contour text. Stub: returns FALSE (NA_LOGICAL).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_contourDef() -> SEXP {
+pub unsafe fn C_contourDef() -> SEXP {
     use crate::sexp::constructors::*;
     Rf_ScalarLogical(0) /* FALSE: no rotated text support */
 }
@@ -1298,8 +1296,7 @@ pub unsafe extern "C" fn C_contourDef() -> SEXP {
 /// C_contour -- draw a contour plot.
 /// Ported from plot3d.c C_contour().
 /// Validation logic is real; GE drawing calls are stubs.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_contour(args: SEXP) -> SEXP {
+pub unsafe fn C_contour(args: SEXP) -> SEXP {
     use crate::sexp::accessors::*;
 
     let mut _args = CDR(args);

@@ -96,11 +96,7 @@ unsafe fn get_sysdep_string_segments(
 /// # Safety
 /// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
 /// `domainbinding` may be null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_load_domain(
-    domain_file: *mut loaded_l10nfile,
-    _domainbinding: *mut binding,
-) {
+pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
     unsafe {
         if domain_file.is_null() {
             return;

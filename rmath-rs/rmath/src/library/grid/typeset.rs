@@ -98,12 +98,14 @@ unsafe fn transformLocn(
 }
 
 /// toDeviceX — convert inches to device x coordinate
+#[unsafe(no_mangle)]
 unsafe fn toDeviceX(_x: f64, _unit: c_int, _dd: *const u8) -> f64 {
     // STUB: requires GraphicsEngine
     0.0
 }
 
 /// toDeviceY — convert inches to device y coordinate
+#[unsafe(no_mangle)]
 unsafe fn toDeviceY(_y: f64, _unit: c_int, _dd: *const u8) -> f64 {
     // STUB: requires GraphicsEngine
     0.0
@@ -295,8 +297,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
 // L_glyph — public entry point for glyph rendering
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_glyph(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP) -> SEXP {
+pub unsafe fn L_glyph(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP) -> SEXP {
     renderGlyphs(runs, glyphInfo, x, y, true);
     R_NilValue()
 }

@@ -159,8 +159,7 @@ struct NodeInfo {
 /// Write R save format magic number to a file (C FILE* version).
 ///
 /// Port of: static void R_WriteMagic(FILE *fp, int number)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WriteMagic(fp: *mut c_void, number: c_int) {
+pub unsafe fn R_WriteMagic(fp: *mut c_void, number: c_int) {
     let number = number.abs();
     let mut buf: [u8; 5] = [0; 5];
 
@@ -198,8 +197,7 @@ pub unsafe extern "C" fn R_WriteMagic(fp: *mut c_void, number: c_int) {
 /// Read R save format magic number from a file (C FILE* version).
 ///
 /// Port of: static int R_ReadMagic(FILE *fp)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReadMagic(fp: *mut c_void) -> c_int {
+pub unsafe fn R_ReadMagic(fp: *mut c_void) -> c_int {
     let mut buf: [u8; 6] = [0; 6];
 
     unsafe extern "C" {
@@ -889,6 +887,7 @@ unsafe fn CAR(s: SEXP) -> SEXP {
     r_CAR(s)
 }
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn CDR(s: SEXP) -> SEXP {
     r_CDR(s)
 }
@@ -924,11 +923,13 @@ unsafe fn REAL(s: SEXP) -> *mut c_double {
 unsafe fn INTEGER(s: SEXP) -> *mut c_int {
     r_INTEGER(s)
 }
+#[unsafe(no_mangle)]
 #[inline(always)]
 unsafe fn COMPLEX(s: SEXP) -> *mut crate::sexp::ffi::Rcomplex {
     r_COMPLEX(s)
 }
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn STRING_ELT(s: SEXP, i: usize) -> SEXP {
     r_STRING_ELT(s, i as i64)
 }
@@ -1576,8 +1577,7 @@ unsafe fn NewXdrLoad(fp: *mut c_void, d: *mut SaveLoadData) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden void R_SaveToFileV(SEXP obj, FILE *fp, int ascii, int version)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveToFileV(obj: SEXP, fp: *mut c_void, ascii: c_int, version: c_int) {
+pub unsafe fn R_SaveToFileV(obj: SEXP, fp: *mut c_void, ascii: c_int, version: c_int) {
     let mut data = SaveLoadData::new();
 
     if version == 1 {
@@ -1653,8 +1653,7 @@ pub unsafe extern "C" fn R_SaveToFileV(obj: SEXP, fp: *mut c_void, ascii: c_int,
 }
 
 /// Port of: attribute_hidden void R_SaveToFile(SEXP obj, FILE *fp, int ascii)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveToFile(obj: SEXP, fp: *mut c_void, ascii: c_int) {
+pub unsafe fn R_SaveToFile(obj: SEXP, fp: *mut c_void, ascii: c_int) {
     unsafe {
         R_SaveToFileV(obj, fp, ascii, defaultSaveVersion());
     }
@@ -1665,8 +1664,7 @@ pub unsafe extern "C" fn R_SaveToFile(obj: SEXP, fp: *mut c_void, ascii: c_int) 
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden SEXP R_LoadFromFile(FILE *fp, int startup)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_LoadFromFile(fp: *mut c_void, startup: c_int) -> SEXP {
+pub unsafe fn R_LoadFromFile(fp: *mut c_void, startup: c_int) -> SEXP {
     unsafe extern "C" {
         fn R_InitFileInPStream(
             in_: *mut c_void,
@@ -2055,8 +2053,7 @@ pub unsafe fn do_load(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Port of: attribute_hidden void R_XDREncodeDouble(double d, void *buf)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_XDREncodeDouble(d: c_double, buf: *mut c_void) {
+pub unsafe fn R_XDREncodeDouble(d: c_double, buf: *mut c_void) {
     // Manual XDR encoding of a double (big-endian IEEE 754)
     let bytes = d.to_be_bytes();
     if !buf.is_null() {
@@ -2065,8 +2062,7 @@ pub unsafe extern "C" fn R_XDREncodeDouble(d: c_double, buf: *mut c_void) {
 }
 
 /// Port of: attribute_hidden double R_XDRDecodeDouble(void *buf)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_XDRDecodeDouble(buf: *mut c_void) -> c_double {
+pub unsafe fn R_XDRDecodeDouble(buf: *mut c_void) -> c_double {
     let mut bytes = [0u8; 8];
     if !buf.is_null() {
         ptr::copy_nonoverlapping(buf as *const u8, bytes.as_mut_ptr(), R_XDR_DOUBLE_SIZE);
@@ -2075,8 +2071,7 @@ pub unsafe extern "C" fn R_XDRDecodeDouble(buf: *mut c_void) -> c_double {
 }
 
 /// Port of: attribute_hidden void R_XDREncodeInteger(int i, void *buf)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_XDREncodeInteger(i: c_int, buf: *mut c_void) {
+pub unsafe fn R_XDREncodeInteger(i: c_int, buf: *mut c_void) {
     let bytes = i.to_be_bytes();
     if !buf.is_null() {
         ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, R_XDR_INTEGER_SIZE);
@@ -2084,8 +2079,7 @@ pub unsafe extern "C" fn R_XDREncodeInteger(i: c_int, buf: *mut c_void) {
 }
 
 /// Port of: attribute_hidden int R_XDRDecodeInteger(void *buf)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_XDRDecodeInteger(buf: *mut c_void) -> c_int {
+pub unsafe fn R_XDRDecodeInteger(buf: *mut c_void) -> c_int {
     let mut bytes = [0u8; 4];
     if !buf.is_null() {
         ptr::copy_nonoverlapping(buf as *const u8, bytes.as_mut_ptr(), R_XDR_INTEGER_SIZE);
@@ -2098,8 +2092,7 @@ pub unsafe extern "C" fn R_XDRDecodeInteger(buf: *mut c_void) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Port of: void R_SaveGlobalEnvToFile(const char *name)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SaveGlobalEnvToFile(name: *const c_char) {
+pub unsafe fn R_SaveGlobalEnvToFile(name: *const c_char) {
     unsafe extern "C" {
         fn R_fopen(name: *const c_char, mode: *const c_char) -> *mut c_void;
         fn fclose(fp: *mut c_void) -> c_int;
@@ -2139,8 +2132,7 @@ pub unsafe extern "C" fn R_SaveGlobalEnvToFile(name: *const c_char) {
 }
 
 /// Port of: void R_RestoreGlobalEnvFromFile(const char *name, Rboolean quiet)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RestoreGlobalEnvFromFile(name: *const c_char, quiet: c_int) {
+pub unsafe fn R_RestoreGlobalEnvFromFile(name: *const c_char, quiet: c_int) {
     unsafe extern "C" {
         fn R_fopen(name: *const c_char, mode: *const c_char) -> *mut c_void;
         fn fclose(fp: *mut c_void) -> c_int;

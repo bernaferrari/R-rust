@@ -78,8 +78,7 @@ thread_local! { static NoRenviron: Cell<c_int> = Cell::new(0); }
 /// # Safety
 /// - `argv` must point to a valid array of at least `argc` C-string pointers.
 /// - Each `argv[i]` must be a valid null-terminated C string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) {
+pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) {
     NumCommandLineArgs.with(|v| v.set(argc));
 
     if argc <= 0 {
@@ -166,8 +165,7 @@ pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 /// # Safety
 /// - `pac` must point to a valid c_int containing the argument count.
 /// - `argv` must point to a valid array of at least `*pac` C-string pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_common_command_line(
+pub unsafe fn R_common_command_line(
     pac: *mut c_int,
     argv: *mut *mut c_char,
     Rp: *mut c_void,
@@ -305,62 +303,52 @@ pub unsafe extern "C" fn R_common_command_line(
 // ---------------------------------------------------------------------------
 
 /// Returns the current SaveAction setting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetSaveAction() -> c_int {
+pub unsafe fn R_GetSaveAction() -> c_int {
     SaveAction.with(|v| v.get())
 }
 
 /// Returns the current RestoreAction setting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetRestoreAction() -> c_int {
+pub unsafe fn R_GetRestoreAction() -> c_int {
     RestoreAction.with(|v| v.get())
 }
 
 /// Returns whether R_RestoreHistory is set.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetRestoreHistory() -> c_int {
+pub unsafe fn R_GetRestoreHistory() -> c_int {
     R_RestoreHistory.with(|v| v.get())
 }
 
 /// Returns whether R_Quiet mode is active.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetQuiet() -> c_int {
+pub unsafe fn R_GetQuiet() -> c_int {
     R_Quiet.with(|v| v.get())
 }
 
 /// Returns whether R_NoEcho mode is active.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetNoEcho() -> c_int {
+pub unsafe fn R_GetNoEcho() -> c_int {
     R_NoEcho.with(|v| v.get())
 }
 
 /// Returns whether R is running interactively.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetInteractive() -> c_int {
+pub unsafe fn R_GetInteractive() -> c_int {
     R_Interactive.with(|v| v.get())
 }
 
 /// Returns whether R_Verbose mode is active.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetVerbose() -> c_int {
+pub unsafe fn R_GetVerbose() -> c_int {
     R_Verbose.with(|v| v.get())
 }
 
 /// Returns whether site file loading is enabled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetLoadSiteFile() -> c_int {
+pub unsafe fn R_GetLoadSiteFile() -> c_int {
     LoadSiteFile.with(|v| v.get())
 }
 
 /// Returns whether init file loading is enabled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetLoadInitFile() -> c_int {
+pub unsafe fn R_GetLoadInitFile() -> c_int {
     LoadInitFile.with(|v| v.get())
 }
 
 /// Returns whether .Renviron processing is disabled.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetNoRenviron() -> c_int {
+pub unsafe fn R_GetNoRenviron() -> c_int {
     NoRenviron.with(|v| v.get())
 }
 

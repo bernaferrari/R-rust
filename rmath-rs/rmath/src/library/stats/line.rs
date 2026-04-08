@@ -140,8 +140,7 @@ unsafe fn line(
     *coef.add(1) = slope;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tukeyline0(
+pub unsafe fn tukeyline0(
     x: *mut c_double,
     y: *mut c_double,
     z: *mut c_double,
@@ -156,8 +155,7 @@ unsafe fn asInteger(x: SEXP) -> c_int {
     crate::main::coerce::asInteger(x)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let n = LENGTH(x);

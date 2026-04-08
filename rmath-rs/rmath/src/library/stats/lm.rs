@@ -99,8 +99,7 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
+pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let mut x = x;

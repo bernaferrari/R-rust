@@ -172,12 +172,14 @@ unsafe fn translateChar(s: SEXP) -> *const c_char {
 
 /// translateCharUTF8 — stub, just returns CHAR().
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
     unsafe { CHAR(s) }
 }
 
 /// getCharCE — get character encoding from gp flags.
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn getCharCE(s: SEXP) -> c_int {
     unsafe {
         if s.is_null() || s == R_NilValue() {
@@ -421,8 +423,7 @@ pub unsafe fn psmatch_case_insensitive(f: *const c_char, t: *const c_char, exact
 /// # Safety
 /// `x` must be a valid null-terminated C string.
 /// `table` must be a valid pointer to an array of `n` valid null-terminated C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pmatch(
+pub unsafe fn R_pmatch(
     x: *const c_char,
     table: *const *const c_char,
     n: c_int,

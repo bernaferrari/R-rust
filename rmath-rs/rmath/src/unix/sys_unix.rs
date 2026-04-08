@@ -48,8 +48,7 @@ thread_local! { static newFileName: RefCell<[c_char; R_PATH_MAX + 1]> = RefCell:
 
 /// Expand ~ in file paths.
 /// Handles ~, ~user, and ~user/path forms using HOME env and getpwnam.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExpandFileName(s: *const c_char) -> *const c_char {
+pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
     unsafe {
         if s.is_null() || *s == 0 {
             return s;
@@ -134,8 +133,7 @@ pub unsafe extern "C" fn R_ExpandFileName(s: *const c_char) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// .Internal(machine()) -- returns "Unix".
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe { Rf_mkString(b"Unix\0".as_ptr() as *const c_char) }
 }
 
@@ -156,8 +154,7 @@ unsafe fn currentTime() -> c_double {
 }
 
 /// Record the start time for proc.time().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setStartTime() {
+pub unsafe fn R_setStartTime() {
     unsafe {
         clk_tck.with(|v| v.set(libc::sysconf(libc::_SC_CLK_TCK) as c_double));
         StartTime.with(|v| v.set(currentTime()));
@@ -166,7 +163,7 @@ pub unsafe extern "C" fn R_setStartTime() {
 
 /// Get process timing data: [user, system, elapsed, child_user, child_system].
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getProcTime(data: *mut c_double) {
+pub unsafe fn R_getProcTime(data: *mut c_double) {
     unsafe {
         let et = currentTime() - StartTime.with(|v| v.get());
         *data.add(2) = 1e-3 * (1000.0 * et).round();
@@ -188,8 +185,7 @@ pub unsafe extern "C" fn R_getProcTime(data: *mut c_double) {
 }
 
 /// Get the clock increment in seconds.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getClockIncrement() -> c_double {
+pub unsafe fn R_getClockIncrement() -> c_double {
     1.0 / clk_tck.with(|v| v.get())
 }
 
@@ -198,8 +194,7 @@ pub unsafe extern "C" fn R_getClockIncrement() -> c_double {
 // ---------------------------------------------------------------------------
 
 /// .Internal(sysinfo()) -- returns system information.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let ans = Rf_allocVector(STRSXP_VAL, 8);
         let ansnames = Rf_allocVector(STRSXP_VAL, 8);
@@ -296,8 +291,7 @@ pub unsafe extern "C" fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: S
 // ---------------------------------------------------------------------------
 
 /// Process pending events (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ProcessEvents() {
+pub unsafe fn R_ProcessEvents() {
     // In the full implementation, this calls ptr_R_ProcessEvents
     // and R_PolledEvents, then checks time limits.
 }
@@ -309,8 +303,7 @@ pub unsafe extern "C" fn R_ProcessEvents() {
 /// Set up FPU control word.
 /// On most platforms this is a no-op. On FreeBSD and ARM, it adjusts
 /// floating-point exception handling.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fpu_setup(start: c_int) {
+pub unsafe fn fpu_setup(start: c_int) {
     if start != 0 {
         // Platform-specific FPU setup
         #[cfg(target_os = "freebsd")]
@@ -333,8 +326,7 @@ pub unsafe extern "C" fn fpu_setup(start: c_int) {
 
 /// Open the R initialization file (.Rprofile).
 /// Checks R_PROFILE_USER env var, then ./.Rprofile, then ~/.Rprofile.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_OpenInitFile() -> *mut libc::FILE {
+pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
     unsafe {
         if LoadInitFile.with(|v| v.get()) == 0 {
             return ptr::null_mut();

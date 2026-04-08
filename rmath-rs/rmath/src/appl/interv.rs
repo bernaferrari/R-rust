@@ -14,8 +14,7 @@
 ///
 /// # Safety
 /// `xt` must point to a valid sorted array of at least `n` doubles.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn findInterval(
+pub unsafe fn findInterval(
     xt: *const f64,
     n: std::os::raw::c_int,
     x: f64,
@@ -45,8 +44,7 @@ pub unsafe extern "C" fn findInterval(
 /// # Safety
 /// `xt` must point to a valid sorted array of at least `n` doubles.
 /// `mflag` must be a valid pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn findInterval2(
+pub unsafe fn findInterval2(
     xt: *const f64,
     n: std::os::raw::c_int,
     x: f64,
@@ -212,7 +210,6 @@ pub unsafe extern "C" fn findInterval2(
 
 /// Fortran-compatible entry point (F77_SUB(interv)).
 /// Maps to findInterval with int parameters instead of bool.
-#[unsafe(no_mangle)]
 pub extern "C" fn F77_SUB_interv(
     xt: *const f64,
     n: *mut std::os::raw::c_int,

@@ -182,7 +182,6 @@ pub unsafe fn Init_R_Machine(_rho: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get the smallest decimal exponent.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_Dec_min_exponent() -> c_int {
     R_dec_min_exponent.with(|v| v.get())
 }

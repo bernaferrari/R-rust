@@ -21,8 +21,7 @@ const RELTOL: f64 = 1e-5;
 /// * `nc` - number of columns
 /// * `maxes` - output array of length nr (1-based column indices)
 /// * `ties_meth` - tie-breaking method: 1=random, 2=first, 3=last
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_max_col(
+pub unsafe fn R_max_col(
     matrix: *const f64,
     nr: std::os::raw::c_int,
     nc: std::os::raw::c_int,

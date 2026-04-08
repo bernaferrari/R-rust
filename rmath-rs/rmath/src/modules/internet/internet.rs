@@ -651,8 +651,7 @@ unsafe fn http_download(
 ///   ftp:// URLs — error (defunct in R 4.2+)
 ///
 /// Returns: ScalarInteger with status code (0 = success, 1 = failure)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_do_download(args: SEXP) -> SEXP {
+pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
     let mut args = args;
 
     // url
@@ -764,8 +763,7 @@ pub(crate) unsafe extern "C" fn in_do_download(args: SEXP) -> SEXP {
 /// function pointers via R_setInternetRoutines(). In the Rust port, we
 /// don't have the full R_InternetRoutines infrastructure, so we perform
 /// minimal initialization.
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_init_internet(_info: *mut c_void) {
+pub(crate) unsafe fn R_init_internet(_info: *mut c_void) {
     // In R's C implementation, this function:
     //   1. Allocates an R_InternetRoutines struct via R_Calloc
     //   2. Registers function pointers for:

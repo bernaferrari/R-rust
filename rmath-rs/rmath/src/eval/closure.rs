@@ -147,8 +147,7 @@ pub fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>) -> Result<Sexp<
 /// - arglist: the evaluated or promised argument list
 /// - rho: the calling environment
 /// - suppliedenv: the environment of the caller (for sys.call/sys.parent)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn applyClosure(
+pub unsafe fn applyClosure(
     call: SEXP,
     op: SEXP,
     arglist: SEXP,

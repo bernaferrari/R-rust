@@ -324,8 +324,7 @@ unsafe fn md5_process_bytes(buffer: *const c_void, mut len: size_t, ctx: *mut Md
 /// Compute MD5 message digest for bytes read from STREAM.
 /// The resulting message digest will be written into the 16 bytes beginning at RESBLOCK.
 /// Returns 0 on success, 1 on error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn md5_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
+pub unsafe fn md5_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
     let mut ctx = Md5Ctx {
         A: 0,
         B: 0,
@@ -385,8 +384,7 @@ pub unsafe extern "C" fn md5_stream(stream: *mut FILE, resblock: *mut c_void) ->
 /// Compute MD5 message digest for LEN bytes beginning at BUFFER.
 /// The result is always in little endian byte order.
 /// Returns resblock on success.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn md5_buffer(
+pub unsafe fn md5_buffer(
     buffer: *const u8,
     len: size_t,
     resblock: *mut c_void,

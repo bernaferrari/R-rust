@@ -801,8 +801,7 @@ pub unsafe fn defaultSerializeVersion() -> c_int {
 // R_Serialize -- serialize an R object to a stream (C API)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
+pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
     unsafe {
         if stream.is_null() {
             return;
@@ -853,23 +852,24 @@ pub unsafe extern "C" fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
         // Stream out the serialized bytes
         let data = writer.into_vec();
         if !data.is_empty()
-            && let Some(out_bytes) = (*stream).OutBytes {
-                // Write in chunks to avoid c_int overflow
-                let mut offset = 0usize;
-                while offset < data.len() {
-                    let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
-                    let chunk_len_int = chunk_len as c_int;
-                    if chunk_len_int < 0 {
-                        break;
-                    }
-                    out_bytes(
-                        stream,
-                        data[offset..].as_ptr() as *const c_void,
-                        chunk_len_int,
-                    );
-                    offset += chunk_len;
+            && let Some(out_bytes) = (*stream).OutBytes
+        {
+            // Write in chunks to avoid c_int overflow
+            let mut offset = 0usize;
+            while offset < data.len() {
+                let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
+                let chunk_len_int = chunk_len as c_int;
+                if chunk_len_int < 0 {
+                    break;
                 }
+                out_bytes(
+                    stream,
+                    data[offset..].as_ptr() as *const c_void,
+                    chunk_len_int,
+                );
+                offset += chunk_len;
             }
+        }
     }
 }
 
@@ -877,8 +877,7 @@ pub unsafe extern "C" fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 // R_Unserialize -- unserialize an R object from a stream (C API)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
+pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
     unsafe {
         if stream.is_null() {
             return R_NilValue();
@@ -898,8 +897,7 @@ pub unsafe extern "C" fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
 // R_SerializeInfo
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
+pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -907,13 +905,11 @@ pub unsafe extern "C" fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 // R_ReadItem / R_WriteItem (C stream API)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
+pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
+pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
     unsafe {
         if stream.is_null() {
             return;
@@ -923,22 +919,23 @@ pub unsafe extern "C" fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
         WriteItemInternal(s, &mut ref_table, &mut writer);
         let data = writer.into_vec();
         if !data.is_empty()
-            && let Some(out_bytes) = (*stream).OutBytes {
-                let mut offset = 0usize;
-                while offset < data.len() {
-                    let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
-                    let chunk_len_int = chunk_len as c_int;
-                    if chunk_len_int < 0 {
-                        break;
-                    }
-                    out_bytes(
-                        stream,
-                        data[offset..].as_ptr() as *const c_void,
-                        chunk_len_int,
-                    );
-                    offset += chunk_len;
+            && let Some(out_bytes) = (*stream).OutBytes
+        {
+            let mut offset = 0usize;
+            while offset < data.len() {
+                let chunk_len = std::cmp::min(CHUNK_SIZE, data.len() - offset);
+                let chunk_len_int = chunk_len as c_int;
+                if chunk_len_int < 0 {
+                    break;
                 }
+                out_bytes(
+                    stream,
+                    data[offset..].as_ptr() as *const c_void,
+                    chunk_len_int,
+                );
+                offset += chunk_len;
             }
+        }
     }
 }
 
@@ -946,8 +943,7 @@ pub unsafe extern "C" fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
 // Stream initializers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitInPStream(
+pub unsafe fn R_InitInPStream(
     stream: R_inpstream_t,
     data: R_pstream_data_t,
     type_: R_pstream_format_t,
@@ -972,8 +968,7 @@ pub unsafe extern "C" fn R_InitInPStream(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitOutPStream(
+pub unsafe fn R_InitOutPStream(
     stream: R_outpstream_t,
     data: R_pstream_data_t,
     type_: R_pstream_format_t,
@@ -1002,8 +997,7 @@ pub unsafe extern "C" fn R_InitOutPStream(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitFileOutPStream(
+pub unsafe fn R_InitFileOutPStream(
     stream: R_outpstream_t,
     fp: *mut c_void,
     type_: R_pstream_format_t,
@@ -1016,8 +1010,7 @@ pub unsafe extern "C" fn R_InitFileOutPStream(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitFileInPStream(
+pub unsafe fn R_InitFileInPStream(
     stream: R_inpstream_t,
     fp: *mut c_void,
     type_: R_pstream_format_t,
@@ -1029,8 +1022,7 @@ pub unsafe extern "C" fn R_InitFileInPStream(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitConnOutPStream(
+pub unsafe fn R_InitConnOutPStream(
     stream: R_outpstream_t,
     con: *mut c_void,
     type_: R_pstream_format_t,
@@ -1040,8 +1032,7 @@ pub unsafe extern "C" fn R_InitConnOutPStream(
 ) {
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitConnInPStream(
+pub unsafe fn R_InitConnInPStream(
     stream: R_inpstream_t,
     con: *mut c_void,
     type_: R_pstream_format_t,
@@ -1056,8 +1047,7 @@ pub unsafe extern "C" fn R_InitConnInPStream(
 
 /// Serialize an R object to a raw vector (when icon is R_NilValue).
 /// This is the main entry point for `serialize()` in R.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_serialize(
+pub unsafe fn R_serialize(
     object: SEXP,
     icon: SEXP,
     ascii: SEXP,
@@ -1098,8 +1088,7 @@ pub unsafe extern "C" fn R_serialize(
 }
 
 /// Unserialize an R object from a raw vector.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
+pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
     unsafe {
         if icon.is_null() {
             return R_NilValue();
@@ -1587,8 +1576,7 @@ unsafe fn AddReadRef(table: SEXP, value: SEXP) {}
 // R_InitSerializeRoutines
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitSerializeRoutines() {
+pub unsafe fn R_InitSerializeRoutines() {
     // No-op: all routines are statically available.
 }
 
@@ -1819,12 +1807,7 @@ unsafe fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {}
 // Connection I/O
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WriteConnection(
-    con: *mut c_void,
-    buf: *const c_void,
-    n: usize,
-) -> usize {
+pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
     0
 }
 
@@ -1866,13 +1849,11 @@ unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
 // Compression functions (stubs)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compress1(inp: SEXP) -> SEXP {
+pub unsafe fn R_compress1(inp: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
+pub unsafe fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
     unsafe {
         if !err.is_null() {
             *err = 0; // FALSE
@@ -1881,13 +1862,11 @@ pub unsafe extern "C" fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compress2(inp: SEXP) -> SEXP {
+pub unsafe fn R_compress2(inp: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
+pub unsafe fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
     unsafe {
         if !err.is_null() {
             *err = 0;
@@ -1896,13 +1875,11 @@ pub unsafe extern "C" fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compress3(inp: SEXP) -> SEXP {
+pub unsafe fn R_compress3(inp: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
+pub unsafe fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
     unsafe {
         if !err.is_null() {
             *err = 0;

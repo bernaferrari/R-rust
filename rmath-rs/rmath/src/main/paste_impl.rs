@@ -176,6 +176,7 @@ unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
     }
 }
 
+#[unsafe(no_mangle)]
 unsafe fn translateCharFP(s: SEXP) -> *const c_char {
     unsafe {
         if s.is_null() {
@@ -207,6 +208,8 @@ unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     unsafe { crate::main::printutils::EncodeInteger(x, w) }
 }
+
+
 
 unsafe fn EncodeReal0(
     x: c_double,
@@ -504,8 +507,7 @@ unsafe fn get_cbuff() -> MutPtr<RStringBuffer> {
 
 /// Copy the C string `src` into `dest`, returning a pointer to the
 /// terminating NUL byte in `dest`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
+pub unsafe fn R_stpcpy(dest: *mut c_char, src: *const c_char) -> *mut c_char {
     unsafe {
         if dest.is_null() || src.is_null() {
             return dest;

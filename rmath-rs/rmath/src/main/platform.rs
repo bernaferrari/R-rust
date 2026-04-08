@@ -26,8 +26,7 @@ use crate::sexp::ffi::SEXP;
 /// NUL-terminated string like `"Wed Jun 30 21:49:08 1993"`.
 ///
 /// This is a faithful port of the static `R_Date()` function in platform.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Date() -> *mut c_char {
+pub unsafe fn R_Date() -> *mut c_char {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     thread_local! {
@@ -214,8 +213,7 @@ static CODESET_BUF: Mutex<[u8; R_CODESET_MAX + 1]> = Mutex::new([0u8; R_CODESET_
 ///
 /// This is a port of `R_nativeEncoding()` from platform.c.
 /// The encoding is initialized by `R_check_locale()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_nativeEncoding() -> *const c_char {
+pub unsafe fn R_nativeEncoding() -> *const c_char {
     let enc = NATIVE_ENC.lock().expect("NATIVE_ENC lock poisoned");
     enc.as_ptr() as *const c_char
 }
@@ -225,8 +223,7 @@ pub unsafe extern "C" fn R_nativeEncoding() -> *const c_char {
 /// This is a simplified port of `R_check_locale()` from platform.c.
 /// On Unix-like systems it uses `nl_langinfo(CODESET)` to detect the encoding.
 /// Since we cannot call libc, this provides a reasonable default.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_check_locale() {
+pub unsafe fn R_check_locale() {
     {
         let mut enc = NATIVE_ENC.lock().expect("NATIVE_ENC lock poisoned");
         let bytes = b"UTF-8\0";

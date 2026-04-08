@@ -72,8 +72,7 @@ unsafe fn as_real(s: SEXP) -> c_double {
 /// # Safety
 /// All SEXP arguments must be valid, non-null pointers to properly
 /// allocated R objects of the expected types.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
+pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
     let n = as_integer(sn);
     if n == NA_INTEGER || n <= 0 {
         // Return a length-0 real vector on error (matches R's error behavior

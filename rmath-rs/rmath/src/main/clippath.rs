@@ -27,8 +27,7 @@ unsafe fn install(name: *const c_char) -> SEXP {
 
 /// Get the fill rule from a clip path SEXP.
 /// Must match R structures in library/grDevices/R/clippath.R.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_clipPathFillRule(path: SEXP) -> c_int {
+pub unsafe fn R_GE_clipPathFillRule(path: SEXP) -> c_int {
     unsafe {
         if path.is_null() {
             return 0;

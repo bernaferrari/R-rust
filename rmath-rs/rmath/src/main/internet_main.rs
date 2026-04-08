@@ -147,8 +147,7 @@ thread_local! {
 }
 
 /// R_setInternetRoutines -- set the internet routines table.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setInternetRoutines(
+pub unsafe fn R_setInternetRoutines(
     new_routines: *const R_InternetRoutines,
 ) -> *const R_InternetRoutines {
     let tmp = ptr.with(|v| v.get());
@@ -187,6 +186,7 @@ unsafe fn ensure_internet() -> bool {
 }
 
 /// Rdownload -- .Internal(download(args))
+#[unsafe(no_mangle)]
 pub unsafe fn Rdownload(args: SEXP) -> SEXP {
     unsafe {
         if ensure_internet() {
@@ -200,8 +200,7 @@ pub unsafe fn Rdownload(args: SEXP) -> SEXP {
 }
 
 /// R_newurl -- create a new URL connection (Windows only, as of R 4.2.0).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_newurl(
+pub unsafe fn R_newurl(
     description: *const c_char,
     mode: *const c_char,
     headers: SEXP,
@@ -219,8 +218,7 @@ pub unsafe extern "C" fn R_newurl(
 }
 
 /// R_newsock -- create a new socket connection.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_newsock(
+pub unsafe fn R_newsock(
     host: *const c_char,
     port: c_int,
     server: c_int,
@@ -241,8 +239,7 @@ pub unsafe extern "C" fn R_newsock(
 }
 
 /// R_newservsock -- create a new server socket.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_newservsock(port: c_int) -> Rconnection {
+pub unsafe fn R_newservsock(port: c_int) -> Rconnection {
     unsafe {
         if ensure_internet() {
             let p = ptr.with(|v| v.get());
@@ -282,6 +279,7 @@ pub unsafe fn extR_HTTPDStop() {
 }
 
 /// Rsockconnect -- connect to a socket.
+#[unsafe(no_mangle)]
 pub unsafe fn Rsockconnect(sport: SEXP, shost: SEXP) -> SEXP {
     unsafe {
         if LENGTH(sport) != 1 {
@@ -302,6 +300,7 @@ pub unsafe fn Rsockconnect(sport: SEXP, shost: SEXP) -> SEXP {
 }
 
 /// Rsockread -- read from a socket.
+#[unsafe(no_mangle)]
 pub unsafe fn Rsockread(ssock: SEXP, smaxlen: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
@@ -336,6 +335,7 @@ pub unsafe fn Rsockread(ssock: SEXP, smaxlen: SEXP) -> SEXP {
 }
 
 /// Rsockclose -- close a socket.
+#[unsafe(no_mangle)]
 pub unsafe fn Rsockclose(ssock: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
@@ -357,6 +357,7 @@ pub unsafe fn Rsockclose(ssock: SEXP) -> SEXP {
 }
 
 /// Rsockopen -- open a socket.
+#[unsafe(no_mangle)]
 pub unsafe fn Rsockopen(sport: SEXP) -> SEXP {
     unsafe {
         if LENGTH(sport) != 1 {
@@ -375,6 +376,7 @@ pub unsafe fn Rsockopen(sport: SEXP) -> SEXP {
 }
 
 /// Rsocklisten -- listen on a socket.
+#[unsafe(no_mangle)]
 pub unsafe fn Rsocklisten(ssock: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
@@ -408,6 +410,7 @@ pub unsafe fn Rsocklisten(ssock: SEXP) -> SEXP {
 }
 
 /// Rsockwrite -- write to a socket.
+#[unsafe(no_mangle)]
 pub unsafe fn Rsockwrite(ssock: SEXP, sstring: SEXP) -> SEXP {
     unsafe {
         if LENGTH(ssock) != 1 {
@@ -492,8 +495,7 @@ pub unsafe fn do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 }
 
 /// R_newCurlUrl -- create a new curl URL connection.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_newCurlUrl(
+pub unsafe fn R_newCurlUrl(
     description: *const c_char,
     mode: *const c_char,
     headers: SEXP,

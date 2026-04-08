@@ -21,8 +21,7 @@ use crate::sexp::globals::R_NilValue;
 /// Run all on.exit handlers registered in contexts above the given one.
 ///
 /// This is the equivalent of R's `R_run_onexits()` in context.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_run_onexits() {
+pub unsafe fn R_run_onexits() {
     // In the full implementation, this walks the context stack
     // and calls any registered on.exit handlers.
     // For now, this is a stub.
@@ -35,8 +34,7 @@ pub unsafe extern "C" fn R_run_onexits() {
 /// Find the parent context of a given type.
 ///
 /// This is the equivalent of R's `R_findParentContext()` in context.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findParentContext(_ctxt: SEXP, _which: c_int) -> SEXP {
+pub unsafe fn R_findParentContext(_ctxt: SEXP, _which: c_int) -> SEXP {
     unsafe {
         // Simplified: walk up the context stack looking for function contexts
         R_NilValue()
@@ -48,8 +46,7 @@ pub unsafe extern "C" fn R_findParentContext(_ctxt: SEXP, _which: c_int) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Find the context of the currently executing function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findExecContext(_rho: SEXP) -> SEXP {
+pub unsafe fn R_findExecContext(_rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -92,8 +89,7 @@ pub unsafe fn R_jumpctxt(_ctxt: *mut sexp_context::RCNTXT, _retval: c_int) {
 /// Jump to the top-level context (used for error recovery).
 ///
 /// This is the equivalent of R's `R_jump_to_top()` in context.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_jump_to_top() {
+pub unsafe fn R_jump_to_top() {
     // In C, this uses longjmp to the top-level context
     // In Rust, we panic with a special error
     std::panic::panic_any(sexp_context::RError {
@@ -106,7 +102,6 @@ pub unsafe extern "C" fn R_jump_to_top() {
 // ---------------------------------------------------------------------------
 
 /// Insert restart handlers into the context stack.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {
+pub unsafe fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {
     // Stub
 }

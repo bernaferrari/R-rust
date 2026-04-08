@@ -63,8 +63,7 @@ unsafe fn getListElement(list: SEXP, str: &str) -> SEXP {
 // KalmanLike
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn KalmanLike(
+pub unsafe fn KalmanLike(
     sy: SEXP,
     mod_: SEXP,
     sUP: SEXP,
@@ -244,8 +243,7 @@ pub unsafe extern "C" fn KalmanLike(
 // KalmanSmooth
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn KalmanSmooth(sy: SEXP, mod_: SEXP, sUP: SEXP) -> SEXP {
+pub unsafe fn KalmanSmooth(sy: SEXP, mod_: SEXP, sUP: SEXP) -> SEXP {
     let sZ = getListElement(mod_, "Z");
     let sa = getListElement(mod_, "a");
     let sP = getListElement(mod_, "P");
@@ -500,8 +498,7 @@ pub unsafe extern "C" fn KalmanSmooth(sy: SEXP, mod_: SEXP, sUP: SEXP) -> SEXP {
 // KalmanFore
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn KalmanFore(nahead: SEXP, mod_: SEXP, update: SEXP) -> SEXP {
+pub unsafe fn KalmanFore(nahead: SEXP, mod_: SEXP, update: SEXP) -> SEXP {
     let mod_ = Rf_protect(duplicate(mod_));
     let sZ = getListElement(mod_, "Z");
     let sa = getListElement(mod_, "a");
@@ -656,8 +653,7 @@ unsafe fn invpartrans(p: isize, phi: &[f64], new_: &mut [f64]) {
 // ARIMA_undoPars
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ARIMA_undoPars(sin: SEXP, sarma: SEXP) -> SEXP {
+pub unsafe fn ARIMA_undoPars(sin: SEXP, sarma: SEXP) -> SEXP {
     let arma = INTEGER(sarma);
     let mp = *arma.add(0) as isize;
     let mq = *arma.add(1) as isize;
@@ -701,8 +697,7 @@ pub unsafe extern "C" fn ARIMA_undoPars(sin: SEXP, sarma: SEXP) -> SEXP {
 // ARIMA_transPars
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ARIMA_transPars(sin: SEXP, sarma: SEXP, strans: SEXP) -> SEXP {
+pub unsafe fn ARIMA_transPars(sin: SEXP, sarma: SEXP, strans: SEXP) -> SEXP {
     let arma = INTEGER(sarma);
     let trans = asLogical(strans);
     let mp = *arma.add(0) as isize;
@@ -794,8 +789,7 @@ pub unsafe extern "C" fn ARIMA_transPars(sin: SEXP, sarma: SEXP, strans: SEXP) -
 // ARIMA_Invtrans
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ARIMA_Invtrans(in_: SEXP, sarma: SEXP) -> SEXP {
+pub unsafe fn ARIMA_Invtrans(in_: SEXP, sarma: SEXP) -> SEXP {
     let arma = INTEGER(sarma);
     let mp = *arma.add(0) as isize;
     let mq = *arma.add(1) as isize;
@@ -841,8 +835,7 @@ pub unsafe extern "C" fn ARIMA_Invtrans(in_: SEXP, sarma: SEXP) -> SEXP {
 
 const ARIMA_EPS: f64 = 1e-3;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ARIMA_Gradtrans(in_: SEXP, sarma: SEXP) -> SEXP {
+pub unsafe fn ARIMA_Gradtrans(in_: SEXP, sarma: SEXP) -> SEXP {
     let arma = INTEGER(sarma);
     let mp = *arma.add(0) as isize;
     let mq = *arma.add(1) as isize;
@@ -899,8 +892,7 @@ pub unsafe extern "C" fn ARIMA_Gradtrans(in_: SEXP, sarma: SEXP) -> SEXP {
 // ARIMA_Like
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: SEXP) -> SEXP {
+pub unsafe fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: SEXP) -> SEXP {
     let sPhi = getListElement(mod_, "phi");
     let sTheta = getListElement(mod_, "theta");
     let sDelta = getListElement(mod_, "Delta");
@@ -1140,8 +1132,7 @@ pub unsafe extern "C" fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: 
 // ARIMA_CSS
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ARIMA_CSS(
+pub unsafe fn ARIMA_CSS(
     sy: SEXP,
     sarma: SEXP,
     sPhi: SEXP,
@@ -1219,8 +1210,7 @@ pub unsafe extern "C" fn ARIMA_CSS(
 // TSconv
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn TSconv(a: SEXP, b: SEXP) -> SEXP {
+pub unsafe fn TSconv(a: SEXP, b: SEXP) -> SEXP {
     let a = Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0));
     let b = Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.0));
     let na = Rf_length(a) as isize;
@@ -1294,8 +1284,7 @@ unsafe fn inclu2(
 // getQ0bis
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getQ0bis(sPhi: SEXP, sTheta: SEXP, _sTol: SEXP) -> SEXP {
+pub unsafe fn getQ0bis(sPhi: SEXP, sTheta: SEXP, _sTol: SEXP) -> SEXP {
     let p = Rf_length(sPhi) as isize;
     let q = Rf_length(sTheta) as isize;
     let phi = REAL(sPhi);
@@ -1462,8 +1451,7 @@ pub unsafe extern "C" fn getQ0bis(sPhi: SEXP, sTheta: SEXP, _sTol: SEXP) -> SEXP
 // getQ0
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getQ0(sPhi: SEXP, sTheta: SEXP) -> SEXP {
+pub unsafe fn getQ0(sPhi: SEXP, sTheta: SEXP) -> SEXP {
     let p = Rf_length(sPhi) as isize;
     let q = Rf_length(sTheta) as isize;
     let phi = REAL(sPhi);

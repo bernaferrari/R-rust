@@ -1037,49 +1037,41 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dgamma(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dgamma_inner(x, shape, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dgamma(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dgamma_inner(x, shape, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pgamma(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pgamma_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pgamma(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pgamma_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgamma_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qgamma(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qgamma_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)
 }

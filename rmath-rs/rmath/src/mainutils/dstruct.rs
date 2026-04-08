@@ -91,8 +91,7 @@ pub unsafe fn mkCLOSXP(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
 ///
 /// This is equivalent to R's `R_mkClosure(formals, body, rho)`.
 /// Checks that formals is a pairlist and that rho is an environment.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_mkClosure(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn R_mkClosure(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // CheckFormals would verify formals is a pairlist or NILSXP.
         // For now, we skip the detailed checking.

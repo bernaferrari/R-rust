@@ -118,8 +118,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
 /// Check if a file exists (Unix version).
 ///
 /// Ported from R's `R_FileExists` (non-Windows path).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FileExists(path: *const c_char) -> Rboolean {
+pub unsafe fn R_FileExists(path: *const c_char) -> Rboolean {
     if path.is_null() {
         return FALSE;
     }
@@ -130,8 +129,7 @@ pub unsafe extern "C" fn R_FileExists(path: *const c_char) -> Rboolean {
 /// Get file modification time (Unix version).
 ///
 /// Ported from R's `R_FileMtime` (non-Windows path).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FileMtime(path: *const c_char) -> c_double {
+pub unsafe fn R_FileMtime(path: *const c_char) -> c_double {
     let mut sb: libc::stat = std::mem::zeroed();
     if unsafe { libc::stat(path, &mut sb) } != 0 {
         Rf_error(b"cannot determine file modification time\0".as_ptr() as *const c_char);
@@ -142,8 +140,7 @@ pub unsafe extern "C" fn R_FileMtime(path: *const c_char) -> c_double {
 /// Check if a filename is hidden (starts with '.').
 ///
 /// Ported from R's `R_HiddenFile`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_HiddenFile(name: *const c_char) -> Rboolean {
+pub unsafe fn R_HiddenFile(name: *const c_char) -> Rboolean {
     if !name.is_null() && unsafe { *name } != 0 && unsafe { *name } != b'.' as c_char {
         0
     } else {
@@ -154,8 +151,7 @@ pub unsafe extern "C" fn R_HiddenFile(name: *const c_char) -> Rboolean {
 /// Check if a directory is writable (Unix version).
 ///
 /// Ported from R's `R_isWriteableDir`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isWriteableDir(path: *mut c_char) -> c_int {
+pub unsafe fn R_isWriteableDir(path: *mut c_char) -> c_int {
     if path.is_null() {
         return 0;
     }
@@ -178,7 +174,7 @@ pub unsafe extern "C" fn R_isWriteableDir(path: *mut c_char) -> c_int {
 ///
 /// Ported from R's `R_fopen`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE {
+pub unsafe fn R_fopen(filename: *const c_char, mode: *const c_char) -> *mut libc::FILE {
     if filename.is_null() {
         return ptr::null_mut();
     }
@@ -188,6 +184,7 @@ pub unsafe extern "C" fn R_fopen(filename: *const c_char, mode: *const c_char) -
 /// fopen wrapper for SEXP filenames (Unix version).
 ///
 /// Ported from R's `RC_fopen`.
+#[unsafe(no_mangle)]
 pub unsafe fn RC_fopen(fn_: SEXP, mode: *const c_char, expand: Rboolean) -> *mut libc::FILE {
     if fn_.is_null() || fn_ == R_NilValue() {
         return ptr::null_mut();
@@ -211,8 +208,7 @@ pub unsafe fn RC_fopen(fn_: SEXP, mode: *const c_char, expand: Rboolean) -> *mut
 /// Expand ~ in a file path (simple Unix version).
 ///
 /// Ported from R's `R_ExpandFileName`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExpandFileName(path: *const c_char) -> *const c_char {
+pub unsafe fn R_ExpandFileName(path: *const c_char) -> *const c_char {
     if path.is_null() {
         return path;
     }
@@ -243,16 +239,14 @@ pub unsafe extern "C" fn R_ExpandFileName(path: *const c_char) -> *const c_char 
 /// popen wrapper.
 ///
 /// Ported from R's `R_popen`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_popen(command: *const c_char, type_: *const c_char) -> *mut libc::FILE {
+pub unsafe fn R_popen(command: *const c_char, type_: *const c_char) -> *mut libc::FILE {
     unsafe { libc::popen(command, type_) }
 }
 
 /// Execute a system command and return the exit status.
 ///
 /// Ported from R's `R_system`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_system(command: *const c_char) -> c_int {
+pub unsafe fn R_system(command: *const c_char) -> c_int {
     let res = unsafe { libc::system(command) };
     if res == -1 {
         return 127;
@@ -273,8 +267,7 @@ pub unsafe extern "C" fn R_system(command: *const c_char) -> c_int {
 /// The location of the R system files.
 ///
 /// Ported from R's `R_HomeDir`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_HomeDir() -> *mut c_char {
+pub unsafe fn R_HomeDir() -> *mut c_char {
     let val = std::env::var("R_HOME");
     match val {
         Ok(s) => {
@@ -316,8 +309,7 @@ thread_local! { static R_TempDir: Cell<*mut c_char> = Cell::new(ptr::null_mut())
 /// Reinitialize the temp directory (Unix version).
 ///
 /// Ported from R's `R_reInitTempDir`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_reInitTempDir(die_on_fail: c_int) {
+pub unsafe fn R_reInitTempDir(die_on_fail: c_int) {
     if !R_TempDir.with(|v| v.get()).is_null() {
         return;
     }
@@ -381,8 +373,7 @@ pub unsafe fn InitTempDir() {
 }
 
 /// Get the current temp directory path (C string).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TempDir_get() -> *mut c_char {
+pub unsafe fn R_TempDir_get() -> *mut c_char {
     R_TempDir.with(|v| v.get())
 }
 
@@ -429,8 +420,7 @@ fn rand_u32() -> u32 {
 ///
 /// Ported from R's `R_tmpnam2`. Tries up to 100 times.
 /// Returns a malloc'd string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tmpnam2(
+pub unsafe fn R_tmpnam2(
     prefix: *const c_char,
     tempdir: *const c_char,
     fileext: *const c_char,
@@ -469,14 +459,12 @@ pub unsafe extern "C" fn R_tmpnam2(
 }
 
 /// R_tmpnam -- calls R_tmpnam2 with empty extension.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tmpnam(prefix: *const c_char, tempdir: *const c_char) -> *mut c_char {
+pub unsafe fn R_tmpnam(prefix: *const c_char, tempdir: *const c_char) -> *mut c_char {
     R_tmpnam2(prefix, tempdir, b"\0".as_ptr() as *const c_char)
 }
 
 /// Free a temporary filename.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_free_tmpnam(name: *mut c_char) {
+pub unsafe fn R_free_tmpnam(name: *mut c_char) {
     if !name.is_null() {
         unsafe { libc::free(name as *mut c_void) };
     }
@@ -775,8 +763,7 @@ pub unsafe fn do_setSessionTimeLimit(_call: SEXP, op: SEXP, args: SEXP, _rho: SE
 /// Check CPU and elapsed time limits.
 ///
 /// Ported from R's `R_CheckTimeLimits`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckTimeLimits() {
+pub unsafe fn R_CheckTimeLimits() {
     if cpuLimit.with(|v| v.get()) <= 0.0 && elapsedLimit.with(|v| v.get()) <= 0.0 {
         return;
     }
@@ -988,8 +975,7 @@ pub unsafe fn do_glob(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// Check if a file descriptor is a terminal.
 ///
 /// Ported from R's `R_isatty`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isatty(fd: c_int) -> c_int {
+pub unsafe fn R_isatty(fd: c_int) -> c_int {
     unsafe { libc::isatty(fd) }
 }
 
@@ -1000,8 +986,7 @@ pub unsafe extern "C" fn R_isatty(fd: c_int) -> c_int {
 /// Case-insensitive string comparison.
 ///
 /// Ported from R's `R_strieql`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_strieql(a: *const c_char, b: *const c_char) -> c_int {
+pub unsafe fn R_strieql(a: *const c_char, b: *const c_char) -> c_int {
     if a.is_null() || b.is_null() {
         return if a.is_null() && b.is_null() { 1 } else { 0 };
     }

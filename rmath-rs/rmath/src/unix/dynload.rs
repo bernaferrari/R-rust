@@ -180,7 +180,7 @@ unsafe fn libc_dlerror() -> *mut c_char {
 /// Initialize the function hashing / dynamic loading subsystem.
 /// Sets up the OS-specific vtable for dlopen/dlsym/dlclose.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn InitFunctionHashing() {
+pub unsafe fn InitFunctionHashing() {
     R_osDynSymbol_table.with(|v| {
         v.borrow_mut().loadLibrary = Some(load_library);
         v.borrow_mut().dlsym_fn = Some(local_dlsym);
@@ -190,27 +190,20 @@ pub unsafe extern "C" fn InitFunctionHashing() {
 }
 
 /// Delete cached symbols for a DLL (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_deleteCachedSymbol(_name: *const c_char) -> c_int {
+pub unsafe fn Rf_deleteCachedSymbol(_name: *const c_char) -> c_int {
     0
 }
 
 /// Look up a cached symbol (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_lookupCachedSymbol(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
+pub unsafe fn Rf_lookupCachedSymbol(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
     None
 }
 
 /// Delete all cached symbols (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_deleteCachedSymbols() {}
+pub unsafe fn Rf_deleteCachedSymbols() {}
 
 /// Look up a cached symbol (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_lookupCachedSymbols(
-    _name: *const c_char,
-    _can_cache: c_int,
-) -> DL_FUNC {
+pub unsafe fn Rf_lookupCachedSymbols(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
     None
 }
 

@@ -3984,6 +3984,7 @@ unsafe fn RenderOffsetElement(
 // R API Functions
 // ===========================================================================
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEExpressionWidth(
     expr: SEXP,
     gc: *const R_GE_gcontext,
@@ -4008,6 +4009,7 @@ pub unsafe fn GEExpressionWidth(
     }
 }
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEExpressionHeight(
     expr: SEXP,
     gc: *const R_GE_gcontext,
@@ -4033,6 +4035,7 @@ pub unsafe fn GEExpressionHeight(
     }
 }
 
+#[unsafe(no_mangle)]
 pub unsafe fn GEExpressionMetric(
     expr: SEXP,
     gc: *const R_GE_gcontext,

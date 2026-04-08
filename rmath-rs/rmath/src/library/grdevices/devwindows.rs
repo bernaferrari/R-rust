@@ -358,18 +358,21 @@ thread_local! { static png_rows: Cell<c_int> = Cell::new(0); }
 
 /// Extract R_RED component from a packed R color integer
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn R_RED(color: c_int) -> c_int {
     (color >> 16) & 0xff
 }
 
 /// Extract R_GREEN component from a packed R color integer
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn R_GREEN(color: c_int) -> c_int {
     (color >> 8) & 0xff
 }
 
 /// Extract R_BLUE component from a packed R color integer
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn R_BLUE(color: c_int) -> c_int {
     color & 0xff
 }
@@ -387,6 +390,7 @@ unsafe fn R_RGBA(r: c_int, g: c_int, b: c_int, a: c_int) -> c_int {
 }
 
 /// Check if a color is fully opaque
+#[unsafe(no_mangle)]
 #[inline]
 unsafe fn R_OPAQUE(color: c_int) -> bool {
     R_ALPHA(color) == 255
@@ -481,8 +485,7 @@ unsafe fn translateFontFamily(_family: *const c_char) -> *mut c_char {
 /// savePlot -- save the current Windows device plot to a file.
 /// Stub: returns R_NilValue (no-op on non-Windows).
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn savePlot(args: SEXP) -> SEXP {
+pub unsafe fn savePlot(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -490,8 +493,7 @@ pub unsafe extern "C" fn savePlot(args: SEXP) -> SEXP {
 /// devga -- create a Windows GDI graphics device (windows() function).
 /// Stub: returns R_NilValue (no-op on non-Windows).
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devga(args: SEXP) -> SEXP {
+pub unsafe fn devga(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -499,8 +501,7 @@ pub unsafe extern "C" fn devga(args: SEXP) -> SEXP {
 /// bmVersion -- return bitmap library version info (libpng, jpeg, libtiff).
 /// Returns a named character vector of version strings.
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bmVersion() -> SEXP {
+pub unsafe fn bmVersion() -> SEXP {
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
     let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
     use crate::attrib_core::setAttrib;
@@ -523,8 +524,7 @@ pub unsafe extern "C" fn bmVersion() -> SEXP {
 /// devCairo -- create a Cairo graphics device.
 /// On Windows, this loads winCairo.dll. Stub: returns R_NilValue.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devCairo(args: SEXP) -> SEXP {
+pub unsafe fn devCairo(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -532,32 +532,28 @@ pub unsafe extern "C" fn devCairo(args: SEXP) -> SEXP {
 /// cairoVersion -- return the Cairo library version string.
 /// Stub: returns empty string.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cairoVersion() -> SEXP {
+pub unsafe fn cairoVersion() -> SEXP {
     Rf_mkString(b"\0".as_ptr() as *const c_char)
 }
 
 /// pangoVersion -- return the Pango library version string.
 /// Stub: returns empty string.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pangoVersion() -> SEXP {
+pub unsafe fn pangoVersion() -> SEXP {
     Rf_mkString(b"\0".as_ptr() as *const c_char)
 }
 
 /// cairoFT -- return Cairo FreeType information.
 /// Stub: returns empty string.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cairoFT() -> SEXP {
+pub unsafe fn cairoFT() -> SEXP {
     Rf_mkString(b"\0".as_ptr() as *const c_char)
 }
 
 /// bmVersion -- return bitmap library version info (libpng, jpeg, libtiff).
 /// Returns a named character vector of version strings.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn bmVersion() -> SEXP {
+pub unsafe fn bmVersion() -> SEXP {
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
     let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
     use crate::attrib_core::setAttrib;
@@ -578,8 +574,7 @@ pub unsafe extern "C" fn bmVersion() -> SEXP {
 // ===========================================================================
 
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn savePlot(args: SEXP) -> SEXP {
+pub unsafe fn savePlot(args: SEXP) -> SEXP {
     // Full implementation would parse args and call SaveAsPng/SaveAsBmp/etc.
     // For now, stub on Windows too since we lack full GDI support
     let _ = args;
@@ -587,8 +582,7 @@ pub unsafe extern "C" fn savePlot(args: SEXP) -> SEXP {
 }
 
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devga(args: SEXP) -> SEXP {
+pub unsafe fn devga(args: SEXP) -> SEXP {
     // Full implementation would:
     // 1. Parse all arguments from args (display, width, height, ps, etc.)
     // 2. Allocate a gadesc
@@ -609,11 +603,11 @@ mod win_impl {
 
     // --- Callbacks: all are no-ops since we lack Windows GDI ---
 
-    pub unsafe extern "C" fn GA_Activate(dd: *mut c_void) {
+    pub unsafe fn GA_Activate(dd: *mut c_void) {
         let _ = dd;
     }
 
-    pub unsafe extern "C" fn GA_Circle(
+    pub unsafe fn GA_Circle(
         x: c_double,
         y: c_double,
         radius: c_double,
@@ -623,7 +617,7 @@ mod win_impl {
         let _ = (x, y, radius, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Clip(
+    pub unsafe fn GA_Clip(
         x0: c_double,
         x1: c_double,
         y0: c_double,
@@ -633,19 +627,19 @@ mod win_impl {
         let _ = (x0, x1, y0, y1, dd);
     }
 
-    pub unsafe extern "C" fn GA_Close(dd: *mut c_void) {
+    pub unsafe fn GA_Close(dd: *mut c_void) {
         let _ = dd;
     }
 
-    pub unsafe extern "C" fn GA_Deactivate(dd: *mut c_void) {
+    pub unsafe fn GA_Deactivate(dd: *mut c_void) {
         let _ = dd;
     }
 
-    pub unsafe extern "C" fn GA_eventHelper(dd: *mut c_void, code: c_int) {
+    pub unsafe fn GA_eventHelper(dd: *mut c_void, code: c_int) {
         let _ = (dd, code);
     }
 
-    pub unsafe extern "C" fn GA_Locator(
+    pub unsafe fn GA_Locator(
         x: *mut c_double,
         y: *mut c_double,
         dd: *mut c_void,
@@ -654,7 +648,7 @@ mod win_impl {
         0 // FALSE
     }
 
-    pub unsafe extern "C" fn GA_Line(
+    pub unsafe fn GA_Line(
         x1: c_double,
         y1: c_double,
         x2: c_double,
@@ -665,7 +659,7 @@ mod win_impl {
         let _ = (x1, y1, x2, y2, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_MetricInfo(
+    pub unsafe fn GA_MetricInfo(
         c: c_int,
         gc: *const c_void,
         ascent: *mut c_double,
@@ -676,15 +670,15 @@ mod win_impl {
         let _ = (c, gc, ascent, descent, width, dd);
     }
 
-    pub unsafe extern "C" fn GA_Mode(mode: c_int, dd: *mut c_void) {
+    pub unsafe fn GA_Mode(mode: c_int, dd: *mut c_void) {
         let _ = (mode, dd);
     }
 
-    pub unsafe extern "C" fn GA_NewPage(gc: *const c_void, dd: *mut c_void) {
+    pub unsafe fn GA_NewPage(gc: *const c_void, dd: *mut c_void) {
         let _ = (gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Path(
+    pub unsafe fn GA_Path(
         x: *mut c_double,
         y: *mut c_double,
         npoly: c_int,
@@ -696,7 +690,7 @@ mod win_impl {
         let _ = (x, y, npoly, nper, winding, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Polygon(
+    pub unsafe fn GA_Polygon(
         n: c_int,
         x: *mut c_double,
         y: *mut c_double,
@@ -706,7 +700,7 @@ mod win_impl {
         let _ = (n, x, y, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Polyline(
+    pub unsafe fn GA_Polyline(
         n: c_int,
         x: *mut c_double,
         y: *mut c_double,
@@ -716,7 +710,7 @@ mod win_impl {
         let _ = (n, x, y, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Rect(
+    pub unsafe fn GA_Rect(
         x0: c_double,
         y0: c_double,
         x1: c_double,
@@ -727,7 +721,7 @@ mod win_impl {
         let _ = (x0, y0, x1, y1, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Size(
+    pub unsafe fn GA_Size(
         left: *mut c_double,
         right: *mut c_double,
         bottom: *mut c_double,
@@ -737,11 +731,11 @@ mod win_impl {
         let _ = (left, right, bottom, top, dd);
     }
 
-    pub unsafe extern "C" fn GA_Resize(dd: *mut c_void) {
+    pub unsafe fn GA_Resize(dd: *mut c_void) {
         let _ = dd;
     }
 
-    pub unsafe extern "C" fn GA_Raster(
+    pub unsafe fn GA_Raster(
         raster: *mut c_uint,
         w: c_int,
         h: c_int,
@@ -757,12 +751,12 @@ mod win_impl {
         let _ = (raster, w, h, x, y, width, height, rot, interpolate, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_Cap(dd: *mut c_void) -> SEXP {
+    pub unsafe fn GA_Cap(dd: *mut c_void) -> SEXP {
         let _ = dd;
         R_NilValue()
     }
 
-    pub unsafe extern "C" fn GA_StrWidth(
+    pub unsafe fn GA_StrWidth(
         str: *const c_char,
         gc: *const c_void,
         dd: *mut c_void,
@@ -771,7 +765,7 @@ mod win_impl {
         0.0
     }
 
-    pub unsafe extern "C" fn GA_Text(
+    pub unsafe fn GA_Text(
         x: c_double,
         y: c_double,
         str: *const c_char,
@@ -783,7 +777,7 @@ mod win_impl {
         let _ = (x, y, str, rot, hadj, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_StrWidth_UTF8(
+    pub unsafe fn GA_StrWidth_UTF8(
         str: *const c_char,
         gc: *const c_void,
         dd: *mut c_void,
@@ -792,7 +786,7 @@ mod win_impl {
         0.0
     }
 
-    pub unsafe extern "C" fn GA_Text_UTF8(
+    pub unsafe fn GA_Text_UTF8(
         x: c_double,
         y: c_double,
         str: *const c_char,
@@ -804,44 +798,44 @@ mod win_impl {
         let _ = (x, y, str, rot, hadj, gc, dd);
     }
 
-    pub unsafe extern "C" fn GA_NewFrameConfirm(dev: *mut c_void) -> c_int {
+    pub unsafe fn GA_NewFrameConfirm(dev: *mut c_void) -> c_int {
         let _ = dev;
         1 // TRUE
     }
 
-    pub unsafe extern "C" fn GA_setPattern(pattern: SEXP, dd: *mut c_void) -> SEXP {
+    pub unsafe fn GA_setPattern(pattern: SEXP, dd: *mut c_void) -> SEXP {
         let _ = (pattern, dd);
         R_NilValue()
     }
 
-    pub unsafe extern "C" fn GA_releasePattern(ref_: SEXP, dd: *mut c_void) {
+    pub unsafe fn GA_releasePattern(ref_: SEXP, dd: *mut c_void) {
         let _ = (ref_, dd);
     }
 
-    pub unsafe extern "C" fn GA_setClipPath(path: SEXP, ref_: SEXP, dd: *mut c_void) -> SEXP {
+    pub unsafe fn GA_setClipPath(path: SEXP, ref_: SEXP, dd: *mut c_void) -> SEXP {
         let _ = (path, ref_, dd);
         R_NilValue()
     }
 
-    pub unsafe extern "C" fn GA_releaseClipPath(ref_: SEXP, dd: *mut c_void) {
+    pub unsafe fn GA_releaseClipPath(ref_: SEXP, dd: *mut c_void) {
         let _ = (ref_, dd);
     }
 
-    pub unsafe extern "C" fn GA_setMask(path: SEXP, ref_: SEXP, dd: *mut c_void) -> SEXP {
+    pub unsafe fn GA_setMask(path: SEXP, ref_: SEXP, dd: *mut c_void) -> SEXP {
         let _ = (path, ref_, dd);
         R_NilValue()
     }
 
-    pub unsafe extern "C" fn GA_releaseMask(ref_: SEXP, dd: *mut c_void) {
+    pub unsafe fn GA_releaseMask(ref_: SEXP, dd: *mut c_void) {
         let _ = (ref_, dd);
     }
 
-    pub unsafe extern "C" fn GA_holdflush(dd: *mut c_void, level: c_int) -> c_int {
+    pub unsafe fn GA_holdflush(dd: *mut c_void, level: c_int) -> c_int {
         let _ = (dd, level);
         0
     }
 
-    pub unsafe extern "C" fn GA_onExit(dd: *mut c_void) {
+    pub unsafe fn GA_onExit(dd: *mut c_void) {
         let _ = dd;
     }
 

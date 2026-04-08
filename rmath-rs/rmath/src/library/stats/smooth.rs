@@ -298,8 +298,7 @@ unsafe fn sm_3RSR(
     iter
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
+pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
     let iend = asInteger(send);
     let type_ = asInteger(stype);
     let n = XLENGTH(x);

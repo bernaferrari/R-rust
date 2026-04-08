@@ -8,14 +8,12 @@ static I1: AtomicU32 = AtomicU32::new(1234);
 static I2: AtomicU32 = AtomicU32::new(5678);
 
 /// Set the RNG seed.
-#[unsafe(no_mangle)]
 pub extern "C" fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     I1.store(i1, Ordering::SeqCst);
     I2.store(i2, Ordering::SeqCst);
 }
 
 /// Get the current RNG seed.
-#[unsafe(no_mangle)]
 pub extern "C" fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
     if i1.is_null() || i2.is_null() {
         return;
@@ -29,7 +27,6 @@ pub extern "C" fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw:
 /// Generate a uniform random number in [0, 1).
 #[must_use]
 /// This is a faithful port of the Marsaglia-MultiCarry generator.
-#[unsafe(no_mangle)]
 pub extern "C" fn unif_rand() -> f64 {
     let i1 = I1.load(Ordering::SeqCst);
     let i2 = I2.load(Ordering::SeqCst);
@@ -48,13 +45,11 @@ pub extern "C" fn unif_rand() -> f64 {
     result
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     set_seed(i1, i2)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_unif_rand() -> f64 {
     unif_rand()
 }

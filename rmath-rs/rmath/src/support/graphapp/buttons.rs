@@ -5,6 +5,5 @@
 
 use super::types::*;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn clickbutton(_w: window, _b: button) { /* TODO */
+pub unsafe fn clickbutton(_w: window, _b: button) { /* TODO */
 }

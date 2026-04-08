@@ -38,8 +38,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 /// Recursively fix up permissions: used for R CMD INSTALL and build.
 /// 'gwsxp' means set group-write permissions on directories.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dirchmod(dr: SEXP, gwsxp: SEXP) -> SEXP {
+pub unsafe fn dirchmod(dr: SEXP, gwsxp: SEXP) -> SEXP {
     if dr.is_null() {
         return R_NilValue();
     }
@@ -142,8 +141,7 @@ const APPENDBUFSIZE: usize = if cfg!(target_os = "windows") {
 };
 
 /// Append code from f2 files to f1 file.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
+pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
     if f1.is_null() || f2.is_null() {
         return Rf_allocVector(SEXPTYPE::LGLSXP.0, 0);
     }

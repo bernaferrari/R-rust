@@ -788,8 +788,7 @@ pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
 // R_has_methods_attached -- check if the methods package is fully attached
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_has_methods_attached() -> c_int {
+pub unsafe fn R_has_methods_attached() -> c_int {
     unsafe {
         if isMethodsDispatchOn() == FALSE {
             return FALSE;
@@ -974,8 +973,7 @@ unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
 
 /// Look up a method in the S3 dispatch chain: call environment, definition
 /// environment's .__S3MethodsTable__., and the base environment.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_LookupMethod(
+pub unsafe fn R_LookupMethod(
     method: SEXP,
     rho: SEXP,
     callrho: SEXP,
@@ -1914,8 +1912,7 @@ pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
 /// S4 method dispatch. Requires the methods package to be loaded.
 /// Returns R_NilValue if methods dispatch is not available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_S4_method_dispatch(
+pub unsafe fn R_S4_method_dispatch(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -1956,8 +1953,7 @@ pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) ->
 
 /// Return the 0-based index of an is() match in a vector of class-name
 /// strings terminated by an empty string. Returns -1 for no match.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_check_class_and_super(
+pub unsafe fn R_check_class_and_super(
     x: SEXP,
     valid: *const *const c_char,
     _rho: SEXP,
@@ -1995,8 +1991,7 @@ pub unsafe extern "C" fn R_check_class_and_super(
 // R_check_class_etc -- simplified class check (no environment)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
+pub unsafe fn R_check_class_etc(x: SEXP, valid: *const *const c_char) -> c_int {
     unsafe { R_check_class_and_super(x, valid, ptr::null_mut()) }
 }
 
@@ -2010,8 +2005,7 @@ unsafe fn R_get_standardGeneric_ptr() -> R_stdGen_ptr_t {
 }
 
 /// Set the standardGeneric function pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_standardGeneric_ptr(
+pub unsafe fn R_set_standardGeneric_ptr(
     val: R_stdGen_ptr_t,
     _envir: SEXP,
 ) -> R_stdGen_ptr_t {
@@ -2197,8 +2191,7 @@ pub unsafe fn do_set_prim_method(
 }
 
 /// R_set_prim_method -- public API for setting primitive methods.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_prim_method(
+pub unsafe fn R_set_prim_method(
     fname: SEXP,
     op: SEXP,
     code_vec: SEXP,
@@ -2216,20 +2209,17 @@ pub unsafe extern "C" fn R_set_prim_method(
 }
 
 /// R_primitive_methods -- get the methods list for a primitive.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_primitive_methods(_op: SEXP) -> SEXP {
+pub unsafe fn R_primitive_methods(_op: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// R_primitive_generic -- get the generic function for a primitive.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_primitive_generic(_op: SEXP) -> SEXP {
+pub unsafe fn R_primitive_generic(_op: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// R_has_methods -- check whether methods might exist for this op.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_has_methods(_op: SEXP) -> c_int {
+pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
     unsafe {
         let ptr = R_get_standardGeneric_ptr();
         if ptr.is_none() {
@@ -2246,8 +2236,7 @@ pub unsafe extern "C" fn R_has_methods(_op: SEXP) -> c_int {
 }
 
 /// R_deferred_default_method -- return the deferred default method marker.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_deferred_default_method() -> SEXP {
+pub unsafe fn R_deferred_default_method() -> SEXP {
     unsafe {
         if DEFERRED_DEFAULT_OBJECT.with(|v| v.get()).is_null() {
             DEFERRED_DEFAULT_OBJECT.with(|v| {
@@ -2261,16 +2250,14 @@ pub unsafe extern "C" fn R_deferred_default_method() -> SEXP {
 }
 
 /// R_set_quick_method_check -- set the quick method check function pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
+pub unsafe fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
     unsafe {
         QUICK_METHOD_CHECK_PTR.with(|v| v.set(_value));
     }
 }
 
 /// R_possible_dispatch -- try to dispatch a formal method for a primitive.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_possible_dispatch(
+pub unsafe fn R_possible_dispatch(
     _call: SEXP,
     _op: SEXP,
     _args: SEXP,
@@ -2285,36 +2272,30 @@ pub unsafe extern "C" fn R_possible_dispatch(
 // S4 class infrastructure
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_do_MAKE_CLASS(_what: *const c_char) -> SEXP {
+pub unsafe fn R_do_MAKE_CLASS(_what: *const c_char) -> SEXP {
     unsafe {
         // Full implementation requires eval(getClass(what), R_MethodsNamespace)
         R_NilValue()
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getClassDef(_what: *const c_char) -> SEXP {
+pub unsafe fn R_getClassDef(_what: *const c_char) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getClassDef_R(_what: SEXP) -> SEXP {
+pub unsafe fn R_getClassDef_R(_what: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isVirtualClass(_class_def: SEXP, _env: SEXP) -> c_int {
+pub unsafe fn R_isVirtualClass(_class_def: SEXP, _env: SEXP) -> c_int {
     FALSE
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_extends(_class1: SEXP, _class2: SEXP, _env: SEXP) -> c_int {
+pub unsafe fn R_extends(_class1: SEXP, _class2: SEXP, _env: SEXP) -> c_int {
     FALSE
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_do_new_object(_class_def: SEXP) -> SEXP {
+pub unsafe fn R_do_new_object(_class_def: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -2322,8 +2303,7 @@ pub unsafe extern "C" fn R_do_new_object(_class_def: SEXP) -> SEXP {
 // S4 object manipulation
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
+pub unsafe fn R_seemsOldStyleS4Object(object: SEXP) -> c_int {
     unsafe {
         if object.is_null() {
             return FALSE;
@@ -2581,7 +2561,7 @@ pub unsafe fn DispatchGroup(
 /// Try S3 dispatch, and if no method is found, evaluate the default.
 /// Returns 1 if dispatch occurred, 0 otherwise.
 /// Note: canonical version lives in eval/dispatch.rs
-pub(crate) unsafe extern "C" fn DispatchOrEval_objects(
+pub(crate) unsafe fn DispatchOrEval_objects(
     call: SEXP,
     op: SEXP,
     generic: *const c_char,

@@ -44,6 +44,7 @@ fn in2dots(x: c_double) -> c_double {
 /// Uses Rust's format! and then writes via libc::fputs.
 /// Returns the number of bytes written, or -1 on error.
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn fprintf(fp: *mut libc::FILE, fmt: std::fmt::Arguments<'_>) -> c_int {
     let s = fmt.to_string();
     let bytes = s.as_bytes();
@@ -360,7 +361,7 @@ unsafe fn textext(str: *const c_char, ptd: *mut picTeXDesc) {
 /* ==================== Device driver actions ==================== */
 
 /// PicTeX_Circle - draw a circle using `\circulararc` command.
-unsafe extern "C" fn PicTeX_Circle(
+unsafe fn PicTeX_Circle(
     x: c_double,
     y: c_double,
     r: c_double,
@@ -381,7 +382,7 @@ unsafe extern "C" fn PicTeX_Circle(
 }
 
 /// PicTeX_Clip - set the clip region.
-unsafe extern "C" fn PicTeX_Clip(
+unsafe fn PicTeX_Clip(
     x0: c_double,
     x1: c_double,
     y0: c_double,
@@ -405,7 +406,7 @@ unsafe extern "C" fn PicTeX_Clip(
 }
 
 /// PicTeX_Close - close the device: write closing LaTeX and free resources.
-unsafe extern "C" fn PicTeX_Close(dd: pDevDesc) {
+unsafe fn PicTeX_Close(dd: pDevDesc) {
     let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
     fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n"));
     libc::fclose((*ptd).texfp);
@@ -413,7 +414,7 @@ unsafe extern "C" fn PicTeX_Close(dd: pDevDesc) {
 }
 
 /// PicTeX_Line - draw a line segment with clipping.
-unsafe extern "C" fn PicTeX_Line(
+unsafe fn PicTeX_Line(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -465,7 +466,7 @@ unsafe extern "C" fn PicTeX_Line(
 /// PicTeX_MetricInfo - get font metric information for a character.
 ///
 /// Returns 0,0,0 as in the C source (metric info not available).
-unsafe extern "C" fn PicTeX_MetricInfo(
+unsafe fn PicTeX_MetricInfo(
     _c: c_int,
     _gc: pGEcontext,
     ascent: *mut c_double,
@@ -485,7 +486,7 @@ unsafe extern "C" fn PicTeX_MetricInfo(
 }
 
 /// PicTeX_NewPage - start a new page.
-unsafe extern "C" fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
+unsafe fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
     let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
     if (*ptd).pageno != 0 {
@@ -520,7 +521,7 @@ unsafe extern "C" fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
 }
 
 /// PicTeX_Polygon - draw a filled/stroked polygon.
-unsafe extern "C" fn PicTeX_Polygon(
+unsafe fn PicTeX_Polygon(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -577,7 +578,7 @@ unsafe extern "C" fn PicTeX_Polygon(
 }
 
 /// PicTeX_Polyline - draw a polyline (series of connected line segments).
-unsafe extern "C" fn PicTeX_Polyline(
+unsafe fn PicTeX_Polyline(
     n: c_int,
     x: *const c_double,
     y: *const c_double,
@@ -619,7 +620,7 @@ unsafe extern "C" fn PicTeX_Polyline(
 }
 
 /// PicTeX_Rect - draw a rectangle (delegates to PicTeX_Polygon).
-unsafe extern "C" fn PicTeX_Rect(
+unsafe fn PicTeX_Rect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -633,7 +634,7 @@ unsafe extern "C" fn PicTeX_Rect(
 }
 
 /// PicTeX_Size - return the device size (left, right, bottom, top).
-unsafe extern "C" fn PicTeX_Size(
+unsafe fn PicTeX_Size(
     left: *mut c_double,
     right: *mut c_double,
     bottom: *mut c_double,
@@ -658,7 +659,7 @@ unsafe extern "C" fn PicTeX_Size(
 ///
 /// Sums character widths from the CHARWIDTH table for each byte in the string,
 /// scaled by the current font size.
-unsafe extern "C" fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDevDesc) -> c_double {
+unsafe fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDevDesc) -> c_double {
     let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
     // Compute font size from gc, matching C: size = (int)(gc->cex * gc->ps + 0.5)
@@ -693,7 +694,7 @@ unsafe extern "C" fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDe
 ///
 /// Writes `\put` commands with optional `\rotatebox` for rotated text.
 /// Escapes special TeX characters via textext().
-unsafe extern "C" fn PicTeX_Text(
+unsafe fn PicTeX_Text(
     x: c_double,
     y: c_double,
     str: *const c_char,
@@ -750,33 +751,33 @@ unsafe extern "C" fn PicTeX_Text(
 
 /// PicTeX_setPattern - set a fill pattern.
 /// Returns R_NilValue (patterns not supported).
-unsafe extern "C" fn PicTeX_setPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe fn PicTeX_setPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
     R_NilValue()
 }
 
 /// PicTeX_releasePattern - release a fill pattern reference.
 /// No-op.
-unsafe extern "C" fn PicTeX_releasePattern(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn PicTeX_releasePattern(_ref: SEXP, _dd: pDevDesc) {}
 
 /// PicTeX_setClipPath - set a clipping path.
 /// Returns R_NilValue (clip paths not supported).
-unsafe extern "C" fn PicTeX_setClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe fn PicTeX_setClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
     R_NilValue()
 }
 
 /// PicTeX_releaseClipPath - release a clipping path reference.
 /// No-op.
-unsafe extern "C" fn PicTeX_releaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn PicTeX_releaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
 
 /// PicTeX_setMask - set a mask.
 /// Returns R_NilValue (masks not supported).
-unsafe extern "C" fn PicTeX_setMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe fn PicTeX_setMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
     R_NilValue()
 }
 
 /// PicTeX_releaseMask - release a mask reference.
 /// No-op.
-unsafe extern "C" fn PicTeX_releaseMask(_ref: SEXP, _dd: pDevDesc) {}
+unsafe fn PicTeX_releaseMask(_ref: SEXP, _dd: pDevDesc) {}
 
 /* ==================== Device driver initialization ==================== */
 
@@ -937,8 +938,7 @@ unsafe fn PicTeXDeviceDriver(
 ///   width   - width in inches
 ///   height  - height in inches
 ///   debug   - logical: if TRUE, write TeX comments into output
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PicTeX(args: SEXP) -> SEXP {
+pub unsafe fn PicTeX(args: SEXP) -> SEXP {
     let mut args = args;
 
     let vmax = vmaxget();

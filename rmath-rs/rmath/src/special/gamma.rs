@@ -358,14 +358,12 @@ pub fn gammafn(x: f64) -> f64 {
 
 /// C FFI wrapper for gammafn
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn gammafn_c(x: f64) -> f64 {
     gammafn(x)
 }
 
 /// C FFI wrapper for lgammafn1p
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn lgammafn1p_c(a: f64) -> f64 {
     lgammafn1p(a)
 }
@@ -441,7 +439,6 @@ pub fn lgammafn(x: f64) -> f64 {
 
 /// C FFI wrapper for lgammafn
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn lgammafn_c(x: f64) -> f64 {
     lgammafn(x)
 }
@@ -476,26 +473,22 @@ pub fn lgammafn_sign(x: f64, sgn: Option<&mut i32>) -> f64 {
 // =====================================================================
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_gammafn(x: f64) -> f64 {
     gammafn(x)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammafn(x: f64) -> f64 {
     lgammafn(x)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammafn1p(a: f64) -> f64 {
     lgammafn1p(a)
 }
 
 /// C FFI for lgammafn_sign: returns log|gamma(x)|, stores sign in *sgn if sgn is non-null.
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgammafn_sign(x: f64, sgn: *mut i32) -> f64 {
     let sgn_opt = if sgn.is_null() {
         None

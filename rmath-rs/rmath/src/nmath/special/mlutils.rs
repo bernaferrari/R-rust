@@ -10,13 +10,11 @@ fn isfinite(x: f64) -> bool {
 }
 
 /// Check if a double is finite (for standalone mode).
-#[unsafe(no_mangle)]
 pub extern "C" fn R_finite(x: f64) -> i32 {
     if isfinite(x) { 1 } else { 0 }
 }
 
 /// Check if a double is NaN (C++ compatibility function).
-#[unsafe(no_mangle)]
 pub extern "C" fn R_isnancpp(x: f64) -> i32 {
     if isnan(x) { 1 } else { 0 }
 }
@@ -29,7 +27,6 @@ fn myfmod(x1: f64, x2: f64) -> f64 {
 }
 
 /// R_pow: compute x^y with full IEEE 754 handling.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_pow(x: f64, y: f64) -> f64 {
     if x == 1.0 || y == 0.0 {
         return 1.0;
@@ -84,7 +81,6 @@ pub extern "C" fn R_pow(x: f64, y: f64) -> f64 {
 }
 
 /// R_pow_di: compute x^n for integer n (fast exponentiation by squaring).
-#[unsafe(no_mangle)]
 pub extern "C" fn R_pow_di(x: f64, n: i32) -> f64 {
     let mut pow = 1.0;
     if isnan(x) {
@@ -117,13 +113,10 @@ pub extern "C" fn R_pow_di(x: f64, n: i32) -> f64 {
 
 /// R's NA_REAL constant (a specific NaN).
 /// Immutable: this value is initialized once and never mutated.
-#[unsafe(no_mangle)]
 pub static NA_REAL: f64 = ML_NAN;
 
 /// R_PosInf constant.
-#[unsafe(no_mangle)]
 pub static R_PosInf: f64 = ML_POSINF;
 
 /// R_NegInf constant.
-#[unsafe(no_mangle)]
 pub static R_NegInf: f64 = ML_NEGINF;

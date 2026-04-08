@@ -77,13 +77,11 @@ pub fn lbeta(a: f64, b: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lbeta(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn lbeta_c(a: f64, b: f64) -> f64 {
     imp::lbeta(a, b)
 }

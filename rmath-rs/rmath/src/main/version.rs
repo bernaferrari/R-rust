@@ -50,8 +50,7 @@ pub const R_INTERNALS_UUID: &[u8] = b"unset\0";
 ///
 /// # Safety
 /// `buf` must point to a buffer of at least `len` bytes.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_version(buf: *mut c_char, len: usize) -> c_int {
+pub unsafe fn R_version(buf: *mut c_char, len: usize) -> c_int {
     unsafe {
         if buf.is_null() || len == 0 {
             return -1;
@@ -69,8 +68,7 @@ pub unsafe extern "C" fn R_version(buf: *mut c_char, len: usize) -> c_int {
 /// Return a pointer to the static R version string.
 ///
 /// Format: "R version MAJOR.MINOR STATUS (YEAR-MONTH-DAY)"
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_version_string() -> *const c_char {
+pub unsafe fn R_version_string() -> *const c_char {
     // We build a static string. Since we can't use format! at const time,
     // we use a pre-built static.
     // For simplicity, use a reasonable default.
@@ -79,49 +77,41 @@ pub unsafe extern "C" fn R_version_string() -> *const c_char {
 }
 
 /// Return R_MAJOR
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_major() -> *const c_char {
+pub unsafe fn R_get_major() -> *const c_char {
     R_MAJOR.as_ptr() as *const c_char
 }
 
 /// Return R_MINOR
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_minor() -> *const c_char {
+pub unsafe fn R_get_minor() -> *const c_char {
     R_MINOR.as_ptr() as *const c_char
 }
 
 /// Return R_YEAR
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_year() -> *const c_char {
+pub unsafe fn R_get_year() -> *const c_char {
     R_YEAR.as_ptr() as *const c_char
 }
 
 /// Return R_MONTH
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_month() -> *const c_char {
+pub unsafe fn R_get_month() -> *const c_char {
     R_MONTH.as_ptr() as *const c_char
 }
 
 /// Return R_DAY
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_day() -> *const c_char {
+pub unsafe fn R_get_day() -> *const c_char {
     R_DAY.as_ptr() as *const c_char
 }
 
 /// Return R_NICK
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_nick() -> *const c_char {
+pub unsafe fn R_get_nick() -> *const c_char {
     R_NICK.as_ptr() as *const c_char
 }
 
 /// Return R_PLATFORM
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_platform() -> *const c_char {
+pub unsafe fn R_get_platform() -> *const c_char {
     R_PLATFORM.as_ptr() as *const c_char
 }
 
 /// Return R_STATUS
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_get_status() -> *const c_char {
+pub unsafe fn R_get_status() -> *const c_char {
     R_STATUS.as_ptr() as *const c_char
 }

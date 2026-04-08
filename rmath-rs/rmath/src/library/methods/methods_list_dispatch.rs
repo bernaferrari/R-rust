@@ -17,39 +17,33 @@ use crate::sexp::protect::*;
 
 /// R_initMethodDispatch - initialize method dispatch.
 /// Called from the methods package on load.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_initMethodDispatch(_envir: SEXP) -> SEXP {
+pub unsafe fn R_initMethodDispatch(_envir: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// R_standardGeneric - C version of the standardGeneric R function.
 /// Dispatches to the appropriate method for a generic function call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_standardGeneric(_fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
+pub unsafe fn R_standardGeneric(_fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// R_dispatchGeneric - table-based method dispatch.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_dispatchGeneric(_fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
+pub unsafe fn R_dispatchGeneric(_fname: SEXP, _ev: SEXP, _fdef: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// R_quick_method_check - quick check if a method exists in the methods list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_quick_method_check(_object: SEXP, _fsym: SEXP, _fdef: SEXP) -> SEXP {
+pub unsafe fn R_quick_method_check(_object: SEXP, _fsym: SEXP, _fdef: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// R_quick_dispatch - quick table-based dispatch for primitives.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_quick_dispatch(_args: SEXP, _genericEnv: SEXP, _fdef: SEXP) -> SEXP {
+pub unsafe fn R_quick_dispatch(_args: SEXP, _genericEnv: SEXP, _fdef: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// R_getGeneric - get the generic function definition for a given name.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getGeneric(
+pub unsafe fn R_getGeneric(
     _name: SEXP,
     _mustFind: SEXP,
     _env: SEXP,
@@ -60,8 +54,7 @@ pub unsafe extern "C" fn R_getGeneric(
 
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
+pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
     let res = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
     Rf_protect(res);
     let ip = LOGICAL(res);
@@ -83,8 +76,7 @@ pub unsafe extern "C" fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
 }
 
 /// R_selectMethod - select a method for the given call.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_selectMethod(
+pub unsafe fn R_selectMethod(
     _fname: SEXP,
     _ev: SEXP,
     _mlist: SEXP,
@@ -94,8 +86,7 @@ pub unsafe extern "C" fn R_selectMethod(
 }
 
 /// R_M_setPrimitiveMethods - set methods for a primitive function.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_M_setPrimitiveMethods(
+pub unsafe fn R_M_setPrimitiveMethods(
     _fname: SEXP,
     _op: SEXP,
     _code_vec: SEXP,
@@ -106,8 +97,7 @@ pub unsafe extern "C" fn R_M_setPrimitiveMethods(
 }
 
 /// R_nextMethodCall - implement .nextMethod() (callNextMethod).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_nextMethodCall(_matched_call: SEXP, _ev: SEXP) -> SEXP {
+pub unsafe fn R_nextMethodCall(_matched_call: SEXP, _ev: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -115,7 +105,6 @@ pub unsafe extern "C" fn R_nextMethodCall(_matched_call: SEXP, _ev: SEXP) -> SEX
 /// Ported from R's R_clear_method_selection() in methods_list_dispatch.c.
 thread_local! { static N_OV: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_clear_method_selection() -> SEXP {
     N_OV.with(|v| v.set(0));
     R_NilValue()
@@ -123,7 +112,6 @@ pub extern "C" fn R_clear_method_selection() -> SEXP {
 
 thread_local! { static TABLE_DISPATCH_ON: Cell<c_int> = Cell::new(0); }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
     let prev = TABLE_DISPATCH_ON.with(|v| v.get());
     let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP.0 && LENGTH(onOff) >= 1 {
@@ -141,8 +129,7 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
 /// R_methodsPackageMetaName - construct a meta-data object name.
 /// Format: .__prefix__name or .__prefix__name:pkg
 /// Ported from R's R_methodsPackageMetaName() in methods_list_dispatch.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
+pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
     // Extract strings
     let prefix_str =
         if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP.0 && LENGTH(prefix) >= 1 {
@@ -194,8 +181,7 @@ pub unsafe extern "C" fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg:
 
 /// R_identC - test if two single-string objects are identical at the C level.
 /// Ported from R's R_identC() in methods_list_dispatch.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
+pub unsafe fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
     if TYPEOF(e1) == SEXPTYPE::STRSXP.0
         && TYPEOF(e2) == SEXPTYPE::STRSXP.0
         && LENGTH(e1) == 1
@@ -211,8 +197,7 @@ pub unsafe extern "C" fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
 }
 
 /// R_getClassFromCache - look up a class definition in the class cache table.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getClassFromCache(_class: SEXP, _table: SEXP) -> SEXP {
+pub unsafe fn R_getClassFromCache(_class: SEXP, _table: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -231,8 +216,7 @@ unsafe fn asChar(x: SEXP) -> SEXP {
 
 /// R_el_named - get a named element from a list (no partial matching).
 /// Ported from R's R_el_named() in methods_list_dispatch.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_el_named(object: SEXP, what: SEXP) -> SEXP {
+pub unsafe fn R_el_named(object: SEXP, what: SEXP) -> SEXP {
     let w = asChar(what);
     if w.is_null() {
         return R_NilValue();
@@ -265,8 +249,7 @@ pub unsafe extern "C" fn R_el_named(object: SEXP, what: SEXP) -> SEXP {
 
 /// R_set_el_named - set a named element in a list.
 /// Ported from R's R_set_el_named() in methods_list_dispatch.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_set_el_named(object: SEXP, what: SEXP, value: SEXP) -> SEXP {
+pub unsafe fn R_set_el_named(object: SEXP, what: SEXP, value: SEXP) -> SEXP {
     let w = asChar(what);
     if w.is_null() {
         return R_NilValue();

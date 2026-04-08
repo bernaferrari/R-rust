@@ -494,7 +494,6 @@ pub fn rnchisq_inner(df: f64, lambda: f64) -> f64 {
 
 // ---- FFI shims ----
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnchisq(
     x: c_double,
     df: c_double,
@@ -505,12 +504,10 @@ pub extern "C" fn Rf_dnchisq(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dnchisq(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnchisq_inner(x, df, ncp, give_log != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnchisq(
     x: c_double,
     df: c_double,
@@ -521,7 +518,6 @@ pub extern "C" fn Rf_pnchisq(
     pnchisq_inner(x, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn pnchisq(
     x: c_double,
     df: c_double,
@@ -532,7 +528,6 @@ pub extern "C" fn pnchisq(
     pnchisq_inner(x, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnchisq(
     p: c_double,
     df: c_double,
@@ -543,7 +538,6 @@ pub extern "C" fn Rf_qnchisq(
     qnchisq_inner(p, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn qnchisq(
     p: c_double,
     df: c_double,
@@ -555,13 +549,11 @@ pub extern "C" fn qnchisq(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnchisq(df: c_double, ncp: c_double) -> c_double {
     rnchisq_inner(df, ncp)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rnchisq(df: c_double, ncp: c_double) -> c_double {
     rnchisq_inner(df, ncp)
 }

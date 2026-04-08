@@ -30,8 +30,7 @@ use crate::main::registration::DllInfo;
 ///   - RTcl_ObjFromRawVector(1), RTcl_ServiceMode(1),
 ///   - RTcl_GetArrayElem(2), RTcl_RemoveArrayElem(2),
 ///   - RTcl_SetArrayElem(3)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_tcltk(_dll: *mut DllInfo) {
+pub unsafe fn R_init_tcltk(_dll: *mut DllInfo) {
     // Stub: actual registration deferred until registration tables are filled in.
     // In the full implementation this would call:
     //   R_registerRoutines(dll, CEntries, NULL, NULL, ExternEntries);

@@ -104,6 +104,7 @@
 #![allow(clippy::needless_lifetimes)]
 #![allow(clippy::needless_continue)]
 #![allow(clippy::print_literal)]
+#![allow(clippy::no_mangle_with_rust_abi)]
 #![allow(unsafe_op_in_unsafe_fn)]
 #![allow(unknown_lints)]
 

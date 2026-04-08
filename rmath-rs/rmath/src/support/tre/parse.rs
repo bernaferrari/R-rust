@@ -956,8 +956,7 @@ enum tre_parse_re_stack_symbol_t {
     PARSE_RESTORE_CFLAGS,
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
+pub unsafe fn tre_parse(ctx: *mut tre_parse_ctx_t) -> c_int {
     unsafe {
         let ctx = &mut *ctx;
         let mut result: *mut tre_ast_node_t = ptr::null_mut();

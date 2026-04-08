@@ -405,8 +405,7 @@ type pGEDevDesc = *mut c_void;
 /// Returns -1 if not found.
 ///
 /// This is the Rust equivalent of `static int ParCode(const char *what)`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ParCode(what: *const c_char) -> c_int {
+pub unsafe fn ParCode(what: *const c_char) -> c_int {
     if what.is_null() {
         return -1;
     }
@@ -467,8 +466,7 @@ unsafe fn Query(_what: *const c_char, _dd: pGEDevDesc) -> SEXP {
 ///   SEXP C_par(SEXP call, SEXP op, SEXP args, SEXP rho)
 ///
 /// Stub: returns an empty named list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 
     /* Stub: the full implementation requires GEcurrentDevice(),
@@ -521,8 +519,7 @@ pub unsafe extern "C" fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 ///   SEXP C_layout(SEXP args)
 ///
 /// Stub: returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_layout(args: SEXP) -> SEXP {
+pub unsafe fn C_layout(args: SEXP) -> SEXP {
     let _ = args;
     /* Stub: the full implementation requires GEcurrentDevice(),
      * dpptr, gpptr, GReset, and all the layout parameter processing. */
@@ -534,7 +531,7 @@ pub unsafe extern "C" fn C_layout(args: SEXP) -> SEXP {
 /// ProcessInlinePars -- handles inline par specifications in graphics functions.
 /// Stub implementation: does nothing.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
+pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
     /* Stub: full implementation walks a list and calls Specify2 for each tagged pair */
 }
 
@@ -543,8 +540,7 @@ pub unsafe extern "C" fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
 /// baseCallback -- event handler for the base graphics system, registered
 /// with the Graphics Engine via GEregisterSystem.
 /// Stub: returns R_NilValue for all events.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
+pub unsafe fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -552,22 +548,19 @@ pub unsafe extern "C" fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP
 
 /// registerBase -- register the base graphics system with the Graphics Engine.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn registerBase() {
+pub unsafe fn registerBase() {
     /* Stub: calls GEregisterSystem(baseCallback, &baseRegisterIndex) */
 }
 
 /// unregisterBase -- unregister the base graphics system.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unregisterBase() {
+pub unsafe fn unregisterBase() {
     /* Stub: calls GEunregisterSystem(baseRegisterIndex) */
 }
 
 /// RunregisterBase -- R-callable wrapper for unregisterBase.
 /// Returns R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RunregisterBase() -> SEXP {
+pub unsafe fn RunregisterBase() -> SEXP {
     unregisterBase();
     R_NilValue()
 }
@@ -577,28 +570,26 @@ pub unsafe extern "C" fn RunregisterBase() -> SEXP {
 /// gpptr -- get the current GPar pointer (graphics parameters).
 /// Stub: returns null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpptr(_dd: pGEDevDesc) -> *mut c_void {
+pub unsafe fn gpptr(_dd: pGEDevDesc) -> *mut c_void {
     std::ptr::null_mut()
 }
 
 /// dpptr -- get the display GPar pointer (display parameters).
 /// Stub: returns null.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn dpptr(_dd: pGEDevDesc) -> *mut c_void {
+pub unsafe fn dpptr(_dd: pGEDevDesc) -> *mut c_void {
     std::ptr::null_mut()
 }
 
 /// dpSavedptr -- get the saved display GPar pointer.
 /// Stub: returns null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dpSavedptr(_dd: pGEDevDesc) -> *mut c_void {
+pub unsafe fn dpSavedptr(_dd: pGEDevDesc) -> *mut c_void {
     std::ptr::null_mut()
 }
 
 /// Rf_setBaseDevice -- mark the device as "dirty" (has received base output).
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
+pub unsafe fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
     /* Stub: sets bss->baseDevice = val */
 }
 
@@ -606,8 +597,7 @@ pub unsafe extern "C" fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
 
 /// currentFigureLocation -- get the current figure's row and column.
 /// Stub: sets both to 0.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn currentFigureLocation(row: *mut c_int, col: *mut c_int, _dd: pGEDevDesc) {
+pub unsafe fn currentFigureLocation(row: *mut c_int, col: *mut c_int, _dd: pGEDevDesc) {
     if !row.is_null() {
         *row = 0;
     }
@@ -620,7 +610,6 @@ pub unsafe extern "C" fn currentFigureLocation(row: *mut c_int, col: *mut c_int,
 
 /// restoredpSaved -- restore display parameters from saved state.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn restoredpSaved(_dd: pGEDevDesc) {
+pub unsafe fn restoredpSaved(_dd: pGEDevDesc) {
     /* Stub: full implementation copies all fields from dpSaved to dp */
 }

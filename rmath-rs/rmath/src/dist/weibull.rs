@@ -112,49 +112,41 @@ pub fn rweibull_inner(shape: f64, scale: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dweibull(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dweibull_inner(x, shape, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dweibull(x: f64, shape: f64, scale: f64, give_log: i32) -> f64 {
     dweibull_inner(x, shape, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pweibull(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pweibull_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pweibull(x: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pweibull_inner(x, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qweibull(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qweibull_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qweibull(p: f64, shape: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qweibull_inner(p, shape, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rweibull(shape: f64, scale: f64) -> f64 {
     rweibull_inner(shape, scale)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rweibull(shape: f64, scale: f64) -> f64 {
     rweibull_inner(shape, scale)
 }

@@ -13,8 +13,7 @@ use super::memory;
 use super::types::*;
 
 /// Create a new image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
+pub unsafe fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
     unsafe {
         if depth != 8 && depth != 32 {
             return ptr::null_mut();
@@ -44,8 +43,7 @@ pub unsafe extern "C" fn newimage(width: c_int, height: c_int, depth: c_int) -> 
 }
 
 /// Copy an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyimage(img: image) -> image {
+pub unsafe fn copyimage(img: image) -> image {
     unsafe {
         if img.is_null() {
             return ptr::null_mut();
@@ -60,8 +58,7 @@ pub unsafe extern "C" fn copyimage(img: image) -> image {
 }
 
 /// Delete an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn delimage(img: image) {
+pub unsafe fn delimage(img: image) {
     unsafe {
         if img.is_null() {
             return;
@@ -77,26 +74,22 @@ pub unsafe extern "C" fn delimage(img: image) {
 }
 
 /// Get the depth of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn imagedepth(img: image) -> c_int {
+pub unsafe fn imagedepth(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).depth } }
 }
 
 /// Get the width of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn imagewidth(img: image) -> c_int {
+pub unsafe fn imagewidth(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).width } }
 }
 
 /// Get the height of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn imageheight(img: image) -> c_int {
+pub unsafe fn imageheight(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).height } }
 }
 
 /// Set the pixels of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
+pub unsafe fn setpixels(img: image, pixels: *mut super::types::GAbyte) {
     unsafe {
         if img.is_null() {
             return;
@@ -110,8 +103,7 @@ pub unsafe extern "C" fn setpixels(img: image, pixels: *mut super::types::GAbyte
 }
 
 /// Get the pixel array of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getpixels(img: image) -> *mut super::types::GAbyte {
+pub unsafe fn getpixels(img: image) -> *mut super::types::GAbyte {
     unsafe {
         if img.is_null() {
             ptr::null_mut()
@@ -122,8 +114,7 @@ pub unsafe extern "C" fn getpixels(img: image) -> *mut super::types::GAbyte {
 }
 
 /// Set the colour palette of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
+pub unsafe fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb) {
     unsafe {
         if img.is_null() {
             return;
@@ -146,8 +137,7 @@ pub unsafe extern "C" fn setpalette(img: image, cmapsize: c_int, cmap: *mut rgb)
 }
 
 /// Get the colour palette of an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getpalette(img: image) -> *mut rgb {
+pub unsafe fn getpalette(img: image) -> *mut rgb {
     unsafe {
         if img.is_null() {
             ptr::null_mut()
@@ -158,14 +148,12 @@ pub unsafe extern "C" fn getpalette(img: image) -> *mut rgb {
 }
 
 /// Get the palette size.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getpalettesize(img: image) -> c_int {
+pub unsafe fn getpalettesize(img: image) -> c_int {
     unsafe { if img.is_null() { 0 } else { (*img).cmapsize } }
 }
 
 /// Convert a 32-bit image to 8-bit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn convert32to8(img: image) -> image {
+pub unsafe fn convert32to8(img: image) -> image {
     unsafe {
         // TODO: Full implementation
         if img.is_null() {
@@ -180,8 +168,7 @@ pub unsafe extern "C" fn convert32to8(img: image) -> image {
 }
 
 /// Convert an 8-bit image to 32-bit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn convert8to32(img: image) -> image {
+pub unsafe fn convert8to32(img: image) -> image {
     unsafe {
         if img.is_null() {
             return ptr::null_mut();
@@ -213,14 +200,12 @@ pub unsafe extern "C" fn convert8to32(img: image) -> image {
 }
 
 /// Sort an image's colour map.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sortpalette(_img: image) {
+pub unsafe fn sortpalette(_img: image) {
     // TODO: Full implementation
 }
 
 /// Scale an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn scaleimage(src: image, dr: rect, _sr: rect) -> image {
+pub unsafe fn scaleimage(src: image, dr: rect, _sr: rect) -> image {
     unsafe {
         if src.is_null() {
             return ptr::null_mut();
@@ -235,8 +220,7 @@ pub unsafe extern "C" fn scaleimage(src: image, dr: rect, _sr: rect) -> image {
 }
 
 /// Get pixel value from an image.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
+pub unsafe fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         if img.is_null() {
             return Transparent;
@@ -263,8 +247,7 @@ pub unsafe extern "C" fn get_image_pixel(img: image, x: c_int, y: c_int) -> rgb 
 }
 
 /// Get monochrome pixel value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
+pub unsafe fn get_monochrome_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         let pixel = get_image_pixel(img, x, y);
         if pixel == Transparent {
@@ -288,8 +271,7 @@ pub unsafe extern "C" fn get_monochrome_pixel(img: image, x: c_int, y: c_int) ->
 }
 
 /// Get grey pixel value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
+pub unsafe fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
     unsafe {
         let pixel = get_image_pixel(img, x, y);
         if pixel == Transparent {
@@ -316,8 +298,7 @@ pub unsafe extern "C" fn get_grey_pixel(img: image, x: c_int, y: c_int) -> rgb {
 }
 
 /// Check if image has transparent pixels.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn has_transparent_pixels(_img: image) -> c_int {
+pub unsafe fn has_transparent_pixels(_img: image) -> c_int {
     // TODO: Full implementation
     0
 }

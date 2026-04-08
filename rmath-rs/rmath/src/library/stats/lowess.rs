@@ -297,8 +297,7 @@ unsafe fn clowess(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
+pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
     if TYPEOF(x) != SEXPTYPE::REALSXP.0 || TYPEOF(y) != SEXPTYPE::REALSXP.0 {
         Rf_error(b"invalid input\0".as_ptr() as *const _);
     }

@@ -176,8 +176,7 @@ unsafe fn evaluate(sp: &mut SplStruct, x: c_double, nder: c_int) -> c_double {
 ///
 /// # Safety
 /// All SEXP arguments must be valid R objects.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn spline_value(
+pub unsafe fn spline_value(
     knots: SEXP,
     coeff: SEXP,
     order: SEXP,
@@ -250,8 +249,7 @@ pub unsafe extern "C" fn spline_value(
 ///
 /// # Safety
 /// All SEXP arguments must be valid R objects.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) -> SEXP {
+pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) -> SEXP {
     use crate::main::array::allocMatrix;
     use crate::main::coerce::coerceVector;
 
@@ -366,8 +364,7 @@ pub unsafe extern "C" fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, der
 ///
 /// # Safety
 /// dll must be a valid DllInfo pointer (or can be null in this Rust port).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_splines(_dll: *mut c_void) {
+pub unsafe fn R_init_splines(_dll: *mut c_void) {
     // In the C code, this calls:
     //   R_registerRoutines(dll, NULL, R_CallDef, NULL, NULL);
     //   R_useDynamicSymbols(dll, FALSE);

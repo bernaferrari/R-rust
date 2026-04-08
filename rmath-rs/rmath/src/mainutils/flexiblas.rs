@@ -13,8 +13,7 @@ use crate::sexp::globals::R_NilValue;
 
 /// Query the current FlexiBLAS backend name.
 /// Returns a CHARSXP with the name, or R_NilValue if FlexiBLAS is not available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_flexiblas_info() -> SEXP {
+pub unsafe fn R_flexiblas_info() -> SEXP {
     unsafe {
         // On non-Linux or when FlexiBLAS is not loaded, return nil.
         // The full implementation uses dlsym(RTLD_DEFAULT, "flexiblas_current_backend")

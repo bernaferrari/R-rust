@@ -6,7 +6,6 @@
 use super::types::*;
 use std::os::raw::c_int;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn addtooltip(_c: control, _tp: *const std::os::raw::c_char) -> c_int {
+pub unsafe fn addtooltip(_c: control, _tp: *const std::os::raw::c_char) -> c_int {
     0
 }

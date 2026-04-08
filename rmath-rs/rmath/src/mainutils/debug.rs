@@ -191,7 +191,6 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // R_current_debug_state — return the global debugging state
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_current_debug_state() -> c_int {
     debugging_state.with(|v| v.get())
 }
@@ -200,7 +199,6 @@ pub extern "C" fn R_current_debug_state() -> c_int {
 // R_current_trace_state — return the global tracing state
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub extern "C" fn R_current_trace_state() -> c_int {
     tracing_state.with(|v| v.get())
 }

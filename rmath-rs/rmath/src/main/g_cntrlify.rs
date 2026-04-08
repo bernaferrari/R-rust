@@ -544,12 +544,10 @@ const NUM_LIGATURES: usize = 22;
 
 /// _builtin_kanji_glyphs array from g_jis.h
 /// TODO: Replace with actual extern when g_her_glyph.rs is ported
-#[unsafe(no_mangle)]
 pub static _builtin_kanji_glyphs: [kanjipair; 1] = [kanjipair { jis: 0, nelson: 0 }];
 
 /// _builtin_jis_chars array from g_jis.h
 /// TODO: Replace with actual extern when g_her_glyph.rs is ported
-#[unsafe(no_mangle)]
 pub static _builtin_jis_chars: [jis_entry; 1] = [jis_entry {
     jis: 0,
     font: 0,

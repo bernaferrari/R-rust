@@ -38,7 +38,6 @@ unsafe extern "C" {
     fn Rdownload(args: SEXP) -> SEXP;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn download(args: SEXP) -> SEXP {
+pub unsafe fn download(args: SEXP) -> SEXP {
     Rdownload(CDR(args))
 }

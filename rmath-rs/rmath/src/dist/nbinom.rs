@@ -557,7 +557,6 @@ pub fn rnbinom_mu_inner(size: f64, mu: f64) -> f64 {
 
 // ---- FFI shims ----
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnbinom(
     x: c_double,
     size: c_double,
@@ -568,12 +567,10 @@ pub extern "C" fn Rf_dnbinom(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dnbinom(x: c_double, size: c_double, prob: c_double, log_p: c_int) -> c_double {
     dnbinom_inner(x, size, prob, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnbinom_mu(
     x: c_double,
     size: c_double,
@@ -584,12 +581,10 @@ pub extern "C" fn Rf_dnbinom_mu(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dnbinom_mu(x: c_double, size: c_double, mu: c_double, log_p: c_int) -> c_double {
     dnbinom_mu_inner(x, size, mu, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnbinom(
     x: c_double,
     size: c_double,
@@ -600,7 +595,6 @@ pub extern "C" fn Rf_pnbinom(
     pnbinom_inner(x, size, prob, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn pnbinom(
     x: c_double,
     size: c_double,
@@ -611,7 +605,6 @@ pub extern "C" fn pnbinom(
     pnbinom_inner(x, size, prob, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnbinom_mu(
     x: c_double,
     size: c_double,
@@ -622,7 +615,6 @@ pub extern "C" fn Rf_pnbinom_mu(
     pnbinom_mu_inner(x, size, mu, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn pnbinom_mu(
     x: c_double,
     size: c_double,
@@ -633,7 +625,6 @@ pub extern "C" fn pnbinom_mu(
     pnbinom_mu_inner(x, size, mu, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnbinom(
     p: c_double,
     size: c_double,
@@ -644,7 +635,6 @@ pub extern "C" fn Rf_qnbinom(
     qnbinom_inner(p, size, prob, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn qnbinom(
     p: c_double,
     size: c_double,
@@ -655,7 +645,6 @@ pub extern "C" fn qnbinom(
     qnbinom_inner(p, size, prob, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnbinom_mu(
     p: c_double,
     size: c_double,
@@ -666,7 +655,6 @@ pub extern "C" fn Rf_qnbinom_mu(
     qnbinom_mu_inner(p, size, mu, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn qnbinom_mu(
     p: c_double,
     size: c_double,
@@ -678,25 +666,21 @@ pub extern "C" fn qnbinom_mu(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnbinom(size: c_double, prob: c_double) -> c_double {
     rnbinom_inner(size, prob)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rnbinom(size: c_double, prob: c_double) -> c_double {
     rnbinom_inner(size, prob)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
     rnbinom_mu_inner(size, mu)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rnbinom_mu(size: c_double, mu: c_double) -> c_double {
     rnbinom_mu_inner(size, mu)
 }

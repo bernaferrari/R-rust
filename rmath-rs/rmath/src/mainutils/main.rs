@@ -59,52 +59,44 @@ pub unsafe fn R_SeedsSymbol() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get R_Visible flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetVisible() -> c_int {
+pub unsafe fn R_GetVisible() -> c_int {
     unsafe { if R_Visible() != 0 { TRUE } else { FALSE } }
 }
 
 /// Set R_Visible flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetVisible(v: c_int) {
+pub unsafe fn R_SetVisible(v: c_int) {
     unsafe {
         set_R_Visible(v);
     }
 }
 
 /// Get R_Interactive flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Interactive() -> c_int {
+pub unsafe fn R_Interactive() -> c_int {
     R_Interactive_val.with(|v| v.get())
 }
 
 /// Set R_Interactive flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetInteractive(v: c_int) {
+pub unsafe fn R_SetInteractive(v: c_int) {
     R_Interactive_val.with(|c| c.set(v));
 }
 
 /// Get R_Quiet flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Quiet() -> c_int {
+pub unsafe fn R_Quiet() -> c_int {
     R_Quiet_val.with(|v| v.get())
 }
 
 /// Set R_Quiet flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetQuiet(v: c_int) {
+pub unsafe fn R_SetQuiet(v: c_int) {
     R_Quiet_val.with(|c| c.set(v));
 }
 
 /// Get R_NoEcho flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_NoEcho() -> c_int {
+pub unsafe fn R_NoEcho() -> c_int {
     R_NoEcho_val.with(|v| v.get())
 }
 
 /// Get R_Verbose flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Verbose() -> c_int {
+pub unsafe fn R_Verbose() -> c_int {
     R_Verbose_val.with(|v| v.get())
 }
 
@@ -115,14 +107,12 @@ pub unsafe extern "C" fn R_Verbose() -> c_int {
 thread_local! { static R_EvalDepth_val: Cell<c_int> = Cell::new(0); }
 
 /// Get evaluation depth.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetEvalDepth() -> c_int {
+pub unsafe fn R_GetEvalDepth() -> c_int {
     R_EvalDepth_val.with(|v| v.get())
 }
 
 /// Set evaluation depth.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetEvalDepth(v: c_int) {
+pub unsafe fn R_SetEvalDepth(v: c_int) {
     R_EvalDepth_val.with(|c| c.set(v));
 }
 
@@ -133,14 +123,12 @@ pub unsafe extern "C" fn R_SetEvalDepth(v: c_int) {
 thread_local! { static R_PPStackTop_val: Cell<c_int> = Cell::new(0); }
 
 /// Get protection stack top.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_PPStackTop() -> c_int {
+pub unsafe fn R_PPStackTop() -> c_int {
     R_PPStackTop_val.with(|v| v.get())
 }
 
 /// Set protection stack top.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetPPStackTop(v: c_int) {
+pub unsafe fn R_SetPPStackTop(v: c_int) {
     R_PPStackTop_val.with(|c| c.set(v));
 }
 
@@ -151,14 +139,12 @@ pub unsafe extern "C" fn R_SetPPStackTop(v: c_int) {
 thread_local! { static R_CollectWarnings: Cell<c_int> = Cell::new(0); }
 
 /// Get warnings collection flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetCollectWarnings() -> c_int {
+pub unsafe fn R_GetCollectWarnings() -> c_int {
     R_CollectWarnings.with(|v| v.get())
 }
 
 /// Set warnings collection flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetCollectWarnings(v: c_int) {
+pub unsafe fn R_SetCollectWarnings(v: c_int) {
     R_CollectWarnings.with(|c| c.set(v));
 }
 
@@ -178,13 +164,11 @@ pub unsafe fn checkTimeLimits() {
 // SrcRef state (stubs)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitSrcRefState(_cntxt: *mut std::ffi::c_void) {
+pub unsafe fn R_InitSrcRefState(_cntxt: *mut std::ffi::c_void) {
     // Stub
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FinalizeSrcRefState() {
+pub unsafe fn R_FinalizeSrcRefState() {
     // Stub
 }
 
@@ -200,8 +184,7 @@ pub const PARSE_NULL: c_int = 4;
 
 thread_local! { static R_ParseErrorMsg: Cell<[u8; 256]> = Cell::new([0; 256]); }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
+pub unsafe fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
     R_ParseErrorMsg.with(|v| std::ptr::addr_of!(*v).cast::<std::os::raw::c_char>())
 }
 
@@ -212,8 +195,7 @@ pub unsafe extern "C" fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
 /// Run the REPL reading from a file.
 ///
 /// This is the equivalent of R's `R_ReplFile()` from main.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReplFile(_fp: *mut std::ffi::c_void, _rho: SEXP) {
+pub unsafe fn R_ReplFile(_fp: *mut std::ffi::c_void, _rho: SEXP) {
     // Stub: in the full implementation, this reads expressions from the file
     // and evaluates them
 }
@@ -225,8 +207,7 @@ pub unsafe extern "C" fn R_ReplFile(_fp: *mut std::ffi::c_void, _rho: SEXP) {
 /// Perform a single REPL iteration.
 ///
 /// This is the equivalent of R's `Rf_ReplIteration()` from main.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_ReplIteration(
+pub unsafe fn Rf_ReplIteration(
     _rho: SEXP,
     _savestack: c_int,
     _browselevel: c_int,
@@ -243,8 +224,7 @@ pub unsafe extern "C" fn Rf_ReplIteration(
 /// Run the interactive REPL.
 ///
 /// This is the equivalent of R's `Rf_ReplConsole()` from main.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int) {
+pub unsafe fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int) {
     // Stub: in the full implementation, this runs the interactive REPL loop
 }
 
@@ -256,8 +236,7 @@ pub unsafe extern "C" fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browsele
 ///
 /// This is the equivalent of R's `Rf_mainloop()` from main.c.
 /// Called from main() after Rf_initialize_R().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_mainloop() {
+pub unsafe fn Rf_mainloop() {
     // Stub: in the full implementation, this sets up and runs the REPL
     eprintln!("Rf_mainloop() called (stub — no REPL implementation yet)");
 }
@@ -266,8 +245,7 @@ pub unsafe extern "C" fn Rf_mainloop() {
 // R_Parse1File — parse one expression from file (stub)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Parse1File(
+pub unsafe fn R_Parse1File(
     _fp: *mut std::ffi::c_void,
     _prompt: c_int,
     _status: *mut c_int,
@@ -292,8 +270,7 @@ pub unsafe fn setup_Rmainloop() {
 // Top-level handlers (stubs)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_callToplevelHandlers(
+pub unsafe fn Rf_callToplevelHandlers(
     _expr: SEXP,
     _value: SEXP,
     _succeeded: c_int,
@@ -302,13 +279,11 @@ pub unsafe extern "C" fn Rf_callToplevelHandlers(
     // Stub
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_addTaskCallback(_fun: SEXP, _data: SEXP) -> c_int {
+pub unsafe fn Rf_addTaskCallback(_fun: SEXP, _data: SEXP) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_removeTaskCallback(_name: SEXP) -> c_int {
+pub unsafe fn Rf_removeTaskCallback(_name: SEXP) -> c_int {
     0
 }
 
@@ -316,23 +291,19 @@ pub unsafe extern "C" fn Rf_removeTaskCallback(_name: SEXP) -> c_int {
 // Memory profiling (stubs)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetMaxVSize() -> u64 {
+pub unsafe fn R_GetMaxVSize() -> u64 {
     u64::MAX
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetMaxNSize() -> u64 {
+pub unsafe fn R_GetMaxNSize() -> u64 {
     u64::MAX
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetVSize() -> u64 {
+pub unsafe fn R_GetVSize() -> u64 {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetNSize() -> u64 {
+pub unsafe fn R_GetNSize() -> u64 {
     0
 }
 

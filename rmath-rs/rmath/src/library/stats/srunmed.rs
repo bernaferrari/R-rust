@@ -240,8 +240,7 @@ unsafe fn R_firstNA_dbl(x: *const c_double, n: R_xlen_t) -> R_xlen_t {
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn runmed(
+pub unsafe fn runmed(
     sx: SEXP,
     stype: SEXP,
     sk: SEXP,

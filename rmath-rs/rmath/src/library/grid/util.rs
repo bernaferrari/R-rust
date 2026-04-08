@@ -58,8 +58,7 @@ fn fmin2(x: f64, y: f64) -> f64 {
 
 /// Get the list element named str, or return R_NilValue.
 /// Copied from the Writing R Extensions manual (which copied it from nls).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
+pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
     let mut elmt: SEXP = R_NilValue();
     let names = crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol());
     let len = LENGTH(list) as i32;
@@ -76,8 +75,7 @@ pub unsafe extern "C" fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
 }
 
 /// Set the list element named str to value.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setListElement(list: SEXP, str: *mut c_char, value: SEXP) {
+pub unsafe fn setListElement(list: SEXP, str: *mut c_char, value: SEXP) {
     let names = crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol());
     let len = LENGTH(list) as i32;
     for i in 0..len {
@@ -113,8 +111,7 @@ pub unsafe fn numeric(x: SEXP, index: c_int) -> c_double {
 /* ==================== Rectangle operations ==================== */
 
 /// Fill a rectangle struct with the four corners.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn rect(
+pub unsafe fn rect(
     x1: c_double,
     x2: c_double,
     x3: c_double,
@@ -136,8 +133,7 @@ pub unsafe extern "C" fn rect(
 }
 
 /// Copy a rectangle struct.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copyRect(r1: LRect, r: *mut LRect) {
+pub unsafe fn copyRect(r1: LRect, r: *mut LRect) {
     *r = r1;
 }
 
@@ -145,8 +141,7 @@ pub unsafe extern "C" fn copyRect(r1: LRect, r: *mut LRect) {
 
 /// Do two lines intersect?
 /// Algorithm from Paul Bourke.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn linesIntersect(
+pub unsafe fn linesIntersect(
     x1: c_double,
     x2: c_double,
     x3: c_double,
@@ -185,8 +180,7 @@ pub unsafe extern "C" fn linesIntersect(
 }
 
 /// Do a line segment and a rectangle's edges intersect?
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn edgesIntersect(
+pub unsafe fn edgesIntersect(
     x1: c_double,
     x2: c_double,
     y1: c_double,
@@ -206,8 +200,7 @@ pub unsafe extern "C" fn edgesIntersect(
 
 /// Do two rectangles intersect?
 /// For each edge in r1, does the edge intersect with any edge in r2?
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn intersect(r1: LRect, r2: LRect) -> c_int {
+pub unsafe fn intersect(r1: LRect, r2: LRect) -> c_int {
     let mut result: c_int = 0;
     if edgesIntersect(r1.x1, r1.x2, r1.y1, r1.y2, r2) != 0
         || edgesIntersect(r1.x2, r1.x3, r1.y2, r1.y3, r2) != 0
@@ -223,8 +216,7 @@ pub unsafe extern "C" fn intersect(r1: LRect, r2: LRect) -> c_int {
 
 /// Calculate the bounding rectangle for a string.
 /// x and y are assumed to be in INCHES.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn textRect(
+pub unsafe fn textRect(
     x: c_double,
     y: c_double,
     text: SEXP,
@@ -365,8 +357,7 @@ pub unsafe extern "C" fn textRect(
 
 /// Create a persistent external pointer wrapping an SEXP.
 /// The SEXP is stored in a VECSXP of length one, then wrapped in an external pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
+pub unsafe fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
     let data = Rf_allocVector(SEXPTYPE::VECSXP.0 as i32, 1);
     Rf_protect(data);
     SET_VECTOR_ELT(data, 0, s);
@@ -376,8 +367,7 @@ pub unsafe extern "C" fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
 }
 
 /// Get the SEXP stored in an external pointer created by L_CreateSEXPPtr.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
+pub unsafe fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
     let data = R_ExternalPtrAddr(sp) as SEXP;
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
@@ -391,8 +381,7 @@ pub unsafe extern "C" fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
 }
 
 /// Set the SEXP stored in an external pointer created by L_CreateSEXPPtr.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
+pub unsafe fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
     let data = R_ExternalPtrAddr(sp) as SEXP;
     if data.is_null() {
         let msg = b"grid grob object is empty\0";

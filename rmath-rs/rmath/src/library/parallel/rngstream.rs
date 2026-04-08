@@ -61,8 +61,7 @@ const A2P127: [[Uint64; 3]; 3] = [
     [2824425944, 32183930, 2093834863],
 ];
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nextStream(x: SEXP) -> SEXP {
+pub unsafe fn nextStream(x: SEXP) -> SEXP {
     let mut seed: [Uint64; 6] = [0; 6];
     let mut nseed: [Uint64; 6] = [0; 6];
 
@@ -96,8 +95,7 @@ pub unsafe extern "C" fn nextStream(x: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nextSubStream(x: SEXP) -> SEXP {
+pub unsafe fn nextSubStream(x: SEXP) -> SEXP {
     let mut seed: [Uint64; 6] = [0; 6];
     let mut nseed: [Uint64; 6] = [0; 6];
 

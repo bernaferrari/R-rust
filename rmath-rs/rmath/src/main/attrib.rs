@@ -91,6 +91,7 @@ unsafe fn isReal(x: SEXP) -> bool {
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn isList(x: SEXP) -> bool {
     Rf_isList(x) != 0
 }
@@ -189,6 +190,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
     }
 }
 
+#[unsafe(no_mangle)]
 #[inline(always)]
 unsafe fn installTrChar(s: SEXP) -> SEXP {
     // Simplified: just install by name
@@ -208,6 +210,7 @@ unsafe fn STRING_PTR(x: SEXP) -> *const c_char {
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn CHAR(x: SEXP) -> *const c_char {
     ptr::null()
 }
@@ -318,6 +321,7 @@ unsafe fn MARK_NOT_MUTABLE(x: SEXP) {
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn Rf_error(s: &str) {
     let cs = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
     crate::main::errors::Rf_error(cs.as_ptr());
@@ -336,6 +340,7 @@ unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
     libc::strcmp(a, b) == 0
 }
 
+#[unsafe(no_mangle)]
 #[inline(always)]
 unsafe fn SET_TAG(x: SEXP, y: SEXP) {
     SETTAG(x, y);
@@ -352,6 +357,7 @@ unsafe fn allocVector(t: c_int, n: c_int) -> SEXP {
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn ScalarInteger(x: c_int) -> SEXP {
     Rf_ScalarInteger(x)
 }
@@ -580,11 +586,13 @@ unsafe fn shallow_duplicate_list(_x: SEXP) -> SEXP {
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn R_lsInternal3(_x: SEXP, _a: c_int, _b: c_int) -> SEXP {
     R_NilValue() // stub
 }
 
 #[inline(always)]
+#[unsafe(no_mangle)]
 unsafe fn GetOption1(sym: SEXP) -> SEXP {
     crate::main::options::GetOption1(sym)
 }
@@ -594,6 +602,7 @@ unsafe fn R_new_hashed_env(_parent: SEXP, _size: c_int) -> SEXP {
     R_NilValue() // stub
 }
 
+#[unsafe(no_mangle)]
 #[inline(always)]
 unsafe fn R_PreserveObject(x: SEXP) {
     crate::main::memory_main::R_PreserveObject_memory(x);
@@ -1347,8 +1356,7 @@ unsafe fn S4_extends_internal(klass: SEXP, _use_tab: bool) -> SEXP {
     klass // stub: would normally call .extendsForS3
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_S4_extends(klass: SEXP, _useTable: SEXP) -> SEXP {
+pub unsafe fn R_S4_extends(klass: SEXP, _useTable: SEXP) -> SEXP {
     S4_extends_internal(klass, false)
 }
 
@@ -1420,8 +1428,7 @@ pub unsafe fn InitS3DefaultTypes() {
 // R_data_class2 — S3/S4 dispatch class
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_data_class2(obj: SEXP) -> SEXP {
+pub unsafe fn R_data_class2(obj: SEXP) -> SEXP {
     let klass = crate::attrib_core::getAttrib(obj, R_ClassSymbol());
     if length(klass) > 0 {
         if IS_S4_OBJECT(obj) != 0 {
@@ -1462,8 +1469,7 @@ pub unsafe extern "C" fn R_data_class2(obj: SEXP) -> SEXP {
 // R_do_data_class — .Internal(data.class) / .class2() / .cache_class()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_do_data_class(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn R_do_data_class(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, env);
     checkArity(op, args);
 
@@ -1478,8 +1484,7 @@ pub unsafe extern "C" fn R_do_data_class(call: SEXP, op: SEXP, args: SEXP, env: 
 // R_class — C version of class()
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_class(x: SEXP) -> SEXP {
+pub unsafe fn R_class(x: SEXP) -> SEXP {
     R_data_class_full(x, 0)
 }
 
@@ -2025,8 +2030,7 @@ pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // R_getAttributes — get all attributes as a named list
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getAttributes(x: SEXP) -> SEXP {
+pub unsafe fn R_getAttributes(x: SEXP) -> SEXP {
     if isNull(x) || x == R_NilValue() {
         return R_NilValue();
     }
@@ -2135,6 +2139,7 @@ pub unsafe fn do_copyDFattr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 // GetMatrixDimnames — get matrix dimnames
 // ---------------------------------------------------------------------------
 
+
 unsafe fn GetMatrixDimnames(
     x: SEXP,
     rl: *mut SEXP,
@@ -2206,8 +2211,7 @@ pub unsafe fn S3Class(obj: SEXP) -> SEXP {
 // R_has_slot — check if slot exists
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_has_slot(obj: SEXP, name: SEXP) -> c_int {
+pub unsafe fn R_has_slot(obj: SEXP, name: SEXP) -> c_int {
     if !(isSymbol(name) || isScalarString(name)) {
         Rf_error("invalid type or length for slot name");
     }
@@ -2230,8 +2234,7 @@ pub unsafe extern "C" fn R_has_slot(obj: SEXP, name: SEXP) -> c_int {
 // R_do_slot — get slot value (obj @ name)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
+pub unsafe fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
     if !(isSymbol(name) || isScalarString(name)) {
         Rf_error("invalid type or length for slot name");
     }
@@ -2262,8 +2265,7 @@ pub unsafe extern "C" fn R_do_slot(obj: SEXP, name: SEXP) -> SEXP {
 // R_do_slot_assign — set slot value (obj @ name <- value)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
+pub unsafe fn R_do_slot_assign(obj: SEXP, name: SEXP, value: SEXP) -> SEXP {
     if isNull(obj) || obj == R_NilValue() {
         Rf_error("attempt to set slot on NULL object");
     }
@@ -2330,8 +2332,7 @@ pub unsafe fn do_AT(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // R_getS4DataSlot — get S4 data slot
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getS4DataSlot(obj: SEXP, type_: c_int) -> SEXP {
+pub unsafe fn R_getS4DataSlot(obj: SEXP, type_: c_int) -> SEXP {
     let mut s_xData: SEXP = ptr::null_mut();
     let mut s_dotData: SEXP = ptr::null_mut();
     let value: SEXP;
@@ -2383,8 +2384,7 @@ pub unsafe extern "C" fn R_getS4DataSlot(obj: SEXP, type_: c_int) -> SEXP {
 // R_mapAttrib — map a function over attributes
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_mapAttrib(
+pub unsafe fn R_mapAttrib(
     x: SEXP,
     _FUN: Option<unsafe extern "C" fn(SEXP, SEXP, *mut c_void) -> SEXP>,
     _data: *mut c_void,
@@ -2424,8 +2424,7 @@ unsafe fn isListWithNames(x: SEXP) -> bool {
 // R_getAttribCount — count attributes
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getAttribCount(x: SEXP) -> R_xlen_t {
+pub unsafe fn R_getAttribCount(x: SEXP) -> R_xlen_t {
     let n = xlength(ATTRIB(x));
     if isListWithNames(x) { n + 1 } else { n }
 }
@@ -2434,8 +2433,7 @@ pub unsafe extern "C" fn R_getAttribCount(x: SEXP) -> R_xlen_t {
 // R_getAttribNames — get attribute names
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getAttribNames(x: SEXP) -> SEXP {
+pub unsafe fn R_getAttribNames(x: SEXP) -> SEXP {
     let mut attr = ATTRIB(x);
     let n = xlength(attr);
     let list_with_names = isListWithNames(x);
@@ -2460,8 +2458,7 @@ pub unsafe extern "C" fn R_getAttribNames(x: SEXP) -> SEXP {
 // R_hasAttrib — check if attribute exists
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_hasAttrib(x: SEXP, name: SEXP) -> c_int {
+pub unsafe fn R_hasAttrib(x: SEXP, name: SEXP) -> c_int {
     if isScalarString(name) {
         // name = installTrChar(STRING_ELT(name, 0));
     }
@@ -2485,8 +2482,7 @@ pub unsafe extern "C" fn R_hasAttrib(x: SEXP, name: SEXP) -> c_int {
 // R_nrow — number of rows
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_nrow(x: SEXP) -> R_xlen_t {
+pub unsafe fn R_nrow(x: SEXP) -> R_xlen_t {
     if isDataFrame(x) {
         let s = getAttrib0(x, R_RowNamesSymbol());
         if isInteger(s) && LENGTH(s) == 2 && *INTEGER(s).add(0) == NA_INTEGER {
@@ -2503,8 +2499,7 @@ pub unsafe extern "C" fn R_nrow(x: SEXP) -> R_xlen_t {
 // R_ncol — number of columns
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ncol(x: SEXP) -> R_xlen_t {
+pub unsafe fn R_ncol(x: SEXP) -> R_xlen_t {
     if isDataFrame(x) {
         length(x) as R_xlen_t
     } else {

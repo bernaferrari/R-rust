@@ -2334,7 +2334,6 @@ fn gamln(a: f64) -> f64 {
 // =====================================================================
 
 /// C-compatible bratio: stores results via pointers.
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_bratio(
     a: f64,
     b: f64,

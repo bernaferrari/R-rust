@@ -174,8 +174,7 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
+pub unsafe fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let m = as_integer(sm);
     let n = as_integer(sn);
     let q = coerceVector(q, SEXPTYPE::REALSXP.0);
@@ -187,8 +186,7 @@ pub unsafe extern "C" fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     p
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
+pub unsafe fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let m = as_integer(sm);
     let n = as_integer(sn);
     let p = coerceVector(p, SEXPTYPE::REALSXP.0);

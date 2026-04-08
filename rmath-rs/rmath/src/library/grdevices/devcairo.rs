@@ -27,8 +27,7 @@ use crate::sexp::globals::R_NilValue;
 /// Create a Cairo graphics device by loading the cairo shared library.
 /// Stub: returns R_NilValue (cairo library not available).
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devCairo(args: SEXP) -> SEXP {
+pub unsafe fn devCairo(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -40,8 +39,7 @@ pub unsafe extern "C" fn devCairo(args: SEXP) -> SEXP {
 /// Return the Cairo library version string, or "" if not available.
 /// Stub: returns empty string.
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cairoVersion() -> SEXP {
+pub unsafe fn cairoVersion() -> SEXP {
     use crate::sexp::constructors::Rf_mkString;
     Rf_mkString(b"\0".as_ptr() as *const c_char)
 }
@@ -53,8 +51,7 @@ pub unsafe extern "C" fn cairoVersion() -> SEXP {
 /// Return the Pango library version string, or "" if not available.
 /// Stub: returns empty string.
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pangoVersion() -> SEXP {
+pub unsafe fn pangoVersion() -> SEXP {
     use crate::sexp::constructors::Rf_mkString;
     Rf_mkString(b"\0".as_ptr() as *const c_char)
 }
@@ -66,8 +63,7 @@ pub unsafe extern "C" fn pangoVersion() -> SEXP {
 /// Return Cairo FreeType information, or "" if not available.
 /// Stub: returns empty string.
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cairoFT() -> SEXP {
+pub unsafe fn cairoFT() -> SEXP {
     use crate::sexp::constructors::Rf_mkString;
     Rf_mkString(b"\0".as_ptr() as *const c_char)
 }

@@ -477,8 +477,7 @@ unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
 // ---------------------------------------------------------------------------
 
 /// Initialize the connection system.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitConnections() {
+pub unsafe fn R_InitConnections() {
     init_connections_table();
 }
 
@@ -2329,8 +2328,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
 // R_GetConnection — get connection by index (C API)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetConnection(_n: c_int) -> SEXP {
+pub unsafe fn R_GetConnection(_n: c_int) -> SEXP {
     unsafe {
         // This returns the SEXP representation of the connection (the integer index)
         // In R's C code, this returns the Rconnection struct pointer,

@@ -128,8 +128,7 @@ pub fn ccmp(x: Rcomplex, y: Rcomplex, nalast: bool) -> c_int {
 ///
 /// # Safety
 /// `x` must point to at least `n` valid `c_int` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isort(x: *mut c_int, n: c_int) {
+pub unsafe fn R_isort(x: *mut c_int, n: c_int) {
     unsafe {
         if n <= 1 {
             return;
@@ -167,8 +166,7 @@ pub unsafe extern "C" fn R_isort(x: *mut c_int, n: c_int) {
 ///
 /// # Safety
 /// `x` must point to at least `n` valid `f64` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_rsort(x: *mut f64, n: c_int) {
+pub unsafe fn R_rsort(x: *mut f64, n: c_int) {
     unsafe {
         if n <= 1 {
             return;
@@ -206,8 +204,7 @@ pub unsafe extern "C" fn R_rsort(x: *mut f64, n: c_int) {
 ///
 /// # Safety
 /// `x` must point to at least `n` valid `Rcomplex` values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_csort(x: *mut Rcomplex, n: c_int) {
+pub unsafe fn R_csort(x: *mut Rcomplex, n: c_int) {
     unsafe {
         if n <= 1 {
             return;

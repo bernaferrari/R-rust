@@ -36,8 +36,7 @@ unsafe fn R_pp_sum(u: *const c_double, n: c_int, l: c_int) -> c_double {
     2.0 * tmp1 / n as c_double
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
+pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
     let u = Rf_protect(coerceVector(u, SEXPTYPE::REALSXP.0));
     let n = LENGTH(u);
     let l = asInteger(sl);
@@ -46,8 +45,7 @@ pub unsafe extern "C" fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
     Rf_ScalarReal(trm)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
+pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
     let xi = Rf_protect(coerceVector(xi, SEXPTYPE::REALSXP.0));
     let n = LENGTH(x);

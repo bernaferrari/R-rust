@@ -533,8 +533,7 @@ unsafe fn InitCompactIntegerClass() {
 }
 
 /// R_is_compact_intseq -- check if SEXP is a compact integer sequence
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_is_compact_intseq(x: SEXP) -> c_int {
+pub unsafe fn R_is_compact_intseq(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
@@ -727,8 +726,7 @@ unsafe fn InitCompactRealClass() {
 // ===========================================================================
 
 /// R_compact_intrange -- create a compact integer or real sequence for n1:n2
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_intrange(n1: R_xlen_t, n2: R_xlen_t) -> SEXP {
+pub unsafe fn R_compact_intrange(n1: R_xlen_t, n2: R_xlen_t) -> SEXP {
     let n = if n1 <= n2 { n2 - n1 + 1 } else { n1 - n2 + 1 };
 
     if n >= R_XLEN_T_MAX {
@@ -816,8 +814,7 @@ unsafe fn expand_deferred_string(x: SEXP) {
 }
 
 /// R_deferred_coerceToString -- constructor for deferred string conversions
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_deferred_coerceToString(v: SEXP, info: SEXP) -> SEXP {
+pub unsafe fn R_deferred_coerceToString(v: SEXP, info: SEXP) -> SEXP {
     let mut ans = R_NilValue();
     let dtype = TYPEOF(v);
     if dtype == SEXPTYPE::INTSXP.0 || dtype == SEXPTYPE::REALSXP.0 {
@@ -1495,8 +1492,7 @@ pub unsafe fn do_wrap_meta(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 }
 
 /// R_tryWrap -- wrap an object with no meta-data
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tryWrap(x: SEXP) -> SEXP {
+pub unsafe fn R_tryWrap(x: SEXP) -> SEXP {
     wrap_meta(x, UNKNOWN_SORTEDNESS, 0)
 }
 
@@ -1508,8 +1504,7 @@ pub unsafe fn do_tryWrap(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 }
 
 /// R_tryUnwrap -- unwrap a wrapper if it has no useful meta-data
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tryUnwrap(x: SEXP) -> SEXP {
+pub unsafe fn R_tryUnwrap(x: SEXP) -> SEXP {
     if is_wrapper(x) != 0 && WRAPPER_SORTED(x) == UNKNOWN_SORTEDNESS && WRAPPER_NO_NA(x) == 0 {
         let _data = WRAPPER_WRAPPED(x);
         // if (! MAYBE_SHARED(data)) {
@@ -1535,8 +1530,7 @@ pub unsafe extern "C" fn R_tryUnwrap(x: SEXP) -> SEXP {
 // ===========================================================================
 
 /// R_init_altrep -- initialize all built-in ALTREP classes
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_altrep() {
+pub unsafe fn R_init_altrep() {
     InitCompactIntegerClass();
     InitCompactRealClass();
     InitDefferredStringClass();
@@ -1552,60 +1546,51 @@ pub unsafe extern "C" fn R_init_altrep() {
 }
 
 /// Backwards-compatible init function
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_altrep_classes() {
+pub unsafe fn R_init_altrep_classes() {
     R_init_altrep();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_compact_intseq() -> SEXP {
+pub unsafe fn R_init_compact_intseq() -> SEXP {
     InitCompactIntegerClass();
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_intseq_check(x: SEXP) -> c_int {
+pub unsafe fn R_compact_intseq_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
     R_is_compact_intseq(x)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_compact_realseq() -> SEXP {
+pub unsafe fn R_init_compact_realseq() -> SEXP {
     InitCompactRealClass();
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_compact_realseq_check(x: SEXP) -> c_int {
+pub unsafe fn R_compact_realseq_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_deferred_string() -> SEXP {
+pub unsafe fn R_init_deferred_string() -> SEXP {
     InitDefferredStringClass();
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_deferred_string_check(x: SEXP) -> c_int {
+pub unsafe fn R_deferred_string_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_deferred_names() -> SEXP {
+pub unsafe fn R_init_deferred_names() -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_deferred_names_check(x: SEXP) -> c_int {
+pub unsafe fn R_deferred_names_check(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }

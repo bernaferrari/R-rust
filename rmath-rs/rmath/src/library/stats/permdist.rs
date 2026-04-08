@@ -43,8 +43,7 @@ unsafe fn imin2(x: c_int, y: c_int) -> c_int {
     if x < y { x } else { y }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
+pub unsafe fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
     use crate::main::errors::R_CheckUserInterrupt;
     use crate::main::errors::Rf_error;
     use crate::sexp::ffi::R_FINITE;
@@ -126,8 +125,7 @@ pub unsafe extern "C" fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
     ret
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dpermdist1(x: SEXP) -> SEXP {
+pub unsafe fn dpermdist1(x: SEXP) -> SEXP {
     use crate::main::errors::R_CheckUserInterrupt;
     use crate::main::errors::Rf_error;
     use crate::sexp::ffi::R_FINITE;

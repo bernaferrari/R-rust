@@ -140,8 +140,7 @@ pub const NA_LOGICAL: c_int = c_int::MIN;
 ///   3  = overflow with k suffix
 ///   4  = overflow with G suffix
 ///  -1  = unrecognized suffix
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
+pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
     unsafe {
         let bytes = CStr::from_ptr(p).to_bytes();
         let s = std::str::from_utf8_unchecked(bytes);
@@ -625,6 +624,7 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
 /// `wr`, `dr`, `er` are width, digits, scientific flag for the real part.
 /// `wi`, `di`, `ei` are width, digits, scientific flag for the imaginary part.
 /// `dec` is the decimal separator string.
+#[unsafe(no_mangle)]
 pub unsafe fn EncodeComplex(
     x: Rcomplex,
     wr: c_int,
@@ -698,6 +698,7 @@ pub unsafe fn EncodeComplex(
 // ---------------------------------------------------------------------------
 // Standalone utility: EncodeRaw
 // ---------------------------------------------------------------------------
+
 
 /// Encode a raw byte as a two-digit hex string with optional prefix.
 pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
@@ -1160,8 +1161,7 @@ pub unsafe fn EncodeChar(x: SEXP) -> *const c_char {
 /// implementation writes the format string directly to stdout (without
 /// processing variadic arguments, since Rust cannot represent C varargs).
 /// For format-string-only calls (no % args), this produces correct output.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rprintf(format: *const c_char, _args: *mut c_void) {
+pub unsafe fn Rprintf(format: *const c_char, _args: *mut c_void) {
     unsafe {
         if format.is_null() {
             return;

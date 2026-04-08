@@ -62,8 +62,7 @@ unsafe fn x_d_opx(x: c_double) -> c_double {
     x / (1.0 + x)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn logit_link(mu: SEXP) -> SEXP {
+pub unsafe fn logit_link(mu: SEXP) -> SEXP {
     let n = LENGTH(mu);
     if n == 0 || TYPEOF(mu) != SEXPTYPE::REALSXP.0 {
         crate::main::errors::Rf_error(
@@ -81,8 +80,7 @@ pub unsafe extern "C" fn logit_link(mu: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn logit_linkinv(eta: SEXP) -> SEXP {
+pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
     let n = LENGTH(eta);
     let mut nprot: c_int = 1;
     if n == 0
@@ -119,8 +117,7 @@ pub unsafe extern "C" fn logit_linkinv(eta: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn logit_mu_eta(eta: SEXP) -> SEXP {
+pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
     let n = LENGTH(eta);
     let mut nprot: c_int = 1;
     if n == 0
@@ -162,8 +159,7 @@ unsafe fn y_log_y(y: c_double, mu: c_double) -> c_double {
     if y != 0.0 { y * (y / mu).ln() } else { 0.0 }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
+pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     let n = LENGTH(y);
     let lmu = LENGTH(mu);
     let lwt = LENGTH(wt);

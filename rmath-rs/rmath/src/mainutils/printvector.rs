@@ -651,7 +651,7 @@ unsafe fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn printVector(x: SEXP, indx: c_int, quote: c_int) {
+pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
     unsafe {
         if x.is_null() {
             return;
@@ -1188,7 +1188,7 @@ pub unsafe fn type2str_nowarn(stype: c_int) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn GetMatrixDimnames(
+pub unsafe fn GetMatrixDimnames(
     x: SEXP,
     rl: *mut SEXP,
     cl: *mut SEXP,

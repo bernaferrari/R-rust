@@ -310,7 +310,7 @@ thread_local! { static HEADERS: RefCell<[[c_char; MAX_HEADER_LEN]; MAX_HEADERS]>
 thread_local! { static headers_used: Cell<c_int> = Cell::new(0); }
 
 /// rcvHeaders - callback for receiving HTTP headers (used by curlGetHeaders)
-unsafe extern "C" fn rcvHeaders(
+unsafe fn rcvHeaders(
     buffer: *mut c_void,
     size: size_t,
     nmemb: size_t,
@@ -340,7 +340,7 @@ unsafe extern "C" fn rcvHeaders(
 }
 
 /// rcvBody - callback for receiving response body (discard spurious FTP body)
-unsafe extern "C" fn rcvBody(
+unsafe fn rcvBody(
     buffer: *mut c_void,
     size: size_t,
     nmemb: size_t,
@@ -621,7 +621,7 @@ unsafe fn putdashes(pold: *mut c_int, new: c_int) {
 unsafe fn putdashes(_pold: *mut c_int, _new: c_int) {}
 
 /// progress - download progress callback (single URL)
-unsafe extern "C" fn progress(
+unsafe fn progress(
     clientp: *mut c_void,
     dltotal: c_double,
     dlnow: c_double,
@@ -682,7 +682,7 @@ unsafe extern "C" fn progress(
 }
 
 /// progress_multi - download progress callback (multi URL) - implements absolute-time timeout
-unsafe extern "C" fn progress_multi(
+unsafe fn progress_multi(
     clientp: *mut c_void,
     dltotal: c_double,
     dlnow: c_double,
@@ -704,7 +704,7 @@ unsafe extern "C" fn progress_multi(
 }
 
 /// prereq_multi - pre-request callback for multi downloads
-unsafe extern "C" fn prereq_multi(
+unsafe fn prereq_multi(
     clientp: *mut c_void,
     _conn_primary_ip: *mut c_char,
     _conn_local_ip: *mut c_char,
@@ -895,8 +895,7 @@ unsafe fn download_close_finished(c: *mut download_cleanup_info) {
 
 /// in_do_curlVersion - .Internal(curlVersion())
 /// Returns a character vector with libcurl version info and attributes.
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_do_curlVersion(
+pub(crate) unsafe fn in_do_curlVersion(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -964,8 +963,7 @@ pub(crate) unsafe extern "C" fn in_do_curlVersion(
 }
 
 /// in_do_curlGetHeaders - .Internal(curlGetHeaders(url, redirect, verify, timeout, TLS))
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_do_curlGetHeaders(
+pub(crate) unsafe fn in_do_curlGetHeaders(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -1099,8 +1097,7 @@ pub(crate) unsafe extern "C" fn in_do_curlGetHeaders(
 }
 
 /// in_do_curlDownload - .Internal(curlDownload(urls, destfiles, quiet, mode, headers, cacheOK))
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_do_curlDownload(
+pub(crate) unsafe fn in_do_curlDownload(
     call: SEXP,
     op: SEXP,
     args: SEXP,
@@ -1414,8 +1411,7 @@ pub(crate) unsafe extern "C" fn in_do_curlDownload(
 
 /// in_newCurlUrl - create a new libcurl URL connection
 /// Signature: Rconnection in_newCurlUrl(const char *description, const char *mode, SEXP headers, int type)
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_newCurlUrl(
+pub(crate) unsafe fn in_newCurlUrl(
     description: *const c_char,
     mode: *const c_char,
     headers: SEXP,

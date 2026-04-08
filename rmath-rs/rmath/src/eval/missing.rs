@@ -419,8 +419,7 @@ pub unsafe fn PrintCall(call: SEXP, _rho: SEXP) {
 /// Ported from R's `R_execMethod()` in eval.c. Creates a new environment
 /// for the method, copies bindings from the generic call, and executes
 /// the method body.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
             return R_NilValue();
@@ -717,7 +716,7 @@ pub unsafe fn check_stack_balance(op: SEXP, save: c_int) {
 /// Ported from R's `do_forceAndCall()` in eval.c. Forces the first n
 /// promises in the argument list and then calls the function.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let n_expr = CADR(call);
         let n = crate::main::coerce::asInteger(Rf_eval(n_expr, rho));
@@ -868,8 +867,7 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `R_initEvalSymbols()` in eval.c. Installs symbols
 /// for assignment operators and other special forms.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_initEvalSymbols() {
+pub unsafe fn R_initEvalSymbols() {
     unsafe {
         // Assignment operator symbols
         Rf_install(b":=\x00".as_ptr() as *const c_char);
@@ -1062,8 +1060,7 @@ pub unsafe fn findLocTable(constants: SEXP, tclass: *const c_char) -> SEXP {
 /// Find the source location of the currently executing bytecode.
 ///
 /// Ported from R's `R_findBCInterpreterLocation()` in eval.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) -> SEXP {
+pub unsafe fn R_findBCInterpreterLocation(_cptr: SEXP, _iname: *const c_char) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -1087,7 +1084,7 @@ pub unsafe fn R_findBCInterpreterExpression() -> SEXP {
 /// Ported from R's `do_missing()` in eval.c. Checks whether a formal
 /// argument is missing.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let sym = CAR(args);
         if TYPEOF(sym) != SEXPTYPE::SYMSXP.0 {

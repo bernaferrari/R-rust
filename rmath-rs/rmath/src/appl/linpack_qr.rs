@@ -123,8 +123,7 @@ unsafe fn dnrm2(n: c_int, x: *const f64, incx: c_int) -> f64 {
 ///
 /// # Safety
 /// All pointers must be valid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dqrdc2(
+pub unsafe fn dqrdc2(
     x: *mut f64,
     ldx: c_int,
     n: c_int,
@@ -274,8 +273,7 @@ pub unsafe extern "C" fn dqrdc2(
 ///
 /// # Safety
 /// All pointers must be valid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dqrsl(
+pub unsafe fn dqrsl(
     x: *mut f64,
     ldx: c_int,
     n: c_int,

@@ -1183,9 +1183,9 @@ pub unsafe fn do_rep_int(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 0,
                 0,
             ) != 0
-            {
-                return a;
-            }
+        {
+            return a;
+        }
 
         if isVector(ncopy) == 0 {
             return ptr::null_mut();

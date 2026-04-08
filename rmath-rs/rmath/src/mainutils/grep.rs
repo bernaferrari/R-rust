@@ -236,10 +236,9 @@ fn fixed_search(haystack: &[u8], needle: &[u8], ignore_case: bool) -> Option<usi
         // Use memchr-like search for the first byte, then verify
         let first = needle[0];
         for i in 0..=(haystack.len() - needle.len()) {
-            if haystack[i] == first
-                && &haystack[i..i + needle.len()] == needle {
-                    return Some(i);
-                }
+            if haystack[i] == first && &haystack[i..i + needle.len()] == needle {
+                return Some(i);
+            }
         }
     }
     None
@@ -592,11 +591,12 @@ fn ere_match_at(nodes: &[EreNode], text: &[u8], pos: usize, ignore_case: bool) -
                 // Try left side
                 let left_nodes = &nodes[node_pos + 1..node_pos + 1 + rest_after];
                 if !left_nodes.is_empty()
-                    && let Some(end_pos) = ere_match_at(left_nodes, text, text_pos, ignore_case) {
-                        text_pos = end_pos;
-                        node_pos = node_pos + 1 + rest_after + 1;
-                        continue;
-                    }
+                    && let Some(end_pos) = ere_match_at(left_nodes, text, text_pos, ignore_case)
+                {
+                    text_pos = end_pos;
+                    node_pos = node_pos + 1 + rest_after + 1;
+                    continue;
+                }
                 // Try right side (everything after the alternation end)
                 let right_start = node_pos + 1 + rest_after + 1;
                 if right_start < nodes.len() {
@@ -749,12 +749,7 @@ fn ere_gsub(
 /// Returns byte offset of first match, or -1.
 ///
 /// Port of R's `R_grep_fixed` from grep.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_grep_fixed(
-    pat: *const c_char,
-    target: *const c_char,
-    ignore_case: c_int,
-) -> c_int {
+pub unsafe fn R_grep_fixed(pat: *const c_char, target: *const c_char, ignore_case: c_int) -> c_int {
     unsafe {
         if pat.is_null() || target.is_null() {
             return -1;
@@ -1364,8 +1359,7 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 ///
 /// In the full R implementation this performs approximate (fuzzy) string
 /// matching using TRE. This stub returns 0 (no match).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_agrep_fixed(
+pub unsafe fn R_agrep_fixed(
     _pat: *const c_char,
     _target: *const c_char,
     _max_distance: c_int,
@@ -1378,8 +1372,7 @@ pub unsafe extern "C" fn R_agrep_fixed(
 ///
 /// In the full R implementation this executes a PCRE regex against a subject
 /// string. This stub returns -1 (no match).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pcre_exec(
+pub unsafe fn R_pcre_exec(
     _re: *const std::ffi::c_void,
     _extra: *const std::ffi::c_void,
     _subject: *const c_char,
@@ -1395,8 +1388,7 @@ pub unsafe extern "C" fn R_pcre_exec(
 /// Stub for `R_pcre_config` -- PCRE configuration query.
 ///
 /// Returns 0 as a safe stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
+pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
     0
 }
 

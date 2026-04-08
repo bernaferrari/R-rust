@@ -526,7 +526,6 @@ pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
 /// norm_rand: random variate from the STANDARD normal distribution N(0,1).
 #[must_use]
 /// Uses INVERSION method (default for standalone mode).
-#[unsafe(no_mangle)]
 pub extern "C" fn norm_rand() -> f64 {
     const BIG: f64 = 134217728.0; /* 2^27 */
 
@@ -538,7 +537,6 @@ pub extern "C" fn norm_rand() -> f64 {
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_norm_rand() -> f64 {
     norm_rand()
 }
@@ -546,49 +544,41 @@ pub extern "C" fn Rf_norm_rand() -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dnorm(x: f64, mu: f64, sigma: f64, give_log: i32) -> f64 {
     dnorm4_inner(x, mu, sigma, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dnorm(x: f64, mu: f64, sigma: f64, give_log: i32) -> f64 {
     dnorm4_inner(x, mu, sigma, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_pnorm(x: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnorm5_inner(x, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn pnorm(x: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnorm5_inner(x, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qnorm(p: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnorm5_inner(p, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qnorm(p: f64, mu: f64, sigma: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnorm5_inner(p, mu, sigma, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rnorm(mu: f64, sigma: f64) -> f64 {
     rnorm_inner(mu, sigma)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rnorm(mu: f64, sigma: f64) -> f64 {
     rnorm_inner(mu, sigma)
 }

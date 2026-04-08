@@ -16,8 +16,7 @@ use crate::support::intl::types;
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_ngettext(
+pub unsafe fn libintl_ngettext(
     msgid1: *const c_char,
     msgid2: *const c_char,
     n: c_ulong,
@@ -34,8 +33,7 @@ pub unsafe extern "C" fn libintl_ngettext(
 }
 
 /// Alias for `libintl_ngettext` (unprefixed, for compatibility).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn ngettext(
+pub unsafe fn ngettext(
     msgid1: *const c_char,
     msgid2: *const c_char,
     n: c_ulong,

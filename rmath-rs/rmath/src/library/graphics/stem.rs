@@ -50,6 +50,7 @@ unsafe fn asLogical(x: SEXP) -> c_int {
     crate::main::coerce::asLogical(x)
 }
 
+#[unsafe(no_mangle)]
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
 }
@@ -58,6 +59,7 @@ unsafe fn R_rsort(x: *mut c_double, n: c_int) {
     crate::main::sort::R_rsort(x, n)
 }
 
+#[unsafe(no_mangle)]
 unsafe fn Rprintf(msg: &str) -> c_int {
     eprint!("{}", msg);
     0
@@ -222,8 +224,7 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
 }
 
 /* The R wrapper has removed NAs from x */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP {
+pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     if TYPEOF(x) != SEXPTYPE::REALSXP.0 || TYPEOF(scale) != SEXPTYPE::REALSXP.0 {
@@ -296,8 +297,7 @@ unsafe fn C_bincount(
 }
 
 /* The R wrapper removed non-finite values */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
+pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let x = coerceVector(x, SEXPTYPE::REALSXP.0);

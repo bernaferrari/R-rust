@@ -162,8 +162,7 @@ unsafe fn tre_set_params(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_tnfa_run_approx(
+pub unsafe fn tre_tnfa_run_approx(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,

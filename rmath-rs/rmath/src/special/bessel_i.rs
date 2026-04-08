@@ -412,7 +412,6 @@ pub fn bessel_i(x: f64, alpha: f64, expo: f64) -> f64 {
 
 /// C FFI wrapper for bessel_i
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn bessel_i_c(x: f64, alpha: f64, expo: f64) -> f64 {
     bessel_i(x, alpha, expo)
 }
@@ -463,7 +462,6 @@ pub fn bessel_i_ex(x: f64, alpha: f64, expo: f64, bi: &mut [f64]) -> f64 {
 
 /// C FFI wrapper for bessel_i_ex
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn bessel_i_ex_c(x: f64, alpha: f64, expo: f64, bi: *mut f64, nb: i32) -> f64 {
     if bi.is_null() || nb <= 0 {
         return ML_NAN;

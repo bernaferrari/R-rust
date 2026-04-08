@@ -513,8 +513,7 @@ unsafe fn lookup_message_in_domain(
 /// # Safety
 /// `msgid` must be a valid pointer to a NUL-terminated C string.
 /// Other string pointers may be NULL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_dcigettext(
+pub unsafe fn libintl_dcigettext(
     domainname: *const c_char,
     msgid: *const c_char,
     msgid_plural: *const c_char,

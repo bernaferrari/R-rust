@@ -119,8 +119,7 @@ unsafe fn inclu2(
 }
 
 /// Set initial values for the Kalman filter.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn starma(g: *mut c_void, ifault: *mut c_int) {
+pub unsafe fn starma(g: *mut c_void, ifault: *mut c_int) {
     let G = &mut *(g as *mut starma_struct);
     let p = G.p;
     let q = G.q;
@@ -300,8 +299,7 @@ pub unsafe extern "C" fn starma(g: *mut c_void, ifault: *mut c_int) {
 }
 
 /// Update Kalman filter by inclusion of data values w(1) to w(n).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn karma(
+pub unsafe fn karma(
     g: *mut c_void,
     sumlog: *mut f64,
     ssq: *mut f64,
@@ -461,8 +459,7 @@ unsafe fn quick_recur(
 }
 
 /// Finite sample prediction from ARIMA processes (AS182).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn forkal(
+pub unsafe fn forkal(
     g: *mut c_void,
     d: c_int,
     il: c_int,

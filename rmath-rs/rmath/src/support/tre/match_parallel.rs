@@ -85,8 +85,7 @@ fn CHECK_CHAR_CLASSES(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_tnfa_run_parallel(
+pub unsafe fn tre_tnfa_run_parallel(
     tnfa: *const tre_tnfa_t,
     string: *const c_void,
     len: c_int,

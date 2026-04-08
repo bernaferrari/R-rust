@@ -129,8 +129,7 @@ unsafe fn prho(n: c_int, is: c_double, pv: *mut c_double, ifault: *mut c_int, lo
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pRho(q: SEXP, sn: SEXP, lower: SEXP) -> SEXP {
+pub unsafe fn pRho(q: SEXP, sn: SEXP, lower: SEXP) -> SEXP {
     let s = asReal(q);
     let mut p: c_double = 0.0;
     let n = asInteger(sn);

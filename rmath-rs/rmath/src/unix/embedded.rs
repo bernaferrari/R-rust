@@ -47,8 +47,7 @@ thread_local! { static R_Interactive: Cell<c_int> = Cell::new(0); }
 /// be passed to the regular standalone R.
 ///
 /// Returns 1 on success.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
+pub unsafe fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int {
     unsafe {
         Rf_initialize_R(argc, argv);
         R_Interactive.with(|v| v.set(1)); /* TRUE */
@@ -62,8 +61,7 @@ pub unsafe extern "C" fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -
 /// Call with fatal != 0 for emergency bail out.
 /// Performs cleanup: run exit finalizers, clean editor state,
 /// kill graphics devices, clean temp directory, print warnings.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_endEmbeddedR(fatal: c_int) {
+pub unsafe fn Rf_endEmbeddedR(fatal: c_int) {
     unsafe {
         R_RunExitFinalizers();
         CleanEd();

@@ -2618,8 +2618,7 @@ unsafe fn do_subassign3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 /// Port of `R_subassign3_dflt()` -- default `$<-` implementation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {
+pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> SEXP {
     unsafe {
         use crate::eval::attrib_core::R_NamesSymbol as R_NamesSym;
 

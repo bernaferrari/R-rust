@@ -176,25 +176,21 @@ pub fn choose(n: f64, k: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_choose(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn choose_c(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lchoose(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn lchoose_c(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
@@ -202,7 +198,6 @@ pub extern "C" fn lchoose_c(n: f64, k: f64) -> f64 {
 /// Rf_lfastchoose: fast version of lchoose(n, k) for integer k.
 #[must_use]
 /// Returns log|choose(n,k)|. The sign argument is for compatibility only.
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lfastchoose(n: f64, k: f64, _sgn: *mut std::os::raw::c_int) -> f64 {
     imp::lchoose(n, k)
 }

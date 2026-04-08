@@ -34,8 +34,7 @@ type QuartzBackend_t = *const c_void;
 /// Quartz — create a Quartz graphics device (quartz() function).
 /// Stub: returns R_NilValue with a warning on non-macOS.
 #[cfg(not(target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Quartz(args: SEXP) -> SEXP {
+pub unsafe fn Quartz(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -43,8 +42,7 @@ pub unsafe extern "C" fn Quartz(args: SEXP) -> SEXP {
 /// makeQuartzDefault — check whether Quartz should be the default device.
 /// Stub: returns FALSE (0) on non-macOS.
 #[cfg(not(target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn makeQuartzDefault() -> SEXP {
+pub unsafe fn makeQuartzDefault() -> SEXP {
     use crate::sexp::constructors::Rf_ScalarLogical;
     Rf_ScalarLogical(0)
 }
@@ -52,8 +50,7 @@ pub unsafe extern "C" fn makeQuartzDefault() -> SEXP {
 /// Quartz_C — create a Quartz device from C code (public API).
 /// Stub: returns NULL with error code -1 on non-macOS.
 #[cfg(not(target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Quartz_C(
+pub unsafe fn Quartz_C(
     par: QuartzParameters_t,
     q_create: *const c_void,
     error_code: *mut c_int,
@@ -69,8 +66,7 @@ pub unsafe extern "C" fn Quartz_C(
 /// getQuartzAPI — return the Quartz device API function table.
 /// Stub: returns NULL on non-macOS.
 #[cfg(not(target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getQuartzAPI() -> *mut c_void {
+pub unsafe fn getQuartzAPI() -> *mut c_void {
     ptr::null_mut()
 }
 
@@ -81,8 +77,7 @@ pub unsafe extern "C" fn getQuartzAPI() -> *mut c_void {
 /// Quartz — create a Quartz graphics device (quartz() function).
 /// macOS stub: returns R_NilValue (not yet implemented).
 #[cfg(target_os = "macos")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Quartz(args: SEXP) -> SEXP {
+pub unsafe fn Quartz(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -90,8 +85,7 @@ pub unsafe extern "C" fn Quartz(args: SEXP) -> SEXP {
 /// makeQuartzDefault — check whether Quartz should be the default device.
 /// macOS stub: returns FALSE (0) until real implementation.
 #[cfg(target_os = "macos")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn makeQuartzDefault() -> SEXP {
+pub unsafe fn makeQuartzDefault() -> SEXP {
     use crate::sexp::constructors::Rf_ScalarLogical;
     Rf_ScalarLogical(0)
 }
@@ -99,8 +93,7 @@ pub unsafe extern "C" fn makeQuartzDefault() -> SEXP {
 /// Quartz_C — create a Quartz device from C code (public API).
 /// macOS stub: returns NULL (not yet implemented).
 #[cfg(target_os = "macos")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Quartz_C(
+pub unsafe fn Quartz_C(
     par: QuartzParameters_t,
     q_create: *const c_void,
     error_code: *mut c_int,
@@ -116,7 +109,6 @@ pub unsafe extern "C" fn Quartz_C(
 /// getQuartzAPI — return the Quartz device API function table.
 /// macOS stub: returns NULL (not yet implemented).
 #[cfg(target_os = "macos")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getQuartzAPI() -> *mut c_void {
+pub unsafe fn getQuartzAPI() -> *mut c_void {
     ptr::null_mut()
 }

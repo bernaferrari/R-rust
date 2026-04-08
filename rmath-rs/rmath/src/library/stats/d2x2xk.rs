@@ -91,8 +91,7 @@ unsafe fn int_d2x2xk(
 ///
 /// # Safety
 /// sK, m, n, t, srn must be valid SEXP pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
+pub unsafe fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
     let K = asInteger(sK);
     let rn = asInteger(srn);
 

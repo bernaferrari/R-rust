@@ -270,18 +270,15 @@ pub fn rsignrank_inner(n: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
     dsignrank_inner(x, n, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
     dsignrank_inner(x, n, give_log != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_psignrank(
     x: c_double,
     n: c_double,
@@ -292,12 +289,10 @@ pub extern "C" fn Rf_psignrank(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qsignrank(
     p: c_double,
     n: c_double,
@@ -308,19 +303,16 @@ pub extern "C" fn Rf_qsignrank(
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)
 }

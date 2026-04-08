@@ -39,32 +39,26 @@ unsafe extern "C" {
     fn Rsockwrite(sport: SEXP, sstring: SEXP) -> SEXP;
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sockconnect(sport: SEXP, shost: SEXP) -> SEXP {
+pub unsafe fn sockconnect(sport: SEXP, shost: SEXP) -> SEXP {
     Rsockconnect(sport, shost)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
+pub unsafe fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
     Rsockread(sport, smaxlen)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sockclose(sport: SEXP) -> SEXP {
+pub unsafe fn sockclose(sport: SEXP) -> SEXP {
     Rsockclose(sport)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sockopen(sport: SEXP) -> SEXP {
+pub unsafe fn sockopen(sport: SEXP) -> SEXP {
     Rsockopen(sport)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn socklisten(sport: SEXP) -> SEXP {
+pub unsafe fn socklisten(sport: SEXP) -> SEXP {
     Rsocklisten(sport)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sockwrite(sport: SEXP, sstring: SEXP) -> SEXP {
+pub unsafe fn sockwrite(sport: SEXP, sstring: SEXP) -> SEXP {
     Rsockwrite(sport, sstring)
 }

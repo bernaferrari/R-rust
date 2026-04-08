@@ -23,21 +23,20 @@ unsafe fn GEcurrentDevice() -> pGEDevDesc {
 }
 
 /// Stub: GEMode - no-op.
+#[unsafe(no_mangle)]
 unsafe fn GEMode(_mode: c_int, _dd: pGEDevDesc) {
     // no-op
 }
 
 /// defineGroup - define a group on the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn defineGroup(_args: SEXP) -> SEXP {
+pub unsafe fn defineGroup(_args: SEXP) -> SEXP {
     let _dd = GEcurrentDevice();
     // Stub: cannot access dd->dev->defineGroup on void* dd
     R_NilValue()
 }
 
 /// useGroup - use a group on the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn useGroup(_args: SEXP) -> SEXP {
+pub unsafe fn useGroup(_args: SEXP) -> SEXP {
     let _dd = GEcurrentDevice();
     GEMode(1, _dd);
     // Stub: cannot access dd->dev->useGroup on void* dd
@@ -46,8 +45,7 @@ pub unsafe extern "C" fn useGroup(_args: SEXP) -> SEXP {
 }
 
 /// devUp - check if the device has y increasing upward.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devUp(_args: SEXP) -> SEXP {
+pub unsafe fn devUp(_args: SEXP) -> SEXP {
     // Stub: no device to query; return FALSE
     let ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
     *LOGICAL(ans).add(0) = 0;

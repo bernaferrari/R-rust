@@ -47,8 +47,7 @@ mod macos {
     ///
     /// Returns a colon-separated list of locale names, or NULL if not available.
     /// The result must not be freed; it is statically allocated.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn _nl_language_preferences_default() -> *const c_char {
+    pub unsafe fn _nl_language_preferences_default() -> *const c_char {
         unsafe {
             if CACHE_INITIALIZED.load(Ordering::Acquire) {
                 return CACHED_LANGUAGES.load(Ordering::Acquire);
@@ -96,8 +95,7 @@ mod fallback {
     /// Determine the user's language preferences.
     ///
     /// On non-macOS platforms, always returns NULL.
-    #[unsafe(no_mangle)]
-    pub unsafe extern "C" fn _nl_language_preferences_default() -> *const c_char {
+    pub unsafe fn _nl_language_preferences_default() -> *const c_char {
         ptr::null()
     }
 }

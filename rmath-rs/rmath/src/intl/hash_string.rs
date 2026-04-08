@@ -17,8 +17,7 @@ use crate::intl::types::HASHWORDBITS;
 ///
 /// # Safety
 /// `str_param` must be a valid pointer to a NUL-terminated C string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn __hash_string(str_param: *const c_char) -> u32 {
+pub unsafe fn __hash_string(str_param: *const c_char) -> u32 {
     unsafe {
         let mut hval: u32 = 0;
         let mut g: u32;
@@ -40,14 +39,12 @@ pub unsafe extern "C" fn __hash_string(str_param: *const c_char) -> u32 {
 }
 
 /// Alias for `__hash_string` (non-prefixed version).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn hash_string(str_param: *const c_char) -> u32 {
+pub unsafe fn hash_string(str_param: *const c_char) -> u32 {
     unsafe { __hash_string(str_param) }
 }
 
 /// Alias for `__hash_string` (libintl-prefixed version).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_hash_string(str_param: *const c_char) -> u32 {
+pub unsafe fn libintl_hash_string(str_param: *const c_char) -> u32 {
     unsafe { __hash_string(str_param) }
 }
 

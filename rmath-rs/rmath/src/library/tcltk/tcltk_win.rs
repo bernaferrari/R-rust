@@ -33,16 +33,14 @@ unsafe extern "C" {
 ///   3. Installs a Tcl polling function via set_R_Tcldo
 ///   4. Restores the foreground window
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcltk_start() {
+pub unsafe fn tcltk_start() {
     let mut tk_up: c_int = 0;
     tcltk_init(&mut tk_up);
     // Stub: no set_R_Tcldo / SetForegroundWindow available
 }
 
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcltk_start() {
+pub unsafe fn tcltk_start() {
     // No-op on non-Windows platforms
 }
 
@@ -55,14 +53,12 @@ pub unsafe extern "C" fn tcltk_start() {
 /// In the real implementation this calls unset_R_Tcldo to remove
 /// the Tcl event polling callback.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcltk_end() {
+pub unsafe fn tcltk_end() {
     // Stub: no unset_R_Tcldo available
 }
 
 #[cfg(not(target_os = "windows"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcltk_end() {
+pub unsafe fn tcltk_end() {
     // No-op on non-Windows platforms
 }
 

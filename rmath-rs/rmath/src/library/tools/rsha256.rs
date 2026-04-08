@@ -60,8 +60,7 @@ fn rsha256_buffer(buffer: *const std::ffi::c_void, len: usize, resblock: &mut [u
 ///
 /// If `files` is RAWSXP, computes the SHA256 hash of the raw bytes.
 /// If `files` is STRSXP, computes SHA256 hashes for each file path.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsha256(files: SEXP) -> SEXP {
+pub unsafe fn Rsha256(files: SEXP) -> SEXP {
     if files.is_null() {
         return R_NilValue();
     }

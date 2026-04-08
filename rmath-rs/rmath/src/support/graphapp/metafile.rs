@@ -5,8 +5,7 @@
 
 use super::types::*;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newmetafile(
+pub unsafe fn newmetafile(
     _name: *const std::os::raw::c_char,
     _width: f64,
     _height: f64,

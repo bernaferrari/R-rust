@@ -148,49 +148,41 @@ pub fn rlogis_inner(location: f64, scale: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dlogis(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dlogis_inner(x, location, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dlogis(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dlogis_inner(x, location, scale, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_plogis(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     plogis_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn plogis(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     plogis_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qlogis(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlogis_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qlogis(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlogis_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rlogis(location: f64, scale: f64) -> f64 {
     rlogis_inner(location, scale)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rlogis(location: f64, scale: f64) -> f64 {
     rlogis_inner(location, scale)
 }

@@ -463,8 +463,7 @@ unsafe fn in_chull(
 
 /// Compute the convex hull of a set of 2D points.
 /// x is a two-column numeric matrix.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn chull(x: SEXP) -> SEXP {
+pub unsafe fn chull(x: SEXP) -> SEXP {
     let n = nrows(x);
     if n <= 0 {
         return Rf_allocVector(SEXPTYPE::INTSXP.0, 0);

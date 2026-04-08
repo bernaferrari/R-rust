@@ -15,13 +15,11 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
 /// R_methods_test_MAKE_CLASS - create a class definition for testing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_methods_test_MAKE_CLASS(_className: SEXP) -> SEXP {
+pub unsafe fn R_methods_test_MAKE_CLASS(_className: SEXP) -> SEXP {
     R_NilValue()
 }
 
 /// R_methods_test_NEW - create a new object of a given class for testing.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_methods_test_NEW(_className: SEXP) -> SEXP {
+pub unsafe fn R_methods_test_NEW(_className: SEXP) -> SEXP {
     R_NilValue()
 }

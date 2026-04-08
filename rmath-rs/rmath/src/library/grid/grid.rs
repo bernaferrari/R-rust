@@ -255,7 +255,7 @@ fn fmax2(a: f64, b: f64) -> f64 {
  * ============================== */
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getDevice() -> pGEDevDesc {
+pub unsafe fn getDevice() -> pGEDevDesc {
     GEcurrentDevice()
 }
 
@@ -264,7 +264,7 @@ pub unsafe extern "C" fn getDevice() -> pGEDevDesc {
  * ============================== */
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn getDeviceSize(
+pub unsafe fn getDeviceSize(
     dd: pGEDevDesc,
     devWidthCM: *mut c_double,
     devHeightCM: *mut c_double,
@@ -303,8 +303,7 @@ unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: 
  * L_initGrid
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
+pub unsafe fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
     R_gridEvalEnv.with(|v| v.get()).with(|v| v.set(GridEvalEnv));
     // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
     R_NilValue()
@@ -314,8 +313,7 @@ pub unsafe extern "C" fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
  * L_killGrid
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_killGrid() -> SEXP {
+pub unsafe fn L_killGrid() -> SEXP {
     // GEunregisterSystem(gridRegisterIndex);
     R_NilValue()
 }
@@ -324,8 +322,7 @@ pub unsafe extern "C" fn L_killGrid() -> SEXP {
  * dirtyGridDevice
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dirtyGridDevice(dd: pGEDevDesc) {
+pub unsafe fn dirtyGridDevice(dd: pGEDevDesc) {
     // STUB: full implementation requires GE device state
 }
 
@@ -333,8 +330,7 @@ pub unsafe extern "C" fn dirtyGridDevice(dd: pGEDevDesc) {
  * L_gridDirty
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_gridDirty() -> SEXP {
+pub unsafe fn L_gridDirty() -> SEXP {
     let dd = getDevice();
     dirtyGridDevice(dd);
     R_NilValue()
@@ -352,8 +348,7 @@ unsafe fn getViewportContext(vp: SEXP, vpc: *mut LViewportContext) {
  * L_currentViewport
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_currentViewport() -> SEXP {
+pub unsafe fn L_currentViewport() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_VP)
 }
@@ -362,8 +357,7 @@ pub unsafe extern "C" fn L_currentViewport() -> SEXP {
  * doSetViewport
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doSetViewport(
+pub unsafe fn doSetViewport(
     vp: SEXP,
     topLevelVP: c_int,
     pushing: c_int,
@@ -408,8 +402,7 @@ pub unsafe extern "C" fn doSetViewport(
  * L_setviewport
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
+pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
     let dd = getDevice();
     let vp = Rf_protect(Rf_duplicate(invp));
 
@@ -530,8 +523,7 @@ unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int)
  * L_downviewport
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
+pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
     let dd = getDevice();
     let gvp = gridStateElement(dd, GSS_VP);
     let found = Rf_protect(findViewport(name, strict, gvp, 1));
@@ -550,8 +542,7 @@ pub unsafe extern "C" fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
  * L_downvppath
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
+pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
     let dd = getDevice();
     let gvp = gridStateElement(dd, GSS_VP);
     let found = Rf_protect(findViewport(name, strict, gvp, 1));
@@ -570,8 +561,7 @@ pub unsafe extern "C" fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> S
  * L_unsetviewport
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_unsetviewport(n: SEXP) -> SEXP {
+pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
     let dd = getDevice();
     let gvp = Rf_protect(gridStateElement(dd, GSS_VP));
     let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
@@ -601,8 +591,7 @@ pub unsafe extern "C" fn L_unsetviewport(n: SEXP) -> SEXP {
  * L_upviewport
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_upviewport(n: SEXP) -> SEXP {
+pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
     let dd = getDevice();
     let gvp = Rf_protect(gridStateElement(dd, GSS_VP));
     let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
@@ -626,21 +615,18 @@ pub unsafe extern "C" fn L_upviewport(n: SEXP) -> SEXP {
  * Display list accessors
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getDisplayList() -> SEXP {
+pub unsafe fn L_getDisplayList() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_DL)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setDisplayList(dl: SEXP) -> SEXP {
+pub unsafe fn L_setDisplayList(dl: SEXP) -> SEXP {
     let dd = getDevice();
     setGridStateElement(dd, GSS_DL, dl);
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getDLelt(index: SEXP) -> SEXP {
+pub unsafe fn L_getDLelt(index: SEXP) -> SEXP {
     let dd = getDevice();
     let dl = Rf_protect(gridStateElement(dd, GSS_DL));
     let result = VECTOR_ELT(dl, *INTEGER(index) as R_xlen_t);
@@ -648,8 +634,7 @@ pub unsafe extern "C" fn L_getDLelt(index: SEXP) -> SEXP {
     result
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setDLelt(value: SEXP) -> SEXP {
+pub unsafe fn L_setDLelt(value: SEXP) -> SEXP {
     let dd = getDevice();
     let dl = Rf_protect(gridStateElement(dd, GSS_DL));
     let dlindex = gridStateElement(dd, GSS_DLINDEX);
@@ -658,41 +643,35 @@ pub unsafe extern "C" fn L_setDLelt(value: SEXP) -> SEXP {
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getDLindex() -> SEXP {
+pub unsafe fn L_getDLindex() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_DLINDEX)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setDLindex(index: SEXP) -> SEXP {
+pub unsafe fn L_setDLindex(index: SEXP) -> SEXP {
     let dd = getDevice();
     setGridStateElement(dd, GSS_DLINDEX, index);
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getDLon() -> SEXP {
+pub unsafe fn L_getDLon() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_DLON)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setDLon(value: SEXP) -> SEXP {
+pub unsafe fn L_setDLon(value: SEXP) -> SEXP {
     let dd = getDevice();
     let prev = gridStateElement(dd, GSS_DLON);
     setGridStateElement(dd, GSS_DLON, value);
     prev
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getEngineDLon() -> SEXP {
+pub unsafe fn L_getEngineDLon() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_ENGINEDLON)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setEngineDLon(value: SEXP) -> SEXP {
+pub unsafe fn L_setEngineDLon(value: SEXP) -> SEXP {
     let dd = getDevice();
     setGridStateElement(dd, GSS_ENGINEDLON, value);
     R_NilValue()
@@ -702,27 +681,23 @@ pub unsafe extern "C" fn L_setEngineDLon(value: SEXP) -> SEXP {
  * Grid state accessors
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getCurrentGrob() -> SEXP {
+pub unsafe fn L_getCurrentGrob() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_CURRGROB)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setCurrentGrob(value: SEXP) -> SEXP {
+pub unsafe fn L_setCurrentGrob(value: SEXP) -> SEXP {
     let dd = getDevice();
     setGridStateElement(dd, GSS_CURRGROB, value);
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_getEngineRecording() -> SEXP {
+pub unsafe fn L_getEngineRecording() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_ENGINERECORDING)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setEngineRecording(value: SEXP) -> SEXP {
+pub unsafe fn L_setEngineRecording(value: SEXP) -> SEXP {
     let dd = getDevice();
     setGridStateElement(dd, GSS_ENGINERECORDING, value);
     R_NilValue()
@@ -732,8 +707,7 @@ pub unsafe extern "C" fn L_setEngineRecording(value: SEXP) -> SEXP {
  * GPar accessors
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_currentGPar() -> SEXP {
+pub unsafe fn L_currentGPar() -> SEXP {
     let dd = getDevice();
     gridStateElement(dd, GSS_GPAR)
 }
@@ -742,42 +716,36 @@ pub unsafe extern "C" fn L_currentGPar() -> SEXP {
  * Page and initialization
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_newpagerecording() -> SEXP {
+pub unsafe fn L_newpagerecording() -> SEXP {
     let dd = getDevice();
     // STUB: NewFrameConfirm, GEinitDisplayList
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_newpage() -> SEXP {
+pub unsafe fn L_newpage() -> SEXP {
     let dd = getDevice();
     // STUB: GENewPage
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_clearDefinitions(_clearGroups: SEXP) -> SEXP {
+pub unsafe fn L_clearDefinitions(_clearGroups: SEXP) -> SEXP {
     // STUB: releasePattern, releaseClipPath, releaseMask, releaseGroup
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_initGPar() -> SEXP {
+pub unsafe fn L_initGPar() -> SEXP {
     let dd = getDevice();
     initGPar(dd);
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_initViewportStack() -> SEXP {
+pub unsafe fn L_initViewportStack() -> SEXP {
     let dd = getDevice();
     initVP(dd);
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_initDisplayList() -> SEXP {
+pub unsafe fn L_initDisplayList() -> SEXP {
     let dd = getDevice();
     initDL(dd);
     R_NilValue()
@@ -787,8 +755,7 @@ pub unsafe extern "C" fn L_initDisplayList() -> SEXP {
  * getViewportTransform
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getViewportTransform(
+pub unsafe fn getViewportTransform(
     currentvp: SEXP,
     dd: pGEDevDesc,
     vpWidthCM: *mut c_double,
@@ -811,8 +778,7 @@ pub unsafe extern "C" fn getViewportTransform(
  * L_convert
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
+pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
     // Full implementation requires unit conversion functions
     // STUB: return empty numeric
     let nx = unitLength(x);
@@ -823,8 +789,7 @@ pub unsafe extern "C" fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto
  * L_devLoc
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
+pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
     // Full implementation requires unit conversion
     let maxn = unitLength(x);
     let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
@@ -846,8 +811,7 @@ pub unsafe extern "C" fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
  * L_devDim
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
+pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
     let maxn = unitLength(x);
     let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
     SET_VECTOR_ELT(
@@ -868,8 +832,7 @@ pub unsafe extern "C" fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
  * L_layoutRegion
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
+pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
     let dd = getDevice();
     let currentvp = gridStateElement(dd, GSS_VP);
     if isNull(viewportLayout(currentvp)) {
@@ -1209,8 +1172,7 @@ unsafe fn arrows(
  * L_moveTo
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
+pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
     // STUB: full implementation requires unit conversion
     R_NilValue()
 }
@@ -1219,8 +1181,7 @@ pub unsafe extern "C" fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
  * L_lineTo
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
+pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
     // STUB: full implementation requires unit conversion + GELine
     R_NilValue()
 }
@@ -1229,8 +1190,7 @@ pub unsafe extern "C" fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
  * L_lines
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
+pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
     // STUB: full implementation requires unit conversion + GEPolyline
     R_NilValue()
 }
@@ -1258,8 +1218,7 @@ unsafe fn gridXspline(
  * L_xspline
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_xspline(
+pub unsafe fn L_xspline(
     x: SEXP,
     y: SEXP,
     s: SEXP,
@@ -1276,8 +1235,7 @@ pub unsafe extern "C" fn L_xspline(
  * L_xsplineBounds
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_xsplineBounds(
+pub unsafe fn L_xsplineBounds(
     x: SEXP,
     y: SEXP,
     s: SEXP,
@@ -1294,8 +1252,7 @@ pub unsafe extern "C" fn L_xsplineBounds(
  * L_xsplinePoints
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_xsplinePoints(
+pub unsafe fn L_xsplinePoints(
     x: SEXP,
     y: SEXP,
     s: SEXP,
@@ -1312,8 +1269,7 @@ pub unsafe extern "C" fn L_xsplinePoints(
  * L_segments
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
+pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
     // STUB: full implementation requires unit conversion + GELine
     R_NilValue()
 }
@@ -1322,8 +1278,7 @@ pub unsafe extern "C" fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arro
  * L_arrows
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_arrows(
+pub unsafe fn L_arrows(
     x1: SEXP,
     x2: SEXP,
     xnm1: SEXP,
@@ -1345,8 +1300,7 @@ pub unsafe extern "C" fn L_arrows(
  * L_polygon
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
+pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
     // STUB: full implementation requires unit conversion + GEPolygon
     R_NilValue()
 }
@@ -1363,8 +1317,7 @@ unsafe fn gridCircle(_x: SEXP, _y: SEXP, _r: SEXP, _theta: c_double, _draw: bool
  * L_circle
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
+pub unsafe fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
     gridCircle(x, y, r, 0.0, true);
     R_NilValue()
 }
@@ -1373,8 +1326,7 @@ pub unsafe extern "C" fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
  * L_circleBounds
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_circleBounds(x: SEXP, y: SEXP, r: SEXP, theta: SEXP) -> SEXP {
+pub unsafe fn L_circleBounds(x: SEXP, y: SEXP, r: SEXP, theta: SEXP) -> SEXP {
     gridCircle(x, y, r, *REAL(theta), false)
 }
 
@@ -1399,8 +1351,7 @@ unsafe fn gridRect(
  * L_rect
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_rect(
+pub unsafe fn L_rect(
     x: SEXP,
     y: SEXP,
     w: SEXP,
@@ -1416,8 +1367,7 @@ pub unsafe extern "C" fn L_rect(
  * L_rectBounds
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_rectBounds(
+pub unsafe fn L_rectBounds(
     x: SEXP,
     y: SEXP,
     w: SEXP,
@@ -1433,8 +1383,7 @@ pub unsafe extern "C" fn L_rectBounds(
  * L_path
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
+pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
     // STUB: full implementation requires GEPath
     R_NilValue()
 }
@@ -1443,8 +1392,7 @@ pub unsafe extern "C" fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SE
  * L_raster
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_raster(
+pub unsafe fn L_raster(
     raster: SEXP,
     x: SEXP,
     y: SEXP,
@@ -1462,8 +1410,7 @@ pub unsafe extern "C" fn L_raster(
  * L_cap
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_cap() -> SEXP {
+pub unsafe fn L_cap() -> SEXP {
     let dd = getDevice();
     let raster = Rf_protect(GECap(dd));
     if isNull(raster) {
@@ -1498,8 +1445,7 @@ unsafe fn gridText(
  * L_text
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_text(
+pub unsafe fn L_text(
     label: SEXP,
     x: SEXP,
     y: SEXP,
@@ -1516,8 +1462,7 @@ pub unsafe extern "C" fn L_text(
  * L_textBounds
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_textBounds(
+pub unsafe fn L_textBounds(
     label: SEXP,
     x: SEXP,
     y: SEXP,
@@ -1612,8 +1557,7 @@ unsafe fn symbolNumCoords(pch: c_int, closed: bool) -> c_int {
  * gridSymbol
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gridSymbol(
+pub unsafe fn gridSymbol(
     _x: f64,
     _y: f64,
     _pch: c_int,
@@ -1646,8 +1590,7 @@ unsafe fn gridPoints(
  * L_points
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
+pub unsafe fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
     gridPoints(x, y, pch, size, true, false)
 }
 
@@ -1655,8 +1598,7 @@ pub unsafe extern "C" fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SE
  * L_pointsPoints
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_pointsPoints(
+pub unsafe fn L_pointsPoints(
     x: SEXP,
     y: SEXP,
     pch: SEXP,
@@ -1670,8 +1612,7 @@ pub unsafe extern "C" fn L_pointsPoints(
  * L_clip
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_clip(
+pub unsafe fn L_clip(
     x: SEXP,
     y: SEXP,
     w: SEXP,
@@ -1687,8 +1628,7 @@ pub unsafe extern "C" fn L_clip(
  * L_pretty
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_pretty(scale: SEXP) -> SEXP {
+pub unsafe fn L_pretty(scale: SEXP) -> SEXP {
     let n_ = Rf_ScalarInteger(5);
     L_pretty2(scale, n_)
 }
@@ -1697,8 +1637,7 @@ pub unsafe extern "C" fn L_pretty(scale: SEXP) -> SEXP {
  * L_pretty2
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
+pub unsafe fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
     let mut min = numeric(scale, 0);
     let mut max = numeric(scale, 1);
     let mut n = crate::main::coerce::asInteger(n_);
@@ -1727,8 +1666,7 @@ pub unsafe extern "C" fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
  * L_locator
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_locator() -> SEXP {
+pub unsafe fn L_locator() -> SEXP {
     let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 2));
     *REAL(answer).add(0) = f64::NAN;
     *REAL(answer).add(1) = f64::NAN;
@@ -1740,8 +1678,7 @@ pub unsafe extern "C" fn L_locator() -> SEXP {
  * L_locnBounds
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
+pub unsafe fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
     // Full implementation requires unit conversion
     R_NilValue()
 }
@@ -1750,8 +1687,7 @@ pub unsafe extern "C" fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
  * L_stringMetric
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_stringMetric(label: SEXP) -> SEXP {
+pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
     let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
     SET_VECTOR_ELT(
         result,
@@ -1776,7 +1712,6 @@ pub unsafe extern "C" fn L_stringMetric(label: SEXP) -> SEXP {
  * L_convertToNative (deprecated)
  * ============================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
+pub unsafe fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
     R_NilValue()
 }

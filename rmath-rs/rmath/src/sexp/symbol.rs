@@ -70,7 +70,7 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
 /// Otherwise creates a new SYMSXP node and adds it to the table.
 /// This is the equivalent of R's `Rf_install()`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_install(name: *const c_char) -> SEXP {
+pub unsafe fn Rf_install(name: *const c_char) -> SEXP {
     unsafe {
         if name.is_null() {
             return ptr::null_mut();
@@ -120,8 +120,7 @@ pub unsafe extern "C" fn Rf_install(name: *const c_char) -> SEXP {
 }
 
 /// Install a symbol with a known length (not null-terminated).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
+pub unsafe fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
     unsafe {
         if name.is_null() || len < 0 {
             return ptr::null_mut();
@@ -172,8 +171,7 @@ pub unsafe extern "C" fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> S
 // ---------------------------------------------------------------------------
 
 /// Get or create the "base" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_BaseSymbol() -> SEXP {
+pub unsafe fn R_BaseSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("base")
@@ -184,8 +182,7 @@ pub unsafe extern "C" fn R_BaseSymbol() -> SEXP {
 }
 
 /// Get or create the "{ brace" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_BraceSymbol() -> SEXP {
+pub unsafe fn R_BraceSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("{")
@@ -196,8 +193,7 @@ pub unsafe extern "C" fn R_BraceSymbol() -> SEXP {
 }
 
 /// Get or create the "[[" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Bracket2Symbol() -> SEXP {
+pub unsafe fn R_Bracket2Symbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("[[")
@@ -208,8 +204,7 @@ pub unsafe extern "C" fn R_Bracket2Symbol() -> SEXP {
 }
 
 /// Get or create the "[" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_BracketSymbol() -> SEXP {
+pub unsafe fn R_BracketSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("[")
@@ -220,8 +215,7 @@ pub unsafe extern "C" fn R_BracketSymbol() -> SEXP {
 }
 
 /// Get or create the "function" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FunctionSymbol() -> SEXP {
+pub unsafe fn R_FunctionSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("function")
@@ -232,8 +226,7 @@ pub unsafe extern "C" fn R_FunctionSymbol() -> SEXP {
 }
 
 /// Get or create the "while" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WhileSymbol() -> SEXP {
+pub unsafe fn R_WhileSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("while")
@@ -244,8 +237,7 @@ pub unsafe extern "C" fn R_WhileSymbol() -> SEXP {
 }
 
 /// Get or create the "for" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ForSymbol() -> SEXP {
+pub unsafe fn R_ForSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("for")
@@ -256,8 +248,7 @@ pub unsafe extern "C" fn R_ForSymbol() -> SEXP {
 }
 
 /// Get or create the "if" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IfSymbol() -> SEXP {
+pub unsafe fn R_IfSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("if")
@@ -268,8 +259,7 @@ pub unsafe extern "C" fn R_IfSymbol() -> SEXP {
 }
 
 /// Get or create the "repeat" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RepeatSymbol() -> SEXP {
+pub unsafe fn R_RepeatSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("repeat")
@@ -280,8 +270,7 @@ pub unsafe extern "C" fn R_RepeatSymbol() -> SEXP {
 }
 
 /// Get or create the "break" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_BreakSymbol() -> SEXP {
+pub unsafe fn R_BreakSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("break")
@@ -292,8 +281,7 @@ pub unsafe extern "C" fn R_BreakSymbol() -> SEXP {
 }
 
 /// Get or create the "next" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_NextSymbol() -> SEXP {
+pub unsafe fn R_NextSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("next")
@@ -304,8 +292,7 @@ pub unsafe extern "C" fn R_NextSymbol() -> SEXP {
 }
 
 /// Get or create the "..." symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DotsSymbol() -> SEXP {
+pub unsafe fn R_DotsSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("...")
@@ -316,8 +303,7 @@ pub unsafe extern "C" fn R_DotsSymbol() -> SEXP {
 }
 
 /// Get or create the "double colon" symbol (::).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DoubleColonSymbol() -> SEXP {
+pub unsafe fn R_DoubleColonSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("::")
@@ -328,8 +314,7 @@ pub unsafe extern "C" fn R_DoubleColonSymbol() -> SEXP {
 }
 
 /// Get or create the "triple colon" symbol (:::).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TripleColonSymbol() -> SEXP {
+pub unsafe fn R_TripleColonSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new(":::")
@@ -340,8 +325,7 @@ pub unsafe extern "C" fn R_TripleColonSymbol() -> SEXP {
 }
 
 /// Get or create the "$" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DollarSymbol() -> SEXP {
+pub unsafe fn R_DollarSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("$")
@@ -352,8 +336,7 @@ pub unsafe extern "C" fn R_DollarSymbol() -> SEXP {
 }
 
 /// Get or create the "@" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_AtSymbol() -> SEXP {
+pub unsafe fn R_AtSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("@")
@@ -364,8 +347,7 @@ pub unsafe extern "C" fn R_AtSymbol() -> SEXP {
 }
 
 /// Get or create the "=" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_EqSymbol() -> SEXP {
+pub unsafe fn R_EqSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("=")
@@ -376,8 +358,7 @@ pub unsafe extern "C" fn R_EqSymbol() -> SEXP {
 }
 
 /// Get or create the "<-" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_LeftAssignSymbol() -> SEXP {
+pub unsafe fn R_LeftAssignSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("<-")
@@ -388,8 +369,7 @@ pub unsafe extern "C" fn R_LeftAssignSymbol() -> SEXP {
 }
 
 /// Get or create the "<<" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_DoubleLeftAssignSymbol() -> SEXP {
+pub unsafe fn R_DoubleLeftAssignSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("<<-")
@@ -400,8 +380,7 @@ pub unsafe extern "C" fn R_DoubleLeftAssignSymbol() -> SEXP {
 }
 
 /// Get or create the "as" symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_AsSymbol() -> SEXP {
+pub unsafe fn R_AsSymbol() -> SEXP {
     unsafe {
         Rf_install(
             CString::new("as")

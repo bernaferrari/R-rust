@@ -41,22 +41,18 @@ pub fn lgamma1p_impl(x: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_log1p(x: f64) -> f64 {
     log1p(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn log1p_c(x: f64) -> f64 {
     log1p(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_lgamma1p(x: f64) -> f64 {
     crate::nmath::special::gamma::lgammafn1p(x)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn lgamma1p_c(x: f64) -> f64 {
     crate::nmath::special::gamma::lgammafn1p(x)
 }

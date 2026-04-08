@@ -11,14 +11,12 @@ use std::os::raw::c_int;
 thread_local! { static R_running_as_main_program: Cell<c_int> = Cell::new(0); }
 
 /// Set the running-as-main-program flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetRunningAsMainProgram(v: c_int) {
+pub unsafe fn R_SetRunningAsMainProgram(v: c_int) {
     R_running_as_main_program.with(|v_| v_.set(v));
 }
 
 /// Get the running-as-main-program flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RunningAsMainProgram() -> c_int {
+pub unsafe fn R_RunningAsMainProgram() -> c_int {
     R_running_as_main_program.with(|v| v.get())
 }
 

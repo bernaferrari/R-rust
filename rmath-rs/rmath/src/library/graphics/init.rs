@@ -31,8 +31,7 @@
 use crate::sexp::ffi::*;
 
 /* Stub: DllInfo registration */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_graphics(_dll: *mut std::ffi::c_void) {
+pub unsafe fn R_init_graphics(_dll: *mut std::ffi::c_void) {
     /* Registration handled by Rust's symbol exports */
 }
 

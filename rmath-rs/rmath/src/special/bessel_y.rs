@@ -494,7 +494,6 @@ pub fn bessel_y(x: f64, alpha: f64) -> f64 {
 
 /// C FFI wrapper for bessel_y
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn bessel_y_c(x: f64, alpha: f64) -> f64 {
     bessel_y(x, alpha)
 }
@@ -561,7 +560,6 @@ pub fn bessel_y_ex(x: f64, alpha: f64, by: &mut [f64]) -> f64 {
 
 /// C FFI wrapper for bessel_y_ex
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn bessel_y_ex_c(x: f64, alpha: f64, by: *mut f64, nb: i32) -> f64 {
     if by.is_null() || nb <= 0 {
         return ML_NAN;

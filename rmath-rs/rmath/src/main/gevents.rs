@@ -242,11 +242,13 @@ unsafe fn Rprintf(_format: *const c_char) {
 }
 
 /// Stub: R_FlushConsole - flush the R console output.
+#[unsafe(no_mangle)]
 unsafe fn R_FlushConsole() {
     // TODO: delegate to crate::unix::system::R_FlushConsole
 }
 
 /// Stub: R_ProcessEvents - process pending R events.
+#[unsafe(no_mangle)]
 unsafe fn R_ProcessEvents() {
     // TODO: delegate to crate::unix::sys_unix::R_ProcessEvents
 }
@@ -275,6 +277,7 @@ unsafe fn lang1(fn_: SEXP) -> SEXP {
 }
 
 /// Helper: create a lang4 call (four-element language object).
+#[unsafe(no_mangle)]
 unsafe fn lang4(fn_: SEXP, a1: SEXP, a2: SEXP, a3: SEXP) -> SEXP {
     unsafe {
         let cdr3 = Rf_cons(a3, R_NilValue());

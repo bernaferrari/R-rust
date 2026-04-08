@@ -2085,8 +2085,7 @@ fn r_tzset_impl(g: &mut TzGlobals) {
 // ===========================================================================
 
 /// `R_gmtime` -- convert time_t to UTC broken-down time (non-reentrant).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_gmtime(timep: *const i64) -> *mut stm {
+pub unsafe fn R_gmtime(timep: *const i64) -> *mut stm {
     unsafe {
         let mut g = get_tz_globals().lock().expect("lock poisoned");
         r_tzset_impl(&mut g);
@@ -2103,8 +2102,7 @@ pub unsafe extern "C" fn R_gmtime(timep: *const i64) -> *mut stm {
 }
 
 /// `R_gmtime_r` -- convert time_t to UTC broken-down time (reentrant).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
+pub unsafe fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
         let mut g = get_tz_globals().lock().expect("lock poisoned");
         if timep.is_null() || tmp.is_null() {
@@ -2123,8 +2121,7 @@ pub unsafe extern "C" fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut st
 }
 
 /// `R_localtime` -- convert time_t to local broken-down time (non-reentrant).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_localtime(timep: *const i64) -> *mut stm {
+pub unsafe fn R_localtime(timep: *const i64) -> *mut stm {
     unsafe {
         let mut g = get_tz_globals().lock().expect("lock poisoned");
         r_tzset_impl(&mut g);
@@ -2141,8 +2138,7 @@ pub unsafe extern "C" fn R_localtime(timep: *const i64) -> *mut stm {
 }
 
 /// `R_localtime_r` -- convert time_t to local broken-down time (reentrant).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
+pub unsafe fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
         let mut g = get_tz_globals().lock().expect("lock poisoned");
         if timep.is_null() || tmp.is_null() {
@@ -2161,8 +2157,7 @@ pub unsafe extern "C" fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut
 }
 
 /// `R_mktime` -- convert local broken-down time to time_t.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_mktime(tmp: *mut stm) -> i64 {
+pub unsafe fn R_mktime(tmp: *mut stm) -> i64 {
     unsafe {
         let mut g = get_tz_globals().lock().expect("lock poisoned");
         r_tzset_impl(&mut g);
@@ -2175,8 +2170,7 @@ pub unsafe extern "C" fn R_mktime(tmp: *mut stm) -> i64 {
 }
 
 /// `R_timegm` -- convert UTC broken-down time to time_t.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_timegm(tmp: *mut stm) -> i64 {
+pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
     unsafe {
         let mut g = get_tz_globals().lock().expect("lock poisoned");
         if tmp.is_null() {
@@ -2189,23 +2183,20 @@ pub unsafe extern "C" fn R_timegm(tmp: *mut stm) -> i64 {
 }
 
 /// `R_tzset` -- set timezone from TZ environment variable.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tzset() {
+pub unsafe fn R_tzset() {
     let mut g = get_tz_globals().lock().expect("lock poisoned");
     r_tzset_impl(&mut g);
 }
 
 /// `R_tzsetwall` -- set timezone from system wall clock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tzsetwall() {
+pub unsafe fn R_tzsetwall() {
     let mut g = get_tz_globals().lock().expect("lock poisoned");
     r_tzsetwall(&mut g);
 }
 
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tzname() -> *mut *mut i8 {
+pub unsafe fn R_tzname() -> *mut *mut i8 {
     let mut g = get_tz_globals().lock().expect("lock poisoned");
     r_tzset_impl(&mut g);
     drop(g);

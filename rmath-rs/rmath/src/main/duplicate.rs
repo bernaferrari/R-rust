@@ -584,8 +584,7 @@ pub unsafe fn duplicate(s: SEXP) -> SEXP {
 }
 
 /// Alias for duplicate (R API).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_duplicate(s: SEXP) -> SEXP {
+pub unsafe fn Rf_duplicate(s: SEXP) -> SEXP {
     unsafe { duplicate(s) }
 }
 
@@ -649,8 +648,7 @@ unsafe fn duplicate_child(s: SEXP, deep: c_int) -> SEXP {
 
 /// Detect cycles that would be created by assigning `child` as a
 /// component of `s` in a complex assignment.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
+pub unsafe fn R_cycle_detected(s: SEXP, child: SEXP) -> c_int {
     unsafe {
         if s == child {
             match SEXPTYPE(TYPEOF(child)) {
@@ -1288,14 +1286,12 @@ unsafe fn duplicate_attr(x: SEXP, deep: c_int) -> SEXP {
 }
 
 /// Shallow duplicate before attribute modification.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_shallow_duplicate_attr(x: SEXP) -> SEXP {
+pub unsafe fn R_shallow_duplicate_attr(x: SEXP) -> SEXP {
     unsafe { duplicate_attr(x, 0) }
 }
 
 /// Deep duplicate before attribute modification.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_duplicate_attr(x: SEXP) -> SEXP {
+pub unsafe fn R_duplicate_attr(x: SEXP) -> SEXP {
     unsafe { duplicate_attr(x, 1) }
 }
 

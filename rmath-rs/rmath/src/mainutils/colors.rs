@@ -93,8 +93,7 @@ pub unsafe fn col2name(col: std::os::raw::c_uint) -> *const c_char {
 ///
 /// # Safety
 /// `ptr_R_GE_str2col` must have been set via `Rg_set_col_ptrs`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint {
+pub unsafe fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint {
     unsafe {
         match ptr_R_GE_str2col.with(|v| v.get()) {
             Some(f) => f(s),
@@ -111,7 +110,9 @@ pub unsafe extern "C" fn R_GE_str2col(s: *const c_char) -> std::os::raw::c_uint 
 /// `ptr_savePalette` must have been set via `Rg_set_col_ptrs`.
 pub unsafe fn savePalette(save: c_int) {
     unsafe {
-        if let Some(f) = ptr_savePalette.with(|v| v.get()) { f(save) }
+        if let Some(f) = ptr_savePalette.with(|v| v.get()) {
+            f(save)
+        }
     }
 }
 

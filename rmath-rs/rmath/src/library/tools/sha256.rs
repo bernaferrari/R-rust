@@ -184,8 +184,7 @@ unsafe fn sha256_process_block(buffer: *const c_void, len: usize, ctx: *mut Sha2
 }
 
 /// Initialize the SHA256 computation context. (FIPS 180-2:5.3.2)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
+pub unsafe fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
     (*ctx).H[0] = 0x6a09e667;
     (*ctx).H[1] = 0xbb67ae85;
     (*ctx).H[2] = 0x3c6ef372;
@@ -201,8 +200,7 @@ pub unsafe extern "C" fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
 
 /// Process the remaining bytes in the internal buffer and the usual
 /// prolog according to the standard and write the result to RESBUF.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsha256_finish_ctx(
+pub unsafe fn Rsha256_finish_ctx(
     ctx: *mut Sha256Ctx,
     resbuf: *mut c_void,
 ) -> *mut c_void {
@@ -250,8 +248,7 @@ pub unsafe extern "C" fn Rsha256_finish_ctx(
 }
 
 /// Feed arbitrary bytes into the SHA256 computation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsha256_process_bytes(
+pub unsafe fn Rsha256_process_bytes(
     buffer: *const c_void,
     mut len: size_t,
     ctx: *mut Sha256Ctx,
@@ -329,8 +326,7 @@ pub unsafe extern "C" fn Rsha256_process_bytes(
 
 /// Compute SHA256 message digest for bytes read from STREAM.
 /// Returns 0 on success, 1 on error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
+pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
     let mut ctx = Sha256Ctx {
         H: [0; 8],
         total: [0; 2],

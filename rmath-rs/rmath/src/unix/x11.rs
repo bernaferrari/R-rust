@@ -32,14 +32,12 @@ unsafe fn error(_msg: *const c_char) {}
 // ---------------------------------------------------------------------------
 
 /// Check whether X11 is available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_access_X11() -> c_int {
+pub unsafe fn R_access_X11() -> c_int {
     0 // FALSE
 }
 
 /// .Internal(X11(...)) -- dispatch to X11 module.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_X11(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_X11(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         // In the full implementation, this loads the X11 module and dispatches.
         // Without X11, return nil.
@@ -48,14 +46,12 @@ pub unsafe extern "C" fn do_X11(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP)
 }
 
 /// .Internal(saveplot(...)) -- dispatch to X11 module.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_saveplot(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_saveplot(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get X11 image data.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetX11Image(
+pub unsafe fn R_GetX11Image(
     _d: c_int,
     _pximage: *mut c_void,
     _pwidth: *mut c_int,
@@ -65,14 +61,12 @@ pub unsafe extern "C" fn R_GetX11Image(
 }
 
 /// Read from X11 clipboard.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReadClipboard(_clpcon: *mut c_void, _type: *mut c_char) -> c_int {
+pub unsafe fn R_ReadClipboard(_clpcon: *mut c_void, _type: *mut c_char) -> c_int {
     0 // FALSE
 }
 
 /// Get bitmap library version information.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_bmVersion() -> SEXP {
+pub unsafe fn do_bmVersion() -> SEXP {
     unsafe {
         let ans = Rf_allocVector(VECSXP_VAL, 3);
         let nms = Rf_allocVector(STRSXP_VAL, 3);
@@ -92,8 +86,7 @@ pub unsafe extern "C" fn do_bmVersion() -> SEXP {
 }
 
 /// Set X11 routine dispatch table (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setX11Routines(_routines: *mut c_void) -> *mut c_void {
+pub unsafe fn R_setX11Routines(_routines: *mut c_void) -> *mut c_void {
     ptr::null_mut()
 }
 

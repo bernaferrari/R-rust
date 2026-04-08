@@ -75,8 +75,7 @@ unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut
 /// # Safety
 /// `name` must be a valid mutable pointer to a NUL-terminated C string.
 /// All output pointers must be valid.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _nl_explode_name(
+pub unsafe fn _nl_explode_name(
     name: *mut c_char,
     language: *mut *const c_char,
     modifier: *mut *const c_char,

@@ -521,49 +521,41 @@ pub fn rpois_inner(mu: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dpois(x: f64, lambda: f64, give_log: i32) -> f64 {
     dpois_inner(x, lambda, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dpois(x: f64, lambda: f64, give_log: i32) -> f64 {
     dpois_inner(x, lambda, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_ppois(x: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
     ppois_inner(x, lambda, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn ppois(x: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
     ppois_inner(x, lambda, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qpois(p: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
     qpois_inner(p, lambda, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qpois(p: f64, lambda: f64, lower_tail: i32, log_p: i32) -> f64 {
     qpois_inner(p, lambda, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_rpois(mu: f64) -> f64 {
     rpois_inner(mu)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn rpois(mu: f64) -> f64 {
     rpois_inner(mu)
 }

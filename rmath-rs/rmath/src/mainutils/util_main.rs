@@ -145,8 +145,7 @@ unsafe fn libc_malloc(size: usize) -> *mut c_void {
 /// Check whether a string consists solely of ASCII characters.
 ///
 /// Port of R's `strIsASCII` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_strIsASCII(s: *const c_char) -> Rboolean {
+pub unsafe fn Rf_strIsASCII(s: *const c_char) -> Rboolean {
     unsafe {
         if s.is_null() {
             return TRUE;
@@ -210,8 +209,7 @@ unsafe fn utf8toutf16low(s: *const c_char) -> u32 {
 /// Convert UTF-8 (high surrogate wchar + string pointer) to UCS-32.
 ///
 /// Port of R's `utf8toucs32` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_utf8toucs32(high: u32, s: *const c_char) -> R_wchar_t {
+pub unsafe fn Rf_utf8toucs32(high: u32, s: *const c_char) -> R_wchar_t {
     unsafe { utf16toucs(high, utf8toutf16low(s)) }
 }
 
@@ -709,8 +707,7 @@ static S2UNICODE: [u32; 224] = [
 /// Returns `work`.
 ///
 /// Port of R's `Rf_AdobeSymbol2utf8` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_AdobeSymbol2utf8(
+pub unsafe fn Rf_AdobeSymbol2utf8(
     work: *mut c_char,
     c0: *const c_char,
     nwork: usize,
@@ -761,8 +758,7 @@ pub unsafe extern "C" fn Rf_AdobeSymbol2utf8(
 /// Convert an Adobe Symbol byte to UCS-2 codepoint.
 ///
 /// Port of R's `Rf_AdobeSymbol2ucs2` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_AdobeSymbol2ucs2(n: c_int) -> c_int {
+pub unsafe fn Rf_AdobeSymbol2ucs2(n: c_int) -> c_int {
     if n >= 32 && n < 256 {
         S2U[(n - 32) as usize] as c_int
     } else {
@@ -784,8 +780,7 @@ const MAX_EXPONENT_PREFIX: c_int = 9999;
 ///
 /// Port of R's `R_strtod5` from util.c.
 #[allow(clippy::overly_complex_bool_expr)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_strtod5(
+pub unsafe fn R_strtod5(
     str: *const c_char,
     endptr: *mut *mut c_char,
     dec: c_char,
@@ -1103,8 +1098,7 @@ pub unsafe extern "C" fn R_strtod5(
 /// R's string-to-double with custom decimal point.
 ///
 /// Port of R's `R_strtod4` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_strtod4(
+pub unsafe fn R_strtod4(
     str: *const c_char,
     endptr: *mut *mut c_char,
     dec: c_char,
@@ -1116,16 +1110,14 @@ pub unsafe extern "C" fn R_strtod4(
 /// R's string-to-double conversion.
 ///
 /// Port of R's `R_strtod` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_strtod(str: *const c_char, endptr: *mut *mut c_char) -> c_double {
+pub unsafe fn R_strtod(str: *const c_char, endptr: *mut *mut c_char) -> c_double {
     unsafe { R_strtod5(str, endptr, b'.' as c_char, 0, 0) }
 }
 
 /// R's atof equivalent.
 ///
 /// Port of R's `R_atof` from util.c.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_atof(str: *const c_char) -> c_double {
+pub unsafe fn R_atof(str: *const c_char) -> c_double {
     unsafe { R_strtod5(str, ptr::null_mut(), b'.' as c_char, 0, 0) }
 }
 
@@ -1387,8 +1379,7 @@ pub unsafe fn isOrdered(s: *const c_void) -> Rboolean {
 ///
 /// Equivalent of R's `R_isTRUE()` from util.c.
 /// Returns TRUE only for a length-1 logical vector with value 1.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isTRUE(x: *const c_void) -> Rboolean {
+pub unsafe fn R_isTRUE(x: *const c_void) -> Rboolean {
     unsafe {
         let s = x as SEXP;
         if s.is_null() || s == R_NilValue() {

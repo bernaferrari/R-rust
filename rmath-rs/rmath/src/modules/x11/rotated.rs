@@ -298,8 +298,7 @@ pub(crate) unsafe fn compute_text_extents(
 /// XRotVersion - return version/copyright information.
 /// If `str` is non-null, copies the copyright string into it (up to `n` bytes).
 /// Returns the version number (5.0).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
+pub unsafe fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
     if !str.is_null() && n > 0 {
         let copy_len = XV_COPYRIGHT.len().min(n as usize) - 1;
         libc::strncpy(str, XV_COPYRIGHT.as_ptr() as *const c_char, copy_len);
@@ -310,8 +309,7 @@ pub unsafe extern "C" fn XRotVersion(str: *mut c_char, n: c_int) -> c_double {
 
 /// XRotSetMagnification - set the magnification factor for rotated text.
 /// Only values > 0 are accepted.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotSetMagnification(m: c_double) {
+pub unsafe fn XRotSetMagnification(m: c_double) {
     if m > 0.0 {
         STYLE.with(|v| v.borrow_mut().magnify = m);
     }
@@ -319,8 +317,7 @@ pub unsafe extern "C" fn XRotSetMagnification(m: c_double) {
 
 /// XRotSetBoundingBoxPad - set the padding for bounding boxes.
 /// Only values >= 0 are accepted.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotSetBoundingBoxPad(p: c_int) {
+pub unsafe fn XRotSetBoundingBoxPad(p: c_int) {
     if p >= 0 {
         STYLE.with(|v| v.borrow_mut().bbx_pad = p);
     }
@@ -334,8 +331,7 @@ pub unsafe extern "C" fn XRotSetBoundingBoxPad(p: c_int) {
 ///
 /// The rotation math and bounding box calculations are available through
 /// the pub(crate) helper functions in this module.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotDrawString(
+pub unsafe fn XRotDrawString(
     _dpy: *mut c_void,
     _font: *mut c_void,
     _angle: c_double,
@@ -351,8 +347,7 @@ pub unsafe extern "C" fn XRotDrawString(
 /// XRotDrawImageString - draw a rotated text string (image variant).
 ///
 /// Stub returning 0 (no X11 support).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotDrawImageString(
+pub unsafe fn XRotDrawImageString(
     _dpy: *mut c_void,
     _font: *mut c_void,
     _angle: c_double,
@@ -368,8 +363,7 @@ pub unsafe extern "C" fn XRotDrawImageString(
 /// XRotDrawAlignedString - draw a rotated, aligned text string.
 ///
 /// Stub returning 0 (no X11 support).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotDrawAlignedString(
+pub unsafe fn XRotDrawAlignedString(
     _dpy: *mut c_void,
     _font: *mut c_void,
     _angle: c_double,
@@ -386,8 +380,7 @@ pub unsafe extern "C" fn XRotDrawAlignedString(
 /// XRotDrawAlignedImageString - draw a rotated, aligned text string (image variant).
 ///
 /// Stub returning 0 (no X11 support).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotDrawAlignedImageString(
+pub unsafe fn XRotDrawAlignedImageString(
     _dpy: *mut c_void,
     _font: *mut c_void,
     _angle: c_double,
@@ -409,8 +402,7 @@ pub unsafe extern "C" fn XRotDrawAlignedImageString(
 ///
 /// For code that knows the text dimensions, the pub(crate) function
 /// compute_text_extents() provides the full bounding box math.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRotTextExtents(
+pub unsafe fn XRotTextExtents(
     _dpy: *mut c_void,
     _font: *mut c_void,
     _angle: c_double,
@@ -430,8 +422,7 @@ pub unsafe extern "C" fn XRotTextExtents(
 ///
 /// In the C code, this dispatches to XRotDrawString or XmbRotDrawString
 /// based on the font type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn XRfRotDrawString(
+pub unsafe fn XRfRotDrawString(
     _dpy: *mut c_void,
     _rfont: *mut c_void,
     _angle: c_double,

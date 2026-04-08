@@ -23,8 +23,7 @@ use libc::{_O_TEXT, _setmode, STDERR_FILENO, STDIN_FILENO, STDOUT_FILENO, c_int}
 /// automatically when the shared library is loaded. In Rust, we use the
 /// same approach via a static initialization.
 #[cfg(target_os = "windows")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn lapack_win_init() {
+pub unsafe fn lapack_win_init() {
     // gfortran initialization sets these to _O_BINARY; reset to _O_TEXT
     unsafe {
         _setmode(STDOUT_FILENO, _O_TEXT);

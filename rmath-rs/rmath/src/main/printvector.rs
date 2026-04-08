@@ -644,6 +644,7 @@ unsafe fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // printVector -- exported
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
     unsafe {
         if x.is_null() {

@@ -9,8 +9,7 @@
  */
 
 /// R_init_methods - registration entry point (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_methods(_dll: *mut std::ffi::c_void) {
+pub unsafe fn R_init_methods(_dll: *mut std::ffi::c_void) {
     // R_registerRoutines, R_useDynamicSymbols, R_forceSymbols
     // are no-ops in the monolithic crate
 }

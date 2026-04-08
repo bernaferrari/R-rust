@@ -37,8 +37,7 @@ const VECSXP_C: c_int = 19;
 /// La_svd - real singular value decomposition.
 ///
 /// Port of: static SEXP La_svd(SEXP jobu, SEXP x, SEXP s, SEXP u, SEXP vt)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
+pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
     // Validate jobu is a string
     if TYPEOF(jobu) != 16 {
         Rf_error(b"'jobu' must be a character string\0".as_ptr() as *const c_char);
@@ -147,8 +146,7 @@ pub unsafe extern "C" fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP)
 /// La_rs - real symmetric eigenvalues/eigenvectors.
 ///
 /// Port of: static SEXP La_rs(SEXP x, SEXP only_values)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
+pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
     let dim = getAttrib(x, R_DimSymbol());
     if dim.is_null() || dim == R_NilValue() {
         Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
@@ -247,8 +245,7 @@ pub unsafe extern "C" fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
 /// La_rg - real eigenvalues/eigenvectors (general, non-symmetric).
 ///
 /// Port of: static SEXP La_rg(SEXP x, SEXP only_values)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
+pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
     let dim = getAttrib(x, R_DimSymbol());
     if dim.is_null() || dim == R_NilValue() {
         Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
@@ -415,8 +412,7 @@ pub unsafe extern "C" fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
 /// La_dlange - real matrix norm.
 ///
 /// Port of: static SEXP La_dlange(SEXP a, SEXP type_)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
+pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
     if TYPEOF(type_) != 16 {
         Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -453,8 +449,7 @@ pub unsafe extern "C" fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
 /// La_dgecon - real matrix condition number estimate.
 ///
 /// Port of: static SEXP La_dgecon(SEXP a, SEXP norm)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
+pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
     if TYPEOF(norm) != 16 {
         Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -531,8 +526,7 @@ pub unsafe extern "C" fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_dtrcon - real triangular condition number.
 ///
 /// Port of: static SEXP La_dtrcon(SEXP a, SEXP norm)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
+pub unsafe fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
     if TYPEOF(norm) != 16 {
         Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -586,8 +580,7 @@ pub unsafe extern "C" fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_dtrcon3 - real triangular condition number with explicit uplo.
 ///
 /// Port of: static SEXP La_dtrcon3(SEXP a, SEXP norm, SEXP uplo)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
+pub unsafe fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     if TYPEOF(norm) != 16 {
         Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -646,8 +639,7 @@ pub unsafe extern "C" fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
 /// La_zlange - complex matrix norm.
 ///
 /// Port of: static SEXP La_zlange(SEXP a, SEXP type_)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
+pub unsafe fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
     if TYPEOF(type_) != 16 {
         Rf_error(b"'type' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -685,8 +677,7 @@ pub unsafe extern "C" fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
 /// La_zgecon - complex matrix condition number estimate.
 ///
 /// Port of: static SEXP La_zgecon(SEXP a, SEXP norm)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
+pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     if TYPEOF(norm) != 16 {
         Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -769,8 +760,7 @@ pub unsafe extern "C" fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_ztrcon - complex triangular condition number.
 ///
 /// Port of: static SEXP La_ztrcon(SEXP a, SEXP norm)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
+pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
     if TYPEOF(norm) != 16 {
         Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -823,8 +813,7 @@ pub unsafe extern "C" fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
 /// La_ztrcon3 - complex triangular condition number with explicit uplo.
 ///
 /// Port of: static SEXP La_ztrcon3(SEXP a, SEXP norm, SEXP uplo)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
+pub unsafe fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     if TYPEOF(norm) != 16 {
         Rf_error(b"'norm' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -883,8 +872,7 @@ pub unsafe extern "C" fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
 /// La_chol - real Cholesky decomposition.
 ///
 /// Port of: static SEXP La_chol(SEXP a, SEXP pivot, SEXP stol)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
+pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
     let piv = asLogical(pivot);
     if piv == NA_INTEGER {
         Rf_error(b"invalid 'pivot' argument\0".as_ptr() as *const c_char);
@@ -980,8 +968,7 @@ pub unsafe extern "C" fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
 /// La_chol2inv - real inverse from Cholesky factor.
 ///
 /// Port of: static SEXP La_chol2inv(SEXP a, SEXP size)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
+pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
     let n = asInteger(size);
     if n == NA_INTEGER || n <= 0 {
         Rf_error(b"'size' must be a positive integer\0".as_ptr() as *const c_char);
@@ -1015,8 +1002,7 @@ pub unsafe extern "C" fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
 /// La_solve - real linear solve.
 ///
 /// Port of: static SEXP La_solve(SEXP a, SEXP bin, SEXP tolin)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
+pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     let _tol = asReal(tolin);
 
     let a_dim = getAttrib(a, R_DimSymbol());
@@ -1080,8 +1066,7 @@ pub unsafe extern "C" fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
 /// La_solve_cmplx - complex linear solve.
 ///
 /// Port of: static SEXP La_solve_cmplx(SEXP a, SEXP bin, SEXP tolin)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
+pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     let _tol = asReal(tolin);
 
     let a_dim = getAttrib(a, R_DimSymbol());
@@ -1148,8 +1133,7 @@ pub unsafe extern "C" fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP
 /// La_qr - real QR decomposition.
 ///
 /// Port of: static SEXP La_qr(SEXP ain)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_qr(ain: SEXP) -> SEXP {
+pub unsafe fn La_qr(ain: SEXP) -> SEXP {
     let dim = getAttrib(ain, R_DimSymbol());
     if dim.is_null() || dim == R_NilValue() {
         Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
@@ -1246,8 +1230,7 @@ pub unsafe extern "C" fn La_qr(ain: SEXP) -> SEXP {
 /// La_qr_cmplx - complex QR decomposition.
 ///
 /// Port of: static SEXP La_qr_cmplx(SEXP ain)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_qr_cmplx(ain: SEXP) -> SEXP {
+pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
     let dim = getAttrib(ain, R_DimSymbol());
     if dim.is_null() || dim == R_NilValue() {
         Rf_error(b"'a' must be a matrix\0".as_ptr() as *const c_char);
@@ -1346,8 +1329,7 @@ pub unsafe extern "C" fn La_qr_cmplx(ain: SEXP) -> SEXP {
 /// La_svd_cmplx - complex singular value decomposition.
 ///
 /// Port of: static SEXP La_svd_cmplx(SEXP jobu, SEXP x, SEXP s, SEXP u, SEXP v)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SEXP {
+pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SEXP {
     if TYPEOF(jobu) != 16 {
         Rf_error(b"'jobu' must be a character string\0".as_ptr() as *const c_char);
     }
@@ -1453,8 +1435,7 @@ pub unsafe extern "C" fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: 
 /// La_rs_cmplx - complex symmetric eigenvalues/eigenvectors.
 ///
 /// Port of: static SEXP La_rs_cmplx(SEXP xin, SEXP only_values)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
+pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
     let dim = getAttrib(xin, R_DimSymbol());
     if dim.is_null() || dim == R_NilValue() {
         Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
@@ -1554,8 +1535,7 @@ pub unsafe extern "C" fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
 /// La_rg_cmplx - complex eigenvalues/eigenvectors.
 ///
 /// Port of: static SEXP La_rg_cmplx(SEXP x, SEXP only_values)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
+pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
     let dim = getAttrib(x, R_DimSymbol());
     if dim.is_null() || dim == R_NilValue() {
         Rf_error(b"'x' must be a matrix\0".as_ptr() as *const c_char);
@@ -1667,8 +1647,7 @@ pub unsafe extern "C" fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
 /// qr_coef_real - real QR coefficients.
 ///
 /// Port of: static SEXP qr_coef_real(SEXP q, SEXP bin)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
+pub unsafe fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
     // Extract QR decomposition components
     let qr = VECTOR_ELT(q, 0);
     let qraux = VECTOR_ELT(q, 2);
@@ -1729,8 +1708,7 @@ pub unsafe extern "C" fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
 /// qr_coef_cmplx - complex QR coefficients.
 ///
 /// Port of: static SEXP qr_coef_cmplx(SEXP q, SEXP bin)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
+pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
     let qr = VECTOR_ELT(q, 0);
 
     let dim = getAttrib(qr, R_DimSymbol());
@@ -1797,8 +1775,7 @@ pub unsafe extern "C" fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
 /// qr_qy_real - real QR multiply Q*y.
 ///
 /// Port of: static SEXP qr_qy_real(SEXP q, SEXP bin, SEXP trans)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
+pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     let qr = VECTOR_ELT(q, 0);
     let qraux = VECTOR_ELT(q, 2);
 
@@ -1885,8 +1862,7 @@ pub unsafe extern "C" fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 /// qr_qy_cmplx - complex QR multiply Q*y.
 ///
 /// Port of: static SEXP qr_qy_cmplx(SEXP q, SEXP bin, SEXP trans)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
+pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     let qr = VECTOR_ELT(q, 0);
     let qraux = VECTOR_ELT(q, 2);
 
@@ -1980,8 +1956,7 @@ pub unsafe extern "C" fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
 /// det_ge_real - real matrix determinant.
 ///
 /// Port of: static SEXP det_ge_real(SEXP ain, SEXP logarithm)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
+pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
     let ldet = asLogical(logarithm);
     if ldet == NA_INTEGER {
         Rf_error(b"invalid 'logarithm' argument\0".as_ptr() as *const c_char);
@@ -2045,8 +2020,7 @@ pub unsafe extern "C" fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
 /// mod_do_lapack - main LAPACK dispatcher.
 ///
 /// Port of: SEXP mod_do_lapack(SEXP call, SEXP op, SEXP args, SEXP env)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     // This dispatches based on op symbol to the appropriate La_* function.
     // In R, this is done via the .Internal() mechanism.
     // For now, return nil as dispatch needs the full .Internal infrastructure.
@@ -2056,7 +2030,6 @@ pub unsafe extern "C" fn mod_do_lapack(call: SEXP, op: SEXP, args: SEXP, env: SE
 /// R_init_lapack - LAPACK module initialization.
 ///
 /// Port of: void R_init_lapack(DllInfo *dll)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_lapack(_info: *mut std::ffi::c_void) {
+pub unsafe fn R_init_lapack(_info: *mut std::ffi::c_void) {
     // Registration would happen here in the full implementation
 }

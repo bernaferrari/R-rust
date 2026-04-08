@@ -35,43 +35,35 @@ use super::types::*;
 // Simple layout accessor functions
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutNRow(l: SEXP) -> c_int {
+pub unsafe fn layoutNRow(l: SEXP) -> c_int {
     *INTEGER(VECTOR_ELT(l, LAYOUT_NROW as R_xlen_t))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutNCol(l: SEXP) -> c_int {
+pub unsafe fn layoutNCol(l: SEXP) -> c_int {
     *INTEGER(VECTOR_ELT(l, LAYOUT_NCOL as R_xlen_t))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutWidths(l: SEXP) -> SEXP {
+pub unsafe fn layoutWidths(l: SEXP) -> SEXP {
     VECTOR_ELT(l, LAYOUT_WIDTHS as R_xlen_t)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutHeights(l: SEXP) -> SEXP {
+pub unsafe fn layoutHeights(l: SEXP) -> SEXP {
     VECTOR_ELT(l, LAYOUT_HEIGHTS as R_xlen_t)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutRespect(l: SEXP) -> c_int {
+pub unsafe fn layoutRespect(l: SEXP) -> c_int {
     *INTEGER(VECTOR_ELT(l, LAYOUT_VRESPECT as R_xlen_t))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutRespectMat(l: SEXP) -> *mut c_int {
+pub unsafe fn layoutRespectMat(l: SEXP) -> *mut c_int {
     INTEGER(VECTOR_ELT(l, LAYOUT_MRESPECT as R_xlen_t))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutHJust(l: SEXP) -> f64 {
+pub unsafe fn layoutHJust(l: SEXP) -> f64 {
     *REAL(VECTOR_ELT(l, LAYOUT_VJUST as R_xlen_t))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn layoutVJust(l: SEXP) -> f64 {
+pub unsafe fn layoutVJust(l: SEXP) -> f64 {
     *REAL(VECTOR_ELT(l, LAYOUT_VJUST as R_xlen_t)).add(1)
 }
 
@@ -394,8 +386,7 @@ unsafe fn allocationRemaining(initial: f64, remaining: f64) -> bool {
 // calcViewportLayout — STUB (partially implemented structure)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn calcViewportLayout(
+pub unsafe fn calcViewportLayout(
     viewport: SEXP,
     parentWidthCM: f64,
     parentHeightCM: f64,
@@ -426,8 +417,7 @@ pub unsafe extern "C" fn calcViewportLayout(
 
 use crate::library::grid::viewport::{viewportLayout, viewportLayoutPosCol, viewportLayoutPosRow};
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn checkPosRowPosCol(vp: SEXP, parent: SEXP) -> bool {
+pub unsafe fn checkPosRowPosCol(vp: SEXP, parent: SEXP) -> bool {
     let parent_layout = viewportLayout(parent);
     let ncol = layoutNCol(parent_layout);
     let nrow = layoutNRow(parent_layout);
@@ -450,8 +440,7 @@ pub unsafe extern "C" fn checkPosRowPosCol(vp: SEXP, parent: SEXP) -> bool {
 // calcViewportLocationFromLayout — STUB
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn calcViewportLocationFromLayout(
+pub unsafe fn calcViewportLocationFromLayout(
     _layoutPosRow: SEXP,
     _layoutPosCol: SEXP,
     _parent: SEXP,

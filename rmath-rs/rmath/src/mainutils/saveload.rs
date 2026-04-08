@@ -188,8 +188,7 @@ pub fn OutStringAscii(fp: &mut impl Write, s: &str) -> io::Result<()> {
             b'"' => fp.write_all(b"\\\"")?,
             _ => {
                 if byte <= 32 || byte > 126 {
-                    write!(fp, "\\{:03o}", byte)
-                        .map_err(io::Error::other)?;
+                    write!(fp, "\\{:03o}", byte).map_err(io::Error::other)?;
                 } else {
                     fp.write_all(&[byte])?;
                 }

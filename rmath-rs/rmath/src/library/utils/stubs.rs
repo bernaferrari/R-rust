@@ -51,23 +51,19 @@ unsafe extern "C" {
     fn R_ProcessEvents();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rprof(args: SEXP) -> SEXP {
+pub unsafe fn Rprof(args: SEXP) -> SEXP {
     do_Rprof(CDR(args))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rprofmem(args: SEXP) -> SEXP {
+pub unsafe fn Rprofmem(args: SEXP) -> SEXP {
     do_Rprofmem(CDR(args))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn unzip(args: SEXP) -> SEXP {
+pub unsafe fn unzip(args: SEXP) -> SEXP {
     Runzip(CDR(args))
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     do_edit(call, op, CDR(args), rho)
 }
 
@@ -95,8 +91,7 @@ fn default_history_file() -> PathBuf {
 // ---------------------------------------------------------------------------
 // loadhistory -- Load command history from a file
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, rho);
     let args = CDR(args);
     let sfile = CAR(args);
@@ -160,8 +155,7 @@ pub unsafe extern "C" fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // ---------------------------------------------------------------------------
 // savehistory -- Save command history to a file
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, rho);
     let args = CDR(args);
     let sfile = CAR(args);
@@ -247,8 +241,7 @@ pub unsafe extern "C" fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP
 // ---------------------------------------------------------------------------
 // addhistory -- Add lines to the command history
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, rho);
     let args = CDR(args);
     let stamp = CAR(args);
@@ -289,8 +282,7 @@ pub unsafe extern "C" fn addhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 // ---------------------------------------------------------------------------
 // dataentry -- Data editor (GUI function)
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     let msg = CString::new("data entry editor is not available").expect("CString::new failed: contains null byte");
     Rf_warning(msg.as_ptr());
@@ -300,8 +292,7 @@ pub unsafe extern "C" fn dataentry(call: SEXP, op: SEXP, args: SEXP, env: SEXP) 
 // ---------------------------------------------------------------------------
 // dataviewer -- Data viewer (GUI function)
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     let msg = CString::new("data viewer is not available").expect("CString::new failed: contains null byte");
     Rf_warning(msg.as_ptr());
@@ -311,8 +302,7 @@ pub unsafe extern "C" fn dataviewer(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // ---------------------------------------------------------------------------
 // selectlist -- Select list (GUI function)
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
     // selectlist returns NULL when no GUI is available (matching R behavior)
     R_NilValue()
@@ -322,8 +312,7 @@ pub unsafe extern "C" fn selectlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP)
 // fileedit -- Edit files using an external editor
 // Ported from r-source/src/library/utils/src/stubs.c fileedit()
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, rho);
     let args = CDR(args);
     let fn_ = CAR(args);
@@ -396,8 +385,7 @@ pub unsafe extern "C" fn fileedit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 // ---------------------------------------------------------------------------
 // flushconsole -- Flush the console output
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn flushconsole() -> SEXP {
+pub unsafe fn flushconsole() -> SEXP {
     R_FlushConsole();
     R_NilValue()
 }
@@ -405,8 +393,7 @@ pub unsafe extern "C" fn flushconsole() -> SEXP {
 // ---------------------------------------------------------------------------
 // processevents -- Process pending GUI events
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn processevents() -> SEXP {
+pub unsafe fn processevents() -> SEXP {
     R_ProcessEvents();
     R_NilValue()
 }
@@ -415,14 +402,12 @@ pub unsafe extern "C" fn processevents() -> SEXP {
 // tzcode_type -- Return which timezone code implementation is in use
 // ---------------------------------------------------------------------------
 #[cfg(target_os = "macos")]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tzcode_type() -> SEXP {
+pub unsafe fn tzcode_type() -> SEXP {
     crate::sexp::constructors::Rf_mkString(b"system (macOS)\0".as_ptr() as *const i8)
 }
 
 #[cfg(not(target_os = "macos"))]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tzcode_type() -> SEXP {
+pub unsafe fn tzcode_type() -> SEXP {
     crate::sexp::constructors::Rf_mkString(b"system\0".as_ptr() as *const i8)
 }
 
@@ -431,8 +416,7 @@ pub unsafe extern "C" fn tzcode_type() -> SEXP {
 // Ported from r-source/src/library/utils/src/utils.c charClass()
 // Uses wctype() and iswctype() for Unicode-aware classification.
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn charClass(x: SEXP, scl: SEXP) -> SEXP {
+pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
     // Validate class argument
     if !isString(scl) || LENGTH(scl) != 1 {
         let msg = CString::new("argument 'class' must be a character string").expect("CString::new failed: contains null byte");
@@ -552,8 +536,7 @@ fn compute_crc64(data: &[u8]) -> u64 {
     crc ^ 0xFFFFFFFFFFFFFFFF // Final XOR matches liblzma
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn crc64(in_: SEXP) -> SEXP {
+pub unsafe fn crc64(in_: SEXP) -> SEXP {
     if !isString(in_) {
         let msg = CString::new("input must be a character string").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
@@ -582,8 +565,7 @@ pub unsafe extern "C" fn crc64(in_: SEXP) -> SEXP {
 // Uses getaddrinfo() for IPv4 resolution (modern replacement for
 // deprecated gethostbyname).
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nsl(hostname: SEXP) -> SEXP {
+pub unsafe fn nsl(hostname: SEXP) -> SEXP {
     if !isString(hostname) || LENGTH(hostname) != 1 {
         let msg = CString::new("'hostname' must be a character vector of length 1").expect("CString::new failed: contains null byte");
         Rf_error(msg.as_ptr());
@@ -655,8 +637,7 @@ pub unsafe extern "C" fn nsl(hostname: SEXP) -> SEXP {
 // octsize -- Convert file size to octal string representation (for tar)
 // Ported from r-source/src/library/utils/src/stubs.c octsize()
 // ---------------------------------------------------------------------------
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn octsize(size: SEXP) -> SEXP {
+pub unsafe fn octsize(size: SEXP) -> SEXP {
     let s_val = crate::main::coerce::asReal(size);
 
     let ans = Rf_allocVector(SEXPTYPE::RAWSXP.0, 11);

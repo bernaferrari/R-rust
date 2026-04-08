@@ -247,11 +247,7 @@ pub fn cpoly_scale(
 // ---------------------------------------------------------------------------
 
 /// Stub for `R_cpolyroot` — requires SEXP for input/output.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_cpolyroot(
-    _coef: *mut c_double,
-    _degree: c_int,
-) -> *mut std::ffi::c_void {
+pub unsafe fn R_cpolyroot(_coef: *mut c_double, _degree: c_int) -> *mut std::ffi::c_void {
     std::ptr::null_mut()
 }
 

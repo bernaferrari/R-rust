@@ -129,8 +129,7 @@ thread_local! {
 }
 
 /// Get the current error buffer contents as a string.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_curErrorBuf() -> *const c_char {
+pub unsafe fn R_curErrorBuf() -> *const c_char {
     ERRBUF.with(|buf| {
         let buf = buf.borrow();
         buf.as_ptr() as *const c_char
@@ -158,8 +157,7 @@ pub fn R_SetErrmessage(s: &str) {
 }
 
 /// Set the error message buffer (C FFI).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetErrmessage_c(s: *const c_char) {
+pub unsafe fn R_SetErrmessage_c(s: *const c_char) {
     unsafe {
         if s.is_null() {
             return;
@@ -774,8 +772,7 @@ pub unsafe fn errorcall_cpy(call: SEXP, format: *const c_char) {
 /// This is the equivalent of R's `Rf_error()`.
 /// The format string should be a pre-formatted message.
 /// It does not return — it panics with an RError payload.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_error(format: *const c_char) {
+pub unsafe fn Rf_error(format: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         // Rf_error in C is variadic: void error(const char *format, ...)
@@ -1004,8 +1001,7 @@ pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
 }
 
 /// Issue a warning (without call).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_warning(format: *const c_char) {
+pub unsafe fn Rf_warning(format: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         warningcall(call, format);
@@ -1013,8 +1009,7 @@ pub unsafe extern "C" fn Rf_warning(format: *const c_char) {
 }
 
 /// Issue an immediate warning (without call).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_warning_immediate(format: *const c_char) {
+pub unsafe fn Rf_warning_immediate(format: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         warningcall_immediate(call, format);
@@ -1054,8 +1049,7 @@ pub unsafe fn Rf_warning1(msg: *const c_char) {
 /// Unlike errors/warnings, messages do not terminate or indicate problems.
 ///
 /// Ported from R's `Rf_message()` concept.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_message(format: *const c_char) {
+pub unsafe fn Rf_message(format: *const c_char) {
     unsafe {
         if format.is_null() {
             println!();
@@ -1084,8 +1078,7 @@ pub unsafe fn messagecall(call: SEXP, format: *const c_char) {
 /// When append=FALSE (default), the message starts on a new line.
 ///
 /// This matches R's `message(..., appendLF = TRUE)` behavior.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_message_append(format: *const c_char, append: c_int) {
+pub unsafe fn Rf_message_append(format: *const c_char, append: c_int) {
     unsafe {
         if format.is_null() {
             if append == 0 {
@@ -1218,8 +1211,7 @@ pub unsafe fn PrintWarnings() {
 /// Signal a C stack overflow.
 /// Matches C's `R_SignalCStackOverflow(intptr_t usage)`.
 /// Uses R_makeCStackOverflowError condition object when available.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SignalCStackOverflow(usage: isize) {
+pub unsafe fn R_SignalCStackOverflow(usage: isize) {
     unsafe {
         // Try to use the expression stack overflow error condition
         let cond = R_makeCStackOverflowError(globals::R_NilValue(), usage);
@@ -1237,8 +1229,7 @@ pub unsafe extern "C" fn R_SignalCStackOverflow(usage: isize) {
 
 /// Check for stack overflow.
 /// In C this checks against R_CStackLimit; in Rust we check eval depth.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckStack() {
+pub unsafe fn R_CheckStack() {
     unsafe {
         let depth = globals::R_EvalDepth();
         let limit = globals::R_EvalDepthLimit();
@@ -1249,16 +1240,14 @@ pub unsafe extern "C" fn R_CheckStack() {
 }
 
 /// Check for stack overflow with extra space.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckStack2(_extra: usize) {
+pub unsafe fn R_CheckStack2(_extra: usize) {
     unsafe {
         R_CheckStack();
     }
 }
 
 /// Check for user interrupts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CheckUserInterrupt() {
+pub unsafe fn R_CheckUserInterrupt() {
     unsafe {
         R_CheckStack();
         if R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed) {
@@ -1454,8 +1443,7 @@ pub unsafe fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 
 /// R_GetTracebackOnly — return traceback without deparsing calls.
 /// Ported from errors.c R_GetTracebackOnly().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetTracebackOnly(skip: c_int) -> SEXP {
+pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
     unsafe {
         let mut nback: c_int = 0;
         let mut ns = skip;
@@ -1976,8 +1964,7 @@ pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R_makeErrorCondition — create an error condition object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeErrorCondition(
+pub unsafe fn R_makeErrorCondition(
     call: SEXP,
     classname: *const c_char,
     subclassname: *const c_char,
@@ -2048,8 +2035,7 @@ pub unsafe extern "C" fn R_makeErrorCondition(
 }
 
 /// R_signalErrorCondition — signal an error condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
+pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
     unsafe {
         // Extract message from condition and call errorcall_dflt
         if TYPEOF(cond) != SEXPTYPE::VECSXP.0 || LENGTH(cond) == 0 {
@@ -2073,21 +2059,14 @@ pub unsafe extern "C" fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
 }
 
 /// R_signalErrorConditionEx — signal an error condition with exitOnly flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
+pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) {
     unsafe {
         R_signalErrorCondition(cond, call);
     }
 }
 
 /// R_setConditionField — set a field in a condition object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_setConditionField(
-    cond: SEXP,
-    idx: R_xlen_t,
-    name: *const c_char,
-    val: SEXP,
-) {
+pub unsafe fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: SEXP) {
     unsafe {
         if TYPEOF(cond) != SEXPTYPE::VECSXP.0 {
             return;
@@ -2109,8 +2088,7 @@ pub unsafe extern "C" fn R_setConditionField(
 // ---------------------------------------------------------------------------
 
 /// R_tryCatchError — C-level tryCatch for error conditions.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tryCatchError(
+pub unsafe fn R_tryCatchError(
     body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
     bdata: *mut c_void,
     handler: Option<unsafe extern "C" fn(SEXP, *mut c_void) -> SEXP>,
@@ -2132,8 +2110,7 @@ pub unsafe extern "C" fn R_tryCatchError(
 // ---------------------------------------------------------------------------
 
 /// R_InitConditions — initialize error/warning condition objects.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InitConditions() {
+pub unsafe fn R_InitConditions() {
     unsafe {
         // Create and preserve condition objects for stack overflow errors
         let protect_so = R_makeErrorCondition(
@@ -2258,13 +2235,8 @@ pub unsafe fn jump_to_toplevel() {
 
 /// R_MissingArgError_c — report a missing argument error.
 /// Matches C's `void R_MissingArgError_c(const char* arg, SEXP call, const char* subclass)`
-#[unsafe(no_mangle)]
 #[allow(clippy::if_same_then_else)]
-pub unsafe extern "C" fn R_MissingArgError_c(
-    arg: *const c_char,
-    call: SEXP,
-    subclass: *const c_char,
-) {
+pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_char) {
     unsafe {
         let arg_str = if arg.is_null() {
             "argument"
@@ -2288,8 +2260,7 @@ pub unsafe extern "C" fn R_MissingArgError_c(
 
 /// R_MissingArgError — report a missing argument error from a symbol.
 /// Matches C's `void R_MissingArgError(SEXP symbol, SEXP call, const char* subclass)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
+pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
     unsafe {
         let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP.0 {
             "argument"
@@ -2309,8 +2280,7 @@ pub unsafe extern "C" fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *
 
 /// R_signalWarningCondition — signal a warning condition object.
 /// Matches C's `void R_signalWarningCondition(SEXP cond)`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_signalWarningCondition(cond: SEXP) {
+pub unsafe fn R_signalWarningCondition(cond: SEXP) {
     unsafe {
         if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP.0 || LENGTH(cond) < 1 {
             return;
@@ -2331,8 +2301,7 @@ pub unsafe extern "C" fn R_signalWarningCondition(cond: SEXP) {
 
 /// R_makeWarningCondition — create a warning condition object.
 /// Matches C's `SEXP R_makeWarningCondition(SEXP call, const char *classname, ...)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeWarningCondition(
+pub unsafe fn R_makeWarningCondition(
     call: SEXP,
     classname: *const c_char,
     nextra: c_int,
@@ -2391,12 +2360,7 @@ pub unsafe extern "C" fn R_makeWarningCondition(
 
 /// R_makePartialMatchWarningCondition — create a partial match warning condition.
 /// Matches C's `SEXP R_makePartialMatchWarningCondition(SEXP call, SEXP argument, SEXP formal)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makePartialMatchWarningCondition(
-    call: SEXP,
-    argument: SEXP,
-    formal: SEXP,
-) -> SEXP {
+pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, argument: SEXP, formal: SEXP) -> SEXP {
     unsafe {
         let arg_name = if !argument.is_null() && TYPEOF(argument) == SEXPTYPE::SYMSXP.0 {
             CHAR_local(PRINTNAME(argument))
@@ -2428,8 +2392,7 @@ pub unsafe extern "C" fn R_makePartialMatchWarningCondition(
 
 /// R_makeNotSubsettableError — create a "not subsettable" error condition.
 /// Matches C's `SEXP R_makeNotSubsettableError(SEXP x, SEXP call)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let class_str = if !x.is_null() {
             let klass = getAttrib_wrap(x, R_ClassSymbol());
@@ -2457,8 +2420,7 @@ pub unsafe extern "C" fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP 
 
 /// R_makeMissingSubscriptError — create a missing subscript error condition.
 /// Matches C's `SEXP R_makeMissingSubscriptError(SEXP x, SEXP call)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let class_str = if !x.is_null() {
             let klass = getAttrib_wrap(x, R_ClassSymbol());
@@ -2486,8 +2448,7 @@ pub unsafe extern "C" fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEX
 
 /// R_makeMissingSubscriptError1 — create a missing subscript error condition (no x).
 /// Matches C's `SEXP R_makeMissingSubscriptError1(SEXP call)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
+pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
     unsafe {
         let msg = "subscript out of bounds";
         let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
@@ -2504,13 +2465,7 @@ pub unsafe extern "C" fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
 
 /// R_makeOutOfBoundsError — create an out-of-bounds error condition.
 /// Matches C's `SEXP R_makeOutOfBoundsError(SEXP x, int subscript, SEXP sindex, SEXP call)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeOutOfBoundsError(
-    x: SEXP,
-    subscript: c_int,
-    sindex: SEXP,
-    call: SEXP,
-) -> SEXP {
+pub unsafe fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let idx_str = if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::REALSXP.0 {
             format!("{}", *REAL(sindex))
@@ -2534,8 +2489,7 @@ pub unsafe extern "C" fn R_makeOutOfBoundsError(
 
 /// R_makeCStackOverflowError — create a C stack overflow error condition.
 /// Matches C's `SEXP R_makeCStackOverflowError(SEXP call, intptr_t usage)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
+pub unsafe fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
     unsafe {
         let msg = format!("C stack usage {} is too close to the limit", usage);
         let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
@@ -2551,8 +2505,7 @@ pub unsafe extern "C" fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> 
 }
 
 /// R_getProtectStackOverflowError — get the preserved protect stack overflow condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getProtectStackOverflowError() -> SEXP {
+pub unsafe fn R_getProtectStackOverflowError() -> SEXP {
     unsafe {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
@@ -2560,8 +2513,7 @@ pub unsafe extern "C" fn R_getProtectStackOverflowError() -> SEXP {
 }
 
 /// R_getExpressionStackOverflowError — get the preserved expression stack overflow condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getExpressionStackOverflowError() -> SEXP {
+pub unsafe fn R_getExpressionStackOverflowError() -> SEXP {
     unsafe {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
@@ -2569,8 +2521,7 @@ pub unsafe extern "C" fn R_getExpressionStackOverflowError() -> SEXP {
 }
 
 /// R_getNodeStackOverflowError — get the preserved node stack overflow condition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_getNodeStackOverflowError() -> SEXP {
+pub unsafe fn R_getNodeStackOverflowError() -> SEXP {
     unsafe {
         // Would return a preserved condition; for now return nil
         globals::R_NilValue()
@@ -2580,8 +2531,7 @@ pub unsafe extern "C" fn R_getNodeStackOverflowError() -> SEXP {
 /// R_tryCatch — C-level tryCatch.
 /// Matches C's `SEXP R_tryCatch(SEXP (*body)(void *), void *bdata,
 ///                              SEXP (*handler)(void *, SEXP), void *hdata)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tryCatch(
+pub unsafe fn R_tryCatch(
     body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
     bdata: *mut c_void,
     handler: Option<unsafe extern "C" fn(*mut c_void, SEXP) -> SEXP>,
@@ -2629,8 +2579,7 @@ pub unsafe extern "C" fn R_tryCatch(
 
 /// R_withCallingErrorHandler — C-level withCallingHandler for errors.
 /// Matches C's `SEXP R_withCallingErrorHandler(...)`
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_withCallingErrorHandler(
+pub unsafe fn R_withCallingErrorHandler(
     body: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
     bdata: *mut c_void,
     handler: Option<unsafe extern "C" fn(*mut c_void, SEXP) -> SEXP>,
@@ -2677,8 +2626,7 @@ pub unsafe fn do_bindtextdomain(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 // ---------------------------------------------------------------------------
 
 /// R_GetCurrentSrcref — get the current source reference.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
+pub unsafe fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
     unsafe {
         // Simplified: no source references in Rust port yet
         globals::R_NilValue()
@@ -2686,8 +2634,7 @@ pub unsafe extern "C" fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
 }
 
 /// R_GetSrcFilename — get source filename from a srcref.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
+pub unsafe fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
     unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
 }
 

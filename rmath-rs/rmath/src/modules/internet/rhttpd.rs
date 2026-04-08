@@ -683,7 +683,7 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
 // ============================================================
 
 /// Process a request by calling the httpd() function in R
-unsafe extern "C" fn process_request_(ptr: *mut c_void) {
+unsafe fn process_request_(ptr: *mut c_void) {
     let c = ptr as *mut HttpdConn;
     let mut ct: *const c_char = b"text/html\0".as_ptr() as *const c_char;
     let mut query: *mut c_char = std::ptr::null_mut();
@@ -1091,7 +1091,7 @@ unsafe fn reset_worker(c: *mut HttpdConn) {
 // ============================================================
 
 /// This function is called to fetch new data from the client connection socket and process it.
-unsafe extern "C" fn worker_input_handler(data: *mut c_void) {
+unsafe fn worker_input_handler(data: *mut c_void) {
     let c = data as *mut HttpdConn;
     if c.is_null() {
         return;
@@ -1570,7 +1570,7 @@ unsafe extern "C" fn worker_input_handler(data: *mut c_void) {
 // ============================================================
 
 /// Server input handler - accepts new connections
-unsafe extern "C" fn srv_input_handler(_data: *mut c_void) {
+unsafe fn srv_input_handler(_data: *mut c_void) {
     let mut peer_sa: sockaddr_in = std::mem::zeroed();
     let mut peer_sal: socklen_t = core::mem::size_of::<sockaddr_in>() as socklen_t;
     let cl_sock = accept(
@@ -1609,8 +1609,7 @@ unsafe extern "C" fn srv_input_handler(_data: *mut c_void) {
 
 /// Create an HTTP daemon on the given IP and port.
 /// Returns 0 on success, -1 on general error, -2 if address already in use.
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
+pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
     let reuse: c_int = 1;
     let mut srv_sa: sockaddr_in = std::mem::zeroed();
 
@@ -1682,8 +1681,7 @@ pub(crate) unsafe extern "C" fn in_R_HTTPDCreate(ip: *const c_char, port: c_int)
 }
 
 /// Stop the HTTP daemon.
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn in_R_HTTPDStop() {
+pub(crate) unsafe fn in_R_HTTPDStop() {
     if SRV_SOCK.with(|v| v.get()) != INVALID_SOCKET {
         close(SRV_SOCK.with(|v| v.get()));
         SRV_SOCK.with(|v| v.set(INVALID_SOCKET));
@@ -1698,8 +1696,7 @@ pub(crate) unsafe extern "C" fn in_R_HTTPDStop() {
 /// @param sIP is the IP to bind to (or R_NilValue for any)
 /// @param sPort is the TCP port number to bind to
 /// @return integer: 0 on success, -2 means address already in use
-#[unsafe(no_mangle)]
-pub(crate) unsafe extern "C" fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
+pub(crate) unsafe fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
     let mut ip: *const c_char = std::ptr::null_mut();
     let vmax = vmaxget();
 

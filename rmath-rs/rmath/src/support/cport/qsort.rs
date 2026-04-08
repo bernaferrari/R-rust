@@ -10,8 +10,7 @@
 /// Only elements [i..j) (0-based) are considered.
 ///
 /// Ported from R's R_qsort_I (src/main/qsort.c).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_qsort_I(v: *mut f64, i: *mut i32, ii: i32, jj: i32) {
+pub unsafe fn R_qsort_I(v: *mut f64, i: *mut i32, ii: i32, jj: i32) {
     unsafe {
         if ii >= jj {
             return;
@@ -29,8 +28,7 @@ pub unsafe extern "C" fn R_qsort_I(v: *mut f64, i: *mut i32, ii: i32, jj: i32) {
 /// Puts into I the permutation vector.
 ///
 /// Ported from R's R_qsort_int_I.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_qsort_int_I(v: *mut i32, i: *mut i32, ii: i32, jj: i32) {
+pub unsafe fn R_qsort_int_I(v: *mut i32, i: *mut i32, ii: i32, jj: i32) {
     unsafe {
         if ii >= jj {
             return;
@@ -47,8 +45,7 @@ pub unsafe extern "C" fn R_qsort_int_I(v: *mut i32, i: *mut i32, ii: i32, jj: i3
 /// Sorts v[0..n] increasingly without index.
 ///
 /// Ported from R's R_qsort.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_qsort(v: *mut f64, ii: usize, jj: usize) {
+pub unsafe fn R_qsort(v: *mut f64, ii: usize, jj: usize) {
     unsafe {
         if ii >= jj {
             return;
@@ -60,8 +57,7 @@ pub unsafe extern "C" fn R_qsort(v: *mut f64, ii: usize, jj: usize) {
 /// Sorts v[0..n] (integers) increasingly without index.
 ///
 /// Ported from R's R_qsort_int.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_qsort_int(v: *mut i32, ii: usize, jj: usize) {
+pub unsafe fn R_qsort_int(v: *mut i32, ii: usize, jj: usize) {
     unsafe {
         if ii >= jj {
             return;

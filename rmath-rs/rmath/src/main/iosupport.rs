@@ -181,8 +181,7 @@ unsafe fn translateCharWithOverride(x: SEXP) -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// Reset the read/write pointers of an IoBuffer back to the start.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferWriteReset(iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferWriteReset(iob: *mut IoBuffer) -> c_int {
     unsafe {
         if iob.is_null() || (*iob).start_buf.is_null() {
             return 0;
@@ -198,8 +197,7 @@ pub unsafe extern "C" fn R_IoBufferWriteReset(iob: *mut IoBuffer) -> c_int {
 }
 
 /// Reset the read pointer of an IoBuffer back to the start.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferReadReset(iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferReadReset(iob: *mut IoBuffer) -> c_int {
     unsafe {
         if iob.is_null() || (*iob).start_buf.is_null() {
             return 0;
@@ -212,8 +210,7 @@ pub unsafe extern "C" fn R_IoBufferReadReset(iob: *mut IoBuffer) -> c_int {
 }
 
 /// Allocate an initial BufferListItem for IoBuffer and reset pointers.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferInit(iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferInit(iob: *mut IoBuffer) -> c_int {
     unsafe {
         if iob.is_null() {
             return 0;
@@ -228,8 +225,7 @@ pub unsafe extern "C" fn R_IoBufferInit(iob: *mut IoBuffer) -> c_int {
 }
 
 /// Free all BufferListItem nodes associated with an IoBuffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferFree(iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferFree(iob: *mut IoBuffer) -> c_int {
     unsafe {
         if iob.is_null() || (*iob).start_buf.is_null() {
             return 0;
@@ -251,8 +247,7 @@ pub unsafe extern "C" fn R_IoBufferFree(iob: *mut IoBuffer) -> c_int {
 }
 
 /// Add a character to an IoBuffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferPutc(c: c_int, iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferPutc(c: c_int, iob: *mut IoBuffer) -> c_int {
     unsafe {
         if (*iob).write_offset == IOBSIZE as c_int {
             NextWriteBufferListItem(iob);
@@ -265,8 +260,7 @@ pub unsafe extern "C" fn R_IoBufferPutc(c: c_int, iob: *mut IoBuffer) -> c_int {
 }
 
 /// Add a null-terminated string to an IoBuffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferPuts(s: *mut c_char, iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferPuts(s: *mut c_char, iob: *mut IoBuffer) -> c_int {
     unsafe {
         let mut p = s;
         let mut n: c_int = 0;
@@ -280,8 +274,7 @@ pub unsafe extern "C" fn R_IoBufferPuts(s: *mut c_char, iob: *mut IoBuffer) -> c
 }
 
 /// Read a character from an IoBuffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferGetc(iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferGetc(iob: *mut IoBuffer) -> c_int {
     unsafe {
         if (*iob).read_buf == (*iob).write_buf && (*iob).read_offset >= (*iob).write_offset {
             return -1; // EOF
@@ -297,8 +290,7 @@ pub unsafe extern "C" fn R_IoBufferGetc(iob: *mut IoBuffer) -> c_int {
 }
 
 /// Compute the current read offset, taking all buffer blocks into account.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_IoBufferReadOffset(iob: *mut IoBuffer) -> c_int {
+pub unsafe fn R_IoBufferReadOffset(iob: *mut IoBuffer) -> c_int {
     unsafe {
         let mut result = (*iob).read_offset;
         let mut buf = (*iob).start_buf;
@@ -318,8 +310,7 @@ pub unsafe extern "C" fn R_IoBufferReadOffset(iob: *mut IoBuffer) -> c_int {
 ///
 /// If `text` is a string vector, prepares for sequential reading.
 /// Otherwise, sets the buffer to NULL (returns EOF on read).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TextBufferInit(txtb: *mut TextBuffer, text: SEXP) -> c_int {
+pub unsafe fn R_TextBufferInit(txtb: *mut TextBuffer, text: SEXP) -> c_int {
     unsafe {
         if Rf_isString(text) != 0 {
             // translateChar might allocate
@@ -365,8 +356,7 @@ pub unsafe extern "C" fn R_TextBufferInit(txtb: *mut TextBuffer, text: SEXP) -> 
 }
 
 /// Finalize a TextBuffer, releasing transient memory.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TextBufferFree(txtb: *mut TextBuffer) -> c_int {
+pub unsafe fn R_TextBufferFree(txtb: *mut TextBuffer) -> c_int {
     unsafe {
         vmaxset((*txtb).vmax);
         0 // not used
@@ -374,8 +364,7 @@ pub unsafe extern "C" fn R_TextBufferFree(txtb: *mut TextBuffer) -> c_int {
 }
 
 /// Read a character from a TextBuffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_TextBufferGetc(txtb: *mut TextBuffer) -> c_int {
+pub unsafe fn R_TextBufferGetc(txtb: *mut TextBuffer) -> c_int {
     unsafe {
         if (*txtb).buf.is_null() {
             return -1; // EOF

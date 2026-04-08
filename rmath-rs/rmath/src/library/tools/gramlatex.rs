@@ -58,7 +58,6 @@ mod yytokentype {
 /// This is the main entry point for LaTeX conversion.
 /// The real implementation walks the Rd parse tree and emits
 /// LaTeX markup for each section type.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rd2LaTeX(_item: SEXP, _args: SEXP) -> SEXP {
+pub unsafe fn Rd2LaTeX(_item: SEXP, _args: SEXP) -> SEXP {
     R_NilValue()
 }

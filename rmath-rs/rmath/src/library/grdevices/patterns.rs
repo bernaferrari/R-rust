@@ -20,8 +20,7 @@ unsafe fn GEcurrentDevice() -> pGEDevDesc {
 }
 
 /// setPattern - set a fill pattern for the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setPattern(args: SEXP) -> SEXP {
+pub unsafe fn setPattern(args: SEXP) -> SEXP {
     let _dd = GEcurrentDevice();
     // Stub: cannot access dd->appending or dd->dev->setPattern on void* dd
     R_NilValue()

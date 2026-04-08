@@ -33,26 +33,22 @@ pub(crate) struct gl_lock_t {
 }
 
 /// Initialize a gl_lock_t.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_lock_init(_lock: *mut gl_lock_t) {
+pub unsafe fn glthread_lock_init(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a gl_lock_t.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_lock_lock(_lock: *mut gl_lock_t) {
+pub unsafe fn glthread_lock_lock(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Release a gl_lock_t.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_lock_unlock(_lock: *mut gl_lock_t) {
+pub unsafe fn glthread_lock_unlock(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Destroy a gl_lock_t.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_lock_destroy(_lock: *mut gl_lock_t) {
+pub unsafe fn glthread_lock_destroy(_lock: *mut gl_lock_t) {
     // No-op in standalone mode.
 }
 
@@ -70,32 +66,27 @@ pub(crate) struct gl_rwlock_t {
 }
 
 /// Initialize a read-write lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_rwlock_init(_lock: *mut gl_rwlock_t) {
+pub unsafe fn glthread_rwlock_init(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a read (shared) lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_rwlock_rdlock(_lock: *mut gl_rwlock_t) {
+pub unsafe fn glthread_rwlock_rdlock(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a write (exclusive) lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_rwlock_wrlock(_lock: *mut gl_rwlock_t) {
+pub unsafe fn glthread_rwlock_wrlock(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Release a read-write lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_rwlock_unlock(_lock: *mut gl_rwlock_t) {
+pub unsafe fn glthread_rwlock_unlock(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
 /// Destroy a read-write lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_rwlock_destroy(_lock: *mut gl_rwlock_t) {
+pub unsafe fn glthread_rwlock_destroy(_lock: *mut gl_rwlock_t) {
     // No-op in standalone mode.
 }
 
@@ -114,26 +105,22 @@ pub(crate) struct gl_recursive_lock_t {
 }
 
 /// Initialize a recursive lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_recursive_lock_init(_lock: *mut gl_recursive_lock_t) {
+pub unsafe fn glthread_recursive_lock_init(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Acquire a recursive lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_recursive_lock_lock(_lock: *mut gl_recursive_lock_t) {
+pub unsafe fn glthread_recursive_lock_lock(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Release a recursive lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_recursive_lock_unlock(_lock: *mut gl_recursive_lock_t) {
+pub unsafe fn glthread_recursive_lock_unlock(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
 /// Destroy a recursive lock.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_recursive_lock_destroy(_lock: *mut gl_recursive_lock_t) {
+pub unsafe fn glthread_recursive_lock_destroy(_lock: *mut gl_recursive_lock_t) {
     // No-op in standalone mode.
 }
 
@@ -168,8 +155,7 @@ impl gl_once_t {
 /// # Safety
 /// `once_control` must be a valid pointer to a `gl_once_t`.
 /// `initfunction` must be a valid function pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_once(
+pub unsafe fn glthread_once(
     once_control: *mut gl_once_t,
     initfunction: Option<unsafe extern "C" fn()>,
 ) {
@@ -191,8 +177,7 @@ pub unsafe extern "C" fn glthread_once(
 ///
 /// Returns 1 if this is the first call (the caller should perform the
 /// initialization), 0 otherwise.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
+pub unsafe fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_int {
     unsafe {
         if once_control.is_null() {
             return 1;
@@ -210,8 +195,7 @@ pub unsafe extern "C" fn glthread_once_singlethreaded(once_control: *mut gl_once
 /// Check whether threads are in use.
 ///
 /// In the standalone port, this always returns 0 (no threads).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn glthread_in_use() -> c_int {
+pub unsafe fn glthread_in_use() -> c_int {
     0
 }
 

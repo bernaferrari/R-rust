@@ -37,8 +37,7 @@ unsafe extern "C" {
 }
 
 /* Test function used in tests/encodings.R */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Renctest(x: *mut *mut i8) {
+pub unsafe fn Renctest(x: *mut *mut i8) {
     let s = std::ffi::CStr::from_ptr(*x);
     let len = s.to_bytes().len();
     Rprintf(
@@ -49,7 +48,6 @@ pub unsafe extern "C" fn Renctest(x: *mut *mut i8) {
 }
 
 /* Stub: DllInfo registration */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_tools(_dll: *mut std::ffi::c_void) {
+pub unsafe fn R_init_tools(_dll: *mut std::ffi::c_void) {
     /* Registration handled by Rust's symbol exports */
 }

@@ -28,8 +28,7 @@ pub const PARSE_EOF: c_int = 8;
 // ---------------------------------------------------------------------------
 
 /// Parse a character vector of R code into a list of expressions.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseVector(
+pub unsafe fn R_ParseVector(
     _text: SEXP,
     _n: c_int,
     _status: *mut c_int,
@@ -49,8 +48,7 @@ pub unsafe extern "C" fn R_ParseVector(
 // ---------------------------------------------------------------------------
 
 /// Parse and evaluate a string of R code.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseEvalString(_s: *const c_char, _envir: SEXP) -> SEXP {
+pub unsafe fn R_ParseEvalString(_s: *const c_char, _envir: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -59,8 +57,7 @@ pub unsafe extern "C" fn R_ParseEvalString(_s: *const c_char, _envir: SEXP) -> S
 // ---------------------------------------------------------------------------
 
 /// Parse and evaluate a string of R code with completion.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseEval(_s: *const c_char, _envir: SEXP) -> SEXP {
+pub unsafe fn R_ParseEval(_s: *const c_char, _envir: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -69,8 +66,7 @@ pub unsafe extern "C" fn R_ParseEval(_s: *const c_char, _envir: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Parse and evaluate a buffer of R code.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseEvalBuffer(_buf: *const c_char, _len: c_int, _envir: SEXP) -> SEXP {
+pub unsafe fn R_ParseEvalBuffer(_buf: *const c_char, _len: c_int, _envir: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
@@ -79,8 +75,7 @@ pub unsafe extern "C" fn R_ParseEvalBuffer(_buf: *const c_char, _len: c_int, _en
 // ---------------------------------------------------------------------------
 
 /// Get the current parse line number.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_CurrentParseLine() -> c_int {
+pub unsafe fn R_CurrentParseLine() -> c_int {
     0
 }
 
@@ -89,8 +84,7 @@ pub unsafe extern "C" fn R_CurrentParseLine() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get the current parse filename.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseFilename() -> *const c_char {
+pub unsafe fn R_ParseFilename() -> *const c_char {
     static EMPTY: [c_char; 1] = [0];
     EMPTY.as_ptr()
 }
@@ -100,22 +94,19 @@ pub unsafe extern "C" fn R_ParseFilename() -> *const c_char {
 // ---------------------------------------------------------------------------
 
 /// Enter a new parse context.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseContext(_buf: *const c_char, _len: c_int) -> c_int {
+pub unsafe fn R_ParseContext(_buf: *const c_char, _len: c_int) -> c_int {
     0
 }
 
 /// End the current parse context.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseContextEnd() {}
+pub unsafe fn R_ParseContextEnd() {}
 
 // ---------------------------------------------------------------------------
 // R_ParseVectorBuffer — parse from buffer
 // ---------------------------------------------------------------------------
 
 /// Parse from a character buffer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ParseVectorBuffer(
+pub unsafe fn R_ParseVectorBuffer(
     _text: *const c_char,
     _len: R_xlen_t,
     _n: c_int,

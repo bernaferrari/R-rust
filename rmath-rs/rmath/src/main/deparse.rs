@@ -2766,8 +2766,7 @@ pub unsafe fn deparse1s(call: SEXP) -> SEXP {
 /// Inspect an R object, returning a string representation.
 ///
 /// Stubbed: requires full inspect infrastructure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
+pub unsafe fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
     let _ = (s, deep, pvec);
     0
 }
@@ -2775,8 +2774,7 @@ pub unsafe extern "C" fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
 /// R_inspect3 — inspect with additional options.
 ///
 /// Stubbed: requires full inspect infrastructure.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_inspect3(
+pub unsafe fn R_inspect3(
     s: SEXP,
     deep: c_int,
     pvec: SEXP,
@@ -2815,8 +2813,7 @@ thread_local! { pub static R_BrowseLines: Cell<c_int> = Cell::new(0); }
 /// Rf_isValidName — check if a string is a valid R name.
 ///
 /// Exported for use by other modules.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_isValidName(s: *const c_char) -> c_int {
+pub unsafe fn Rf_isValidName(s: *const c_char) -> c_int {
     unsafe { if isValidName(s) { 1 } else { 0 } }
 }
 

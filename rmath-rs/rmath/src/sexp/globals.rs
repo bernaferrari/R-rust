@@ -93,26 +93,22 @@ fn init_restart() -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Get a pointer to R_NilValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_NilValue() -> SEXP {
+pub unsafe fn R_NilValue() -> SEXP {
     init_nil()
 }
 
 /// Get a pointer to R_UnboundValue.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_UnboundValue() -> SEXP {
+pub unsafe fn R_UnboundValue() -> SEXP {
     init_unbound()
 }
 
 /// Get a pointer to R_MissingArg.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MissingArg() -> SEXP {
+pub unsafe fn R_MissingArg() -> SEXP {
     init_missing()
 }
 
 /// Get a pointer to R_RestartToken.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RestartToken() -> SEXP {
+pub unsafe fn R_RestartToken() -> SEXP {
     init_restart()
 }
 
@@ -129,18 +125,15 @@ static R_BASE_NAMESPACE_PTR: AtomicUsize = AtomicUsize::new(0);
 // Global environment accessor functions
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GlobalEnv() -> SEXP {
+pub unsafe fn R_GlobalEnv() -> SEXP {
     R_GLOBAL_ENV_PTR.load(Ordering::Acquire) as SEXP
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_BaseEnv() -> SEXP {
+pub unsafe fn R_BaseEnv() -> SEXP {
     R_BASE_ENV_PTR.load(Ordering::Acquire) as SEXP
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_EmptyEnv() -> SEXP {
+pub unsafe fn R_EmptyEnv() -> SEXP {
     R_EMPTY_ENV_PTR.load(Ordering::Acquire) as SEXP
 }
 
@@ -191,8 +184,7 @@ thread_local! {
 }
 
 /// Get the current R_Visible flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Visible() -> c_int {
+pub unsafe fn R_Visible() -> c_int {
     R_VISIBLE.with(|v| v.get())
 }
 
@@ -202,8 +194,7 @@ pub unsafe fn set_R_Visible(v: c_int) {
 }
 
 /// Get the current evaluation depth.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_EvalDepth() -> c_int {
+pub unsafe fn R_EvalDepth() -> c_int {
     R_EVAL_DEPTH.with(|d| d.get())
 }
 
@@ -213,8 +204,7 @@ pub unsafe fn set_R_EvalDepth(d: c_int) {
 }
 
 /// Get the evaluation depth limit.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_EvalDepthLimit() -> c_int {
+pub unsafe fn R_EvalDepthLimit() -> c_int {
     R_EVAL_DEPTH_LIMIT.with(|d| d.get())
 }
 
@@ -263,8 +253,7 @@ static R_TRUE: OnceLock<usize> = OnceLock::new();
 static R_FALSE: OnceLock<usize> = OnceLock::new();
 
 /// Get a pointer to R_True (logical scalar TRUE).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_True() -> SEXP {
+pub unsafe fn R_True() -> SEXP {
     *R_TRUE.get_or_init(|| {
         let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
         node.sxpinfo.set_scalar(true);
@@ -273,8 +262,7 @@ pub unsafe extern "C" fn R_True() -> SEXP {
 }
 
 /// Get a pointer to R_False (logical scalar FALSE).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_False() -> SEXP {
+pub unsafe fn R_False() -> SEXP {
     *R_FALSE.get_or_init(|| {
         let mut node = SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1);
         node.sxpinfo.set_scalar(true);

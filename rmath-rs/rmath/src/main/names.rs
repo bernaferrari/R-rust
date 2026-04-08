@@ -4622,8 +4622,7 @@ static SPEC_NAMES: &[&[u8]] = &[
 
 /// Look up a primitive function by name.
 /// Returns a BUILTINSXP/SPECIALSXP for primitives, R_NilValue for .Internal functions.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Primitive(primname: *const c_char) -> SEXP {
+pub unsafe fn R_Primitive(primname: *const c_char) -> SEXP {
     unsafe {
         if primname.is_null() {
             return R_NilValue();

@@ -10,8 +10,7 @@ use core::ffi::{c_double, c_int, c_void};
 ///
 /// # Safety
 /// All pointer arguments must be valid and point to appropriately sized arrays.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn HoltWinters(
+pub unsafe fn HoltWinters(
     x: *mut c_double,
     xl: *mut c_int,
     alpha: *mut c_double,

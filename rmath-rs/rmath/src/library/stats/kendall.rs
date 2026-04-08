@@ -128,8 +128,7 @@ unsafe fn pkendall(len: c_int, q: *const c_double, p: *mut c_double, n: c_int) {
 // pKendall: SEXP interface
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
+pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
     let q = Rf_protect(coerceVector(q, SEXPTYPE::REALSXP.0));
     let len = LENGTH(q);
     let n = asInteger(sn);

@@ -170,6 +170,7 @@ unsafe fn GLPretty(ul: *mut c_double, uh: *mut c_double, n: *mut c_int) {
 
 /// GPretty -- compute "pretty" axis label positions.
 /// Delegates to GEPretty (in engine.c, calling R_pretty()).
+#[unsafe(no_mangle)]
 pub unsafe fn GPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     unsafe {
         GEPretty(lo, up, ndiv);

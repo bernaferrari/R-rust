@@ -18,7 +18,7 @@ pub struct DllInfo {
 }
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_registerRoutines(
+pub unsafe fn R_registerRoutines(
     _dll: *mut DllInfo,
     _c: *const c_void,
     _call: *const c_void,
@@ -28,11 +28,10 @@ pub unsafe extern "C" fn R_registerRoutines(
     0
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_useDynamicSymbols(_dll: *mut DllInfo, _value: c_int) {}
+pub unsafe fn R_useDynamicSymbols(_dll: *mut DllInfo, _value: c_int) {}
 
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn R_forceSymbols(_dll: *mut DllInfo, _value: c_int) {}
+pub unsafe fn R_forceSymbols(_dll: *mut DllInfo, _value: c_int) {}
 
 // ---------------------------------------------------------------------------
 // R_init_base
@@ -40,7 +39,7 @@ pub unsafe extern "C" fn R_forceSymbols(_dll: *mut DllInfo, _value: c_int) {}
 
 /// Initialize the base package's registered routines.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_base(_dll: *mut DllInfo) {
+pub unsafe fn R_init_base(_dll: *mut DllInfo) {
     // In the full R implementation, this registers:
     // - callMethods: R_addTaskCallback, R_getTaskCallbackNames, R_removeTaskCallback
     // - fortranMethods: dqrcf, dqrdc2, dqrqty, dqrqy, dqrrsd, dqrxb, dtrco

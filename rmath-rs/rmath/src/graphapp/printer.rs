@@ -5,10 +5,8 @@
 
 use super::types::*;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newprinter(_w: f64, _h: f64, _name: *const std::os::raw::c_char) -> printer {
+pub unsafe fn newprinter(_w: f64, _h: f64, _name: *const std::os::raw::c_char) -> printer {
     std::ptr::null_mut()
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nextpage(_p: printer) { /* TODO */
+pub unsafe fn nextpage(_p: printer) { /* TODO */
 }

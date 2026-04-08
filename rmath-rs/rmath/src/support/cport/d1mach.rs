@@ -21,8 +21,7 @@
 /// - 3: FLT_RADIX^(-DBL_MANT_DIG) = 0.5*DBL_EPSILON
 /// - 4: FLT_RADIX^(1-DBL_MANT_DIG) = DBL_EPSILON
 /// - 5: log10(2)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_d1mach(i: std::os::raw::c_int) -> f64 {
+pub unsafe fn Rf_d1mach(i: std::os::raw::c_int) -> f64 {
     match i {
         1 => f64::MIN_POSITIVE,  // DBL_MIN
         2 => f64::MAX,           // DBL_MAX
@@ -37,7 +36,6 @@ pub unsafe extern "C" fn Rf_d1mach(i: std::os::raw::c_int) -> f64 {
 ///
 /// Takes a pointer to the index (Fortran pass-by-reference convention).
 /// The name is mangled to match Fortran calling conventions (lowercase, trailing underscore).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn d1mach_(i: *const std::os::raw::c_int) -> f64 {
+pub unsafe fn d1mach_(i: *const std::os::raw::c_int) -> f64 {
     unsafe { Rf_d1mach(*i) }
 }

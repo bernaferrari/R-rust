@@ -38,7 +38,7 @@ thread_local! { static MAXP: Cell<c_int> = Cell::new(0); }
 ///   If `*pmaxp == 0`  There was an illegal zero parameter.
 ///   If `*pmaxp == 1`  There were more than 20 factors to ntot.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_int) {
+pub unsafe fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_int) {
     let mut j: c_int;
     let mut jj: c_int;
     let mut k: c_int;
@@ -188,7 +188,7 @@ pub unsafe extern "C" fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_i
 /// Returns 1 (TRUE) if the transform was completed successfully,
 /// 0 (FALSE) if invalid values of the parameters were supplied.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn fft_work(
+pub unsafe fn fft_work(
     a: *mut c_double,
     b: *mut c_double,
     nseg: c_int,

@@ -6,21 +6,17 @@
 use super::types::*;
 use std::os::raw::c_int;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copytoclipboard(_src: drawing) { /* TODO */
+pub unsafe fn copytoclipboard(_src: drawing) { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn copystringtoclipboard(_str: *const std::os::raw::c_char) -> c_int {
+pub unsafe fn copystringtoclipboard(_str: *const std::os::raw::c_char) -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getstringfromclipboard(
+pub unsafe fn getstringfromclipboard(
     _str: *mut std::os::raw::c_char,
     _n: c_int,
 ) -> c_int {
     0
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn clipboardhastext() -> c_int {
+pub unsafe fn clipboardhastext() -> c_int {
     0
 }

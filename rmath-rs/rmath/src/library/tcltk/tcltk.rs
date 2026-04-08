@@ -60,7 +60,7 @@ pub thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_
 ///   5. Registers R_eval, R_call, R_call_lang commands
 ///   6. Sets service mode to TCL_SERVICE_ALL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn tcltk_init(TkUp: *mut c_int) {
+pub unsafe fn tcltk_init(TkUp: *mut c_int) {
     if !TkUp.is_null() {
         *TkUp = 0;
     }
@@ -76,8 +76,7 @@ pub unsafe extern "C" fn tcltk_init(TkUp: *mut c_int) {
 ///   1. Extracts command from CADR(args)
 ///   2. Calls tk_eval(cmd) which converts to UTF-8 and evaluates
 ///   3. Wraps result in an external pointer via makeRTclObject()
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dotTcl(_args: SEXP) -> SEXP {
+pub unsafe fn dotTcl(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -92,8 +91,7 @@ pub unsafe extern "C" fn dotTcl(_args: SEXP) -> SEXP {
 ///   2. Builds array of Tcl_Obj* from names (-flag style) and values
 ///   3. Calls Tcl_EvalObjv() on the interpreter
 ///   4. Wraps result via makeRTclObject()
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dotTclObjv(_args: SEXP) -> SEXP {
+pub unsafe fn dotTclObjv(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -107,8 +105,7 @@ pub unsafe extern "C" fn dotTclObjv(_args: SEXP) -> SEXP {
 ///   - For functions: builds "R_call <addr> %arg1 %arg2 ..." string
 ///   - For language: builds "R_call_lang <addr> <addr>" string
 ///   - Converts from UTF-8 and returns as R string
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dotTclcallback(_args: SEXP) -> SEXP {
+pub unsafe fn dotTclcallback(_args: SEXP) -> SEXP {
     Rf_mkString(c"".as_ptr())
 }
 
@@ -119,8 +116,7 @@ pub unsafe extern "C" fn dotTclcallback(_args: SEXP) -> SEXP {
 /// Get a Tcl variable as a tclObj.
 ///
 /// The real implementation calls Tcl_GetVar2Ex() and wraps via makeRTclObject().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjFromVar(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjFromVar(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -131,8 +127,7 @@ pub unsafe extern "C" fn RTcl_ObjFromVar(_args: SEXP) -> SEXP {
 /// Assign a tclObj to a Tcl variable.
 ///
 /// The real implementation calls Tcl_SetVar2Ex().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_AssignObjToVar(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_AssignObjToVar(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -144,8 +139,7 @@ pub unsafe extern "C" fn RTcl_AssignObjToVar(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_GetStringFromObj() then
 /// Tcl_UtfToExternalDString() for encoding conversion.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_StringFromObj(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_StringFromObj(_args: SEXP) -> SEXP {
     Rf_mkString(c"".as_ptr())
 }
 
@@ -157,8 +151,7 @@ pub unsafe extern "C" fn RTcl_StringFromObj(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_ListObjGetElements() and
 /// converts each element via Tcl_UtfToExternalDString().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjAsCharVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjAsCharVector(_args: SEXP) -> SEXP {
     Rf_allocVector(SEXPTYPE::STRSXP.0, 0) // STRSXP
 }
 
@@ -170,8 +163,7 @@ pub unsafe extern "C" fn RTcl_ObjAsCharVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation first tries Tcl_GetDoubleFromObj() for a
 /// single value, then Tcl_ListObjGetElements() for a list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjAsDoubleVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjAsDoubleVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -183,8 +175,7 @@ pub unsafe extern "C" fn RTcl_ObjAsDoubleVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation uses NewIntOrDoubleObj() to convert each
 /// element (integers stored as doubles get special handling).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjFromDoubleVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjFromDoubleVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -196,8 +187,7 @@ pub unsafe extern "C" fn RTcl_ObjFromDoubleVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation first tries Tcl_GetIntFromObj() for a
 /// single value, then Tcl_ListObjGetElements() for a list.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjAsIntVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjAsIntVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -209,8 +199,7 @@ pub unsafe extern "C" fn RTcl_ObjAsIntVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_NewIntObj() for each element
 /// and builds a Tcl list via Tcl_ListObjAppendElement().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjFromIntVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjFromIntVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -222,8 +211,7 @@ pub unsafe extern "C" fn RTcl_ObjFromIntVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation first tries Tcl_GetByteArrayFromObj() for
 /// a byte array, then Tcl_ListObjGetElements() for a list of arrays.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjAsRawVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjAsRawVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -234,8 +222,7 @@ pub unsafe extern "C" fn RTcl_ObjAsRawVector(_args: SEXP) -> SEXP {
 /// Convert an R raw vector to a tclObj (byte array).
 ///
 /// The real implementation calls Tcl_NewByteArrayObj().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjFromRawVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjFromRawVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -249,8 +236,7 @@ pub unsafe extern "C" fn RTcl_ObjFromRawVector(_args: SEXP) -> SEXP {
 /// converts each string via Tcl_ExternalToUtfDString(), and builds
 /// a Tcl list.  Single-element vectors with drop=TRUE return a
 /// scalar Tcl object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ObjFromCharVector(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ObjFromCharVector(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -262,8 +248,7 @@ pub unsafe extern "C" fn RTcl_ObjFromCharVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_GetVar2Ex() with the array
 /// name and index.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_GetArrayElem(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_GetArrayElem(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -274,8 +259,7 @@ pub unsafe extern "C" fn RTcl_GetArrayElem(_args: SEXP) -> SEXP {
 /// Set an element in a Tcl array.
 ///
 /// The real implementation calls Tcl_SetVar2Ex().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_SetArrayElem(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_SetArrayElem(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -286,8 +270,7 @@ pub unsafe extern "C" fn RTcl_SetArrayElem(_args: SEXP) -> SEXP {
 /// Remove an element from a Tcl array.
 ///
 /// The real implementation calls Tcl_UnsetVar2().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_RemoveArrayElem(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_RemoveArrayElem(_args: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -300,7 +283,6 @@ pub unsafe extern "C" fn RTcl_RemoveArrayElem(_args: SEXP) -> SEXP {
 /// The real implementation calls Tcl_SetServiceMode() or
 /// Tcl_GetServiceMode() depending on whether a logical argument
 /// is provided.  Returns whether the mode is TCL_SERVICE_ALL.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn RTcl_ServiceMode(_args: SEXP) -> SEXP {
+pub unsafe fn RTcl_ServiceMode(_args: SEXP) -> SEXP {
     Rf_ScalarLogical(1) // TCL_SERVICE_ALL
 }

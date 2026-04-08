@@ -5,7 +5,6 @@
 
 use std::os::raw::c_int;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_maskType(_mask: *mut std::ffi::c_void) -> c_int {
+pub unsafe fn R_GE_maskType(_mask: *mut std::ffi::c_void) -> c_int {
     0
 }

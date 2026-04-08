@@ -8,7 +8,6 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
-
 pub const TRE_MEM_BLOCK_SIZE: usize = 1024;
 
 #[repr(C)]

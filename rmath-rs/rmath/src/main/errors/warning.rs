@@ -186,7 +186,7 @@ pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
 
 /// Issue a warning (without call).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_warning(format: *const c_char) {
+pub unsafe fn Rf_warning(format: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         warningcall(call, format);
@@ -194,8 +194,7 @@ pub unsafe extern "C" fn Rf_warning(format: *const c_char) {
 }
 
 /// Issue an immediate warning (without call).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_warning_immediate(format: *const c_char) {
+pub unsafe fn Rf_warning_immediate(format: *const c_char) {
     unsafe {
         let call = getCurrentCall();
         warningcall_immediate(call, format);
@@ -226,8 +225,7 @@ pub fn Rf_warning1(msg: *const c_char) {
 // ---------------------------------------------------------------------------
 
 /// Issue a message (R's message()).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_message(format: *const c_char) {
+pub unsafe fn Rf_message(format: *const c_char) {
     unsafe {
         if format.is_null() {
             println!();
@@ -247,8 +245,7 @@ pub fn messagecall(call: SEXP, format: *const c_char) {
 }
 
 /// Issue a message with append flag.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_message_append(format: *const c_char, append: c_int) {
+pub unsafe fn Rf_message_append(format: *const c_char, append: c_int) {
     unsafe {
         if format.is_null() {
             if append == 0 {
@@ -468,8 +465,7 @@ pub fn R_PrintDeferredWarnings() {
 // ---------------------------------------------------------------------------
 
 /// R_GetTracebackOnly -- return traceback without deparsing calls.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetTracebackOnly(skip: c_int) -> SEXP {
+pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
     unsafe {
         let mut nback: c_int = 0;
         let mut ns = skip;
@@ -617,8 +613,7 @@ pub unsafe fn do_printDeferredWarnings(
 // ---------------------------------------------------------------------------
 
 /// R_GetCurrentSrcref -- get the current source reference.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
+pub unsafe fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
     unsafe {
         // Simplified: no source references in Rust port yet
         globals::R_NilValue()
@@ -626,8 +621,7 @@ pub unsafe extern "C" fn R_GetCurrentSrcref(skip: c_int) -> SEXP {
 }
 
 /// R_GetSrcFilename -- get source filename from a srcref.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
+pub unsafe fn R_GetSrcFilename(_srcref: SEXP) -> SEXP {
     unsafe { Rf_mkString(b"\x00".as_ptr() as *const c_char) }
 }
 

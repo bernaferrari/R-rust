@@ -16,8 +16,7 @@ use crate::sexp::protect::*;
 
 /// do_substitute_direct - substitute in an evaluated object
 /// with an explicit list as second argument.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_substitute_direct(f: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_substitute_direct(f: SEXP, _env: SEXP) -> SEXP {
     // Stub: return the expression unchanged
     f
 }

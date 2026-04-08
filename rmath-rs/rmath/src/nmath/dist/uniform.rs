@@ -94,49 +94,41 @@ pub fn runif_inner(a: f64, b: f64) -> f64 {
 // ---- FFI shims (c_int -> bool) ----
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_dunif(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dunif_inner(x, a, b, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn dunif(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dunif_inner(x, a, b, give_log != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_punif(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     punif_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn punif(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     punif_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qunif(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qunif_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn qunif(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qunif_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_runif(a: f64, b: f64) -> f64 {
     runif_inner(a, b)
 }
 
 #[must_use]
-#[unsafe(no_mangle)]
 pub extern "C" fn runif(a: f64, b: f64) -> f64 {
     runif_inner(a, b)
 }

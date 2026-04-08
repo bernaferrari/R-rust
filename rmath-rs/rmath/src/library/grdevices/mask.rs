@@ -20,8 +20,7 @@ unsafe fn GEcurrentDevice() -> pGEDevDesc {
 }
 
 /// setMask - set the mask for the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setMask(args: SEXP) -> SEXP {
+pub unsafe fn setMask(args: SEXP) -> SEXP {
     let _dd = GEcurrentDevice();
     // Stub: cannot access dd->appending or dd->dev->setMask on void* dd
     R_NilValue()

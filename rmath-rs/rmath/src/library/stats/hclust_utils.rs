@@ -22,8 +22,7 @@ use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cutree(merge: SEXP, which: SEXP) -> SEXP {
+pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let merge = Rf_protect(coerceVector(merge, SEXPTYPE::INTSXP.0));
     let i_merge = INTEGER(merge);
 

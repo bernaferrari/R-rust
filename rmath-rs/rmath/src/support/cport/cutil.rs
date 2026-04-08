@@ -6,8 +6,7 @@
 /// Return a newly allocated copy of a string, or null if out of memory.
 ///
 /// Ported from R's src/main/strdup.c (Copyright 1990 Free Software Foundation)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_strdup(s: *const i8) -> *mut i8 {
+pub unsafe fn R_strdup(s: *const i8) -> *mut i8 {
     unsafe {
         if s.is_null() {
             return std::ptr::null_mut();
@@ -27,8 +26,7 @@ pub unsafe extern "C" fn R_strdup(s: *const i8) -> *mut i8 {
 /// Locale-specific case-insensitive string comparison.
 ///
 /// Ported from R's src/main/strncasecmp.c
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_strncasecmp(s1: *const i8, s2: *const i8, n: usize) -> i32 {
+pub unsafe fn R_strncasecmp(s1: *const i8, s2: *const i8, n: usize) -> i32 {
     unsafe {
         let s1 = std::ffi::CStr::from_ptr(s1).to_bytes();
         let s2 = std::ffi::CStr::from_ptr(s2).to_bytes();

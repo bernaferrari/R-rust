@@ -20,7 +20,6 @@ pub thread_local! { static Courier: Cell<font> = Cell::new(ptr::null_mut()); }
 pub fn init_fonts() { /* TODO */
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getSysFontSize() -> c_int {
+pub unsafe fn getSysFontSize() -> c_int {
     10
 }

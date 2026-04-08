@@ -483,8 +483,7 @@ unsafe fn TypeCheck(s: SEXP, stype: c_int) {
  * Utility: isNAcol -- check if element i of a colour object is NA.
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isNAcol(col: SEXP, index: c_int, ncol: c_int) -> Rboolean {
+pub unsafe fn isNAcol(col: SEXP, index: c_int, ncol: c_int) -> Rboolean {
     let mut result: Rboolean = 1; /* TRUE by default */
     if Rf_isNull(col) != 0 {
         result = 1;
@@ -588,6 +587,7 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
 }
 
 /* GEstring_to_pch stub */
+#[unsafe(no_mangle)]
 unsafe fn GEstring_to_pch(s: SEXP) -> c_int {
     /* Stub: returns default pch */
     1
@@ -604,7 +604,7 @@ unsafe fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
  * ======================================================================== */
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
+pub unsafe fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
     let n = length(lty);
     let mut ans: SEXP = R_NilValue();
     if n == 0 {
@@ -622,8 +622,7 @@ pub unsafe extern "C" fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
  * FixupLwd -- fix up line width specification.
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
+pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
     let n = length(lwd);
     let mut ans: SEXP = R_NilValue();
     if n == 0 {
@@ -692,7 +691,7 @@ unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
  * ======================================================================== */
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
+pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
     let n = length(col);
     let ans: SEXP;
     /* bg = dpptr(GEcurrentDevice())->bg; but we use dflt for stub */
@@ -767,8 +766,7 @@ unsafe fn FixupCex(cex: SEXP, dflt: c_double) -> SEXP {
  * FixupVFont -- fix up vector font specification.
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn FixupVFont(vfont: SEXP) -> SEXP {
+pub unsafe fn FixupVFont(vfont: SEXP) -> SEXP {
     if Rf_isNull(vfont) != 0 {
         return R_NilValue();
     }
@@ -1363,12 +1361,13 @@ unsafe fn CheckSymbolPar(p: SEXP, nr: *mut c_int, nc: *mut c_int) {
     }
 }
 
+
 /* ========================================================================
  * labelformat -- format labels from numbers to strings
  * ======================================================================== */
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn labelformat(labels: SEXP) -> SEXP {
+pub unsafe fn labelformat(labels: SEXP) -> SEXP {
     let n = length(labels);
     let mut ans: SEXP = R_NilValue();
     let stype = TYPEOF(labels);
@@ -1451,8 +1450,7 @@ pub unsafe extern "C" fn labelformat(labels: SEXP) -> SEXP {
  * C_plot_new -- create a new plot frame (plot.new())
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let dd = GEcurrentDevice();
     let recording = GRecording(call, dd);
     let dd = GNewPlot(recording);
@@ -1479,8 +1477,7 @@ pub unsafe extern "C" fn C_plot_new(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP
  * C_path -- draw a path (possibly with holes)
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_path(args: SEXP) -> SEXP {
+pub unsafe fn C_path(args: SEXP) -> SEXP {
     let dd = GEcurrentDevice();
     GCheckState(dd);
 
@@ -1654,8 +1651,7 @@ unsafe fn drawdend(
     *x = 0.5 * (xl + xr);
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_dend(args: SEXP) -> SEXP {
+pub unsafe fn C_dend(args: SEXP) -> SEXP {
     let mut x: c_double = 0.0;
     let mut y: c_double = 0.0;
     let n: c_int;
@@ -1750,8 +1746,7 @@ pub unsafe extern "C" fn C_dend(args: SEXP) -> SEXP {
  * C_dendwindow -- set up dendrogram window
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_dendwindow(args: SEXP) -> SEXP {
+pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
     let n: c_int;
     let mut pin: c_double;
     let ll: *mut c_double;
@@ -1885,8 +1880,7 @@ pub unsafe extern "C" fn C_dendwindow(args: SEXP) -> SEXP {
  * C_erase -- erase the current device/frame
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_erase(args: SEXP) -> SEXP {
+pub unsafe fn C_erase(args: SEXP) -> SEXP {
     let dd = GEcurrentDevice();
     let mut args = CDR(args);
     let col = Rf_protect(FixupCol(CAR(args), R_TRANWHITE));
@@ -1912,8 +1906,7 @@ pub unsafe extern "C" fn C_erase(args: SEXP) -> SEXP {
  * C_convertX -- convert x coordinates between coordinate systems
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_convertX(args: SEXP) -> SEXP {
+pub unsafe fn C_convertX(args: SEXP) -> SEXP {
     let mut args = CDR(args);
     let x = CAR(args);
     if TYPEOF(x) != SEXPTYPE::REALSXP.0 {
@@ -1944,8 +1937,7 @@ pub unsafe extern "C" fn C_convertX(args: SEXP) -> SEXP {
  * C_convertY -- convert y coordinates between coordinate systems
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn C_convertY(args: SEXP) -> SEXP {
+pub unsafe fn C_convertY(args: SEXP) -> SEXP {
     let mut args = CDR(args);
     let x = CAR(args);
     if TYPEOF(x) != SEXPTYPE::REALSXP.0 {

@@ -151,6 +151,7 @@ pub(crate) unsafe fn R_EditFile(filename: *const c_char) -> c_int {
 /// - Returns the result
 ///
 /// Port of: attribute_hidden SEXP do_edit(SEXP call, SEXP op, SEXP args, SEXP rho)
+#[unsafe(no_mangle)]
 pub unsafe fn do_edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     // Full implementation requires:
     // 1. Deparsing (deparse1) — needs the evaluator

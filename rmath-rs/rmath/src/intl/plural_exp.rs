@@ -83,7 +83,7 @@ fn init_germanic_plural() {
 /// the Germanic plural form.
 ///
 /// Returns 0 on success, non-zero on parse error.
-unsafe extern "C" fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
+unsafe fn PLURAL_PARSE(_arg: *mut parse_args) -> c_int {
     // Stub: indicate parse failure so the caller uses Germanic plural.
     -1
 }
@@ -127,8 +127,7 @@ unsafe fn parse_ulong(s: *const c_char, endp: &mut *const c_char) -> c_ulong {
 /// * `nullentry` - The null entry (metadata string) from the .mo file header.
 /// * `pluralp`   - Output: pointer to the plural expression.
 /// * `npluralsp` - Output: pointer to the number of plural forms.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_gettext_extract_plural(
+pub unsafe fn libintl_gettext_extract_plural(
     nullentry: *const c_char,
     pluralp: *mut *const expression,
     npluralsp: *mut c_ulong,
@@ -187,8 +186,7 @@ pub unsafe extern "C" fn libintl_gettext_extract_plural(
 /// Returns the plural form index (0-indexed).
 ///
 /// This is the standalone (non-_LIBC, non-IN_LIBINTL) implementation.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
+pub unsafe fn plural_eval(pexp: *const expression, n: c_ulong) -> c_ulong {
     unsafe {
         if pexp.is_null() {
             return 0;

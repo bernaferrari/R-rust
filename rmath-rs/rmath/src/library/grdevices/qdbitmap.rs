@@ -20,8 +20,7 @@ type QuartzParameters_t = *const c_void;
 
 /// QuartzBitmap_GetCGContext - returns the bitmap drawing context.
 /// Stub: returns null.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn QuartzBitmap_GetCGContext(
+pub unsafe fn QuartzBitmap_GetCGContext(
     _dev: QuartzDesc_t,
     _user_info: *mut c_void,
 ) -> *mut c_void {
@@ -30,13 +29,11 @@ pub unsafe extern "C" fn QuartzBitmap_GetCGContext(
 
 /// QuartzBitmap_Output - saves bitmap to file or clipboard.
 /// Stub: no-op.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn QuartzBitmap_Output(_dev: QuartzDesc_t, _qbd: *mut c_void) {}
+pub unsafe fn QuartzBitmap_Output(_dev: QuartzDesc_t, _qbd: *mut c_void) {}
 
 /// QuartzBitmap_NewPage - handles new page.
 /// Stub: no-op.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn QuartzBitmap_NewPage(
+pub unsafe fn QuartzBitmap_NewPage(
     _dev: QuartzDesc_t,
     _user_info: *mut c_void,
     _flags: c_int,
@@ -45,13 +42,11 @@ pub unsafe extern "C" fn QuartzBitmap_NewPage(
 
 /// QuartzBitmap_Close - cleanup and free device resources.
 /// Stub: no-op.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn QuartzBitmap_Close(_dev: QuartzDesc_t, _user_info: *mut c_void) {}
+pub unsafe fn QuartzBitmap_Close(_dev: QuartzDesc_t, _user_info: *mut c_void) {}
 
 /// QuartzBitmap_DeviceCreate - creates the bitmap device.
 /// Stub: returns null (device creation failed).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn QuartzBitmap_DeviceCreate(
+pub unsafe fn QuartzBitmap_DeviceCreate(
     _dd: *mut c_void,
     _fn: QuartzFunctions_t,
     _par: QuartzParameters_t,

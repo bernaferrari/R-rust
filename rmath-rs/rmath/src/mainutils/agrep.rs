@@ -22,8 +22,7 @@ use std::os::raw::{c_char, c_int};
 /// and is not feasible to port without it.
 ///
 /// Returns null (no match) as a safe stub.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_agrep(
+pub unsafe fn R_agrep(
     _pattern: *const c_char,
     _text: *const c_char,
     _max_distance: c_int,

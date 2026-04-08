@@ -1,8 +1,7 @@
 
 use core::ffi::c_int;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn kmeans_Lloyd(
+pub unsafe fn kmeans_Lloyd(
     x: *mut f64,
     pn: *const c_int,
     pp: *const c_int,
@@ -84,8 +83,7 @@ pub unsafe extern "C" fn kmeans_Lloyd(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn kmeans_MacQueen(
+pub unsafe fn kmeans_MacQueen(
     x: *mut f64,
     pn: *const c_int,
     pp: *const c_int,
@@ -202,13 +200,11 @@ pub unsafe extern "C" fn kmeans_MacQueen(
 }
 
 // Fortran tracing stubs (F77_SUB name mangling: lowercase + underscore suffix)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn kmns1_(_k: *const c_int, _it: *const c_int, _indx: *const c_int) {
+pub unsafe fn kmns1_(_k: *const c_int, _it: *const c_int, _indx: *const c_int) {
     // Tracing stub - no-op in Rust port
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn kmnsqpr_(
+pub unsafe fn kmnsqpr_(
     _istep: *const c_int,
     _icoun: *const c_int,
     _ncp: *const c_int,

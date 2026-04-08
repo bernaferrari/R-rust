@@ -143,8 +143,7 @@ pub const NA_LOGICAL: c_int = c_int::MIN;
 ///   3  = overflow with k suffix
 ///   4  = overflow with G suffix
 ///  -1  = unrecognized suffix
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
+pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
     unsafe {
         let bytes = CStr::from_ptr(p).to_bytes();
         let s = std::str::from_utf8_unchecked(bytes);
@@ -219,7 +218,7 @@ pub unsafe extern "C" fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_si
 /// Returns a static string.  `x` is the logical value (NA_LOGICAL for NA),
 /// `w` is the minimum field width.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
+pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -277,7 +276,7 @@ pub unsafe extern "C" fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 /// Returns a static string.  `x` is the integer value (NA_INTEGER for NA),
 /// `w` is the minimum field width.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
+pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -350,7 +349,7 @@ fn format_number_fixed(x: f64, prec: usize) -> String {
 ///
 /// Returns a pointer to a static buffer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeReal0(
+pub unsafe fn EncodeReal0(
     x: f64,
     w: c_int,
     d: c_int,
@@ -626,7 +625,7 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
 /// `wi`, `di`, `ei` are width, digits, scientific flag for the imaginary part.
 /// `dec` is the decimal separator string.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeComplex(
+pub unsafe fn EncodeComplex(
     x: Rcomplex,
     wr: c_int,
     dr: c_int,
@@ -699,7 +698,7 @@ pub unsafe extern "C" fn EncodeComplex(
 
 /// Encode a raw byte as a two-digit hex string with optional prefix.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
+pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
     unsafe {
         use std::sync::LazyLock;
         use std::sync::Mutex;
@@ -869,7 +868,7 @@ pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
 ///
 /// Delegates to `Rstrwid` with the CHARSXP's character data and length.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
+pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
     unsafe {
         if s.is_null() {
             return 0;
@@ -899,12 +898,7 @@ pub enum Rprt_adj {
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// thread-local buffer.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn EncodeString(
-    s: SEXP,
-    w: c_int,
-    quote: c_int,
-    justify: Rprt_adj,
-) -> *const c_char {
+pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
         static BUFFER: LazyLock<Mutex<Vec<u8>>> =
             LazyLock::new(|| Mutex::new(Vec::with_capacity(BUFSIZE)));
@@ -1163,8 +1157,7 @@ pub unsafe fn EncodeChar(x: SEXP) -> *const c_char {
 /// implementation writes the format string directly to stdout (without
 /// processing variadic arguments, since Rust cannot represent C varargs).
 /// For format-string-only calls (no % args), this produces correct output.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rprintf(format: *const c_char, _args: *mut c_void) {
+pub unsafe fn Rprintf(format: *const c_char, _args: *mut c_void) {
     unsafe {
         if format.is_null() {
             return;

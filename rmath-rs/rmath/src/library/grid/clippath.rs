@@ -37,6 +37,7 @@ use super::types::*;
 // ---------------------------------------------------------------------------
 
 /// lang2(a, b) — build a call of two arguments
+#[unsafe(no_mangle)]
 unsafe fn lang2(a: SEXP, b: SEXP) -> SEXP {
     crate::sexp::constructors::Rf_cons(a, crate::sexp::constructors::Rf_cons(b, R_NilValue()))
 }
@@ -45,6 +46,7 @@ unsafe fn lang2(a: SEXP, b: SEXP) -> SEXP {
 thread_local! { static R_gridEvalEnv: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
 
 /// Rf_inherits — check if object inherits from a given class
+#[unsafe(no_mangle)]
 unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     if x.is_null() || what.is_null() {
         return 0;
@@ -80,6 +82,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
 }
 
 /// ScalarLogical — create a single-element logical vector
+#[unsafe(no_mangle)]
 unsafe fn ScalarLogical(x: c_int) -> SEXP {
     let s = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::LGLSXP.0, 1);
     *crate::sexp::accessors::LOGICAL(s) = x;
@@ -87,6 +90,7 @@ unsafe fn ScalarLogical(x: c_int) -> SEXP {
 }
 
 /// setGridStateElement — set a grid state element on a device
+#[unsafe(no_mangle)]
 unsafe fn setGridStateElement(
     _dd: *const u8, /* pGEDevDesc */
     _elementIndex: c_int,
@@ -96,6 +100,7 @@ unsafe fn setGridStateElement(
 }
 
 /// Rf_eval_with_gd — evaluate expression with device context
+#[unsafe(no_mangle)]
 unsafe fn Rf_eval_with_gd(_call: SEXP, _env: SEXP, _dd: *const u8 /* pGEDevDesc */) -> SEXP {
     R_NilValue()
 }
@@ -104,8 +109,7 @@ unsafe fn Rf_eval_with_gd(_call: SEXP, _env: SEXP, _dd: *const u8 /* pGEDevDesc 
 // isClipPath — check if object is a GridClipPath
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isClipPath(clip: SEXP) -> bool {
+pub unsafe fn isClipPath(clip: SEXP) -> bool {
     Rf_inherits(
         clip,
         b"GridClipPath\0".as_ptr() as *const std::os::raw::c_char,
@@ -116,8 +120,7 @@ pub unsafe extern "C" fn isClipPath(clip: SEXP) -> bool {
 // resolveClipPath — resolve a clip path via R callback
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn resolveClipPath(path: SEXP, dd: *const u8 /* pGEDevDesc */) -> SEXP {
+pub unsafe fn resolveClipPath(path: SEXP, dd: *const u8 /* pGEDevDesc */) -> SEXP {
     setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(1));
     let resolve_fn = Rf_protect(findFun(
         Rf_install(b"resolveClipPath\0".as_ptr() as *const std::os::raw::c_char),

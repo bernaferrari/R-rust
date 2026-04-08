@@ -14,8 +14,7 @@ use crate::support::intl::types;
 ///
 /// # Safety
 /// All string pointers must be valid NUL-terminated C strings (or NULL for domainname).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn libintl_dgettext(
+pub unsafe fn libintl_dgettext(
     domainname: *const c_char,
     msgid: *const c_char,
 ) -> *mut c_char {
@@ -25,8 +24,7 @@ pub unsafe extern "C" fn libintl_dgettext(
 }
 
 /// Alias for `libintl_dgettext` (unprefixed, for compatibility).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
+pub unsafe fn dgettext(domainname: *const c_char, msgid: *const c_char) -> *mut c_char {
     unsafe { libintl_dgettext(domainname, msgid) }
 }
 

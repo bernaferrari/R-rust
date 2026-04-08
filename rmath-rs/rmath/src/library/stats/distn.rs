@@ -38,6 +38,7 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 // Helper: isNumeric
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn isNumeric(x: SEXP) -> bool {
     if x.is_null() {
         return false;
@@ -557,8 +558,7 @@ unsafe fn wrap_dchisq(x: c_double, df: c_double, log: c_int) -> c_double {
     crate::nmath::dist::chisq::dchisq_inner(x, df, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dchisq(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dchisq(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
     math2_1(sa, sb, sI, wrap_dchisq)
 }
 
@@ -568,8 +568,7 @@ unsafe fn wrap_dexp(x: c_double, scale: c_double, log: c_int) -> c_double {
     crate::nmath::dist::exponential::dexp_inner(x, scale, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dexp(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dexp(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
     math2_1(sa, sb, sI, wrap_dexp)
 }
 
@@ -579,8 +578,7 @@ unsafe fn wrap_dgeom(x: c_double, p: c_double, log: c_int) -> c_double {
     crate::nmath::dist::geometric::dgeom_inner(x, p, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dgeom(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dgeom(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
     math2_1(sa, sb, sI, wrap_dgeom)
 }
 
@@ -590,8 +588,7 @@ unsafe fn wrap_dpois(x: c_double, lambda: c_double, log: c_int) -> c_double {
     crate::nmath::dist::poisson::dpois_inner(x, lambda, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dpois(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dpois(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
     math2_1(sa, sb, sI, wrap_dpois)
 }
 
@@ -601,8 +598,7 @@ unsafe fn wrap_dt(x: c_double, df: c_double, log: c_int) -> c_double {
     crate::nmath::dist::t_dist::dt_inner(x, df, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dt(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dt(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
     math2_1(sa, sb, sI, wrap_dt)
 }
 
@@ -612,8 +608,7 @@ unsafe fn wrap_dsignrank(x: c_double, n: c_double, log: c_int) -> c_double {
     crate::nmath::dist::signrank::dsignrank_inner(x, n, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dsignrank(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dsignrank(sa: SEXP, sb: SEXP, sI: SEXP) -> SEXP {
     math2_1(sa, sb, sI, wrap_dsignrank)
 }
 
@@ -623,8 +618,7 @@ unsafe fn wrap_pchisq(x: c_double, df: c_double, lt: c_int, lp: c_int) -> c_doub
     crate::nmath::dist::chisq::pchisq_inner(x, df, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_pchisq)
 }
 
@@ -634,8 +628,7 @@ unsafe fn wrap_qchisq(p: c_double, df: c_double, lt: c_int, lp: c_int) -> c_doub
     crate::nmath::dist::chisq::qchisq_inner(p, df, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qchisq(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_qchisq)
 }
 
@@ -645,8 +638,7 @@ unsafe fn wrap_pexp(x: c_double, scale: c_double, lt: c_int, lp: c_int) -> c_dou
     crate::nmath::dist::exponential::pexp_inner(x, scale, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_pexp)
 }
 
@@ -656,8 +648,7 @@ unsafe fn wrap_qexp(p: c_double, scale: c_double, lt: c_int, lp: c_int) -> c_dou
     crate::nmath::dist::exponential::qexp_inner(p, scale, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qexp(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_qexp)
 }
 
@@ -667,8 +658,7 @@ unsafe fn wrap_pgeom(x: c_double, p: c_double, lt: c_int, lp: c_int) -> c_double
     crate::nmath::dist::geometric::pgeom_inner(x, p, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_pgeom)
 }
 
@@ -678,8 +668,7 @@ unsafe fn wrap_qgeom(p: c_double, prob: c_double, lt: c_int, lp: c_int) -> c_dou
     crate::nmath::dist::geometric::qgeom_inner(p, prob, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qgeom(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_qgeom)
 }
 
@@ -689,8 +678,7 @@ unsafe fn wrap_ppois(x: c_double, lambda: c_double, lt: c_int, lp: c_int) -> c_d
     crate::nmath::dist::poisson::ppois_inner(x, lambda, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ppois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_ppois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_ppois)
 }
 
@@ -700,8 +688,7 @@ unsafe fn wrap_qpois(p: c_double, lambda: c_double, lt: c_int, lp: c_int) -> c_d
     crate::nmath::dist::poisson::qpois_inner(p, lambda, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qpois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qpois(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_qpois)
 }
 
@@ -711,8 +698,7 @@ unsafe fn wrap_pt(x: c_double, df: c_double, lt: c_int, lp: c_int) -> c_double {
     crate::nmath::dist::t_dist::pt_inner(x, df, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_pt)
 }
 
@@ -722,8 +708,7 @@ unsafe fn wrap_qt(p: c_double, df: c_double, lt: c_int, lp: c_int) -> c_double {
     crate::nmath::dist::t_dist::qt_inner(p, df, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qt(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_qt)
 }
 
@@ -733,8 +718,7 @@ unsafe fn wrap_psignrank(x: c_double, n: c_double, lt: c_int, lp: c_int) -> c_do
     crate::nmath::dist::signrank::psignrank_inner(x, n, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_psignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_psignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_psignrank)
 }
 
@@ -744,8 +728,7 @@ unsafe fn wrap_qsignrank(p: c_double, n: c_double, lt: c_int, lp: c_int) -> c_do
     crate::nmath::dist::signrank::qsignrank_inner(p, n, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qsignrank(sa: SEXP, sb: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math2_2(sa, sb, sI, sJ, wrap_qsignrank)
 }
 
@@ -759,8 +742,7 @@ unsafe fn wrap_dbeta(x: c_double, a: c_double, b: c_double, log: c_int) -> c_dou
     crate::nmath::dist::beta::dbeta_inner(x, a, b, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dbeta)
 }
 
@@ -770,8 +752,7 @@ unsafe fn wrap_dbinom(x: c_double, n: c_double, p: c_double, log: c_int) -> c_do
     crate::nmath::dist::binomial::dbinom_inner(x, n, p, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dbinom)
 }
 
@@ -781,8 +762,7 @@ unsafe fn wrap_dcauchy(x: c_double, loc: c_double, sc: c_double, log: c_int) -> 
     crate::nmath::dist::cauchy::dcauchy_inner(x, loc, sc, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dcauchy)
 }
 
@@ -792,8 +772,7 @@ unsafe fn wrap_df(x: c_double, df1: c_double, df2: c_double, log: c_int) -> c_do
     crate::nmath::dist::f_dist::df_inner(x, df1, df2, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_df(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_df(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_df)
 }
 
@@ -803,8 +782,7 @@ unsafe fn wrap_dgamma(x: c_double, shape: c_double, scale: c_double, log: c_int)
     crate::nmath::dist::gamma::dgamma_inner(x, shape, scale, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dgamma)
 }
 
@@ -814,8 +792,7 @@ unsafe fn wrap_dlnorm(x: c_double, ml: c_double, sl: c_double, log: c_int) -> c_
     crate::nmath::dist::lnorm::dlnorm_inner(x, ml, sl, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dlnorm)
 }
 
@@ -825,8 +802,7 @@ unsafe fn wrap_dlogis(x: c_double, loc: c_double, sc: c_double, log: c_int) -> c
     crate::nmath::dist::logistic::dlogis_inner(x, loc, sc, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dlogis)
 }
 
@@ -836,8 +812,7 @@ unsafe fn wrap_dnbinom(x: c_double, size: c_double, prob: c_double, log: c_int) 
     crate::nmath::dist::nbinom::dnbinom_inner(x, size, prob, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dnbinom)
 }
 
@@ -847,8 +822,7 @@ unsafe fn wrap_dnbinom_mu(x: c_double, size: c_double, mu: c_double, log: c_int)
     crate::nmath::dist::nbinom::dnbinom_mu_inner(x, size, mu, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dnbinom_mu)
 }
 
@@ -858,8 +832,7 @@ unsafe fn wrap_dnorm(x: c_double, mu: c_double, sigma: c_double, log: c_int) -> 
     crate::nmath::dist::normal::dnorm4_inner(x, mu, sigma, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dnorm)
 }
 
@@ -869,8 +842,7 @@ unsafe fn wrap_dweibull(x: c_double, shape: c_double, scale: c_double, log: c_in
     crate::nmath::dist::weibull::dweibull_inner(x, shape, scale, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dweibull)
 }
 
@@ -880,8 +852,7 @@ unsafe fn wrap_dunif(x: c_double, a: c_double, b: c_double, log: c_int) -> c_dou
     crate::nmath::dist::uniform::dunif_inner(x, a, b, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dunif)
 }
 
@@ -891,8 +862,7 @@ unsafe fn wrap_dnt(x: c_double, df: c_double, ncp: c_double, log: c_int) -> c_do
     crate::nmath::dist::nt_dist::dnt_inner(x, df, ncp, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dnt)
 }
 
@@ -902,8 +872,7 @@ unsafe fn wrap_dnchisq(x: c_double, df: c_double, ncp: c_double, log: c_int) -> 
     crate::nmath::dist::nchisq::dnchisq_inner(x, df, ncp, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dnchisq)
 }
 
@@ -913,8 +882,7 @@ unsafe fn wrap_dwilcox(x: c_double, m: c_double, n: c_double, log: c_int) -> c_d
     crate::nmath::dist::wilcox::dwilcox_inner(x, m, n, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP) -> SEXP {
     math3_1(sa, sb, sc, sI, wrap_dwilcox)
 }
 
@@ -932,13 +900,11 @@ unsafe fn wrap_qbeta(p: c_double, a: c_double, b: c_double, lt: c_int, lp: c_int
     crate::nmath::dist::beta::qbeta_inner(p, a, b, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pbeta)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qbeta(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qbeta)
 }
 
@@ -952,13 +918,11 @@ unsafe fn wrap_qbinom(p: c_double, n: c_double, pr: c_double, lt: c_int, lp: c_i
     crate::nmath::dist::binomial::qbinom_inner(p, n, pr, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pbinom)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qbinom)
 }
 
@@ -972,13 +936,11 @@ unsafe fn wrap_qcauchy(p: c_double, loc: c_double, sc: c_double, lt: c_int, lp: 
     crate::nmath::dist::cauchy::qcauchy_inner(p, loc, sc, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pcauchy)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qcauchy(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qcauchy)
 }
 
@@ -992,13 +954,11 @@ unsafe fn wrap_qf(p: c_double, df1: c_double, df2: c_double, lt: c_int, lp: c_in
     crate::nmath::dist::f_dist::qf_inner(p, df1, df2, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pf)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qf(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qf)
 }
 
@@ -1024,13 +984,11 @@ unsafe fn wrap_qgamma(
     crate::nmath::dist::gamma::qgamma_inner(p, shape, scale, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pgamma)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qgamma(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qgamma)
 }
 
@@ -1044,13 +1002,11 @@ unsafe fn wrap_qlnorm(p: c_double, ml: c_double, sl: c_double, lt: c_int, lp: c_
     crate::nmath::dist::lnorm::qlnorm_inner(p, ml, sl, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_plnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_plnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_plnorm)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qlnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qlnorm)
 }
 
@@ -1064,13 +1020,11 @@ unsafe fn wrap_qlogis(p: c_double, loc: c_double, sc: c_double, lt: c_int, lp: c
     crate::nmath::dist::logistic::qlogis_inner(p, loc, sc, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_plogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_plogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_plogis)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qlogis(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qlogis)
 }
 
@@ -1096,13 +1050,11 @@ unsafe fn wrap_qnbinom(
     crate::nmath::dist::nbinom::qnbinom_inner(p, size, prob, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pnbinom)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qnbinom(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qnbinom)
 }
 
@@ -1128,13 +1080,11 @@ unsafe fn wrap_qnbinom_mu(
     crate::nmath::dist::nbinom::qnbinom_mu_inner(p, size, mu, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pnbinom_mu)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qnbinom_mu(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qnbinom_mu)
 }
 
@@ -1148,13 +1098,11 @@ unsafe fn wrap_qnorm(p: c_double, mu: c_double, sigma: c_double, lt: c_int, lp: 
     crate::nmath::dist::normal::qnorm5_inner(p, mu, sigma, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pnorm)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qnorm(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qnorm)
 }
 
@@ -1180,13 +1128,11 @@ unsafe fn wrap_qweibull(
     crate::nmath::dist::weibull::qweibull_inner(p, shape, scale, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pweibull)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qweibull(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qweibull)
 }
 
@@ -1200,13 +1146,11 @@ unsafe fn wrap_qunif(p: c_double, a: c_double, b: c_double, lt: c_int, lp: c_int
     crate::nmath::dist::uniform::qunif_inner(p, a, b, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_punif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_punif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_punif)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qunif(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qunif)
 }
 
@@ -1220,13 +1164,11 @@ unsafe fn wrap_qnt(p: c_double, df: c_double, ncp: c_double, lt: c_int, lp: c_in
     crate::nmath::dist::nt_dist::qnt_inner(p, df, ncp, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pnt)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qnt(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qnt)
 }
 
@@ -1240,13 +1182,11 @@ unsafe fn wrap_qnchisq(p: c_double, df: c_double, ncp: c_double, lt: c_int, lp: 
     crate::nmath::dist::nchisq::qnchisq_inner(p, df, ncp, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pnchisq)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qnchisq(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qnchisq)
 }
 
@@ -1260,13 +1200,11 @@ unsafe fn wrap_qwilcox(x: c_double, m: c_double, n: c_double, lt: c_int, lp: c_i
     crate::nmath::dist::wilcox::qwilcox_inner(x, m, n, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_pwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_pwilcox)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
+pub unsafe fn do_qwilcox(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math3_2(sa, sb, sc, sI, sJ, wrap_qwilcox)
 }
 
@@ -1280,8 +1218,7 @@ unsafe fn wrap_dhyper(x: c_double, r: c_double, b: c_double, n: c_double, log: c
     crate::nmath::dist::hypergeometric::dhyper_inner(x, r, b, n, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
     math4_1(sa, sb, sc, sd, sI, wrap_dhyper)
 }
 
@@ -1297,8 +1234,7 @@ unsafe fn wrap_dnbeta(
     crate::nmath::dist::nbeta::dnbeta_inner(x, a, b, ncp, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
     math4_1(sa, sb, sc, sd, sI, wrap_dnbeta)
 }
 
@@ -1314,8 +1250,7 @@ unsafe fn wrap_dnf(
     crate::nmath::dist::nf_dist::dnf_inner(x, df1, df2, ncp, log != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_dnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
+pub unsafe fn do_dnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP) -> SEXP {
     math4_1(sa, sb, sc, sd, sI, wrap_dnf)
 }
 
@@ -1343,8 +1278,7 @@ unsafe fn wrap_qhyper(
     crate::nmath::dist::hypergeometric::qhyper_inner(p, r, b, n, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_phyper(
+pub unsafe fn do_phyper(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1355,8 +1289,7 @@ pub unsafe extern "C" fn do_phyper(
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_phyper)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qhyper(
+pub unsafe fn do_qhyper(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1391,8 +1324,7 @@ unsafe fn wrap_qnbeta(
     crate::nmath::dist::nbeta::qnbeta_inner(p, a, b, ncp, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnbeta(
+pub unsafe fn do_pnbeta(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1403,8 +1335,7 @@ pub unsafe extern "C" fn do_pnbeta(
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_pnbeta)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnbeta(
+pub unsafe fn do_qnbeta(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1439,8 +1370,7 @@ unsafe fn wrap_qnf(
     crate::nmath::dist::nf_dist::qnf_inner(p, df1, df2, ncp, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_pnf(
+pub unsafe fn do_pnf(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1451,8 +1381,7 @@ pub unsafe extern "C" fn do_pnf(
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_pnf)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qnf(
+pub unsafe fn do_qnf(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1487,8 +1416,7 @@ unsafe fn wrap_qtukey(
     crate::nmath::dist::tukey::qtukey_inner(p, nr, nmeans, df, lt != 0, lp != 0)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_ptukey(
+pub unsafe fn do_ptukey(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1499,8 +1427,7 @@ pub unsafe extern "C" fn do_ptukey(
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_ptukey)
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_qtukey(
+pub unsafe fn do_qtukey(
     sa: SEXP,
     sb: SEXP,
     sc: SEXP,
@@ -1515,14 +1442,12 @@ pub unsafe extern "C" fn do_qtukey(
 // signrank_free / wilcox_free -- stubs (no-op, no caching in our port)
 // ===========================================================================
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn stats_signrank_free(_args: SEXP) -> SEXP {
+pub unsafe fn stats_signrank_free(_args: SEXP) -> SEXP {
     // No-op: signrank caching not implemented
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn stats_wilcox_free(_args: SEXP) -> SEXP {
+pub unsafe fn stats_wilcox_free(_args: SEXP) -> SEXP {
     // No-op: wilcox caching not implemented
     R_NilValue()
 }

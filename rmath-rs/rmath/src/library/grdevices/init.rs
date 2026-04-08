@@ -18,8 +18,7 @@ unsafe extern "C" {
 
 /// Stub: cairoProps - return whether Cairo features are available.
 /// Returns FALSE (0) for both Cairo and PangoCairo.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn cairoProps(in_: SEXP) -> SEXP {
+pub unsafe fn cairoProps(in_: SEXP) -> SEXP {
     let which = asInteger(in_);
     if which == 1 {
         // HAVE_WORKING_CAIRO
@@ -35,8 +34,7 @@ pub unsafe extern "C" fn cairoProps(in_: SEXP) -> SEXP {
 
 /// R_init_grDevices - registration entry point (stub).
 /// In the monolithic crate, this is a no-op.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_init_grDevices(_dll: *mut std::ffi::c_void) {
+pub unsafe fn R_init_grDevices(_dll: *mut std::ffi::c_void) {
     initPalette();
     // R_registerRoutines, R_useDynamicSymbols, R_forceSymbols
     // are no-ops in the monolithic crate

@@ -110,6 +110,7 @@ unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
     crate::sexp::envir::findVar(sym, rho)
 }
 
+#[unsafe(no_mangle)]
 unsafe fn defineVar(sym: SEXP, val: SEXP, rho: SEXP) {
     crate::sexp::envir::defineVar(sym, val, rho)
 }
@@ -191,6 +192,7 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     ans
 }
 
+#[unsafe(no_mangle)]
 unsafe fn mkString(s: &str) -> SEXP {
     let c_s = std::ffi::CString::new(s).unwrap_or_default();
     crate::sexp::constructors::Rf_mkString(c_s.as_ptr())
@@ -277,8 +279,7 @@ unsafe fn ConvInfoMsg(
 ///
 /// Performs Gauss-Newton iteration for nonlinear least squares.
 /// `m` is an nlsModel object, `control` is an nlsControl object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nls_iter(m: SEXP, control: SEXP, doTraceArg: SEXP) -> SEXP {
+pub unsafe fn nls_iter(m: SEXP, control: SEXP, doTraceArg: SEXP) -> SEXP {
     let doTrace = asLogical(doTraceArg) != 0;
 
     if !isNewList(control) {
@@ -487,8 +488,7 @@ pub unsafe extern "C" fn nls_iter(m: SEXP, control: SEXP, doTraceArg: SEXP) -> S
 /// Computes the numerical gradient of `expr` with respect to variables
 /// named in `theta`, evaluated in environment `rho`.
 /// Uses forward differences (default) or central differences.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn numeric_deriv(
+pub unsafe fn numeric_deriv(
     expr: SEXP,
     theta: SEXP,
     mut rho: SEXP,

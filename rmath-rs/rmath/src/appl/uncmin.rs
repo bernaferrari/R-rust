@@ -153,8 +153,7 @@ fn print_real_vector(v: &[f64], n: i32) {
 
 /// Calculates a numerical approximation to the upper triangular
 /// portion of the second derivative matrix (the Hessian).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fdhess(
+pub unsafe fn fdhess(
     n: std::os::raw::c_int,
     x: *mut f64,
     fval: f64,
@@ -2322,8 +2321,7 @@ unsafe fn optdrv(
 
 /// Complete interface to Dennis-Schnabel minimization package.
 /// Called by R's nlm().
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn optif9(
+pub unsafe fn optif9(
     nr: std::os::raw::c_int,
     n: std::os::raw::c_int,
     x: *mut f64,

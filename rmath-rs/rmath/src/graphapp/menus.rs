@@ -11,27 +11,21 @@ use super::types::*;
 pub unsafe fn init_menus() { /* TODO */
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newmdimenu() -> menu {
+pub unsafe fn newmdimenu() -> menu {
     ptr::null_mut()
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn newpopup(_fn_: actionfn) -> menu {
+pub unsafe fn newpopup(_fn_: actionfn) -> menu {
     ptr::null_mut()
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gmenubar(_fn_: actionfn, _items: *mut MenuItem) -> menubar {
+pub unsafe fn gmenubar(_fn_: actionfn, _items: *mut MenuItem) -> menubar {
     ptr::null_mut()
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gpopup(_fn_: actionfn, _items: *mut MenuItem) -> menu {
+pub unsafe fn gpopup(_fn_: actionfn, _items: *mut MenuItem) -> menu {
     ptr::null_mut()
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gchangepopup(_w: window, _p: menu) { /* TODO */
+pub unsafe fn gchangepopup(_w: window, _p: menu) { /* TODO */
 }
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gchangemenubar(_mb: menubar) { /* TODO */
+pub unsafe fn gchangemenubar(_mb: menubar) { /* TODO */
 }
 
 pub unsafe fn adjust_menu(_wparam: usize) { /* TODO */

@@ -568,8 +568,7 @@ unsafe fn sslvrg(
 ///
 /// # Safety
 /// All pointer arguments must be valid and point to appropriately sized arrays.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn sbart_(
+pub unsafe fn sbart_(
     penalt: *mut f64,
     dofoff: *mut f64,
     xs: *mut f64,

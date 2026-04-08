@@ -2073,8 +2073,7 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Default method for `$`. Performs partial matching on pair-list and
 /// vector-list names, and also handles environment subsetting.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
+pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
     unsafe {
         Rf_protect(input);
         Rf_protect(x);

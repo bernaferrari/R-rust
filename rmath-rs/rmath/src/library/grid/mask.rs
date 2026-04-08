@@ -107,8 +107,7 @@ unsafe fn Rf_eval_with_gd(_call: SEXP, _env: SEXP, _dd: *const u8 /* pGEDevDesc 
 // isMask — check if object is a GridMask
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isMask(mask: SEXP) -> bool {
+pub unsafe fn isMask(mask: SEXP) -> bool {
     Rf_inherits(mask, b"GridMask\0".as_ptr() as *const std::os::raw::c_char) != 0
 }
 
@@ -116,8 +115,7 @@ pub unsafe extern "C" fn isMask(mask: SEXP) -> bool {
 // resolveMask — resolve a mask via R callback
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn resolveMask(mask: SEXP, dd: *const u8 /* pGEDevDesc */) -> SEXP {
+pub unsafe fn resolveMask(mask: SEXP, dd: *const u8 /* pGEDevDesc */) -> SEXP {
     let resolve_fn = Rf_protect(findFun(
         Rf_install(b"resolveMask\0".as_ptr() as *const std::os::raw::c_char),
         R_gridEvalEnv.with(|v| v.get()),

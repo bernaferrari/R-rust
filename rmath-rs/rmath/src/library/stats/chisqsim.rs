@@ -116,8 +116,7 @@ unsafe fn fisher_sim(
     PutRNGstate();
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
+pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
     let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.0));
     let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.0));
     let nr = LENGTH(sr);
@@ -150,8 +149,7 @@ pub unsafe extern "C" fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
+pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
     let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.0));
     let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.0));
     let E = Rf_protect(coerceVector(E, SEXPTYPE::REALSXP.0));

@@ -482,8 +482,7 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
 // 1-parameter random samplers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rchisq(sn: SEXP, sa: SEXP) -> SEXP {
+pub unsafe fn do_rchisq(sn: SEXP, sa: SEXP) -> SEXP {
     random1(
         sn,
         sa,
@@ -492,8 +491,7 @@ pub unsafe extern "C" fn do_rchisq(sn: SEXP, sa: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rexp(sn: SEXP, sa: SEXP) -> SEXP {
+pub unsafe fn do_rexp(sn: SEXP, sa: SEXP) -> SEXP {
     random1(
         sn,
         sa,
@@ -502,8 +500,7 @@ pub unsafe extern "C" fn do_rexp(sn: SEXP, sa: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rgeom(sn: SEXP, sa: SEXP) -> SEXP {
+pub unsafe fn do_rgeom(sn: SEXP, sa: SEXP) -> SEXP {
     random1(
         sn,
         sa,
@@ -512,8 +509,7 @@ pub unsafe extern "C" fn do_rgeom(sn: SEXP, sa: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rpois(sn: SEXP, sa: SEXP) -> SEXP {
+pub unsafe fn do_rpois(sn: SEXP, sa: SEXP) -> SEXP {
     random1(
         sn,
         sa,
@@ -522,8 +518,7 @@ pub unsafe extern "C" fn do_rpois(sn: SEXP, sa: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rt(sn: SEXP, sa: SEXP) -> SEXP {
+pub unsafe fn do_rt(sn: SEXP, sa: SEXP) -> SEXP {
     random1(
         sn,
         sa,
@@ -532,8 +527,7 @@ pub unsafe extern "C" fn do_rt(sn: SEXP, sa: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
+pub unsafe fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
     random1(
         sn,
         sa,
@@ -546,8 +540,7 @@ pub unsafe extern "C" fn do_rsignrank(sn: SEXP, sa: SEXP) -> SEXP {
 // 2-parameter random samplers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rbeta(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rbeta(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -557,8 +550,7 @@ pub unsafe extern "C" fn do_rbeta(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -568,8 +560,7 @@ pub unsafe extern "C" fn do_rbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rcauchy(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rcauchy(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -579,8 +570,7 @@ pub unsafe extern "C" fn do_rcauchy(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rf(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rf(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -590,8 +580,7 @@ pub unsafe extern "C" fn do_rf(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rgamma(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rgamma(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -601,8 +590,7 @@ pub unsafe extern "C" fn do_rgamma(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rlnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rlnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -612,8 +600,7 @@ pub unsafe extern "C" fn do_rlnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rlogis(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rlogis(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -623,8 +610,7 @@ pub unsafe extern "C" fn do_rlogis(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rnbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rnbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -634,8 +620,7 @@ pub unsafe extern "C" fn do_rnbinom(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -645,8 +630,7 @@ pub unsafe extern "C" fn do_rnorm(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_runif(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_runif(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -656,8 +640,7 @@ pub unsafe extern "C" fn do_runif(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rweibull(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rweibull(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -667,8 +650,7 @@ pub unsafe extern "C" fn do_rweibull(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rwilcox(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rwilcox(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -678,8 +660,7 @@ pub unsafe extern "C" fn do_rwilcox(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rnchisq(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rnchisq(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -689,8 +670,7 @@ pub unsafe extern "C" fn do_rnchisq(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     )
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
     random2(
         sn,
         sa,
@@ -704,8 +684,7 @@ pub unsafe extern "C" fn do_rnbinom_mu(sn: SEXP, sa: SEXP, sb: SEXP) -> SEXP {
 // 3-parameter random samplers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rhyper(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP) -> SEXP {
+pub unsafe fn do_rhyper(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP) -> SEXP {
     random3(
         sn,
         sa,
@@ -750,8 +729,7 @@ unsafe fn FixupProb(p: *mut c_double, n: c_int) {
 // do_rmultinom -- multinomial random sampling
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
+pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
     let n = as_integer(sn);
     let size = as_integer(ssize);
     if n == NA_INTEGER || n < 0 {
@@ -821,8 +799,7 @@ unsafe fn alloc_int_array(n: usize) -> *mut c_int {
 // r2dtable -- random 2-way tables with given marginals
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
+pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
     let nr = LENGTH(r);
     let nc = LENGTH(c);
 

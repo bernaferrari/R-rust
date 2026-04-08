@@ -712,7 +712,6 @@ pub unsafe fn Ri18n_iswctype(wc: wint_t, desc: c_uint) -> c_int {
 /// Returns the locale ID constant (MB_Default, MB_ja_JP, etc.) for the
 /// current process locale. Currently returns MB_Default as a stub;
 /// a full implementation would query the system locale.
-#[unsafe(no_mangle)]
 pub extern "C" fn get_locale_id_c() -> c_int {
     get_locale_id()
 }

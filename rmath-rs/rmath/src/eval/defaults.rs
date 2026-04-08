@@ -28,8 +28,7 @@ use super::dispatch::DispatchGroup;
 ///
 /// Defined in arithmetic.c. Dispatches unary arithmetic/math operators.
 /// The function signature matches R's definition.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // TODO: forward to arithmetic module when available
         let _ = (call, op, args, rho);
@@ -40,8 +39,7 @@ pub unsafe extern "C" fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// `R_binary(call, op, lhs, rhs)` - binary operator default.
 ///
 /// Defined in arithmetic.c. Dispatches binary arithmetic operators.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
+pub unsafe fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
     unsafe {
         // TODO: forward to arithmetic module when available
         let _ = (call, op, lhs, rhs);
@@ -53,7 +51,7 @@ pub unsafe extern "C" fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) ->
 ///
 /// Defined in math.c. Implements math functions like abs, sqrt, log, etc.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // TODO: forward to math module when available
         let _ = (call, op, args, rho);
@@ -65,7 +63,7 @@ pub unsafe extern "C" fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 ///
 /// Defined in relop.c. Implements comparison operators.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
+pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
     unsafe { crate::main::relop::do_relop_dflt(call, op, lhs, rhs) }
 }
 
@@ -73,7 +71,7 @@ pub unsafe extern "C" fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEX
 ///
 /// Defined in complex.c. Implements &, |, ! operators.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::main::logic::do_logic(call, op, args, rho) }
 }
 
@@ -81,7 +79,7 @@ pub unsafe extern "C" fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 ///
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::main::subset::do_subset_dflt(call, op, args, rho) }
 }
 
@@ -96,7 +94,7 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 ///
 /// Defined in coerce.c.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::main::bind::do_c_dflt(call, op, args, rho) }
 }
 
@@ -104,7 +102,7 @@ pub unsafe extern "C" fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) 
 ///
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::main::subset::do_subset2_dflt(call, op, args, rho) }
 }
 
@@ -112,7 +110,7 @@ pub unsafe extern "C" fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: 
 ///
 /// Defined in subassign.c.
 // no_mangle removed (duplicate)
-pub unsafe extern "C" fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { crate::main::subassign::do_subassign2_dflt(call, op, args, rho) }
 }
 

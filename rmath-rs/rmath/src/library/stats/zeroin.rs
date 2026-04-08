@@ -15,8 +15,7 @@ pub type R_zeroin2_fn = unsafe extern "C" fn(f64, *mut c_void) -> f64;
 /// - `f` must be a valid function pointer.
 /// - `info` must be a valid pointer (or null) as expected by `f`.
 /// - `Tol` and `Maxit` must be valid pointers to a `c_double` and `c_int` respectively.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_zeroin2(
+pub unsafe fn R_zeroin2(
     mut ax: c_double,
     mut bx: c_double,
     mut fa: c_double,

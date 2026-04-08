@@ -16,13 +16,11 @@ use crate::sexp::protect::*;
 
 /// R_dummy_extern_place - placeholder for external pointer initializers.
 /// This should never actually be called; it just signals an error.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_dummy_extern_place() -> SEXP {
+pub unsafe fn R_dummy_extern_place() -> SEXP {
     R_NilValue()
 }
 
 /// R_externalptr_prototype_object - create the prototype for externalptr objects.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_externalptr_prototype_object() -> SEXP {
+pub unsafe fn R_externalptr_prototype_object() -> SEXP {
     R_NilValue()
 }

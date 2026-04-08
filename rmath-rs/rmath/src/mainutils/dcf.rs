@@ -283,17 +283,18 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                 // Remove trailing whitespace, skip leading whitespace
                                 let trimmed = line.trim();
                                 if !trimmed.is_empty()
-                                    && let Some(ref mut val) = current_record[idx] {
-                                        // Add newlines for any accumulated empty blank lines
-                                        if !val.is_empty() {
-                                            val.push('\n');
-                                        }
-                                        for _ in 0..n_eblanklines {
-                                            val.push('\n');
-                                        }
-                                        n_eblanklines = 0;
-                                        val.push_str(trimmed);
+                                    && let Some(ref mut val) = current_record[idx]
+                                {
+                                    // Add newlines for any accumulated empty blank lines
+                                    if !val.is_empty() {
+                                        val.push('\n');
                                     }
+                                    for _ in 0..n_eblanklines {
+                                        val.push('\n');
+                                    }
+                                    n_eblanklines = 0;
+                                    val.push_str(trimmed);
+                                }
                             } else {
                                 // Non-foldable: preserve as-is
                                 if let Some(ref mut val) = current_record[idx] {

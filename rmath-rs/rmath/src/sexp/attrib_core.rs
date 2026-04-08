@@ -138,8 +138,7 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
 ///
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || which.is_null() {
             return R_NilValue();
@@ -250,8 +249,7 @@ pub unsafe fn isObject(x: SEXP) -> c_int {
 /// Set the class attribute of an object.
 ///
 /// This is the equivalent of R's `R_classgets()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
+pub unsafe fn R_classgets(x: SEXP, klass: SEXP) -> SEXP {
     unsafe {
         if klass.is_null() || klass == R_NilValue() {
             return x;
@@ -325,14 +323,12 @@ pub unsafe fn R_length_gets(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// FFI-compatible version of getAttrib.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
+pub unsafe fn Rf_getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe { getAttrib(x, which) }
 }
 
 /// FFI-compatible version of setAttrib.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+pub unsafe fn Rf_setAttrib(x: SEXP, which: SEXP, value: SEXP) {
     unsafe {
         setAttrib(x, which, value);
     }

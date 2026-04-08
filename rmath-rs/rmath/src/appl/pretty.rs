@@ -24,7 +24,6 @@ const ROUNDING_EPS: f64 = 1e-10;
 ///
 /// # Returns
 /// The unit (spacing) used for the pretty values.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_pretty(
     lo: *mut f64,
     up: *mut f64,

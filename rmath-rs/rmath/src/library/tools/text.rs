@@ -45,8 +45,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 /// -1 if there is none, with attribute "match.length" giving the
 /// length of the matched text (including the end delimiter), or -1
 /// for no match.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
+pub unsafe fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
     if x.is_null() || delims.is_null() {
         return R_NilValue();
     }
@@ -204,8 +203,7 @@ pub unsafe extern "C" fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
 
 /// Check if all the lines in 'text' are ASCII, after removing
 /// comments and ignoring the contents of quotes (unless ignore_quotes).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
+pub unsafe fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
     if text.is_null() {
         return Rf_ScalarLogical(FALSE);
     }
@@ -265,8 +263,7 @@ pub unsafe extern "C" fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP
 // ---------------------------------------------------------------------------
 
 /// Return indices of lines containing non-ASCII characters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn check_nonASCII2(text: SEXP) -> SEXP {
+pub unsafe fn check_nonASCII2(text: SEXP) -> SEXP {
     if text.is_null() {
         return R_NilValue();
     }
@@ -320,8 +317,7 @@ pub unsafe extern "C" fn check_nonASCII2(text: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Tab expansion for UTF-8 strings only.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
+pub unsafe fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
     if strings.is_null() || starts.is_null() {
         return R_NilValue();
     }
@@ -392,8 +388,7 @@ pub unsafe extern "C" fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Split a string by delimiter characters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn splitString(string: SEXP, delims: SEXP) -> SEXP {
+pub unsafe fn splitString(string: SEXP, delims: SEXP) -> SEXP {
     if string.is_null() || delims.is_null() {
         return R_NilValue();
     }
@@ -484,8 +479,7 @@ pub unsafe extern "C" fn splitString(string: SEXP, delims: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Return a logical vector indicating which strings contain non-ASCII characters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nonASCII(text: SEXP) -> SEXP {
+pub unsafe fn nonASCII(text: SEXP) -> SEXP {
     if text.is_null() {
         return R_NilValue();
     }

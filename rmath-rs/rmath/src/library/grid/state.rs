@@ -109,12 +109,14 @@ unsafe fn isVector(x: SEXP) -> bool {
 /* ==================== Helper: isString ==================== */
 
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn isString(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP.0
 }
 
 /* ==================== Helper: findVar ==================== */
 
+#[unsafe(no_mangle)]
 #[inline]
 unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
     crate::sexp::envir::R_findVarInFrame(rho, sym)
@@ -132,15 +134,14 @@ unsafe fn lang1(_sym: SEXP) -> SEXP {
 
 /// Create the grid system state (VECSXP of length 18).
 /// One element per GSS_* constant.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn createGridSystemState() -> SEXP {
+pub unsafe fn createGridSystemState() -> SEXP {
     Rf_allocVector(SEXPTYPE::VECSXP.0 as i32, 18)
 }
 
 /// Initialize the display list for a device.
 /// The top-level viewport goes at the start of the display list.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn initDL(dd: pGEDevDesc) {
+pub unsafe fn initDL(dd: pGEDevDesc) {
     // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
     let _ = dd;
 }
@@ -148,15 +149,13 @@ pub unsafe extern "C" fn initDL(dd: pGEDevDesc) {
 /// Initialize some bits of the system state (called before engine redraw).
 /// Does NOT init all state; display list, root viewport, and current gpar
 /// are initialized separately (see initDL, initVP, initGPar).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn initOtherState(dd: pGEDevDesc) {
+pub unsafe fn initOtherState(dd: pGEDevDesc) {
     // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
     let _ = dd;
 }
 
 /// Fill the grid system state with initial values.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
+pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
     use crate::sexp::ffi::NA_REAL;
 
     Rf_protect(state);
@@ -216,8 +215,7 @@ pub unsafe extern "C" fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
 }
 
 /// Get a grid state element by index.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -> SEXP {
+pub unsafe fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -> SEXP {
     // Stub: since pGEDevDesc is void*, we cannot access gesd.
     let _ = dd;
     let _ = elementIndex;
@@ -225,8 +223,7 @@ pub unsafe extern "C" fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -
 }
 
 /// Set a grid state element by index.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP) {
+pub unsafe fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP) {
     // Stub: since pGEDevDesc is void*, we cannot access gesd.
     let _ = dd;
     let _ = elementIndex;
@@ -234,8 +231,7 @@ pub unsafe extern "C" fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int
 }
 
 /// Callable from R code: set a grid state element.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
+pub unsafe fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
     let dd = getDevice();
     setGridStateElement(dd, *INTEGER(elementIndex).add(0), value);
     R_NilValue()
@@ -282,8 +278,7 @@ unsafe fn globaliseState(state: SEXP) {
 /* ==================== GE event callback ==================== */
 
 /// Grid callback for graphics engine events.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
+pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
     let mut result: SEXP = R_NilValue();
 
     match task {

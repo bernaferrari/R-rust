@@ -1665,8 +1665,7 @@ unsafe fn tre_ast_to_tnfa(
 // ===== Main compile function =====
 
 #[allow(unreachable_code)]
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_compile(
+pub unsafe fn tre_compile(
     preg: *mut regex_t,
     regex: *const tre_char_t,
     n: usize,
@@ -1953,8 +1952,7 @@ unsafe fn goto_error(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn tre_free(preg: *mut regex_t) {
+pub unsafe fn tre_free(preg: *mut regex_t) {
     unsafe {
         if preg.is_null() {
             return;

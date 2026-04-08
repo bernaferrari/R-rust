@@ -1907,8 +1907,7 @@ struct PDFCurrent {
 
 /// Check whether a Type 1 font family is currently loaded in either
 /// the PostScript or PDF device. Returns a logical scalar.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
+pub unsafe fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
     use crate::main::coerce::asLogical;
     use crate::sexp::constructors::Rf_ScalarLogical;
     // If name is not a string or length > 1, error
@@ -1923,8 +1922,7 @@ pub unsafe extern "C" fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 
 /// Check whether a CID font family is currently loaded in either
 /// the PostScript or PDF device. Returns a logical scalar.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
+pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
     use crate::main::coerce::asLogical;
     use crate::sexp::constructors::Rf_ScalarLogical;
     if TYPEOF(name) != SEXPTYPE::STRSXP.0 || LENGTH(name) > 1 {
@@ -1939,8 +1937,7 @@ pub unsafe extern "C" fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 /// Create a PostScript graphics device (postscript() function in R).
 ///
 /// Stub: returns R_NilValue (device creation not implemented).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PostScript(args: SEXP) -> SEXP {
+pub unsafe fn PostScript(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }
@@ -1948,8 +1945,7 @@ pub unsafe extern "C" fn PostScript(args: SEXP) -> SEXP {
 /// Create a PDF graphics device (pdf() function in R).
 ///
 /// Stub: returns R_NilValue (device creation not implemented).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PDF(args: SEXP) -> SEXP {
+pub unsafe fn PDF(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
 }

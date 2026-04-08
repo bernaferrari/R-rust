@@ -59,37 +59,32 @@ unsafe fn do_bmVersion() -> SEXP {
 
 /// contourLines - wrapper for do_contourLines.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_contourLines(call, op, CDR(args), env)
 }
 
 /// getSnapshot - wrapper for do_getSnapshot.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_getSnapshot(call, op, CDR(args), env)
 }
 
 /// playSnapshot - wrapper for do_playSnapshot.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_playSnapshot(call, op, CDR(args), env)
 }
 
 /// getGraphicsEvent - wrapper for do_getGraphicsEvent.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_getGraphicsEvent(call, op, CDR(args), env)
 }
 
 /// getGraphicsEventEnv - wrapper for do_getGraphicsEventEnv.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_getGraphicsEventEnv(call, op, CDR(args), env)
 }
 
 /// setGraphicsEventEnv - wrapper for do_setGraphicsEventEnv.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_setGraphicsEventEnv(call, op, CDR(args), env)
 }
 
@@ -99,8 +94,7 @@ pub(crate) unsafe fn bmVersion() -> SEXP {
 }
 
 /// devAskNewPage - get/set the "ask new page" flag for the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn devAskNewPage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn devAskNewPage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _dd = GEcurrentDevice();
     // Stub: cannot access gdd->ask on void* gdd; return FALSE
     Rf_ScalarLogical(0)

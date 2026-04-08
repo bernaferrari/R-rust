@@ -1192,10 +1192,11 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                     if *o.add(idx as usize) == 0 {
                         isSorted = false;
                     } else if (xtype == SEXPTYPE::INTSXP.0 || xtype == SEXPTYPE::LGLSXP.0)
-                        && *INTEGER(x).add(*o.add(idx as usize) as usize - 1) == NA_INTEGER {
-                            isSorted = false;
-                            *o.add(idx as usize) = 0;
-                        }
+                        && *INTEGER(x).add(*o.add(idx as usize) as usize - 1) == NA_INTEGER
+                    {
+                        isSorted = false;
+                        *o.add(idx as usize) = 0;
+                    }
                 }
                 idx += 1;
                 push(1);

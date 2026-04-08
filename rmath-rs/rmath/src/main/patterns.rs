@@ -104,8 +104,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const c_char) -> c_int {
 type Rboolean = c_int;
 
 /// R_GE_isPattern -- check if SEXP is a Pattern object.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_isPattern(x: SEXP) -> Rboolean {
+pub unsafe fn R_GE_isPattern(x: SEXP) -> Rboolean {
     unsafe {
         let pat = std::ffi::CString::new("Pattern").expect("CString::new failed: contains null byte");
         Rf_inherits(x, pat.as_ptr())
@@ -113,8 +112,7 @@ pub unsafe extern "C" fn R_GE_isPattern(x: SEXP) -> Rboolean {
 }
 
 /// R_GE_patternType -- get the pattern type (component 0).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_patternType(pattern: SEXP) -> c_int {
+pub unsafe fn R_GE_patternType(pattern: SEXP) -> c_int {
     unsafe { *INTEGER(VECTOR_ELT(pattern, 0)) }
 }
 
@@ -130,48 +128,42 @@ macro_rules! checkLinearGradient {
     };
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientX1(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_linearGradientX1(pattern: SEXP) -> c_double {
     unsafe {
         checkLinearGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, linear_gradient_x1))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientY1(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_linearGradientY1(pattern: SEXP) -> c_double {
     unsafe {
         checkLinearGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, linear_gradient_y1))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientX2(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_linearGradientX2(pattern: SEXP) -> c_double {
     unsafe {
         checkLinearGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, linear_gradient_x2))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientY2(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_linearGradientY2(pattern: SEXP) -> c_double {
     unsafe {
         checkLinearGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, linear_gradient_y2))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientNumStops(pattern: SEXP) -> c_int {
+pub unsafe fn R_GE_linearGradientNumStops(pattern: SEXP) -> c_int {
     unsafe {
         checkLinearGradient!(pattern);
         LENGTH(VECTOR_ELT(pattern, linear_gradient_stops))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientStop(pattern: SEXP, i: c_int) -> c_double {
+pub unsafe fn R_GE_linearGradientStop(pattern: SEXP, i: c_int) -> c_double {
     unsafe {
         checkLinearGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, linear_gradient_stops)).add(i as usize)
@@ -181,8 +173,7 @@ pub unsafe extern "C" fn R_GE_linearGradientStop(pattern: SEXP, i: c_int) -> c_d
 /// rcolor: R color type (unsigned int).
 type rcolor = c_uint;
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientColour(pattern: SEXP, i: c_int) -> rcolor {
+pub unsafe fn R_GE_linearGradientColour(pattern: SEXP, i: c_int) -> rcolor {
     unsafe {
         checkLinearGradient!(pattern);
         RGBpar(
@@ -192,8 +183,7 @@ pub unsafe extern "C" fn R_GE_linearGradientColour(pattern: SEXP, i: c_int) -> r
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_linearGradientExtend(pattern: SEXP) -> c_int {
+pub unsafe fn R_GE_linearGradientExtend(pattern: SEXP) -> c_int {
     unsafe {
         checkLinearGradient!(pattern);
         *INTEGER(VECTOR_ELT(pattern, linear_gradient_extend))
@@ -212,72 +202,63 @@ macro_rules! checkRadialGradient {
     };
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientCX1(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_radialGradientCX1(pattern: SEXP) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_cx1))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientCY1(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_radialGradientCY1(pattern: SEXP) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_cy1))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientR1(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_radialGradientR1(pattern: SEXP) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_r1))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientCX2(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_radialGradientCX2(pattern: SEXP) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_cx2))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientCY2(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_radialGradientCY2(pattern: SEXP) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_cy2))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientR2(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_radialGradientR2(pattern: SEXP) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_r2))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientNumStops(pattern: SEXP) -> c_int {
+pub unsafe fn R_GE_radialGradientNumStops(pattern: SEXP) -> c_int {
     unsafe {
         checkRadialGradient!(pattern);
         LENGTH(VECTOR_ELT(pattern, radial_gradient_stops))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientStop(pattern: SEXP, i: c_int) -> c_double {
+pub unsafe fn R_GE_radialGradientStop(pattern: SEXP, i: c_int) -> c_double {
     unsafe {
         checkRadialGradient!(pattern);
         *REAL(VECTOR_ELT(pattern, radial_gradient_stops)).add(i as usize)
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientColour(pattern: SEXP, i: c_int) -> rcolor {
+pub unsafe fn R_GE_radialGradientColour(pattern: SEXP, i: c_int) -> rcolor {
     unsafe {
         checkRadialGradient!(pattern);
         RGBpar(
@@ -287,8 +268,7 @@ pub unsafe extern "C" fn R_GE_radialGradientColour(pattern: SEXP, i: c_int) -> r
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_radialGradientExtend(pattern: SEXP) -> c_int {
+pub unsafe fn R_GE_radialGradientExtend(pattern: SEXP) -> c_int {
     unsafe {
         checkRadialGradient!(pattern);
         *INTEGER(VECTOR_ELT(pattern, radial_gradient_extend))
@@ -307,48 +287,42 @@ macro_rules! checkTilingPattern {
     };
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_tilingPatternFunction(pattern: SEXP) -> SEXP {
+pub unsafe fn R_GE_tilingPatternFunction(pattern: SEXP) -> SEXP {
     unsafe {
         checkTilingPattern!(pattern);
         VECTOR_ELT(pattern, tiling_pattern_function)
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_tilingPatternX(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_tilingPatternX(pattern: SEXP) -> c_double {
     unsafe {
         checkTilingPattern!(pattern);
         *REAL(VECTOR_ELT(pattern, tiling_pattern_x))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_tilingPatternY(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_tilingPatternY(pattern: SEXP) -> c_double {
     unsafe {
         checkTilingPattern!(pattern);
         *REAL(VECTOR_ELT(pattern, tiling_pattern_y))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_tilingPatternWidth(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_tilingPatternWidth(pattern: SEXP) -> c_double {
     unsafe {
         checkTilingPattern!(pattern);
         *REAL(VECTOR_ELT(pattern, tiling_pattern_width))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_tilingPatternHeight(pattern: SEXP) -> c_double {
+pub unsafe fn R_GE_tilingPatternHeight(pattern: SEXP) -> c_double {
     unsafe {
         checkTilingPattern!(pattern);
         *REAL(VECTOR_ELT(pattern, tiling_pattern_height))
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_tilingPatternExtend(pattern: SEXP) -> c_int {
+pub unsafe fn R_GE_tilingPatternExtend(pattern: SEXP) -> c_int {
     unsafe {
         checkTilingPattern!(pattern);
         *INTEGER(VECTOR_ELT(pattern, tiling_pattern_extend))

@@ -908,6 +908,7 @@ unsafe fn isVectorAtomic(x: SEXP) -> bool {
 }
 
 /// inherits — check if object has a given class
+#[unsafe(no_mangle)]
 unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
     let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
     if isNull(klass) {
@@ -1037,8 +1038,7 @@ unsafe fn EncodeElement2(
  * Counts the number of fields per line in a file/connection.
  * Ported from r-source/src/library/utils/src/io.c
  */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn countfields(args: SEXP) -> SEXP {
+pub unsafe fn countfields(args: SEXP) -> SEXP {
     let mut data = LocalData::new();
     data.NAstrings = R_NilValue();
 
@@ -1278,8 +1278,7 @@ pub unsafe extern "C" fn countfields(args: SEXP) -> SEXP {
  * Converts a character vector to logical, integer, numeric, complex,
  * or factor. Full port from r-source/src/library/utils/src/io.c
  */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
 
     if args.is_null() {
@@ -1610,8 +1609,7 @@ pub unsafe extern "C" fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP
  * which is not available without a running R console session.
  * Always returns 0 (no selection).
  */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn menu(choices: SEXP) -> SEXP {
+pub unsafe fn menu(choices: SEXP) -> SEXP {
     let _ = choices;
     Rf_ScalarInteger(0)
 }
@@ -1623,8 +1621,7 @@ pub unsafe extern "C" fn menu(choices: SEXP) -> SEXP {
  * Simplified version of readLines, with skip of blank lines and comment-only lines.
  * Ported from r-source/src/library/utils/src/io.c
  */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn readtablehead(args: SEXP) -> SEXP {
+pub unsafe fn readtablehead(args: SEXP) -> SEXP {
     let mut data = LocalData::new();
     data.NAstrings = R_NilValue();
 
@@ -1885,8 +1882,7 @@ pub unsafe extern "C" fn readtablehead(args: SEXP) -> SEXP {
  *
  * Ported from r-source/src/library/utils/src/io.c
  */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, env);
 
     let mut args_cdr = CDR(args);

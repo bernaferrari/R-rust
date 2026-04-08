@@ -233,7 +233,6 @@ pub(crate) fn stirlerr(n: f64) -> f64 {
     }
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_stirlerr(n: f64) -> f64 {
     stirlerr(n)
 }

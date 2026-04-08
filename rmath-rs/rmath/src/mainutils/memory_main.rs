@@ -42,16 +42,14 @@ thread_local! { static gc_count: Cell<c_int> = Cell::new(0); }
 /// Returns whether a GC is currently running.
 ///
 /// This is the equivalent of R's `R_gc_running()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_gc_running() -> c_int {
+pub unsafe fn R_gc_running() -> c_int {
     R_in_gc.with(|v| v.get())
 }
 
 /// Trigger a full garbage collection.
 ///
 /// This is the equivalent of R's `R_gc()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_gc() {
+pub unsafe fn R_gc() {
     gc_count.with(|v| v.set(v.get() + 1));
     // No actual GC implementation yet; stub.
 }
@@ -59,8 +57,7 @@ pub unsafe extern "C" fn R_gc() {
 /// Trigger a lightweight garbage collection.
 ///
 /// This is the equivalent of R's `R_gc_lite()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_gc_lite() {
+pub unsafe fn R_gc_lite() {
     gc_count.with(|v| v.set(v.get() + 1));
     // No actual GC implementation yet; stub.
 }
@@ -438,8 +435,7 @@ pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
 /// Create a weak reference.
 ///
 /// This is the equivalent of R's `R_MakeWeakRef()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MakeWeakRef(_key: SEXP, _val: SEXP, _fin: SEXP, _onexit: c_int) -> SEXP {
+pub unsafe fn R_MakeWeakRef(_key: SEXP, _val: SEXP, _fin: SEXP, _onexit: c_int) -> SEXP {
     unsafe {
         // Stub: return R_NilValue since we don't have full WEAKREFSXP support yet.
         R_NilValue()
@@ -449,85 +445,70 @@ pub unsafe extern "C" fn R_MakeWeakRef(_key: SEXP, _val: SEXP, _fin: SEXP, _onex
 /// Create a weak reference with a C finalizer.
 ///
 /// This is the equivalent of R's `R_MakeWeakRefC()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MakeWeakRefC(
-    _key: SEXP,
-    _val: SEXP,
-    _fin: R_CFinalizer_t,
-    _onexit: c_int,
-) -> SEXP {
+pub unsafe fn R_MakeWeakRefC(_key: SEXP, _val: SEXP, _fin: R_CFinalizer_t, _onexit: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the key of a weak reference.
 ///
 /// This is the equivalent of R's `R_WeakRefKey()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WeakRefKey(_w: SEXP) -> SEXP {
+pub unsafe fn R_WeakRefKey(_w: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Get the value of a weak reference.
 ///
 /// This is the equivalent of R's `R_WeakRefValue()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_WeakRefValue(_w: SEXP) -> SEXP {
+pub unsafe fn R_WeakRefValue(_w: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
 
 /// Run the finalizer for a weak reference.
 ///
 /// This is the equivalent of R's `R_RunWeakRefFinalizer()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RunWeakRefFinalizer(_w: SEXP) {
+pub unsafe fn R_RunWeakRefFinalizer(_w: SEXP) {
     // No-op stub.
 }
 
 /// Register a finalizer for an object.
 ///
 /// This is the equivalent of R's `R_RegisterFinalizer()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RegisterFinalizer(_s: SEXP, _fun: SEXP) {
+pub unsafe fn R_RegisterFinalizer(_s: SEXP, _fun: SEXP) {
     // No-op stub.
 }
 
 /// Register a finalizer for an object with exit control.
 ///
 /// This is the equivalent of R's `R_RegisterFinalizerEx()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RegisterFinalizerEx(_s: SEXP, _fun: SEXP, _onexit: c_int) {
+pub unsafe fn R_RegisterFinalizerEx(_s: SEXP, _fun: SEXP, _onexit: c_int) {
     // No-op stub.
 }
 
 /// Register a C finalizer for an object.
 ///
 /// This is the equivalent of R's `R_RegisterCFinalizer()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RegisterCFinalizer(_s: SEXP, _fun: R_CFinalizer_t) {
+pub unsafe fn R_RegisterCFinalizer(_s: SEXP, _fun: R_CFinalizer_t) {
     // No-op stub.
 }
 
 /// Register a C finalizer for an object with exit control.
 ///
 /// This is the equivalent of R's `R_RegisterCFinalizerEx()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RegisterCFinalizerEx(_s: SEXP, _fun: R_CFinalizer_t, _onexit: c_int) {
+pub unsafe fn R_RegisterCFinalizerEx(_s: SEXP, _fun: R_CFinalizer_t, _onexit: c_int) {
     // No-op stub.
 }
 
 /// Run any pending finalizers.
 ///
 /// This is the equivalent of R's `R_RunPendingFinalizers()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RunPendingFinalizers() {
+pub unsafe fn R_RunPendingFinalizers() {
     // No-op stub.
 }
 
 /// Run all finalizers (called during exit).
 ///
 /// This is the equivalent of R's `R_RunFinalizers()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_RunFinalizers() {
+pub unsafe fn R_RunFinalizers() {
     // No-op stub.
 }
 
@@ -549,8 +530,7 @@ pub(crate) unsafe fn R_RunExitFinalizers_memory() {
 /// Create an external pointer.
 ///
 /// This is the equivalent of R's `R_MakeExternalPtr()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
+pub unsafe fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
     unsafe {
         let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
         if s.is_null() {
@@ -566,8 +546,7 @@ pub unsafe extern "C" fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP
 /// Get the address stored in an external pointer.
 ///
 /// This is the equivalent of R's `R_ExternalPtrAddr()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
+pub unsafe fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
     unsafe {
         if s.is_null() {
             return ptr::null_mut();
@@ -579,8 +558,7 @@ pub unsafe extern "C" fn R_ExternalPtrAddr(s: SEXP) -> *mut c_void {
 /// Get the tag of an external pointer.
 ///
 /// This is the equivalent of R's `R_ExternalPtrTag()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExternalPtrTag(s: SEXP) -> SEXP {
+pub unsafe fn R_ExternalPtrTag(s: SEXP) -> SEXP {
     unsafe {
         if s.is_null() {
             return R_NilValue();
@@ -592,8 +570,7 @@ pub unsafe extern "C" fn R_ExternalPtrTag(s: SEXP) -> SEXP {
 /// Get the protected value of an external pointer.
 ///
 /// This is the equivalent of R's `R_ExternalPtrProtected()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
+pub unsafe fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
     unsafe {
         if s.is_null() {
             return R_NilValue();
@@ -605,8 +582,7 @@ pub unsafe extern "C" fn R_ExternalPtrProtected(s: SEXP) -> SEXP {
 /// Clear the address stored in an external pointer.
 ///
 /// This is the equivalent of R's `R_ClearExternalPtr()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ClearExternalPtr(s: SEXP) {
+pub unsafe fn R_ClearExternalPtr(s: SEXP) {
     unsafe {
         if !s.is_null() {
             (*s).data.extptr[0] = ptr::null_mut();
@@ -617,8 +593,7 @@ pub unsafe extern "C" fn R_ClearExternalPtr(s: SEXP) {
 /// Set the address stored in an external pointer.
 ///
 /// This is the equivalent of R's `R_SetExternalPtrAddr()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
+pub unsafe fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
     unsafe {
         if !s.is_null() {
             (*s).data.extptr[0] = p;
@@ -629,8 +604,7 @@ pub unsafe extern "C" fn R_SetExternalPtrAddr(s: SEXP, p: *mut c_void) {
 /// Set the tag of an external pointer.
 ///
 /// This is the equivalent of R's `R_SetExternalPtrTag()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
+pub unsafe fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
     unsafe {
         if !s.is_null() {
             (*s).data.extptr[2] = tag as *mut c_void;
@@ -641,8 +615,7 @@ pub unsafe extern "C" fn R_SetExternalPtrTag(s: SEXP, tag: SEXP) {
 /// Set the protected value of an external pointer.
 ///
 /// This is the equivalent of R's `R_SetExternalPtrProtected()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
+pub unsafe fn R_SetExternalPtrProtected(s: SEXP, p: SEXP) {
     unsafe {
         if !s.is_null() {
             (*s).data.extptr[1] = p as *mut c_void;
@@ -669,20 +642,17 @@ pub(crate) unsafe fn R_GetMaxNSize_memory() -> u64 {
 }
 
 /// Set the maximum vector heap size.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetMaxVSize(_size: u64) -> c_int {
+pub unsafe fn R_SetMaxVSize(_size: u64) -> c_int {
     1 // TRUE - always succeed
 }
 
 /// Set the maximum node heap size.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetMaxNSize(_size: u64) -> c_int {
+pub unsafe fn R_SetMaxNSize(_size: u64) -> c_int {
     1 // TRUE - always succeed
 }
 
 /// Set the protection stack size.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_SetPPSize(_size: u64) {
+pub unsafe fn R_SetPPSize(_size: u64) {
     // No-op stub.
 }
 
@@ -745,8 +715,7 @@ impl Default for R_StringBuffer {
 /// Allocate or grow a string buffer.
 ///
 /// This is the equivalent of R's `R_AllocStringBuffer()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut c_void {
+pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut c_void {
     unsafe {
         if buf.is_null() {
             return ptr::null_mut();
@@ -791,8 +760,7 @@ pub unsafe extern "C" fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuff
 /// Free a string buffer.
 ///
 /// This is the equivalent of R's `R_FreeStringBuffer()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FreeStringBuffer(buf: *mut R_StringBuffer) {
+pub unsafe fn R_FreeStringBuffer(buf: *mut R_StringBuffer) {
     unsafe {
         if buf.is_null() {
             return;
@@ -809,8 +777,7 @@ pub unsafe extern "C" fn R_FreeStringBuffer(buf: *mut R_StringBuffer) {
 /// Free a string buffer only if it is larger than defaultSize.
 ///
 /// This is the equivalent of R's `R_FreeStringBufferL()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
+pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
     unsafe {
         if buf.is_null() {
             return;
@@ -833,8 +800,7 @@ pub unsafe extern "C" fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
 /// Create a new multi-set for protecting objects.
 ///
 /// This is the equivalent of R's `R_NewPreciousMSet()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
+pub unsafe fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
     unsafe {
         let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
         if npreserved.is_null() {
@@ -853,16 +819,14 @@ pub unsafe extern "C" fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
 /// Add an object to a multi-set.
 ///
 /// This is the equivalent of R's `R_PreserveInMSet()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_PreserveInMSet(_x: SEXP, _mset: SEXP) {
+pub unsafe fn R_PreserveInMSet(_x: SEXP, _mset: SEXP) {
     // No-op stub.
 }
 
 /// Remove an object from a multi-set.
 ///
 /// This is the equivalent of R's `R_ReleaseFromMSet()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ReleaseFromMSet(_x: SEXP, _mset: SEXP) {
+pub unsafe fn R_ReleaseFromMSet(_x: SEXP, _mset: SEXP) {
     // No-op stub.
 }
 
@@ -873,16 +837,14 @@ pub unsafe extern "C" fn R_ReleaseFromMSet(_x: SEXP, _mset: SEXP) {
 /// Check if a vector is resizable.
 ///
 /// This is the equivalent of R's `R_isResizable()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_isResizable(_x: SEXP) -> c_int {
+pub unsafe fn R_isResizable(_x: SEXP) -> c_int {
     0 // FALSE - stub
 }
 
 /// Get the maximum length of a resizable vector.
 ///
 /// This is the equivalent of R's `R_maxLength()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_maxLength(x: SEXP) -> R_xlen_t {
+pub unsafe fn R_maxLength(x: SEXP) -> R_xlen_t {
     unsafe {
         if x.is_null() {
             return 0;
@@ -894,16 +856,14 @@ pub unsafe extern "C" fn R_maxLength(x: SEXP) -> R_xlen_t {
 /// Allocate a resizable vector.
 ///
 /// This is the equivalent of R's `R_allocResizableVector()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_allocResizableVector(type_: SEXPTYPE, maxlen: R_xlen_t) -> SEXP {
+pub unsafe fn R_allocResizableVector(type_: SEXPTYPE, maxlen: R_xlen_t) -> SEXP {
     unsafe { Rf_allocVector3(type_.0, maxlen) }
 }
 
 /// Duplicate a vector and make it resizable.
 ///
 /// This is the equivalent of R's `R_duplicateAsResizable()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_duplicateAsResizable(_x: SEXP) -> SEXP {
+pub unsafe fn R_duplicateAsResizable(_x: SEXP) -> SEXP {
     unsafe {
         R_NilValue() // stub
     }
@@ -912,8 +872,7 @@ pub unsafe extern "C" fn R_duplicateAsResizable(_x: SEXP) -> SEXP {
 /// Resize a vector.
 ///
 /// This is the equivalent of R's `R_resizeVector()`.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_resizeVector(_x: SEXP, _newlen: R_xlen_t) {
+pub unsafe fn R_resizeVector(_x: SEXP, _newlen: R_xlen_t) {
     // No-op stub.
 }
 

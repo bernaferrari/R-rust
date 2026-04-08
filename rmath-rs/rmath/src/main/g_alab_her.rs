@@ -912,8 +912,7 @@ const GE_ROUND_JOIN_LOCAL: c_int = 1;
 // ---------------------------------------------------------------------------
 
 /// Calculate the width of a string rendered with Hershey vector fonts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_VStrWidth(
+pub unsafe fn R_GE_VStrWidth(
     s: *const c_char,
     _enc: c_int,
     gc: *const R_GE_gcontext,
@@ -941,8 +940,7 @@ pub unsafe extern "C" fn R_GE_VStrWidth(
 }
 
 /// Calculate the height of a string rendered with Hershey vector fonts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_VStrHeight(
+pub unsafe fn R_GE_VStrHeight(
     s: *const c_char,
     _enc: c_int,
     gc: *const R_GE_gcontext,
@@ -970,8 +968,7 @@ pub unsafe extern "C" fn R_GE_VStrHeight(
 }
 
 /// Render text using Hershey vector fonts.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GE_VText(
+pub unsafe fn R_GE_VText(
     x: c_double,
     y: c_double,
     s: *const c_char,

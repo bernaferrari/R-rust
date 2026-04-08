@@ -170,16 +170,14 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
 }
 
 /// FFI function: Rf_PrintValue
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_PrintValue(x: SEXP) {
+pub unsafe fn Rf_PrintValue(x: SEXP) {
     if let Some(s) = Sexp::from_raw(x) {
         print_value(s);
     }
 }
 
 /// FFI function: Rf_PrintValueEnv (print with environment context)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
+pub unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
     if let Some(s) = Sexp::from_raw(x) {
         print_value(s);
     }

@@ -422,7 +422,6 @@ pub fn qtukey_inner(
 // FFI shims
 // =====================================================================
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_ptukey(
     q: c_double,
     nranges: c_double,
@@ -434,7 +433,6 @@ pub extern "C" fn Rf_ptukey(
     ptukey_inner(q, nranges, nmeans, df, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn ptukey(
     q: c_double,
     nranges: c_double,
@@ -446,7 +444,6 @@ pub extern "C" fn ptukey(
     ptukey_inner(q, nranges, nmeans, df, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn Rf_qtukey(
     p: c_double,
     nranges: c_double,
@@ -458,7 +455,6 @@ pub extern "C" fn Rf_qtukey(
     qtukey_inner(p, nranges, nmeans, df, lower_tail != 0, log_p != 0)
 }
 
-#[unsafe(no_mangle)]
 pub extern "C" fn qtukey(
     p: c_double,
     nranges: c_double,

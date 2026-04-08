@@ -15,13 +15,13 @@ use crate::sexp::globals::R_NilValue;
 type pGEDevDesc = *mut std::ffi::c_void;
 
 /// Stub: GEcurrentDevice - returns null.
+#[unsafe(no_mangle)]
 unsafe fn GEcurrentDevice() -> pGEDevDesc {
     ptr::null_mut()
 }
 
 /// setClipPath - set the clipping path for the current device.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn setClipPath(args: SEXP) -> SEXP {
+pub unsafe fn setClipPath(args: SEXP) -> SEXP {
     let _dd = GEcurrentDevice();
     // Stub: cannot access dd->appending or dd->dev->setClipPath on void* dd
     R_NilValue()

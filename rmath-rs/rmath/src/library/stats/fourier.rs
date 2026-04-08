@@ -100,8 +100,7 @@ unsafe fn as_logical(x: SEXP) -> c_int {
 
 /* Fourier Transform for Univariate Spatial and Time Series */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn fft(z: SEXP, inverse: SEXP) -> SEXP {
+pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let mut z = z;
@@ -219,8 +218,7 @@ pub unsafe extern "C" fn fft(z: SEXP, inverse: SEXP) -> SEXP {
 
 /* Fourier Transform for Vector-Valued ("multivariate") Series */
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
+pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     let d = getAttrib(z, R_DimSymbol());
@@ -354,8 +352,7 @@ unsafe fn nextn0_64(mut n: u64, f: *const c_int, nf: c_int) -> u64 {
     n
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
+pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     if TYPEOF(n) == SEXPTYPE::NILSXP.0 {

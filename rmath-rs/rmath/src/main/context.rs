@@ -156,11 +156,13 @@ unsafe fn UNPROTECT(n: c_int) {
 }
 
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn vmaxget() -> *mut c_void {
     ptr::null_mut()
 }
 
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn vmaxset(_vmax: *mut c_void) {}
 
 #[inline]
@@ -267,6 +269,7 @@ unsafe fn asInteger(s: SEXP) -> c_int {
 }
 
 #[inline]
+#[unsafe(no_mangle)]
 unsafe fn allocList(len: c_int) -> SEXP {
     unsafe {
         let mut result = R_NilValue();
@@ -461,8 +464,7 @@ pub unsafe fn R_run_onexits_impl(cptr: *mut sexp_context::RCNTXT) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_run_onexits(cptr: *mut sexp_context::RCNTXT) {
+pub unsafe fn R_run_onexits(cptr: *mut sexp_context::RCNTXT) {
     unsafe {
         R_run_onexits_impl(cptr);
     }
@@ -536,8 +538,7 @@ pub unsafe fn R_jumpctxt_impl(targetcptr: *mut sexp_context::RCNTXT, mask: c_int
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_jumpctxt(targetcptr: *mut sexp_context::RCNTXT, mask: c_int, val: SEXP) {
+pub unsafe fn R_jumpctxt(targetcptr: *mut sexp_context::RCNTXT, mask: c_int, val: SEXP) {
     unsafe {
         R_jumpctxt_impl(targetcptr, mask, val);
     }
@@ -693,8 +694,7 @@ pub unsafe fn findcontext(mask: c_int, env: SEXP, val: SEXP) -> ! {
 // R_JumpToContext
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_JumpToContext(
+pub unsafe fn R_JumpToContext(
     target: *mut sexp_context::RCNTXT,
     mask: c_int,
     val: SEXP,
@@ -774,8 +774,7 @@ pub unsafe fn R_sysframe(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_sysframe_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> SEXP {
+pub unsafe fn R_sysframe_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> SEXP {
     unsafe { R_sysframe(n, cptr) }
 }
 
@@ -835,8 +834,7 @@ pub unsafe fn R_sysparent(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_sysparent_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> c_int {
+pub unsafe fn R_sysparent_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> c_int {
     unsafe { R_sysparent(n, cptr) }
 }
 
@@ -928,8 +926,7 @@ pub unsafe fn R_syscall(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_syscall_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> SEXP {
+pub unsafe fn R_syscall_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> SEXP {
     unsafe { R_syscall(n, cptr) }
 }
 
@@ -969,8 +966,7 @@ pub unsafe fn R_sysfunction(n: c_int, _cptr: *mut sexp_context::RCNTXT) -> SEXP 
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_sysfunction_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> SEXP {
+pub unsafe fn R_sysfunction_c(n: c_int, cptr: *mut sexp_context::RCNTXT) -> SEXP {
     unsafe { R_sysfunction(n, cptr) }
 }
 
@@ -1363,8 +1359,7 @@ pub unsafe fn R_findExecContext_impl(
     })
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findExecContext(
+pub unsafe fn R_findExecContext(
     cptr: *mut sexp_context::RCNTXT,
     envir: SEXP,
 ) -> *mut sexp_context::RCNTXT {
@@ -1401,8 +1396,7 @@ pub unsafe fn R_findParentContext_impl(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_findParentContext(
+pub unsafe fn R_findParentContext(
     cptr: *mut sexp_context::RCNTXT,
     n: c_int,
 ) -> *mut sexp_context::RCNTXT {
@@ -1461,8 +1455,7 @@ pub unsafe fn R_ToplevelExec_impl(
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ToplevelExec(
+pub unsafe fn R_ToplevelExec(
     fun: Option<unsafe extern "C" fn(*mut c_void)>,
     data: *mut c_void,
 ) -> Rboolean {
@@ -1473,8 +1466,7 @@ pub unsafe extern "C" fn R_ToplevelExec(
 // R_GetCurrentEnv
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_GetCurrentEnv() -> SEXP {
+pub unsafe fn R_GetCurrentEnv() -> SEXP {
     unsafe {
         sexp_context::CONTEXT_STACK.with(|stack| {
             let stack = stack.borrow();
@@ -1502,7 +1494,7 @@ struct ProtectedEvalData {
     env: SEXP,
 }
 
-unsafe extern "C" fn protectedEval_trampoline(data: *mut c_void) {
+unsafe fn protectedEval_trampoline(data: *mut c_void) {
     unsafe {
         let data = &mut *(data as *mut ProtectedEvalData);
         let eval_env = if data.env.is_null() || data.env == R_NilValue() {
@@ -1515,8 +1507,7 @@ unsafe extern "C" fn protectedEval_trampoline(data: *mut c_void) {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tryEval(e: SEXP, env: SEXP, ErrorOccurred: *mut c_int) -> SEXP {
+pub unsafe fn R_tryEval(e: SEXP, env: SEXP, ErrorOccurred: *mut c_int) -> SEXP {
     unsafe {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let eval_env = if env.is_null() || env == R_NilValue() {
@@ -1548,8 +1539,7 @@ pub unsafe extern "C" fn R_tryEval(e: SEXP, env: SEXP, ErrorOccurred: *mut c_int
 // R_tryEvalSilent
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_tryEvalSilent(e: SEXP, env: SEXP, ErrorOccurred: *mut c_int) -> SEXP {
+pub unsafe fn R_tryEvalSilent(e: SEXP, env: SEXP, ErrorOccurred: *mut c_int) -> SEXP {
     unsafe {
         let oldshow = R_ShowErrorMessages.with(|s| s.get());
         R_ShowErrorMessages.with(|s| s.set(0));
@@ -1563,8 +1553,7 @@ pub unsafe extern "C" fn R_tryEvalSilent(e: SEXP, env: SEXP, ErrorOccurred: *mut
 // R_ExecWithCleanup
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExecWithCleanup(
+pub unsafe fn R_ExecWithCleanup(
     fun: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
     data: *mut c_void,
     cleanfun: Option<unsafe extern "C" fn(*mut c_void)>,
@@ -1612,8 +1601,7 @@ struct unwind_cont_t {
     jumptarget: usize,
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_MakeUnwindCont() -> SEXP {
+pub unsafe fn R_MakeUnwindCont() -> SEXP {
     unsafe {
         let n_doubles = (std::mem::size_of::<unwind_cont_t>() + std::mem::size_of::<c_double>()
             - 1)
@@ -1626,15 +1614,13 @@ pub unsafe extern "C" fn R_MakeUnwindCont() -> SEXP {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ContinueUnwind(_cont: SEXP) -> ! {
+pub unsafe fn R_ContinueUnwind(_cont: SEXP) -> ! {
     std::panic::panic_any(sexp_context::RError {
         message: "R_ContinueUnwind: unwind continuation".to_string(),
     });
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_UnwindProtect(
+pub unsafe fn R_UnwindProtect(
     fun: Option<unsafe extern "C" fn(*mut c_void) -> SEXP>,
     data: *mut c_void,
     cleanfun: Option<unsafe extern "C" fn(*mut c_void, Rboolean)>,
@@ -1691,8 +1677,7 @@ pub unsafe extern "C" fn R_UnwindProtect(
 // R_jump_to_top
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_jump_to_top() {
+pub unsafe fn R_jump_to_top() {
     unsafe {
         let toplevel = get_R_ToplevelContext();
         if !toplevel.is_null() {
@@ -1709,8 +1694,7 @@ pub unsafe extern "C" fn R_jump_to_top() {
 // R_InsertRestartHandlers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {
+pub unsafe fn R_InsertRestartHandlers(_call: SEXP, _rho: SEXP) {
     // Stub
 }
 

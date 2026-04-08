@@ -31,19 +31,16 @@ const L_TOP: c_int = 2;
 const L_RIGHT: c_int = 2;
 
 /* These transformations assume that x and width are in the same units */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn justifyX(x: f64, width: f64, hjust: f64) -> f64 {
+pub unsafe fn justifyX(x: f64, width: f64, hjust: f64) -> f64 {
     x - width * hjust
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn justifyY(y: f64, height: f64, vjust: f64) -> f64 {
+pub unsafe fn justifyY(y: f64, height: f64, vjust: f64) -> f64 {
     y - height * vjust
 }
 
 /* Convert enum justification into 0..1 justification */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn convertJust(just: c_int) -> f64 {
+pub unsafe fn convertJust(just: c_int) -> f64 {
     let mut result: f64 = 0.0;
     match just {
         _ if just == L_BOTTOM || just == L_LEFT => {
@@ -61,8 +58,7 @@ pub unsafe extern "C" fn convertJust(just: c_int) -> f64 {
 }
 
 /* Return the amount of justification required */
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn justification(
+pub unsafe fn justification(
     width: f64,
     height: f64,
     hjust: f64,

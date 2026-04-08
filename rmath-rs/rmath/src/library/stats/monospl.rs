@@ -42,6 +42,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // Local helpers
 // ---------------------------------------------------------------------------
 
+#[unsafe(no_mangle)]
 unsafe fn isInteger(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::INTSXP.0
 }
@@ -66,8 +67,7 @@ unsafe fn error(msg: &str) {
 /// @param n  == length(m) == 1 + length(S)
 ///
 /// Note that m[] is modified in place.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn monoFC_mod(m: *mut c_double, S: *mut c_double, n: c_int) {
+pub unsafe fn monoFC_mod(m: *mut c_double, S: *mut c_double, n: c_int) {
     if n < 2 {
         error("n must be at least two");
         return;
@@ -100,8 +100,7 @@ pub unsafe extern "C" fn monoFC_mod(m: *mut c_double, S: *mut c_double, n: c_int
 // monoFC_m: SEXP interface
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
+pub unsafe fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
     let n = LENGTH(m);
 
     let val = if isInteger(m) {

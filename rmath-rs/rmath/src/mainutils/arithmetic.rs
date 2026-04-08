@@ -47,13 +47,11 @@ const C_EPS: f64 = f64::EPSILON;
 // ---------------------------------------------------------------------------
 
 /// Returns the IEEE double representation of R's NA value.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_ValueOfNA() -> f64 {
     NA_REAL
 }
 
 /// Check if a NaN value is specifically R's NA (not just any NaN).
-#[unsafe(no_mangle)]
 pub extern "C" fn R_NaN_is_R_NA(x: f64) -> c_int {
     // R's NA has the specific bit pattern 0x7ff0000000001954
     if x.is_nan() && x.to_bits() == 0x7ff0000000001954 {
@@ -64,7 +62,6 @@ pub extern "C" fn R_NaN_is_R_NA(x: f64) -> c_int {
 }
 
 /// Check if a value is R's NA.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_IsNA(x: f64) -> c_int {
     if x.is_nan() && R_NaN_is_R_NA(x) != 0 {
         1
@@ -74,7 +71,6 @@ pub extern "C" fn R_IsNA(x: f64) -> c_int {
 }
 
 /// Check if a value is NaN but not R's NA.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_IsNaN(x: f64) -> c_int {
     if x.is_nan() && R_NaN_is_R_NA(x) == 0 {
         1
@@ -97,8 +93,7 @@ pub fn R_FINITE(x: f64) -> bool {
 ///
 /// Returns NA_INTEGER on overflow or if either input is NA_INTEGER.
 /// If `pnaflag` is non-null, sets it to true on overflow.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_integer_plus(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
+pub unsafe fn R_integer_plus(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
     unsafe {
         if x == NA_INTEGER || y == NA_INTEGER {
             return NA_INTEGER;
@@ -121,8 +116,7 @@ pub unsafe extern "C" fn R_integer_plus(x: c_int, y: c_int, pnaflag: *mut bool) 
 /// Safe integer subtraction with overflow detection.
 ///
 /// Returns NA_INTEGER on overflow or if either input is NA_INTEGER.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_integer_minus(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
+pub unsafe fn R_integer_minus(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
     unsafe {
         if x == NA_INTEGER || y == NA_INTEGER {
             return NA_INTEGER;
@@ -146,8 +140,7 @@ pub unsafe extern "C" fn R_integer_minus(x: c_int, y: c_int, pnaflag: *mut bool)
 /// Safe integer multiplication with overflow detection.
 ///
 /// Returns NA_INTEGER on overflow or if either input is NA_INTEGER.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_integer_times(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
+pub unsafe fn R_integer_times(x: c_int, y: c_int, pnaflag: *mut bool) -> c_int {
     unsafe {
         if x == NA_INTEGER || y == NA_INTEGER {
             return NA_INTEGER;
@@ -171,7 +164,6 @@ pub unsafe extern "C" fn R_integer_times(x: c_int, y: c_int, pnaflag: *mut bool)
 /// Integer division returning double.
 ///
 /// Returns NA_REAL if either input is NA_INTEGER.
-#[unsafe(no_mangle)]
 pub extern "C" fn R_integer_divide(x: c_int, y: c_int) -> f64 {
     if x == NA_INTEGER || y == NA_INTEGER {
         NA_REAL

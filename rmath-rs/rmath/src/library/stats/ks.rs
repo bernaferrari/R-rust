@@ -115,8 +115,7 @@ fn K2l(x: f64, lower: bool, tol: f64) -> f64 {
 }
 
 /// R entry point: pkolmogorov_two_limit(sq, slower, stol)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pkolmogorov_two_limit(sq: SEXP, slower: SEXP, stol: SEXP) -> SEXP {
+pub unsafe fn pkolmogorov_two_limit(sq: SEXP, slower: SEXP, stol: SEXP) -> SEXP {
     let lower = asInteger(slower);
     let tol = asReal(stol);
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, LENGTH(sq)));
@@ -284,8 +283,7 @@ unsafe fn psmirnov_exact_ties_upper(q: f64, m: c_int, n: c_int, z: *const c_int,
 }
 
 /// R entry point: psmirnov_exact(sq, sm, sn, sz, stwo, slower)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn psmirnov_exact(
+pub unsafe fn psmirnov_exact(
     sq: SEXP,
     sm: SEXP,
     sn: SEXP,
@@ -452,8 +450,7 @@ fn K2x(n: c_int, d: f64) -> f64 {
 }
 
 /// R entry point: pkolmogorov_two_exact(sq, sn)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
+pub unsafe fn pkolmogorov_two_exact(sq: SEXP, sn: SEXP) -> SEXP {
     let n = asInteger(sn);
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, LENGTH(sq)));
     for i in 0..LENGTH(sq) as usize {
@@ -529,8 +526,7 @@ fn Smirnov_sim_wrk(
 }
 
 /// R entry point: Smirnov_sim(sr, sc, sB, twosided)
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Smirnov_sim(sr: SEXP, sc: SEXP, sB: SEXP, twosided: SEXP) -> SEXP {
+pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sB: SEXP, twosided: SEXP) -> SEXP {
     let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP));
     let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP));
     let nr = LENGTH(sr);

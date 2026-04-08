@@ -24,8 +24,7 @@
 /// - 10: float radix (FLT_RADIX)
 /// - 11-13: float mantissa/min_exp/max_exp
 /// - 14-16: double mantissa/min_exp/max_exp
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rf_i1mach(i: std::os::raw::c_int) -> std::os::raw::c_int {
+pub unsafe fn Rf_i1mach(i: std::os::raw::c_int) -> std::os::raw::c_int {
     match i {
         1 => 5,
         2 => 6,
@@ -51,7 +50,6 @@ pub unsafe extern "C" fn Rf_i1mach(i: std::os::raw::c_int) -> std::os::raw::c_in
 ///
 /// Takes a pointer to the index (Fortran pass-by-reference convention).
 /// The name is mangled to match Fortran calling conventions (lowercase, trailing underscore).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn i1mach_(i: *const std::os::raw::c_int) -> std::os::raw::c_int {
+pub unsafe fn i1mach_(i: *const std::os::raw::c_int) -> std::os::raw::c_int {
     unsafe { Rf_i1mach(*i) }
 }

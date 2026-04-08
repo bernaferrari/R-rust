@@ -164,6 +164,7 @@ unsafe fn isString(x: SEXP) -> c_int {
     }
 }
 
+#[unsafe(no_mangle)]
 unsafe fn Rf_isNull(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {
@@ -1594,8 +1595,7 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
 // PrintValue
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PrintValue(s: SEXP) {
+pub unsafe fn PrintValue(s: SEXP) {
     unsafe {
         PrintValueEnv(s, R_GlobalEnv());
     }
@@ -1605,8 +1605,7 @@ pub unsafe extern "C" fn PrintValue(s: SEXP) {
 // PrintValueEnv
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn PrintValueEnv(s: SEXP, env: SEXP) {
+pub unsafe fn PrintValueEnv(s: SEXP, env: SEXP) {
     unsafe {
         if s.is_null() {
             return;
@@ -1634,8 +1633,7 @@ pub unsafe extern "C" fn PrintValueEnv(s: SEXP, env: SEXP) {
 // R_PV
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_PV(s: SEXP) {
+pub unsafe fn R_PV(s: SEXP) {
     unsafe {
         if !s.is_null() && isObject_fn(s) != 0 {
             PrintValueEnv(s, R_GlobalEnv());
@@ -1923,8 +1921,7 @@ pub unsafe fn do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 // isEnvironment (public, #[unsafe(no_mangle)])
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn isEnvironment(x: SEXP) -> c_int {
+pub unsafe fn isEnvironment(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;

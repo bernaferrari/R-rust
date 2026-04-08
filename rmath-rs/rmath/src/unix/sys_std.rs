@@ -33,8 +33,7 @@ const SA_SUICIDE: c_int = 3;
 // ---------------------------------------------------------------------------
 
 /// Fatal error handler called at startup.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_Suicide(s: *const c_char) {
+pub unsafe fn Rstd_Suicide(s: *const c_char) {
     unsafe {
         if !s.is_null() {
             let msg = std::ffi::CStr::from_ptr(s);
@@ -53,8 +52,7 @@ pub unsafe extern "C" fn Rstd_Suicide(s: *const c_char) {
 
 /// Read a line from the console.
 /// Without readline, reads from stdin.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_ReadConsole(
+pub unsafe fn Rstd_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
     len: c_int,
@@ -104,8 +102,7 @@ pub unsafe extern "C" fn Rstd_ReadConsole(
 // ---------------------------------------------------------------------------
 
 /// Write to the console (legacy interface).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
+pub unsafe fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
     unsafe {
         if len <= 0 || buf.is_null() {
             return;
@@ -117,8 +114,7 @@ pub unsafe extern "C" fn Rstd_WriteConsole(buf: *const c_char, len: c_int) {
 
 /// Write to the console with output type.
 /// otype=0: normal, otype=1: warning/error
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
+pub unsafe fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     unsafe {
         if len <= 0 || buf.is_null() {
             return;
@@ -137,31 +133,26 @@ pub unsafe extern "C" fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, oty
 // ---------------------------------------------------------------------------
 
 /// Reset the console state.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_ResetConsole() {}
+pub unsafe fn Rstd_ResetConsole() {}
 
 /// Flush console output.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_FlushConsole() {
+pub unsafe fn Rstd_FlushConsole() {
     let _ = io::stdout().flush();
     let _ = io::stderr().flush();
 }
 
 /// Clear error state on console.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_ClearerrConsole() {}
+pub unsafe fn Rstd_ClearerrConsole() {}
 
 /// Set busy indicator.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_Busy(_which: c_int) {}
+pub unsafe fn Rstd_Busy(_which: c_int) {}
 
 // ---------------------------------------------------------------------------
 // Rstd_ShowMessage
 // ---------------------------------------------------------------------------
 
 /// Show a message (used for warnings during initialization).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_ShowMessage(s: *const c_char) {
+pub unsafe fn Rstd_ShowMessage(s: *const c_char) {
     unsafe {
         if !s.is_null() {
             let msg = std::ffi::CStr::from_ptr(s);
@@ -178,8 +169,7 @@ pub unsafe extern "C" fn Rstd_ShowMessage(s: *const c_char) {
 /// saveact: SA_SAVE, SA_NOSAVE, SA_DEFAULT, SA_SUICIDE
 /// status: exit status
 /// runLast: whether to run .Last()
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
+pub unsafe fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
     // In the full implementation, this:
     // - Asks about saving workspace (interactive, SA_DEFAULT)
     // - Runs .Last() if runLast is true
@@ -195,8 +185,7 @@ pub unsafe extern "C" fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: 
 // ---------------------------------------------------------------------------
 
 /// Show files using a pager.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_ShowFiles(
+pub unsafe fn Rstd_ShowFiles(
     _nfile: c_int,
     _file: *const *const c_char,
     _headers: *const *const c_char,
@@ -208,8 +197,7 @@ pub unsafe extern "C" fn Rstd_ShowFiles(
 }
 
 /// Choose a file (file dialog).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
+pub unsafe fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c_int) -> c_int {
     0
 }
 
@@ -218,20 +206,16 @@ pub unsafe extern "C" fn Rstd_ChooseFile(_new: c_int, _buf: *mut c_char, _len: c
 // ---------------------------------------------------------------------------
 
 /// Load command history from file.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_loadhistory(_file: *const c_char) {}
+pub unsafe fn Rstd_loadhistory(_file: *const c_char) {}
 
 /// Save command history to file.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_savehistory(_file: *const c_char) {}
+pub unsafe fn Rstd_savehistory(_file: *const c_char) {}
 
 /// Add a line to the history.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_addhistory(_line: *const c_char) {}
+pub unsafe fn Rstd_addhistory(_line: *const c_char) {}
 
 /// Read history from file (readline interface).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rstd_read_history(_file: *const c_char) {}
+pub unsafe fn Rstd_read_history(_file: *const c_char) {}
 
 // ---------------------------------------------------------------------------
 // Event loop stubs
@@ -242,15 +226,13 @@ thread_local! { pub static R_PolledEvents: Cell<Option<unsafe extern "C" fn()>> 
 thread_local! { pub static Rg_PolledEvents: Cell<Option<unsafe extern "C" fn()>> = Cell::new(None); }
 
 /// Wait for the specified number of microseconds.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_wait_usec(_usec: c_int) {
+pub unsafe fn R_wait_usec(_usec: c_int) {
     // In the full implementation, this uses select() on no file descriptors
     // to sleep for the specified time.
 }
 
 /// Graphics wait for microseconds.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn Rg_wait_usec(_usec: c_int) {
+pub unsafe fn Rg_wait_usec(_usec: c_int) {
     unsafe {
         R_wait_usec(_usec);
     }
@@ -261,17 +243,12 @@ pub unsafe extern "C" fn Rg_wait_usec(_usec: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Set readline word break characters.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn set_rl_word_breaks(_str: *const c_char) {
+pub unsafe fn set_rl_word_breaks(_str: *const c_char) {
     // Stub: readline integration not ported
 }
 
 /// Expand filename using readline (stub).
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn R_ExpandFileName_readline(
-    _s: *const c_char,
-    _buff: *mut c_char,
-) -> *mut c_char {
+pub unsafe fn R_ExpandFileName_readline(_s: *const c_char, _buff: *mut c_char) -> *mut c_char {
     ptr::null_mut()
 }
 
