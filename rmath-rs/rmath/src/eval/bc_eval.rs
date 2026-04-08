@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    clippy::collapsible_if
+)]
 
 //! Bytecode interpreter — ports R's bcEval from eval.c.
 //!
@@ -11,7 +17,7 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, Rf_isNull, TYPEOF};
+use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, Rf_isNull, TYPEOF, VECTOR_ELT};
 use crate::sexp::constructors::*;
 use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -332,6 +338,292 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     }
                 }
 
+                opcodes::OP_DUP2 => {
+                    let top = stack.top();
+                    let s1 = stack.depth();
+                    let next = if s1 >= 2 {
+                        stack.at(s1 - 2)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(next);
+                    stack.push(top);
+                }
+
+                opcodes::OP_GOTO => {
+                    let target = *code_ptr.add(pc as usize);
+                    pc = target;
+                }
+
+                opcodes::OP_MAKEPROMISE => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let expr = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    let prom = crate::sexp::memory_ext::mkPROMSXP(expr, rho);
+                    stack.push(prom);
+                }
+
+                opcodes::OP_DOMISSING => {
+                    stack.push(R_NilValue());
+                }
+
+                opcodes::OP_CALL => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let fun = stack.pop();
+                    let args = stack.pop();
+                    if fun.is_null() {
+                        stack.push(R_NilValue());
+                    } else {
+                        let call = Rf_lang2(fun, args);
+                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        stack.push(result);
+                    }
+                }
+
+                opcodes::OP_CALLBUILTIN => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let fun = stack.pop();
+                    let args = stack.pop();
+                    if fun.is_null() {
+                        stack.push(R_NilValue());
+                    } else {
+                        let call = Rf_lang2(fun, args);
+                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        stack.push(result);
+                    }
+                    set_R_Visible(TRUE);
+                }
+
+                opcodes::OP_CALLSPECIAL => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let fun = stack.pop();
+                    let args = stack.pop();
+                    if fun.is_null() {
+                        stack.push(R_NilValue());
+                    } else {
+                        let call = Rf_lang2(fun, args);
+                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        stack.push(result);
+                    }
+                    set_R_Visible(FALSE);
+                }
+
+                opcodes::OP_STARTASSIGN => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let sym = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    let val = R_findVar(sym, rho);
+                    stack.push(sym);
+                    stack.push(val);
+                }
+
+                opcodes::OP_ENDASSIGN => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = stack.pop();
+                    let sym = stack.pop();
+                    defineVar(sym, val, rho);
+                    stack.push(val);
+                    set_R_Visible(FALSE);
+                }
+
+                opcodes::OP_STEPFOR => {
+                    let target = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let seq_val = stack.pop();
+                    let loop_var = stack.top();
+                    let mut int_seq: Option<*mut c_int> = None;
+                    let mut seq_len: c_int = 0;
+
+                    if !seq_val.is_null() && TYPEOF(seq_val) == SEXPTYPE::INTSXP.0 {
+                        int_seq = Some(INTEGER(seq_val));
+                        seq_len = LENGTH(seq_val);
+                    } else if !seq_val.is_null() && TYPEOF(seq_val) == SEXPTYPE::REALSXP.0 {
+                        seq_len = LENGTH(seq_val);
+                    }
+
+                    let ctr_ptr = stack.at(stack.depth() - 2);
+                    if ctr_ptr.is_null() {
+                        pc = target;
+                    } else {
+                        let ctr = *INTEGER(ctr_ptr);
+                        if ctr + 1 >= seq_len {
+                            pc = target;
+                        } else {
+                            *INTEGER(ctr_ptr) = ctr + 1;
+                            if let Some(is) = int_seq {
+                                if !is.is_null() {
+                                    let elt = *is.add((ctr + 1) as usize);
+                                    defineVar(loop_var, Rf_ScalarInteger(elt), rho);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                opcodes::OP_BREAK => {
+                    return R_NilValue();
+                }
+
+                opcodes::OP_NEXTITER => {
+                    pc += 0;
+                }
+
+                opcodes::OP_SETLOOPCTR => {
+                    let ctr = stack.pop();
+                    if !ctr.is_null() {
+                        if TYPEOF(ctr) == SEXPTYPE::INTSXP.0 {
+                            let d = INTEGER(ctr);
+                            if !d.is_null() {
+                                *d = -1;
+                            }
+                        }
+                        stack.push(ctr);
+                    } else {
+                        stack.push(R_NilValue());
+                    }
+                }
+
+                opcodes::OP_BEGINLOOP => {
+                    stack.push(R_NilValue());
+                }
+
+                opcodes::OP_ENDLOOP => {
+                    stack.pop();
+                }
+
+                opcodes::OP_HIDDENCALL => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let fun = stack.pop();
+                    let args = stack.pop();
+                    if fun.is_null() {
+                        stack.push(R_NilValue());
+                    } else {
+                        let call = Rf_lang2(fun, args);
+                        let result = crate::eval::eval::Rf_eval(call, rho);
+                        stack.push(result);
+                    }
+                    set_R_Visible(FALSE);
+                }
+
+                opcodes::OP_PUSHARG => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_PUSHFUN => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_PUSHNILVALUE => {
+                    stack.push(R_NilValue());
+                }
+
+                opcodes::OP_DFLTFUN => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_DFLTFORM => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_STARTSUBSET | opcodes::OP_ENDSUBSET => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    stack.push(R_NilValue());
+                }
+
+                opcodes::OP_STARTSUBSET2 | opcodes::OP_ENDSUBSET2 => {
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    stack.push(R_NilValue());
+                }
+
+                opcodes::OP_LDCLOSURE => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_CLOSEDEXPR => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_MAKEACTIVE => {
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = if !consts.is_null() && idx >= 0 {
+                        VECTOR_ELT(consts, idx as i64)
+                    } else {
+                        R_NilValue()
+                    };
+                    stack.push(val);
+                }
+
+                opcodes::OP_SWASTORE
+                | opcodes::OP_SWLOAD
+                | opcodes::OP_PUTBASE
+                | opcodes::OP_PUTBASE_SEP
+                | opcodes::OP_SEQBEGIN
+                | opcodes::OP_SEQEND => {
+                    pc += 1;
+                }
+
                 _ => {
                     // Unknown opcode — skip
                     eprintln!("Warning: unknown bytecode opcode {}", op);
@@ -378,5 +670,93 @@ mod tests {
         assert!(opcodes::OP_RETURN > 0);
         assert!(opcodes::OP_PUSHTRUE > 0);
         assert!(opcodes::OP_PUSHFALSE > 0);
+        assert!(opcodes::OP_CALL > 0);
+        assert!(opcodes::OP_STEPFOR > 0);
+        assert!(opcodes::OP_BREAK > 0);
+    }
+
+    #[test]
+    fn test_bc_push_pop_sequence() {
+        let mut stack = R_bcstack_t::new(8);
+        unsafe {
+            stack.push(R_NilValue());
+            stack.push(Rf_ScalarInteger(1));
+            stack.push(Rf_ScalarInteger(2));
+            assert_eq!(stack.depth(), 3);
+            let top = stack.pop();
+            assert!(!top.is_null());
+            assert_eq!(stack.depth(), 2);
+        }
+    }
+
+    #[test]
+    fn test_bc_dup2() {
+        let mut stack = R_bcstack_t::new(8);
+        unsafe {
+            stack.push(Rf_ScalarInteger(10));
+            stack.push(Rf_ScalarInteger(20));
+            assert_eq!(stack.depth(), 2);
+            let top = stack.top();
+            let s1 = stack.depth();
+            let next = stack.at(s1 - 2);
+            stack.push(next);
+            stack.push(top);
+            assert_eq!(stack.depth(), 4);
+        }
+    }
+
+    #[test]
+    fn test_bc_goto_and_branch() {
+        let mut stack = R_bcstack_t::new(8);
+        unsafe {
+            stack.push(Rf_ScalarLogical(TRUE));
+            let val = stack.top();
+            let cond = eval_bc_condition(val);
+            assert!(cond);
+
+            stack.push(Rf_ScalarLogical(FALSE));
+            let val2 = stack.top();
+            let cond2 = eval_bc_condition(val2);
+            assert!(!cond2);
+        }
+    }
+
+    #[test]
+    fn test_bc_eval_simple_code() {
+        use crate::sexp::memory::RArena;
+        let mut arena = RArena::new();
+
+        let code = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
+        let code_data = unsafe { (*code).gengc_next_node as *mut c_int };
+        unsafe {
+            code_data.add(0).write(opcodes::OP_PUSHNULL);
+            code_data.add(1).write(opcodes::OP_DUP);
+            code_data.add(2).write(opcodes::OP_RETURN);
+        }
+
+        let consts = arena.alloc_vector(SEXPTYPE::VECSXP, 0);
+        let stack_hint = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        let stack_data = unsafe { (*stack_hint).gengc_next_node as *mut c_int };
+        unsafe {
+            *stack_data = 8;
+        }
+
+        let bcode = arena.alloc_vector(SEXPTYPE::VECSXP, 3);
+        let bcode_data = unsafe { (*bcode).gengc_next_node as *mut SEXP };
+        unsafe {
+            *bcode_data.add(0) = code;
+            *bcode_data.add(1) = consts;
+            *bcode_data.add(2) = stack_hint;
+        }
+
+        let env = arena.alloc_node(SEXPTYPE::ENVSXP);
+        unsafe {
+            (*env).data.envsxp.frame = R_NilValue();
+            (*env).data.envsxp.enclos = R_NilValue();
+            (*env).data.envsxp.hashtab = ptr::null_mut();
+        }
+
+        let result = unsafe { bcEval(bcode, env) };
+        assert!(!result.is_null());
     }
 }

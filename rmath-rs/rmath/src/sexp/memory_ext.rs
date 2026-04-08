@@ -90,6 +90,17 @@ pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
     memory::with_arena(|arena| arena.alloc_node(sexptype))
 }
 
+/// Create a PROMSXP binding an expression to an environment.
+pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
+    let p = allocSExp(SEXPTYPE::PROMSXP);
+    if !p.is_null() {
+        (*p).data.promsxp.value = R_NilValue();
+        (*p).data.promsxp.expr = expr;
+        (*p).data.promsxp.env = env;
+    }
+    p
+}
+
 // ---------------------------------------------------------------------------
 // Raw cons cell (not arena-tracked)
 // ---------------------------------------------------------------------------
