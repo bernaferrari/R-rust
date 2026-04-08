@@ -9,6 +9,8 @@
 // The underlying implementations live in bessel_i.rs, bessel_j.rs,
 // bessel_k.rs, and bessel_y.rs, ported from R's nmath library.
 
+#![allow(dead_code)]
+
 use crate::special::bessel_i::bessel_i as bessel_i_impl;
 use crate::special::bessel_j::bessel_j as bessel_j_impl;
 use crate::special::bessel_k::bessel_k as bessel_k_impl;

@@ -3,6 +3,8 @@
 //! This module provides a Rust port of the GNU gettext `intl/` library,
 //! used internally by R's message catalog system.
 
+#![allow(dead_code)]
+
 // ---------------------------------------------------------------------------
 // Core types and global state
 // ---------------------------------------------------------------------------

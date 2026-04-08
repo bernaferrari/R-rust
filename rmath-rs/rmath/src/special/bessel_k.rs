@@ -592,6 +592,7 @@ fn k_bessel_forward(
 }
 
 // C FFI shims
+#[allow(dead_code)]
 mod imp {
     use super::*;
 
