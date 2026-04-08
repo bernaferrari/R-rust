@@ -10,22 +10,20 @@ use std::os::raw::c_char;
 
 use crate::intl::types;
 
-/// Look up MSGID in the DOMAINNAME message catalog for the given CATEGORY.
-///
-/// This is a thin wrapper that delegates to `libintl_dcigettext`. In this stub
-/// implementation, it returns MSGID as-is (the untranslated string).
-///
-/// # Safety
-/// All string pointers must be valid NUL-terminated C strings (or NULL for domainname).
 pub unsafe fn libintl_dcgettext(
-    _domainname: *const c_char,
+    domainname: *const c_char,
     msgid: *const c_char,
-    _category: types::c_int,
+    category: types::c_int,
 ) -> *mut c_char {
-    // Stub: return msgid as-is (cast away const for C compatibility).
-    // In the full implementation, this would call libintl_dcigettext()
-    // with (domainname, msgid, NULL, 0, 0, category).
-    msgid as *mut c_char
+    unsafe {
+        crate::intl::dcigettext::libintl_dcigettext(
+            domainname,
+            msgid,
+            std::ptr::null(),
+            0,
+            category,
+        )
+    }
 }
 
 /// Alias for `libintl_dcgettext` (unprefixed, for compatibility).

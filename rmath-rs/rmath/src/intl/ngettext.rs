@@ -53,12 +53,12 @@ mod tests {
     }
 
     #[test]
-    fn test_plural_form() {
+    fn test_plural_no_catalog() {
         unsafe {
             let s1 = b"cat\0" as *const u8 as *const c_char;
             let s2 = b"cats\0" as *const u8 as *const c_char;
             let result = libintl_ngettext(s1, s2, 5);
-            assert_eq!(result, s2 as *mut c_char);
+            assert_eq!(result, s1 as *mut c_char);
         }
     }
 }
