@@ -221,9 +221,9 @@ pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
                 return usize::MAX;
             }
             stack.stack.push(s);
-            stack.stack.len() - 1
+            (stack.stack.len() - 1) + 1
         } else {
-            usize::MAX
+            0
         }
     });
     index as *mut ProtectIndex
@@ -241,7 +241,7 @@ pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
     if index.is_null() {
         return;
     }
-    let idx = index as usize;
+    let idx = (index as usize).wrapping_sub(1);
     PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         if idx < stack.stack.len() {
@@ -485,7 +485,7 @@ mod tests {
         reset_protect_stack();
         unsafe {
             let idx = R_ProtectWithIndex(ptr::null_mut());
-            assert!((idx as usize) == usize::MAX);
+            assert!((idx as usize) == 0);
             assert_eq!(R_ProtectCount(), 0);
         }
     }

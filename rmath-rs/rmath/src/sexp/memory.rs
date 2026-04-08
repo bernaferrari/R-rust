@@ -221,7 +221,7 @@ impl RArena {
 
     /// Get the number of nodes allocated in this arena.
     pub fn node_count(&self) -> usize {
-        self.nodes.len()
+        self.nodes.len() - self.free_list.len()
     }
 
     /// Iterate over all arena nodes.
@@ -235,21 +235,21 @@ impl RArena {
             return;
         }
         let addr = ptr as usize;
-        let before = self.nodes.len();
-        self.nodes
-            .retain(|b| &**b as *const _ as *const _ as usize != addr);
-        if self.nodes.len() < before {
+        let found = self
+            .nodes
+            .iter()
+            .any(|b| &**b as *const _ as *const _ as usize == addr);
+        if found {
             self.free_list.push(ptr);
         }
     }
 
     /// Get the fragmentation ratio (freed / total capacity).
     pub fn fragmentation_ratio(&self) -> f64 {
-        let total = self.nodes.len() + self.free_list.len();
-        if total == 0 {
+        if self.nodes.is_empty() {
             0.0
         } else {
-            self.free_list.len() as f64 / total as f64
+            self.free_list.len() as f64 / self.nodes.len() as f64
         }
     }
 

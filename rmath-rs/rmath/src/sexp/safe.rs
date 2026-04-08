@@ -1207,7 +1207,7 @@ mod tests {
         let mut arena = RArena::new();
         let formals = arena.alloc_list_chain(1);
         let body = arena.alloc_node(SEXPTYPE::NILSXP);
-        let env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+        let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         let closure = arena.alloc_node(SEXPTYPE::CLOSXP);
         unsafe {
             (*closure).data.closxp.formals = formals;
@@ -1224,8 +1224,8 @@ mod tests {
     #[test]
     fn test_sexp_environment_accessors() {
         let mut arena = RArena::new();
-        let frame = arena.alloc_list_chain(0);
-        let enclos = unsafe { crate::sexp::globals::R_EmptyEnv() };
+        let frame = arena.alloc_list_chain(1);
+        let enclos = arena.alloc_node(SEXPTYPE::ENVSXP);
         let env = arena.alloc_node(SEXPTYPE::ENVSXP);
         unsafe {
             (*env).data.envsxp.frame = frame;

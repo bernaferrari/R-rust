@@ -215,7 +215,9 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
     }
 
     let global_env = unsafe { Sexp::from_raw_unchecked(R_GlobalEnv()) };
-    define_var_safe(symbol, value, global_env);
+    if !global_env.as_raw().is_null() {
+        define_var_safe(symbol, value, global_env);
+    }
 }
 
 // ---------------------------------------------------------------------------

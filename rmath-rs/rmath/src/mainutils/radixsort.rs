@@ -57,7 +57,7 @@ thread_local! {
     static ORDER: Cell<c_int> = Cell::new(1);
     static RANGE: Cell<c_int> = Cell::new(NA_INTEGER);
     static XMIN: Cell<c_int> = Cell::new(NA_INTEGER);
-    static COUNTS: RefCell<[u32; N_RANGE as usize + 1]> = RefCell::new([0; N_RANGE as usize + 1]);
+    static COUNTS: RefCell<Box<[u32]>> = RefCell::new(Box::new([0u32; N_RANGE as usize + 1]));
     static RADIXCOUNTS: RefCell<[[u32; 257]; 8]> = RefCell::new([[0; 257]; 8]);
     static SKIP: RefCell<[c_int; 8]> = RefCell::new([0; 8]);
     static RADIX_XSUB: Cell<*mut c_void> = Cell::new(ptr::null_mut());
