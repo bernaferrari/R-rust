@@ -17,3 +17,6 @@ integrated = []
 libm = "0.1"
 num = "0.4"
 libc = "0.2"
+
+[[bench]]
+name = "bench_eval"
