@@ -21,6 +21,7 @@ pub mod context;
 pub mod dispatch;
 #[allow(clippy::module_inception)]
 pub mod eval;
+pub mod parser;
 pub mod special;
 pub mod symbols;
 

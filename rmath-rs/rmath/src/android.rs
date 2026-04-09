@@ -14,6 +14,7 @@
 //! - **Zero-cost.** The safe wrappers compile down to the same operations
 //!   as the internal code.
 
+use crate::eval::parser;
 use crate::sexp::builder;
 use crate::sexp::memory::RArena;
 use crate::sexp::output;
@@ -135,6 +136,32 @@ impl RSession {
 
     pub fn norm_rand(&self) -> f64 {
         crate::dist::normal::norm_rand()
+    }
+
+    /// Parse and evaluate an R expression.
+    ///
+    /// Returns a formatted string representation of the result, or an error message.
+    pub fn eval(&mut self, code: &str) -> RResult {
+        match parser::parse(code, &mut self.arena) {
+            Ok(sexp) => {
+                if sexp.is_null() {
+                    return RResult {
+                        value: 0.0,
+                        output: "NULL".to_string(),
+                    };
+                }
+                let s = crate::sexp::safe::Sexp::from_raw(sexp);
+                let output = match s {
+                    Some(s) => output::format_sexp_direct(s),
+                    None => "NULL".to_string(),
+                };
+                RResult { value: 0.0, output }
+            }
+            Err(e) => RResult {
+                value: 0.0,
+                output: format!("Error: {}", e),
+            },
+        }
     }
 }
 
