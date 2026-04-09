@@ -21,7 +21,7 @@ const M_LN2: f64 = 0.693147180559945309417232121458; // log(2)
 /// of log((1+v)/(1-v)) with v = (x-M)/(x+M) = (x-np)/(x+np).
 pub(crate) fn bd0(x: f64, np: f64) -> f64 {
     if !r_finite(x) || !r_finite(np) || np == 0.0 {
-        return 0.0_f64 / 0.0_f64;
+        return f64::NAN;
     }
 
     if fabs(x - np) < 0.1 * (x + np) {

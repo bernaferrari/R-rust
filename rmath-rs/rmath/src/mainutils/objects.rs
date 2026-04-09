@@ -2618,7 +2618,6 @@ unsafe fn INTEGER_ELT_mut(x: SEXP, i: c_int) -> *mut c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::ffi::CString;
 
     #[test]
     fn test_equalS3Signature_exact_match() {

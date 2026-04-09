@@ -43,7 +43,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
-const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
+const NA_REAL: f64 = f64::NAN;
 
 /// Maximum value for R_xlen_t (for overflow checking).
 const R_XLEN_T_MAX: R_xlen_t = i64::MAX;

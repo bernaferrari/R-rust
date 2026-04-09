@@ -35,7 +35,7 @@ use crate::sexp::protect::Rf_protect;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (NaN with specific bit pattern).
-pub const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
+pub const NA_REAL: f64 = f64::NAN;
 
 /// IEEE double epsilon (machine epsilon).
 const C_EPS: f64 = f64::EPSILON;

@@ -97,8 +97,14 @@ enum SessionCommand {
 pub struct RSession {
     cmd_tx: Mutex<Option<Sender<SessionCommand>>>,
     cancelled: Arc<AtomicBool>,
-    callback: Mutex<Option<Arc<dyn SessionCallback>>>,
+    callback: Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
     operation_id: AtomicU64,
+}
+
+fn current_callback(
+    callback: &Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
+) -> Option<Arc<dyn SessionCallback>> {
+    callback.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
 fn spawn_worker(
@@ -110,7 +116,7 @@ fn spawn_worker(
         let mut session = match r_embed::RSession::new() {
             Ok(s) => s,
             Err(e) => {
-                if let Some(cb) = callback.lock().unwrap().as_ref() {
+                if let Some(cb) = current_callback(&callback) {
                     cb.on_error(format!("init failed: {e}"));
                 }
                 return;
@@ -129,7 +135,7 @@ fn spawn_worker(
                         .eval(&code)
                         .map_err(|e| RError::EvalError(e.to_string()));
 
-                    if let Some(cb) = callback.lock().unwrap().as_ref() {
+                    if let Some(cb) = current_callback(&callback) {
                         match &result {
                             Ok(output) => cb.on_eval_complete(EvalResult {
                                 output: output.clone(),
@@ -154,7 +160,7 @@ fn spawn_worker(
                         })
                         .map_err(|e| RError::RenderError(e.to_string()));
 
-                    if let Some(cb) = callback.lock().unwrap().as_ref()
+                    if let Some(cb) = current_callback(&callback)
                         && let Ok(plot) = &result
                     {
                         cb.on_plot_ready(plot.clone());
@@ -181,22 +187,24 @@ impl RSession {
         let (cmd_tx, cmd_rx) = channel();
         let cancelled = Arc::new(AtomicBool::new(false));
 
-        spawn_worker(cmd_rx, Arc::new(Mutex::new(None)), cancelled.clone());
+        let callback = Arc::new(Mutex::new(None));
+
+        spawn_worker(cmd_rx, callback.clone(), cancelled.clone());
 
         Ok(Self {
             cmd_tx: Mutex::new(Some(cmd_tx)),
             cancelled,
-            callback: Mutex::new(None),
+            callback,
             operation_id: AtomicU64::new(0),
         })
     }
 
     pub fn set_callback(&self, callback: Box<dyn SessionCallback>) {
-        *self.callback.lock().unwrap() = Some(callback.into());
+        *self.callback.lock().unwrap_or_else(|e| e.into_inner()) = Some(callback.into());
     }
 
     pub fn eval(&self, code: String) -> Result<String, RError> {
-        let tx = self.cmd_tx.lock().map_err(|_| RError::SessionClosed)?;
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, reply_rx) = channel();
         tx.send(SessionCommand::Eval {
@@ -208,7 +216,7 @@ impl RSession {
     }
 
     pub fn eval_async(&self, code: String) -> Result<u64, RError> {
-        let tx = self.cmd_tx.lock().map_err(|_| RError::SessionClosed)?;
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
         let op_id = self.operation_id.fetch_add(1, Ordering::Relaxed);
@@ -221,7 +229,7 @@ impl RSession {
     }
 
     pub fn render(&self, _code: String, width: u32, height: u32) -> Result<PlotResult, RError> {
-        let tx = self.cmd_tx.lock().map_err(|_| RError::SessionClosed)?;
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, reply_rx) = channel();
         tx.send(SessionCommand::Render {
@@ -234,7 +242,7 @@ impl RSession {
     }
 
     pub fn render_async(&self, _code: String, width: u32, height: u32) -> Result<u64, RError> {
-        let tx = self.cmd_tx.lock().map_err(|_| RError::SessionClosed)?;
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
         let op_id = self.operation_id.fetch_add(1, Ordering::Relaxed);
@@ -249,18 +257,16 @@ impl RSession {
 
     pub fn cancel(&self) {
         self.cancelled.store(true, Ordering::SeqCst);
-        if let Ok(tx_guard) = self.cmd_tx.lock()
-            && let Some(tx) = tx_guard.as_ref()
-        {
+        let tx_guard = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(tx) = tx_guard.as_ref() {
             let _ = tx.send(SessionCommand::Cancel);
         }
     }
 
     pub fn destroy(&self) {
         self.cancel();
-        if let Ok(mut tx_guard) = self.cmd_tx.lock()
-            && let Some(tx) = tx_guard.take()
-        {
+        let mut tx_guard = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(tx) = tx_guard.take() {
             let _ = tx.send(SessionCommand::Shutdown);
         }
     }

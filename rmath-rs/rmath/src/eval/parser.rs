@@ -109,115 +109,111 @@ impl Lexer {
     }
 
     fn next_token(&mut self) -> Token {
-        loop {
-            self.skip_whitespace();
-            self.skip_comment();
+        self.skip_whitespace();
+        self.skip_comment();
 
-            let ch = match self.peek_char() {
-                Some(c) => c,
-                None => return Token::Eof,
-            };
+        let ch = match self.peek_char() {
+            Some(c) => c,
+            None => return Token::Eof,
+        };
 
-            if ch == '\n' {
-                self.advance();
-                return Token::Newline;
-            }
-
-            if ch == '"' || ch == '\'' {
-                return self.read_string();
-            }
-
-            if ch.is_ascii_digit() || (ch == '.' && self.peek_digit_at(1)) {
-                return self.read_number();
-            }
-
-            if ch.is_alphabetic() || ch == '.' || ch == '_' {
-                return self.read_ident();
-            }
-
+        if ch == '\n' {
             self.advance();
-
-            return match ch {
-                '+' => Token::Plus,
-                '-' => Token::Minus,
-                '*' => Token::Star,
-                '/' => {
-                    if self.peek_char() == Some('%') {
-                        self.advance();
-                        Token::SlashPercent
-                    } else {
-                        Token::Slash
-                    }
-                }
-                '^' => Token::Caret,
-                '%' => {
-                    if self.peek_char() == Some('%') {
-                        self.advance();
-                        Token::Percent
-                    } else {
-                        Token::Mod
-                    }
-                }
-                '<' => {
-                    if self.peek_char() == Some('-') {
-                        self.advance();
-                        Token::LeftAssign
-                    } else if self.peek_char() == Some('=') {
-                        self.advance();
-                        Token::Le
-                    } else {
-                        Token::Lt
-                    }
-                }
-                '>' => {
-                    if self.peek_char() == Some('=') {
-                        self.advance();
-                        Token::Ge
-                    } else {
-                        Token::Gt
-                    }
-                }
-                '=' => {
-                    if self.peek_char() == Some('=') {
-                        self.advance();
-                        Token::Eq
-                    } else {
-                        Token::Assign
-                    }
-                }
-                '!' => {
-                    if self.peek_char() == Some('=') {
-                        self.advance();
-                        Token::Ne
-                    } else {
-                        Token::Not
-                    }
-                }
-                '&' => {
-                    if self.peek_char() == Some('&') {
-                        self.advance();
-                        Token::And2
-                    } else {
-                        Token::And
-                    }
-                }
-                '|' => {
-                    if self.peek_char() == Some('|') {
-                        self.advance();
-                        Token::Or2
-                    } else {
-                        Token::Or
-                    }
-                }
-                '(' => Token::LParen,
-                ')' => Token::RParen,
-                ',' => Token::Comma,
-                ';' => Token::Semicolon,
-                '~' => Token::Tilde,
-                ':' => Token::Colon,
-                _ => Token::Eof,
-            };
+            return Token::Newline;
         }
+
+        if ch == '"' || ch == '\'' {
+            return self.read_string();
+        }
+
+        if ch.is_ascii_digit() || (ch == '.' && self.peek_digit_at(1)) {
+            return self.read_number();
+        }
+
+        if ch.is_alphabetic() || ch == '.' || ch == '_' {
+            return self.read_ident();
+        }
+
+        return match ch {
+            '+' => Token::Plus,
+            '-' => Token::Minus,
+            '*' => Token::Star,
+            '/' => {
+                if self.peek_char() == Some('%') {
+                    self.advance();
+                    Token::SlashPercent
+                } else {
+                    Token::Slash
+                }
+            }
+            '^' => Token::Caret,
+            '%' => {
+                if self.peek_char() == Some('%') {
+                    self.advance();
+                    Token::Percent
+                } else {
+                    Token::Mod
+                }
+            }
+            '<' => {
+                if self.peek_char() == Some('-') {
+                    self.advance();
+                    Token::LeftAssign
+                } else if self.peek_char() == Some('=') {
+                    self.advance();
+                    Token::Le
+                } else {
+                    Token::Lt
+                }
+            }
+            '>' => {
+                if self.peek_char() == Some('=') {
+                    self.advance();
+                    Token::Ge
+                } else {
+                    Token::Gt
+                }
+            }
+            '=' => {
+                if self.peek_char() == Some('=') {
+                    self.advance();
+                    Token::Eq
+                } else {
+                    Token::Assign
+                }
+            }
+            '!' => {
+                if self.peek_char() == Some('=') {
+                    self.advance();
+                    Token::Ne
+                } else {
+                    Token::Not
+                }
+            }
+            '&' => {
+                if self.peek_char() == Some('&') {
+                    self.advance();
+                    Token::And2
+                } else {
+                    Token::And
+                }
+            }
+            '|' => {
+                if self.peek_char() == Some('|') {
+                    self.advance();
+                    Token::Or2
+                } else {
+                    Token::Or
+                }
+            }
+            '(' => Token::LParen,
+            ')' => Token::RParen,
+            ',' => Token::Comma,
+            ';' => Token::Semicolon,
+            '~' => Token::Tilde,
+            ':' => Token::Colon,
+            _ => Token::Eof,
+        };
     }
 
     fn peek_digit_at(&self, offset: usize) -> bool {

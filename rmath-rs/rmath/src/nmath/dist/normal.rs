@@ -305,11 +305,7 @@ pub fn pnorm5_inner(x: f64, mu: f64, sigma: f64, lower_tail: bool, log_p: bool) 
     let i_tail: i32 = if lower_tail { 0 } else { 1 };
     let (p, cp) = pnorm_both(x, i_tail, log_p);
 
-    if lower_tail {
-        p
-    } else {
-        cp
-    }
+    if lower_tail { p } else { cp }
 }
 
 // ---- qnorm ----
@@ -514,8 +510,6 @@ pub fn rnorm_inner(mu: f64, sigma: f64) -> f64 {
 }
 
 // ---- norm_rand (snorm.c) ----
-
-use std::cell::Cell;
 
 /// norm_rand: random variate from the STANDARD normal distribution N(0,1).
 #[must_use]

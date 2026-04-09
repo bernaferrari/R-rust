@@ -39,7 +39,7 @@ use crate::sexp::symbol::Rf_install;
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
 #[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-const NA_REAL: c_double = 0.0_f64 / 0.0_f64;
+const NA_REAL: c_double = f64::NAN;
 
 /// Maximum value for R_xlen_t.
 const R_XLEN_T_MAX: R_xlen_t = i64::MAX;

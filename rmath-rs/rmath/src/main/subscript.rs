@@ -36,7 +36,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
-const NA_REAL: c_double = 0.0 / 0.0;
+const NA_REAL: c_double = f64::NAN;
 
 /// Interval at which to check interrupts (~subsecond on current hw).
 const NINTERRUPT: R_xlen_t = 10_000_000;

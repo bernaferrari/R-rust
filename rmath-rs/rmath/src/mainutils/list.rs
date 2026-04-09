@@ -217,7 +217,6 @@ pub unsafe fn do_allnames(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::ffi::*;
 
     /// Helper: create a symbol node.
     unsafe fn make_sym(name: &str) -> SEXP {

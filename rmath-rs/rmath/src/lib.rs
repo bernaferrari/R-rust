@@ -41,9 +41,6 @@
 #![allow(clippy::approx_constant)]
 // Documentation: C code doesn't follow Rust doc conventions
 #![allow(clippy::doc_markdown)]
-#![allow(clippy::missing_panics_doc)]
-#![allow(clippy::missing_errors_doc)]
-#![allow(clippy::missing_safety_doc)]
 // C control flow idioms: direct translations from C if/else/match patterns
 #![allow(clippy::needless_return)]
 #![allow(clippy::redundant_else)]
@@ -105,7 +102,6 @@
 #![allow(clippy::needless_continue)]
 #![allow(clippy::print_literal)]
 #![allow(clippy::no_mangle_with_rust_abi)]
-#![allow(unsafe_op_in_unsafe_fn)]
 #![allow(unknown_lints)]
 
 pub mod appl;
@@ -114,7 +110,6 @@ pub mod dist;
 pub mod dpq;
 pub mod error;
 pub mod fprec;
-pub mod global_state;
 pub mod rng;
 pub mod special;
 pub mod tzone;

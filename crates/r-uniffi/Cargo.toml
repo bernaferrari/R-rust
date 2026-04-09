@@ -7,8 +7,10 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 
+[lib]
+crate-type = ["cdylib", "lib"]
+
 [dependencies]
-uniffi = { version = "0.30.0", features = ["tokio"] }
+uniffi = { version = "0.30.0" }
 r-embed = { path = "../r-embed" }
-anyhow = { workspace = true }
 thiserror = { workspace = true }

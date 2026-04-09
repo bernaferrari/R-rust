@@ -205,7 +205,6 @@ pub unsafe fn glthread_in_use() -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::atomic::AtomicBool;
 
     #[test]
     fn test_once_initialization() {

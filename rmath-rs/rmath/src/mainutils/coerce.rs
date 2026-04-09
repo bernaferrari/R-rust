@@ -3074,7 +3074,6 @@ mod tests {
         unsafe { IntegerFromReal(1e20, &mut warn) };
         assert_ne!(warn & WARN_INT_NA, 0);
 
-        warn = 0;
         let mut warn2: c_int = 0;
         unsafe { IntegerFromComplex(Rcomplex { r: 3.0, i: 2.0 }, &mut warn2) };
         assert_ne!(warn2 & WARN_IMAG, 0);

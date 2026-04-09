@@ -400,7 +400,7 @@ pub fn integer_mean(x: &[c_int]) -> f64 {
 
 /// NA_REAL: R's special NaN bit pattern for NA.
 #[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
+const NA_REAL: f64 = f64::NAN;
 
 /// R_PosInf constant.
 const R_PosInf: c_double = f64::INFINITY;

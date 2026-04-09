@@ -38,10 +38,10 @@ unsafe fn as_integer(s: SEXP) -> c_int {
 /// Returns NaN if the SEXP is NULL or has no real data.
 unsafe fn as_real(s: SEXP) -> c_double {
     if s.is_null() {
-        return 0.0 / 0.0; // NaN
+        return f64::NAN; // NaN
     }
     if REAL(s).is_null() {
-        return 0.0 / 0.0; // NaN
+        return f64::NAN; // NaN
     }
     *REAL(s)
 }

@@ -425,7 +425,7 @@ pub fn lgammafn(x: f64) -> f64 {
 
     if sinpiy == 0.0 {
         // Negative integer argument === Now UNNECESSARY: caught above
-        return 0.0_f64 / 0.0_f64;
+        return f64::NAN;
     }
 
     let ans = M_LN_SQRT_PId2 + (x - 0.5) * log(y) - x - log(sinpiy) - lgammacor(y);

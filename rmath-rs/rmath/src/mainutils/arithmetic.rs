@@ -37,7 +37,7 @@ use crate::special::polygamma::{digamma, trigamma};
 
 /// R's NA_REAL sentinel (NaN with specific bit pattern).
 #[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-pub const NA_REAL: f64 = 0.0_f64 / 0.0_f64;
+pub const NA_REAL: f64 = f64::NAN;
 
 /// IEEE double epsilon (machine epsilon).
 const C_EPS: f64 = f64::EPSILON;

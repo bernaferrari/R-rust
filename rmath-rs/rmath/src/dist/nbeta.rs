@@ -117,7 +117,7 @@ fn pnbeta_raw(x: f64, o_x: f64, a: f64, b: f64, ncp: f64) -> f64 {
 
     if ncp < 0.0 || a <= 0.0 || b <= 0.0 {
         #[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-        return 0.0_f64 / 0.0_f64; // NaN
+        return f64::NAN; // NaN
     }
 
     if x < 0.0 || o_x > 1.0 || (x == 0.0 && o_x == 1.0) {

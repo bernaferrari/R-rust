@@ -9,7 +9,6 @@ use std::os::raw::c_int;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::memory::with_arena;
 use crate::sexp::output::{start_capture, stop_capture};
 use crate::sexp::safe::Sexp;
 
@@ -329,4 +328,300 @@ fn test_gc_after_allocations() {
         }
     }
     crate::sexp::memory::reset_arena();
+}
+
+// ---------------------------------------------------------------------------
+// Math comparison against known R values
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_dnorm_vs_r() {
+    let cases = [
+        (0.0, 0.0, 1.0, 0.3989422804014327),
+        (1.0, 0.0, 1.0, 0.24197072451914337),
+        (-1.0, 0.0, 1.0, 0.24197072451914337),
+        (2.0, 0.0, 1.0, 0.05399096651318806),
+        (0.0, 5.0, 2.0, 0.00876415024678427),
+        (5.0, 5.0, 2.0, 0.19947114020071622),
+    ];
+    for (x, mean, sd, expected) in cases {
+        let got = crate::dist::normal::dnorm(x, mean, sd, 0);
+        assert!(
+            (got - expected).abs() < 1e-10,
+            "dnorm({x}, {mean}, {sd}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_pnorm_vs_r() {
+    let cases = [
+        (0.0, 0.0, 1.0, true, 0.5),
+        (1.96, 0.0, 1.0, true, 0.9750021048517795),
+        (-1.96, 0.0, 1.0, true, 0.0249978951482205),
+        (1.0, 0.0, 1.0, true, 0.8413447460685429),
+        (0.0, 0.0, 1.0, false, 0.5),
+        (2.0, 0.0, 1.0, false, 0.02275013194817921),
+    ];
+    for (x, mean, sd, lower, expected) in cases {
+        let lt = if lower { 1 } else { 0 };
+        let got = crate::dist::normal::pnorm(x, mean, sd, lt, 0);
+        assert!(
+            (got - expected).abs() < 1e-10,
+            "pnorm({x}, {mean}, {sd}, lower={lower}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_qnorm_vs_r() {
+    let cases = [
+        (0.5, 0.0, 1.0, true, 0.0),
+        (0.975, 0.0, 1.0, true, 1.959963984540054),
+        (0.025, 0.0, 1.0, true, -1.959963984540054),
+        (0.99, 0.0, 1.0, true, 2.3263478740408408),
+        (0.01, 0.0, 1.0, true, -2.3263478740408408),
+    ];
+    for (p, mean, sd, lower, expected) in cases {
+        let lt = if lower { 1 } else { 0 };
+        let got = crate::dist::normal::qnorm(p, mean, sd, lt, 0);
+        assert!(
+            (got - expected).abs() < 1e-8,
+            "qnorm({p}, {mean}, {sd}, lower={lower}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_bessel_j_vs_r() {
+    let cases = [
+        (0.0, 0.0, 1.0),
+        (1.0, 0.0, 0.7651976865579666),
+        (2.0, 0.0, 0.2238907791412357),
+        (10.0, 0.0, -0.2459357644513483),
+    ];
+    for (x, alpha, expected) in cases {
+        let got = crate::special::bessel::bessel_j(x, alpha);
+        assert!(
+            (got - expected).abs() < 1e-8,
+            "bessel_j({x}, {alpha}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_bessel_i_vs_r() {
+    let cases = [
+        (0.0, 0.0, 1.0),
+        (1.0, 0.0, 1.2660658777520082),
+        (2.0, 1.0, 1.590636854637329),
+        (5.0, 0.0, 27.23987182360446),
+    ];
+    for (x, alpha, expected) in cases {
+        let got = crate::special::bessel::bessel_i(x, alpha, false);
+        assert!(
+            (got - expected).abs() < 1e-8,
+            "bessel_i({x}, {alpha}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_bessel_y_vs_r() {
+    let cases = [
+        (1.0, 0.0, 0.0882569642156769),
+        (2.0, 0.0, 0.5103756726497451),
+        (5.0, 0.0, -0.3085176253247014),
+        (10.0, 0.0, 0.05567116252151137),
+    ];
+    for (x, alpha, expected) in cases {
+        let got = crate::special::bessel::bessel_y(x, alpha);
+        assert!(
+            (got - expected).abs() < 1e-8,
+            "bessel_y({x}, {alpha}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_gamma_fn_vs_r() {
+    let cases = [
+        (1.0, 1.0),
+        (2.0, 1.0),
+        (3.0, 2.0),
+        (4.0, 6.0),
+        (5.0, 24.0),
+        (0.5, 1.7724538509055159),
+        (1.5, 0.886226925452758),
+    ];
+    for (x, expected) in cases {
+        let got = libm::tgamma(x);
+        assert!(
+            (got - expected).abs() < 1e-10,
+            "gamma({x}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_lgamma_fn_vs_r() {
+    let cases = [
+        (1.0, 0.0),
+        (2.0, 0.0),
+        (3.0, 0.6931471805599453),
+        (4.0, 1.791759469228055),
+        (0.5, 0.5723649429247001),
+    ];
+    for (x, expected) in cases {
+        let got = libm::lgamma(x);
+        assert!(
+            (got - expected).abs() < 1e-10,
+            "lgamma({x}): expected {expected}, got {got}"
+        );
+    }
+}
+
+#[test]
+fn test_exp_log_roundtrip() {
+    for x in [0.5, 1.0, 2.0, 10.0, 100.0] {
+        let roundtrip = libm::log(libm::exp(x));
+        assert!((roundtrip - x).abs() < 1e-10, "log(exp({x})) = {roundtrip}");
+    }
+}
+
+#[test]
+fn test_trig_identities() {
+    for x in [0.0, 0.5, 1.0, 1.5, 3.14159] {
+        let sin2 = libm::sin(x) * libm::sin(x);
+        let cos2 = libm::cos(x) * libm::cos(x);
+        assert!(
+            (sin2 + cos2 - 1.0).abs() < 1e-10,
+            "sin²({x}) + cos²({x}) = {}",
+            sin2 + cos2
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Property-based arena tests
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_arena_alloc_dealloc_pattern() {
+    let mut arena = crate::sexp::memory::RArena::new();
+    assert_eq!(arena.node_count(), 0);
+
+    let p1 = arena.alloc_vector(SEXPTYPE::INTSXP, 10);
+    assert!(!p1.is_null());
+    assert_eq!(arena.node_count(), 1);
+
+    let p2 = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
+    assert!(!p2.is_null());
+    assert_eq!(arena.node_count(), 2);
+
+    assert_ne!(p1, p2);
+}
+
+#[test]
+fn test_arena_large_alloc() {
+    let mut arena = crate::sexp::memory::RArena::new();
+    let n = 10000;
+    let p = arena.alloc_vector(SEXPTYPE::REALSXP, n);
+    assert!(!p.is_null());
+    assert_eq!(arena.node_count(), 1);
+
+    let s = Sexp::from_raw(p).unwrap();
+    assert_eq!(s.len(), n as i64);
+}
+
+#[test]
+fn test_arena_many_small_allocs() {
+    let mut arena = crate::sexp::memory::RArena::new();
+    let mut ptrs = Vec::new();
+    for _ in 0..500 {
+        let p = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        assert!(!p.is_null());
+        ptrs.push(p);
+    }
+    assert_eq!(arena.node_count(), 500);
+
+    for (i, &p) in ptrs.iter().enumerate() {
+        if i > 0 {
+            assert_ne!(p, ptrs[i - 1]);
+        }
+    }
+}
+
+#[test]
+fn test_arena_node_types() {
+    let mut arena = crate::sexp::memory::RArena::new();
+
+    let types = [
+        SEXPTYPE::INTSXP,
+        SEXPTYPE::REALSXP,
+        SEXPTYPE::LGLSXP,
+        SEXPTYPE::STRSXP,
+        SEXPTYPE::VECSXP,
+        SEXPTYPE::LISTSXP,
+        SEXPTYPE::ENVSXP,
+    ];
+
+    for (i, &ty) in types.iter().enumerate() {
+        let p = arena.alloc_node(ty);
+        assert!(!p.is_null(), "alloc_node({ty:?}) failed at index {i}");
+        unsafe {
+            assert_eq!((*p).sxpinfo.type_of(), ty);
+        }
+    }
+    assert_eq!(arena.node_count(), types.len());
+}
+
+#[test]
+fn test_arena_independent_sessions() {
+    let mut arena1 = crate::sexp::memory::RArena::new();
+    let mut arena2 = crate::sexp::memory::RArena::new();
+
+    let p1 = arena1.alloc_vector(SEXPTYPE::INTSXP, 5);
+    let p2 = arena2.alloc_vector(SEXPTYPE::REALSXP, 5);
+
+    assert_eq!(arena1.node_count(), 1);
+    assert_eq!(arena2.node_count(), 1);
+    assert_ne!(p1, p2);
+}
+
+#[test]
+fn test_protect_stack_integrity() {
+    unsafe {
+        use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+
+        let v1 = Rf_ScalarInteger(1);
+        let v2 = Rf_ScalarReal(2.0);
+        let v3 = Rf_allocVector(SEXPTYPE::INTSXP.0, 10);
+
+        let _guard = protect(v1);
+        Rf_protect(v2);
+        Rf_protect(v3);
+
+        Rf_unprotect(2);
+    }
+}
+
+#[test]
+fn test_session_eval_parsed_exprs() {
+    let mut session = crate::android::RSession::new();
+
+    let r1 = session.eval("42");
+    assert!(r1.output.contains("42"));
+
+    let r2 = session.eval("3.14");
+    assert!(r2.output.contains("3.14"));
+
+    let r3 = session.eval("\"hello\"");
+    assert!(r3.output.contains("hello"));
+
+    let r4 = session.eval("TRUE");
+    assert!(r4.output.contains("TRUE") || r4.output.contains("1"));
+
+    let r5 = session.eval("NULL");
+    assert_eq!(r5.output, "NULL");
 }

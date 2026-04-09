@@ -29,7 +29,7 @@ use libm::{exp, log, trunc};
 ///
 /// Provides a high-accuracy Gamma function (at least 20 significant decimal digits)
 /// using rational approximations. Returns ML_POSINF for singularities or overflow.
-pub unsafe fn Rf_gamma_cody(x: f64) -> f64 {
+pub fn Rf_gamma_cody(x: f64) -> f64 {
     const SQRTPI: f64 = 0.9189385332046727417803297;
     const XBIG: f64 = 171.624;
 

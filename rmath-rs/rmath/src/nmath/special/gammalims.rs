@@ -14,23 +14,25 @@
 
 // IEEE 754 constants used directly -- no libm, constants, or d1mach needed
 
-/// Calculate the minimum and maximum legal bounds for x in gammafn(x).
+/// Calculate the minimum and maximum legal bounds for `x` in `gammafn(x)`.
 ///
 /// Ported from R's `gammalims(double *xmin, double *xmax)` in nmath/gammalims.c.
 ///
 /// For IEEE 754 systems, these are precomputed constants.
 /// For non-IEEE systems, Newton iteration is used.
-///
-/// # Safety
-/// `xmin` and `xmax` must be valid non-null pointers to f64.
-pub unsafe fn gammalims(xmin: *mut f64, xmax: *mut f64) {
-    unsafe {
-        if xmin.is_null() || xmax.is_null() {
-            return;
-        }
+pub fn gammalims() -> (f64, f64) {
+    (-170.5674972726612, 171.61447887182298)
+}
 
-        // IEEE 754: use precomputed constants
-        *xmin = -170.5674972726612;
-        *xmax = 171.61447887182298;
+pub unsafe fn Rf_gammalims(xmin: *mut f64, xmax: *mut f64) {
+    if xmin.is_null() || xmax.is_null() {
+        return;
+    }
+
+    let (xmin_value, xmax_value) = gammalims();
+
+    unsafe {
+        *xmin = xmin_value;
+        *xmax = xmax_value;
     }
 }

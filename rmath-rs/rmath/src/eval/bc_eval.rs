@@ -471,9 +471,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             pc = target;
                         } else {
                             let mut seq_len: c_int = 0;
-                            if TYPEOF(seq_val) == SEXPTYPE::INTSXP.0 {
-                                seq_len = LENGTH(seq_val);
-                            } else if TYPEOF(seq_val) == SEXPTYPE::REALSXP.0 {
+                            if TYPEOF(seq_val) == SEXPTYPE::INTSXP.0
+                                || TYPEOF(seq_val) == SEXPTYPE::REALSXP.0
+                            {
                                 seq_len = LENGTH(seq_val);
                             }
                             let ctr = *INTEGER(ctr_ptr);

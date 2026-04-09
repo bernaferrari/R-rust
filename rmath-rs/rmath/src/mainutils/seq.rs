@@ -2057,7 +2057,6 @@ mod tests {
     use crate::sexp::constructors::*;
 
     use super::*;
-    use crate::sexp::ffi::*;
 
     /// Helper: create an integer vector with given values.
     unsafe fn make_int_vec(vals: &[c_int]) -> SEXP {

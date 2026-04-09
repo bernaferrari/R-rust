@@ -113,7 +113,7 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
         if R_IsNA(ai) || R_IsNA(bi) {
             *y.add(i as usize) = NA_REAL;
         } else if ISNAN(ai) || ISNAN(bi) {
-            *y.add(i as usize) = 0.0 / 0.0; // R_NaN
+            *y.add(i as usize) = f64::NAN; // R_NaN
         } else {
             *y.add(i as usize) = f(ai, bi, m_opt);
             if ISNAN(*y.add(i as usize)) {
@@ -173,7 +173,7 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
         if R_IsNA(ai) || R_IsNA(bi) {
             *y.add(i as usize) = NA_REAL;
         } else if ISNAN(ai) || ISNAN(bi) {
-            *y.add(i as usize) = 0.0 / 0.0;
+            *y.add(i as usize) = f64::NAN;
         } else {
             *y.add(i as usize) = f(ai, bi, i_1, i_2);
             if ISNAN(*y.add(i as usize)) {
@@ -251,7 +251,7 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) {
             *y.add(i as usize) = NA_REAL;
         } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) {
-            *y.add(i as usize) = 0.0 / 0.0;
+            *y.add(i as usize) = f64::NAN;
         } else {
             *y.add(i as usize) = f(ai, bi, ci, i_1);
             if ISNAN(*y.add(i as usize)) {
@@ -327,7 +327,7 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) {
             *y.add(i as usize) = NA_REAL;
         } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) {
-            *y.add(i as usize) = 0.0 / 0.0;
+            *y.add(i as usize) = f64::NAN;
         } else {
             *y.add(i as usize) = f(ai, bi, ci, i_1, i_2);
             if ISNAN(*y.add(i as usize)) {
@@ -417,7 +417,7 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) || R_IsNA(di) {
             *y.add(i as usize) = NA_REAL;
         } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) || ISNAN(di) {
-            *y.add(i as usize) = 0.0 / 0.0;
+            *y.add(i as usize) = f64::NAN;
         } else {
             *y.add(i as usize) = f(ai, bi, ci, di, i_1);
             if ISNAN(*y.add(i as usize)) {
@@ -513,7 +513,7 @@ unsafe fn math4_2(
         if R_IsNA(ai) || R_IsNA(bi) || R_IsNA(ci) || R_IsNA(di) {
             *y.add(i as usize) = NA_REAL;
         } else if ISNAN(ai) || ISNAN(bi) || ISNAN(ci) || ISNAN(di) {
-            *y.add(i as usize) = 0.0 / 0.0;
+            *y.add(i as usize) = f64::NAN;
         } else {
             *y.add(i as usize) = f(ai, bi, ci, di, i_1, i_2);
             if ISNAN(*y.add(i as usize)) {
