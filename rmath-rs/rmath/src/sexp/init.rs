@@ -43,6 +43,8 @@ pub unsafe fn initialize_r() {
 
     pre_intern_symbols();
 
+    crate::eval::arithmetic::register_arithmetic_builtins(base_env);
+
     R_INITIALIZED.store(true, Ordering::Release);
 }
 

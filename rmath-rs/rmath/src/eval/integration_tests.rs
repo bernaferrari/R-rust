@@ -625,3 +625,31 @@ fn test_session_eval_parsed_exprs() {
     let r5 = session.eval("NULL");
     assert_eq!(r5.output, "NULL");
 }
+
+#[test]
+fn test_eval_arithmetic_direct() {
+    use crate::eval::eval::eval_safe;
+    use crate::eval::parser;
+    use crate::sexp::init;
+
+    unsafe {
+        init::initialize_r();
+    }
+
+    let mut arena = crate::sexp::memory::RArena::new();
+    let expr = parser::parse("1 + 2", &mut arena).expect("parse failed");
+
+    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+    let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+
+    let result = eval_safe(e, env);
+    assert!(result.is_ok(), "eval failed: {:?}", result);
+    let val = result.unwrap();
+    let v = val.real_elt(0).unwrap_or(0.0);
+    assert!((v - 3.0).abs() < 1e-10, "expected 3.0, got {}", v);
+
+    unsafe {
+        init::shutdown_r();
+    }
+}

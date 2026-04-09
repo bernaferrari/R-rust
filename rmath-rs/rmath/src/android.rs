@@ -16,6 +16,8 @@
 
 use crate::eval::parser;
 use crate::sexp::builder;
+use crate::sexp::globals::R_GlobalEnv;
+use crate::sexp::init;
 use crate::sexp::memory::RArena;
 use crate::sexp::output;
 
@@ -37,6 +39,25 @@ pub struct RSession {
 }
 
 unsafe impl Send for RSession {}
+
+fn extract_numeric_value(s: crate::sexp::safe::Sexp<'_>) -> f64 {
+    use crate::sexp::ffi::SEXPTYPE;
+    match s.typeof_() {
+        SEXPTYPE::INTSXP => s.integer_elt(0).unwrap_or(0) as f64,
+        SEXPTYPE::REALSXP => s.real_elt(0).unwrap_or(0.0),
+        SEXPTYPE::LGLSXP => {
+            let v = s.logical_elt(0).unwrap_or(0);
+            if v == 1 {
+                1.0
+            } else if v == 0 {
+                0.0
+            } else {
+                f64::NAN
+            }
+        }
+        _ => 0.0,
+    }
+}
 
 impl RSession {
     pub fn new() -> Self {
@@ -140,8 +161,13 @@ impl RSession {
 
     /// Parse and evaluate an R expression.
     ///
-    /// Returns a formatted string representation of the result, or an error message.
+    /// Initializes the R environment on first call, then parses the code
+    /// and evaluates it against the global environment.
     pub fn eval(&mut self, code: &str) -> RResult {
+        unsafe {
+            init::initialize_r();
+        }
+
         match parser::parse(code, &mut self.arena) {
             Ok(sexp) => {
                 if sexp.is_null() {
@@ -150,12 +176,29 @@ impl RSession {
                         output: "NULL".to_string(),
                     };
                 }
-                let s = crate::sexp::safe::Sexp::from_raw(sexp);
-                let output = match s {
-                    Some(s) => output::format_sexp_direct(s),
-                    None => "NULL".to_string(),
-                };
-                RResult { value: 0.0, output }
+
+                let global_env = unsafe { R_GlobalEnv() };
+                if global_env.is_null() {
+                    return RResult {
+                        value: 0.0,
+                        output: "Error: R not initialized".to_string(),
+                    };
+                }
+
+                let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+                let expr = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(sexp) };
+
+                match crate::eval::eval::eval_safe(expr, env) {
+                    Ok(result) => {
+                        let output = output::format_sexp_direct(result);
+                        let value = extract_numeric_value(result);
+                        RResult { value, output }
+                    }
+                    Err(e) => RResult {
+                        value: 0.0,
+                        output: format!("Error: {}", e),
+                    },
+                }
             }
             Err(e) => RResult {
                 value: 0.0,
@@ -300,5 +343,163 @@ mod tests {
     fn test_free_functions() {
         assert!((dnorm_free(0.0, 0.0, 1.0) - 0.3989422804014327).abs() < 1e-10);
         assert!((pnorm_free(0.0, 0.0, 1.0) - 0.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_integer_literal() {
+        let mut session = RSession::new();
+        let result = session.eval("42");
+        assert!(
+            (result.value - 42.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_real_literal() {
+        let mut session = RSession::new();
+        let result = session.eval("3.14");
+        assert!(
+            (result.value - 3.14).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_addition() {
+        let mut session = RSession::new();
+        let result = session.eval("1 + 2");
+        assert!(
+            (result.value - 3.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_subtraction() {
+        let mut session = RSession::new();
+        let result = session.eval("10 - 3");
+        assert!(
+            (result.value - 7.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_multiplication() {
+        let mut session = RSession::new();
+        let result = session.eval("4 * 5");
+        assert!(
+            (result.value - 20.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_division() {
+        let mut session = RSession::new();
+        let result = session.eval("10 / 3");
+        assert!(
+            (result.value - 3.3333333333333335).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_power() {
+        let mut session = RSession::new();
+        let result = session.eval("2 ^ 10");
+        assert!(
+            (result.value - 1024.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_precedence() {
+        let mut session = RSession::new();
+        let result = session.eval("2 + 3 * 4");
+        assert!(
+            (result.value - 14.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_comparison() {
+        let mut session = RSession::new();
+        let lt = session.eval("1 < 2");
+        assert!((lt.value - 1.0).abs() < 1e-10);
+
+        let gt = session.eval("3 > 5");
+        assert!((gt.value - 0.0).abs() < 1e-10);
+
+        let eq = session.eval("7 == 7");
+        assert!((eq.value - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_assignment() {
+        let mut session = RSession::new();
+        let assign_result = session.eval("x <- 42");
+        assert!(
+            !assign_result.output.contains("Error"),
+            "assign failed: {}",
+            assign_result.output
+        );
+
+        let lookup = session.eval("x");
+        assert!(
+            !lookup.output.contains("Error"),
+            "lookup failed: {}",
+            lookup.output
+        );
+    }
+
+    #[test]
+    fn test_eval_null() {
+        let mut session = RSession::new();
+        let result = session.eval("NULL");
+        assert_eq!(result.output, "NULL");
+    }
+
+    #[test]
+    fn test_eval_unary_minus() {
+        let mut session = RSession::new();
+        let result = session.eval("-5");
+        assert!(
+            (result.value - (-5.0)).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_complex_expr() {
+        let mut session = RSession::new();
+        let result = session.eval("(1 + 2) * (3 + 4)");
+        assert!(
+            (result.value - 21.0).abs() < 1e-10,
+            "value: {}",
+            result.value
+        );
+    }
+
+    #[test]
+    fn test_eval_true_false() {
+        let mut session = RSession::new();
+        let t = session.eval("TRUE");
+        assert!((t.value - 1.0).abs() < 1e-10);
+
+        let f = session.eval("FALSE");
+        assert!((f.value - 0.0).abs() < 1e-10);
     }
 }

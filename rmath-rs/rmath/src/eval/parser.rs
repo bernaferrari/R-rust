@@ -134,6 +134,8 @@ impl Lexer {
             return self.read_ident();
         }
 
+        self.advance();
+
         return match ch {
             '+' => Token::Plus,
             '-' => Token::Minus,
@@ -697,6 +699,7 @@ mod tests {
     use crate::sexp::memory::RArena;
 
     fn parse_str(input: &str) -> Result<SEXP, ParseError> {
+        crate::sexp::memory::reset_arena();
         let mut arena = RArena::new();
         parse(input, &mut arena)
     }

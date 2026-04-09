@@ -362,15 +362,42 @@ fn apply_builtin_safe<'a>(
     let flag = unsafe { PRIMPRINT(fun.as_raw()) };
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
-    // Evaluate arguments
     let evaled_args =
         unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), 0) };
 
-    let tmp = if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
-        unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
-    } else {
-        eprintln!("Warning: builtin function not implemented");
-        unsafe { R_NilValue() }
+    let op_name = unsafe {
+        let fun_sym = crate::sexp::accessors::CAR(call.as_raw());
+        let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
+        if !pname.is_null() {
+            let s = crate::sexp::accessors::CHAR(pname);
+            if !s.is_null() {
+                std::ffi::CStr::from_ptr(s)
+                    .to_str()
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    };
+
+    let tmp = match op_name.as_str() {
+        "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => unsafe {
+            super::arithmetic::do_arith(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "<" | ">" | "<=" | ">=" | "==" | "!=" => unsafe {
+            super::arithmetic::do_relop(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        _ => {
+            if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
+                unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
+            } else {
+                eprintln!("Warning: builtin function '{}' not implemented", op_name);
+                unsafe { R_NilValue() }
+            }
+        }
     };
 
     if flag < 2 {
