@@ -43,3 +43,5 @@ pub use altrep::{
 pub use output::{
     RCapturedOutput, capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture,
 };
+
+pub use safe::{PairlistIter, Sexp};

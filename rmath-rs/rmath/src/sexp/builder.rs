@@ -41,7 +41,7 @@ use std::ptr;
 
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
-use super::memory::with_arena;
+use super::memory::{RArena, with_arena};
 use super::safe::Sexp;
 
 // ---------------------------------------------------------------------------
@@ -86,25 +86,24 @@ impl IntVector {
         IntVector { values: vec![0; n] }
     }
 
-    /// Build the integer vector.
-    ///
-    /// Returns `None` if allocation fails.
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let len = self.values.len() as R_xlen_t;
-            let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, len);
-            if ptr.is_null() {
-                return None;
-            }
-            let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-            if data.is_null() {
-                return None;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-            }
-            Sexp::from_raw(ptr)
-        })
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let len = self.values.len() as R_xlen_t;
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, len);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
+        if data.is_null() {
+            return None;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
+        }
+        Sexp::from_raw(ptr)
     }
 }
 
@@ -177,25 +176,24 @@ impl RealVector {
         RealVector { values }
     }
 
-    /// Build the real vector.
-    ///
-    /// Returns `None` if allocation fails.
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let len = self.values.len() as R_xlen_t;
-            let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, len);
-            if ptr.is_null() {
-                return None;
-            }
-            let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
-            if data.is_null() {
-                return None;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-            }
-            Sexp::from_raw(ptr)
-        })
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let len = self.values.len() as R_xlen_t;
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, len);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
+        if data.is_null() {
+            return None;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
+        }
+        Sexp::from_raw(ptr)
     }
 }
 
@@ -234,25 +232,24 @@ impl LogicalVector {
         }
     }
 
-    /// Build the logical vector.
-    ///
-    /// Returns `None` if allocation fails.
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let len = self.values.len() as R_xlen_t;
-            let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, len);
-            if ptr.is_null() {
-                return None;
-            }
-            let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-            if data.is_null() {
-                return None;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-            }
-            Sexp::from_raw(ptr)
-        })
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let len = self.values.len() as R_xlen_t;
+        let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, len);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
+        if data.is_null() {
+            return None;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
+        }
+        Sexp::from_raw(ptr)
     }
 }
 
@@ -286,25 +283,24 @@ impl RawVector {
         RawVector { values: vec![0; n] }
     }
 
-    /// Build the raw vector.
-    ///
-    /// Returns `None` if allocation fails.
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let len = self.values.len() as R_xlen_t;
-            let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, len);
-            if ptr.is_null() {
-                return None;
-            }
-            let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
-            if data.is_null() {
-                return None;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
-            }
-            Sexp::from_raw(ptr)
-        })
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let len = self.values.len() as R_xlen_t;
+        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, len);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
+        if data.is_null() {
+            return None;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
+        }
+        Sexp::from_raw(ptr)
     }
 }
 
@@ -335,28 +331,27 @@ impl StringVector {
         }
     }
 
-    /// Build the string vector.
-    ///
-    /// Returns `None` if allocation fails.
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let len = self.values.len() as R_xlen_t;
-            let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, len);
-            if ptr.is_null() {
-                return None;
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let len = self.values.len() as R_xlen_t;
+        let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, len);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
+        if data.is_null() {
+            return None;
+        }
+        for (i, s) in self.values.iter().enumerate() {
+            let charsxp = arena.alloc_charsxp(s.as_bytes());
+            unsafe {
+                *data.add(i) = charsxp;
             }
-            let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
-            if data.is_null() {
-                return None;
-            }
-            for (i, s) in self.values.iter().enumerate() {
-                let charsxp = arena.alloc_charsxp(s.as_bytes());
-                unsafe {
-                    *data.add(i) = charsxp;
-                }
-            }
-            Sexp::from_raw(ptr)
-        })
+        }
+        Sexp::from_raw(ptr)
     }
 }
 
@@ -401,25 +396,24 @@ impl GenericVector {
         self
     }
 
-    /// Build the generic vector.
-    ///
-    /// Returns `None` if allocation fails.
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let len = self.elements.len() as R_xlen_t;
-            let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, len);
-            if ptr.is_null() {
-                return None;
-            }
-            let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
-            if data.is_null() {
-                return None;
-            }
-            unsafe {
-                std::ptr::copy_nonoverlapping(self.elements.as_ptr(), data, self.elements.len());
-            }
-            Sexp::from_raw(ptr)
-        })
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let len = self.elements.len() as R_xlen_t;
+        let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, len);
+        if ptr.is_null() {
+            return None;
+        }
+        let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
+        if data.is_null() {
+            return None;
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(self.elements.as_ptr(), data, self.elements.len());
+        }
+        Sexp::from_raw(ptr)
     }
 }
 
@@ -468,17 +462,16 @@ impl PairlistBuilder {
         self.push(car, ptr::null_mut())
     }
 
-    /// Build the pairlist chain.
-    ///
-    /// Returns `None` if the result is null (empty builder).
     pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| {
-            let mut result: SEXP = ptr::null_mut();
-            for (car, tag) in self.elements.into_iter().rev() {
-                result = arena.cons(car, result, tag);
-            }
-            Sexp::from_raw(result)
-        })
+        with_arena(|arena| self.build_in(arena))
+    }
+
+    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+        let mut result: SEXP = ptr::null_mut();
+        for (car, tag) in self.elements.into_iter().rev() {
+            result = arena.cons(car, result, tag);
+        }
+        Sexp::from_raw(result)
     }
 }
 
@@ -492,244 +485,270 @@ impl Default for PairlistBuilder {
 // Convenience functions
 // ---------------------------------------------------------------------------
 
-/// Create an integer vector from a slice.
-///
-/// A shorthand for `IntVector::new(values).build()`.
 pub fn int_vec(values: &[c_int]) -> Option<Sexp<'static>> {
     IntVector::new(values).build()
 }
 
-/// Create a real vector from a slice.
-///
-/// A shorthand for `RealVector::new(values).build()`.
+pub fn int_vec_in(arena: &mut RArena, values: &[c_int]) -> Option<Sexp<'static>> {
+    IntVector::new(values).build_in(arena)
+}
+
 pub fn real_vec(values: &[c_double]) -> Option<Sexp<'static>> {
     RealVector::new(values).build()
 }
 
-/// Create a logical vector from a slice of booleans.
-///
-/// A shorthand for `LogicalVector::new(values).build()`.
+pub fn real_vec_in(arena: &mut RArena, values: &[c_double]) -> Option<Sexp<'static>> {
+    RealVector::new(values).build_in(arena)
+}
+
 pub fn logical_vec(values: &[bool]) -> Option<Sexp<'static>> {
     LogicalVector::new(values).build()
 }
 
-/// Create a raw vector from a slice of bytes.
-///
-/// A shorthand for `RawVector::new(values).build()`.
+pub fn logical_vec_in(arena: &mut RArena, values: &[bool]) -> Option<Sexp<'static>> {
+    LogicalVector::new(values).build_in(arena)
+}
+
 pub fn raw_vec(values: &[Rbyte]) -> Option<Sexp<'static>> {
     RawVector::new(values).build()
 }
 
-/// Create a string vector from a slice of string slices.
-///
-/// A shorthand for `StringVector::new(values).build()`.
+pub fn raw_vec_in(arena: &mut RArena, values: &[Rbyte]) -> Option<Sexp<'static>> {
+    RawVector::new(values).build_in(arena)
+}
+
 pub fn string_vec(values: &[&str]) -> Option<Sexp<'static>> {
     StringVector::new(values).build()
 }
 
-/// Create a sequence of real numbers.
-///
-/// A shorthand for `RealVector::seq(start, end, step).build()`.
+pub fn string_vec_in(arena: &mut RArena, values: &[&str]) -> Option<Sexp<'static>> {
+    StringVector::new(values).build_in(arena)
+}
+
 pub fn seq(start: f64, end: f64, step: f64) -> Option<Sexp<'static>> {
     RealVector::seq(start, end, step).build()
+}
+
+pub fn seq_in(arena: &mut RArena, start: f64, end: f64, step: f64) -> Option<Sexp<'static>> {
+    RealVector::seq(start, end, step).build_in(arena)
 }
 
 // ---------------------------------------------------------------------------
 // Safe scalar constructors
 // ---------------------------------------------------------------------------
 
-/// Create a scalar integer R object.
 pub fn scalar_integer(x: c_int) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        if ptr.is_null() {
-            return None;
-        }
-        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-        if data.is_null() {
-            return None;
-        }
-        unsafe { *data = x };
-        unsafe {
-            (*ptr).sxpinfo.set_scalar(true);
-        }
-        Sexp::from_raw(ptr)
-    })
+    with_arena(|arena| scalar_integer_in(arena, x))
 }
 
-/// Create a scalar real R object.
+pub fn scalar_integer_in(arena: &mut RArena, x: c_int) -> Option<Sexp<'static>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
+    if data.is_null() {
+        return None;
+    }
+    unsafe { *data = x };
+    unsafe {
+        (*ptr).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(ptr)
+}
+
 pub fn scalar_real(x: c_double) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
-        if ptr.is_null() {
-            return None;
-        }
-        let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
-        if data.is_null() {
-            return None;
-        }
-        unsafe { *data = x };
-        unsafe {
-            (*ptr).sxpinfo.set_scalar(true);
-        }
-        Sexp::from_raw(ptr)
-    })
+    with_arena(|arena| scalar_real_in(arena, x))
 }
 
-/// Create a scalar logical R object.
+pub fn scalar_real_in(arena: &mut RArena, x: c_double) -> Option<Sexp<'static>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut c_double };
+    if data.is_null() {
+        return None;
+    }
+    unsafe { *data = x };
+    unsafe {
+        (*ptr).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(ptr)
+}
+
 pub fn scalar_logical(x: c_int) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
-        if ptr.is_null() {
-            return None;
-        }
-        let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
-        if data.is_null() {
-            return None;
-        }
-        unsafe { *data = x };
-        unsafe {
-            (*ptr).sxpinfo.set_scalar(true);
-        }
-        Sexp::from_raw(ptr)
-    })
+    with_arena(|arena| scalar_logical_in(arena, x))
 }
 
-/// Create a scalar raw byte R object.
+pub fn scalar_logical_in(arena: &mut RArena, x: c_int) -> Option<Sexp<'static>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut c_int };
+    if data.is_null() {
+        return None;
+    }
+    unsafe { *data = x };
+    unsafe {
+        (*ptr).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(ptr)
+}
+
 pub fn scalar_raw(x: Rbyte) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 1);
-        if ptr.is_null() {
-            return None;
-        }
-        let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
-        if data.is_null() {
-            return None;
-        }
-        unsafe { *data = x };
-        unsafe {
-            (*ptr).sxpinfo.set_scalar(true);
-        }
-        Sexp::from_raw(ptr)
-    })
+    with_arena(|arena| scalar_raw_in(arena, x))
 }
 
-/// Create a scalar string R object (STRSXP of length 1).
+pub fn scalar_raw_in(arena: &mut RArena, x: Rbyte) -> Option<Sexp<'static>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut Rbyte };
+    if data.is_null() {
+        return None;
+    }
+    unsafe { *data = x };
+    unsafe {
+        (*ptr).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(ptr)
+}
+
 pub fn scalar_string(s: &str) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
-        if ptr.is_null() {
-            return None;
-        }
-        let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
-        if data.is_null() {
-            return None;
-        }
-        let charsxp = arena.alloc_charsxp(s.as_bytes());
-        unsafe {
-            *data = charsxp;
-        }
-        Sexp::from_raw(ptr)
-    })
+    with_arena(|arena| scalar_string_in(arena, s))
 }
 
-/// Create a scalar complex R object.
+pub fn scalar_string_in(arena: &mut RArena, s: &str) -> Option<Sexp<'static>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut SEXP };
+    if data.is_null() {
+        return None;
+    }
+    let charsxp = arena.alloc_charsxp(s.as_bytes());
+    unsafe {
+        *data = charsxp;
+    }
+    Sexp::from_raw(ptr)
+}
+
 pub fn scalar_complex(r: c_double, i: c_double) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let ptr = arena.alloc_vector(SEXPTYPE::CPLXSXP, 1);
-        if ptr.is_null() {
-            return None;
-        }
-        let data = unsafe { (*ptr).gengc_next_node as *mut super::ffi::Rcomplex };
-        if data.is_null() {
-            return None;
-        }
-        unsafe {
-            *data = super::ffi::Rcomplex { r, i };
-        }
-        unsafe {
-            (*ptr).sxpinfo.set_scalar(true);
-        }
-        Sexp::from_raw(ptr)
-    })
+    with_arena(|arena| scalar_complex_in(arena, r, i))
 }
 
-/// Create a CHARSXP from a byte slice.
+pub fn scalar_complex_in(arena: &mut RArena, r: c_double, i: c_double) -> Option<Sexp<'static>> {
+    let ptr = arena.alloc_vector(SEXPTYPE::CPLXSXP, 1);
+    if ptr.is_null() {
+        return None;
+    }
+    let data = unsafe { (*ptr).gengc_next_node as *mut super::ffi::Rcomplex };
+    if data.is_null() {
+        return None;
+    }
+    unsafe {
+        *data = super::ffi::Rcomplex { r, i };
+    }
+    unsafe {
+        (*ptr).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(ptr)
+}
+
 pub fn mk_char(s: &[u8]) -> Option<Sexp<'static>> {
-    with_arena(|arena| Sexp::from_raw(arena.alloc_charsxp(s)))
+    with_arena(|arena| mk_char_in(arena, s))
+}
+
+pub fn mk_char_in(arena: &mut RArena, s: &[u8]) -> Option<Sexp<'static>> {
+    Sexp::from_raw(arena.alloc_charsxp(s))
 }
 
 // ---------------------------------------------------------------------------
 // Safe language/pairlist constructors
 // ---------------------------------------------------------------------------
 
-/// Create a cons cell (LISTSXP) with car, cdr, and optional tag.
 pub fn cons(car: Sexp<'_>, cdr: Sexp<'_>, tag: Option<Sexp<'_>>) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let tag_raw = tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut());
-        Sexp::from_raw(arena.cons(car.as_raw(), cdr.as_raw(), tag_raw))
-    })
+    with_arena(|arena| cons_in(arena, car, cdr, tag))
 }
 
-/// Create a language object (LANGSXP) — a function call.
-///
-/// The result is `car(cdr(...(R_NilValue)))` with LANGSXP type.
+pub fn cons_in(
+    arena: &mut RArena,
+    car: Sexp<'_>,
+    cdr: Sexp<'_>,
+    tag: Option<Sexp<'_>>,
+) -> Option<Sexp<'static>> {
+    let tag_raw = tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut());
+    Sexp::from_raw(arena.cons(car.as_raw(), cdr.as_raw(), tag_raw))
+}
+
 pub fn lang2(car: Sexp<'_>, arg: Sexp<'_>) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
-        if cdr.is_null() {
-            return None;
-        }
-        unsafe {
-            (*cdr).data.listsxp.carval = arg.as_raw();
-            (*cdr).data.listsxp.cdrval = R_NilValue();
-            (*cdr).data.listsxp.tagval = ptr::null_mut();
-        }
-        let head = arena.alloc_node(SEXPTYPE::LANGSXP);
-        if head.is_null() {
-            return None;
-        }
-        unsafe {
-            (*head).data.listsxp.carval = car.as_raw();
-            (*head).data.listsxp.cdrval = cdr;
-            (*head).data.listsxp.tagval = ptr::null_mut();
-        }
-        Sexp::from_raw(head)
-    })
+    with_arena(|arena| lang2_in(arena, car, arg))
 }
 
-/// Create a language object with two arguments.
+pub fn lang2_in(arena: &mut RArena, car: Sexp<'_>, arg: Sexp<'_>) -> Option<Sexp<'static>> {
+    let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
+    if cdr.is_null() {
+        return None;
+    }
+    unsafe {
+        (*cdr).data.listsxp.carval = arg.as_raw();
+        (*cdr).data.listsxp.cdrval = R_NilValue();
+        (*cdr).data.listsxp.tagval = ptr::null_mut();
+    }
+    let head = arena.alloc_node(SEXPTYPE::LANGSXP);
+    if head.is_null() {
+        return None;
+    }
+    unsafe {
+        (*head).data.listsxp.carval = car.as_raw();
+        (*head).data.listsxp.cdrval = cdr;
+        (*head).data.listsxp.tagval = ptr::null_mut();
+    }
+    Sexp::from_raw(head)
+}
+
 pub fn lang3(car: Sexp<'_>, arg1: Sexp<'_>, arg2: Sexp<'_>) -> Option<Sexp<'static>> {
-    with_arena(|arena| {
-        let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
-        if c2.is_null() {
-            return None;
-        }
-        unsafe {
-            (*c2).data.listsxp.carval = arg2.as_raw();
-            (*c2).data.listsxp.cdrval = R_NilValue();
-            (*c2).data.listsxp.tagval = ptr::null_mut();
-        }
-        let c1 = arena.alloc_node(SEXPTYPE::LANGSXP);
-        if c1.is_null() {
-            return None;
-        }
-        unsafe {
-            (*c1).data.listsxp.carval = arg1.as_raw();
-            (*c1).data.listsxp.cdrval = c2;
-            (*c1).data.listsxp.tagval = ptr::null_mut();
-        }
-        let head = arena.alloc_node(SEXPTYPE::LANGSXP);
-        if head.is_null() {
-            return None;
-        }
-        unsafe {
-            (*head).data.listsxp.carval = car.as_raw();
-            (*head).data.listsxp.cdrval = c1;
-            (*head).data.listsxp.tagval = ptr::null_mut();
-        }
-        Sexp::from_raw(head)
-    })
+    with_arena(|arena| lang3_in(arena, car, arg1, arg2))
+}
+
+pub fn lang3_in(
+    arena: &mut RArena,
+    car: Sexp<'_>,
+    arg1: Sexp<'_>,
+    arg2: Sexp<'_>,
+) -> Option<Sexp<'static>> {
+    let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
+    if c2.is_null() {
+        return None;
+    }
+    unsafe {
+        (*c2).data.listsxp.carval = arg2.as_raw();
+        (*c2).data.listsxp.cdrval = R_NilValue();
+        (*c2).data.listsxp.tagval = ptr::null_mut();
+    }
+    let c1 = arena.alloc_node(SEXPTYPE::LANGSXP);
+    if c1.is_null() {
+        return None;
+    }
+    unsafe {
+        (*c1).data.listsxp.carval = arg1.as_raw();
+        (*c1).data.listsxp.cdrval = c2;
+        (*c1).data.listsxp.tagval = ptr::null_mut();
+    }
+    let head = arena.alloc_node(SEXPTYPE::LANGSXP);
+    if head.is_null() {
+        return None;
+    }
+    unsafe {
+        (*head).data.listsxp.carval = car.as_raw();
+        (*head).data.listsxp.cdrval = c1;
+        (*head).data.listsxp.tagval = ptr::null_mut();
+    }
+    Sexp::from_raw(head)
 }
 
 // ---------------------------------------------------------------------------

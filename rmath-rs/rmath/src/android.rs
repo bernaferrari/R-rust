@@ -32,7 +32,6 @@ use crate::sexp::output;
 /// `RSession` is `Send` but not `Sync`. Each thread should create its
 /// own session. Internally, the arena uses `RefCell` which is not `Sync`.
 pub struct RSession {
-    #[allow(dead_code)]
     arena: RArena,
 }
 
@@ -45,44 +44,31 @@ impl RSession {
         }
     }
 
-    /// Evaluate a self-evaluating expression (integer).
     pub fn eval_integer(&mut self, value: i32) -> RResult {
-        let s = builder::scalar_integer(value).expect("alloc failed");
-        let result = output::format_sexp(s.as_raw());
+        let s = builder::scalar_integer_in(&mut self.arena, value).expect("alloc failed");
+        let output = output::format_sexp_direct(s);
         RResult {
             value: value as f64,
-            output: result,
+            output,
         }
     }
 
-    /// Evaluate a self-evaluating expression (real/double).
     pub fn eval_real(&mut self, value: f64) -> RResult {
-        let s = builder::scalar_real(value).expect("alloc failed");
-        let output_str = output::format_sexp(s.as_raw());
-        RResult {
-            value,
-            output: output_str,
-        }
+        let s = builder::scalar_real_in(&mut self.arena, value).expect("alloc failed");
+        let output = output::format_sexp_direct(s);
+        RResult { value, output }
     }
 
-    /// Create an integer vector and return its formatted output.
     pub fn eval_int_vector(&mut self, values: &[i32]) -> RResult {
-        let s = builder::int_vec(&values).expect("alloc failed");
-        let out = output::format_sexp(s.as_raw());
-        RResult {
-            value: 0.0,
-            output: out,
-        }
+        let s = builder::int_vec_in(&mut self.arena, &values).expect("alloc failed");
+        let output = output::format_sexp_direct(s);
+        RResult { value: 0.0, output }
     }
 
-    /// Create a real vector and return its formatted output.
     pub fn eval_real_vector(&mut self, values: &[f64]) -> RResult {
-        let s = builder::real_vec(&values).expect("alloc failed");
-        let out = output::format_sexp(s.as_raw());
-        RResult {
-            value: 0.0,
-            output: out,
-        }
+        let s = builder::real_vec_in(&mut self.arena, &values).expect("alloc failed");
+        let output = output::format_sexp_direct(s);
+        RResult { value: 0.0, output }
     }
 
     /// Compute a mathematical function on a single value.

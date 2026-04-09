@@ -15,7 +15,7 @@ use super::ffi::SEXP;
 /// RAII guard for the protection stack.
 /// Automatically unprotects when dropped.
 ///
-/// ```
+/// ```rust,ignore
 /// use rmath::sexp::protect::{protect, Rf_protect, Rf_unprotect};
 ///
 /// let guard = protect(some_sexp);

@@ -17,7 +17,7 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, Rf_isNull, TYPEOF, VECTOR_ELT};
+use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, REAL, Rf_isNull, TYPEOF, VECTOR_ELT};
 use crate::sexp::constructors::*;
 use crate::sexp::envir::{R_findVar, defineVar, forcePromise};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -290,26 +290,32 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_POPAND => {
-                    let val = stack.pop();
-                    if TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
+                    let target = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = stack.top();
+                    let is_false = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
                         let data = LOGICAL(val);
-                        if !data.is_null() && *data == 0 {
-                            // Short-circuit: result is FALSE
-                            stack.push(val);
-                            // Skip to matching POPOR or end
-                            // Simplified: just continue
-                        }
+                        !data.is_null() && *data == 0
+                    } else {
+                        false
+                    };
+                    if is_false {
+                        pc = target;
                     }
                 }
 
                 opcodes::OP_POPOR => {
-                    let val = stack.pop();
-                    if TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
+                    let target = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = stack.top();
+                    let is_true = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
                         let data = LOGICAL(val);
-                        if !data.is_null() && *data != 0 {
-                            // Short-circuit: result is TRUE
-                            stack.push(val);
-                        }
+                        !data.is_null() && *data != 0
+                    } else {
+                        !val.is_null()
+                    };
+                    if is_true {
+                        pc = target;
                     }
                 }
 
@@ -372,10 +378,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_CALL => {
-                    let _nargs = *code_ptr.add(pc as usize);
+                    let nargs = *code_ptr.add(pc as usize);
                     pc += 1;
                     let fun = stack.pop();
-                    let args = stack.pop();
+                    let mut args = R_NilValue();
+                    for _ in 0..nargs {
+                        let arg = stack.pop();
+                        args = Rf_cons(arg, args);
+                    }
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -386,10 +396,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_CALLBUILTIN => {
-                    let _nargs = *code_ptr.add(pc as usize);
+                    let nargs = *code_ptr.add(pc as usize);
                     pc += 1;
                     let fun = stack.pop();
-                    let args = stack.pop();
+                    let mut args = R_NilValue();
+                    for _ in 0..nargs {
+                        let arg = stack.pop();
+                        args = Rf_cons(arg, args);
+                    }
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -401,10 +415,14 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_CALLSPECIAL => {
-                    let _nargs = *code_ptr.add(pc as usize);
+                    let nargs = *code_ptr.add(pc as usize);
                     pc += 1;
                     let fun = stack.pop();
-                    let args = stack.pop();
+                    let mut args = R_NilValue();
+                    for _ in 0..nargs {
+                        let arg = stack.pop();
+                        args = Rf_cons(arg, args);
+                    }
                     if fun.is_null() {
                         stack.push(R_NilValue());
                     } else {
@@ -441,31 +459,39 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_STEPFOR => {
                     let target = *code_ptr.add(pc as usize);
                     pc += 1;
-                    let seq_val = stack.pop();
-                    let loop_var = stack.top();
-                    let mut int_seq: Option<*mut c_int> = None;
-                    let mut seq_len: c_int = 0;
-
-                    if !seq_val.is_null() && TYPEOF(seq_val) == SEXPTYPE::INTSXP.0 {
-                        int_seq = Some(INTEGER(seq_val));
-                        seq_len = LENGTH(seq_val);
-                    } else if !seq_val.is_null() && TYPEOF(seq_val) == SEXPTYPE::REALSXP.0 {
-                        seq_len = LENGTH(seq_val);
-                    }
-
-                    let ctr_ptr = stack.at(stack.depth() - 2);
-                    if ctr_ptr.is_null() {
+                    let depth = stack.depth();
+                    if depth < 3 {
                         pc = target;
                     } else {
-                        let ctr = *INTEGER(ctr_ptr);
-                        if ctr + 1 >= seq_len {
+                        let seq_val = stack.at(depth - 1);
+                        let loop_var = stack.at(depth - 2);
+                        let ctr_ptr = stack.at(depth - 3);
+
+                        if seq_val.is_null() || ctr_ptr.is_null() {
                             pc = target;
                         } else {
-                            *INTEGER(ctr_ptr) = ctr + 1;
-                            if let Some(is) = int_seq {
-                                if !is.is_null() {
-                                    let elt = *is.add((ctr + 1) as usize);
-                                    defineVar(loop_var, Rf_ScalarInteger(elt), rho);
+                            let mut seq_len: c_int = 0;
+                            if TYPEOF(seq_val) == SEXPTYPE::INTSXP.0 {
+                                seq_len = LENGTH(seq_val);
+                            } else if TYPEOF(seq_val) == SEXPTYPE::REALSXP.0 {
+                                seq_len = LENGTH(seq_val);
+                            }
+                            let ctr = *INTEGER(ctr_ptr);
+                            if ctr + 1 >= seq_len {
+                                pc = target;
+                            } else {
+                                *INTEGER(ctr_ptr) = ctr + 1;
+                                let idx = (ctr + 1) as usize;
+                                if TYPEOF(seq_val) == SEXPTYPE::INTSXP.0 {
+                                    let data = INTEGER(seq_val);
+                                    if !data.is_null() {
+                                        defineVar(loop_var, Rf_ScalarInteger(*data.add(idx)), rho);
+                                    }
+                                } else if TYPEOF(seq_val) == SEXPTYPE::REALSXP.0 {
+                                    let data = REAL(seq_val);
+                                    if !data.is_null() {
+                                        defineVar(loop_var, Rf_ScalarReal(*data.add(idx)), rho);
+                                    }
                                 }
                             }
                         }
@@ -473,11 +499,13 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_BREAK => {
-                    return R_NilValue();
+                    let target = *code_ptr.add(pc as usize);
+                    pc = target;
                 }
 
                 opcodes::OP_NEXTITER => {
-                    pc += 0;
+                    let target = *code_ptr.add(pc as usize);
+                    pc = target;
                 }
 
                 opcodes::OP_SETLOOPCTR => {
@@ -625,8 +653,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 _ => {
-                    // Unknown opcode — skip
-                    eprintln!("Warning: unknown bytecode opcode {}", op);
+                    eprintln!("Error: unknown bytecode opcode {} at pc {}", op, pc - 1);
+                    return R_NilValue();
                 }
             }
         }

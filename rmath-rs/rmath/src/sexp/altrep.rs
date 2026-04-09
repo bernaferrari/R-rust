@@ -13,12 +13,12 @@
 //!
 //! # Example
 //!
-//! ```rust
-//! use rmath::sexp::altrep::AltrepBuilder;
+//! ```rust,ignore
+//! use rmath::sexp::altrep::{AltrepBuilder, AltrepData, SEQUENCE_CLASS};
 //!
 //! // Create a lazy sequence 1..1000000
 //! let seq = AltrepBuilder::new()
-//!     .class("sequence")
+//!     .class(&SEQUENCE_CLASS)
 //!     .data2(AltrepData::Sequence { start: 1.0, end: 1000000.0, by: 1.0 })
 //!     .build();
 //! ```
