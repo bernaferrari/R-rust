@@ -3,7 +3,6 @@ resolver = "2"
 members = [
   "crates/r-device-android-headless",
   "crates/r-embed",
-  "crates/r-ffi",
   "crates/r-graphics-engine",
   "crates/r-uniffi",
   "rmath-rs/rmath",
