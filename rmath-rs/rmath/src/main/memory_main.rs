@@ -51,8 +51,10 @@ pub unsafe fn R_gc_running() -> c_int {
 /// This is the equivalent of R's `R_gc()`.
 pub unsafe fn R_gc() {
     unsafe {
+        R_in_gc.with(|v| v.set(1));
+        let (_promoted, _freed, _compacted) = crate::sexp::gengc::full_gc();
         gc_count.with(|v| v.set(v.get() + 1));
-        // No actual GC implementation yet; stub.
+        R_in_gc.with(|v| v.set(0));
     }
 }
 
@@ -61,8 +63,10 @@ pub unsafe fn R_gc() {
 /// This is the equivalent of R's `R_gc_lite()`.
 pub unsafe fn R_gc_lite() {
     unsafe {
+        R_in_gc.with(|v| v.set(1));
+        let (_promoted, _freed) = crate::sexp::gengc::minor_gc();
         gc_count.with(|v| v.set(v.get() + 1));
-        // No actual GC implementation yet; stub.
+        R_in_gc.with(|v| v.set(0));
     }
 }
 
@@ -452,12 +456,7 @@ pub unsafe fn R_MakeWeakRef(_key: SEXP, _val: SEXP, _fin: SEXP, _onexit: c_int) 
 /// Create a weak reference with a C finalizer.
 ///
 /// This is the equivalent of R's `R_MakeWeakRefC()`.
-pub unsafe fn R_MakeWeakRefC(
-    _key: SEXP,
-    _val: SEXP,
-    _fin: R_CFinalizer_t,
-    _onexit: c_int,
-) -> SEXP {
+pub unsafe fn R_MakeWeakRefC(_key: SEXP, _val: SEXP, _fin: R_CFinalizer_t, _onexit: c_int) -> SEXP {
     unsafe { R_NilValue() }
 }
 

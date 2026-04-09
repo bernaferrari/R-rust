@@ -147,7 +147,7 @@ impl FunTabEntry {
     }
 
     /// Returns true if the name pointer is null (sentinel).
-    fn is_sentinel(&self) -> bool {
+    pub fn is_sentinel(&self) -> bool {
         self.name.is_empty()
     }
 }

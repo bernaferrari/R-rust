@@ -19,10 +19,11 @@ pub const NA_INTEGER: c_int = c_int::MIN;
 pub const NA_LOGICAL: c_int = c_int::MIN;
 
 /// R's NA_REAL bit pattern (IEEE 754 quiet NaN with specific payload).
-pub const R_NA_BIT_PATTERN: u64 = 0x7ff0000000001954;
+/// Must match NA_REAL exactly so that R_IsNA(NA_REAL) returns true.
+pub const R_NA_BIT_PATTERN: u64 = 0x7FF80000000007A2;
 
-/// R's NA_REAL sentinel.
-pub const NA_REAL: c_double = f64::from_bits(0x7FF80000000007A2);
+/// R's NA_REAL sentinel — derived from R_NA_BIT_PATTERN so they cannot drift.
+pub const NA_REAL: c_double = f64::from_bits(R_NA_BIT_PATTERN);
 
 /// R's boolean type (0 = FALSE, 1 = TRUE, NA_LOGICAL = NA).
 pub type Rboolean = c_int;

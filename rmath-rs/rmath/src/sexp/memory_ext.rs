@@ -39,6 +39,15 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     }
 }
 
+pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
+    let env: SEXP = &mut *boxed as *mut _;
+    (*env).data.envsxp.frame = frame;
+    (*env).data.envsxp.enclos = enclos;
+    (*env).data.envsxp.hashtab = hashtab;
+    Box::leak(boxed)
+}
+
 // ---------------------------------------------------------------------------
 // mkPROMISE — create a promise
 // ---------------------------------------------------------------------------

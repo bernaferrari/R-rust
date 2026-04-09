@@ -333,11 +333,11 @@ mod tests {
     #[test]
     fn test_set_global_env() {
         unsafe {
-            assert!(R_GlobalEnv().is_null());
+            let saved = R_GlobalEnv();
             let fake = 0x1 as SEXP;
             set_R_GlobalEnv(fake);
             assert_eq!(R_GlobalEnv(), fake);
-            set_R_GlobalEnv(ptr::null_mut());
+            set_R_GlobalEnv(saved);
         }
     }
 }

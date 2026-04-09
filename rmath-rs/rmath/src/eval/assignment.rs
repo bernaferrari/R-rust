@@ -4,7 +4,7 @@
 //!
 //! Handles `<-`, `<<-`, and `=` assignment operators.
 
-use crate::sexp::accessors::{CAR, CDR, TYPEOF};
+use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
 use crate::sexp::envir::{defineVar, setVar};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
@@ -18,50 +18,23 @@ use super::eval::Rf_eval;
 /// Handle assignment: lhs <- rhs, lhs <<- rhs, lhs = rhs.
 ///
 /// This is the equivalent of R's assignment handling in eval.c.
-pub unsafe fn do_set(lhs: SEXP, rhs: SEXP, rho: SEXP) -> SEXP {
+pub unsafe fn do_set(_lhs: SEXP, rhs: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if lhs.is_null() || rhs.is_null() {
+        if rhs.is_null() {
             return R_NilValue();
         }
 
-        let fun_sym = CAR(lhs);
-        let args = CDR(lhs);
+        let var_sym = CAR(rhs);
+        if TYPEOF(var_sym) != SEXPTYPE::SYMSXP.0 {
+            eprintln!("Error: invalid left-hand side to assignment");
+            return R_NilValue();
+        }
 
-        // Get the variable name being assigned to
-        let var_sym = if TYPEOF(fun_sym) == SEXPTYPE::SYMSXP.0 {
-            fun_sym
-        } else {
-            eprintln!("Error: invalid (do_set) left-hand side to assignment");
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "invalid left-hand side to assignment".to_string(),
-            });
-        };
-
-        // Evaluate the right-hand side
-        let val = Rf_eval(rhs, rho);
+        let val_expr = CADR(rhs);
+        let val = Rf_eval(val_expr, rho);
         set_R_Visible(FALSE);
 
-        // For simple assignment, define in the current environment
-        // Check if it's <- or <<-
-        let assign_name = crate::sexp::accessors::PRINTNAME(fun_sym);
-        let name_str = if !assign_name.is_null() {
-            let s = crate::sexp::accessors::CHAR(assign_name);
-            if !s.is_null() {
-                std::ffi::CStr::from_ptr(s).to_str().unwrap_or("")
-            } else {
-                ""
-            }
-        } else {
-            ""
-        };
-
-        if name_str == "<<-" {
-            // Global assignment — search parent environments
-            setVar(var_sym, val, rho);
-        } else {
-            // Local assignment (<- or =)
-            defineVar(var_sym, val, rho);
-        }
+        defineVar(var_sym, val, rho);
 
         val
     }

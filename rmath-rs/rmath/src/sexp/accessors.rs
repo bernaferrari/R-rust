@@ -488,6 +488,7 @@ pub unsafe fn HASHTAB(x: SEXP) -> SEXP {
 pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
     unsafe {
         if !x.is_null() {
+            super::gengc::list_write_barrier(x, 0, v);
             (*x).data.envsxp.frame = v;
         }
     }
@@ -497,6 +498,7 @@ pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
 pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
     unsafe {
         if !x.is_null() {
+            super::gengc::list_write_barrier(x, 1, v);
             (*x).data.envsxp.enclos = v;
         }
     }
@@ -506,6 +508,7 @@ pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
 pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
     unsafe {
         if !x.is_null() {
+            super::gengc::list_write_barrier(x, 2, v);
             (*x).data.envsxp.hashtab = v;
         }
     }
@@ -552,6 +555,7 @@ pub unsafe fn PRENV(x: SEXP) -> SEXP {
 pub unsafe fn SET_PRVALUE(x: SEXP, v: SEXP) {
     unsafe {
         if !x.is_null() {
+            super::gengc::list_write_barrier(x, 0, v);
             (*x).data.promsxp.value = v;
         }
     }

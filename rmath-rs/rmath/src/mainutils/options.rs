@@ -737,216 +737,78 @@ pub unsafe fn InitOptions() {
             return;
         }
 
-        let _protected: Vec<SEXP> = Vec::new();
+        let pi = crate::sexp::constructors::persistent_scalar_integer;
+        let pl = crate::sexp::constructors::persistent_scalar_logical;
+        let pm = crate::sexp::constructors::persistent_mkstring;
 
-        // Set default options
-        // "prompt"
-        let val = Rf_mkString(
-            CString::new("> ")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        );
+        let val = pm(CString::new("> ").unwrap().as_ptr());
         table.options.insert("prompt".to_string(), val);
-        R_PreserveObject(val);
 
-        // "continue"
-        let val = Rf_mkString(
-            CString::new("+ ")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        );
+        let val = pm(CString::new("+ ").unwrap().as_ptr());
         table.options.insert("continue".to_string(), val);
-        R_PreserveObject(val);
 
-        // "expressions"
-        let val = Rf_ScalarInteger(5000);
-        table.options.insert("expressions".to_string(), val);
-        R_PreserveObject(val);
-
-        // "width"
-        let val = Rf_ScalarInteger(80);
-        table.options.insert("width".to_string(), val);
-        R_PreserveObject(val);
-
-        // "deparse.cutoff"
-        let val = Rf_ScalarInteger(60);
-        table.options.insert("deparse.cutoff".to_string(), val);
-        R_PreserveObject(val);
-
-        // "digits"
-        let val = Rf_ScalarInteger(7);
-        table.options.insert("digits".to_string(), val);
-        R_PreserveObject(val);
-
-        // "echo"
-        let val = Rf_ScalarLogical(TRUE);
-        table.options.insert("echo".to_string(), val);
-        R_PreserveObject(val);
-
-        // "quiet"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("quiet".to_string(), val);
-        R_PreserveObject(val);
-
-        // "verbose"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("verbose".to_string(), val);
-        R_PreserveObject(val);
-
-        // "check.bounds"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("check.bounds".to_string(), val);
-        R_PreserveObject(val);
-
-        // "keep.source"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("keep.source".to_string(), val);
-        R_PreserveObject(val);
-
-        // "keep.source.pkgs"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("keep.source.pkgs".to_string(), val);
-        R_PreserveObject(val);
-
-        // "keep.parse.data"
-        let val = Rf_ScalarLogical(TRUE);
-        table.options.insert("keep.parse.data".to_string(), val);
-        R_PreserveObject(val);
-
-        // "keep.parse.data.pkgs"
-        let val = Rf_ScalarLogical(FALSE);
+        table.options.insert("expressions".to_string(), pi(5000));
+        table.options.insert("width".to_string(), pi(80));
+        table.options.insert("deparse.cutoff".to_string(), pi(60));
+        table.options.insert("digits".to_string(), pi(7));
+        table.options.insert("echo".to_string(), pl(TRUE));
+        table.options.insert("quiet".to_string(), pl(FALSE));
+        table.options.insert("verbose".to_string(), pl(FALSE));
+        table.options.insert("check.bounds".to_string(), pl(FALSE));
+        table.options.insert("keep.source".to_string(), pl(FALSE));
         table
             .options
-            .insert("keep.parse.data.pkgs".to_string(), val);
-        R_PreserveObject(val);
+            .insert("keep.source.pkgs".to_string(), pl(FALSE));
+        table
+            .options
+            .insert("keep.parse.data".to_string(), pl(TRUE));
+        table
+            .options
+            .insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
+        table.options.insert("warning.length".to_string(), pi(1000));
+        table.options.insert("nwarnings".to_string(), pi(50));
 
-        // "warning.length"
-        let val = Rf_ScalarInteger(1000);
-        table.options.insert("warning.length".to_string(), val);
-        R_PreserveObject(val);
-
-        // "nwarnings"
-        let val = Rf_ScalarInteger(50);
-        table.options.insert("nwarnings".to_string(), val);
-        R_PreserveObject(val);
-
-        // "OutDec"
-        let val = Rf_mkString(
-            CString::new(".")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        );
+        let val = pm(CString::new(".").unwrap().as_ptr());
         table.options.insert("OutDec".to_string(), val);
-        R_PreserveObject(val);
 
-        // "CBoundsCheck"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("CBoundsCheck".to_string(), val);
-        R_PreserveObject(val);
+        table.options.insert("CBoundsCheck".to_string(), pl(FALSE));
 
-        // "matprod"
-        let val = Rf_mkString(
-            CString::new("default")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        );
+        let val = pm(CString::new("default").unwrap().as_ptr());
         table.options.insert("matprod".to_string(), val);
-        R_PreserveObject(val);
 
-        // "PCRE_study"
-        let val = Rf_ScalarLogical(TRUE);
-        table.options.insert("PCRE_study".to_string(), val);
-        R_PreserveObject(val);
-
-        // "PCRE_use_JIT"
-        let val = Rf_ScalarLogical(TRUE);
-        table.options.insert("PCRE_use_JIT".to_string(), val);
-        R_PreserveObject(val);
-
-        // "PCRE_limit_recursion"
-        let val = Rf_ScalarLogical(NA_LOGICAL);
+        table.options.insert("PCRE_study".to_string(), pl(TRUE));
+        table.options.insert("PCRE_use_JIT".to_string(), pl(TRUE));
         table
             .options
-            .insert("PCRE_limit_recursion".to_string(), val);
-        R_PreserveObject(val);
-
-        // "max.contour.segments"
-        let val = Rf_ScalarInteger(25000);
+            .insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL));
         table
             .options
-            .insert("max.contour.segments".to_string(), val);
-        R_PreserveObject(val);
-
-        // "warnPartialMatchDollar"
-        let val = Rf_ScalarLogical(FALSE);
+            .insert("max.contour.segments".to_string(), pi(25000));
         table
             .options
-            .insert("warnPartialMatchDollar".to_string(), val);
-        R_PreserveObject(val);
-
-        // "warnPartialMatchArgs"
-        let val = Rf_ScalarLogical(FALSE);
+            .insert("warnPartialMatchDollar".to_string(), pl(FALSE));
         table
             .options
-            .insert("warnPartialMatchArgs".to_string(), val);
-        R_PreserveObject(val);
-
-        // "warnPartialMatchAttr"
-        let val = Rf_ScalarLogical(FALSE);
+            .insert("warnPartialMatchArgs".to_string(), pl(FALSE));
         table
             .options
-            .insert("warnPartialMatchAttr".to_string(), val);
-        R_PreserveObject(val);
-
-        // "showWarnCalls"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("showWarnCalls".to_string(), val);
-        R_PreserveObject(val);
-
-        // "showErrorCalls"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("showErrorCalls".to_string(), val);
-        R_PreserveObject(val);
-
-        // "showNCalls"
-        let val = Rf_ScalarInteger(50);
-        table.options.insert("showNCalls".to_string(), val);
-        R_PreserveObject(val);
-
-        // "browserNLdisabled"
-        let val = Rf_ScalarLogical(FALSE);
-        table.options.insert("browserNLdisabled".to_string(), val);
-        R_PreserveObject(val);
-
-        // "warn" (from Common.R defaults)
-        let val = Rf_ScalarInteger(0);
-        table.options.insert("warn".to_string(), val);
-        R_PreserveObject(val);
-
-        // "max.print" (from Common.R defaults)
-        let val = Rf_ScalarInteger(99999);
-        table.options.insert("max.print".to_string(), val);
-        R_PreserveObject(val);
-
-        // "show.error.messages" (from Common.R defaults)
-        let val = Rf_ScalarLogical(TRUE);
-        table.options.insert("show.error.messages".to_string(), val);
-        R_PreserveObject(val);
-
-        // "scipen" (from Common.R defaults)
-        let val = Rf_ScalarInteger(0);
-        table.options.insert("scipen".to_string(), val);
-        R_PreserveObject(val);
-
-        // "height"
-        let val = Rf_ScalarInteger(60);
-        table.options.insert("height".to_string(), val);
-        R_PreserveObject(val);
-
-        // "add.smooth"
-        let val = Rf_ScalarLogical(TRUE);
-        table.options.insert("add.smooth".to_string(), val);
-        R_PreserveObject(val);
+            .insert("warnPartialMatchAttr".to_string(), pl(FALSE));
+        table.options.insert("showWarnCalls".to_string(), pl(FALSE));
+        table
+            .options
+            .insert("showErrorCalls".to_string(), pl(FALSE));
+        table.options.insert("showNCalls".to_string(), pi(50));
+        table
+            .options
+            .insert("browserNLdisabled".to_string(), pl(FALSE));
+        table.options.insert("warn".to_string(), pi(0));
+        table.options.insert("max.print".to_string(), pi(99999));
+        table
+            .options
+            .insert("show.error.messages".to_string(), pl(TRUE));
+        table.options.insert("scipen".to_string(), pi(0));
+        table.options.insert("height".to_string(), pi(60));
+        table.options.insert("add.smooth".to_string(), pl(TRUE));
 
         table.initialized = true;
     }

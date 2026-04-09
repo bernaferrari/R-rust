@@ -89,7 +89,7 @@ pub unsafe fn Rf_install(name: *const c_char) -> SEXP {
         }
 
         // Create a CHARSXP for the print name
-        let pname = super::constructors::Rf_mkChar(name);
+        let pname = super::constructors::persistent_mkChar(name);
         if pname.is_null() {
             return ptr::null_mut();
         }

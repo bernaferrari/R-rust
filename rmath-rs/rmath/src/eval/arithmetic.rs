@@ -215,36 +215,64 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
 /// in the base environment.
 pub unsafe fn register_arithmetic_builtins(env: SEXP) {
     unsafe {
-        let arith_ops = ["+", "-", "*", "/", "^", "%%", "%/%"];
-        let rel_ops = ["<", ">", "<=", ">=", "==", "!="];
+        use crate::sexp::accessors::SET_FRAME;
+        use crate::sexp::constructors::persistent_cons;
+        use crate::sexp::ffi::SexprecCore;
 
-        for op_name in &arith_ops {
-            let prim = crate::sexp::memory::with_arena(|arena| {
-                let p = arena.alloc_node(SEXPTYPE::BUILTINSXP);
-                if !p.is_null() {
-                    (*p).sxpinfo.set_gp(1);
-                }
-                p
-            });
-            if !prim.is_null() {
-                let sym = Rf_install(CString::new(*op_name).unwrap().as_ptr());
-                crate::sexp::envir::defineVar(sym, prim, env);
-            }
-        }
+        let all_ops = [
+            "+", "-", "*", "/", "^", "%%", "%/%", "<", ">", "<=", ">=", "==", "!=",
+        ];
 
-        for op_name in &rel_ops {
-            let prim = crate::sexp::memory::with_arena(|arena| {
-                let p = arena.alloc_node(SEXPTYPE::BUILTINSXP);
-                if !p.is_null() {
-                    (*p).sxpinfo.set_gp(1);
-                }
-                p
-            });
-            if !prim.is_null() {
-                let sym = Rf_install(CString::new(*op_name).unwrap().as_ptr());
-                crate::sexp::envir::defineVar(sym, prim, env);
-            }
+        let frame = (*env).data.envsxp.frame;
+        let mut chain = frame;
+        for op_name in &all_ops {
+            let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::BUILTINSXP));
+            boxed.sxpinfo.set_gp(1);
+            let prim: SEXP = Box::leak(boxed);
+            let sym = Rf_install(CString::new(*op_name).unwrap().as_ptr());
+            let cell = persistent_cons(prim, chain);
+            (*cell).data.listsxp.tagval = sym;
+            chain = cell;
         }
+        SET_FRAME(env, chain);
+    }
+}
+
+pub unsafe fn register_special_forms(env: SEXP) {
+    unsafe {
+        use crate::sexp::accessors::SET_FRAME;
+        use crate::sexp::constructors::persistent_cons;
+        use crate::sexp::ffi::SexprecCore;
+
+        let special_forms = [
+            "<-",
+            "<<-",
+            "=",
+            "if",
+            "{",
+            "(",
+            "function",
+            "while",
+            "for",
+            "repeat",
+            "break",
+            "next",
+            "return",
+            "invisible",
+        ];
+
+        let frame = (*env).data.envsxp.frame;
+        let mut chain = frame;
+        for op_name in &special_forms {
+            let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
+            boxed.sxpinfo.set_gp(1);
+            let prim: SEXP = Box::leak(boxed);
+            let sym = Rf_install(CString::new(*op_name).unwrap().as_ptr());
+            let cell = persistent_cons(prim, chain);
+            (*cell).data.listsxp.tagval = sym;
+            chain = cell;
+        }
+        SET_FRAME(env, chain);
     }
 }
 

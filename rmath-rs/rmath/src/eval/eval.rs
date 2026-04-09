@@ -95,10 +95,15 @@ pub unsafe fn get_primfun(op: SEXP) -> Option<PRIMFUN> {
 
 /// Get a function table entry by offset.
 ///
-/// This is a stub — the full implementation would use R_FunTab.
+/// Looks up the canonical R_FunTab and returns the C function pointer at the given offset.
 pub unsafe fn get_fun_tab_entry(offset: c_int) -> Option<PRIMFUN> {
-    let _ = offset;
-    None
+    let tab = crate::mainutils::names::R_FunTab;
+    let idx = offset as usize;
+    if idx < tab.len() && !tab[idx].is_sentinel() {
+        tab[idx].cfun
+    } else {
+        None
+    }
 }
 
 /// Check the PRIMPRINT flag (visibility hint for primitives).
@@ -363,7 +368,7 @@ fn apply_builtin_safe<'a>(
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
     let evaled_args =
-        unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), 0) };
+        unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), -1) };
 
     let op_name = unsafe {
         let fun_sym = crate::sexp::accessors::CAR(call.as_raw());

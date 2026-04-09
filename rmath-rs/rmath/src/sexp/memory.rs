@@ -32,6 +32,8 @@ pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
     }
 }
 
+const GC_TRIGGER_THRESHOLD: usize = 10_000;
+
 // ---------------------------------------------------------------------------
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
@@ -74,6 +76,17 @@ impl RArena {
                 *ptr = SexprecCore::new(sexptype);
             }
             return ptr;
+        }
+
+        let active_nodes = self.nodes.len() - self.free_list.len();
+        if active_nodes > GC_TRIGGER_THRESHOLD && self.fragmentation_ratio() > 0.25 {
+            crate::sexp::gengc::minor_gc();
+            if let Some(ptr) = self.free_list.pop() {
+                unsafe {
+                    *ptr = SexprecCore::new(sexptype);
+                }
+                return ptr;
+            }
         }
 
         let mut boxed = Box::new(SexprecCore::new(sexptype));

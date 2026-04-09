@@ -2113,7 +2113,7 @@ mod tests {
     #[test]
     fn test_custom_print_value_null() {
         unsafe {
-            CustomPrintValue(ptr::null_mut(), R_GlobalEnv());
+            CustomPrintValue(ptr::null_mut(), ptr::null_mut());
         }
     }
 

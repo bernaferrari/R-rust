@@ -16,7 +16,7 @@ use std::ffi::CString;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::globals::{set_R_BaseEnv, set_R_EmptyEnv, set_R_GlobalEnv};
-use super::memory_ext::NewEnvironment;
+use super::memory_ext::NewPersistentEnvironment;
 use super::symbol::Rf_install;
 
 static R_INITIALIZED: AtomicBool = AtomicBool::new(false);
@@ -32,18 +32,19 @@ pub unsafe fn initialize_r() {
 
     let nil = super::globals::R_NilValue();
 
-    let empty_env = NewEnvironment(nil, nil, nil);
+    let empty_env = NewPersistentEnvironment(nil, nil, nil);
     set_R_EmptyEnv(empty_env);
 
-    let base_env = NewEnvironment(nil, empty_env, nil);
+    let base_env = NewPersistentEnvironment(nil, empty_env, nil);
     set_R_BaseEnv(base_env);
 
-    let global_env = NewEnvironment(nil, base_env, nil);
+    let global_env = NewPersistentEnvironment(nil, base_env, nil);
     set_R_GlobalEnv(global_env);
 
     pre_intern_symbols();
 
     crate::eval::arithmetic::register_arithmetic_builtins(base_env);
+    crate::eval::arithmetic::register_special_forms(base_env);
 
     R_INITIALIZED.store(true, Ordering::Release);
 }
