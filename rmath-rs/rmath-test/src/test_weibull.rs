@@ -91,7 +91,7 @@ pub fn run_tests() -> Result<(), String> {
     assert_equiv(r1, r2, "rweibull reproducible");
     assert_nan(rweibull_inner(0.0, 1.0), "rweibull(0,1)");
     assert_nan(rweibull_inner(-1.0, 1.0), "rweibull(-1,1)");
-    assert_nan(rweibull_inner(1.0, 0.0), "rweibull(1,0)");
+    assert_equiv(rweibull_inner(1.0, 0.0), 0.0, "rweibull(1,0)");
 
     Ok(())
 }

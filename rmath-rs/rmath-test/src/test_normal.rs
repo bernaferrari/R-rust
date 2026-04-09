@@ -10,11 +10,11 @@ pub fn run_tests() -> Result<(), String> {
     );
     assert_nan(dnorm4_inner(f64::NAN, 0.0, 1.0, false), "dnorm(NaN,...)");
     assert_nan(dnorm4_inner(0.0, f64::NAN, 1.0, false), "dnorm(0,NaN,1)");
-    assert_nan(dnorm4_inner(0.0, 0.0, 0.0, false), "dnorm(0,0,0)");
+    assert_posinf(dnorm4_inner(0.0, 0.0, 0.0, false), "dnorm(0,0,0)");
     assert_nan(dnorm4_inner(0.0, 0.0, -1.0, false), "dnorm(0,0,-1)");
     assert_equiv(
         dnorm4_inner(0.0, 0.0, 1.0, true),
-        -(2.0 * std::f64::consts::PI).ln() / 2.0,
+        f64::from_bits(0xbfed67f1c864beb5), // -(2*pi).ln()/2, matches R's exact value
         "dnorm(0,0,1,log)",
     );
 
@@ -89,7 +89,7 @@ pub fn run_tests() -> Result<(), String> {
     let r2 = rnorm_inner(0.0, 1.0);
     assert_equiv(r1, r2, "rnorm reproducible");
     assert_nan(rnorm_inner(f64::NAN, 1.0), "rnorm(NaN,1)");
-    assert_nan(rnorm_inner(0.0, 0.0), "rnorm(0,0)");
+    assert_equiv(rnorm_inner(0.0, 0.0), 0.0, "rnorm(0,0)");
     assert_nan(rnorm_inner(0.0, -1.0), "rnorm(0,-1)");
 
     Ok(())

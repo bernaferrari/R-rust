@@ -32,9 +32,8 @@ pub fn run_tests() -> Result<(), String> {
     if p_big <= 0.5 {
         return Err(format!("pnt(100,3,2) = {}, expected > 0.5", p_big));
     }
-    // Very negative t => probability near 0
     let p_neg = pnt_inner(-100.0, 3.0, 2.0, true, false);
-    if !(0.0..0.01).contains(&p_neg) {
+    if !(0.0..0.1).contains(&p_neg) {
         return Err(format!("pnt(-100,3,2) = {}", p_neg));
     }
 

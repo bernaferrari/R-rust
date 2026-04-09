@@ -18,7 +18,7 @@ pub fn run_tests() -> Result<(), String> {
     assert_nan(dnbinom_inner(0.0, 1.0, 0.0, false), "dnbinom(0,1,0)");
     // Edge case: prob=1 => point mass at 0
     assert_equiv(dnbinom_inner(0.0, 2.0, 1.0, false), 1.0, "dnbinom(0,2,1)");
-    assert_nan(dnbinom_inner(1.0, 2.0, 1.0, false), "dnbinom(1,2,1)");
+    assert_equiv(dnbinom_inner(1.0, 2.0, 1.0, false), 0.0, "dnbinom(1,2,1)");
     // Valid density should be > 0
     let d1 = dnbinom_inner(2.0, 3.0, 0.5, false);
     if d1 <= 0.0 {

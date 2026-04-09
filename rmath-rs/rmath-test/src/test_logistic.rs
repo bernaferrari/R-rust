@@ -49,7 +49,7 @@ pub fn run_tests() -> Result<(), String> {
     let r2 = rlogis_inner(0.0, 1.0);
     assert_equiv(r1, r2, "rlogis reproducible");
     assert_nan(rlogis_inner(f64::NAN, 1.0), "rlogis(NaN,1)");
-    assert_nan(rlogis_inner(0.0, 0.0), "rlogis(0,0)");
+    assert_equiv(rlogis_inner(0.0, 0.0), 0.0, "rlogis(0,0)");
 
     Ok(())
 }
