@@ -415,7 +415,7 @@ fn Int2Real(i: c_int) -> f64 {
 
 /// asLogical — extract integer logical value from SEXP.
 #[inline]
-unsafe fn asLogical(x: SEXP) -> c_int {
+unsafe fn asLogical(x: SEXP) -> c_int { unsafe {
     if x.is_null() || x == R_NilValue() {
         return NA_INTEGER;
     }
@@ -448,11 +448,11 @@ unsafe fn asLogical(x: SEXP) -> c_int {
         }
         _ => NA_INTEGER,
     }
-}
+}}
 
 /// asBool2 — extract boolean from scalar (panics on NA).
 #[inline]
-unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
+unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool { unsafe {
     let v = asLogical(x);
     if v == NA_INTEGER {
         std::panic::panic_any(crate::sexp::context::RError {
@@ -460,7 +460,7 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
         });
     }
     v != 0
-}
+}}
 
 /// PRIMVAL -- get the primitive's internal integer value.
 /// In R, this is stored in the offset/gp field of the SEXPREC.
@@ -471,13 +471,13 @@ unsafe fn PRIMVAL(_op: SEXP) -> c_int {
 }
 
 /// Get or intern the "na.rm" symbol.
-unsafe fn R_NaRmSymbol() -> SEXP {
+unsafe fn R_NaRmSymbol() -> SEXP { unsafe {
     Rf_install(b"na.rm\0".as_ptr() as *const c_char)
-}
+}}
 
 /// matchArgExact — find the argument matching a tag by exact symbol identity.
 /// Destructively removes the matched element from the list.
-unsafe fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP {
+unsafe fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP { unsafe {
     let mut prev: SEXP = std::ptr::null_mut();
     let mut a = *list;
 
@@ -496,7 +496,7 @@ unsafe fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP {
         a = CDR(a);
     }
     R_NilValue()
-}
+}}
 
 /// checkArity -- verify argument count matches expected arity.
 #[inline]
@@ -504,7 +504,7 @@ unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
 
 /// fixup_NaRm — ensure na.rm is the last argument and exists.
 /// Returns the potentially modified args list.
-unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP {
+unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP { unsafe {
     let na_sym = R_NaRmSymbol();
     let mut na_value = Rf_ScalarLogical(0); // FALSE
     let mut seen_narm = false;
@@ -552,7 +552,7 @@ unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP {
     }
     Rf_unprotect(1);
     args
-}
+}}
 
 // ---------------------------------------------------------------------------
 // SEXP-level sum/min/max/prod helpers (operate on SEXP vectors)
@@ -562,7 +562,7 @@ unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP {
 /// Returns (sum_value, updated_flag).
 /// updated: 0 = no elements, NA_INTEGER = NA found (go to na_answer),
 ///          42 = overflow (switch to real).
-unsafe fn isum_sexp(sx: SEXP, narm: bool) -> (i64, c_int) {
+unsafe fn isum_sexp(sx: SEXP, narm: bool) -> (i64, c_int) { unsafe {
     let n = XLENGTH(sx);
     let ptr = INTEGER(sx);
     let mut s: i64 = 0;
@@ -588,10 +588,10 @@ unsafe fn isum_sexp(sx: SEXP, narm: bool) -> (i64, c_int) {
         }
     }
     (s, updated)
-}
+}}
 
 /// Real sum from SEXP vector (used when integer overflow occurs).
-unsafe fn risum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+unsafe fn risum_sexp(sx: SEXP, narm: bool) -> (f64, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = INTEGER(sx);
     let mut s: f64 = 0.0;
@@ -614,10 +614,10 @@ unsafe fn risum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
         s = R_NegInf;
     }
     (s, updated)
-}
+}}
 
 /// Double sum from SEXP vector.
-unsafe fn rsum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+unsafe fn rsum_sexp(sx: SEXP, narm: bool) -> (f64, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = REAL(sx);
     let mut s: f64 = 0.0;
@@ -638,10 +638,10 @@ unsafe fn rsum_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
         s = R_NegInf;
     }
     (s, updated)
-}
+}}
 
 /// Complex sum from SEXP vector.
-unsafe fn csum_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
+unsafe fn csum_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = COMPLEX(sx);
     let mut sr: f64 = 0.0;
@@ -659,10 +659,10 @@ unsafe fn csum_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
         }
     }
     (Rcomplex { r: sr, i: si }, updated)
-}
+}}
 
 /// Integer min from SEXP vector.
-unsafe fn imin_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
+unsafe fn imin_sexp(sx: SEXP, narm: bool) -> (c_int, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = INTEGER(sx);
     let mut s: c_int = 0;
@@ -682,10 +682,10 @@ unsafe fn imin_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
         }
     }
     (s, updated)
-}
+}}
 
 /// Double min from SEXP vector.
-unsafe fn rmin_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+unsafe fn rmin_sexp(sx: SEXP, narm: bool) -> (f64, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = REAL(sx);
     let mut s: f64 = 0.0;
@@ -710,10 +710,10 @@ unsafe fn rmin_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
         }
     }
     (s, updated)
-}
+}}
 
 /// Integer max from SEXP vector.
-unsafe fn imax_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
+unsafe fn imax_sexp(sx: SEXP, narm: bool) -> (c_int, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = INTEGER(sx);
     let mut s: c_int = 0;
@@ -733,10 +733,10 @@ unsafe fn imax_sexp(sx: SEXP, narm: bool) -> (c_int, bool) {
         }
     }
     (s, updated)
-}
+}}
 
 /// Double max from SEXP vector.
-unsafe fn rmax_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+unsafe fn rmax_sexp(sx: SEXP, narm: bool) -> (f64, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = REAL(sx);
     let mut s: f64 = 0.0;
@@ -761,10 +761,10 @@ unsafe fn rmax_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
         }
     }
     (s, updated)
-}
+}}
 
 /// Integer product from SEXP vector (returns double).
-unsafe fn iprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+unsafe fn iprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = INTEGER(sx);
     let mut s: f64 = 1.0;
@@ -793,10 +793,10 @@ unsafe fn iprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
         s = R_NegInf;
     }
     (s, updated)
-}
+}}
 
 /// Double product from SEXP vector.
-unsafe fn rprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
+unsafe fn rprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = REAL(sx);
     let mut s: f64 = 1.0;
@@ -817,10 +817,10 @@ unsafe fn rprod_sexp(sx: SEXP, narm: bool) -> (f64, bool) {
         s = R_NegInf;
     }
     (s, updated)
-}
+}}
 
 /// Complex product from SEXP vector.
-unsafe fn cprod_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
+unsafe fn cprod_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) { unsafe {
     let n = XLENGTH(sx);
     let ptr = COMPLEX(sx);
     let mut sr: f64 = 1.0;
@@ -840,14 +840,14 @@ unsafe fn cprod_sexp(sx: SEXP, narm: bool) -> (Rcomplex, bool) {
         }
     }
     (Rcomplex { r: sr, i: si }, updated)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // SEXP-level mean helpers
 // ---------------------------------------------------------------------------
 
 /// Mean of a logical SEXP vector.
-unsafe fn logical_mean_sexp(x: SEXP) -> SEXP {
+unsafe fn logical_mean_sexp(x: SEXP) -> SEXP { unsafe {
     let n = XLENGTH(x);
     let ptr = LOGICAL(x);
     let mut s: f64 = 0.0;
@@ -859,10 +859,10 @@ unsafe fn logical_mean_sexp(x: SEXP) -> SEXP {
         s += xi as f64;
     }
     Rf_ScalarReal(s / n as f64)
-}
+}}
 
 /// Mean of an integer SEXP vector.
-unsafe fn integer_mean_sexp(x: SEXP) -> SEXP {
+unsafe fn integer_mean_sexp(x: SEXP) -> SEXP { unsafe {
     let n = XLENGTH(x);
     let ptr = INTEGER(x);
     let mut s: f64 = 0.0;
@@ -874,10 +874,10 @@ unsafe fn integer_mean_sexp(x: SEXP) -> SEXP {
         s += xi as f64;
     }
     Rf_ScalarReal(s / n as f64)
-}
+}}
 
 /// Mean of a real SEXP vector (with overflow protection).
-unsafe fn real_mean_sexp(x: SEXP) -> SEXP {
+unsafe fn real_mean_sexp(x: SEXP) -> SEXP { unsafe {
     let n = XLENGTH(x);
     let ptr = REAL(x);
     if n == 0 {
@@ -917,10 +917,10 @@ unsafe fn real_mean_sexp(x: SEXP) -> SEXP {
     }
 
     Rf_ScalarReal(s)
-}
+}}
 
 /// Mean of a complex SEXP vector.
-unsafe fn complex_mean_sexp(x: SEXP) -> SEXP {
+unsafe fn complex_mean_sexp(x: SEXP) -> SEXP { unsafe {
     let n = XLENGTH(x);
     let ptr = COMPLEX(x);
     let mut sr: f64 = 0.0;
@@ -947,7 +947,7 @@ unsafe fn complex_mean_sexp(x: SEXP) -> SEXP {
     }
 
     Rf_ScalarComplex(Rcomplex { r: sr, i: si })
-}
+}}
 
 // ---------------------------------------------------------------------------
 // do_summary — sum (0), mean (1), min (2), max (3), prod (4)
@@ -956,7 +956,7 @@ unsafe fn complex_mean_sexp(x: SEXP) -> SEXP {
 /// `do_summary` provides a variety of data summaries.
 ///
 /// op (PRIMVAL): 0 = sum, 1 = mean, 2 = min, 3 = max, 4 = prod
-pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
     checkArity(op, args);
 
     let iop = PRIMVAL(op);
@@ -1341,7 +1341,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     }
     Rf_unprotect(2);
     ans
-}
+}}
 
 // ---------------------------------------------------------------------------
 // do_range — range() dispatches to range.default
@@ -1349,7 +1349,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// `do_range` implements `range(...)` which finds min and max.
 /// It delegates to range.default via applyClosure.
-pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
     let args = Rf_protect(fixup_NaRm(args));
 
     // Find range.default and apply it
@@ -1364,7 +1364,7 @@ pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
     Rf_unprotect(3);
     ans
-}
+}}
 
 // ---------------------------------------------------------------------------
 // do_mean — mean.default implementation
@@ -1373,7 +1373,7 @@ pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// `do_mean` implements `mean.default(x)`.
 /// Note: mean is typically dispatched via do_summary when PRIMVAL(op) == 1,
 /// but this provides a standalone entry point.
-pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP { unsafe {
     let x = CAR(args);
     match TYPEOF(x) {
         t if t == SEXPTYPE::LGLSXP.0 => logical_mean_sexp(x),
@@ -1386,7 +1386,7 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             });
         }
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Tests

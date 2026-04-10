@@ -5,7 +5,7 @@
 //! Handles `<-`, `<<-`, and `=` assignment operators.
 
 use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
-use crate::sexp::envir::{defineVar, setVar};
+use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
 

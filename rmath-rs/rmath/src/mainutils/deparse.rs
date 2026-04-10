@@ -1020,7 +1020,7 @@ unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *cons
 // ---------------------------------------------------------------------------
 
 /// Format an integer element as a string.
-unsafe fn format_int_element(val: c_int) -> *const c_char {
+unsafe fn format_int_element(val: c_int) -> *const c_char { unsafe {
     thread_local! { static BUF: Cell<[c_char; 32]> = Cell::new([0; 32]); }
     BUF.with(|cell| {
         let buf: &mut [c_char; 32] = &mut *cell.as_ptr();
@@ -1031,10 +1031,10 @@ unsafe fn format_int_element(val: c_int) -> *const c_char {
         }
         buf.as_ptr() as *const c_char
     })
-}
+}}
 
 /// Format a logical element as a string.
-unsafe fn format_logical_element(val: c_int) -> *const c_char {
+unsafe fn format_logical_element(val: c_int) -> *const c_char { unsafe {
     thread_local! { static BUF: Cell<[c_char; 8]> = Cell::new([0; 8]); }
     BUF.with(|cell| {
         let buf: &mut [c_char; 8] = &mut *cell.as_ptr();
@@ -1056,10 +1056,10 @@ unsafe fn format_logical_element(val: c_int) -> *const c_char {
         }
         buf.as_ptr() as *const c_char
     })
-}
+}}
 
 /// Format a real element as a string with maximal precision.
-unsafe fn format_real_element(val: f64) -> *const c_char {
+unsafe fn format_real_element(val: f64) -> *const c_char { unsafe {
     thread_local! { static BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
     BUF.with(|cell| {
         let buf: &mut [c_char; 64] = &mut *cell.as_ptr();
@@ -1083,10 +1083,10 @@ unsafe fn format_real_element(val: f64) -> *const c_char {
         }
         buf.as_ptr() as *const c_char
     })
-}
+}}
 
 /// Format a string element with quoting.
-unsafe fn format_string_element(s: SEXP) -> *const c_char {
+unsafe fn format_string_element(s: SEXP) -> *const c_char { unsafe {
     thread_local! { static BUF: Cell<[u8; 2048]> = Cell::new([0; 2048]); }
     BUF.with(|cell| {
         let buf: &mut [u8; 2048] = &mut *cell.as_ptr();
@@ -1147,10 +1147,10 @@ unsafe fn format_string_element(s: SEXP) -> *const c_char {
         buf[pos] = 0;
         buf.as_ptr() as *const c_char
     })
-}
+}}
 
 /// Format a raw element as hex.
-unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
+unsafe fn format_raw_element(val: Rbyte) -> *const c_char { unsafe {
     thread_local! { static BUF: Cell<[c_char; 8]> = Cell::new([0; 8]); }
     BUF.with(|cell| {
         let buf: &mut [c_char; 8] = &mut *cell.as_ptr();
@@ -1162,7 +1162,7 @@ unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
         );
         buf.as_ptr() as *const c_char
     })
-}
+}}
 
 // ---------------------------------------------------------------------------
 // vector2buff — deparse atomic vectors to buffer

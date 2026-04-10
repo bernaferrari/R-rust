@@ -145,9 +145,9 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Handle a graphics event, forwarding to all registered systems.
-pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
+pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Coordinate transformation stubs
@@ -203,9 +203,9 @@ pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 }
 
 /// Convert a line end code to an R string.
-pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
+pub unsafe fn GE_LENDget(lend: c_int) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Parse a line join specification from an R SEXP value.
 pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
@@ -213,9 +213,9 @@ pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 }
 
 /// Convert a line join code to an R string.
-pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
+pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GESetClip
@@ -346,9 +346,9 @@ pub unsafe fn GERaster(
 // ---------------------------------------------------------------------------
 
 /// Capture the current device contents as a raster image.
-pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
+pub unsafe fn GECap(dd: *mut c_void) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GEText
@@ -384,9 +384,9 @@ pub unsafe fn GEXspline(
     draw: c_int,
     gc: *const c_void,
     dd: *mut c_void,
-) -> SEXP {
+) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GEMode
@@ -434,7 +434,7 @@ pub unsafe fn GEMetricInfo(
     descent: *mut c_double,
     width: *mut c_double,
     dd: *mut c_void,
-) {
+) { unsafe {
     // Stub: return zeros
     if !ascent.is_null() {
         *ascent = 0.0;
@@ -445,7 +445,7 @@ pub unsafe fn GEMetricInfo(
     if !width.is_null() {
         *width = 0.0;
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GEStrWidth
@@ -488,7 +488,7 @@ pub unsafe fn GEStrMetric(
     descent: *mut c_double,
     width: *mut c_double,
     dd: *mut c_void,
-) {
+) { unsafe {
     // Stub: return zeros
     if !ascent.is_null() {
         *ascent = 0.0;
@@ -499,7 +499,7 @@ pub unsafe fn GEStrMetric(
     if !width.is_null() {
         *width = 0.0;
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GENewPage
@@ -588,9 +588,9 @@ pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Create a snapshot of the current display, including graphics system state.
-pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
+pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GEplaySnapshot
@@ -606,23 +606,23 @@ pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// recordPlot() -- R internal entry point.
-pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// replayPlot() -- R internal entry point.
-pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // do_recordGraphics
 // ---------------------------------------------------------------------------
 
 /// .Internal(recordGraphics(...)) -- R internal entry point.
-pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // GEonExit
@@ -652,9 +652,9 @@ pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
 }
 
 /// Convert a line type code to an R string.
-pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
+pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Raster image operations
@@ -691,14 +691,14 @@ pub unsafe fn R_GE_rasterRotatedSize(
     angle: c_double,
     wnew: *mut c_int,
     hnew: *mut c_int,
-) {
+) { unsafe {
     if !wnew.is_null() {
         *wnew = w;
     }
     if !hnew.is_null() {
         *hnew = h;
     }
-}
+}}
 
 /// Calculate the offset for a rotated raster image.
 pub unsafe fn R_GE_rasterRotatedOffset(
@@ -708,14 +708,14 @@ pub unsafe fn R_GE_rasterRotatedOffset(
     botleft: c_int,
     xoff: *mut c_double,
     yoff: *mut c_double,
-) {
+) { unsafe {
     if !xoff.is_null() {
         *xoff = 0.0;
     }
     if !yoff.is_null() {
         *yoff = 0.0;
     }
-}
+}}
 
 /// Copy a raster image into the middle of a larger raster (for rotation).
 pub unsafe fn R_GE_rasterResizeForRotation(
@@ -767,49 +767,49 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 // ---------------------------------------------------------------------------
 
 /// Get the glyphs component from a glyphInfo SEXP.
-pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the fonts component from a glyphInfo SEXP.
-pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph IDs from a glyphs SEXP.
-pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph X positions from a glyphs SEXP.
-pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph Y positions from a glyphs SEXP.
-pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph font indices from a glyphs SEXP.
-pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph sizes from a glyphs SEXP.
-pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph colours from a glyphs SEXP.
-pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Get the glyph rotations from a glyphs SEXP.
-pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
+pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 /// Check whether a glyphs SEXP has rotation information.
 pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
@@ -894,9 +894,9 @@ pub unsafe fn GEGlyph(
 // ---------------------------------------------------------------------------
 
 /// Evaluate an expression within a graphics device context (with device locking).
-pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
+pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP { unsafe {
     R_NilValue()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Module-private helper stubs (not #[unsafe(no_mangle)], avoid duplicate symbols)

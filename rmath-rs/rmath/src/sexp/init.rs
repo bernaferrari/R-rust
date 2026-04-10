@@ -28,7 +28,7 @@ pub fn is_initialized() -> bool {
     R_INITIALIZED.load(Ordering::Acquire)
 }
 
-pub unsafe fn initialize_r() {
+pub unsafe fn initialize_r() { unsafe {
     if R_INITIALIZED.load(Ordering::Acquire) {
         return;
     }
@@ -56,9 +56,9 @@ pub unsafe fn initialize_r() {
     crate::eval::arithmetic::register_special_forms(base_env);
 
     R_INITIALIZED.store(true, Ordering::Release);
-}
+}}
 
-unsafe fn pre_intern_symbols() {
+unsafe fn pre_intern_symbols() { unsafe {
     let symbols = [
         "if",
         "else",
@@ -175,9 +175,9 @@ unsafe fn pre_intern_symbols() {
         let c_name = CString::new(*name).expect("symbol name contains null byte");
         Rf_install(c_name.as_ptr());
     }
-}
+}}
 
-pub unsafe fn shutdown_r() {
+pub unsafe fn shutdown_r() { unsafe {
     if !R_INITIALIZED.load(Ordering::Acquire) {
         return;
     }
@@ -189,7 +189,7 @@ pub unsafe fn shutdown_r() {
     set_R_EmptyEnv(std::ptr::null_mut());
 
     R_INITIALIZED.store(false, Ordering::Release);
-}
+}}
 
 #[cfg(test)]
 mod tests {

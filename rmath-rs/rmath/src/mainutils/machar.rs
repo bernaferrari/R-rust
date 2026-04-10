@@ -26,7 +26,7 @@ pub unsafe fn machar(
     epsneg: *mut f64,
     xmin: *mut f64,
     xmax: *mut f64,
-) {
+) { unsafe {
     let mut a: f64;
     let mut b: f64;
     let beta: f64;
@@ -282,4 +282,4 @@ pub unsafe fn machar(
             j += 1;
         }
     }
-}
+}}

@@ -56,9 +56,9 @@ type Rbyte = u8;
 use crate::mainutils::printvector::{MutPtr, R_PrintData};
 
 /// Get the global R_print parameters.
-unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
+unsafe fn get_R_print_full() -> MutPtr<R_PrintData> { unsafe {
     crate::mainutils::printvector::get_R_PrintData()
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Functions from printutils (non-SEXP taking ones)

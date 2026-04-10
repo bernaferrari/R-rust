@@ -203,7 +203,7 @@ unsafe fn EncodeReal0(
     unsafe { crate::mainutils::printutils::EncodeReal0(x, w, d, e, outdec) }
 }
 
-unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
+unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char { unsafe {
     thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
     BUF.with(|buf| {
         let mut b = buf.borrow_mut();
@@ -214,9 +214,9 @@ unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
         b[14] = 0;
         b.as_ptr() as *const c_char
     })
-}
+}}
 
-unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
+unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char { unsafe {
     thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
     BUF.with(|buf| {
         let mut b = buf.borrow_mut();
@@ -227,7 +227,7 @@ unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
         b[13] = 0;
         b.as_ptr() as *const c_char
     })
-}
+}}
 
 unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {

@@ -28,7 +28,7 @@ pub unsafe fn set_app_initialised(val: c_int) {
     APP_INITIALISED.with(|v| v.set(val));
 }
 
-pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
+pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int { unsafe {
     if APP_INITIALISED.with(|v| v.get()) == 0 {
         APP_INITIALISED.with(|v| v.set(1));
         objects::init_objects();
@@ -39,29 +39,29 @@ pub unsafe fn initapp(argc: c_int, _argv: *mut *mut c_char) -> c_int {
         menus::init_menus();
     }
     if argc < 1 { 1 } else { argc }
-}
+}}
 
-pub unsafe fn app_cleanup() {
+pub unsafe fn app_cleanup() { unsafe {
     if APP_INITIALISED.with(|v| v.get()) != 0 {
         APP_INITIALISED.with(|v| v.set(0));
         context::finish_contexts();
         objects::finish_objects();
         events::finish_events();
     }
-}
+}}
 
-pub unsafe fn exitapp() {
+pub unsafe fn exitapp() { unsafe {
     app_cleanup();
     std::process::exit(0);
-}
+}}
 
 pub unsafe fn gabeep() {}
 
 pub unsafe fn gamainloop() {}
 
-pub unsafe fn startgraphapp(_instance: *mut c_void, _prev_instance: *mut c_void, _cmd_show: c_int) {
+pub unsafe fn startgraphapp(_instance: *mut c_void, _prev_instance: *mut c_void, _cmd_show: c_int) { unsafe {
     initapp(0, ptr::null_mut());
-}
+}}
 
 pub unsafe fn isTopmost(_w: window) -> c_int {
     0
@@ -69,13 +69,13 @@ pub unsafe fn isTopmost(_w: window) -> c_int {
 
 pub unsafe fn BringToTop(_w: window, _stay: c_int) {}
 
-pub unsafe fn getHandle(w: window) -> *mut c_void {
+pub unsafe fn getHandle(w: window) -> *mut c_void { unsafe {
     if w.is_null() {
         ptr::null_mut()
     } else {
         (*w).handle
     }
-}
+}}
 
 pub unsafe fn GA_msgWindow(_c: window, _typ: c_int) {}
 

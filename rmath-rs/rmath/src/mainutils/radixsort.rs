@@ -72,7 +72,7 @@ thread_local! {
 // Group stack helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn growstack(newlen: u64) {
+unsafe fn growstack(newlen: u64) { unsafe {
     let mut newlen = if newlen == 0 { 100000 } else { newlen };
     let flip = FLIP.with(|v| v.get()) as usize;
     let gsmaxalloc = GSMAXALLOC.with(|v| v.get());
@@ -98,9 +98,9 @@ unsafe fn growstack(newlen: u64) {
         return;
     }
     GSALLOC.with(|v| v.borrow_mut()[flip] = newlen as c_int);
-}
+}}
 
-unsafe fn push(x: c_int) {
+unsafe fn push(x: c_int) { unsafe {
     if !STACKGRPS.with(|v| v.get()) || x == 0 {
         return;
     }
@@ -116,9 +116,9 @@ unsafe fn push(x: c_int) {
     if x > GSMAX.with(|v| v.borrow()[flip]) {
         GSMAX.with(|v| v.borrow_mut()[flip] = x);
     }
-}
+}}
 
-unsafe fn mpush(x: c_int, n: c_int) {
+unsafe fn mpush(x: c_int, n: c_int) { unsafe {
     if !STACKGRPS.with(|v| v.get()) || x == 0 {
         return;
     }
@@ -138,9 +138,9 @@ unsafe fn mpush(x: c_int, n: c_int) {
     if x > GSMAX.with(|v| v.borrow()[flip]) {
         GSMAX.with(|v| v.borrow_mut()[flip] = x);
     }
-}
+}}
 
-unsafe fn flipflop() {
+unsafe fn flipflop() { unsafe {
     FLIP.with(|v| v.set(1 - v.get()));
     let flip = FLIP.with(|v| v.get()) as usize;
     GSNGRP.with(|v| v.borrow_mut()[flip] = 0);
@@ -150,10 +150,10 @@ unsafe fn flipflop() {
     if alloc < other_alloc {
         growstack(other_alloc as u64 * 2);
     }
-}
+}}
 
 /// Free all group-stack memory.
-pub unsafe fn gsfree() {
+pub unsafe fn gsfree() { unsafe {
     let gs = GS.with(|v| v.get());
     libc_free(gs[0] as *mut c_void);
     libc_free(gs[1] as *mut c_void);
@@ -163,13 +163,13 @@ pub unsafe fn gsfree() {
     GSNGRP.with(|v| *v.borrow_mut() = [0; 2]);
     GSMAX.with(|v| *v.borrow_mut() = [0; 2]);
     GSMAXALLOC.with(|v| v.set(0));
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Temporary allocation helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn alloc_otmp(n: c_int) {
+unsafe fn alloc_otmp(n: c_int) { unsafe {
     if OTMP_ALLOC.with(|v| v.get()) >= n as usize {
         return;
     }
@@ -188,9 +188,9 @@ unsafe fn alloc_otmp(n: c_int) {
     }
     OTMP.with(|v| v.set(new_ptr));
     OTMP_ALLOC.with(|v| v.set(n as usize));
-}
+}}
 
-unsafe fn alloc_xtmp(n: c_int) {
+unsafe fn alloc_xtmp(n: c_int) { unsafe {
     if XTMP_ALLOC.with(|v| v.get()) >= n as usize {
         return;
     }
@@ -207,7 +207,7 @@ unsafe fn alloc_xtmp(n: c_int) {
     }
     XTMP.with(|v| v.set(new_ptr));
     XTMP_ALLOC.with(|v| v.set(n as usize));
-}
+}}
 
 // ---------------------------------------------------------------------------
 // setRange -- determine min and range of integer data
@@ -215,7 +215,7 @@ unsafe fn alloc_xtmp(n: c_int) {
 
 /// Compute the minimum value and range of an integer array, skipping
 /// NA_INTEGER values. Sets module-level `XMIN` and `RANGE`.
-pub unsafe fn setRange(x: *const c_int, n: c_int) {
+pub unsafe fn setRange(x: *const c_int, n: c_int) { unsafe {
     XMIN.with(|v| v.set(NA_INTEGER));
     let mut xmax: c_int = NA_INTEGER;
     let overflow: f64;
@@ -253,7 +253,7 @@ pub unsafe fn setRange(x: *const c_int, n: c_int) {
     }
 
     RANGE.with(|v| v.set(xmax - XMIN.with(|v| v.get()) + 1));
-}
+}}
 
 // ---------------------------------------------------------------------------
 // icheck -- transform value to account for nalast and order
@@ -292,7 +292,7 @@ unsafe fn icheck(x: c_int) -> c_int {
 /// - `o` must point to at least `n` valid i32 values.
 /// - `RANGE` and `XMIN` must be set correctly (via `setRange`) before calling.
 /// - `NALAST` and `ORDER` module-level state must be configured.
-pub unsafe fn icount(x: *const c_int, o: *mut c_int, n: c_int) {
+pub unsafe fn icount(x: *const c_int, o: *mut c_int, n: c_int) { unsafe {
     let range = RANGE.with(|v| v.get());
     let xmin = XMIN.with(|v| v.get());
     let nalast = NALAST.with(|v| v.get());
@@ -375,7 +375,7 @@ pub unsafe fn icount(x: *const c_int, o: *mut c_int, n: c_int) {
             COUNTS.with(|v| v.borrow_mut()[j] = 0);
         }
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // iinsert -- insertion sort for small integer arrays
@@ -389,7 +389,7 @@ pub unsafe fn icount(x: *const c_int, o: *mut c_int, n: c_int) {
 ///
 /// # Safety
 /// - `x` and `o` must each point to at least `n` valid i32 values.
-pub unsafe fn iinsert(x: *mut c_int, o: *mut c_int, n: c_int) {
+pub unsafe fn iinsert(x: *mut c_int, o: *mut c_int, n: c_int) { unsafe {
     for i in 1..n as usize {
         let xtmp = *x.add(i);
         if xtmp < *x.add(i - 1) {
@@ -414,7 +414,7 @@ pub unsafe fn iinsert(x: *mut c_int, o: *mut c_int, n: c_int) {
         }
     }
     push(tt + 1);
-}
+}}
 
 // ---------------------------------------------------------------------------
 // iradix -- 4-pass MSD radix sort for integers
@@ -462,7 +462,7 @@ pub unsafe fn iinsert(x: *mut c_int, o: *mut c_int, n: c_int) {
 /// - `x` must point to at least `n` valid i32 values (read-only).
 /// - `o` must point to at least `n` valid i32 values (written to).
 /// - Module-level state (NALAST, ORDER, etc.) must be configured.
-pub unsafe fn iradix(x: *const c_int, o: *mut c_int, n: c_int) {
+pub unsafe fn iradix(x: *const c_int, o: *mut c_int, n: c_int) { unsafe {
     let mut nextradix: c_int;
     let mut itmp: c_int;
     let mut thisgrpn: c_int;
@@ -623,7 +623,7 @@ pub unsafe fn iradix(x: *const c_int, o: *mut c_int, n: c_int) {
         // at those indices where x is NA. x[o[i]-1] because x is not
         // modified by reference unlike iinsert or iradix_r
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // iradix_r -- recursive radix sort for integer sub-groups
@@ -634,7 +634,7 @@ pub unsafe fn iradix(x: *const c_int, o: *mut c_int, n: c_int) {
 /// `xsub` is a recursive offset into xsub working memory above in
 /// iradix, reordered by reference. `osub` is an offset into the main
 /// answer `o`, reordered by reference. `radix` iterates 3, 2, 1, 0.
-unsafe fn iradix_r(xsub: *mut c_int, osub: *mut c_int, n: c_int, radix: c_int) {
+unsafe fn iradix_r(xsub: *mut c_int, osub: *mut c_int, n: c_int, radix: c_int) { unsafe {
     // N_SMALL=200 is guess based on limited testing. Needs calibrate().
     // Was 50 based on sum(1:50)=1275 worst -vs- 256 cumulate + 256 memset +
     // allowance since reverse order is unlikely.
@@ -711,7 +711,7 @@ unsafe fn iradix_r(xsub: *mut c_int, osub: *mut c_int, n: c_int, radix: c_int) {
         RADIXCOUNTS.with(|v| v.borrow_mut()[radix as usize][ii] = 0);
         ii += 1;
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // isorted -- test integer vector for sortedness
@@ -729,7 +729,7 @@ unsafe fn iradix_r(xsub: *mut c_int, osub: *mut c_int, n: c_int, radix: c_int) {
 ///
 /// # Safety
 /// - `x` must point to at least `n` valid i32 values.
-pub unsafe fn isorted(x: *const c_int, n: c_int) -> c_int {
+pub unsafe fn isorted(x: *const c_int, n: c_int) -> c_int { unsafe {
     let mut j: c_int = 0;
     let nalast = NALAST.with(|v| v.get());
     // when nalast = NA,
@@ -787,7 +787,7 @@ pub unsafe fn isorted(x: *const c_int, n: c_int) -> c_int {
     // same as 'order', NAs at the beginning for order=1, at end for
     // order=-1, possibly with ties
     1
-}
+}}
 
 // ---------------------------------------------------------------------------
 // isort -- dispatch between icount, iradix, and iinsert
@@ -799,7 +799,7 @@ pub unsafe fn isorted(x: *const c_int, n: c_int) -> c_int {
 /// # Safety
 /// - `x` must point to at least `n` valid i32 values.
 /// - `o` must point to at least `n` valid i32 values.
-pub unsafe fn isort(x: *mut c_int, o: *mut c_int, n: c_int) {
+pub unsafe fn isort(x: *mut c_int, o: *mut c_int, n: c_int) { unsafe {
     if n <= 2 {
         // nalast = 0 and n == 2 (check bottom of this file for explanation)
         if NALAST.with(|v| v.get()) == 0 && n == 2 {
@@ -862,7 +862,7 @@ pub unsafe fn isort(x: *mut c_int, o: *mut c_int, n: c_int) {
             iradix(x, target, n);
         }
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Module-level state accessors
@@ -941,7 +941,7 @@ pub unsafe fn get_newo() -> *mut c_int {
 ///
 /// Currently supports INTSXP and LGLSXP vectors.
 /// REALSXP and STRSXP are not yet implemented.
-pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP {
+pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -> SEXP { unsafe {
     let mut n: c_int = -1;
     let mut narg: c_int = 0;
     let mut ngrp: c_int;
@@ -1369,10 +1369,10 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
 
     Rf_unprotect(1);
     ans
-}
+}}
 
 /// Local `asLogical` helper for do_radixsort.
-unsafe fn asLogical_local(x: SEXP) -> c_int {
+unsafe fn asLogical_local(x: SEXP) -> c_int { unsafe {
     if Rf_isNull(x) != 0 {
         return NA_LOGICAL;
     }
@@ -1404,13 +1404,13 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
     } else {
         NA_LOGICAL
     }
-}
+}}
 
 /// Local `asBool` helper for do_radixsort.
-unsafe fn asBool_local(x: SEXP) -> c_int {
+unsafe fn asBool_local(x: SEXP) -> c_int { unsafe {
     let v = asLogical_local(x);
     if v == NA_LOGICAL { 0 } else { v }
-}
+}}
 
 /// 8-pass LSD radix sort for doubles.
 ///
@@ -1426,7 +1426,7 @@ unsafe fn asBool_local(x: SEXP) -> c_int {
 /// - `x` must point to at least `n` valid f64 values (modified in-place).
 /// - `o` must point to at least `n` valid i32 values (written to).
 /// - Module-level NALAST and ORDER must be configured.
-pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void { unsafe {
     if n <= 1 {
         if n == 1 {
             *o = 1;
@@ -1528,7 +1528,7 @@ pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
     }
 
     x
-}
+}}
 
 /// Sort dispatcher for doubles.
 ///
@@ -1539,7 +1539,7 @@ pub unsafe fn dradix(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 /// - `x` must point to at least `n` valid f64 values (read-only for the
 ///   caller, but internally modified and restored).
 /// - `o` must point to at least `n` valid i32 values.
-pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
+pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void { unsafe {
     if n <= 1 {
         if n == 1 {
             *o = 1;
@@ -1561,7 +1561,7 @@ pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
         dradix(x, o, n);
     }
     x
-}
+}}
 
 /// Test whether a double vector is already sorted.
 ///
@@ -1575,7 +1575,7 @@ pub unsafe fn dsort(x: *mut c_void, o: *mut c_int, n: c_int) -> *mut c_void {
 ///
 /// # Safety
 /// - `x` must point to at least `n` valid f64 values.
-pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
+pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int { unsafe {
     let xd = x as *const f64;
 
     if n <= 1 {
@@ -1667,7 +1667,7 @@ pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
     }
     push(tt);
     1
-}
+}}
 
 /// Recursive radix sort for character strings (STRSXP vectors).
 ///
@@ -1723,7 +1723,7 @@ pub unsafe fn csorted(_x: *mut c_void, _n: c_int) -> c_int {
 ///
 /// # Safety
 /// - `x` must point to at least `n` valid f64 values.
-pub unsafe fn is_double_sorted(x: *const f64, n: usize) -> bool {
+pub unsafe fn is_double_sorted(x: *const f64, n: usize) -> bool { unsafe {
     if n <= 1 {
         return true;
     }
@@ -1747,7 +1747,7 @@ pub unsafe fn is_double_sorted(x: *const f64, n: usize) -> bool {
         }
     }
     true
-}
+}}
 
 /// Check if a complex (Rcomplex) array is sorted in ascending order.
 ///
@@ -1759,7 +1759,7 @@ pub unsafe fn is_double_sorted(x: *const f64, n: usize) -> bool {
 ///
 /// # Safety
 /// - `x` must point to at least `n` valid Rcomplex values.
-pub unsafe fn is_complex_sorted(x: *const Rcomplex, n: usize) -> bool {
+pub unsafe fn is_complex_sorted(x: *const Rcomplex, n: usize) -> bool { unsafe {
     if n <= 1 {
         return true;
     }
@@ -1790,13 +1790,13 @@ pub unsafe fn is_complex_sorted(x: *const Rcomplex, n: usize) -> bool {
         }
     }
     true
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Minimal malloc/realloc/free replacements (avoid libc crate)
 // ---------------------------------------------------------------------------
 
-unsafe fn libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
+unsafe fn libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void { unsafe {
     if ptr.is_null() {
         libc_alloc(size)
     } else {
@@ -1809,9 +1809,9 @@ unsafe fn libc_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
         }
         new_ptr
     }
-}
+}}
 
-unsafe fn libc_alloc(size: usize) -> *mut c_void {
+unsafe fn libc_alloc(size: usize) -> *mut c_void { unsafe {
     if size == 0 {
         return ptr::null_mut();
     }
@@ -1820,7 +1820,7 @@ unsafe fn libc_alloc(size: usize) -> *mut c_void {
         std::alloc::Layout::from_size_align(size, 1).expect("unwrap on None/Err")
     });
     std::alloc::alloc(layout) as *mut c_void
-}
+}}
 
 unsafe fn libc_free(ptr: *mut c_void) {
     if ptr.is_null() {

@@ -78,7 +78,7 @@ thread_local! { static NoRenviron: Cell<c_int> = Cell::new(0); }
 /// # Safety
 /// - `argv` must point to a valid array of at least `argc` C-string pointers.
 /// - Each `argv[i]` must be a valid null-terminated C string.
-pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) {
+pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) { unsafe {
     NumCommandLineArgs.with(|v| v.set(argc));
 
     if argc <= 0 {
@@ -105,7 +105,7 @@ pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) 
             *ptr.add(i) = dup.into_raw();
         }
     }
-}
+}}
 
 // ---------------------------------------------------------------------------
 // do_commandArgs — the .Internal(commandArgs())
@@ -117,7 +117,7 @@ pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) 
 /// # Safety
 /// - `call`, `op`, `args`, `env` are SEXP pointers following R's calling
 ///   convention. Only `args` is checked for arity.
-pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
     let _ = call;
     let _ = op;
     let _ = args;
@@ -143,7 +143,7 @@ pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
     }
 
     vals
-}
+}}
 
 // ---------------------------------------------------------------------------
 // R_common_command_line — process common command-line options
@@ -169,7 +169,7 @@ pub unsafe fn R_common_command_line(
     pac: *mut c_int,
     argv: *mut *mut c_char,
     Rp: *mut c_void,
-) -> c_int {
+) -> c_int { unsafe {
     let _ = Rp;
 
     if pac.is_null() || argv.is_null() {
@@ -296,7 +296,7 @@ pub unsafe fn R_common_command_line(
 
     *pac = newac;
     newac
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Accessors for option state (for use by other modules)

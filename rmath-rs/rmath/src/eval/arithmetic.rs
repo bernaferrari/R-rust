@@ -7,10 +7,9 @@
 //! the function is called, unlike "special" forms.
 
 use std::ffi::CString;
-use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, CDR, TYPEOF};
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal};
 use crate::sexp::ffi::{FALSE, NA_REAL, R_NA_BIT_PATTERN, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::symbol::Rf_install;
@@ -72,7 +71,7 @@ fn is_int_op(a: SEXP, b: SEXP) -> bool {
     }
 }
 
-unsafe fn binary_arith(op: &str, a: SEXP, b: SEXP) -> SEXP {
+unsafe fn binary_arith(op: &str, a: SEXP, b: SEXP) -> SEXP { unsafe {
     let va = real_val(a);
     let vb = real_val(b);
     match (va, vb) {
@@ -116,9 +115,9 @@ unsafe fn binary_arith(op: &str, a: SEXP, b: SEXP) -> SEXP {
         }
         _ => R_NilValue(),
     }
-}
+}}
 
-unsafe fn binary_compare(op: &str, a: SEXP, b: SEXP) -> SEXP {
+unsafe fn binary_compare(op: &str, a: SEXP, b: SEXP) -> SEXP { unsafe {
     let va = real_val(a);
     let vb = real_val(b);
     match (va, vb) {
@@ -141,7 +140,7 @@ unsafe fn binary_compare(op: &str, a: SEXP, b: SEXP) -> SEXP {
         }
         _ => Rf_ScalarLogical(FALSE),
     }
-}
+}}
 
 pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -181,7 +180,7 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn get_op_name(call: SEXP) -> &'static str {
+unsafe fn get_op_name(call: SEXP) -> &'static str { unsafe {
     if call.is_null() {
         return "";
     }
@@ -240,7 +239,7 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
         },
         Err(_) => "",
     }
-}
+}}
 
 /// Register arithmetic and comparison builtins in the base environment.
 ///

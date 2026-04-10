@@ -39,14 +39,14 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP { unsafe {
     let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
     let env: SEXP = &mut *boxed as *mut _;
     (*env).data.envsxp.frame = frame;
     (*env).data.envsxp.enclos = enclos;
     (*env).data.envsxp.hashtab = hashtab;
     Box::leak(boxed)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // mkPROMISE — create a promise
@@ -100,7 +100,7 @@ pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
 }
 
 /// Create a PROMSXP binding an expression to an environment.
-pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
+pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP { unsafe {
     let p = allocSExp(SEXPTYPE::PROMSXP);
     if !p.is_null() {
         (*p).data.promsxp.value = R_NilValue();
@@ -108,7 +108,7 @@ pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
         (*p).data.promsxp.env = env;
     }
     p
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Raw cons cell (not arena-tracked)
