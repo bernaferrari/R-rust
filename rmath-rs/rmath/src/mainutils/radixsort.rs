@@ -17,7 +17,7 @@ use std::ptr;
 use crate::eval::attrib_core::setAttrib;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_LOGICAL, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
@@ -1707,6 +1707,89 @@ pub unsafe fn cgroup(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void 
 /// Currently returns 0 (unsorted).
 pub unsafe fn csorted(_x: *mut c_void, _n: c_int) -> c_int {
     0
+}
+
+// ---------------------------------------------------------------------------
+// Standalone sortedness checks (simple bool-returning variants)
+// ---------------------------------------------------------------------------
+
+/// Check if a double (f64) array is sorted in ascending order.
+///
+/// NA values (matching R's NA_REAL bit pattern: 0x7FF80000000007A2) are
+/// treated as greater than any non-NA value, so they sort to the end.
+///
+/// Returns `true` if the array is sorted in ascending order with NAs at
+/// the end, `false` otherwise.
+///
+/// # Safety
+/// - `x` must point to at least `n` valid f64 values.
+pub unsafe fn is_double_sorted(x: *const f64, n: usize) -> bool {
+    if n <= 1 {
+        return true;
+    }
+    let na_bits = NA_REAL.to_bits();
+    for i in 1..n {
+        let prev = *x.add(i - 1);
+        let curr = *x.add(i);
+        let prev_na = prev.to_bits() == na_bits;
+        let curr_na = curr.to_bits() == na_bits;
+
+        if prev_na && !curr_na {
+            // NA followed by non-NA: not sorted (NAs should be at end)
+            return false;
+        }
+        if prev_na && curr_na {
+            continue; // Both NA, acceptable
+        }
+        // Neither is NA: check ascending order
+        if curr < prev {
+            return false;
+        }
+    }
+    true
+}
+
+/// Check if a complex (Rcomplex) array is sorted in ascending order.
+///
+/// Sorting is by real part first, then by imaginary part when real parts
+/// are equal. NA values (where either component matches NA_REAL bit pattern)
+/// are treated as greater than any non-NA value, so they sort to the end.
+///
+/// Returns `true` if the array is sorted, `false` otherwise.
+///
+/// # Safety
+/// - `x` must point to at least `n` valid Rcomplex values.
+pub unsafe fn is_complex_sorted(x: *const Rcomplex, n: usize) -> bool {
+    if n <= 1 {
+        return true;
+    }
+    let na_bits = NA_REAL.to_bits();
+    for i in 1..n {
+        let prev = *x.add(i - 1);
+        let curr = *x.add(i);
+        let prev_na = prev.r.to_bits() == na_bits || prev.i.to_bits() == na_bits;
+        let curr_na = curr.r.to_bits() == na_bits || curr.i.to_bits() == na_bits;
+
+        if prev_na && !curr_na {
+            // NA followed by non-NA: not sorted
+            return false;
+        }
+        if prev_na && curr_na {
+            continue;
+        }
+        // Neither is NA: compare real first, then imaginary
+        if prev.r < curr.r {
+            continue;
+        }
+        if prev.r > curr.r {
+            return false;
+        }
+        // Equal real parts: compare imaginary
+        if prev.i > curr.i {
+            return false;
+        }
+    }
+    true
 }
 
 // ---------------------------------------------------------------------------

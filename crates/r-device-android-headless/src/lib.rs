@@ -10,12 +10,71 @@ use r_graphics_engine::{
     Color, LineCap, LineJoin, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke,
 };
 
+/// System font paths to try when loading a default font.
+const SYSTEM_FONT_PATHS: &[&str] = &[
+    // Linux
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    // macOS
+    "/System/Library/Fonts/Geneva.ttf",
+    "/System/Library/Fonts/SFNSDisplay.ttf",
+    "/Library/Fonts/Arial.ttf",
+    // Android
+    "/system/fonts/NotoSans-Regular.ttf",
+    "/system/fonts/DroidSans.ttf",
+    // Windows
+    "C:\\Windows\\Fonts\\arial.ttf",
+];
+
+/// Wrapper around fontdue::Font to allow Debug derivation.
+struct TextFont(fontdue::Font);
+
+impl std::fmt::Debug for TextFont {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextFont").finish_non_exhaustive()
+    }
+}
+
+fn load_system_font() -> Option<TextFont> {
+    for path in SYSTEM_FONT_PATHS {
+        if let Ok(data) = std::fs::read(path) {
+            if let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default()) {
+                return Some(TextFont(font));
+            }
+        }
+    }
+    None
+}
+
 /// Android headless plot renderer.
-#[derive(Debug, Default)]
 pub struct AndroidHeadlessRenderer {
     width: u32,
     height: u32,
     pixmap: Option<tiny_skia::Pixmap>,
+    font: Option<TextFont>,
+}
+
+impl std::fmt::Debug for AndroidHeadlessRenderer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("AndroidHeadlessRenderer")
+            .field("width", &self.width)
+            .field("height", &self.height)
+            .field("pixmap", &self.pixmap)
+            .field("font", &self.font)
+            .finish()
+    }
+}
+
+impl Default for AndroidHeadlessRenderer {
+    fn default() -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            pixmap: None,
+            font: load_system_font(),
+        }
+    }
 }
 
 impl AndroidHeadlessRenderer {
@@ -25,7 +84,16 @@ impl AndroidHeadlessRenderer {
             width,
             height,
             pixmap: tiny_skia::Pixmap::new(width, height),
+            font: load_system_font(),
         }
+    }
+
+    /// Set a custom font for text rendering.
+    pub fn set_font(&mut self, font_data: Vec<u8>) -> Result<(), String> {
+        let font = fontdue::Font::from_bytes(font_data, fontdue::FontSettings::default())
+            .map_err(|e| format!("Failed to parse font: {:?}", e))?;
+        self.font = Some(TextFont(font));
+        Ok(())
     }
 }
 
@@ -120,9 +188,82 @@ impl RenderPlot for AndroidHeadlessRenderer {
         }
     }
 
-    fn draw_text(&mut self, _text: &str, _pos: Point, _params: &PlotParameters) {
-        // Text rendering requires a text shaping library.
-        // In a full implementation, use rustybuzz + resvg.
+    fn draw_text(&mut self, text: &str, pos: Point, params: &PlotParameters) {
+        let Some(pixmap) = &mut self.pixmap else {
+            return;
+        };
+        let Some(TextFont(font)) = &self.font else {
+            return;
+        };
+
+        let font_size = if params.font_size > 0.0 {
+            params.font_size
+        } else {
+            12.0
+        };
+        let text_color = if params.text_color.a > 0 {
+            params.text_color
+        } else {
+            Color::WHITE
+        };
+
+        let pw = pixmap.width() as usize;
+        let ph = pixmap.height() as usize;
+        let data = pixmap.data_mut();
+        let mut x_cursor = pos.x;
+
+        for ch in text.chars() {
+            if !ch.is_ascii() {
+                continue;
+            }
+            if ch == ' ' {
+                let (space_metrics, _) = font.rasterize(' ', font_size);
+                x_cursor += space_metrics.advance_width;
+                continue;
+            }
+            if ch.is_control() {
+                continue;
+            }
+
+            let (metrics, bitmap) = font.rasterize(ch, font_size);
+            let gw = metrics.width;
+            let gh = metrics.height;
+
+            let glyph_base_x = x_cursor + metrics.xmin as f32;
+            let glyph_base_y = pos.y + metrics.ymin as f32;
+
+            for row in 0..gh {
+                for col in 0..gw {
+                    let coverage = bitmap[row * gw + col];
+                    if coverage == 0 {
+                        continue;
+                    }
+
+                    let px = (glyph_base_x + col as f32) as usize;
+                    let py = (glyph_base_y + row as f32) as usize;
+
+                    if px >= pw || py >= ph {
+                        continue;
+                    }
+
+                    let idx = (py * pw + px) * 4;
+                    let a = coverage as f32 / 255.0;
+                    let inv_a = 1.0 - a;
+
+                    let sr = text_color.r as f32 * a;
+                    let sg = text_color.g as f32 * a;
+                    let sb = text_color.b as f32 * a;
+                    let sa = text_color.a as f32 * a;
+
+                    data[idx] = (sr + data[idx] as f32 * inv_a).min(255.0) as u8;
+                    data[idx + 1] = (sg + data[idx + 1] as f32 * inv_a).min(255.0) as u8;
+                    data[idx + 2] = (sb + data[idx + 2] as f32 * inv_a).min(255.0) as u8;
+                    data[idx + 3] = (sa + data[idx + 3] as f32 * inv_a).min(255.0) as u8;
+                }
+            }
+
+            x_cursor += metrics.advance_width;
+        }
     }
 
     fn finish(self) -> Self::Output {
@@ -159,5 +300,22 @@ mod tests {
 
         assert!(!png.is_empty());
         assert!(png.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
+    }
+
+    #[test]
+    fn test_draw_text_no_panic_without_font() {
+        let mut renderer = AndroidHeadlessRenderer {
+            width: 200,
+            height: 100,
+            pixmap: tiny_skia::Pixmap::new(200, 100),
+            font: None,
+        };
+        renderer.draw_text(
+            "Hello",
+            Point { x: 10.0, y: 50.0 },
+            &PlotParameters::default(),
+        );
+        let png = renderer.finish();
+        assert!(!png.is_empty());
     }
 }

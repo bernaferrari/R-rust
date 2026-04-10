@@ -8,6 +8,7 @@ description = "Pure Rust headless graphics backend for Android"
 [dependencies]
 tiny-skia = "0.12.0"
 png = "0.17.13"
+fontdue = "0.9"
 
 r-graphics-engine = { path = "../r-graphics-engine" }
 
