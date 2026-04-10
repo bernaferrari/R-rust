@@ -682,7 +682,10 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
             };
             format!("argument \"{}\" is missing, with no default", name)
         };
-        crate::main::errors::errorcall_cpy(call, std::ffi::CString::new(msg).unwrap().as_ptr());
+        crate::main::errors::errorcall_cpy(
+            call,
+            std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
+        );
     }
 }
 

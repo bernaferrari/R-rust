@@ -753,10 +753,10 @@ pub unsafe fn InitOptions() {
         let pl = crate::sexp::constructors::persistent_scalar_logical;
         let pm = crate::sexp::constructors::persistent_mkstring;
 
-        let val = pm(CString::new("> ").unwrap().as_ptr());
+        let val = pm(CString::new("> ").unwrap_or_default().as_ptr());
         table.options.insert("prompt".to_string(), val);
 
-        let val = pm(CString::new("+ ").unwrap().as_ptr());
+        let val = pm(CString::new("+ ").unwrap_or_default().as_ptr());
         table.options.insert("continue".to_string(), val);
 
         table.options.insert("expressions".to_string(), pi(5000));
@@ -780,12 +780,12 @@ pub unsafe fn InitOptions() {
         table.options.insert("warning.length".to_string(), pi(1000));
         table.options.insert("nwarnings".to_string(), pi(50));
 
-        let val = pm(CString::new(".").unwrap().as_ptr());
+        let val = pm(CString::new(".").unwrap_or_default().as_ptr());
         table.options.insert("OutDec".to_string(), val);
 
         table.options.insert("CBoundsCheck".to_string(), pl(FALSE));
 
-        let val = pm(CString::new("default").unwrap().as_ptr());
+        let val = pm(CString::new("default").unwrap_or_default().as_ptr());
         table.options.insert("matprod".to_string(), val);
 
         table.options.insert("PCRE_study".to_string(), pl(TRUE));

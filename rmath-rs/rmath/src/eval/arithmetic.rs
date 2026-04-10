@@ -71,76 +71,80 @@ fn is_int_op(a: SEXP, b: SEXP) -> bool {
     }
 }
 
-unsafe fn binary_arith(op: &str, a: SEXP, b: SEXP) -> SEXP { unsafe {
-    let va = real_val(a);
-    let vb = real_val(b);
-    match (va, vb) {
-        (Some(x), Some(y)) => {
-            let x_na = x.to_bits() == R_NA_BIT_PATTERN;
-            let y_na = y.to_bits() == R_NA_BIT_PATTERN;
-            if x_na || y_na {
-                return Rf_ScalarReal(NA_REAL);
-            }
-            let result = match op {
-                "+" => x + y,
-                "-" => x - y,
-                "*" => x * y,
-                "/" => x / y,
-                "^" => libm::pow(x, y),
-                "%%" => {
-                    if y == 0.0 {
-                        f64::NAN
-                    } else {
-                        x % y
-                    }
+unsafe fn binary_arith(op: &str, a: SEXP, b: SEXP) -> SEXP {
+    unsafe {
+        let va = real_val(a);
+        let vb = real_val(b);
+        match (va, vb) {
+            (Some(x), Some(y)) => {
+                let x_na = x.to_bits() == R_NA_BIT_PATTERN;
+                let y_na = y.to_bits() == R_NA_BIT_PATTERN;
+                if x_na || y_na {
+                    return Rf_ScalarReal(NA_REAL);
                 }
-                "%/%" => {
-                    if y == 0.0 {
-                        f64::NAN
-                    } else {
-                        (x / y).floor()
+                let result = match op {
+                    "+" => x + y,
+                    "-" => x - y,
+                    "*" => x * y,
+                    "/" => x / y,
+                    "^" => libm::pow(x, y),
+                    "%%" => {
+                        if y == 0.0 {
+                            f64::NAN
+                        } else {
+                            x % y
+                        }
                     }
+                    "%/%" => {
+                        if y == 0.0 {
+                            f64::NAN
+                        } else {
+                            (x / y).floor()
+                        }
+                    }
+                    _ => return R_NilValue(),
+                };
+                if is_int_op(a, b)
+                    && result.is_finite()
+                    && result == result.floor()
+                    && result as i64 as f64 == result
+                {
+                    Rf_ScalarInteger(result as i32)
+                } else {
+                    Rf_ScalarReal(result)
                 }
-                _ => return R_NilValue(),
-            };
-            if is_int_op(a, b)
-                && result.is_finite()
-                && result == result.floor()
-                && result as i64 as f64 == result
-            {
-                Rf_ScalarInteger(result as i32)
-            } else {
-                Rf_ScalarReal(result)
             }
+            _ => R_NilValue(),
         }
-        _ => R_NilValue(),
     }
-}}
+}
 
-unsafe fn binary_compare(op: &str, a: SEXP, b: SEXP) -> SEXP { unsafe {
-    let va = real_val(a);
-    let vb = real_val(b);
-    match (va, vb) {
-        (Some(x), Some(y)) => {
-            let x_na = x.to_bits() == R_NA_BIT_PATTERN;
-            let y_na = y.to_bits() == R_NA_BIT_PATTERN;
-            if x_na || y_na {
-                return Rf_ScalarLogical(crate::sexp::ffi::NA_LOGICAL);
+unsafe fn binary_compare(op: &str, a: SEXP, b: SEXP) -> SEXP {
+    unsafe {
+        let va = real_val(a);
+        let vb = real_val(b);
+        match (va, vb) {
+            (Some(x), Some(y)) => {
+                let x_na = x.to_bits() == R_NA_BIT_PATTERN;
+                let y_na = y.to_bits() == R_NA_BIT_PATTERN;
+                if x_na || y_na {
+                    return Rf_ScalarLogical(crate::sexp::ffi::NA_LOGICAL);
+                }
+                let result = match op {
+                    "<" => x < y,
+                    ">" => x > y,
+                    "<=" => x <= y,
+                    ">=" => x >= y,
+                    "==" => x == y,
+                    "!=" => x != y,
+                    _ => return R_NilValue(),
+                };
+                Rf_ScalarLogical(if result { TRUE } else { FALSE })
             }
-            let result = match op {
-                "<" => x < y,
-                ">" => x > y,
-                "<=" => x <= y,
-                ">=" => x >= y,
-                "==" => x == y,
-                "!=" => x != y,
-                _ => return R_NilValue(),
-            };
-            Rf_ScalarLogical(if result { TRUE } else { FALSE })
+            _ => Rf_ScalarLogical(FALSE),
         }
-        _ => Rf_ScalarLogical(FALSE),
     }
-}}
+}
 
 pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
@@ -150,8 +154,8 @@ pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if args == R_NilValue() || CDR(args) == R_NilValue() {
                     if op_name == "-" {
                         if let Some(x) = real_val(CAR(args)) {
-                            if let Some(_iv) = int_val(CAR(args)) {
-                                return Rf_ScalarInteger(-(int_val(CAR(args)).unwrap()));
+                            if let Some(iv) = int_val(CAR(args)) {
+                                return Rf_ScalarInteger(-iv);
                             }
                             return Rf_ScalarReal(-x);
                         }
@@ -180,66 +184,68 @@ pub unsafe fn do_relop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
 }
 
-unsafe fn get_op_name(call: SEXP) -> &'static str { unsafe {
-    if call.is_null() {
-        return "";
+unsafe fn get_op_name(call: SEXP) -> &'static str {
+    unsafe {
+        if call.is_null() {
+            return "";
+        }
+        let fun_sym = CAR(call);
+        if TYPEOF(fun_sym) != SEXPTYPE::SYMSXP.0 {
+            return "";
+        }
+        let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
+        if pname.is_null() {
+            return "";
+        }
+        let s = crate::sexp::accessors::CHAR(pname);
+        if s.is_null() {
+            return "";
+        }
+        match std::ffi::CStr::from_ptr(s).to_str() {
+            Ok(name) => match name {
+                "+" => "+",
+                "-" => "-",
+                "*" => "*",
+                "/" => "/",
+                "^" => "^",
+                "%%" => "%%",
+                "%/%" => "%/%",
+                "<" => "<",
+                ">" => ">",
+                "<=" => "<=",
+                ">=" => ">=",
+                "==" => "==",
+                "!=" => "!=",
+                "!" => "!",
+                "abs" => "abs",
+                "sqrt" => "sqrt",
+                "log" => "log",
+                "log2" => "log2",
+                "log10" => "log10",
+                "exp" => "exp",
+                "ceiling" => "ceiling",
+                "floor" => "floor",
+                "trunc" => "trunc",
+                "round" => "round",
+                "sign" => "sign",
+                "length" => "length",
+                "sum" => "sum",
+                "min" => "min",
+                "max" => "max",
+                "prod" => "prod",
+                "range" => "range",
+                "is.numeric" => "is.numeric",
+                "is.integer" => "is.integer",
+                "is.double" => "is.double",
+                "is.logical" => "is.logical",
+                "is.character" => "is.character",
+                "is.null" => "is.null",
+                _ => "",
+            },
+            Err(_) => "",
+        }
     }
-    let fun_sym = CAR(call);
-    if TYPEOF(fun_sym) != SEXPTYPE::SYMSXP.0 {
-        return "";
-    }
-    let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
-    if pname.is_null() {
-        return "";
-    }
-    let s = crate::sexp::accessors::CHAR(pname);
-    if s.is_null() {
-        return "";
-    }
-    match std::ffi::CStr::from_ptr(s).to_str() {
-        Ok(name) => match name {
-            "+" => "+",
-            "-" => "-",
-            "*" => "*",
-            "/" => "/",
-            "^" => "^",
-            "%%" => "%%",
-            "%/%" => "%/%",
-            "<" => "<",
-            ">" => ">",
-            "<=" => "<=",
-            ">=" => ">=",
-            "==" => "==",
-            "!=" => "!=",
-            "!" => "!",
-            "abs" => "abs",
-            "sqrt" => "sqrt",
-            "log" => "log",
-            "log2" => "log2",
-            "log10" => "log10",
-            "exp" => "exp",
-            "ceiling" => "ceiling",
-            "floor" => "floor",
-            "trunc" => "trunc",
-            "round" => "round",
-            "sign" => "sign",
-            "length" => "length",
-            "sum" => "sum",
-            "min" => "min",
-            "max" => "max",
-            "prod" => "prod",
-            "range" => "range",
-            "is.numeric" => "is.numeric",
-            "is.integer" => "is.integer",
-            "is.double" => "is.double",
-            "is.logical" => "is.logical",
-            "is.character" => "is.character",
-            "is.null" => "is.null",
-            _ => "",
-        },
-        Err(_) => "",
-    }
-}}
+}
 
 /// Register arithmetic and comparison builtins in the base environment.
 ///
@@ -296,7 +302,7 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
             let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::BUILTINSXP));
             boxed.sxpinfo.set_gp(1);
             let prim: SEXP = Box::leak(boxed);
-            let sym = Rf_install(CString::new(*op_name).unwrap().as_ptr());
+            let sym = Rf_install(CString::new(*op_name).unwrap_or_default().as_ptr());
             let cell = persistent_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
             chain = cell;
@@ -334,7 +340,7 @@ pub unsafe fn register_special_forms(env: SEXP) {
             let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
             boxed.sxpinfo.set_gp(1);
             let prim: SEXP = Box::leak(boxed);
-            let sym = Rf_install(CString::new(*op_name).unwrap().as_ptr());
+            let sym = Rf_install(CString::new(*op_name).unwrap_or_default().as_ptr());
             let cell = persistent_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
             chain = cell;

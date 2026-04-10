@@ -82,7 +82,7 @@ pub unsafe fn R_initEvalSymbols() {
 /// Helper to install a symbol by name.
 unsafe fn Rf_install_sym(name: &str) -> SEXP {
     unsafe {
-        let cs = CString::new(name).unwrap();
+        let cs = CString::new(name).unwrap_or_default();
         Rf_install(cs.as_ptr())
     }
 }
