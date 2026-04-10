@@ -1,9 +1,9 @@
-
 //! Port of R's src/library/grid/src/state.c -- grid system state management.
 //!
 //! Manages per-device grid state including display lists, viewports,
 //! graphics parameters, and engine callbacks.
 
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -18,6 +18,8 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::types::*;
+
+thread_local! { static CURRENT_GRID_STATE: Cell<SEXP> = const { Cell::new(std::ptr::null_mut()) }; }
 
 /* ==================== GE function stubs ==================== */
 
@@ -211,23 +213,29 @@ pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
     // GSS_GROUPS: group name to device reference mapping
     SET_VECTOR_ELT(state, GSS_GROUPS as R_xlen_t, R_NilValue());
 
+    CURRENT_GRID_STATE.with(|cell| cell.set(state));
+
     Rf_unprotect(1);
 }
 
 /// Get a grid state element by index.
 pub unsafe fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -> SEXP {
-    // Stub: since pGEDevDesc is void*, we cannot access gesd.
     let _ = dd;
-    let _ = elementIndex;
-    R_NilValue()
+    let state = CURRENT_GRID_STATE.with(|cell| cell.get());
+    if state.is_null() || state == R_NilValue() {
+        return R_NilValue();
+    }
+    VECTOR_ELT(state, elementIndex as R_xlen_t)
 }
 
 /// Set a grid state element by index.
 pub unsafe fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP) {
-    // Stub: since pGEDevDesc is void*, we cannot access gesd.
     let _ = dd;
-    let _ = elementIndex;
-    let _ = value;
+    let state = CURRENT_GRID_STATE.with(|cell| cell.get());
+    if state.is_null() || state == R_NilValue() {
+        return;
+    }
+    SET_VECTOR_ELT(state, elementIndex as R_xlen_t, value);
 }
 
 /// Callable from R code: set a grid state element.

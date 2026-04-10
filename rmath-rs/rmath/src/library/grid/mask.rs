@@ -88,15 +88,6 @@ unsafe fn ScalarLogical(x: c_int) -> SEXP {
     s
 }
 
-/// setGridStateElement — set a grid state element on a device
-unsafe fn setGridStateElement(
-    _dd: *const u8, /* pGEDevDesc */
-    _elementIndex: c_int,
-    _value: SEXP,
-) {
-    // STUB: requires state.c
-}
-
 /// Rf_eval_with_gd — evaluate expression with device context
 unsafe fn Rf_eval_with_gd(_call: SEXP, _env: SEXP, _dd: *const u8 /* pGEDevDesc */) -> SEXP {
     // STUB: requires engine.rs Rf_eval_with_gd

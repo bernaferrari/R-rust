@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Port of R's src/library/grid/src/gpar.c (722 lines)
@@ -16,6 +15,10 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+
+use super::grid::getDevice;
+use super::state::{gridStateElement, setGridStateElement};
+use super::types::{GSS_GPAR, GSS_GPSAVED};
 
 // GP_* constants from types.rs
 pub const GP_FILL: c_int = 0;
@@ -279,11 +282,7 @@ pub unsafe fn gpFont2(gp: SEXP, i: c_int, gpIsScalar: *mut c_int) -> c_int {
     *INTEGER(font).add((i % LENGTH(font)) as usize)
 }
 
-pub unsafe fn gpFontFamily2(
-    gp: SEXP,
-    i: c_int,
-    gpIsScalar: *mut c_int,
-) -> *const c_char {
+pub unsafe fn gpFontFamily2(gp: SEXP, i: c_int, gpIsScalar: *mut c_int) -> *const c_char {
     let fontfamily = gpFontFamilySXP(gp);
     *gpIsScalar.add(GP_FONTFAMILY as usize) = if LENGTH(fontfamily) == 1 { 1 } else { 0 };
     CHAR(STRING_ELT(fontfamily, (i % LENGTH(fontfamily)) as R_xlen_t))
@@ -325,8 +324,7 @@ pub unsafe fn gpLex2(gp: SEXP, i: c_int, gpIsScalar: *mut c_int) -> c_double {
 
 #[unsafe(no_mangle)]
 pub unsafe fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
-    // STUB: complex pattern resolution
-    R_NilValue()
+    gp
 }
 
 /* ==============================
@@ -346,10 +344,12 @@ pub unsafe fn initGContext(
     _gp: SEXP,
     _gc: pGEcontext,
     _dd: pGEDevDesc,
-    _gpIsScalar: *mut c_int,
+    gpIsScalar: *mut c_int,
     _gcCache: pGEcontext,
 ) {
-    // STUB
+    if !gpIsScalar.is_null() {
+        ptr::write_bytes(gpIsScalar, 0, GP_FONTFACE as usize + 1);
+    }
 }
 
 /* ==============================
@@ -361,10 +361,12 @@ pub unsafe fn updateGContext(
     _i: c_int,
     _gc: pGEcontext,
     _dd: pGEDevDesc,
-    _gpIsScalar: *mut c_int,
+    gpIsScalar: *mut c_int,
     _gcCache: pGEcontext,
 ) {
-    // STUB
+    if !gpIsScalar.is_null() {
+        ptr::write_bytes(gpIsScalar, 0, GP_FONTFACE as usize + 1);
+    }
 }
 
 /* ==============================
@@ -380,21 +382,33 @@ pub unsafe fn initGPar(_dd: pGEDevDesc) {
  * ============================== */
 
 pub unsafe fn L_getGPar() -> SEXP {
-    // STUB: requires getDevice() and gridStateElement()
-    R_NilValue()
+    let dd = getDevice();
+    if dd.is_null() {
+        return R_NilValue();
+    }
+    gridStateElement(dd, GSS_GPAR)
 }
 
-pub unsafe fn L_setGPar(_gpars: SEXP) -> SEXP {
-    // STUB: requires getDevice() and setGridStateElement()
+pub unsafe fn L_setGPar(gpars: SEXP) -> SEXP {
+    let dd = getDevice();
+    if !dd.is_null() {
+        setGridStateElement(dd, GSS_GPAR, gpars);
+    }
     R_NilValue()
 }
 
 pub unsafe fn L_getGPsaved() -> SEXP {
-    // STUB
-    R_NilValue()
+    let dd = getDevice();
+    if dd.is_null() {
+        return R_NilValue();
+    }
+    gridStateElement(dd, GSS_GPSAVED)
 }
 
-pub unsafe fn L_setGPsaved(_gpars: SEXP) -> SEXP {
-    // STUB
+pub unsafe fn L_setGPsaved(gpars: SEXP) -> SEXP {
+    let dd = getDevice();
+    if !dd.is_null() {
+        setGridStateElement(dd, GSS_GPSAVED, gpars);
+    }
     R_NilValue()
 }

@@ -29,6 +29,9 @@ use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+use super::gpar::{gcontextFromgpar, resolveGPar};
+use super::grid::getDevice;
+use super::state::{gridStateElement, setGridStateElement};
 use super::types::*;
 
 // ---------------------------------------------------------------------------
@@ -42,32 +45,9 @@ unsafe fn ScalarLogical(x: c_int) -> SEXP {
     s
 }
 
-/// getDevice — get the current graphics device
-unsafe fn getDevice() -> *const u8 {
-    // STUB: requires grid.c
-    std::ptr::null()
-}
-
-/// gridStateElement — get a grid state element from device
-#[unsafe(no_mangle)]
-unsafe fn gridStateElement(_dd: *const u8, _elementIndex: c_int) -> SEXP {
-    // STUB: requires state.c
-    R_NilValue()
-}
-
-/// setGridStateElement — set a grid state element on device
-unsafe fn setGridStateElement(_dd: *const u8, _elementIndex: c_int, _value: SEXP) {
-    // STUB: requires state.c
-}
-
 /// GEMode — set graphics engine mode
 unsafe fn GEMode(_mode: c_int, _dd: *const u8) {
     // STUB: requires GraphicsEngine
-}
-
-/// gcontextFromgpar — create graphics context from gpar
-unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: *mut u8, _dd: *const u8) {
-    // STUB: requires gpar.c
 }
 
 /// GEStroke — stroke a path on the device
@@ -89,12 +69,6 @@ unsafe fn GEFillStroke(_path: SEXP, _rule: c_int, _gc: *const u8, _dd: *const u8
 #[unsafe(no_mangle)]
 unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::Rf_duplicate(x)
-}
-
-/// resolveGPar — resolve gpar (e.g., pattern fills)
-unsafe fn resolveGPar(_gp: SEXP, _by_name: bool) -> SEXP {
-    // STUB: requires gpar.c
-    R_NilValue()
 }
 
 /// getListElement — get a named element from a list
@@ -145,6 +119,9 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     // R_GE_gcontext gc — opaque struct, allocated on stack
     let mut _gc: [u8; 256] = [0; 256]; // placeholder for R_GE_gcontext
     let dd = getDevice();
+    if dd.is_null() {
+        return R_NilValue();
+    }
     let currentgp = gridStateElement(dd, GSS_GPAR);
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
 
@@ -164,8 +141,11 @@ pub unsafe fn L_stroke(path: SEXP) -> SEXP {
 pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = getDevice();
+    if dd.is_null() {
+        return R_NilValue();
+    }
     let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    let resolved_fill = Rf_protect(resolveGPar(currentgp, false));
+    let resolved_fill = Rf_protect(resolveGPar(currentgp, 0));
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
 
     GEMode(1, dd);
@@ -199,8 +179,11 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
 pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     let mut _gc: [u8; 256] = [0; 256];
     let dd = getDevice();
+    if dd.is_null() {
+        return R_NilValue();
+    }
     let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    let resolved_fill = Rf_protect(resolveGPar(currentgp, false));
+    let resolved_fill = Rf_protect(resolveGPar(currentgp, 0));
     gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
 
     GEMode(1, dd);

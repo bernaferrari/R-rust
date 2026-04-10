@@ -1034,7 +1034,7 @@ unsafe fn drawArrow(
     match *INTEGER(atype).add((i % nt) as usize) {
         1 => GEPolyline(3, x, y, gc, dd),
         2 => GEPolygon(3, x, y, gc, dd),
-        _ => {}
+        _ => {} // intentionally unhandled: unknown arrowhead type
     }
 }
 
@@ -1102,7 +1102,7 @@ unsafe fn arrows(
         1 => {
             last = false;
         }
-        _ => {}
+        _ => {} // intentionally unhandled: unknown grid boundary value
     }
 
     if first && start {
@@ -1532,7 +1532,7 @@ unsafe fn symbolNumCoords(pch: c_int, closed: bool) -> c_int {
             }
         }
         15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 => {}
-        _ => {}
+        _ => {} // intentionally unhandled: unknown arrowhead type
     }
     result
 }

@@ -30,71 +30,25 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+use super::gpar::gcontextFromgpar;
+use super::grid::{getDevice, getViewportTransform};
+use super::state::gridStateElement;
 use super::types::*;
+use super::unit::transformLocn;
+use super::viewport::fillViewportContextFromViewport;
 
 // ---------------------------------------------------------------------------
 // External stubs for GE functions not yet ported
 // ---------------------------------------------------------------------------
-
-/// getDevice — get the current graphics device
-unsafe fn getDevice() -> *const u8 {
-    // STUB: requires grid.c
-    std::ptr::null()
-}
-
-/// gridStateElement — get a grid state element from device
-unsafe fn gridStateElement(_dd: *const u8, _elementIndex: c_int) -> SEXP {
-    // STUB: requires state.c
-    R_NilValue()
-}
 
 /// GEMode — set graphics engine mode
 unsafe fn GEMode(_mode: c_int, _dd: *const u8) {
     // STUB: requires GraphicsEngine
 }
 
-/// gcontextFromgpar — create graphics context from gpar
-unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: *mut u8, _dd: *const u8) {
-    // STUB: requires gpar.c
-}
-
 /// Rf_duplicate — deep copy an R object
 unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::Rf_duplicate(x)
-}
-
-/// getViewportTransform — get viewport transform info
-unsafe fn getViewportTransform(
-    _currentvp: SEXP,
-    _dd: *const u8,
-    _vpWidthCM: *mut f64,
-    _vpHeightCM: *mut f64,
-    _transform: *mut LTransform,
-    _rotationAngle: *mut f64,
-) {
-    // STUB: requires grid.c
-}
-
-/// fillViewportContextFromViewport — fill viewport context from viewport
-unsafe fn fillViewportContextFromViewport(_vp: SEXP, _vpc: *mut LViewportContext) {
-    // STUB: requires viewport.rs (will be available when types.rs is done)
-}
-
-/// transformLocn — transform a location
-unsafe fn transformLocn(
-    _x: SEXP,
-    _y: SEXP,
-    _index: c_int,
-    _vpc: LViewportContext,
-    _gc: *const u8,
-    _vpWidthCM: f64,
-    _vpHeightCM: f64,
-    _dd: *const u8,
-    _transform: LTransform,
-    _xx: *mut f64,
-    _yy: *mut f64,
-) {
-    // STUB: requires unit.c
 }
 
 /// toDeviceX — convert inches to device x coordinate
@@ -181,8 +135,18 @@ const GE_INCHES: c_int = 8;
 unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool) {
     let nruns = LENGTH(runs);
     let dd = getDevice();
+    if dd.is_null() {
+        return;
+    }
     let currentvp = gridStateElement(dd, GSS_VP);
     let currentgp = gridStateElement(dd, GSS_GPAR);
+    if currentvp.is_null()
+        || currentvp == R_NilValue()
+        || currentgp.is_null()
+        || currentgp == R_NilValue()
+    {
+        return;
+    }
 
     // R_GE_gcontext gc — placeholder
     let mut _gc: [u8; 256] = [0; 256];

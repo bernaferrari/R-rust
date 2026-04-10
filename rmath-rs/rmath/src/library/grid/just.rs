@@ -52,7 +52,7 @@ pub unsafe fn convertJust(just: c_int) -> f64 {
         _ if just == L_TOP || just == L_RIGHT => {
             result = 1.0;
         }
-        _ => {}
+        _ => {} // intentionally unhandled: unknown justification value
     }
     result
 }

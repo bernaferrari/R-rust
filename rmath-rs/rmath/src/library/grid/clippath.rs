@@ -30,6 +30,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 use std::cell::Cell;
 
+use super::state::setGridStateElement;
 use super::types::*;
 
 // ---------------------------------------------------------------------------
@@ -87,16 +88,6 @@ unsafe fn ScalarLogical(x: c_int) -> SEXP {
     let s = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::LGLSXP.0, 1);
     *crate::sexp::accessors::LOGICAL(s) = x;
     s
-}
-
-/// setGridStateElement — set a grid state element on a device
-#[unsafe(no_mangle)]
-unsafe fn setGridStateElement(
-    _dd: *const u8, /* pGEDevDesc */
-    _elementIndex: c_int,
-    _value: SEXP,
-) {
-    // STUB: requires state.c
 }
 
 /// Rf_eval_with_gd — evaluate expression with device context

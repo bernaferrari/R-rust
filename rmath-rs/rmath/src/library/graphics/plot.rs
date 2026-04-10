@@ -963,7 +963,7 @@ unsafe fn ComputePAdjValue(padj: c_double, side: c_int, las: c_int) -> c_double 
                 match side {
                     1 | 3 => return 0.0,
                     2 | 4 => return 0.5,
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
             2 => {
@@ -975,10 +975,10 @@ unsafe fn ComputePAdjValue(padj: c_double, side: c_int, las: c_int) -> c_double 
                 match side {
                     1 | 3 => return 0.5,
                     2 | 4 => return 0.0,
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown justification code
         }
     }
     padj
@@ -1001,7 +1001,7 @@ unsafe fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
                     1 | 3 => return 0.5,
                     2 => return 1.0,
                     4 => return 0.0,
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
             2 => {
@@ -1009,7 +1009,7 @@ unsafe fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
                 match side {
                     1 | 2 => return 1.0,
                     3 | 4 => return 0.0,
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
             3 => {
@@ -1018,10 +1018,10 @@ unsafe fn ComputeAdjValue(adj: c_double, side: c_int, las: c_int) -> c_double {
                     1 => return 1.0,
                     3 => return 0.0,
                     2 | 4 => return 0.5,
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown justification code
         }
     }
     adj
@@ -1069,7 +1069,7 @@ unsafe fn ComputeAtValue(
                     2 | 4 => {
                         return if outer != 0 { 0.5 } else { yNPCtoUsr(0.5, dd) };
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
             2 => {
@@ -1081,7 +1081,7 @@ unsafe fn ComputeAtValue(
                     2 | 4 => {
                         return if outer != 0 { 0.5 } else { yNPCtoUsr(0.5, dd) };
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
             3 => {
@@ -1093,10 +1093,10 @@ unsafe fn ComputeAtValue(
                     2 | 4 => {
                         return ComputeAtValueFromAdj(adj, side, outer, dd);
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: invalid side value
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown position code
         }
     }
     at
@@ -1121,7 +1121,7 @@ unsafe fn getxlimits(x: *mut c_double, dd: pGEDevDesc) {
             *x.add(0) = GConvertX(0.0, NDC, USER, dd);
             *x.add(1) = GConvertX(1.0, NDC, USER, dd);
         }
-        _ => {}
+        _ => {} // intentionally unhandled: invalid axis value
     }
 }
 
@@ -1140,7 +1140,7 @@ unsafe fn getylimits(y: *mut c_double, dd: pGEDevDesc) {
             *y.add(0) = GConvertY(0.0, NDC, USER, dd);
             *y.add(1) = GConvertY(1.0, NDC, USER, dd);
         }
-        _ => {}
+        _ => {} // intentionally unhandled: invalid axis value
     }
 }
 

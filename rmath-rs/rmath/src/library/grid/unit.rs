@@ -350,7 +350,7 @@ unsafe fn evaluateNullUnit(
                 // result = thisCM; -- would need thisCM
                 result = 0.0;
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown unit type for layout calculation
         }
     }
     result
