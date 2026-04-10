@@ -712,11 +712,7 @@ fn test_eval_abs_debug() {
     }
 }
 
-// FIXME: Arena Vec reallocation invalidates pointers when many nodes are allocated.
-// The eval pipeline triggers enough allocations to cause Vec growth, dangling all prior SEXP pointers.
-// This test will pass once the arena uses stable storage (e.g., Box::leak or slab allocator).
 #[test]
-#[ignore = "arena pointer invalidation bug — nodes Vec reallocation dangles derived SEXP pointers"]
 fn test_eval_math_builtins() {
     use crate::eval::eval::eval_safe;
     use crate::eval::parser;
@@ -772,7 +768,6 @@ fn test_eval_math_builtins() {
 }
 
 #[test]
-#[ignore = "arena pointer invalidation bug — same as test_eval_math_builtins"]
 fn test_eval_length_builtin() {
     use crate::eval::eval::eval_safe;
     use crate::eval::parser;
