@@ -1124,7 +1124,7 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
                     res = 0;
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown connection open mode
         }
         Rf_ScalarLogical(res)
     }
@@ -2273,7 +2273,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
                         let s = String::from_utf8_lossy(&buf).to_string();
                         conn.text_lines.borrow_mut().push(s);
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unknown connection kind for write
                 }
                 return Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
             }

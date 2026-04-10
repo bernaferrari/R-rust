@@ -311,7 +311,7 @@ unsafe fn Strtod(
         b'+' => {
             p = p.add(1);
         }
-        _ => {}
+        _ => {} // intentionally unhandled: non-whitespace/non-sign character in scan
     }
 
     /* check for NaN, Inf, infinity */
@@ -395,7 +395,7 @@ unsafe fn Strtod(
                 b'+' => {
                     p = p.add(1);
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: non-whitespace/non-sign character in scan
             }
             let mut n: c_int = 0;
             let mut ndig: c_int = 0;
@@ -521,7 +521,7 @@ unsafe fn Strtod(
             b'+' => {
                 p = p.add(1);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: non-whitespace/non-sign character in scan
         }
         let mut n: c_int = 0;
         let mut ndig2: c_int = 0;

@@ -615,7 +615,7 @@ pub unsafe fn lazy_duplicate(s: SEXP) -> SEXP {
             | SEXPTYPE::OBJSXP => {
                 ENSURE_NAMEDMAX(s);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: SEXPTYPE does not require NAMEDMAX enforcement
         }
         s
     }

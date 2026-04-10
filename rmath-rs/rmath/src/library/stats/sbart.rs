@@ -368,7 +368,7 @@ unsafe fn stxwx(
                     3 => {
                         *hs3.add(j) += prod;
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: derivative order not requested
                 }
             }
         }

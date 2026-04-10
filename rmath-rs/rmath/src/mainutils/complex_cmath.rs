@@ -612,7 +612,7 @@ pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
                     *pans.add(i) = from_complex(val);
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unsupported SEXPTYPE for complex math
         }
 
         // Copy attributes from longer argument (stub: only if non-nil)

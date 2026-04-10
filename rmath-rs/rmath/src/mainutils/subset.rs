@@ -806,7 +806,7 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                         t if t == SEXPTYPE::RAWSXP.0 => {
                             *RAW(result).add(i as usize) = 0;
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
                     }
                 }
             }
@@ -871,7 +871,7 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                         t if t == SEXPTYPE::RAWSXP.0 => {
                             *RAW(result).add(i as usize) = 0;
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
                     }
                 }
             }
@@ -1060,7 +1060,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                         t if t == SEXPTYPE::RAWSXP.0 => {
                             *RAW(result).add(ij as usize) = 0;
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
                     }
                 } else {
                     iijj = ii + jj * (nr as R_xlen_t);
@@ -1287,7 +1287,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                     t if t == SEXPTYPE::RAWSXP.0 => {
                         *RAW(result).add(i as usize) = 0;
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
                 }
             }
 
@@ -1823,7 +1823,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                         t if t == SEXPTYPE::RAWSXP.0 => {
                             *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                     }
                     Rf_unprotect(3); /* args, x, ans */
                     return ans;
@@ -1879,7 +1879,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     t if t == SEXPTYPE::RAWSXP.0 => {
                         *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                 }
                 Rf_unprotect(3); /* args, x, ans */
                 return ans;
@@ -1951,7 +1951,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     t if t == SEXPTYPE::RAWSXP.0 => {
                         *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                 }
                 Rf_unprotect(1); /* ans */
             }

@@ -610,7 +610,7 @@ unsafe fn needsparens(
                         _ => return false,
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: SEXPTYPE not relevant for deparse precedence
             }
 
             match arginfo.kind {
@@ -622,7 +622,7 @@ unsafe fn needsparens(
                             }
                             // else fall through
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: unknown precedence level for deparse
                     }
                     // fall through
                 }
@@ -633,7 +633,7 @@ unsafe fn needsparens(
                     // fall through
                 }
                 PP_ASSIGN | PP_ASSIGN2 | PP_DOLLAR => {}
-                _ => {}
+                _ => {} // intentionally unhandled: unknown PP pattern for deparse
             }
 
             match arginfo.kind {
@@ -1244,7 +1244,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 15 => print2buff(b"complex(0)\0".as_ptr() as *const c_char, d), // CPLXSXP
                 16 => print2buff(b"character(0)\0".as_ptr() as *const c_char, d), // STRSXP
                 24 => print2buff(b"raw(0)\0".as_ptr() as *const c_char, d),     // RAWSXP
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported type for empty vector display
             }
         } else if TYPEOF(vector) == SEXPTYPE::INTSXP.0 {
             if int_seq {
@@ -1488,7 +1488,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             strp = format_raw_element(*vec.add(i));
                         }
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for element formatting
                 }
 
                 if !strp.is_null() {
@@ -1944,7 +1944,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                                 }
                             }
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: SEXPTYPE not relevant for function op detection
                     }
 
                     // Dispatch on operator kind

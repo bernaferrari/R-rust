@@ -362,7 +362,7 @@ unsafe fn spline_coef(
         1 => periodic_spline(n, x, y, b, c, d),
         2 => natural_spline(n, x, y, b, c, d),
         3 => fmm_spline(n, x, y, b, c, d),
-        _ => {}
+        _ => {} // intentionally unhandled: unknown spline method
     }
 }
 

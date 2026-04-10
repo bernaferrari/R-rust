@@ -106,7 +106,7 @@ pub unsafe fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // debugonce()
                 SET_RSTEP(s, 1);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown debug operation
         }
 
         R_NilValue()
@@ -135,7 +135,7 @@ pub unsafe fn do_trace(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 // .primUntrace
                 SET_RTRACE(s, 0);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown debug/untrace operation
         }
 
         R_NilValue()
@@ -180,7 +180,7 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 debugging_state.with(|v| v.set(state));
                 return Rf_ScalarLogical(prev);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown debug state operation
         }
 
         R_NilValue()

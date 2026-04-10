@@ -549,7 +549,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        _ => {}
+        _ => {} // intentionally unhandled: unsupported SEXPTYPE for unique
     }
 
     unsafe { Rf_unprotect(2) };

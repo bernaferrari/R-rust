@@ -962,7 +962,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         namei = STRING_ELT(argnames, i as R_xlen_t);
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: unknown option type
             }
 
             // Check if this is a name=value assignment or a query

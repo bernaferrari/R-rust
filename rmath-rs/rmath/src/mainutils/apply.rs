@@ -624,7 +624,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     t if t == INTSXP_VAL => {
                         okay = valType == LGLSXP_VAL;
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: type mismatch caught by !okay check below
                 }
                 if !okay {
                     let type_name = R_typeToChar_local(value);
@@ -686,7 +686,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     t if t == VECSXP_VAL => {
                         SET_VECTOR_ELT(ans, i, VECTOR_ELT(val, 0));
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for apply result element
                 }
             } else if commonLen > 0 {
                 // commonLen > 1: multi-element result
@@ -744,7 +744,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                             );
                         }
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for apply result element
                 }
                 common_len_offset += commonLen as R_xlen_t;
             }

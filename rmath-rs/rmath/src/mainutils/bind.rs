@@ -349,7 +349,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                         *INTEGER(ans).add(i as usize) = *RAW(x).add(i as usize) as c_int;
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: incompatible source SEXPTYPE for coercion
             },
             REALSXP_I => match t {
                 LGLSXP_I => {
@@ -377,7 +377,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                         *REAL(ans).add(i as usize) = *RAW(x).add(i as usize) as c_double;
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: incompatible source SEXPTYPE for coercion
             },
             LGLSXP_I => match t {
                 INTSXP_I => {
@@ -399,7 +399,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                         };
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: incompatible source SEXPTYPE for coercion
             },
             CPLXSXP_I => match t {
                 REALSXP_I => {
@@ -442,7 +442,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                         (*c).i = 0.0;
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: incompatible source SEXPTYPE for coercion
             },
             STRSXP_I => {
                 // For non-character types, create NA_STRING entries
@@ -475,7 +475,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                         *RAW(ans).add(i as usize) = if v.is_nan() { 0 } else { v as Rbyte };
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: incompatible source SEXPTYPE for coercion
             },
             VECSXP_I => {
                 // Copy as list elements
@@ -503,7 +503,7 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
                     }
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: incompatible SEXPTYPE for binding
         }
 
         Rf_unprotect(1);

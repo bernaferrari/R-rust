@@ -1370,7 +1370,7 @@ pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             5 => {
                 let _ = random1_call(crate::dist::signrank::rsignrank, REAL(a), na, REAL(x), n);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown distribution type
         }
 
         PutRNGstate();
@@ -1582,7 +1582,7 @@ pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     n,
                 );
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown distribution type
         }
 
         PutRNGstate();

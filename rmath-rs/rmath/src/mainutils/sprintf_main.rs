@@ -794,7 +794,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                             lens[nthis as usize] = new_len;
                                         }
                                     }
-                                    _ => {}
+                                    _ => {} // intentionally unhandled: unknown format specifier type
                                 }
                             }
 

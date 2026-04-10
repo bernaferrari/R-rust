@@ -793,7 +793,7 @@ unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
                     }
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unsupported SEXPTYPE for integer modulo
         }
 
         crate::sexp::protect::Rf_unprotect(1);
@@ -940,7 +940,7 @@ unsafe fn real_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
                     *da.add(i) = myfloor(x1, x2);
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unsupported SEXPTYPE for real modulo
         }
 
         crate::sexp::protect::Rf_unprotect(1);
@@ -1259,7 +1259,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                         crate::sexp::protect::Rf_unprotect(1);
                         return ans;
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for arithmetic result
                 }
             }
 

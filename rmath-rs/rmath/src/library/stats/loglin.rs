@@ -491,7 +491,7 @@ pub unsafe fn LogLin(
         4 => {
             Rf_error(b"incorrect specification of 'table' or 'start'\0".as_ptr() as *const _);
         }
-        _ => {}
+        _ => {} // intentionally unhandled: unknown convergence error code
     }
 
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));

@@ -825,7 +825,7 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
                     out_bytes(stream, b"A\n".as_ptr() as *const c_void, 2);
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown serialization format
         }
 
         // Write version info (version 3)
@@ -1335,7 +1335,7 @@ unsafe fn OutFormat(stream: R_outpstream_t) {
                     out_bytes(stream, b"A\n".as_ptr() as *const c_void, 2);
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown serialization format
         }
     }
 }

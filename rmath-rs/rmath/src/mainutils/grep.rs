@@ -682,7 +682,7 @@ fn find_alternation_end(nodes: &[EreNode]) -> usize {
                 }
             }
             EreNode::Alternation if depth == 0 => return i,
-            _ => {}
+            _ => {} // intentionally unhandled: other ErNode types do not require depth tracking
         }
     }
     nodes.len()

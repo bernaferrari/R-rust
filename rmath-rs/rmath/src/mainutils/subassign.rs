@@ -1514,7 +1514,7 @@ unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
                                 2424 => {
                                     *RAW(x).add(ij as usize) = RAW_ELT(y, k as c_int);
                                 }
-                                _ => {}
+                                _ => {} // intentionally unhandled: unsupported SEXPTYPE for matrix subassignment
                             }
                             k += 1;
                             if k == ny {
@@ -1583,7 +1583,7 @@ unsafe fn MatrixAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP
                         2424 => {
                             *RAW(x).add(ij as usize) = RAW_ELT(y, k as c_int);
                         }
-                        _ => {}
+                        _ => {} // intentionally unhandled: unsupported SEXPTYPE for matrix subassignment
                     }
                     k += 1;
                     if k == ny {
@@ -1738,7 +1738,7 @@ unsafe fn ArrayAssign(call: SEXP, rho: SEXP, x: SEXP, s: SEXP, y: SEXP) -> SEXP 
                     2424 => {
                         *RAW(x).add(ii as usize) = RAW_ELT(y, iny as c_int);
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for subassignment
                 }
             }
 
@@ -2483,7 +2483,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
                 2424 => {
                     *RAW(x).add(offset as usize) = RAW_ELT(y, 0);
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subassignment
             }
 
             // If stretched, handle new name

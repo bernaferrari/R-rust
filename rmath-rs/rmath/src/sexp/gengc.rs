@@ -503,7 +503,7 @@ fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
                         update_field(&mut (*obj).data.promsxp.expr, old_to_new);
                         update_field(&mut (*obj).data.promsxp.env, old_to_new);
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: SEXPTYPE has no pointers to forward in GC
                 }
 
                 if t.is_vector_type() {
@@ -766,7 +766,7 @@ fn snapshot_live_objects() -> CompactionSnapshot {
                             (*obj).data.promsxp.env,
                         ));
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: SEXPTYPE has no pointers to forward in GC
                 }
 
                 let vector_data = if t.is_vector_type() {

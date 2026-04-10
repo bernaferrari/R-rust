@@ -702,7 +702,7 @@ pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
                 15 => Rprintf!("complex(0)\n"),   // CPLXSXP
                 16 => Rprintf!("character(0)\n"), // STRSXP
                 24 => Rprintf!("raw(0)\n"),       // RAWSXP
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported type for empty vector printing
             }
         }
     }
@@ -1134,7 +1134,7 @@ pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const
                 15 => Rprintf!("complex(0)\n"),   // CPLXSXP
                 16 => Rprintf!("character(0)\n"), // STRSXP
                 24 => Rprintf!("raw(0)\n"),       // RAWSXP
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported type for empty vector printing
             }
         }
     }

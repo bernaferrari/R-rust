@@ -206,7 +206,7 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
         | SEXPTYPE::VECSXP
         | SEXPTYPE::EXPRSXP
         | SEXPTYPE::EXTPTRSXP => return Ok(expr),
-        _ => {}
+        _ => {} // intentionally unhandled: SEXPTYPE requires special evaluation below
     }
 
     // Symbol lookup

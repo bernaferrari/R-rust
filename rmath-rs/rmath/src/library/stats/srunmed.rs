@@ -389,7 +389,7 @@ pub unsafe fn runmed(
                     i += 1;
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown output type for smooth median
         }
     }
 

@@ -353,7 +353,7 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
                 let chg = sm_3(REAL(x), REAL(y), n, iend);
                 iter = if chg { 1 } else { 0 };
             }
-            _ => {}
+            _ => {} // intentionally unhandled: unknown smooth method
         }
         SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(iter));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"iter\0".as_ptr() as *const _));

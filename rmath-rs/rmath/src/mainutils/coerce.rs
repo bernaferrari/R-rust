@@ -726,7 +726,7 @@ pub unsafe fn ComplexFromStringC(s: *const c_char, warn: *mut c_int) -> Rcomplex
                     split_pos = Some(i);
                     break;
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: non-sign character in exponent parsing
             }
         }
 
@@ -1306,7 +1306,7 @@ unsafe fn coerceToPairList(v: SEXP) -> SEXP {
                 t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
                     SETCAR(ansp, VECTOR_ELT(v, i as R_xlen_t));
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
             }
             ansp = CDR(ansp);
         }
@@ -1389,7 +1389,7 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                     t if t == SEXPTYPE::RAWSXP.0 => {
                         *RAW(rval).add(i as usize) = asInteger(CAR(vp)) as Rbyte;
                     }
-                    _ => {}
+                    _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
                 }
                 vp = CDR(vp);
             }
@@ -1512,7 +1512,7 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                         };
                     }
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
             }
             if warn != 0 {
                 CoercionWarning(warn);
@@ -1915,7 +1915,7 @@ pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
                 t if t == SEXPTYPE::STRSXP.0 => {
                     z = ComplexFromString(STRING_ELT(x, 0), &mut warn);
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for complex coercion
             }
             if warn != 0 {
                 CoercionWarning(warn);
@@ -2112,7 +2112,7 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
             | SEXPTYPE::RAWSXP => {
                 CLEAR_ATTRIB(ans);
             }
-            _ => {}
+            _ => {} // intentionally unhandled: SEXPTYPE does not require attribute clearing
         }
         Ok(ans)
     }

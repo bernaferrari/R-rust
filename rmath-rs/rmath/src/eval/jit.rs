@@ -266,7 +266,7 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
                     cur = CDR(cur);
                 }
             }
-            _ => {}
+            _ => {} // intentionally unhandled: SEXPTYPE has no loops to count
         }
         count
     }

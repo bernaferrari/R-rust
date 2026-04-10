@@ -1291,7 +1291,7 @@ pub unsafe fn printArray(x: SEXP, dim: SEXP, quote: c_int, right: c_int, dimname
                 RAWSXP_VAL => {
                     print_raw_matrix(x, offset, use_nr, nr, use_nc, dn0, dn1, rn, cn, do_ij);
                 }
-                _ => {}
+                _ => {} // intentionally unhandled: unsupported SEXPTYPE for matrix printing
             }
             eprintln!();
         }
