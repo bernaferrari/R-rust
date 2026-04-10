@@ -36,7 +36,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
-const NA_REAL: c_double = f64::NAN;
+const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 
 /// Interval at which to check interrupts (~subsecond on current hw).
 const NINTERRUPT: R_xlen_t = 10_000_000;
@@ -47,12 +47,7 @@ const NINTERRUPT: R_xlen_t = 10_000_000;
 
 /// Stub: report an out-of-bounds error. In full R this would call
 /// R_makeOutOfBoundsError / R_signalErrorCondition.
-pub unsafe fn ECALL_OutOfBounds(
-    _x: SEXP,
-    _subscript: c_int,
-    _index: R_xlen_t,
-    _call: SEXP,
-) {
+pub unsafe fn ECALL_OutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _call: SEXP) {
     // Full implementation requires R's condition/error infrastructure.
 }
 
@@ -62,12 +57,7 @@ pub unsafe fn ECALL_MissingSubs(_call: SEXP) {
 }
 
 /// Stub: report an out-of-bounds error for character subscripts.
-pub unsafe fn ECALL_OutOfBoundsCHAR(
-    _x: SEXP,
-    _subscript: c_int,
-    _sindex: SEXP,
-    _call: SEXP,
-) {
+pub unsafe fn ECALL_OutOfBoundsCHAR(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
     // Full implementation requires R's condition/error infrastructure.
 }
 
@@ -1077,13 +1067,7 @@ unsafe fn stringSubscript(
 ///
 /// This is the internal implementation used by `[i,j,...]` and `[<-...`.
 /// The public API is `arraySubscript`.
-pub unsafe fn int_arraySubscript(
-    dim: c_int,
-    s: SEXP,
-    dims: SEXP,
-    x: SEXP,
-    call: SEXP,
-) -> SEXP {
+pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let mut stretch: R_xlen_t = 0;
         let ns = LENGTH(s);
@@ -1159,12 +1143,7 @@ pub unsafe fn arraySubscript(
 ///
 /// If `*stretch` is 0 on entry, the vector `x` cannot be stretched.
 /// Otherwise, `*stretch` returns the new required length for `x`.
-pub unsafe fn makeSubscript(
-    x: SEXP,
-    s: SEXP,
-    stretch: *mut R_xlen_t,
-    call: SEXP,
-) -> SEXP {
+pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP) -> SEXP {
     unsafe {
         // Check that x is a vector, list, or language object
         // if !isVector(x) && !isList(x) && !isLanguage(x) {

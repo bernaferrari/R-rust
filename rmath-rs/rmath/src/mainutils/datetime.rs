@@ -50,7 +50,7 @@ use crate::sexp::protect::*;
 pub static month_days: [c_int; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 /// NA_REAL sentinel matching R's NA_REAL.
-pub const NA_REAL: c_double = f64::NAN; // simplified; R uses a specific bit pattern
+pub const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 
 /// POSIXlt component names.
 pub static ltnames: [&str; 11] = [

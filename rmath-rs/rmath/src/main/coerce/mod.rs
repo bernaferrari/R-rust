@@ -42,7 +42,7 @@ pub mod vector;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
-pub const NA_REAL: c_double = f64::NAN;
+pub const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 
 /// R's specific NA value as f64.
 #[inline]

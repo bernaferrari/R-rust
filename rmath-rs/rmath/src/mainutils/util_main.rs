@@ -22,7 +22,7 @@ use crate::sexp::globals::R_NilValue;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL value (from R_ext/Arith.h)
-pub const R_NA_REAL: c_double = f64::from_bits(0x7FF800000000000A_u64);
+pub const R_NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 
 /// R's NaN value
 pub const R_NaN: c_double = f64::NAN;

@@ -392,7 +392,9 @@ pub fn cmath1(
     let mut naflag = false;
     for i in 0..n as usize {
         let xi = &x[i];
-        if xi.r.to_bits() == 0x7ff0000000001954 || xi.i.to_bits() == 0x7ff0000000001954 {
+        if xi.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            || xi.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        {
             // R_IsNA
             y[i].r = NA_REAL;
             y[i].i = NA_REAL;
@@ -898,10 +900,10 @@ pub unsafe fn complex_math2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
             let ai = *a.add(i1);
             let bi = *b.add(i2);
 
-            if ai.r.to_bits() == 0x7ff0000000001954
-                && ai.i.to_bits() == 0x7ff0000000001954
-                && bi.r.to_bits() == 0x7ff0000000001954
-                && bi.i.to_bits() == 0x7ff0000000001954
+            if ai.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                && ai.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                && bi.r.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                && bi.i.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
             {
                 (*y.add(i)).r = NA_REAL;
                 (*y.add(i)).i = NA_REAL;

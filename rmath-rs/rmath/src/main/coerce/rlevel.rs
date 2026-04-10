@@ -88,12 +88,7 @@ pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// R-level `as.character()` for factors (internal).
-pub unsafe fn do_asCharacterFactor(
-    _call: SEXP,
-    _op: SEXP,
-    args: SEXP,
-    _env: SEXP,
-) -> SEXP {
+pub unsafe fn do_asCharacterFactor(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         asCharacterFactor(x)
@@ -280,7 +275,11 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
             SEXPTYPE::OBJSXP => "object",
             _ => "unknown",
         };
-        Rf_mkString(std::ffi::CString::new(type_name).expect("CString::new failed: contains null byte").as_ptr())
+        Rf_mkString(
+            std::ffi::CString::new(type_name)
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
     }
 }
 

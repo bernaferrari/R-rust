@@ -36,8 +36,7 @@ use crate::special::polygamma::{digamma, trigamma};
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (NaN with specific bit pattern).
-#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-pub const NA_REAL: f64 = f64::NAN;
+pub const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
 
 /// IEEE double epsilon (machine epsilon).
 const C_EPS: f64 = f64::EPSILON;
@@ -53,8 +52,7 @@ pub extern "C" fn R_ValueOfNA() -> f64 {
 
 /// Check if a NaN value is specifically R's NA (not just any NaN).
 pub extern "C" fn R_NaN_is_R_NA(x: f64) -> c_int {
-    // R's NA has the specific bit pattern 0x7ff0000000001954
-    if x.is_nan() && x.to_bits() == 0x7ff0000000001954 {
+    if x.is_nan() && x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
         1
     } else {
         0
@@ -581,11 +579,11 @@ pub unsafe fn do_math1(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 #[inline]
 fn na_math2_set(a: f64, b: f64) -> Option<f64> {
     // Check for R's NA (specific NaN bit pattern)
-    let na_bits = 0x7ff0000000001954u64;
+    let na_bits = crate::sexp::ffi::R_NA_BIT_PATTERN;
     let a_is_na = a.is_nan() && a.to_bits() == na_bits;
     let b_is_na = b.is_nan() && b.to_bits() == na_bits;
     if a_is_na || b_is_na {
-        Some(f64::from_bits(na_bits)) // return R's NA_REAL
+        Some(crate::sexp::ffi::NA_REAL) // return R's NA_REAL
     } else if a.is_nan() || b.is_nan() {
         Some(f64::NAN)
     } else {

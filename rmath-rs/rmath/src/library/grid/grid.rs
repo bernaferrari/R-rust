@@ -195,7 +195,7 @@ const GE_INCHES: c_int = 1;
 const R_TRANWHITE: c_int = 0x7FFFFFFF;
 const NA_LOGICAL: c_int = -1;
 const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
-const NA_REAL: f64 = f64::NAN;
+const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
 const CE_UTF8: c_int = 1;
 const CE_SYMBOL: c_int = 2;
 const CE_NATIVE: c_int = 0;
@@ -264,11 +264,7 @@ pub unsafe fn getDevice() -> pGEDevDesc {
  * ============================== */
 
 #[unsafe(no_mangle)]
-pub unsafe fn getDeviceSize(
-    dd: pGEDevDesc,
-    devWidthCM: *mut c_double,
-    devHeightCM: *mut c_double,
-) {
+pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeightCM: *mut c_double) {
     // STUB: requires device access
     // dd->dev->size(&left, &right, &bottom, &top, dd->dev);
     // *devWidthCM = fabs(right - left) * dd->dev->ipr[0] * 2.54;
@@ -357,12 +353,7 @@ pub unsafe fn L_currentViewport() -> SEXP {
  * doSetViewport
  * ============================== */
 
-pub unsafe fn doSetViewport(
-    vp: SEXP,
-    topLevelVP: c_int,
-    pushing: c_int,
-    dd: pGEDevDesc,
-) -> SEXP {
+pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc) -> SEXP {
     let mut devWidthCM: c_double = 0.0;
     let mut devHeightCM: c_double = 0.0;
     let mut xx1: c_double = 0.0;
@@ -1351,14 +1342,7 @@ unsafe fn gridRect(
  * L_rect
  * ============================== */
 
-pub unsafe fn L_rect(
-    x: SEXP,
-    y: SEXP,
-    w: SEXP,
-    h: SEXP,
-    hjust: SEXP,
-    vjust: SEXP,
-) -> SEXP {
+pub unsafe fn L_rect(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
     gridRect(x, y, w, h, hjust, vjust, 0.0, true);
     R_NilValue()
 }
@@ -1598,13 +1582,7 @@ pub unsafe fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
  * L_pointsPoints
  * ============================== */
 
-pub unsafe fn L_pointsPoints(
-    x: SEXP,
-    y: SEXP,
-    pch: SEXP,
-    size: SEXP,
-    closed: SEXP,
-) -> SEXP {
+pub unsafe fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SEXP) -> SEXP {
     gridPoints(x, y, pch, size, false, asBool(closed) != 0)
 }
 
@@ -1612,14 +1590,7 @@ pub unsafe fn L_pointsPoints(
  * L_clip
  * ============================== */
 
-pub unsafe fn L_clip(
-    x: SEXP,
-    y: SEXP,
-    w: SEXP,
-    h: SEXP,
-    hjust: SEXP,
-    vjust: SEXP,
-) -> SEXP {
+pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
     // STUB: full implementation requires GESetClip
     R_NilValue()
 }

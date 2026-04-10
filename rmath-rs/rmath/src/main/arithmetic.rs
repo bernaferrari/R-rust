@@ -35,7 +35,7 @@ use crate::sexp::protect::Rf_protect;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (NaN with specific bit pattern).
-pub const NA_REAL: f64 = f64::NAN;
+pub const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
 
 /// IEEE double epsilon (machine epsilon).
 const C_EPS: f64 = f64::EPSILON;
@@ -51,8 +51,7 @@ pub extern "C" fn R_ValueOfNA() -> f64 {
 
 /// Check if a NaN value is specifically R's NA (not just any NaN).
 pub extern "C" fn R_NaN_is_R_NA(x: f64) -> c_int {
-    // R's NA has the specific bit pattern 0x7ff0000000001954
-    if x.is_nan() && x.to_bits() == 0x7ff0000000001954 {
+    if x.is_nan() && x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
         1
     } else {
         0
@@ -253,11 +252,7 @@ pub fn Rexp(x: f64) -> f64 {
 /// Helper: returns x for very small arguments, otherwise applies f.
 #[inline]
 fn f_x_x(x: f64, f: fn(f64) -> f64, m: f64) -> f64 {
-    if x.abs() <= m {
-        x
-    } else {
-        f(x)
-    }
+    if x.abs() <= m { x } else { f(x) }
 }
 
 /// exp(x) - 1 with improved accuracy for small x.
@@ -358,11 +353,7 @@ unsafe fn no_references(x: SEXP) -> bool {
 /// Integer-to-double conversion respecting NA_INTEGER.
 #[inline]
 fn r_integer_to_double(x: c_int) -> f64 {
-    if x == NA_INTEGER {
-        NA_REAL
-    } else {
-        x as f64
-    }
+    if x == NA_INTEGER { NA_REAL } else { x as f64 }
 }
 
 // ---- math1 helpers ----
@@ -594,11 +585,11 @@ pub unsafe fn do_math1(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 #[inline]
 fn na_math2_set(a: f64, b: f64) -> Option<f64> {
     // Check for R's NA (specific NaN bit pattern)
-    let na_bits = 0x7ff0000000001954u64;
+    let na_bits = crate::sexp::ffi::R_NA_BIT_PATTERN;
     let a_is_na = a.is_nan() && a.to_bits() == na_bits;
     let b_is_na = b.is_nan() && b.to_bits() == na_bits;
     if a_is_na || b_is_na {
-        Some(f64::from_bits(na_bits)) // return R's NA_REAL
+        Some(crate::sexp::ffi::NA_REAL) // return R's NA_REAL
     } else if a.is_nan() || b.is_nan() {
         Some(f64::NAN)
     } else {
@@ -705,11 +696,7 @@ unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n = if n1 == 0 || n2 == 0 {
             0
         } else {
-            if n1 > n2 {
-                n1
-            } else {
-                n2
-            }
+            if n1 > n2 { n1 } else { n2 }
         };
 
         // DIV and POW produce REALSXP
@@ -975,11 +962,7 @@ unsafe fn complex_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n = if n1 == 0 || n2 == 0 {
             0
         } else {
-            if n1 > n2 {
-                n1
-            } else {
-                n2
-            }
+            if n1 > n2 { n1 } else { n2 }
         };
 
         let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
@@ -1495,11 +1478,7 @@ pub unsafe fn do_log(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 *REAL(sb)
             } else if TYPEOF(sb) == SEXPTYPE::INTSXP.0 {
                 let v = *INTEGER(sb);
-                if v == NA_INTEGER {
-                    f64::NAN
-                } else {
-                    v as f64
-                }
+                if v == NA_INTEGER { f64::NAN } else { v as f64 }
             } else {
                 std::f64::consts::E
             };

@@ -660,8 +660,7 @@ pub unsafe fn EncodeComplex(
         let dec_ptr = dec_cstr.as_ptr();
 
         let na = na_string_str();
-        let na_bits: u64 = 0x7ff0000000001954;
-        let is_na = |v: f64| v.to_bits() == na_bits;
+        let is_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
 
         let result = if is_na(r) || is_na(i) {
             format!("{}", na)
@@ -698,7 +697,6 @@ pub unsafe fn EncodeComplex(
 // ---------------------------------------------------------------------------
 // Standalone utility: EncodeRaw
 // ---------------------------------------------------------------------------
-
 
 /// Encode a raw byte as a two-digit hex string with optional prefix.
 pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {

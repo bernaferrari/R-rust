@@ -20,12 +20,12 @@ use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
 use crate::main::subscript::{
-    get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex, OneIndex,
+    OneIndex, get1index, int_arraySubscript, makeSubscript, mat2indsub, strmat2intmat, vectorIndex,
 };
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::envir::defineVar;
-use crate::sexp::ffi::{R_xlen_t, FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory_ext::{allocList, allocSExp};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
@@ -36,7 +36,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// R's NA_REAL sentinel (specific NaN bit pattern).
-const NA_REAL: c_double = f64::NAN;
+const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 
 /// Maximum value for R_xlen_t.
 const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
@@ -51,31 +51,61 @@ const R_XLEN_T_MAX: R_xlen_t = i64::MAX;
 /// Get the "dim" symbol.
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").expect("CString::new failed: contains null byte").as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dim")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").expect("CString::new failed: contains null byte").as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "dimnames" symbol.
 #[inline]
 unsafe fn sym_DimNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").expect("CString::new failed: contains null byte").as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dimnames")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").expect("CString::new failed: contains null byte").as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("class")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "use.names" symbol (for subscript name passing).
 #[inline]
 unsafe fn sym_UseNames() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("use.names").expect("CString::new failed: contains null byte").as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("use.names")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -327,11 +357,7 @@ unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
 unsafe fn XTRUELENGTH(x: SEXP) -> R_xlen_t {
     unsafe {
         let tl = TRUELENGTH(x);
-        if tl >= 0 {
-            tl as R_xlen_t
-        } else {
-            XLENGTH(x)
-        }
+        if tl >= 0 { tl as R_xlen_t } else { XLENGTH(x) }
     }
 }
 
@@ -2733,7 +2759,13 @@ pub unsafe fn R_subassign3_dflt(call: SEXP, x: SEXP, nlist: SEXP, val: SEXP) -> 
 
 /// Port of `SubassignTypeSym()` -- used by the byte code compiler.
 pub unsafe fn SubassignTypeSym() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("SubassignTypeSym").expect("CString::new failed: contains null byte").as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("SubassignTypeSym")
+                .expect("CString::new failed: contains null byte")
+                .as_ptr(),
+        )
+    }
 }
 
 /// Port of `SubassignDotsNames()` -- handles assignment to `...` names.

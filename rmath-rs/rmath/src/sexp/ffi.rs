@@ -416,10 +416,10 @@ pub fn ISNAN(x: c_double) -> bool {
     x.is_nan()
 }
 
-/// Check if a double is R's NA or NaN.
+/// Check if a double is NaN but not NA (R semantics: R_IsNaN excludes NA).
 #[inline]
 pub fn R_IsNaN(x: c_double) -> bool {
-    ISNAN(x)
+    x.is_nan() && x.to_bits() != R_NA_BIT_PATTERN
 }
 
 /// Check if a double is finite (not NA, not NaN, not Inf).
@@ -509,7 +509,7 @@ mod tests {
     #[test]
     fn test_r_isnan() {
         assert!(R_IsNaN(f64::NAN));
-        assert!(R_IsNaN(c_double::from_bits(R_NA_BIT_PATTERN)));
+        assert!(!R_IsNaN(c_double::from_bits(R_NA_BIT_PATTERN)));
         assert!(!R_IsNaN(1.0));
     }
 

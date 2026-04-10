@@ -39,7 +39,7 @@ fn ISNAN(x: f64) -> bool {
 /// Check if a double is R's NA.
 #[inline]
 fn ISNA(x: f64) -> bool {
-    x.to_bits() == 0x7ff0000000001954
+    x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
 }
 
 // ---------------------------------------------------------------------------
@@ -399,8 +399,7 @@ pub fn integer_mean(x: &[c_int]) -> f64 {
 // ---------------------------------------------------------------------------
 
 /// NA_REAL: R's special NaN bit pattern for NA.
-#[allow(clippy::zero_divided_by_zero, clippy::eq_op)]
-const NA_REAL: f64 = f64::NAN;
+const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
 
 /// R_PosInf constant.
 const R_PosInf: c_double = f64::INFINITY;
@@ -1593,7 +1592,7 @@ mod tests {
 
     #[test]
     fn test_rmin_na_trumps_nan() {
-        let na = f64::from_bits(0x7ff0000000001954);
+        let na = crate::sexp::ffi::NA_REAL;
         let x = vec![f64::NAN, na, 1.0];
         // narm=false: NA should trump NaN
         let (m, updated) = rmin(&x, false);

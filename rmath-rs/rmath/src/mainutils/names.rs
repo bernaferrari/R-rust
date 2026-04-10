@@ -4494,7 +4494,7 @@ pub unsafe fn R_Primitive(primname: *const c_char) -> SEXP {
         let name_str = std::ffi::CStr::from_ptr(primname);
         let name = name_str.to_bytes();
 
-        for entry in R_FunTab.iter() {
+        for (idx, entry) in R_FunTab.iter().enumerate() {
             if entry.is_sentinel() {
                 break;
             }
