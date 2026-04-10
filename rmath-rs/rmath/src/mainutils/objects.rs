@@ -231,57 +231,16 @@ unsafe fn isValidString(x: SEXP) -> c_int {
     }
 }
 
-/// Convert a logical SEXP to a boolean, with NA handling.
-/// Returns 1 for TRUE, 0 for FALSE, -1 for NA.
-unsafe fn asRbool(x: SEXP, _call: SEXP) -> c_int {
-    unsafe {
-        if isLogical(x) == FALSE && isString(x) == FALSE {
-            return -1; // NA
-        }
-        if isString(x) != FALSE {
-            let s = STRING_ELT(x, 0);
-            if !s.is_null() {
-                let cs = CHAR(s);
-                if !cs.is_null() {
-                    if *cs == b'T' as c_char {
-                        return TRUE;
-                    }
-                    if *cs == b'F' as c_char {
-                        return FALSE;
-                    }
-                }
-            }
-            return -1; // NA
-        }
-        let v = LOGICAL(x);
-        if !v.is_null() { *v } else { -1 }
-    }
+unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
+    crate::mainutils::coerce::asRbool(x, call)
 }
 
-/// asLogical: convert to logical, returning NA_INTEGER for NA.
 unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if isLogical(x) != FALSE {
-            let v = LOGICAL(x);
-            if !v.is_null() {
-                return *v;
-            }
-        }
-        -1 // NA_INTEGER
-    }
+    crate::mainutils::coerce::asLogical(x)
 }
 
-/// asInteger: convert to integer.
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe {
-        if TYPEOF(x) == SEXPTYPE::INTSXP.0 as c_int {
-            let v = INTEGER(x);
-            if !v.is_null() {
-                return *v;
-            }
-        }
-        -1 // NA_INTEGER
-    }
+    crate::mainutils::coerce::asInteger(x)
 }
 
 /// isNull check.
@@ -626,8 +585,7 @@ unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, _newvars: SEX
                 return fn_ptr(call, op, args, rho);
             }
         } else if t == SEXPTYPE::CLOSXP.0 as c_int {
-            // Closure: use applyClosure
-            // For now, return nil -- full implementation requires eval
+            return crate::eval::closure::applyClosure(call, op, args, rho, rho, 0);
         }
 
         R_NilValue()

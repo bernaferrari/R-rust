@@ -64,18 +64,17 @@ const BITWISE_SHIFT_R: c_int = 6;
 // Stubs for unimplemented R functions
 // ---------------------------------------------------------------------------
 
-/// Stub for errorcall -- does nothing.
-///
-/// Note: the real C function is variadic, but Rust doesn't support C-variadic
-/// functions on stable. This stub is only used internally; actual error
-/// formatting is handled by the error/warning infrastructure.
-pub unsafe fn errorcall_stub(_call: SEXP, _format: *const c_char) {}
+pub unsafe fn errorcall_stub(call: SEXP, format: *const c_char) {
+    crate::mainutils::errors::errorcall(call, format);
+}
 
-/// Stub for error -- does nothing.
-pub unsafe fn error_stub(_format: *const c_char) {}
+pub unsafe fn error_stub(format: *const c_char) {
+    crate::mainutils::errors::errorcall(R_NilValue(), format);
+}
 
-/// Stub for warningcall -- does nothing.
-pub unsafe fn warningcall_stub(_call: SEXP, _format: *const c_char) {}
+pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) {
+    crate::mainutils::errors::warningcall(call, format);
+}
 
 /// Seql (string equality) -- checks if two CHARSXP are equal.
 pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {

@@ -84,19 +84,25 @@ unsafe fn getCharCE(_s: SEXP) -> c_int {
     CE_NATIVE
 }
 
-unsafe fn coerceVector(s: SEXP, _t: c_int) -> SEXP {
-    s
+unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+    crate::mainutils::coerce::coerceVector(s, t)
 }
 
 unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
     unsafe { Rf_mkChar(s) }
 }
 
-unsafe fn warning(_fmt: *const c_char, _a1: usize, _a2: usize) {}
+unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
+    crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), fmt);
+}
 
-/// Check if a CHARSXP is R's NA_STRING.
 unsafe fn isNA_STRING(s: SEXP) -> bool {
-    s.is_null()
+    if s.is_null() {
+        return true;
+    }
+    // In R, NA_STRING is a CHARSXP with gp bits indicating NA (gp & 1 != 0)
+    let gp = unsafe { (*s).sxpinfo.gp() };
+    gp & 1 != 0
 }
 
 // ---------------------------------------------------------------------------
