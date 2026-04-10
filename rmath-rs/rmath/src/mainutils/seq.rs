@@ -88,8 +88,8 @@ unsafe fn R_typeToChar(_s: SEXP) -> *const c_char {
     ptr::null()
 }
 
-unsafe fn coerceVector(s: SEXP, _t: c_int) -> SEXP {
-    s
+unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+    crate::mainutils::coerce::coerceVector(s, t)
 }
 
 unsafe fn UNIMPLEMENTED_TYPE(_mesg: *const c_char, _s: SEXP) {}
@@ -245,40 +245,42 @@ unsafe fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
 }
 
 unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
-    x
+    crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
 unsafe fn lazy_duplicate(x: SEXP) -> SEXP {
-    x
+    crate::mainutils::duplicate::lazy_duplicate(x)
 }
 
 unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
-    x
+    crate::mainutils::duplicate::Rf_duplicate(x)
 }
 
 unsafe fn Rf_shallow_duplicate(x: SEXP) -> SEXP {
-    x
+    crate::mainutils::duplicate::shallow_duplicate(x)
 }
 
-unsafe fn getAttrib(_x: SEXP, _what: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
+    crate::eval::attrib_core::setAttrib(x, what, val)
 }
 
-unsafe fn setAttrib(_x: SEXP, _what: SEXP, _val: SEXP) {}
+unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+    crate::eval::attrib_core::getAttrib(x, what)
+}
 
 unsafe fn R_NamesSymbol() -> SEXP {
-    ptr::null_mut()
+    crate::eval::attrib_core::R_NamesSymbol()
 }
 
 unsafe fn R_ClassSymbol() -> SEXP {
-    ptr::null_mut()
+    crate::eval::attrib_core::R_ClassSymbol()
 }
 
 unsafe fn R_LevelsSymbol() -> SEXP {
-    ptr::null_mut()
+    crate::eval::attrib_core::R_LevelsSymbol()
 }
 
-unsafe fn isObject(_x: SEXP) -> c_int {
+unsafe fn isObject(x: SEXP) -> c_int {
     0
 }
 
@@ -312,12 +314,12 @@ unsafe fn IS_S4_OBJECT(_x: SEXP) -> c_int {
     0
 }
 
-unsafe fn Rf_install_stub(_name: *const c_char) -> SEXP {
-    ptr::null_mut()
+unsafe fn Rf_install_stub(name: *const c_char) -> SEXP {
+    crate::sexp::symbol::Rf_install(name)
 }
 
 unsafe fn R_DotsSymbol() -> SEXP {
-    ptr::null_mut()
+    crate::sexp::symbol::R_DotsSymbol()
 }
 
 // ---------------------------------------------------------------------------
