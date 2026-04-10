@@ -11,7 +11,7 @@ use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, CDR, TYPEOF};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons};
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_REAL, R_NA_BIT_PATTERN, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::symbol::Rf_install;
 
@@ -77,6 +77,11 @@ unsafe fn binary_arith(op: &str, a: SEXP, b: SEXP) -> SEXP {
     let vb = real_val(b);
     match (va, vb) {
         (Some(x), Some(y)) => {
+            let x_na = x.to_bits() == R_NA_BIT_PATTERN;
+            let y_na = y.to_bits() == R_NA_BIT_PATTERN;
+            if x_na || y_na {
+                return Rf_ScalarReal(NA_REAL);
+            }
             let result = match op {
                 "+" => x + y,
                 "-" => x - y,
@@ -118,6 +123,11 @@ unsafe fn binary_compare(op: &str, a: SEXP, b: SEXP) -> SEXP {
     let vb = real_val(b);
     match (va, vb) {
         (Some(x), Some(y)) => {
+            let x_na = x.to_bits() == R_NA_BIT_PATTERN;
+            let y_na = y.to_bits() == R_NA_BIT_PATTERN;
+            if x_na || y_na {
+                return Rf_ScalarLogical(crate::sexp::ffi::NA_LOGICAL);
+            }
             let result = match op {
                 "<" => x < y,
                 ">" => x > y,
@@ -343,6 +353,9 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
         let v = real_val(x);
         if let Some(v) = v {
+            if v.to_bits() == R_NA_BIT_PATTERN {
+                return Rf_ScalarReal(NA_REAL);
+            }
             let result = match op_name {
                 "abs" => v.abs(),
                 "sqrt" => {
@@ -408,15 +421,22 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let op_name = get_op_name(call);
         let mut vals: Vec<f64> = Vec::new();
+        let mut has_na = false;
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
             if let Some(v) = real_val(CAR(current)) {
+                if v.to_bits() == R_NA_BIT_PATTERN {
+                    has_na = true;
+                }
                 vals.push(v);
             }
             current = CDR(current);
         }
         if vals.is_empty() {
             return R_NilValue();
+        }
+        if has_na {
+            return Rf_ScalarReal(NA_REAL);
         }
         let result = match op_name {
             "sum" => vals.iter().fold(0.0, |a, &b| a + b),
