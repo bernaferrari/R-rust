@@ -33,6 +33,7 @@ pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
 }
 
 const GC_TRIGGER_THRESHOLD: usize = 10_000;
+const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // RArena: arena allocator for R objects
@@ -79,7 +80,9 @@ impl RArena {
         }
 
         let active_nodes = self.nodes.len() - self.free_list.len();
-        if active_nodes > GC_TRIGGER_THRESHOLD && self.fragmentation_ratio() > 0.25 {
+        let should_gc =
+            active_nodes > GC_TRIGGER_THRESHOLD || self.total_bytes_allocated > GC_BYTE_THRESHOLD;
+        if should_gc {
             crate::sexp::gengc::minor_gc();
             if let Some(ptr) = self.free_list.pop() {
                 unsafe {
@@ -106,6 +109,10 @@ impl RArena {
     pub fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
         if length < 0 {
             return ptr::null_mut();
+        }
+
+        if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
+            crate::sexp::gengc::minor_gc();
         }
 
         let elem_size = sexp_elem_size(sexptype);
@@ -252,9 +259,50 @@ impl RArena {
             .nodes
             .iter()
             .any(|b| &**b as *const _ as *const _ as usize == addr);
-        if found {
-            self.free_list.push(ptr);
+        if !found {
+            return;
         }
+
+        unsafe {
+            let data_ptr = (*ptr).gengc_next_node as *mut u8;
+            if !data_ptr.is_null() {
+                let sexptype = (*ptr).sxpinfo.type_of();
+                let is_vector = matches!(
+                    sexptype,
+                    SEXPTYPE::INTSXP
+                        | SEXPTYPE::REALSXP
+                        | SEXPTYPE::LGLSXP
+                        | SEXPTYPE::CPLXSXP
+                        | SEXPTYPE::STRSXP
+                        | SEXPTYPE::VECSXP
+                        | SEXPTYPE::RAWSXP
+                );
+                if is_vector {
+                    let len = (*ptr).vecsxp_length();
+                    let elem_size = sexp_elem_size(sexptype);
+                    let total_bytes = (len as usize).saturating_mul(elem_size);
+                    if total_bytes > 0 {
+                        if let Ok(layout) =
+                            Layout::from_size_align(total_bytes, std::mem::align_of::<u64>())
+                        {
+                            dealloc(data_ptr, layout);
+                            self.data_bufs.retain(|(p, _)| *p != data_ptr);
+                        }
+                    }
+                } else if sexptype == SEXPTYPE::CHARSXP {
+                    let truelen = (*ptr).data.charsxp_truelen;
+                    let total_bytes = (truelen as usize).saturating_add(1);
+                    if total_bytes > 0 {
+                        if let Ok(layout) = Layout::from_size_align(total_bytes, 1) {
+                            dealloc(data_ptr, layout);
+                            self.data_bufs.retain(|(p, _)| *p != data_ptr);
+                        }
+                    }
+                }
+            }
+        }
+
+        self.free_list.push(ptr);
     }
 
     /// Get the fragmentation ratio (freed / total capacity).

@@ -27,6 +27,7 @@ fn make_env() -> SEXP {
 #[bench]
 fn bench_alloc_integer_vector(b: &mut Bencher) {
     b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
         let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 1000);
         assert!(!v.is_null());
         v
@@ -36,6 +37,7 @@ fn bench_alloc_integer_vector(b: &mut Bencher) {
 #[bench]
 fn bench_alloc_real_vector(b: &mut Bencher) {
     b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
         let v = Rf_allocVector(SEXPTYPE::REALSXP.0, 1000);
         assert!(!v.is_null());
         v
@@ -45,6 +47,7 @@ fn bench_alloc_real_vector(b: &mut Bencher) {
 #[bench]
 fn bench_alloc_string_vector(b: &mut Bencher) {
     b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
         let v = Rf_allocVector(SEXPTYPE::STRSXP.0, 100);
         assert!(!v.is_null());
         v
@@ -53,8 +56,9 @@ fn bench_alloc_string_vector(b: &mut Bencher) {
 
 #[bench]
 fn bench_eval_self_integer(b: &mut Bencher) {
-    let env = make_env();
     b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
+        let env = make_env();
         let val = Rf_ScalarInteger(42);
         rmath::eval::eval::Rf_eval(val, env)
     });
@@ -62,8 +66,9 @@ fn bench_eval_self_integer(b: &mut Bencher) {
 
 #[bench]
 fn bench_eval_self_real(b: &mut Bencher) {
-    let env = make_env();
     b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
+        let env = make_env();
         let val = Rf_ScalarReal(3.14);
         rmath::eval::eval::Rf_eval(val, env)
     });
@@ -71,13 +76,17 @@ fn bench_eval_self_real(b: &mut Bencher) {
 
 #[bench]
 fn bench_eval_null(b: &mut Bencher) {
-    let env = make_env();
-    b.iter(|| unsafe { rmath::eval::eval::Rf_eval(R_NilValue(), env) });
+    b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
+        let env = make_env();
+        rmath::eval::eval::Rf_eval(R_NilValue(), env)
+    });
 }
 
 #[bench]
 fn bench_cons_pairlist_100(b: &mut Bencher) {
     b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
         let mut list = R_NilValue();
         for _ in 0..100 {
             let val = Rf_ScalarInteger(1);
@@ -89,7 +98,10 @@ fn bench_cons_pairlist_100(b: &mut Bencher) {
 
 #[bench]
 fn bench_altrep_intseq_create(b: &mut Bencher) {
-    b.iter(|| unsafe { rmath::mainutils::altrep::R_compact_intseq(1, 1000) });
+    b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
+        rmath::mainutils::altrep::R_compact_intseq(1, 1000)
+    });
 }
 
 #[bench]
@@ -104,7 +116,10 @@ fn bench_altrep_intseq_access(b: &mut Bencher) {
 
 #[bench]
 fn bench_altrep_realseq_create(b: &mut Bencher) {
-    b.iter(|| unsafe { rmath::mainutils::altrep::R_compact_realseq(0.0, 0.001, 1000) });
+    b.iter(|| unsafe {
+        rmath::sexp::memory::reset_arena();
+        rmath::mainutils::altrep::R_compact_realseq(0.0, 0.001, 1000)
+    });
 }
 
 #[bench]
@@ -120,6 +135,7 @@ fn bench_altrep_realseq_access(b: &mut Bencher) {
 #[bench]
 fn bench_output_capture(b: &mut Bencher) {
     b.iter(|| {
+        rmath::sexp::memory::reset_arena();
         rmath::sexp::output::start_capture();
         unsafe {
             let val = Rf_ScalarInteger(42);
