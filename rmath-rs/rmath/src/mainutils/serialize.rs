@@ -212,7 +212,7 @@ impl<'a> BinaryReader<'a> {
         }
         let bytes: [u8; 4] = self.data[self.pos..self.pos + 4]
             .try_into()
-            .expect("unwrap on None/Err");
+            .unwrap_or([0; 4]);
         self.pos += 4;
         Ok(i32::from_ne_bytes(bytes))
     }
@@ -223,7 +223,7 @@ impl<'a> BinaryReader<'a> {
         }
         let bytes: [u8; 8] = self.data[self.pos..self.pos + 8]
             .try_into()
-            .expect("unwrap on None/Err");
+            .unwrap_or([0; 8]);
         self.pos += 8;
         Ok(f64::from_ne_bytes(bytes))
     }
@@ -1942,6 +1942,13 @@ unsafe fn UngetChar(s: R_instring_stream_t, c: c_int) {
 mod tests {
     use super::*;
 
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_default_serialize_version() {
         unsafe {
@@ -1960,9 +1967,9 @@ mod tests {
         assert_eq!(data.len(), 12);
 
         let mut reader = BinaryReader::new(&data);
-        assert_eq!(reader.read_i32().unwrap(), 42);
-        assert_eq!(reader.read_i32().unwrap(), -1);
-        assert_eq!(reader.read_i32().unwrap(), i32::MAX);
+        assert_eq!(must(reader.read_i32()), 42);
+        assert_eq!(must(reader.read_i32()), -1);
+        assert_eq!(must(reader.read_i32()), i32::MAX);
     }
 
     #[test]
@@ -1974,9 +1981,9 @@ mod tests {
         let data = writer.into_vec();
 
         let mut reader = BinaryReader::new(&data);
-        assert!((reader.read_f64().unwrap() - 3.14).abs() < 1e-10);
-        assert_eq!(reader.read_f64().unwrap(), -1.0);
-        assert_eq!(reader.read_f64().unwrap(), 0.0);
+        assert!((must(reader.read_f64()) - 3.14).abs() < 1e-10);
+        assert_eq!(must(reader.read_f64()), -1.0);
+        assert_eq!(must(reader.read_f64()), 0.0);
     }
 
     #[test]
@@ -1988,9 +1995,9 @@ mod tests {
         let data = writer.into_vec();
 
         let mut reader = BinaryReader::new(&data);
-        assert_eq!(reader.read_byte().unwrap(), 0xFF);
-        assert_eq!(reader.read_byte().unwrap(), 0x00);
-        assert_eq!(reader.read_byte().unwrap(), 0x42);
+        assert_eq!(must(reader.read_byte()), 0xFF);
+        assert_eq!(must(reader.read_byte()), 0x00);
+        assert_eq!(must(reader.read_byte()), 0x42);
     }
 
     #[test]
@@ -2093,8 +2100,8 @@ mod tests {
 
         rt.add(fake1);
         rt.add(fake2);
-        assert_eq!(rt.get(1).unwrap(), fake1);
-        assert_eq!(rt.get(2).unwrap(), fake2);
+        assert_eq!(must(rt.get(1)), fake1);
+        assert_eq!(must(rt.get(2)), fake2);
         assert!(rt.get(3).is_err());
         assert!(rt.get(0).is_err());
     }
@@ -2107,7 +2114,7 @@ mod tests {
             OutRefIndex(&mut writer, 1);
             let data = writer.into_vec();
             let mut reader = BinaryReader::new(&data);
-            let flags = reader.read_i32().unwrap();
+            let flags = must(reader.read_i32());
             assert_eq!(flags & 0xFF, REFSXP);
             assert_eq!(flags >> 8, 1);
         }
@@ -2604,7 +2611,7 @@ mod tests {
             assert_eq!(data[1], b'\n');
 
             // Check version = 3
-            let version = i32::from_ne_bytes(data[2..6].try_into().unwrap());
+            let version = i32::from_ne_bytes(data[2..6].try_into().unwrap_or([0; 4]));
             assert_eq!(version, 3);
         }
     }

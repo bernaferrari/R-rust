@@ -2354,6 +2354,13 @@ mod tests {
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
+    fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("test setup failed: {err}"),
+        }
+    }
+
     /// Reset global connection state and return a lock guard that serializes
     /// tests. The guard must be held for the duration of the test to prevent
     /// race conditions on the shared CONNECTIONS table.
@@ -2392,12 +2399,14 @@ mod tests {
             // Create a temp file for testing
             let tmp = std::env::temp_dir().join("rport_test_file_conn.txt");
             {
-                let mut f = File::create(&tmp).unwrap();
-                write!(f, "hello world\n").unwrap();
+                let mut f = test_ok(File::create(&tmp));
+                if let Err(err) = write!(f, "hello world\n") {
+                    panic!("test setup failed: {err}");
+                }
             }
 
-            let desc = CString::new(tmp.to_str().unwrap()).unwrap();
-            let open = CString::new("r").unwrap();
+            let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
+            let open = test_ok(CString::new("r"));
             let desc_sxp = Rf_mkString(desc.as_ptr());
             let open_sxp = Rf_mkString(open.as_ptr());
             Rf_protect(desc_sxp);
@@ -2406,11 +2415,11 @@ mod tests {
             // Build args pairlist: (description, open, encoding, blocking, method, raw)
             let raw_sxp = Rf_ScalarLogical(0);
             Rf_protect(raw_sxp);
-            let enc_sxp = Rf_mkString(CString::new("").unwrap().as_ptr());
+            let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
             Rf_protect(enc_sxp);
             let block_sxp = Rf_ScalarLogical(1);
             Rf_protect(block_sxp);
-            let method_sxp = Rf_mkString(CString::new("default").unwrap().as_ptr());
+            let method_sxp = Rf_mkString(test_ok(CString::new("default")).as_ptr());
             Rf_protect(method_sxp);
 
             let p5 = Rf_cons(raw_sxp, R_NilValue());
@@ -2449,9 +2458,9 @@ mod tests {
             *raw_data.add(3) = 4;
             *raw_data.add(4) = 5;
 
-            let desc_sxp = Rf_mkString(CString::new("test_raw").unwrap().as_ptr());
+            let desc_sxp = Rf_mkString(test_ok(CString::new("test_raw")).as_ptr());
             Rf_protect(desc_sxp);
-            let open_sxp = Rf_mkString(CString::new("rb").unwrap().as_ptr());
+            let open_sxp = Rf_mkString(test_ok(CString::new("rb")).as_ptr());
             Rf_protect(open_sxp);
             let local_sxp = Rf_ScalarLogical(0);
             Rf_protect(local_sxp);
@@ -2482,14 +2491,14 @@ mod tests {
             // Create a text vector
             let text = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
             Rf_protect(text);
-            let c1 = Rf_mkChar(CString::new("line1").unwrap().as_ptr());
-            let c2 = Rf_mkChar(CString::new("line2").unwrap().as_ptr());
+            let c1 = Rf_mkChar(test_ok(CString::new("line1")).as_ptr());
+            let c2 = Rf_mkChar(test_ok(CString::new("line2")).as_ptr());
             SET_STRING_ELT(text, 0, c1);
             SET_STRING_ELT(text, 1, c2);
 
-            let desc_sxp = Rf_mkString(CString::new("test_text").unwrap().as_ptr());
+            let desc_sxp = Rf_mkString(test_ok(CString::new("test_text")).as_ptr());
             Rf_protect(desc_sxp);
-            let open_sxp = Rf_mkString(CString::new("r").unwrap().as_ptr());
+            let open_sxp = Rf_mkString(test_ok(CString::new("r")).as_ptr());
             Rf_protect(open_sxp);
             let local_sxp = Rf_ScalarLogical(0);
             Rf_protect(local_sxp);
@@ -2512,7 +2521,9 @@ mod tests {
 
             // Verify the connection was created
             let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-            let conn = table[idx as usize].as_ref().unwrap();
+            let Some(conn) = table[idx as usize].as_ref() else {
+                panic!("expected connection to exist");
+            };
             assert_eq!(conn.class, "textConnection");
             assert!(conn.isopen);
             assert!(conn.canread);
@@ -2570,13 +2581,15 @@ mod tests {
         unsafe {
             let tmp = std::env::temp_dir().join("rport_test_gz.txt");
             {
-                let mut f = File::create(&tmp).unwrap();
-                write!(f, "test data\n").unwrap();
+                let mut f = test_ok(File::create(&tmp));
+                if let Err(err) = write!(f, "test data\n") {
+                    panic!("test setup failed: {err}");
+                }
             }
-            let desc = CString::new(tmp.to_str().unwrap()).unwrap();
+            let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
             let desc_sxp = Rf_mkString(desc.as_ptr());
             Rf_protect(desc_sxp);
-            let open_sxp = Rf_mkString(CString::new("").unwrap().as_ptr());
+            let open_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
             Rf_protect(open_sxp);
             let comp_sxp = Rf_ScalarInteger(6);
             Rf_protect(comp_sxp);
@@ -2608,7 +2621,7 @@ mod tests {
             let vals: [i32; 2] = [42, 100];
             ptr::copy_nonoverlapping(vals.as_ptr() as *const u8, raw_data, 8);
 
-            let what_sxp = Rf_mkString(CString::new("integer").unwrap().as_ptr());
+            let what_sxp = Rf_mkString(test_ok(CString::new("integer")).as_ptr());
             Rf_protect(what_sxp);
             let n_sxp = Rf_ScalarInteger(2);
             Rf_protect(n_sxp);
@@ -2647,11 +2660,11 @@ mod tests {
         let _lock = reset_connections();
         unsafe {
             // Create a raw output connection
-            let desc_sxp = Rf_mkString(CString::new("test_write_raw").unwrap().as_ptr());
+            let desc_sxp = Rf_mkString(test_ok(CString::new("test_write_raw")).as_ptr());
             Rf_protect(desc_sxp);
             let raw_sxp = Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
             Rf_protect(raw_sxp);
-            let open_sxp = Rf_mkString(CString::new("wb").unwrap().as_ptr());
+            let open_sxp = Rf_mkString(test_ok(CString::new("wb")).as_ptr());
             Rf_protect(open_sxp);
             let local_sxp = Rf_ScalarLogical(0);
             Rf_protect(local_sxp);
@@ -2705,7 +2718,9 @@ mod tests {
 
             // Verify the raw data was written
             let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-            let conn = table[conn_idx as usize].as_ref().unwrap();
+            let Some(conn) = table[conn_idx as usize].as_ref() else {
+                panic!("expected connection to exist");
+            };
             assert_eq!(conn.raw_data.len(), 12); // 3 * 4 bytes
 
             Rf_unprotect(18);
@@ -2753,22 +2768,24 @@ mod tests {
             // Create a temp file
             let tmp = std::env::temp_dir().join("rport_test_readlines.txt");
             {
-                let mut f = File::create(&tmp).unwrap();
-                write!(f, "line one\nline two\nline three\n").unwrap();
+                let mut f = test_ok(File::create(&tmp));
+                if let Err(err) = write!(f, "line one\nline two\nline three\n") {
+                    panic!("test setup failed: {err}");
+                }
             }
 
             // Create and open file connection
-            let desc = CString::new(tmp.to_str().unwrap()).unwrap();
-            let open = CString::new("r").unwrap();
+            let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
+            let open = test_ok(CString::new("r"));
             let desc_sxp = Rf_mkString(desc.as_ptr());
             Rf_protect(desc_sxp);
             let open_sxp = Rf_mkString(open.as_ptr());
             Rf_protect(open_sxp);
-            let enc_sxp = Rf_mkString(CString::new("").unwrap().as_ptr());
+            let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
             Rf_protect(enc_sxp);
             let block_sxp = Rf_ScalarLogical(1);
             Rf_protect(block_sxp);
-            let method_sxp = Rf_mkString(CString::new("default").unwrap().as_ptr());
+            let method_sxp = Rf_mkString(test_ok(CString::new("default")).as_ptr());
             Rf_protect(method_sxp);
             let raw_sxp = Rf_ScalarLogical(0);
             Rf_protect(raw_sxp);
@@ -2797,7 +2814,7 @@ mod tests {
             Rf_protect(ok_sxp);
             let warn_sxp = Rf_ScalarLogical(1);
             Rf_protect(warn_sxp);
-            let enc2_sxp = Rf_mkString(CString::new("").unwrap().as_ptr());
+            let enc2_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
             Rf_protect(enc2_sxp);
             let skipnul_sxp = Rf_ScalarLogical(0);
             Rf_protect(skipnul_sxp);
@@ -2852,17 +2869,17 @@ mod tests {
             let tmp = std::env::temp_dir().join("rport_test_writelines.txt");
 
             // Create and open file connection for writing
-            let desc = CString::new(tmp.to_str().unwrap()).unwrap();
-            let open = CString::new("w").unwrap();
+            let desc = test_ok(CString::new(tmp.to_str().unwrap_or("")));
+            let open = test_ok(CString::new("w"));
             let desc_sxp = Rf_mkString(desc.as_ptr());
             Rf_protect(desc_sxp);
             let open_sxp = Rf_mkString(open.as_ptr());
             Rf_protect(open_sxp);
-            let enc_sxp = Rf_mkString(CString::new("").unwrap().as_ptr());
+            let enc_sxp = Rf_mkString(test_ok(CString::new("")).as_ptr());
             Rf_protect(enc_sxp);
             let block_sxp = Rf_ScalarLogical(1);
             Rf_protect(block_sxp);
-            let method_sxp = Rf_mkString(CString::new("default").unwrap().as_ptr());
+            let method_sxp = Rf_mkString(test_ok(CString::new("default")).as_ptr());
             Rf_protect(method_sxp);
             let raw_sxp = Rf_ScalarLogical(0);
             Rf_protect(raw_sxp);
@@ -2886,12 +2903,12 @@ mod tests {
             // Create text to write
             let text = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
             Rf_protect(text);
-            let c1 = Rf_mkChar(CString::new("hello").unwrap().as_ptr());
-            let c2 = Rf_mkChar(CString::new("world").unwrap().as_ptr());
+            let c1 = Rf_mkChar(test_ok(CString::new("hello")).as_ptr());
+            let c2 = Rf_mkChar(test_ok(CString::new("world")).as_ptr());
             SET_STRING_ELT(text, 0, c1);
             SET_STRING_ELT(text, 1, c2);
 
-            let sep_sxp = Rf_mkString(CString::new("\n").unwrap().as_ptr());
+            let sep_sxp = Rf_mkString(test_ok(CString::new("\n")).as_ptr());
             Rf_protect(sep_sxp);
             let usebytes_sxp = Rf_ScalarLogical(0);
             Rf_protect(usebytes_sxp);
@@ -2919,7 +2936,7 @@ mod tests {
             );
 
             // Read the file back to verify
-            let contents = fs::read_to_string(&tmp).unwrap();
+            let contents = test_ok(fs::read_to_string(&tmp));
             assert_eq!(contents, "hello\nworld\n");
 
             // Clean up

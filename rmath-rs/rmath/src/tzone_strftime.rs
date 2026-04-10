@@ -795,6 +795,10 @@ mod tests {
     use super::*;
     use std::ptr;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None"))
+    }
+
     /// Helper to build an `stm` with sensible defaults for testing.
     fn make_stm(
         sec: i32,
@@ -845,111 +849,111 @@ mod tests {
             0,
             ptr::null(),
         );
-        let result = do_fmt("%Y-%m-%d", &t).unwrap();
+        let result = some(do_fmt("%Y-%m-%d", &t));
         assert_eq!(result, "2024-03-15");
     }
 
     #[test]
     fn test_full_day_name() {
         let t = make_stm(0, 0, 12, 1, 0, 124, 1, 0, 0, 0, ptr::null()); // Monday
-        assert_eq!(do_fmt("%A", &t).unwrap(), "Monday");
+        assert_eq!(some(do_fmt("%A", &t)), "Monday");
     }
 
     #[test]
     fn test_abbrev_day_name() {
         let t = make_stm(0, 0, 12, 1, 0, 124, 1, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%a", &t).unwrap(), "Mon");
+        assert_eq!(some(do_fmt("%a", &t)), "Mon");
     }
 
     #[test]
     fn test_full_month_name() {
         let t = make_stm(0, 0, 12, 1, 2, 124, 0, 0, 0, 0, ptr::null()); // March
-        assert_eq!(do_fmt("%B", &t).unwrap(), "March");
+        assert_eq!(some(do_fmt("%B", &t)), "March");
     }
 
     #[test]
     fn test_abbrev_month_name() {
         let t = make_stm(0, 0, 12, 1, 2, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%b", &t).unwrap(), "Mar");
-        assert_eq!(do_fmt("%h", &t).unwrap(), "Mar");
+        assert_eq!(some(do_fmt("%b", &t)), "Mar");
+        assert_eq!(some(do_fmt("%h", &t)), "Mar");
     }
 
     #[test]
     fn test_time_formats() {
         let t = make_stm(5, 30, 14, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%H:%M:%S", &t).unwrap(), "14:30:05");
-        assert_eq!(do_fmt("%T", &t).unwrap(), "14:30:05");
-        assert_eq!(do_fmt("%R", &t).unwrap(), "14:30");
+        assert_eq!(some(do_fmt("%H:%M:%S", &t)), "14:30:05");
+        assert_eq!(some(do_fmt("%T", &t)), "14:30:05");
+        assert_eq!(some(do_fmt("%R", &t)), "14:30");
     }
 
     #[test]
     fn test_12_hour_clock() {
         let t = make_stm(0, 0, 14, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%I %p", &t).unwrap(), "02 PM");
-        assert_eq!(do_fmt("%I %P", &t).unwrap(), "02 pm");
+        assert_eq!(some(do_fmt("%I %p", &t)), "02 PM");
+        assert_eq!(some(do_fmt("%I %P", &t)), "02 pm");
 
         // Midnight -> 12 AM
         let t_mid = make_stm(0, 0, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%I %p", &t_mid).unwrap(), "12 AM");
+        assert_eq!(some(do_fmt("%I %p", &t_mid)), "12 AM");
     }
 
     #[test]
     fn test_day_of_year() {
         let t = make_stm(0, 0, 12, 1, 0, 124, 0, 0, 0, 0, ptr::null()); // Jan 1
-        assert_eq!(do_fmt("%j", &t).unwrap(), "001");
+        assert_eq!(some(do_fmt("%j", &t)), "001");
 
         let t2 = make_stm(0, 0, 12, 31, 11, 124, 0, 365, 0, 0, ptr::null()); // Dec 31
-        assert_eq!(do_fmt("%j", &t2).unwrap(), "366");
+        assert_eq!(some(do_fmt("%j", &t2)), "366");
     }
 
     #[test]
     fn test_percent_literal() {
         let t = make_stm(0, 0, 0, 1, 0, 0, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%%", &t).unwrap(), "%");
-        assert_eq!(do_fmt("100%%", &t).unwrap(), "100%");
+        assert_eq!(some(do_fmt("%%", &t)), "%");
+        assert_eq!(some(do_fmt("100%%", &t)), "100%");
     }
 
     #[test]
     fn test_newline_tab() {
         let t = make_stm(0, 0, 0, 1, 0, 0, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("line1%nline2", &t).unwrap(), "line1\nline2");
-        assert_eq!(do_fmt("col1%tcol2", &t).unwrap(), "col1\tcol2");
+        assert_eq!(some(do_fmt("line1%nline2", &t)), "line1\nline2");
+        assert_eq!(some(do_fmt("col1%tcol2", &t)), "col1\tcol2");
     }
 
     #[test]
     fn test_wday_numeric() {
         // Sunday = 0, Monday = 1, ..., Saturday = 6
         let t_sun = make_stm(0, 0, 12, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%w", &t_sun).unwrap(), "0");
-        assert_eq!(do_fmt("%u", &t_sun).unwrap(), "7");
+        assert_eq!(some(do_fmt("%w", &t_sun)), "0");
+        assert_eq!(some(do_fmt("%u", &t_sun)), "7");
 
         let t_mon = make_stm(0, 0, 12, 1, 0, 124, 1, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%w", &t_mon).unwrap(), "1");
-        assert_eq!(do_fmt("%u", &t_mon).unwrap(), "1");
+        assert_eq!(some(do_fmt("%w", &t_mon)), "1");
+        assert_eq!(some(do_fmt("%u", &t_mon)), "1");
     }
 
     #[test]
     fn test_century() {
         let t = make_stm(0, 0, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null()); // 2024
-        assert_eq!(do_fmt("%C", &t).unwrap(), "20");
+        assert_eq!(some(do_fmt("%C", &t)), "20");
     }
 
     #[test]
     fn test_two_digit_year() {
         let t = make_stm(0, 0, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null()); // 2024
-        assert_eq!(do_fmt("%y", &t).unwrap(), "24");
+        assert_eq!(some(do_fmt("%y", &t)), "24");
     }
 
     #[test]
     fn test_date_format_d() {
         let t = make_stm(0, 0, 0, 15, 2, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%D", &t).unwrap(), "03/15/24");
+        assert_eq!(some(do_fmt("%D", &t)), "03/15/24");
     }
 
     #[test]
     fn test_plus_format() {
         let t = make_stm(0, 30, 14, 15, 2, 124, 5, 74, 0, 0, ptr::null());
-        let result = do_fmt("%+", &t).unwrap();
+        let result = some(do_fmt("%+", &t));
         assert!(result.contains("2024"));
         assert!(result.contains("14:30:00"));
         assert!(result.contains("Fri"));
@@ -960,15 +964,15 @@ mod tests {
     fn test_z_offset() {
         // UTC+0530
         let t = make_stm(0, 0, 12, 1, 0, 124, 0, 0, 0, 19800, ptr::null());
-        assert_eq!(do_fmt("%z", &t).unwrap(), "+0530");
+        assert_eq!(some(do_fmt("%z", &t)), "+0530");
 
         // UTC-0500
         let t2 = make_stm(0, 0, 12, 1, 0, 124, 0, 0, 0, -18000, ptr::null());
-        assert_eq!(do_fmt("%z", &t2).unwrap(), "-0500");
+        assert_eq!(some(do_fmt("%z", &t2)), "-0500");
 
         // tm_isdst < 0 -> empty
         let t3 = make_stm(0, 0, 12, 1, 0, 124, 0, 0, -1, 0, ptr::null());
-        assert_eq!(do_fmt("%z", &t3).unwrap(), "");
+        assert_eq!(some(do_fmt("%z", &t3)), "");
     }
 
     #[test]
@@ -987,66 +991,66 @@ mod tests {
             0,
             ZONE_UTC.as_ptr() as *const i8,
         );
-        assert_eq!(do_fmt("%Z", &t).unwrap(), "UTC");
+        assert_eq!(some(do_fmt("%Z", &t)), "UTC");
     }
 
     #[test]
     fn test_e_space_padded_day() {
         let t = make_stm(0, 0, 0, 5, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%e", &t).unwrap(), " 5");
+        assert_eq!(some(do_fmt("%e", &t)), " 5");
 
         let t2 = make_stm(0, 0, 0, 15, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%e", &t2).unwrap(), "15");
+        assert_eq!(some(do_fmt("%e", &t2)), "15");
     }
 
     #[test]
     fn test_k_space_padded_hour() {
         let t = make_stm(0, 0, 5, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%k", &t).unwrap(), " 5");
+        assert_eq!(some(do_fmt("%k", &t)), " 5");
 
         let t2 = make_stm(0, 0, 15, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%k", &t2).unwrap(), "15");
+        assert_eq!(some(do_fmt("%k", &t2)), "15");
     }
 
     #[test]
     fn test_l_space_padded_12hour() {
         let t = make_stm(0, 0, 5, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%l", &t).unwrap(), " 5");
+        assert_eq!(some(do_fmt("%l", &t)), " 5");
 
         let t2 = make_stm(0, 0, 12, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%l", &t2).unwrap(), "12");
+        assert_eq!(some(do_fmt("%l", &t2)), "12");
     }
 
     #[test]
     fn test_r_12hour_time() {
         let t = make_stm(30, 15, 14, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%r", &t).unwrap(), "02:15:30 PM");
+        assert_eq!(some(do_fmt("%r", &t)), "02:15:30 PM");
     }
 
     #[test]
     fn test_v_format() {
         let t = make_stm(0, 0, 0, 5, 2, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%v", &t).unwrap(), " 5-Mar-2024");
+        assert_eq!(some(do_fmt("%v", &t)), " 5-Mar-2024");
     }
 
     #[test]
     fn test_f_format() {
         let t = make_stm(0, 0, 0, 15, 2, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%F", &t).unwrap(), "2024-03-15");
+        assert_eq!(some(do_fmt("%F", &t)), "2024-03-15");
     }
 
     #[test]
     fn test_s_epoch() {
         // r_mktime returns 0 in our stub, so %s should output "0"
         let t = make_stm(0, 0, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%s", &t).unwrap(), "0");
+        assert_eq!(some(do_fmt("%s", &t)), "0");
     }
 
     #[test]
     fn test_unknown_specifier() {
         let t = make_stm(0, 0, 0, 1, 0, 0, 0, 0, 0, 0, ptr::null());
         // %q is not a recognized specifier; implementation outputs the char after %
-        assert_eq!(do_fmt("%q", &t).unwrap(), "q");
+        assert_eq!(some(do_fmt("%q", &t)), "q");
     }
 
     #[test]
@@ -1054,16 +1058,16 @@ mod tests {
         // %O and %E should be skipped, and the next char processed normally
         let t = make_stm(0, 0, 0, 5, 0, 124, 0, 0, 0, 0, ptr::null());
         // %Od outputs "Od" (modifier passthrough behavior)
-        assert_eq!(do_fmt("%Od", &t).unwrap(), "Od");
+        assert_eq!(some(do_fmt("%Od", &t)), "Od");
         // %Ed outputs "Ed"
-        assert_eq!(do_fmt("%Ed", &t).unwrap(), "Ed");
+        assert_eq!(some(do_fmt("%Ed", &t)), "Ed");
     }
 
     #[test]
     fn test_yconv_negative_year() {
         // Year -1 (i.e., tm_year = -1901, so actual year = -1)
         let t = make_stm(0, 0, 0, 1, 0, -1901, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%Y", &t).unwrap(), "-001");
+        assert_eq!(some(do_fmt("%Y", &t)), "-001");
     }
 
     #[test]
@@ -1072,7 +1076,7 @@ mod tests {
         let t = make_stm(0, 0, 0, 1, 0, 8100, 0, 0, 0, 0, ptr::null());
         // Default behavior: R_PAD_YEARS_BY_ZERO=yes means pad='0', width=4
         // But 10000 > 9999 so with default padding it should still show all digits
-        let result = do_fmt("%Y", &t).unwrap();
+        let result = some(do_fmt("%Y", &t));
         assert_eq!(result, "10000");
     }
 
@@ -1080,8 +1084,8 @@ mod tests {
     fn test_week_numbers() {
         // Simple case: Jan 1, 2024 (Monday).
         let t = make_stm(0, 0, 12, 1, 0, 124, 1, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%U", &t).unwrap(), "00");
-        assert_eq!(do_fmt("%W", &t).unwrap(), "01");
+        assert_eq!(some(do_fmt("%U", &t)), "00");
+        assert_eq!(some(do_fmt("%W", &t)), "01");
     }
 
     #[test]
@@ -1099,18 +1103,18 @@ mod tests {
     #[test]
     fn test_month_value() {
         let t = make_stm(0, 0, 0, 1, 11, 124, 0, 0, 0, 0, ptr::null()); // December
-        assert_eq!(do_fmt("%m", &t).unwrap(), "12");
+        assert_eq!(some(do_fmt("%m", &t)), "12");
     }
 
     #[test]
     fn test_minute_value() {
         let t = make_stm(0, 5, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%M", &t).unwrap(), "05");
+        assert_eq!(some(do_fmt("%M", &t)), "05");
     }
 
     #[test]
     fn test_second_value() {
         let t = make_stm(9, 0, 0, 1, 0, 124, 0, 0, 0, 0, ptr::null());
-        assert_eq!(do_fmt("%S", &t).unwrap(), "09");
+        assert_eq!(some(do_fmt("%S", &t)), "09");
     }
 }

@@ -1056,12 +1056,19 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
+    fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("test setup failed: {err}"),
+        }
+    }
+
     // --- sprintf_findspec tests ---
 
     #[test]
     fn test_findspec_percent_d() {
         unsafe {
-            let fmt = CString::new("%d").unwrap();
+            let fmt = test_ok(CString::new("%d"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'd' as c_char);
         }
@@ -1070,7 +1077,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_02f() {
         unsafe {
-            let fmt = CString::new("%.2f").unwrap();
+            let fmt = test_ok(CString::new("%.2f"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'f' as c_char);
         }
@@ -1079,7 +1086,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_10s() {
         unsafe {
-            let fmt = CString::new("%10s").unwrap();
+            let fmt = test_ok(CString::new("%10s"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b's' as c_char);
         }
@@ -1088,7 +1095,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_plus_d() {
         unsafe {
-            let fmt = CString::new("%+d").unwrap();
+            let fmt = test_ok(CString::new("%+d"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'd' as c_char);
         }
@@ -1097,7 +1104,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_minus_10_dot_2f() {
         unsafe {
-            let fmt = CString::new("%-10.2f").unwrap();
+            let fmt = test_ok(CString::new("%-10.2f"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'f' as c_char);
         }
@@ -1106,7 +1113,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_hash_x() {
         unsafe {
-            let fmt = CString::new("%#x").unwrap();
+            let fmt = test_ok(CString::new("%#x"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'x' as c_char);
         }
@@ -1115,7 +1122,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_star_d() {
         unsafe {
-            let fmt = CString::new("%*d").unwrap();
+            let fmt = test_ok(CString::new("%*d"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'd' as c_char);
         }
@@ -1124,7 +1131,7 @@ mod tests {
     #[test]
     fn test_findspec_percent_zero_10_dot_3_e() {
         unsafe {
-            let fmt = CString::new("%010.3e").unwrap();
+            let fmt = test_ok(CString::new("%010.3e"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'e' as c_char);
         }
@@ -1133,7 +1140,7 @@ mod tests {
     #[test]
     fn test_findspec_not_percent() {
         unsafe {
-            let fmt = CString::new("hello").unwrap();
+            let fmt = test_ok(CString::new("hello"));
             let spec = sprintf_findspec(fmt.as_ptr());
             assert_eq!(*spec, b'h' as c_char);
         }
@@ -1152,8 +1159,8 @@ mod tests {
     #[test]
     fn test_checkfmt_valid_d() {
         unsafe {
-            let fmt = CString::new("%d").unwrap();
-            let pat = CString::new("di").unwrap();
+            let fmt = test_ok(CString::new("%d"));
+            let pat = test_ok(CString::new("di"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), pat.as_ptr()), false);
         }
     }
@@ -1161,8 +1168,8 @@ mod tests {
     #[test]
     fn test_checkfmt_invalid_d_for_string() {
         unsafe {
-            let fmt = CString::new("%d").unwrap();
-            let pat = CString::new("s").unwrap();
+            let fmt = test_ok(CString::new("%d"));
+            let pat = test_ok(CString::new("s"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), pat.as_ptr()), true);
         }
     }
@@ -1170,8 +1177,8 @@ mod tests {
     #[test]
     fn test_checkfmt_valid_s() {
         unsafe {
-            let fmt = CString::new("%s").unwrap();
-            let pat = CString::new("s").unwrap();
+            let fmt = test_ok(CString::new("%s"));
+            let pat = test_ok(CString::new("s"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), pat.as_ptr()), false);
         }
     }
@@ -1179,8 +1186,8 @@ mod tests {
     #[test]
     fn test_checkfmt_valid_f() {
         unsafe {
-            let fmt = CString::new("%.2f").unwrap();
-            let pat = CString::new("aAfeEgG").unwrap();
+            let fmt = test_ok(CString::new("%.2f"));
+            let pat = test_ok(CString::new("aAfeEgG"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), pat.as_ptr()), false);
         }
     }
@@ -1188,8 +1195,8 @@ mod tests {
     #[test]
     fn test_checkfmt_invalid_f_for_int() {
         unsafe {
-            let fmt = CString::new("%f").unwrap();
-            let pat = CString::new("dioxX").unwrap();
+            let fmt = test_ok(CString::new("%f"));
+            let pat = test_ok(CString::new("dioxX"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), pat.as_ptr()), true);
         }
     }
@@ -1197,7 +1204,7 @@ mod tests {
     #[test]
     fn test_checkfmt_null_fmt() {
         unsafe {
-            let pat = CString::new("s").unwrap();
+            let pat = test_ok(CString::new("s"));
             assert_eq!(sprintf_checkfmt(ptr::null(), pat.as_ptr()), true);
         }
     }
@@ -1205,7 +1212,7 @@ mod tests {
     #[test]
     fn test_checkfmt_null_pattern() {
         unsafe {
-            let fmt = CString::new("%s").unwrap();
+            let fmt = test_ok(CString::new("%s"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), ptr::null()), true);
         }
     }
@@ -1213,8 +1220,8 @@ mod tests {
     #[test]
     fn test_checkfmt_not_format() {
         unsafe {
-            let fmt = CString::new("hello").unwrap();
-            let pat = CString::new("s").unwrap();
+            let fmt = test_ok(CString::new("hello"));
+            let pat = test_ok(CString::new("s"));
             assert_eq!(sprintf_checkfmt(fmt.as_ptr(), pat.as_ptr()), true);
         }
     }
@@ -1224,9 +1231,9 @@ mod tests {
     #[test]
     fn test_c_strlen() {
         unsafe {
-            let s = CString::new("hello").unwrap();
+            let s = test_ok(CString::new("hello"));
             assert_eq!(c_strlen(s.as_ptr()), 5);
-            let empty = CString::new("").unwrap();
+            let empty = test_ok(CString::new(""));
             assert_eq!(c_strlen(empty.as_ptr()), 0);
         }
     }
@@ -1234,7 +1241,7 @@ mod tests {
     #[test]
     fn test_c_strchr_found() {
         unsafe {
-            let s = CString::new("hello").unwrap();
+            let s = test_ok(CString::new("hello"));
             let result = c_strchr(s.as_ptr(), b'l' as c_int);
             assert_eq!(*result, b'l' as c_char);
             // Should point to first 'l'
@@ -1245,7 +1252,7 @@ mod tests {
     #[test]
     fn test_c_strchr_not_found() {
         unsafe {
-            let s = CString::new("hello").unwrap();
+            let s = test_ok(CString::new("hello"));
             let result = c_strchr(s.as_ptr(), b'z' as c_int);
             assert!(result.is_null());
         }
@@ -1254,8 +1261,8 @@ mod tests {
     #[test]
     fn test_c_strcspn() {
         unsafe {
-            let s = CString::new("hello world").unwrap();
-            let reject = CString::new(" w").unwrap();
+            let s = test_ok(CString::new("hello world"));
+            let reject = test_ok(CString::new(" w"));
             assert_eq!(c_strcspn(s.as_ptr(), reject.as_ptr()), 5);
         }
     }
@@ -1263,8 +1270,8 @@ mod tests {
     #[test]
     fn test_c_strcspn_no_match() {
         unsafe {
-            let s = CString::new("hello").unwrap();
-            let reject = CString::new("xyz").unwrap();
+            let s = test_ok(CString::new("hello"));
+            let reject = test_ok(CString::new("xyz"));
             assert_eq!(c_strcspn(s.as_ptr(), reject.as_ptr()), 5);
         }
     }

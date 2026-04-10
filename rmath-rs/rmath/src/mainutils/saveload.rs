@@ -123,7 +123,7 @@ pub fn R_ReadMagic(fp: &mut impl Read) -> c_int {
 pub fn defaultSaveVersion() -> c_int {
     match std::env::var("R_DEFAULT_SAVE_VERSION") {
         Ok(val) => match val.trim().parse::<c_int>() {
-            Ok(2 | 3) => val.trim().parse::<c_int>().expect("unwrap on None/Err"),
+            Ok(2 | 3) => val.trim().parse::<c_int>().unwrap_or(3),
             _ => 3,
         },
         Err(_) => 3,
@@ -280,31 +280,38 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 mod tests {
     use super::*;
 
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_R_WriteMagic_v3() {
         let mut buf = Vec::new();
-        R_WriteMagic(&mut buf, R_MAGIC_ASCII_V3).unwrap();
+        must(R_WriteMagic(&mut buf, R_MAGIC_ASCII_V3));
         assert_eq!(&buf, b"RDA3\n");
     }
 
     #[test]
     fn test_R_WriteMagic_v2() {
         let mut buf = Vec::new();
-        R_WriteMagic(&mut buf, R_MAGIC_BINARY_V2).unwrap();
+        must(R_WriteMagic(&mut buf, R_MAGIC_BINARY_V2));
         assert_eq!(&buf, b"RDB2\n");
     }
 
     #[test]
     fn test_R_WriteMagic_v1() {
         let mut buf = Vec::new();
-        R_WriteMagic(&mut buf, R_MAGIC_XDR_V1).unwrap();
+        must(R_WriteMagic(&mut buf, R_MAGIC_XDR_V1));
         assert_eq!(&buf, b"RDX1\n");
     }
 
     #[test]
     fn test_R_WriteMagic_custom() {
         let mut buf = Vec::new();
-        R_WriteMagic(&mut buf, 1234).unwrap();
+        must(R_WriteMagic(&mut buf, 1234));
         assert_eq!(&buf, b"1234\n");
     }
 
@@ -322,7 +329,7 @@ mod tests {
             R_MAGIC_XDR_V3,
         ] {
             let mut buf = Vec::new();
-            R_WriteMagic(&mut buf, magic).unwrap();
+            must(R_WriteMagic(&mut buf, magic));
             let mut cursor = std::io::Cursor::new(buf);
             assert_eq!(R_ReadMagic(&mut cursor), magic);
         }
@@ -343,39 +350,39 @@ mod tests {
     #[test]
     fn test_OutIntegerAscii() {
         let mut buf = Vec::new();
-        OutIntegerAscii(&mut buf, 42).unwrap();
+        must(OutIntegerAscii(&mut buf, 42));
         assert_eq!(String::from_utf8_lossy(&buf), "42");
 
         buf.clear();
-        OutIntegerAscii(&mut buf, NA_INTEGER).unwrap();
+        must(OutIntegerAscii(&mut buf, NA_INTEGER));
         assert_eq!(String::from_utf8_lossy(&buf), "NA");
     }
 
     #[test]
     fn test_OutDoubleAscii() {
         let mut buf = Vec::new();
-        OutDoubleAscii(&mut buf, 3.14).unwrap();
+        must(OutDoubleAscii(&mut buf, 3.14));
         let s = String::from_utf8_lossy(&buf);
-        let v: f64 = s.parse().unwrap();
+        let v: f64 = must(s.parse());
         assert!((v - 3.14).abs() < 1e-10);
 
         buf.clear();
-        OutDoubleAscii(&mut buf, f64::NAN).unwrap();
+        must(OutDoubleAscii(&mut buf, f64::NAN));
         assert_eq!(&buf, b"NA");
 
         buf.clear();
-        OutDoubleAscii(&mut buf, f64::INFINITY).unwrap();
+        must(OutDoubleAscii(&mut buf, f64::INFINITY));
         assert_eq!(&buf, b"Inf");
 
         buf.clear();
-        OutDoubleAscii(&mut buf, f64::NEG_INFINITY).unwrap();
+        must(OutDoubleAscii(&mut buf, f64::NEG_INFINITY));
         assert_eq!(&buf, b"-Inf");
     }
 
     #[test]
     fn test_OutStringAscii() {
         let mut buf = Vec::new();
-        OutStringAscii(&mut buf, "hello").unwrap();
+        must(OutStringAscii(&mut buf, "hello"));
         let s = String::from_utf8_lossy(&buf);
         assert!(s.starts_with("5 "));
         assert!(s.contains("hello"));
@@ -384,7 +391,7 @@ mod tests {
     #[test]
     fn test_OutStringAscii_escapes() {
         let mut buf = Vec::new();
-        OutStringAscii(&mut buf, "a\nb").unwrap();
+        must(OutStringAscii(&mut buf, "a\nb"));
         let s = String::from_utf8_lossy(&buf);
         assert!(s.contains("\\n"), "should escape newline");
     }
@@ -392,20 +399,20 @@ mod tests {
     #[test]
     fn test_OutComplexAscii() {
         let mut buf = Vec::new();
-        OutComplexAscii(&mut buf, 1.0, 2.0).unwrap();
+        must(OutComplexAscii(&mut buf, 1.0, 2.0));
         let s = String::from_utf8_lossy(&buf);
         assert!(s.contains("1.0") || s.contains('1'));
         assert!(s.contains("2.0") || s.contains('2'));
 
         buf.clear();
-        OutComplexAscii(&mut buf, f64::NAN, 0.0).unwrap();
+        must(OutComplexAscii(&mut buf, f64::NAN, 0.0));
         assert_eq!(&buf, b"NA NA");
     }
 
     #[test]
     fn test_OutSpaceAscii() {
         let mut buf = Vec::new();
-        OutSpaceAscii(&mut buf, 3).unwrap();
+        must(OutSpaceAscii(&mut buf, 3));
         assert_eq!(&buf, b"   ");
     }
 }

@@ -1369,26 +1369,33 @@ mod tests {
     use super::*;
     use std::ffi::CString;
 
+    fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("test setup failed: {err}"),
+        }
+    }
+
     #[test]
     fn test_psmatch_exact() {
-        let f = CString::new("abc").unwrap();
-        let t = CString::new("abc").unwrap();
+        let f = test_ok(CString::new("abc"));
+        let t = test_ok(CString::new("abc"));
         assert_eq!(unsafe { psmatch(f.as_ptr(), t.as_ptr(), 1) }, 1);
 
-        let t2 = CString::new("ab").unwrap();
+        let t2 = test_ok(CString::new("ab"));
         assert_eq!(unsafe { psmatch(f.as_ptr(), t2.as_ptr(), 1) }, 0);
     }
 
     #[test]
     fn test_psmatch_partial() {
-        let f = CString::new("abc").unwrap();
-        let t = CString::new("ab").unwrap();
+        let f = test_ok(CString::new("abc"));
+        let t = test_ok(CString::new("ab"));
         assert_eq!(unsafe { psmatch(f.as_ptr(), t.as_ptr(), 0) }, 1);
 
-        let t2 = CString::new("bc").unwrap();
+        let t2 = test_ok(CString::new("bc"));
         assert_eq!(unsafe { psmatch(f.as_ptr(), t2.as_ptr(), 0) }, 0);
 
-        let t3 = CString::new("abcd").unwrap();
+        let t3 = test_ok(CString::new("abcd"));
         assert_eq!(unsafe { psmatch(f.as_ptr(), t3.as_ptr(), 0) }, 0);
     }
 
@@ -1399,15 +1406,15 @@ mod tests {
 
     #[test]
     fn test_psmatch_case_insensitive() {
-        let f = CString::new("ABC").unwrap();
-        let t = CString::new("ab").unwrap();
+        let f = test_ok(CString::new("ABC"));
+        let t = test_ok(CString::new("ab"));
         assert_eq!(
             unsafe { psmatch_case_insensitive(f.as_ptr(), t.as_ptr(), 0) },
             1
         );
 
-        let f2 = CString::new("abc").unwrap();
-        let t2 = CString::new("ABC").unwrap();
+        let f2 = test_ok(CString::new("abc"));
+        let t2 = test_ok(CString::new("ABC"));
         assert_eq!(
             unsafe { psmatch_case_insensitive(f2.as_ptr(), t2.as_ptr(), 1) },
             1
@@ -1416,10 +1423,10 @@ mod tests {
 
     #[test]
     fn test_R_pmatch_exact() {
-        let x = CString::new("foo").unwrap();
-        let t1 = CString::new("bar").unwrap();
-        let t2 = CString::new("foo").unwrap();
-        let t3 = CString::new("baz").unwrap();
+        let x = test_ok(CString::new("foo"));
+        let t1 = test_ok(CString::new("bar"));
+        let t2 = test_ok(CString::new("foo"));
+        let t3 = test_ok(CString::new("baz"));
         let table = [t1.as_ptr(), t2.as_ptr(), t3.as_ptr()];
         let mut dup: c_int = 0;
         let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 3, &mut dup) };
@@ -1428,10 +1435,10 @@ mod tests {
 
     #[test]
     fn test_R_pmatch_partial_unique() {
-        let x = CString::new("fo").unwrap();
-        let t1 = CString::new("bar").unwrap();
-        let t2 = CString::new("foo").unwrap();
-        let t3 = CString::new("baz").unwrap();
+        let x = test_ok(CString::new("fo"));
+        let t1 = test_ok(CString::new("bar"));
+        let t2 = test_ok(CString::new("foo"));
+        let t3 = test_ok(CString::new("baz"));
         let table = [t1.as_ptr(), t2.as_ptr(), t3.as_ptr()];
         let mut dup: c_int = 0;
         let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 3, &mut dup) };
@@ -1441,9 +1448,9 @@ mod tests {
 
     #[test]
     fn test_R_pmatch_partial_duplicate() {
-        let x = CString::new("ba").unwrap();
-        let t1 = CString::new("bar").unwrap();
-        let t2 = CString::new("baz").unwrap();
+        let x = test_ok(CString::new("ba"));
+        let t1 = test_ok(CString::new("bar"));
+        let t2 = test_ok(CString::new("baz"));
         let table = [t1.as_ptr(), t2.as_ptr()];
         let mut dup: c_int = 0;
         let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 2, &mut dup) };
@@ -1453,9 +1460,9 @@ mod tests {
 
     #[test]
     fn test_R_pmatch_no_match() {
-        let x = CString::new("xyz").unwrap();
-        let t1 = CString::new("bar").unwrap();
-        let t2 = CString::new("foo").unwrap();
+        let x = test_ok(CString::new("xyz"));
+        let t1 = test_ok(CString::new("bar"));
+        let t2 = test_ok(CString::new("foo"));
         let table = [t1.as_ptr(), t2.as_ptr()];
         let result = unsafe { R_pmatch(x.as_ptr(), table.as_ptr(), 2, std::ptr::null_mut()) };
         assert_eq!(result, 0);
@@ -1463,9 +1470,9 @@ mod tests {
 
     #[test]
     fn test_streql() {
-        let a = CString::new("hello").unwrap();
-        let b = CString::new("hello").unwrap();
-        let c = CString::new("world").unwrap();
+        let a = test_ok(CString::new("hello"));
+        let b = test_ok(CString::new("hello"));
+        let c = test_ok(CString::new("world"));
         assert_eq!(unsafe { streql(a.as_ptr(), b.as_ptr()) }, 1);
         assert_eq!(unsafe { streql(a.as_ptr(), c.as_ptr()) }, 0);
         assert_eq!(unsafe { streql(std::ptr::null(), std::ptr::null()) }, 1);

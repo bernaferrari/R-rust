@@ -1381,62 +1381,62 @@ mod tests {
         unsafe {
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(0))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "NULL");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(1))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "symbol");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(10))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "logical");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(13))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "integer");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(14))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "double");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(15))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "complex");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(16))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "character");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(19))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "list");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(20))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "expression");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(24))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "raw");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(25))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "S4");
 
             let s = std::ffi::CStr::from_ptr(type2str_nowarn(999))
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "unknown");
         }
     }

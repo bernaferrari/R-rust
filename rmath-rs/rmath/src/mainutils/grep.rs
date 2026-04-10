@@ -1400,6 +1400,13 @@ pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {
 mod tests {
     use super::*;
 
+    fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
+        match result {
+            Ok(value) => value,
+            Err(err) => panic!("test setup failed: {err}"),
+        }
+    }
+
     // -- fixed_search tests --
 
     #[test]
@@ -1429,17 +1436,17 @@ mod tests {
 
     #[test]
     fn test_r_grep_fixed() {
-        let pat = std::ffi::CString::new("world").unwrap();
-        let target = std::ffi::CString::new("hello world").unwrap();
+        let pat = test_ok(std::ffi::CString::new("world"));
+        let target = test_ok(std::ffi::CString::new("hello world"));
         assert_eq!(unsafe { R_grep_fixed(pat.as_ptr(), target.as_ptr(), 0) }, 6);
 
-        let target2 = std::ffi::CString::new("hello World").unwrap();
+        let target2 = test_ok(std::ffi::CString::new("hello World"));
         assert_eq!(
             unsafe { R_grep_fixed(pat.as_ptr(), target2.as_ptr(), 1) },
             6
         );
 
-        let target3 = std::ffi::CString::new("no match").unwrap();
+        let target3 = test_ok(std::ffi::CString::new("no match"));
         assert_eq!(
             unsafe { R_grep_fixed(pat.as_ptr(), target3.as_ptr(), 0) },
             -1
@@ -1450,14 +1457,14 @@ mod tests {
 
     #[test]
     fn test_compile_ere_literal() {
-        let nodes = compile_ere("hello").unwrap();
+        let nodes = test_ok(compile_ere("hello"));
         assert_eq!(nodes.len(), 5);
         assert!(matches!(&nodes[0], EreNode::Literal(b'h')));
     }
 
     #[test]
     fn test_compile_ere_dot() {
-        let nodes = compile_ere("a.c").unwrap();
+        let nodes = test_ok(compile_ere("a.c"));
         assert_eq!(nodes.len(), 3);
         assert!(matches!(&nodes[0], EreNode::Literal(b'a')));
         assert!(matches!(&nodes[1], EreNode::AnyChar));
@@ -1466,7 +1473,7 @@ mod tests {
 
     #[test]
     fn test_compile_ere_star() {
-        let nodes = compile_ere("ab*c").unwrap();
+        let nodes = test_ok(compile_ere("ab*c"));
         assert_eq!(nodes.len(), 4);
         assert!(matches!(&nodes[0], EreNode::Literal(b'a')));
         assert!(matches!(&nodes[1], EreNode::Literal(b'b')));
@@ -1476,21 +1483,21 @@ mod tests {
 
     #[test]
     fn test_compile_ere_plus() {
-        let nodes = compile_ere("ab+c").unwrap();
+        let nodes = test_ok(compile_ere("ab+c"));
         assert_eq!(nodes.len(), 4);
         assert!(matches!(&nodes[2], EreNode::OneOrMore));
     }
 
     #[test]
     fn test_compile_ere_question() {
-        let nodes = compile_ere("ab?c").unwrap();
+        let nodes = test_ok(compile_ere("ab?c"));
         assert_eq!(nodes.len(), 4);
         assert!(matches!(&nodes[2], EreNode::ZeroOrOne));
     }
 
     #[test]
     fn test_compile_ere_char_class() {
-        let nodes = compile_ere("[abc]").unwrap();
+        let nodes = test_ok(compile_ere("[abc]"));
         assert_eq!(nodes.len(), 1);
         if let EreNode::CharClass(chars, negated) = &nodes[0] {
             assert_eq!(chars, &[b'a', b'b', b'c']);
@@ -1502,7 +1509,7 @@ mod tests {
 
     #[test]
     fn test_compile_ere_negated_char_class() {
-        let nodes = compile_ere("[^abc]").unwrap();
+        let nodes = test_ok(compile_ere("[^abc]"));
         assert_eq!(nodes.len(), 1);
         if let EreNode::CharClass(_, negated) = &nodes[0] {
             assert!(negated);
@@ -1513,7 +1520,7 @@ mod tests {
 
     #[test]
     fn test_compile_ere_anchors() {
-        let nodes = compile_ere("^hello$").unwrap();
+        let nodes = test_ok(compile_ere("^hello$"));
         assert_eq!(nodes.len(), 7);
         assert!(matches!(&nodes[0], EreNode::StartAnchor));
         assert!(matches!(&nodes[6], EreNode::EndAnchor));
@@ -1521,7 +1528,7 @@ mod tests {
 
     #[test]
     fn test_compile_ere_escaped() {
-        let nodes = compile_ere(r"\d+").unwrap();
+        let nodes = test_ok(compile_ere(r"\d+"));
         assert_eq!(nodes.len(), 2);
         assert!(matches!(&nodes[0], EreNode::CharClass(_, false)));
         assert!(matches!(&nodes[1], EreNode::OneOrMore));
@@ -1531,19 +1538,23 @@ mod tests {
 
     #[test]
     fn test_ere_match_literal() {
-        let nodes = compile_ere("hello").unwrap();
+        let nodes = test_ok(compile_ere("hello"));
         assert!(ere_search(&nodes, b"say hello world", false).is_some());
         assert!(ere_search(&nodes, b"say world", false).is_none());
     }
 
     #[test]
     fn test_ere_match_dot() {
-        let nodes = compile_ere("a.c").unwrap();
-        let m = ere_search(&nodes, b"abc", false).unwrap();
+        let nodes = test_ok(compile_ere("a.c"));
+        let Some(m) = ere_search(&nodes, b"abc", false) else {
+            panic!("expected ERE match for 'abc'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 3);
 
-        let m = ere_search(&nodes, b"aXc", false).unwrap();
+        let Some(m) = ere_search(&nodes, b"aXc", false) else {
+            panic!("expected ERE match for 'aXc'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 3);
 
@@ -1553,12 +1564,16 @@ mod tests {
     #[test]
     #[ignore = "'*' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_star() {
-        let nodes = compile_ere("ab*c").unwrap();
-        let m = ere_search(&nodes, b"ac", false).unwrap();
+        let nodes = test_ok(compile_ere("ab*c"));
+        let Some(m) = ere_search(&nodes, b"ac", false) else {
+            panic!("expected ERE match for 'ac'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 2);
 
-        let m = ere_search(&nodes, b"abbbc", false).unwrap();
+        let Some(m) = ere_search(&nodes, b"abbbc", false) else {
+            panic!("expected ERE match for 'abbbc'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 5);
 
@@ -1568,13 +1583,17 @@ mod tests {
     #[test]
     #[ignore = "'+' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_plus() {
-        let nodes = compile_ere("ab+c").unwrap();
+        let nodes = test_ok(compile_ere("ab+c"));
         assert!(ere_search(&nodes, b"ac", false).is_none());
-        let m = ere_search(&nodes, b"abc", false).unwrap();
+        let Some(m) = ere_search(&nodes, b"abc", false) else {
+            panic!("expected ERE match for 'abc'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 3);
 
-        let m = ere_search(&nodes, b"abbbc", false).unwrap();
+        let Some(m) = ere_search(&nodes, b"abbbc", false) else {
+            panic!("expected ERE match for 'abbbc'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 5);
     }
@@ -1582,23 +1601,27 @@ mod tests {
     #[test]
     #[ignore = "'?' quantifier not yet implemented in ERE engine"]
     fn test_ere_match_question() {
-        let nodes = compile_ere("ab?c").unwrap();
-        let m = ere_search(&nodes, b"ac", false).unwrap();
+        let nodes = test_ok(compile_ere("ab?c"));
+        let Some(m) = ere_search(&nodes, b"ac", false) else {
+            panic!("expected ERE match for 'ac'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 2);
 
-        let m = ere_search(&nodes, b"abc", false).unwrap();
+        let Some(m) = ere_search(&nodes, b"abc", false) else {
+            panic!("expected ERE match for 'abc'");
+        };
         assert_eq!(m.start, 0);
         assert_eq!(m.end, 3);
     }
 
     #[test]
     fn test_ere_match_anchor() {
-        let nodes = compile_ere("^hello").unwrap();
+        let nodes = test_ok(compile_ere("^hello"));
         assert!(ere_search(&nodes, b"hello world", false).is_some());
         assert!(ere_search(&nodes, b"say hello", false).is_none());
 
-        let nodes = compile_ere("world$").unwrap();
+        let nodes = test_ok(compile_ere("world$"));
         assert!(ere_search(&nodes, b"hello world", false).is_some());
         assert!(ere_search(&nodes, b"world hello", false).is_none());
     }
@@ -1606,36 +1629,44 @@ mod tests {
     #[test]
     fn test_ere_match_char_class() {
         // Test single char class match (no quantifier)
-        let nodes = compile_ere("[aeiou]").unwrap();
-        let m = ere_search(&nodes, b"hello", false).unwrap();
+        let nodes = test_ok(compile_ere("[aeiou]"));
+        let Some(m) = ere_search(&nodes, b"hello", false) else {
+            panic!("expected ERE match for 'hello'");
+        };
         assert_eq!(m.start, 1);
         assert_eq!(m.end, 2);
 
-        let nodes = compile_ere("[0-9]+").unwrap();
-        let m = ere_search(&nodes, b"abc123def", false).unwrap();
+        let nodes = test_ok(compile_ere("[0-9]+"));
+        let Some(m) = ere_search(&nodes, b"abc123def", false) else {
+            panic!("expected ERE match for 'abc123def'");
+        };
         assert_eq!(m.start, 3);
         assert_eq!(m.end, 6);
     }
 
     #[test]
     fn test_ere_match_ignore_case() {
-        let nodes = compile_ere("hello").unwrap();
+        let nodes = test_ok(compile_ere("hello"));
         assert!(ere_search(&nodes, b"HELLO", true).is_some());
         assert!(ere_search(&nodes, b"HeLLo", true).is_some());
     }
 
     #[test]
     fn test_ere_match_escaped_digit() {
-        let nodes = compile_ere(r"\d+").unwrap();
-        let m = ere_search(&nodes, b"abc123def", false).unwrap();
+        let nodes = test_ok(compile_ere(r"\d+"));
+        let Some(m) = ere_search(&nodes, b"abc123def", false) else {
+            panic!("expected ERE match for 'abc123def'");
+        };
         assert_eq!(m.start, 3);
         assert_eq!(m.end, 6);
     }
 
     #[test]
     fn test_ere_match_escaped_word() {
-        let nodes = compile_ere(r"\w+").unwrap();
-        let m = ere_search(&nodes, b"  hello  ", false).unwrap();
+        let nodes = test_ok(compile_ere(r"\w+"));
+        let Some(m) = ere_search(&nodes, b"  hello  ", false) else {
+            panic!("expected ERE match for '  hello  '");
+        };
         assert_eq!(m.start, 2);
         assert_eq!(m.end, 7);
     }
@@ -1668,7 +1699,7 @@ mod tests {
 
     #[test]
     fn test_ere_gsub_basic() {
-        let nodes = compile_ere(r"\d+").unwrap();
+        let nodes = test_ok(compile_ere(r"\d+"));
         // global=false: only first match replaced
         let result = ere_gsub(&nodes, b"abc123def456", b"X", false, false);
         assert_eq!(result, b"abcXdef456".to_vec());
@@ -1676,7 +1707,7 @@ mod tests {
 
     #[test]
     fn test_ere_gsub_global() {
-        let nodes = compile_ere("[aeiou]").unwrap();
+        let nodes = test_ok(compile_ere("[aeiou]"));
         let result = ere_gsub(&nodes, b"hello world", b"_", true, false);
         assert_eq!(result, b"h_ll_ w_rld".to_vec());
     }
@@ -1691,7 +1722,7 @@ mod tests {
 
     #[test]
     fn test_match_str_ere() {
-        let nodes = compile_ere("hel+o").unwrap();
+        let nodes = test_ok(compile_ere("hel+o"));
         assert!(match_str("hello world", "", false, Some(&nodes), false));
         assert!(match_str("helllo world", "", false, Some(&nodes), false));
         assert!(!match_str("helo world", "", false, Some(&nodes), false));

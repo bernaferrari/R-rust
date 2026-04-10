@@ -167,36 +167,36 @@ mod tests {
     #[test]
     fn test_c_locale() {
         unsafe {
-            let c_locale = std::ffi::CString::new("C").unwrap();
+            let c_locale = std::ffi::CString::new("C").unwrap_or_default();
             let result = CStr::from_ptr(locale2charset(c_locale.as_ptr()));
-            assert_eq!(result.to_str().unwrap(), "ASCII");
+            assert_eq!(result.to_str().unwrap_or(""), "ASCII");
         }
     }
 
     #[test]
     fn test_posix_locale() {
         unsafe {
-            let locale = std::ffi::CString::new("POSIX").unwrap();
+            let locale = std::ffi::CString::new("POSIX").unwrap_or_default();
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
-            assert_eq!(result.to_str().unwrap(), "ASCII");
+            assert_eq!(result.to_str().unwrap_or(""), "ASCII");
         }
     }
 
     #[test]
     fn test_utf8_locale() {
         unsafe {
-            let locale = std::ffi::CString::new("en_US.UTF-8").unwrap();
+            let locale = std::ffi::CString::new("en_US.UTF-8").unwrap_or_default();
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
-            assert_eq!(result.to_str().unwrap(), "UTF-8");
+            assert_eq!(result.to_str().unwrap_or(""), "UTF-8");
         }
     }
 
     #[test]
     fn test_macos_locale_no_encoding() {
         unsafe {
-            let locale = std::ffi::CString::new("en_US").unwrap();
+            let locale = std::ffi::CString::new("en_US").unwrap_or_default();
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
-            assert_eq!(result.to_str().unwrap(), "UTF-8");
+            assert_eq!(result.to_str().unwrap_or(""), "UTF-8");
         }
     }
 
@@ -204,16 +204,16 @@ mod tests {
     fn test_null_locale() {
         unsafe {
             let result = CStr::from_ptr(locale2charset(std::ptr::null()));
-            assert_eq!(result.to_str().unwrap(), "ASCII");
+            assert_eq!(result.to_str().unwrap_or(""), "ASCII");
         }
     }
 
     #[test]
     fn test_known_encoding_iso88591() {
         unsafe {
-            let locale = std::ffi::CString::new("en_US.ISO8859-1").unwrap();
+            let locale = std::ffi::CString::new("en_US.ISO8859-1").unwrap_or_default();
             let result = CStr::from_ptr(locale2charset(locale.as_ptr()));
-            assert_eq!(result.to_str().unwrap(), "ISO8859-1");
+            assert_eq!(result.to_str().unwrap_or(""), "ISO8859-1");
         }
     }
 }

@@ -78,34 +78,37 @@ thread_local! { static NoRenviron: Cell<c_int> = Cell::new(0); }
 /// # Safety
 /// - `argv` must point to a valid array of at least `argc` C-string pointers.
 /// - Each `argv[i]` must be a valid null-terminated C string.
-pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) { unsafe {
-    NumCommandLineArgs.with(|v| v.set(argc));
+pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) {
+    unsafe {
+        NumCommandLineArgs.with(|v| v.set(argc));
 
-    if argc <= 0 {
-        CommandLineArgs.with(|v| v.set(ptr::null_mut()));
-        return;
-    }
+        if argc <= 0 {
+            CommandLineArgs.with(|v| v.set(ptr::null_mut()));
+            return;
+        }
 
-    let layout =
-        std::alloc::Layout::array::<*mut c_char>(argc as usize).expect("unwrap on None/Err");
-    let ptr = std::alloc::alloc(layout) as *mut *mut c_char;
-    if ptr.is_null() {
-        return;
-    }
+        let layout = match std::alloc::Layout::array::<*mut c_char>(argc as usize) {
+            Ok(l) => l,
+            Err(_) => return,
+        };
+        let ptr = std::alloc::alloc(layout) as *mut *mut c_char;
+        if ptr.is_null() {
+            return;
+        }
 
-    ptr::write_bytes(ptr, 0, argc as usize);
-    CommandLineArgs.with(|v| v.set(ptr));
+        ptr::write_bytes(ptr, 0, argc as usize);
+        CommandLineArgs.with(|v| v.set(ptr));
 
-    for i in 0..argc as usize {
-        let src = *argv.add(i);
-        if !src.is_null() {
-            let cstr = CStr::from_ptr(src);
-            let dup =
-                CString::new(cstr.to_bytes()).expect("CString::new failed: contains null byte");
-            *ptr.add(i) = dup.into_raw();
+        for i in 0..argc as usize {
+            let src = *argv.add(i);
+            if !src.is_null() {
+                let cstr = CStr::from_ptr(src);
+                let dup = CString::new(cstr.to_bytes()).unwrap_or_default();
+                *ptr.add(i) = dup.into_raw();
+            }
         }
     }
-}}
+}
 
 // ---------------------------------------------------------------------------
 // do_commandArgs — the .Internal(commandArgs())
@@ -117,33 +120,35 @@ pub unsafe fn R_set_command_line_arguments(argc: c_int, argv: *mut *mut c_char) 
 /// # Safety
 /// - `call`, `op`, `args`, `env` are SEXP pointers following R's calling
 ///   convention. Only `args` is checked for arity.
-pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
-    let _ = call;
-    let _ = op;
-    let _ = args;
-    let _ = env;
+pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        let _ = call;
+        let _ = op;
+        let _ = args;
+        let _ = env;
 
-    let n = NumCommandLineArgs.with(|v| v.get()) as R_xlen_t;
-    let num_args = NumCommandLineArgs.with(|v| v.get());
-    let vals = Rf_allocVector(SEXPTYPE::STRSXP.0, num_args);
+        let n = NumCommandLineArgs.with(|v| v.get()) as R_xlen_t;
+        let num_args = NumCommandLineArgs.with(|v| v.get());
+        let vals = Rf_allocVector(SEXPTYPE::STRSXP.0, num_args);
 
-    if vals.is_null() {
-        return ptr::null_mut();
-    }
+        if vals.is_null() {
+            return ptr::null_mut();
+        }
 
-    let cmd_args = CommandLineArgs.with(|v| v.get());
-    if !cmd_args.is_null() {
-        for i in 0..num_args as usize {
-            let arg_ptr = *cmd_args.add(i);
-            if !arg_ptr.is_null() {
-                let charsxp = Rf_mkChar(arg_ptr);
-                SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
+        let cmd_args = CommandLineArgs.with(|v| v.get());
+        if !cmd_args.is_null() {
+            for i in 0..num_args as usize {
+                let arg_ptr = *cmd_args.add(i);
+                if !arg_ptr.is_null() {
+                    let charsxp = Rf_mkChar(arg_ptr);
+                    SET_STRING_ELT(vals, i as R_xlen_t, charsxp);
+                }
             }
         }
-    }
 
-    vals
-}}
+        vals
+    }
+}
 
 // ---------------------------------------------------------------------------
 // R_common_command_line — process common command-line options
@@ -169,116 +174,126 @@ pub unsafe fn R_common_command_line(
     pac: *mut c_int,
     argv: *mut *mut c_char,
     Rp: *mut c_void,
-) -> c_int { unsafe {
-    let _ = Rp;
+) -> c_int {
+    unsafe {
+        let _ = Rp;
 
-    if pac.is_null() || argv.is_null() {
-        return 0;
-    }
-
-    let ac = *pac;
-    let mut newac: c_int = 1;
-    let mut processing: bool = true;
-
-    R_RestoreHistory.with(|v| v.set(1));
-
-    let mut i: c_int = 1;
-    while i < ac {
-        let av = *argv.add(i as usize);
-        i += 1;
-
-        if av.is_null() {
-            if newac < ac {
-                *argv.add(newac as usize) = av;
-                newac += 1;
-            }
-            continue;
+        if pac.is_null() || argv.is_null() {
+            return 0;
         }
 
-        let arg = CStr::from_ptr(av);
-        let arg_bytes = arg.to_bytes();
+        let ac = *pac;
+        let mut newac: c_int = 1;
+        let mut processing: bool = true;
 
-        if processing && arg_bytes.starts_with(b"-") {
-            if arg_bytes == b"--version" {
-                continue;
-            } else if arg_bytes == b"--args" {
+        R_RestoreHistory.with(|v| v.set(1));
+
+        let mut i: c_int = 1;
+        while i < ac {
+            let av = *argv.add(i as usize);
+            i += 1;
+
+            if av.is_null() {
                 if newac < ac {
                     *argv.add(newac as usize) = av;
                     newac += 1;
                 }
-                processing = false;
-            } else if arg_bytes == b"--save" {
-                SaveAction.with(|v| v.set(SA_SAVE));
-            } else if arg_bytes == b"--no-save" {
-                SaveAction.with(|v| v.set(SA_NOSAVE));
-            } else if arg_bytes == b"--restore" {
-                RestoreAction.with(|v| v.set(SA_RESTORE));
-            } else if arg_bytes == b"--no-restore" {
-                RestoreAction.with(|v| v.set(SA_NORESTORE));
-                R_RestoreHistory.with(|v| v.set(0));
-            } else if arg_bytes == b"--no-restore-data" {
-                RestoreAction.with(|v| v.set(SA_NORESTORE));
-            } else if arg_bytes == b"--no-restore-history" {
-                R_RestoreHistory.with(|v| v.set(0));
-            } else if arg_bytes == b"--silent" || arg_bytes == b"--quiet" || arg_bytes == b"-q" {
-                R_Quiet.with(|v| v.set(1));
-            } else if arg_bytes == b"--vanilla" {
-                SaveAction.with(|v| v.set(SA_NOSAVE));
-                RestoreAction.with(|v| v.set(SA_NORESTORE));
-                R_RestoreHistory.with(|v| v.set(0));
-                LoadSiteFile.with(|v| v.set(0));
-                LoadInitFile.with(|v| v.set(0));
-                NoRenviron.with(|v| v.set(1));
-            } else if arg_bytes == b"--no-environ" {
-                NoRenviron.with(|v| v.set(1));
-            } else if arg_bytes == b"--verbose" {
-                R_Verbose.with(|v| v.set(1));
-            } else if arg_bytes == b"--no-echo" || arg_bytes == b"--slave" || arg_bytes == b"-s" {
-                R_Quiet.with(|v| v.set(1));
-                R_NoEcho.with(|v| v.set(1));
-                SaveAction.with(|v| v.set(SA_NOSAVE));
-            } else if arg_bytes == b"--no-site-file" {
-                LoadSiteFile.with(|v| v.set(0));
-            } else if arg_bytes == b"--no-init-file" {
-                LoadInitFile.with(|v| v.set(0));
-            } else if arg_bytes.starts_with(b"--encoding") {
-                let mut p: Option<&[u8]> = None;
-                if arg_bytes.len() > 11 {
-                    p = Some(&arg_bytes[11..]);
-                } else if i < ac {
-                    let next_av = *argv.add(i as usize);
-                    i += 1;
-                    if !next_av.is_null() {
-                        p = Some(CStr::from_ptr(next_av).to_bytes());
+                continue;
+            }
+
+            let arg = CStr::from_ptr(av);
+            let arg_bytes = arg.to_bytes();
+
+            if processing && arg_bytes.starts_with(b"-") {
+                if arg_bytes == b"--version" {
+                    continue;
+                } else if arg_bytes == b"--args" {
+                    if newac < ac {
+                        *argv.add(newac as usize) = av;
+                        newac += 1;
                     }
-                }
-                let _ = p;
-            } else if arg_bytes == b"-save"
-                || arg_bytes == b"-nosave"
-                || arg_bytes == b"-restore"
-                || arg_bytes == b"-norestore"
-                || arg_bytes == b"-noreadline"
-                || arg_bytes == b"-quiet"
-                || arg_bytes == b"-nsize"
-                || arg_bytes == b"-vsize"
-                || arg_bytes.starts_with(b"--max-nsize")
-                || arg_bytes.starts_with(b"--max-vsize")
-                || arg_bytes == b"-V"
-                || arg_bytes == b"-n"
-                || arg_bytes == b"-v"
-            {
-            } else if arg_bytes.starts_with(b"--min-nsize") || arg_bytes.starts_with(b"--min-vsize")
-            {
-                if arg_bytes.len() < 13 && i < ac {
-                    i += 1;
-                }
-            } else if arg_bytes.starts_with(b"--max-ppsize") {
-                if arg_bytes.len() < 14 && i < ac {
-                    i += 1;
-                }
-            } else if arg_bytes.starts_with(b"--max-connections") {
-                if arg_bytes.len() < 19 && i < ac {
-                    i += 1;
+                    processing = false;
+                } else if arg_bytes == b"--save" {
+                    SaveAction.with(|v| v.set(SA_SAVE));
+                } else if arg_bytes == b"--no-save" {
+                    SaveAction.with(|v| v.set(SA_NOSAVE));
+                } else if arg_bytes == b"--restore" {
+                    RestoreAction.with(|v| v.set(SA_RESTORE));
+                } else if arg_bytes == b"--no-restore" {
+                    RestoreAction.with(|v| v.set(SA_NORESTORE));
+                    R_RestoreHistory.with(|v| v.set(0));
+                } else if arg_bytes == b"--no-restore-data" {
+                    RestoreAction.with(|v| v.set(SA_NORESTORE));
+                } else if arg_bytes == b"--no-restore-history" {
+                    R_RestoreHistory.with(|v| v.set(0));
+                } else if arg_bytes == b"--silent" || arg_bytes == b"--quiet" || arg_bytes == b"-q"
+                {
+                    R_Quiet.with(|v| v.set(1));
+                } else if arg_bytes == b"--vanilla" {
+                    SaveAction.with(|v| v.set(SA_NOSAVE));
+                    RestoreAction.with(|v| v.set(SA_NORESTORE));
+                    R_RestoreHistory.with(|v| v.set(0));
+                    LoadSiteFile.with(|v| v.set(0));
+                    LoadInitFile.with(|v| v.set(0));
+                    NoRenviron.with(|v| v.set(1));
+                } else if arg_bytes == b"--no-environ" {
+                    NoRenviron.with(|v| v.set(1));
+                } else if arg_bytes == b"--verbose" {
+                    R_Verbose.with(|v| v.set(1));
+                } else if arg_bytes == b"--no-echo" || arg_bytes == b"--slave" || arg_bytes == b"-s"
+                {
+                    R_Quiet.with(|v| v.set(1));
+                    R_NoEcho.with(|v| v.set(1));
+                    SaveAction.with(|v| v.set(SA_NOSAVE));
+                } else if arg_bytes == b"--no-site-file" {
+                    LoadSiteFile.with(|v| v.set(0));
+                } else if arg_bytes == b"--no-init-file" {
+                    LoadInitFile.with(|v| v.set(0));
+                } else if arg_bytes.starts_with(b"--encoding") {
+                    let mut p: Option<&[u8]> = None;
+                    if arg_bytes.len() > 11 {
+                        p = Some(&arg_bytes[11..]);
+                    } else if i < ac {
+                        let next_av = *argv.add(i as usize);
+                        i += 1;
+                        if !next_av.is_null() {
+                            p = Some(CStr::from_ptr(next_av).to_bytes());
+                        }
+                    }
+                    let _ = p;
+                } else if arg_bytes == b"-save"
+                    || arg_bytes == b"-nosave"
+                    || arg_bytes == b"-restore"
+                    || arg_bytes == b"-norestore"
+                    || arg_bytes == b"-noreadline"
+                    || arg_bytes == b"-quiet"
+                    || arg_bytes == b"-nsize"
+                    || arg_bytes == b"-vsize"
+                    || arg_bytes.starts_with(b"--max-nsize")
+                    || arg_bytes.starts_with(b"--max-vsize")
+                    || arg_bytes == b"-V"
+                    || arg_bytes == b"-n"
+                    || arg_bytes == b"-v"
+                {
+                } else if arg_bytes.starts_with(b"--min-nsize")
+                    || arg_bytes.starts_with(b"--min-vsize")
+                {
+                    if arg_bytes.len() < 13 && i < ac {
+                        i += 1;
+                    }
+                } else if arg_bytes.starts_with(b"--max-ppsize") {
+                    if arg_bytes.len() < 14 && i < ac {
+                        i += 1;
+                    }
+                } else if arg_bytes.starts_with(b"--max-connections") {
+                    if arg_bytes.len() < 19 && i < ac {
+                        i += 1;
+                    }
+                } else {
+                    if newac < ac {
+                        *argv.add(newac as usize) = av;
+                        newac += 1;
+                    }
                 }
             } else {
                 if newac < ac {
@@ -286,17 +301,12 @@ pub unsafe fn R_common_command_line(
                     newac += 1;
                 }
             }
-        } else {
-            if newac < ac {
-                *argv.add(newac as usize) = av;
-                newac += 1;
-            }
         }
-    }
 
-    *pac = newac;
-    newac
-}}
+        *pac = newac;
+        newac
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Accessors for option state (for use by other modules)
@@ -362,6 +372,13 @@ mod tests {
     use std::ffi::CString;
     use std::sync::Mutex;
 
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     /// Mutex to serialize tests that touch global mutable statics,
     /// preventing race conditions when tests run in parallel.
     static TEST_LOCK: Mutex<()> = Mutex::new(());
@@ -372,7 +389,7 @@ mod tests {
     unsafe fn make_argv(args: &[&str]) -> Vec<*mut c_char> {
         args.iter()
             .map(|s| {
-                let cstr = CString::new(*s).unwrap();
+                let cstr = CString::new(*s).unwrap_or_default();
                 let len = cstr.as_bytes_with_nul().len();
                 let ptr = libc::malloc(len) as *mut c_char;
                 ptr::copy_nonoverlapping(cstr.as_ptr(), ptr, len);
@@ -406,7 +423,7 @@ mod tests {
     #[test]
     fn test_set_command_line_arguments() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
             let args = ["R", "--vanilla", "-e", "print(1)"];
             let mut argv: Vec<*mut c_char> = make_argv(&args);
@@ -420,7 +437,7 @@ mod tests {
             for i in 0..args.len() {
                 let stored = *CommandLineArgs.with(|v| v.get()).add(i);
                 assert!(!stored.is_null());
-                let s = CStr::from_ptr(stored).to_str().unwrap();
+                let s = CStr::from_ptr(stored).to_str().unwrap_or("");
                 assert_eq!(s, args[i]);
             }
 
@@ -431,7 +448,8 @@ mod tests {
                 }
             }
             if !CommandLineArgs.with(|v| v.get()).is_null() {
-                let layout = std::alloc::Layout::array::<*mut c_char>(4).unwrap();
+                let layout = std::alloc::Layout::array::<*mut c_char>(4)
+                    .unwrap_or_else(|_| std::alloc::Layout::new::<*mut c_char>());
                 std::alloc::dealloc(CommandLineArgs.with(|v| v.get()) as *mut u8, layout);
             }
 
@@ -445,7 +463,7 @@ mod tests {
     #[test]
     fn test_command_args_empty() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
             let args: [&str; 0] = [];
             let mut argv: Vec<*mut c_char> = vec![];
@@ -475,7 +493,7 @@ mod tests {
     #[test]
     fn test_common_command_line_save_no_save() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             let args = ["R", "--save", "--no-save", "script.R"];
@@ -495,7 +513,7 @@ mod tests {
     #[test]
     fn test_common_command_line_vanilla() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             let args = ["R", "--vanilla", "script.R"];
@@ -519,7 +537,7 @@ mod tests {
     #[test]
     fn test_common_command_line_quiet_verbose() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             let args = ["R", "-q", "--verbose", "script.R"];
@@ -540,7 +558,7 @@ mod tests {
     #[test]
     fn test_common_command_line_slave() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             let args = ["R", "--slave", "script.R"];
@@ -561,7 +579,7 @@ mod tests {
     #[test]
     fn test_common_command_line_args_separator() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             // Everything after --args passes through, even if it looks like an option
@@ -582,7 +600,7 @@ mod tests {
     #[test]
     fn test_common_command_line_restore_options() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             let args = ["R", "--no-restore-data", "--no-restore-history", "script.R"];
@@ -602,7 +620,7 @@ mod tests {
     #[test]
     fn test_common_command_line_no_site_init_file() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             let args = ["R", "--no-site-file", "--no-init-file", "script.R"];
@@ -622,7 +640,7 @@ mod tests {
     #[test]
     fn test_common_command_line_unknown_option_pass_through() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
             let args = ["R", "--unknown-option", "script.R"];
             let mut argv: Vec<*mut c_char> = make_argv(&args);
@@ -640,7 +658,7 @@ mod tests {
     #[test]
     fn test_getters() {
         unsafe {
-            let _guard = TEST_LOCK.lock().unwrap();
+            let _guard = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
             reset_state();
 
             SaveAction.with(|v| v.set(SA_NOSAVE));
