@@ -116,6 +116,13 @@ unsafe fn asInteger(x: SEXP) -> c_int {
         if x.is_null() || x == R_NilValue() {
             return NA_INTEGER;
         }
+        let addr = x as usize;
+        if addr < 0x1000 {
+            return NA_INTEGER;
+        }
+        if (addr & 0x7) != 0 {
+            return NA_INTEGER;
+        }
         let t = TYPEOF(x);
         if t == SEXPTYPE::INTSXP.0 {
             if LENGTH(x) >= 1 {
@@ -451,7 +458,12 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if let Some(&val) = table.options.get(name) {
-            val
+            let addr = val as usize;
+            if addr > 0x1000 && (addr & 0x7) == 0 {
+                val
+            } else {
+                R_NilValue()
+            }
         } else {
             R_NilValue()
         }
