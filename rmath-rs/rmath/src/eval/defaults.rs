@@ -30,9 +30,8 @@ use super::dispatch::DispatchGroup;
 /// The function signature matches R's definition.
 pub unsafe fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // TODO: forward to arithmetic module when available
-        let _ = (call, op, args, rho);
-        R_NilValue()
+        let arg_list = Rf_cons(args, R_NilValue());
+        crate::eval::arithmetic::do_arith(call, op, arg_list, rho)
     }
 }
 
@@ -41,9 +40,8 @@ pub unsafe fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in arithmetic.c. Dispatches binary arithmetic operators.
 pub unsafe fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
     unsafe {
-        // TODO: forward to arithmetic module when available
-        let _ = (call, op, lhs, rhs);
-        R_NilValue()
+        let arg_list = Rf_cons(lhs, Rf_cons(rhs, R_NilValue()));
+        crate::eval::arithmetic::do_arith(call, op, arg_list, R_NilValue())
     }
 }
 
@@ -53,9 +51,8 @@ pub unsafe fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
 // no_mangle removed (duplicate)
 pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // TODO: forward to math module when available
-        let _ = (call, op, args, rho);
-        R_NilValue()
+        // Forward to the arithmetic module's do_math1 dispatcher.
+        crate::eval::arithmetic::do_math1(call, op, args, rho)
     }
 }
 

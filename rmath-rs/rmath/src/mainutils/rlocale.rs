@@ -379,12 +379,6 @@ fn tlsearch(wint: c_int, table: &[pair], max: c_int) -> c_int {
 /// In this Rust port, we return 0 (MB_Default) as a standalone function.
 /// A full implementation would need to query the system locale.
 fn get_locale_id() -> c_int {
-    // TODO: In a full implementation, this would:
-    // 1. Get the current locale via std::env or platform-specific API
-    // 2. Uppercase the locale string
-    // 3. Match against cjk_locale_name table
-    //
-    // For now, return MB_Default (0).
     MB_Default
 }
 

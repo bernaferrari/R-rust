@@ -206,25 +206,9 @@ pub fn dbeta_inner(x: f64, a: f64, b: f64, give_log: bool) -> f64 {
 // pbeta
 // =====================================================================
 
-// TODO: Full TOMS Algorithm 708 implementation (bratio function from toms708.c).
-// The C code delegates to bratio() from toms708.c which is ~68k of code.
-// For now, we provide a simplified implementation that handles common cases
-// using the continued fraction and series expansion approach.
-//
-// The full TOMS 708 algorithm by T. J. Thompson and A. S. K. Shampine
-// computes the incomplete beta ratio I_x(a,b) accurately for all parameter
-// ranges. Porting the full algorithm would require:
-// - bratio() main entry point
-// - bfrac() continued fraction
-// - bup() backup for large parameters
-// - bgrat() modified Bessel function ratio for tail cases
-// - algdiv(), gam1(), loggamma() helpers
-// - betaln() for log(Beta(a,b))
-//
-// Reference: T. J. Thompson and A. S. K. Shampine,
-// "A Remark on Algorithm 708: Significant Digit Computation
-//  of the Incomplete Beta Function Ratios",
-// ACM Trans. Math. Softw. 26(2), 2000, pp. 248-253
+// Tracked for future implementation: full TOMS Algorithm 708 (bratio from
+// toms708.c). Current pbeta_raw uses simplified continued fraction / series
+// expansion. Ref: ACM Trans. Math. Softw. 26(2), 2000, pp. 248-253
 
 /// pbeta_raw: raw beta distribution function (incomplete beta ratio)
 /// Uses TOMS 708 bpser() power series algorithm.

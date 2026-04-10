@@ -310,8 +310,6 @@ fn apply_closure_safe<'a>(
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
-    // Use the existing raw FFI applyClosure for now
-    // TODO: Port applyClosure to use Sexp<'a> internally
     let raw_result = unsafe {
         super::closure::applyClosure(
             fun.as_raw(), // call placeholder
