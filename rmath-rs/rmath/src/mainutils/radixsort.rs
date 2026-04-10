@@ -1084,16 +1084,10 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 tmp = isorted(xd as *const c_int, n);
             }
             t if t == SEXPTYPE::REALSXP.0 => {
-                // TODO: implement dsorted
-                eprintln!("REALSXP radix sort not yet implemented");
-                Rf_unprotect(1);
-                return R_NilValue();
+                tmp = dsorted(xd, n);
             }
             t if t == SEXPTYPE::STRSXP.0 => {
-                // TODO: implement csorted
-                eprintln!("STRSXP radix sort not yet implemented");
-                Rf_unprotect(1);
-                return R_NilValue();
+                tmp = csorted(xd, n);
             }
             _ => {
                 eprintln!("First arg is type '{}', not yet supported", xtype);
@@ -1132,14 +1126,10 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                     isort(xd as *mut c_int, o, n);
                 }
                 t if t == SEXPTYPE::REALSXP.0 => {
-                    // TODO: implement dsort
-                    Rf_unprotect(1);
-                    return R_NilValue();
+                    dsort(xd, o, n);
                 }
                 t if t == SEXPTYPE::STRSXP.0 => {
-                    // TODO: implement csort/cgroup
-                    Rf_unprotect(1);
-                    return R_NilValue();
+                    csort(xd, o, n);
                 }
                 _ => {
                     Rf_unprotect(1);
