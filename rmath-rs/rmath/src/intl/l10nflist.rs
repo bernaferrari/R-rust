@@ -396,15 +396,25 @@ pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> 
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_normalize_codeset_simple() {
         unsafe {
             let cs = b"UTF-8\0";
             let result = _nl_normalize_codeset(cs.as_ptr() as *const c_char, 5);
             assert!(!result.is_null());
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "utf8");
-            let layout = Layout::from_size_align(s.len() + 1, 1).unwrap();
+            let layout = must(Layout::from_size_align(s.len() + 1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }
@@ -415,9 +425,9 @@ mod tests {
             let cs = b"8859-1\0";
             let result = _nl_normalize_codeset(cs.as_ptr() as *const c_char, 6);
             assert!(!result.is_null());
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "iso88591");
-            let layout = Layout::from_size_align(s.len() + 1, 1).unwrap();
+            let layout = must(Layout::from_size_align(s.len() + 1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }
@@ -478,7 +488,7 @@ mod tests {
             );
             assert!(!result.is_null());
             assert!(!(*result).filename.is_null());
-            let fname = CStr::from_ptr((*result).filename).to_str().unwrap();
+            let fname = CStr::from_ptr((*result).filename).to_str().unwrap_or("");
             assert!(fname.contains("en_US"));
             assert!(fname.contains("messages.mo"));
         }

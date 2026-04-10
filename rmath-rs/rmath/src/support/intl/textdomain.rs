@@ -107,7 +107,7 @@ mod tests {
             let result = libintl_textdomain(std::ptr::null());
             assert!(!result.is_null());
             let s = std::ffi::CStr::from_ptr(result);
-            assert_eq!(s.to_str().unwrap(), "messages");
+            assert_eq!(s.to_str().unwrap_or(""), "messages");
         }
     }
 
@@ -123,7 +123,7 @@ mod tests {
             let result = libintl_textdomain(empty);
             assert!(!result.is_null());
             let s = std::ffi::CStr::from_ptr(result);
-            assert_eq!(s.to_str().unwrap(), "messages");
+            assert_eq!(s.to_str().unwrap_or(""), "messages");
         }
     }
 
@@ -138,7 +138,7 @@ mod tests {
             let result = libintl_textdomain(custom);
             assert!(!result.is_null());
             let s = std::ffi::CStr::from_ptr(result);
-            assert_eq!(s.to_str().unwrap(), "testdomain");
+            assert_eq!(s.to_str().unwrap_or(""), "testdomain");
 
             // Clean up: reset to default.
             let _ = libintl_textdomain(empty);

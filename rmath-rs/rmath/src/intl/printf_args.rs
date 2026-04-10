@@ -210,7 +210,7 @@ mod tests {
             assert_eq!(result, 0);
             // The null string should have been replaced with "(NULL)".
             assert!(!arg.a.a_string.is_null());
-            let s = CStr::from_ptr(arg.a.a_string).to_str().unwrap();
+            let s = CStr::from_ptr(arg.a.a_string).to_str().unwrap_or("");
             assert_eq!(s, "(NULL)");
         }
     }

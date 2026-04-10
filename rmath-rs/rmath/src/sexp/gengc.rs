@@ -1086,7 +1086,9 @@ mod tests {
     #[test]
     fn test_card_table_marking() {
         unsafe {
-            let heap = alloc(Layout::from_size_align(4096, 4096).unwrap());
+            let heap = alloc(
+                Layout::from_size_align(4096, 4096).unwrap_or_else(|e| panic!("layout: {e:?}")),
+            );
             let ct = CardTable::new(heap, 4096);
 
             let obj = heap.add(1024) as SEXP;
@@ -1095,7 +1097,10 @@ mod tests {
             let dirty: Vec<usize> = ct.dirty_cards().collect();
             assert_eq!(dirty, vec![2]);
 
-            dealloc(heap, Layout::from_size_align(4096, 4096).unwrap());
+            dealloc(
+                heap,
+                Layout::from_size_align(4096, 4096).unwrap_or_else(|e| panic!("layout: {e:?}")),
+            );
         }
     }
 

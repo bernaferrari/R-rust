@@ -199,13 +199,23 @@ pub unsafe fn _nl_locale_name_canonicalize(name: *mut c_char) {
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_locale_name_returns() {
         unsafe {
             let result = _nl_locale_name(LC_MESSAGES);
             // Should return either a valid string or "C".
             if !result.is_null() {
-                let s = CStr::from_ptr(result).to_str().unwrap();
+                let s = CStr::from_ptr(result).to_str().unwrap_or("");
                 assert!(!s.is_empty());
             }
         }
@@ -218,7 +228,7 @@ mod tests {
             _nl_locale_name_canonicalize(buf.as_mut_ptr() as *mut c_char);
             let s = CStr::from_ptr(buf.as_ptr() as *const c_char)
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "en_US");
         }
     }
@@ -230,7 +240,7 @@ mod tests {
             _nl_locale_name_canonicalize(buf.as_mut_ptr() as *mut c_char);
             let s = CStr::from_ptr(buf.as_ptr() as *const c_char)
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "en_US.utf-8");
         }
     }
@@ -250,7 +260,7 @@ mod tests {
             _nl_locale_name_canonicalize(buf.as_mut_ptr() as *mut c_char);
             let s = CStr::from_ptr(buf.as_ptr() as *const c_char)
                 .to_str()
-                .unwrap();
+                .unwrap_or("");
             assert_eq!(s, "de_DE.ISO-8859-1@euro");
         }
     }

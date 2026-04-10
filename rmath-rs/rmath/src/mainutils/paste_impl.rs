@@ -203,31 +203,35 @@ unsafe fn EncodeReal0(
     unsafe { crate::mainutils::printutils::EncodeReal0(x, w, d, e, outdec) }
 }
 
-unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char { unsafe {
-    thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
-    BUF.with(|buf| {
-        let mut b = buf.borrow_mut();
-        let s = "<environment>\0".as_ptr() as *const c_char;
-        for i in 0..14 {
-            b[i] = *s.add(i);
-        }
-        b[14] = 0;
-        b.as_ptr() as *const c_char
-    })
-}}
+unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
+    unsafe {
+        thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
+        BUF.with(|buf| {
+            let mut b = buf.borrow_mut();
+            let s = "<environment>\0".as_ptr() as *const c_char;
+            for i in 0..14 {
+                b[i] = *s.add(i);
+            }
+            b[14] = 0;
+            b.as_ptr() as *const c_char
+        })
+    }
+}
 
-unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char { unsafe {
-    thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
-    BUF.with(|buf| {
-        let mut b = buf.borrow_mut();
-        let s = "<externalptr>\0".as_ptr() as *const c_char;
-        for i in 0..13 {
-            b[i] = *s.add(i);
-        }
-        b[13] = 0;
-        b.as_ptr() as *const c_char
-    })
-}}
+unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
+    unsafe {
+        thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
+        BUF.with(|buf| {
+            let mut b = buf.borrow_mut();
+            let s = "<externalptr>\0".as_ptr() as *const c_char;
+            for i in 0..13 {
+                b[i] = *s.add(i);
+            }
+            b[13] = 0;
+            b.as_ptr() as *const c_char
+        })
+    }
+}
 
 unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
@@ -1483,13 +1487,15 @@ mod tests {
     #[test]
     fn test_r_stpcpy_basic() {
         unsafe {
-            let src = CString::new("hello").unwrap();
+            let src = CString::new("hello").unwrap_or_default();
             let mut dest = [0i8; 16];
             let result = R_stpcpy(dest.as_mut_ptr(), src.as_ptr());
             assert_eq!(*result, 0);
             let pos = result.offset_from(dest.as_ptr());
             assert_eq!(pos, 5);
-            let s = std::ffi::CStr::from_ptr(dest.as_ptr()).to_str().unwrap();
+            let s = std::ffi::CStr::from_ptr(dest.as_ptr())
+                .to_str()
+                .unwrap_or("");
             assert_eq!(s, "hello");
         }
     }
@@ -1497,7 +1503,7 @@ mod tests {
     #[test]
     fn test_r_stpcpy_empty() {
         unsafe {
-            let src = CString::new("").unwrap();
+            let src = CString::new("").unwrap_or_default();
             let mut dest = [0i8; 8];
             let result = R_stpcpy(dest.as_mut_ptr(), src.as_ptr());
             assert_eq!(*result, 0);
@@ -1535,9 +1541,9 @@ mod tests {
     #[test]
     fn test_c_strlen() {
         unsafe {
-            let s = CString::new("hello world").unwrap();
+            let s = CString::new("hello world").unwrap_or_default();
             assert_eq!(c_strlen(s.as_ptr()), 11);
-            let empty = CString::new("").unwrap();
+            let empty = CString::new("").unwrap_or_default();
             assert_eq!(c_strlen(empty.as_ptr()), 0);
             assert_eq!(c_strlen(ptr::null()), 0);
         }

@@ -581,11 +581,21 @@ pub unsafe fn locale2charset(locale: *const c_char) -> *const c_char {
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_null_locale() {
         unsafe {
             let result = locale2charset(std::ptr::null());
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "ASCII");
         }
     }
@@ -594,7 +604,7 @@ mod tests {
     fn test_c_locale() {
         unsafe {
             let result = locale2charset(b"C\0".as_ptr() as *const c_char);
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "ASCII");
         }
     }
@@ -603,7 +613,7 @@ mod tests {
     fn test_posix_locale() {
         unsafe {
             let result = locale2charset(b"POSIX\0".as_ptr() as *const c_char);
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "ASCII");
         }
     }
@@ -612,7 +622,7 @@ mod tests {
     fn test_utf8_encoding() {
         unsafe {
             let result = locale2charset(b"en_US.UTF-8\0".as_ptr() as *const c_char);
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "UTF-8");
         }
     }
@@ -621,7 +631,7 @@ mod tests {
     fn test_macos_locale() {
         unsafe {
             let result = locale2charset(b"en_US\0".as_ptr() as *const c_char);
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "UTF-8");
         }
     }

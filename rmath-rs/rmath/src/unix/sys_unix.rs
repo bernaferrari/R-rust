@@ -399,7 +399,7 @@ mod tests {
     #[test]
     fn test_expand_filename_no_tilde() {
         unsafe {
-            let path = CString::new("/usr/lib/R").unwrap();
+            let path = CString::new("/usr/lib/R").unwrap_or_default();
             let result = R_ExpandFileName(path.as_ptr());
             assert_eq!(CStr::from_ptr(result).to_string_lossy(), "/usr/lib/R");
         }
@@ -409,7 +409,7 @@ mod tests {
     fn test_expand_filename_tilde() {
         unsafe {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            let path = CString::new("~/Documents").unwrap();
+            let path = CString::new("~/Documents").unwrap_or_default();
             let result = R_ExpandFileName(path.as_ptr());
             let expanded = CStr::from_ptr(result).to_string_lossy().to_string();
             assert!(expanded.starts_with(&home));
@@ -421,7 +421,7 @@ mod tests {
     fn test_expand_filename_tilde_only() {
         unsafe {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-            let path = CString::new("~").unwrap();
+            let path = CString::new("~").unwrap_or_default();
             let result = R_ExpandFileName(path.as_ptr());
             let expanded = CStr::from_ptr(result).to_string_lossy().to_string();
             assert_eq!(expanded, home);

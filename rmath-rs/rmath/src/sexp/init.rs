@@ -28,168 +28,174 @@ pub fn is_initialized() -> bool {
     R_INITIALIZED.load(Ordering::Acquire)
 }
 
-pub unsafe fn initialize_r() { unsafe {
-    if R_INITIALIZED.load(Ordering::Acquire) {
-        return;
+pub unsafe fn initialize_r() {
+    unsafe {
+        if R_INITIALIZED.load(Ordering::Acquire) {
+            return;
+        }
+
+        let _guard = INIT_LOCK.lock().expect("init lock poisoned");
+        // Double-check: another thread may have initialized while we waited for the lock.
+        if R_INITIALIZED.load(Ordering::Acquire) {
+            return;
+        }
+
+        let nil = super::globals::R_NilValue();
+
+        let empty_env = NewPersistentEnvironment(nil, nil, nil);
+        set_R_EmptyEnv(empty_env);
+
+        let base_env = NewPersistentEnvironment(nil, empty_env, nil);
+        set_R_BaseEnv(base_env);
+
+        let global_env = NewPersistentEnvironment(nil, base_env, nil);
+        set_R_GlobalEnv(global_env);
+
+        pre_intern_symbols();
+
+        crate::eval::arithmetic::register_arithmetic_builtins(base_env);
+        crate::eval::arithmetic::register_special_forms(base_env);
+
+        R_INITIALIZED.store(true, Ordering::Release);
     }
+}
 
-    let _guard = INIT_LOCK.lock().expect("init lock poisoned");
-    // Double-check: another thread may have initialized while we waited for the lock.
-    if R_INITIALIZED.load(Ordering::Acquire) {
-        return;
+unsafe fn pre_intern_symbols() {
+    unsafe {
+        let symbols = [
+            "if",
+            "else",
+            "while",
+            "for",
+            "repeat",
+            "break",
+            "next",
+            "function",
+            "return",
+            "invisible",
+            "stop",
+            "warning",
+            "TRUE",
+            "FALSE",
+            "NULL",
+            "NA",
+            "Inf",
+            "NaN",
+            "library",
+            "require",
+            "source",
+            "+",
+            "-",
+            "*",
+            "/",
+            "^",
+            "%%",
+            "%/%",
+            "<",
+            ">",
+            "<=",
+            ">=",
+            "==",
+            "!=",
+            "!",
+            "&",
+            "&&",
+            "|",
+            "||",
+            "<-",
+            "<<-",
+            "=",
+            "->",
+            "->>",
+            "{",
+            "(",
+            "[",
+            "[[",
+            "$",
+            "@",
+            "::",
+            ":::",
+            "~",
+            ":",
+            "c",
+            "list",
+            "length",
+            "names",
+            "print",
+            "cat",
+            "paste",
+            "paste0",
+            "as.integer",
+            "as.double",
+            "as.character",
+            "as.logical",
+            "is.integer",
+            "is.double",
+            "is.character",
+            "is.logical",
+            "is.null",
+            "is.na",
+            "is.vector",
+            "is.list",
+            "sum",
+            "mean",
+            "min",
+            "max",
+            "range",
+            "which",
+            "which.min",
+            "which.max",
+            "seq",
+            "seq_len",
+            "seq_along",
+            "rep",
+            "matrix",
+            "array",
+            "dim",
+            "nrow",
+            "ncol",
+            "apply",
+            "sapply",
+            "lapply",
+            "vapply",
+            "mapply",
+            "t",
+            "cbind",
+            "rbind",
+            "...",
+            "..1",
+            "..2",
+            "..3",
+            "..4",
+            "..5",
+            "missing",
+            "on.exit",
+            "sys.call",
+            "match.arg",
+        ];
+
+        for name in &symbols {
+            let c_name = CString::new(*name).expect("symbol name contains null byte");
+            Rf_install(c_name.as_ptr());
+        }
     }
+}
 
-    let nil = super::globals::R_NilValue();
+pub unsafe fn shutdown_r() {
+    unsafe {
+        if !R_INITIALIZED.load(Ordering::Acquire) {
+            return;
+        }
 
-    let empty_env = NewPersistentEnvironment(nil, nil, nil);
-    set_R_EmptyEnv(empty_env);
+        let _guard = INIT_LOCK.lock().expect("init lock poisoned");
 
-    let base_env = NewPersistentEnvironment(nil, empty_env, nil);
-    set_R_BaseEnv(base_env);
+        set_R_GlobalEnv(std::ptr::null_mut());
+        set_R_BaseEnv(std::ptr::null_mut());
+        set_R_EmptyEnv(std::ptr::null_mut());
 
-    let global_env = NewPersistentEnvironment(nil, base_env, nil);
-    set_R_GlobalEnv(global_env);
-
-    pre_intern_symbols();
-
-    crate::eval::arithmetic::register_arithmetic_builtins(base_env);
-    crate::eval::arithmetic::register_special_forms(base_env);
-
-    R_INITIALIZED.store(true, Ordering::Release);
-}}
-
-unsafe fn pre_intern_symbols() { unsafe {
-    let symbols = [
-        "if",
-        "else",
-        "while",
-        "for",
-        "repeat",
-        "break",
-        "next",
-        "function",
-        "return",
-        "invisible",
-        "stop",
-        "warning",
-        "TRUE",
-        "FALSE",
-        "NULL",
-        "NA",
-        "Inf",
-        "NaN",
-        "library",
-        "require",
-        "source",
-        "+",
-        "-",
-        "*",
-        "/",
-        "^",
-        "%%",
-        "%/%",
-        "<",
-        ">",
-        "<=",
-        ">=",
-        "==",
-        "!=",
-        "!",
-        "&",
-        "&&",
-        "|",
-        "||",
-        "<-",
-        "<<-",
-        "=",
-        "->",
-        "->>",
-        "{",
-        "(",
-        "[",
-        "[[",
-        "$",
-        "@",
-        "::",
-        ":::",
-        "~",
-        ":",
-        "c",
-        "list",
-        "length",
-        "names",
-        "print",
-        "cat",
-        "paste",
-        "paste0",
-        "as.integer",
-        "as.double",
-        "as.character",
-        "as.logical",
-        "is.integer",
-        "is.double",
-        "is.character",
-        "is.logical",
-        "is.null",
-        "is.na",
-        "is.vector",
-        "is.list",
-        "sum",
-        "mean",
-        "min",
-        "max",
-        "range",
-        "which",
-        "which.min",
-        "which.max",
-        "seq",
-        "seq_len",
-        "seq_along",
-        "rep",
-        "matrix",
-        "array",
-        "dim",
-        "nrow",
-        "ncol",
-        "apply",
-        "sapply",
-        "lapply",
-        "vapply",
-        "mapply",
-        "t",
-        "cbind",
-        "rbind",
-        "...",
-        "..1",
-        "..2",
-        "..3",
-        "..4",
-        "..5",
-        "missing",
-        "on.exit",
-        "sys.call",
-        "match.arg",
-    ];
-
-    for name in &symbols {
-        let c_name = CString::new(*name).expect("symbol name contains null byte");
-        Rf_install(c_name.as_ptr());
+        R_INITIALIZED.store(false, Ordering::Release);
     }
-}}
-
-pub unsafe fn shutdown_r() { unsafe {
-    if !R_INITIALIZED.load(Ordering::Acquire) {
-        return;
-    }
-
-    let _guard = INIT_LOCK.lock().expect("init lock poisoned");
-
-    set_R_GlobalEnv(std::ptr::null_mut());
-    set_R_BaseEnv(std::ptr::null_mut());
-    set_R_EmptyEnv(std::ptr::null_mut());
-
-    R_INITIALIZED.store(false, Ordering::Release);
-}}
+}
 
 #[cfg(test)]
 mod tests {
@@ -252,13 +258,13 @@ mod tests {
         unsafe {
             initialize_r();
 
-            let plus = Rf_install(CString::new("+").unwrap().as_ptr());
+            let plus = Rf_install(CString::new("+").unwrap_or_default().as_ptr());
             assert!(!plus.is_null());
 
-            let plus2 = Rf_install(CString::new("+").unwrap().as_ptr());
+            let plus2 = Rf_install(CString::new("+").unwrap_or_default().as_ptr());
             assert_eq!(plus, plus2);
 
-            let if_sym = Rf_install(CString::new("if").unwrap().as_ptr());
+            let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
             assert!(!if_sym.is_null());
 
             shutdown_r();

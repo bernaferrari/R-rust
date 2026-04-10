@@ -1102,7 +1102,7 @@ mod tests {
         // Test with a non-null value
         unsafe {
             // Create a symbol
-            let s = Rf_install(CString::new("x").unwrap().as_ptr());
+            let s = Rf_install(CString::new("x").unwrap_or_default().as_ptr());
             let result = checkArgIsSymbol(s);
             assert_eq!(result, s);
         }
@@ -1208,7 +1208,7 @@ mod tests {
     #[test]
     fn test_Seql_same_pointer() {
         unsafe {
-            let s = Rf_install(CString::new("test").unwrap().as_ptr());
+            let s = Rf_install(CString::new("test").unwrap_or_default().as_ptr());
             assert_eq!(Seql(s, s), 1);
         }
     }
@@ -1310,7 +1310,7 @@ mod tests {
             let name_ptr = R_typeToChar_local(iv);
             assert!(!name_ptr.is_null());
             let cs = std::ffi::CStr::from_ptr(name_ptr);
-            assert_eq!(cs.to_str().unwrap(), "integer");
+            assert_eq!(cs.to_str().unwrap_or(""), "integer");
         }
     }
 }

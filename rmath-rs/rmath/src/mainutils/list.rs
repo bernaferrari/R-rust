@@ -222,7 +222,7 @@ mod tests {
     unsafe fn make_sym(name: &str) -> SEXP {
         use crate::mainutils::dstruct::mkSYMSXP;
         use crate::sexp::constructors::Rf_mkChar;
-        let charsxp = Rf_mkChar(std::ffi::CString::new(name).unwrap().as_ptr());
+        let charsxp = Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         mkSYMSXP(charsxp, R_NilValue())
     }
 

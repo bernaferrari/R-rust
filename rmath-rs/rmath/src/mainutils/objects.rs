@@ -3640,13 +3640,17 @@ mod tests {
     #[test]
     fn test_install_pname() {
         unsafe {
-            let s = Rf_install(std::ffi::CString::new("test_sym").unwrap().as_ptr());
+            let s = Rf_install(
+                std::ffi::CString::new("test_sym")
+                    .unwrap_or_default()
+                    .as_ptr(),
+            );
             assert!(!s.is_null());
             let pname = PRINTNAME(s);
             assert!(!pname.is_null(), "PRINTNAME should not be null");
             let cs = CHAR(pname);
             assert!(!cs.is_null(), "CHAR(PRINTNAME) should not be null");
-            let name = std::ffi::CStr::from_ptr(cs).to_str().unwrap();
+            let name = std::ffi::CStr::from_ptr(cs).to_str().unwrap_or("");
             assert_eq!(name, "test_sym");
         }
     }

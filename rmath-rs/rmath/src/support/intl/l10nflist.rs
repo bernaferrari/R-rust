@@ -212,7 +212,8 @@ pub unsafe fn _nl_make_l10nflist(
 
         // Allocate room for the full file name.
         let abs_filename =
-            alloc::alloc(Layout::from_size_align(total_len, 1).expect("unwrap on None/Err")) as *mut c_char;
+            alloc::alloc(Layout::from_size_align(total_len, 1).expect("unwrap on None/Err"))
+                as *mut c_char;
         if abs_filename.is_null() {
             return ptr::null_mut();
         }
@@ -299,7 +300,8 @@ pub unsafe fn _nl_make_l10nflist(
         let entry_size = std::mem::size_of::<loaded_l10nfile>()
             + (extra_successors.saturating_sub(1) * std::mem::size_of::<*mut loaded_l10nfile>());
         let entry_layout =
-            Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>()).expect("unwrap on None/Err");
+            Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>())
+                .expect("unwrap on None/Err");
         retval = alloc::alloc(entry_layout) as *mut loaded_l10nfile;
         if retval.is_null() {
             let layout = Layout::from_size_align(total_len, 1).expect("unwrap on None/Err");
@@ -336,10 +338,7 @@ pub unsafe fn _nl_make_l10nflist(
 ///
 /// # Safety
 /// `codeset` must be a valid pointer to `name_len` bytes.
-pub unsafe fn _nl_normalize_codeset(
-    codeset: *const c_char,
-    name_len: usize,
-) -> *const c_char {
+pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
     unsafe {
         if codeset.is_null() || name_len == 0 {
             let layout = Layout::from_size_align(1, 1).expect("unwrap on None/Err");
@@ -403,15 +402,25 @@ pub unsafe fn _nl_normalize_codeset(
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_normalize_codeset_simple() {
         unsafe {
             let cs = b"UTF-8\0";
             let result = _nl_normalize_codeset(cs.as_ptr() as *const c_char, 5);
             assert!(!result.is_null());
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "utf8");
-            let layout = Layout::from_size_align(s.len() + 1, 1).unwrap();
+            let layout = must(Layout::from_size_align(s.len() + 1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }
@@ -422,9 +431,9 @@ mod tests {
             let cs = b"8859-1\0";
             let result = _nl_normalize_codeset(cs.as_ptr() as *const c_char, 6);
             assert!(!result.is_null());
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "iso88591");
-            let layout = Layout::from_size_align(s.len() + 1, 1).unwrap();
+            let layout = must(Layout::from_size_align(s.len() + 1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }
@@ -485,7 +494,7 @@ mod tests {
             );
             assert!(!result.is_null());
             assert!(!(*result).filename.is_null());
-            let fname = CStr::from_ptr((*result).filename).to_str().unwrap();
+            let fname = CStr::from_ptr((*result).filename).to_str().unwrap_or("");
             assert!(fname.contains("en_US"));
             assert!(fname.contains("messages.mo"));
         }

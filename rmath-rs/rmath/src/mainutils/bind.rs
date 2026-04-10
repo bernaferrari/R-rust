@@ -2958,25 +2958,25 @@ mod tests {
         unsafe {
             let _guard = ProtectStackGuard::new();
             let s = std::ffi::CStr::from_ptr(type2char(0));
-            assert_eq!(s.to_str().unwrap(), "NULL");
+            assert_eq!(s.to_str().unwrap_or(""), "NULL");
 
             let s = std::ffi::CStr::from_ptr(type2char(10));
-            assert_eq!(s.to_str().unwrap(), "logical");
+            assert_eq!(s.to_str().unwrap_or(""), "logical");
 
             let s = std::ffi::CStr::from_ptr(type2char(13));
-            assert_eq!(s.to_str().unwrap(), "integer");
+            assert_eq!(s.to_str().unwrap_or(""), "integer");
 
             let s = std::ffi::CStr::from_ptr(type2char(14));
-            assert_eq!(s.to_str().unwrap(), "double");
+            assert_eq!(s.to_str().unwrap_or(""), "double");
 
             let s = std::ffi::CStr::from_ptr(type2char(16));
-            assert_eq!(s.to_str().unwrap(), "character");
+            assert_eq!(s.to_str().unwrap_or(""), "character");
 
             let s = std::ffi::CStr::from_ptr(type2char(19));
-            assert_eq!(s.to_str().unwrap(), "list");
+            assert_eq!(s.to_str().unwrap_or(""), "list");
 
             let s = std::ffi::CStr::from_ptr(type2char(24));
-            assert_eq!(s.to_str().unwrap(), "raw");
+            assert_eq!(s.to_str().unwrap_or(""), "raw");
         }
     }
 

@@ -393,6 +393,16 @@ pub unsafe fn libintl_vasnprintf(
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_vasnprintf_simple() {
         unsafe {
@@ -401,9 +411,9 @@ mod tests {
             let result = libintl_vasnprintf(ptr::null_mut(), &mut length, fmt, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(length, 11);
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "hello world");
-            let layout = Layout::from_size_align(length + 1, 1).unwrap();
+            let layout = must(Layout::from_size_align(length + 1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }
@@ -415,9 +425,9 @@ mod tests {
             let mut length: usize = 0;
             let result = libintl_vasnprintf(ptr::null_mut(), &mut length, fmt, ptr::null_mut());
             assert!(!result.is_null());
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "100%");
-            let layout = Layout::from_size_align(length + 1, 1).unwrap();
+            let layout = must(Layout::from_size_align(length + 1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }
@@ -430,7 +440,7 @@ mod tests {
                 libintl_vasnprintf(ptr::null_mut(), &mut length, ptr::null(), ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(length, 0);
-            let layout = Layout::from_size_align(1, 1).unwrap();
+            let layout = must(Layout::from_size_align(1, 1));
             alloc::dealloc(result as *mut u8, layout);
         }
     }

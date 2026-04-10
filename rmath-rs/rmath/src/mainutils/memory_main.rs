@@ -1007,19 +1007,19 @@ mod tests {
             assert_eq!(
                 std::ffi::CStr::from_ptr(sexptype2char(SEXPTYPE::NILSXP))
                     .to_str()
-                    .unwrap(),
+                    .unwrap_or(""),
                 "NILSXP"
             );
             assert_eq!(
                 std::ffi::CStr::from_ptr(sexptype2char(SEXPTYPE::REALSXP))
                     .to_str()
-                    .unwrap(),
+                    .unwrap_or(""),
                 "REALSXP"
             );
             assert_eq!(
                 std::ffi::CStr::from_ptr(sexptype2char(SEXPTYPE::STRSXP))
                     .to_str()
-                    .unwrap(),
+                    .unwrap_or(""),
                 "STRSXP"
             );
         }

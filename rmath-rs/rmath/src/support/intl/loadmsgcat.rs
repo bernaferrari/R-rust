@@ -97,10 +97,7 @@ unsafe fn get_sysdep_string_segments(
 /// # Safety
 /// `domain_file` must be a valid pointer to a `loaded_l10nfile` struct.
 /// `domainbinding` may be null.
-pub unsafe fn _nl_load_domain(
-    domain_file: *mut loaded_l10nfile,
-    _domainbinding: *mut binding,
-) {
+pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding: *mut binding) {
     unsafe {
         if domain_file.is_null() {
             return;
@@ -288,7 +285,8 @@ mod tests {
     fn test_load_domain_missing_file() {
         unsafe {
             let fname = b"/nonexistent/path/messages.mo\0";
-            let layout = Layout::from_size_align(fname.len(), 1).unwrap();
+            let layout =
+                Layout::from_size_align(fname.len(), 1).unwrap_or_else(|e| panic!("layout: {e:?}"));
             let fname_buf = alloc::alloc(layout) as *mut c_char;
             ptr::copy_nonoverlapping(fname.as_ptr() as *const c_char, fname_buf, fname.len());
 

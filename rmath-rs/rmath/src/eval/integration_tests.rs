@@ -12,6 +12,17 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::output::{start_capture, stop_capture};
 use crate::sexp::safe::Sexp;
 
+fn some<T>(opt: Option<T>) -> T {
+    opt.unwrap_or_else(|| panic!("unexpected None in test"))
+}
+
+fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+    match r {
+        Ok(v) => v,
+        Err(e) => panic!("test failed: {e:?}"),
+    }
+}
+
 fn make_test_env() -> SEXP {
     unsafe {
         let env = crate::sexp::memory_ext::allocSExp(SEXPTYPE::ENVSXP);
@@ -104,7 +115,7 @@ fn test_eval_integer_vector() {
         assert!(!result.is_null());
         assert_eq!((*result).sxpinfo.type_of(), SEXPTYPE::INTSXP);
 
-        let s = Sexp::from_raw(result).unwrap();
+        let s = some(Sexp::from_raw(result));
         assert_eq!(s.len(), 5);
         assert_eq!(s.integer_elt(0), Some(10));
         assert_eq!(s.integer_elt(4), Some(50));
@@ -125,10 +136,10 @@ fn test_eval_real_vector() {
         let result = crate::eval::eval::Rf_eval(vec, env);
         assert!(!result.is_null());
 
-        let s = Sexp::from_raw(result).unwrap();
+        let s = some(Sexp::from_raw(result));
         assert_eq!(s.len(), 3);
-        assert!((s.real_elt(0).unwrap() - 1.1).abs() < 1e-10);
-        assert!((s.real_elt(2).unwrap() - 3.3).abs() < 1e-10);
+        assert!((some(s.real_elt(0)) - 1.1).abs() < 1e-10);
+        assert!((some(s.real_elt(2)) - 3.3).abs() < 1e-10);
     }
 }
 
@@ -143,7 +154,7 @@ fn test_eval_safe_wrapper() {
 
     let result = crate::eval::eval::eval_safe(val, env);
     assert!(result.is_ok());
-    let r = result.unwrap();
+    let r = must(result);
     assert_eq!(r.integer_elt(0), Some(99));
 }
 
@@ -155,7 +166,7 @@ fn test_eval_null_via_safe() {
 
     let result = crate::eval::eval::eval_safe(null, env);
     assert!(result.is_ok());
-    assert_eq!(result.unwrap().typeof_(), SEXPTYPE::NILSXP);
+    assert_eq!(must(result).typeof_(), SEXPTYPE::NILSXP);
 }
 
 #[test]
@@ -204,7 +215,7 @@ fn test_altrep_new_altrep_data_roundtrip() {
         assert_eq!(d1_val.integer_elt(0), Some(100));
 
         let d2_val = Sexp::from_raw_unchecked(d2);
-        assert!((d2_val.real_elt(0).unwrap() - 3.14).abs() < 1e-10);
+        assert!((some(d2_val.real_elt(0)) - 3.14).abs() < 1e-10);
     }
 }
 
@@ -297,8 +308,8 @@ fn test_arena_alloc_and_eval() {
 
         let s = Sexp::from_raw_unchecked(result);
         assert_eq!(s.len(), 4);
-        assert!((s.real_elt(0).unwrap() - 0.0).abs() < 1e-10);
-        assert!((s.real_elt(3).unwrap() - 6.0).abs() < 1e-10);
+        assert!((some(s.real_elt(0)) - 0.0).abs() < 1e-10);
+        assert!((some(s.real_elt(3)) - 6.0).abs() < 1e-10);
     }
 }
 
@@ -311,8 +322,8 @@ fn test_cons_and_car_cdr() {
         assert!(!cell.is_null());
 
         let s = Sexp::from_raw_unchecked(cell);
-        let car = s.car().unwrap();
-        let cdr = s.cdr().unwrap();
+        let car = some(s.car());
+        let cdr = some(s.cdr());
 
         assert_eq!(car.integer_elt(0), Some(10));
         assert_eq!(cdr.integer_elt(0), Some(20));
@@ -530,7 +541,7 @@ fn test_arena_large_alloc() {
     assert!(!p.is_null());
     assert_eq!(arena.node_count(), 1);
 
-    let s = Sexp::from_raw(p).unwrap();
+    let s = some(Sexp::from_raw(p));
     assert_eq!(s.len(), n as i64);
 }
 
@@ -645,7 +656,7 @@ fn test_eval_arithmetic_direct() {
 
     let result = eval_safe(e, env);
     assert!(result.is_ok(), "eval failed: {:?}", result);
-    let val = result.unwrap();
+    let val = must(result);
     let v = val.real_elt(0).unwrap_or(0.0);
     assert!((v - 3.0).abs() < 1e-10, "expected 3.0, got {}", v);
 
@@ -748,7 +759,7 @@ fn test_eval_math_builtins() {
         let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
         let result = eval_safe(e, env);
         assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
-        let val = result.unwrap();
+        let val = must(result);
         let v = val
             .real_elt(0)
             .or_else(|| val.integer_elt(0).map(|i| i as f64))

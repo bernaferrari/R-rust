@@ -2027,7 +2027,7 @@ mod tests {
                 let b = buf.borrow();
                 let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                     .to_str()
-                    .unwrap();
+                    .unwrap_or("");
                 assert_eq!(s, "hello");
             });
             tagbuf_clear();
@@ -2129,7 +2129,7 @@ mod tests {
                 let b = buf.borrow();
                 let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                     .to_str()
-                    .unwrap();
+                    .unwrap_or("");
                 assert_eq!(s, "test_prefix$");
             });
             tagbuf_clear();

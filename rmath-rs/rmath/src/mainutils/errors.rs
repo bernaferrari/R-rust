@@ -2675,6 +2675,13 @@ fn count_format_args(s: &str) -> usize {
 mod tests {
     use super::*;
 
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_wd() {
         assert_eq!(wd("hello"), 5);
@@ -2955,7 +2962,7 @@ mod tests {
     #[test]
     fn test_format_varargs_null_ap() {
         unsafe {
-            let msg = std::ffi::CString::new("hello world").unwrap();
+            let msg = std::ffi::CString::new("hello world").unwrap_or_default();
             let result = format_varargs(msg.as_ptr(), ptr::null_mut());
             assert_eq!(result, "hello world");
         }
@@ -2973,7 +2980,7 @@ mod tests {
     #[test]
     fn test_format_varargs_to_buf_null_ap() {
         unsafe {
-            let msg = std::ffi::CString::new("test message").unwrap();
+            let msg = std::ffi::CString::new("test message").unwrap_or_default();
             let (s, truncated) = format_varargs_to_buf(msg.as_ptr(), ptr::null_mut());
             assert_eq!(s, "test message");
             assert!(!truncated);
@@ -3062,7 +3069,7 @@ mod tests {
     #[ignore = "cannot catch_unwind across extern \"C\" boundary"]
     fn test_r_missing_arg_error_c() {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-            let msg = std::ffi::CString::new("my_arg").unwrap();
+            let msg = std::ffi::CString::new("my_arg").unwrap_or_default();
             R_MissingArgError_c(msg.as_ptr(), ptr::null_mut(), ptr::null_mut());
         }));
         assert!(result.is_err());
@@ -3150,9 +3157,9 @@ mod tests {
     #[test]
     fn test_rf_errorcall_fmt() {
         unsafe {
-            let fmt = std::ffi::CString::new("hello %s world %s").unwrap();
-            let arg1 = std::ffi::CStr::from_bytes_with_nul(b"beautiful\0").unwrap();
-            let arg2 = std::ffi::CStr::from_bytes_with_nul(b"today\0").unwrap();
+            let fmt = std::ffi::CString::new("hello %s world %s").unwrap_or_default();
+            let arg1 = must(std::ffi::CStr::from_bytes_with_nul(b"beautiful\0"));
+            let arg2 = must(std::ffi::CStr::from_bytes_with_nul(b"today\0"));
             // This function pre-formats and calls verrorcall_dflt, which panics
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 Rf_errorcall_fmt(ptr::null_mut(), fmt.as_ptr(), &[arg1, arg2]);

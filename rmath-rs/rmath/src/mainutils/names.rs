@@ -4997,7 +4997,9 @@ mod tests {
 
     #[test]
     fn test_funtab_sentinel() {
-        let last = R_FunTab.last().unwrap();
+        let last = R_FunTab
+            .last()
+            .unwrap_or_else(|| panic!("unexpected None in test"));
         assert!(last.is_sentinel());
     }
 

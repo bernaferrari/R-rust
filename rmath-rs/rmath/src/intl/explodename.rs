@@ -187,6 +187,16 @@ pub unsafe fn _nl_explode_name(
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+    fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
+        match r {
+            Ok(v) => v,
+            Err(e) => panic!("test failed: {e:?}"),
+        }
+    }
+
     #[test]
     fn test_simple_language() {
         unsafe {
@@ -208,7 +218,7 @@ mod tests {
 
             assert_eq!(mask, 0);
             assert!(!lang.is_null());
-            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap(), "en");
+            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap_or(""), "en");
         }
     }
 
@@ -232,8 +242,8 @@ mod tests {
             );
 
             assert_eq!(mask, types::XPG_TERRITORY);
-            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap(), "en");
-            assert_eq!(std::ffi::CStr::from_ptr(terr).to_str().unwrap(), "US");
+            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap_or(""), "en");
+            assert_eq!(std::ffi::CStr::from_ptr(terr).to_str().unwrap_or(""), "US");
         }
     }
 
@@ -260,16 +270,19 @@ mod tests {
                 mask,
                 types::XPG_TERRITORY | types::XPG_CODESET | types::XPG_NORM_CODESET
             );
-            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap(), "en");
-            assert_eq!(std::ffi::CStr::from_ptr(terr).to_str().unwrap(), "US");
-            assert_eq!(std::ffi::CStr::from_ptr(cs).to_str().unwrap(), "UTF-8");
+            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap_or(""), "en");
+            assert_eq!(std::ffi::CStr::from_ptr(terr).to_str().unwrap_or(""), "US");
+            assert_eq!(std::ffi::CStr::from_ptr(cs).to_str().unwrap_or(""), "UTF-8");
             // Normalized codeset should be set since UTF-8 != UTF_8
             assert!(!norm_cs.is_null());
-            assert_eq!(std::ffi::CStr::from_ptr(norm_cs).to_str().unwrap(), "UTF_8");
+            assert_eq!(
+                std::ffi::CStr::from_ptr(norm_cs).to_str().unwrap_or(""),
+                "UTF_8"
+            );
 
             // Clean up normalized codeset.
             let len = std::ffi::CStr::from_ptr(norm_cs).to_bytes().len() + 1;
-            let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+            let layout = must(std::alloc::Layout::from_size_align(len, 1));
             std::alloc::dealloc(norm_cs as *mut u8, layout);
         }
     }
@@ -300,15 +313,21 @@ mod tests {
                     | types::XPG_MODIFIER
                     | types::XPG_NORM_CODESET
             );
-            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap(), "de");
-            assert_eq!(std::ffi::CStr::from_ptr(terr).to_str().unwrap(), "DE");
-            assert_eq!(std::ffi::CStr::from_ptr(cs).to_str().unwrap(), "ISO-8859-1");
-            assert_eq!(std::ffi::CStr::from_ptr(mod_).to_str().unwrap(), "euro");
+            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap_or(""), "de");
+            assert_eq!(std::ffi::CStr::from_ptr(terr).to_str().unwrap_or(""), "DE");
+            assert_eq!(
+                std::ffi::CStr::from_ptr(cs).to_str().unwrap_or(""),
+                "ISO-8859-1"
+            );
+            assert_eq!(
+                std::ffi::CStr::from_ptr(mod_).to_str().unwrap_or(""),
+                "euro"
+            );
             assert!(!norm_cs.is_null());
 
             // Clean up normalized codeset.
             let len = std::ffi::CStr::from_ptr(norm_cs).to_bytes().len() + 1;
-            let layout = std::alloc::Layout::from_size_align(len, 1).unwrap();
+            let layout = must(std::alloc::Layout::from_size_align(len, 1));
             std::alloc::dealloc(norm_cs as *mut u8, layout);
         }
     }
@@ -357,8 +376,8 @@ mod tests {
             );
 
             assert_eq!(mask, types::XPG_MODIFIER);
-            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap(), "pt");
-            assert_eq!(std::ffi::CStr::from_ptr(mod_).to_str().unwrap(), "BR");
+            assert_eq!(std::ffi::CStr::from_ptr(lang).to_str().unwrap_or(""), "pt");
+            assert_eq!(std::ffi::CStr::from_ptr(mod_).to_str().unwrap_or(""), "BR");
         }
     }
 
@@ -369,9 +388,9 @@ mod tests {
             let result = _nl_normalize_codeset(cs.as_ptr() as *const c_char, 5);
             assert!(!result.is_null());
             let s = std::ffi::CStr::from_ptr(result);
-            assert_eq!(s.to_str().unwrap(), "UTF_8");
+            assert_eq!(s.to_str().unwrap_or(""), "UTF_8");
 
-            let layout = std::alloc::Layout::from_size_align(6, 1).unwrap();
+            let layout = must(std::alloc::Layout::from_size_align(6, 1));
             std::alloc::dealloc(result as *mut u8, layout);
         }
     }

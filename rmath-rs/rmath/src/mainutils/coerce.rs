@@ -2976,22 +2976,22 @@ mod tests {
 
     #[test]
     fn test_complex_from_string_c() {
-        let s = CString::new("3+2i").unwrap();
+        let s = CString::new("3+2i").unwrap_or_default();
         let z = unsafe { ComplexFromStringC(s.as_ptr(), std::ptr::null_mut()) };
         assert_eq!(z.r, 3.0);
         assert_eq!(z.i, 2.0);
 
-        let s2 = CString::new("5i").unwrap();
+        let s2 = CString::new("5i").unwrap_or_default();
         let z2 = unsafe { ComplexFromStringC(s2.as_ptr(), std::ptr::null_mut()) };
         assert_eq!(z2.r, 0.0);
         assert_eq!(z2.i, 5.0);
 
-        let s3 = CString::new("3-4i").unwrap();
+        let s3 = CString::new("3-4i").unwrap_or_default();
         let z3 = unsafe { ComplexFromStringC(s3.as_ptr(), std::ptr::null_mut()) };
         assert_eq!(z3.r, 3.0);
         assert_eq!(z3.i, -4.0);
 
-        let s4 = CString::new("42").unwrap();
+        let s4 = CString::new("42").unwrap_or_default();
         let z4 = unsafe { ComplexFromStringC(s4.as_ptr(), std::ptr::null_mut()) };
         assert_eq!(z4.r, 42.0);
         assert_eq!(z4.i, 0.0);

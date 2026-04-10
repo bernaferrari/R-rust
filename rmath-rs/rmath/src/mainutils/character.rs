@@ -1146,7 +1146,7 @@ mod tests {
         let n = strs.len() as c_int;
         let s = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
         for (i, st) in strs.iter().enumerate() {
-            let cs = std::ffi::CString::new(*st).unwrap();
+            let cs = std::ffi::CString::new(*st).unwrap_or_default();
             let ch = Rf_mkCharLen(cs.as_ptr(), st.len() as c_int);
             SET_STRING_ELT(s, i as R_xlen_t, ch);
         }

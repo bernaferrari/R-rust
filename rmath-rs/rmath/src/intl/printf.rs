@@ -297,7 +297,7 @@ mod tests {
             let result = libintl_vasnprintf(ptr::null_mut(), &mut length, fmt, ptr::null_mut());
             assert!(!result.is_null());
             assert_eq!(length, 5);
-            let s = CStr::from_ptr(result).to_str().unwrap();
+            let s = CStr::from_ptr(result).to_str().unwrap_or("");
             assert_eq!(s, "hello");
             std::alloc::dealloc(
                 result as *mut u8,

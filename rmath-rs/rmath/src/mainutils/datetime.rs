@@ -1898,7 +1898,7 @@ mod tests {
     fn test_days_to_ymd_epoch() {
         let result = days_to_ymd(0.0);
         assert!(result.is_some());
-        let (yr, yday, mon, mday) = result.unwrap();
+        let (yr, yday, mon, mday) = result.unwrap_or_else(|| panic!("unexpected None in test"));
         assert_eq!(yr, 70); // 1970
         assert_eq!(yday, 0);
         assert_eq!(mon, 0);

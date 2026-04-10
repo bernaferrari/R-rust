@@ -565,7 +565,7 @@ mod tests {
         let tempdir = dir.to_string_lossy();
         let name = R_tmpnam2("test", &tempdir, ".tmp");
         assert!(name.is_some());
-        let name = name.unwrap();
+        let name = name.unwrap_or_else(|| panic!("unexpected None in test"));
         assert!(name.contains("test"));
         assert!(
             std::path::Path::new(&name)

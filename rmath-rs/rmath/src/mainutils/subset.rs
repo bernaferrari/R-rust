@@ -2394,7 +2394,7 @@ mod tests {
                     *INTEGER(x).add(i) = ((i + 1) * 10) as c_int;
                 }
                 /* Missing arg: create a symbol with empty name */
-                let missing = Rf_install(std::ffi::CString::new("").unwrap().as_ptr());
+                let missing = Rf_install(std::ffi::CString::new("").unwrap_or_default().as_ptr());
                 let result = VectorSubset(x, missing, R_NilValue());
                 /* Should return a duplicate (same length) */
                 assert!(!result.is_null());

@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn test_install_basic() {
         unsafe {
-            let s1 = Rf_install(CString::new("hello").unwrap().as_ptr());
+            let s1 = Rf_install(CString::new("hello").unwrap_or_default().as_ptr());
             assert!(!s1.is_null());
             assert_eq!((*s1).sxpinfo.type_of(), SEXPTYPE::SYMSXP);
         }
@@ -410,8 +410,8 @@ mod tests {
     #[test]
     fn test_install_interning() {
         unsafe {
-            let s1 = Rf_install(CString::new("myvar").unwrap().as_ptr());
-            let s2 = Rf_install(CString::new("myvar").unwrap().as_ptr());
+            let s1 = Rf_install(CString::new("myvar").unwrap_or_default().as_ptr());
+            let s2 = Rf_install(CString::new("myvar").unwrap_or_default().as_ptr());
             assert_eq!(s1, s2); // Same pointer
         }
     }
@@ -419,8 +419,8 @@ mod tests {
     #[test]
     fn test_install_different() {
         unsafe {
-            let s1 = Rf_install(CString::new("x").unwrap().as_ptr());
-            let s2 = Rf_install(CString::new("y").unwrap().as_ptr());
+            let s1 = Rf_install(CString::new("x").unwrap_or_default().as_ptr());
+            let s2 = Rf_install(CString::new("y").unwrap_or_default().as_ptr());
             assert_ne!(s1, s2);
         }
     }

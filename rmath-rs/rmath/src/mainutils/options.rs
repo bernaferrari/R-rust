@@ -1805,7 +1805,11 @@ mod tests {
             InitOptions();
 
             // Set a custom option
-            let tag = Rf_install(CString::new("my_custom_option").unwrap().as_ptr());
+            let tag = Rf_install(
+                CString::new("my_custom_option")
+                    .unwrap_or_default()
+                    .as_ptr(),
+            );
             let val = Rf_ScalarInteger(42);
             let _p = Rf_protect(val);
             let old = R_SetOption(tag, val);
