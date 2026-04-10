@@ -4,6 +4,7 @@ pub mod bessel_i;
 pub mod bessel_j;
 pub mod bessel_k;
 pub mod bessel_y;
+pub mod beta_util;
 pub mod chebyshev;
 pub mod choose;
 pub mod cospi;
