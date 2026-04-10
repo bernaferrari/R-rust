@@ -104,7 +104,7 @@ pub unsafe fn R_Log10(x: c_double) -> c_double {
     if x.is_finite() && x > 0.0 {
         x.log10()
     } else {
-        f64::NAN /* NA_REAL */
+        crate::sexp::ffi::NA_REAL
     }
 }
 
@@ -247,24 +247,14 @@ pub unsafe fn GConvert(
 /// GConvertX -- convert an x location from one coordinate system to another.
 /// Stub: returns 0.0.
 #[unsafe(no_mangle)]
-pub unsafe fn GConvertX(
-    _x: c_double,
-    _from: GUnit,
-    _to: GUnit,
-    _dd: pGEDevDesc,
-) -> c_double {
+pub unsafe fn GConvertX(_x: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
 /// GConvertY -- convert a y location from one coordinate system to another.
 /// Stub: returns 0.0.
 #[unsafe(no_mangle)]
-pub unsafe fn GConvertY(
-    _y: c_double,
-    _from: GUnit,
-    _to: GUnit,
-    _dd: pGEDevDesc,
-) -> c_double {
+pub unsafe fn GConvertY(_y: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
@@ -672,13 +662,7 @@ pub unsafe fn GBox(_which: c_int, _dd: pGEDevDesc) {
 
 /// GSymbol -- draw one of the R special symbols.
 /// Stub: does nothing.
-pub unsafe fn GSymbol(
-    _x: c_double,
-    _y: c_double,
-    _coords: c_int,
-    _pch: c_int,
-    _dd: pGEDevDesc,
-) {
+pub unsafe fn GSymbol(_x: c_double, _y: c_double, _coords: c_int, _pch: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation converts to DEVICE, clips, calls GESymbol */
 }
 
@@ -718,11 +702,7 @@ pub unsafe fn GExpressionWidth(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c
 
 /// GExpressionHeight -- compute the height of a mathematical expression.
 /// Stub: returns 0.0.
-pub unsafe fn GExpressionHeight(
-    _expr: SEXP,
-    _units: GUnit,
-    _dd: pGEDevDesc,
-) -> c_double {
+pub unsafe fn GExpressionHeight(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 

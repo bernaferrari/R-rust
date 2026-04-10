@@ -220,7 +220,42 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
         use crate::sexp::ffi::SexprecCore;
 
         let all_ops = [
-            "+", "-", "*", "/", "^", "%%", "%/%", "<", ">", "<=", ">=", "==", "!=",
+            "+",
+            "-",
+            "*",
+            "/",
+            "^",
+            "%%",
+            "%/%",
+            "<",
+            ">",
+            "<=",
+            ">=",
+            "==",
+            "!=",
+            "abs",
+            "sqrt",
+            "log",
+            "log2",
+            "log10",
+            "exp",
+            "ceiling",
+            "floor",
+            "trunc",
+            "round",
+            "sign",
+            "length",
+            "sum",
+            "min",
+            "max",
+            "prod",
+            "range",
+            "is.numeric",
+            "is.integer",
+            "is.double",
+            "is.logical",
+            "is.character",
+            "is.null",
         ];
 
         let frame = (*env).data.envsxp.frame;
@@ -273,6 +308,138 @@ pub unsafe fn register_special_forms(env: SEXP) {
             chain = cell;
         }
         SET_FRAME(env, chain);
+    }
+}
+
+pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let op_name = get_op_name(call);
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
+        let v = real_val(x);
+        if let Some(v) = v {
+            let result = match op_name {
+                "abs" => v.abs(),
+                "sqrt" => {
+                    if v < 0.0 {
+                        f64::NAN
+                    } else {
+                        libm::sqrt(v)
+                    }
+                }
+                "log" => libm::log(v),
+                "log2" => libm::log2(v),
+                "log10" => libm::log10(v),
+                "exp" => libm::exp(v),
+                "ceiling" => v.ceil(),
+                "floor" => v.floor(),
+                "trunc" => v.trunc(),
+                "round" => v.round(),
+                "sign" => {
+                    if v > 0.0 {
+                        1.0
+                    } else if v < 0.0 {
+                        -1.0
+                    } else {
+                        0.0
+                    }
+                }
+                _ => return R_NilValue(),
+            };
+            if result.is_finite()
+                && result == result.floor()
+                && result as i64 as f64 == result
+                && (result as i64) >= i32::MIN as i64
+                && (result as i64) <= i32::MAX as i64
+            {
+                let v_int = int_val(x);
+                if v_int.is_some()
+                    || op_name == "ceiling"
+                    || op_name == "floor"
+                    || op_name == "trunc"
+                    || op_name == "round"
+                {
+                    return Rf_ScalarInteger(result as i32);
+                }
+            }
+            Rf_ScalarReal(result)
+        } else {
+            R_NilValue()
+        }
+    }
+}
+
+pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_ScalarInteger(0);
+        }
+        Rf_ScalarInteger(crate::sexp::accessors::LENGTH(x))
+    }
+}
+
+pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let op_name = get_op_name(call);
+        let mut vals: Vec<f64> = Vec::new();
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(v) = real_val(CAR(current)) {
+                vals.push(v);
+            }
+            current = CDR(current);
+        }
+        if vals.is_empty() {
+            return R_NilValue();
+        }
+        let result = match op_name {
+            "sum" => vals.iter().fold(0.0, |a, &b| a + b),
+            "min" => vals.iter().cloned().fold(f64::INFINITY, f64::min),
+            "max" => vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            "prod" => vals.iter().fold(1.0, |a, &b| a * b),
+            "range" => {
+                let lo = vals.iter().cloned().fold(f64::INFINITY, f64::min);
+                let hi = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let v = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
+                let data = crate::sexp::accessors::REAL(v);
+                *data.add(0) = lo;
+                *data.add(1) = hi;
+                return v;
+            }
+            _ => return R_NilValue(),
+        };
+        Rf_ScalarReal(result)
+    }
+}
+
+pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let op_name = get_op_name(call);
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            if op_name == "is.null" {
+                return Rf_ScalarLogical(crate::sexp::ffi::TRUE);
+            }
+            return Rf_ScalarLogical(crate::sexp::ffi::FALSE);
+        }
+        let t = TYPEOF(x);
+        let result = match op_name {
+            "is.numeric" => t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0,
+            "is.integer" => t == SEXPTYPE::INTSXP.0,
+            "is.double" => t == SEXPTYPE::REALSXP.0,
+            "is.logical" => t == SEXPTYPE::LGLSXP.0,
+            "is.character" => t == SEXPTYPE::STRSXP.0,
+            "is.null" => false,
+            _ => false,
+        };
+        Rf_ScalarLogical(if result {
+            crate::sexp::ffi::TRUE
+        } else {
+            crate::sexp::ffi::FALSE
+        })
     }
 }
 

@@ -395,6 +395,19 @@ fn apply_builtin_safe<'a>(
         "<" | ">" | "<=" | ">=" | "==" | "!=" => unsafe {
             super::arithmetic::do_relop(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
+        "abs" | "sqrt" | "log" | "log2" | "log10" | "exp" | "ceiling" | "floor" | "trunc"
+        | "round" | "sign" => unsafe {
+            super::arithmetic::do_math1(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "length" => unsafe {
+            super::arithmetic::do_length(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "sum" | "min" | "max" | "prod" | "range" => unsafe {
+            super::arithmetic::do_summary(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.numeric" | "is.integer" | "is.double" | "is.logical" | "is.character" | "is.null" => unsafe {
+            super::arithmetic::do_is_type(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
