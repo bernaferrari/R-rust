@@ -1005,3 +1005,53 @@ mod tests {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Encoding accessors (GP bit checks)
+// ---------------------------------------------------------------------------
+
+const BYTES_MASK: u16 = 1 << 1; // 0x02
+const LATIN1_MASK: u16 = 1 << 2; // 0x04
+const UTF8_MASK: u16 = 1 << 3; // 0x08
+const IS_ASCII_MASK: u16 = 1 << 6; // 0x40
+
+/// IS_ASCII: check if CHARSXP has ASCII encoding marker.
+pub unsafe fn IS_ASCII(x: SEXP) -> bool {
+    if x.is_null() {
+        return false;
+    }
+    unsafe { ((*x).sxpinfo.gp() & IS_ASCII_MASK) != 0 }
+}
+
+/// IS_UTF8: check if CHARSXP has UTF-8 encoding marker.
+pub unsafe fn IS_UTF8(x: SEXP) -> bool {
+    if x.is_null() {
+        return false;
+    }
+    unsafe { ((*x).sxpinfo.gp() & UTF8_MASK) != 0 }
+}
+
+/// IS_BYTES: check if CHARSXP has bytes encoding marker.
+pub unsafe fn IS_BYTES(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    unsafe { (((*x).sxpinfo.gp() & BYTES_MASK) != 0) as c_int }
+}
+
+/// IS_LATIN1: check if CHARSXP has Latin-1 encoding marker.
+pub unsafe fn IS_LATIN1(x: SEXP) -> bool {
+    if x.is_null() {
+        return false;
+    }
+    unsafe { ((*x).sxpinfo.gp() & LATIN1_MASK) != 0 }
+}
+
+/// ENC_KNOWN: check if CHARSXP has a known encoding.
+/// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.
+pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    unsafe { ((*x).sxpinfo.gp() & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int }
+}

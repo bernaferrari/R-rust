@@ -122,16 +122,16 @@ unsafe fn isNull(x: SEXP) -> bool {
     unsafe { x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 }
 }
 
-/// IS_BYTES check — stub, always returns false.
+/// IS_BYTES check — delegates to sexp::accessors.
 #[inline(always)]
-unsafe fn IS_BYTES(_s: SEXP) -> c_int {
-    0
+unsafe fn IS_BYTES(s: SEXP) -> c_int {
+    crate::sexp::accessors::IS_BYTES(s)
 }
 
-/// ENC_KNOWN check — stub, always returns false.
+/// ENC_KNOWN check — delegates to sexp::accessors.
 #[inline(always)]
-unsafe fn ENC_KNOWN(_s: SEXP) -> c_int {
-    0
+unsafe fn ENC_KNOWN(s: SEXP) -> c_int {
+    crate::sexp::accessors::ENC_KNOWN(s)
 }
 
 /// IS_CACHED check — stub, always returns true.

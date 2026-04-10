@@ -67,28 +67,24 @@ const STRSXP: c_int = 16;
 const RAWSXP: c_int = 24;
 const EXTPTRSXP: c_int = 22;
 
-// ---------------------------------------------------------------------------
-// Encoding stubs
-// ---------------------------------------------------------------------------
-
-fn IS_ASCII(_s: SEXP) -> bool {
-    true
+fn IS_ASCII(s: SEXP) -> bool {
+    unsafe { crate::sexp::accessors::IS_ASCII(s) }
 }
 
-fn IS_UTF8(_s: SEXP) -> bool {
-    false
+fn IS_UTF8(s: SEXP) -> bool {
+    unsafe { crate::sexp::accessors::IS_UTF8(s) }
 }
 
-fn IS_BYTES(_s: SEXP) -> bool {
-    false
+fn IS_BYTES(s: SEXP) -> bool {
+    unsafe { crate::sexp::accessors::IS_BYTES(s) != 0 }
 }
 
-fn IS_LATIN1(_s: SEXP) -> bool {
-    false
+fn IS_LATIN1(s: SEXP) -> bool {
+    unsafe { crate::sexp::accessors::IS_LATIN1(s) }
 }
 
-fn ENC_KNOWN(_s: SEXP) -> c_int {
-    0
+fn ENC_KNOWN(s: SEXP) -> c_int {
+    unsafe { crate::sexp::accessors::ENC_KNOWN(s) }
 }
 
 // ---------------------------------------------------------------------------
@@ -104,25 +100,11 @@ unsafe fn checkArity(_op: SEXP, _args: SEXP) {
 
 // error/errorcall use panic_any(RError{..}) in the full port.
 unsafe fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
-    unsafe {
-        let msg = if !fmt.is_null() {
-            std::ffi::CStr::from_ptr(fmt).to_string_lossy().into_owned()
-        } else {
-            "error".to_string()
-        };
-        std::panic::panic_any(crate::sexp::context::RError { message: msg });
-    }
+    crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
 }
 
 unsafe fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
-    unsafe {
-        let msg = if !fmt.is_null() {
-            std::ffi::CStr::from_ptr(fmt).to_string_lossy().into_owned()
-        } else {
-            "error".to_string()
-        };
-        std::panic::panic_any(crate::sexp::context::RError { message: msg });
-    }
+    crate::mainutils::errors::errorcall(_call, fmt);
 }
 
 unsafe fn asLogical(x: SEXP) -> c_int {
@@ -182,7 +164,7 @@ unsafe fn trCharUTF8(s: SEXP) -> *const c_char {
 }
 
 unsafe fn PrintDefaults() {
-    // PrintDefaults is handled by the print subsystem
+    crate::mainutils::print::PrintDefaults();
 }
 
 unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
@@ -203,34 +185,12 @@ unsafe fn EncodeReal0(
     unsafe { crate::mainutils::printutils::EncodeReal0(x, w, d, e, outdec) }
 }
 
-unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
-    unsafe {
-        thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
-        BUF.with(|buf| {
-            let mut b = buf.borrow_mut();
-            let s = "<environment>\0".as_ptr() as *const c_char;
-            for i in 0..14 {
-                b[i] = *s.add(i);
-            }
-            b[14] = 0;
-            b.as_ptr() as *const c_char
-        })
-    }
+unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
+    crate::mainutils::printutils::EncodeEnvironment(x)
 }
 
-unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    unsafe {
-        thread_local! { static BUF: RefCell<[c_char; 16]> = RefCell::new([0; 16]); }
-        BUF.with(|buf| {
-            let mut b = buf.borrow_mut();
-            let s = "<externalptr>\0".as_ptr() as *const c_char;
-            for i in 0..13 {
-                b[i] = *s.add(i);
-            }
-            b[13] = 0;
-            b.as_ptr() as *const c_char
-        })
-    }
+unsafe fn EncodeExtptr(x: SEXP) -> *const c_char {
+    crate::mainutils::printutils::EncodeExtptr(x)
 }
 
 unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
@@ -385,14 +345,7 @@ unsafe fn R_AsCharacterSymbol() -> SEXP {
 }
 
 unsafe fn NA_STRING() -> SEXP {
-    unsafe {
-        // Access the NA_STRING sentinel. The coerce module's get_na_string()
-        // is private, so we construct it inline using the same approach.
-        // In practice, NA_STRING is a CHARSXP with gp=1 (NA bit set).
-        // For paste_impl, we use a simpler approach: just return what mkChar
-        // would give for "NA" since this is used for display purposes only.
-        Rf_mkChar(b"NA\x00".as_ptr() as *const c_char)
-    }
+    crate::mainutils::relop::NA_STRING()
 }
 
 unsafe fn PRIMARITY(_op: SEXP) -> c_int {
