@@ -203,6 +203,29 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
             "==" => "==",
             "!=" => "!=",
             "!" => "!",
+            "abs" => "abs",
+            "sqrt" => "sqrt",
+            "log" => "log",
+            "log2" => "log2",
+            "log10" => "log10",
+            "exp" => "exp",
+            "ceiling" => "ceiling",
+            "floor" => "floor",
+            "trunc" => "trunc",
+            "round" => "round",
+            "sign" => "sign",
+            "length" => "length",
+            "sum" => "sum",
+            "min" => "min",
+            "max" => "max",
+            "prod" => "prod",
+            "range" => "range",
+            "is.numeric" => "is.numeric",
+            "is.integer" => "is.integer",
+            "is.double" => "is.double",
+            "is.logical" => "is.logical",
+            "is.character" => "is.character",
+            "is.null" => "is.null",
             _ => "",
         },
         Err(_) => "",
@@ -361,9 +384,11 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     || op_name == "trunc"
                     || op_name == "round"
                 {
+                    eprintln!("do_math1: returning ScalarInteger({})", result as i32);
                     return Rf_ScalarInteger(result as i32);
                 }
             }
+            eprintln!("do_math1: returning ScalarReal({})", result);
             Rf_ScalarReal(result)
         } else {
             R_NilValue()

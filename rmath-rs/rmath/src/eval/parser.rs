@@ -20,7 +20,7 @@ use std::ffi::CString;
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_lang2, Rf_lang3, Rf_mkString,
 };
-use crate::sexp::ffi::{FALSE, SEXP, TRUE};
+use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::RArena;
 use crate::sexp::symbol::Rf_install;
@@ -589,7 +589,11 @@ impl Parser {
                     }
                     arg_list = cell;
                 }
-                Ok(Rf_lang2(atom, arg_list))
+                let call = Rf_cons(atom, arg_list);
+                if !call.is_null() {
+                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                Ok(call)
             }
         } else {
             Ok(atom)
