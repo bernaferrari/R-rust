@@ -370,11 +370,66 @@ pub unsafe fn updateGContext(
 }
 
 /* ==============================
- * initGPar -- STUB (initializes grid gpar for a device)
+ * initGPar -- initializes grid gpar for a device
  * ============================== */
 
-pub unsafe fn initGPar(_dd: pGEDevDesc) {
-    // STUB: full initialization requires GE device access
+pub unsafe fn initGPar(dd: pGEDevDesc) {
+    let gp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, GP_FONTFACE + 1));
+
+    // GP_FILL (0): transparent white
+    SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(R_TRANWHITE));
+
+    // GP_COL (1): black (R colour index 1)
+    SET_VECTOR_ELT(gp, GP_COL as R_xlen_t, Rf_ScalarInteger(1));
+
+    // GP_GAMMA (2): 1.0
+    SET_VECTOR_ELT(gp, GP_GAMMA as R_xlen_t, Rf_ScalarReal(1.0));
+
+    // GP_LTY (3): solid line type
+    SET_VECTOR_ELT(gp, GP_LTY as R_xlen_t, Rf_ScalarInteger(0x01010101));
+
+    // GP_LWD (4): line width 1.0
+    SET_VECTOR_ELT(gp, GP_LWD as R_xlen_t, Rf_ScalarReal(1.0));
+
+    // GP_CEX (5): character expansion 1.0
+    SET_VECTOR_ELT(gp, GP_CEX as R_xlen_t, Rf_ScalarReal(1.0));
+
+    // GP_FONTSIZE (6): 12 pt
+    SET_VECTOR_ELT(gp, GP_FONTSIZE as R_xlen_t, Rf_ScalarReal(12.0));
+
+    // GP_LINEHEIGHT (7): 1.2
+    SET_VECTOR_ELT(gp, GP_LINEHEIGHT as R_xlen_t, Rf_ScalarReal(1.2));
+
+    // GP_FONT (8): plain (1)
+    SET_VECTOR_ELT(gp, GP_FONT as R_xlen_t, Rf_ScalarInteger(1));
+
+    // GP_FONTFAMILY (9): "" (default)
+    SET_VECTOR_ELT(
+        gp,
+        GP_FONTFAMILY as R_xlen_t,
+        Rf_mkString(b"\0".as_ptr() as *const c_char),
+    );
+
+    // GP_ALPHA (10): 1.0 (fully opaque)
+    SET_VECTOR_ELT(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
+
+    // GP_LINEEND (11): round cap (GE_ROUND_CAP = 1)
+    SET_VECTOR_ELT(gp, GP_LINEEND as R_xlen_t, Rf_ScalarInteger(1));
+
+    // GP_LINEJOIN (12): round join (GE_ROUND_JOIN = 1)
+    SET_VECTOR_ELT(gp, GP_LINEJOIN as R_xlen_t, Rf_ScalarInteger(1));
+
+    // GP_LINEMITRE (13): 10.0
+    SET_VECTOR_ELT(gp, GP_LINEMITRE as R_xlen_t, Rf_ScalarReal(10.0));
+
+    // GP_LEX (14): line expansion 1.0
+    SET_VECTOR_ELT(gp, GP_LEX as R_xlen_t, Rf_ScalarReal(1.0));
+
+    // GP_FONTFACE (15): 1 (plain)
+    SET_VECTOR_ELT(gp, GP_FONTFACE as R_xlen_t, Rf_ScalarInteger(1));
+
+    setGridStateElement(dd, GSS_GPAR, gp);
+    Rf_unprotect(1);
 }
 
 /* ==============================

@@ -319,7 +319,7 @@ pub unsafe fn L_killGrid() -> SEXP {
  * ============================== */
 
 pub unsafe fn dirtyGridDevice(dd: pGEDevDesc) {
-    // STUB: full implementation requires GE device state
+    GEdeviceDirty(dd);
 }
 
 /* ==============================
@@ -709,13 +709,20 @@ pub unsafe fn L_currentGPar() -> SEXP {
 
 pub unsafe fn L_newpagerecording() -> SEXP {
     let dd = getDevice();
-    // STUB: NewFrameConfirm, GEinitDisplayList
+    if !dd.is_null() {
+        NewFrameConfirm(dd);
+    }
     R_NilValue()
 }
 
 pub unsafe fn L_newpage() -> SEXP {
     let dd = getDevice();
-    // STUB: GENewPage
+    if !dd.is_null() {
+        let currentgp = gridStateElement(dd, GSS_GPAR);
+        let mut gc: [u8; 256] = [0; 256];
+        gcontextFromgpar(currentgp, 0, gc.as_mut_ptr(), dd);
+        GENewPage(gc.as_ptr(), dd);
+    }
     R_NilValue()
 }
 
@@ -1659,23 +1666,57 @@ pub unsafe fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
+    let dd = getDevice();
+    let currentgp = gridStateElement(dd, GSS_GPAR);
+    let n = if !label.is_null() && label != R_NilValue() {
+        LENGTH(label)
+    } else {
+        0
+    };
+
+    let ascent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+    let descent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+    let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+
+    let mut gc: [u8; 256] = [0; 256];
+    gcontextFromgpar(currentgp, 0, gc.as_mut_ptr(), dd);
+
+    for i in 0..n as R_xlen_t {
+        let mut ascent: f64 = 0.0;
+        let mut descent: f64 = 0.0;
+        let mut width: f64 = 0.0;
+        if TYPEOF(label) == SEXPTYPE::EXPRSXP.0 {
+            GEExpressionMetric(
+                VECTOR_ELT(label, i),
+                gc.as_ptr(),
+                &mut ascent,
+                &mut descent,
+                &mut width,
+                dd,
+            );
+        } else {
+            let s = CHAR(STRING_ELT(label, i));
+            let ce = getCharCE(STRING_ELT(label, i));
+            GEStrMetric(
+                s,
+                ce,
+                gc.as_ptr(),
+                &mut ascent,
+                &mut descent,
+                &mut width,
+                dd,
+            );
+        }
+        *REAL(ascent_vec).add(i as usize) = ascent;
+        *REAL(descent_vec).add(i as usize) = descent;
+        *REAL(width_vec).add(i as usize) = width;
+    }
+
     let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
-    SET_VECTOR_ELT(
-        result,
-        0 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, 0),
-    );
-    SET_VECTOR_ELT(
-        result,
-        1 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, 0),
-    );
-    SET_VECTOR_ELT(
-        result,
-        2 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, 0),
-    );
-    Rf_unprotect(1);
+    SET_VECTOR_ELT(result, 0, ascent_vec);
+    SET_VECTOR_ELT(result, 1, descent_vec);
+    SET_VECTOR_ELT(result, 2, width_vec);
+    Rf_unprotect(4);
     result
 }
 

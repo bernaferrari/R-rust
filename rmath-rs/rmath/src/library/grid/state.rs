@@ -141,11 +141,16 @@ pub unsafe fn createGridSystemState() -> SEXP {
 }
 
 /// Initialize the display list for a device.
-/// The top-level viewport goes at the start of the display list.
+///
+/// Creates an empty list to hold grob references, sets the display list
+/// index to 0, and marks the display list as active.
 #[unsafe(no_mangle)]
 pub unsafe fn initDL(dd: pGEDevDesc) {
-    // Stub: since pGEDevDesc is void*, we cannot access dd->gesd.
-    let _ = dd;
+    let dl = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 100));
+    setGridStateElement(dd, GSS_DL, dl);
+    setGridStateElement(dd, GSS_DLINDEX, Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    setGridStateElement(dd, GSS_DLON, crate::sexp::constructors::Rf_ScalarLogical(1));
+    Rf_unprotect(1);
 }
 
 /// Initialize some bits of the system state (called before engine redraw).

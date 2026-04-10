@@ -22,52 +22,88 @@ use crate::sexp::symbol::Rf_install;
 
 /// Get the "class" symbol.
 pub unsafe fn R_ClassSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "names" symbol.
 pub unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("names").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "dim" symbol.
 pub unsafe fn R_DimSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 pub unsafe fn R_DimNamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dimnames").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("dimnames")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "levels" symbol.
 pub unsafe fn R_LevelsSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("levels").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("levels")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "tsp" symbol.
 pub unsafe fn R_TspSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap().as_ptr()) }
+    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
 pub unsafe fn R_SrcRefSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("srcref").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("srcref")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "srcfile" symbol.
 pub unsafe fn R_SrcFileSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("srcfile").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("srcfile")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the "row.names" symbol.
 pub unsafe fn R_RowNamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("row.names").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new("row.names")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
 }
 
 /// Get the ".Environment" symbol.
 pub unsafe fn R_EnvironmentSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new(".Environment").unwrap().as_ptr()) }
+    unsafe {
+        Rf_install(
+            std::ffi::CString::new(".Environment")
+                .unwrap_or_default()
+                .as_ptr(),
+        )
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -225,7 +261,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 19 => "list",
                 _ => "unknown",
             };
-            return Rf_mkString(std::ffi::CString::new(name).unwrap().as_ptr());
+            return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
         class_val
     }
@@ -238,7 +274,11 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
 /// Get the length of an object via the "length" attribute.
 pub unsafe fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
-        let len_sym = Rf_install(std::ffi::CString::new("length").unwrap().as_ptr());
+        let len_sym = Rf_install(
+            std::ffi::CString::new("length")
+                .unwrap_or_default()
+                .as_ptr(),
+        );
         let val = getAttrib(x, len_sym);
         if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP.0 {
             let data = crate::sexp::accessors::INTEGER(val);

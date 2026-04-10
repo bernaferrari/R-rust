@@ -1044,6 +1044,10 @@ mod tests {
     use super::*;
     use crate::sexp::memory::RArena;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+
     #[test]
     fn test_sexp_from_raw_null() {
         assert!(Sexp::from_raw(ptr::null_mut()).is_none());
@@ -1053,7 +1057,7 @@ mod tests {
     fn test_sexp_len_non_vector() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert_eq!(sexp.len(), 0);
         assert!(sexp.is_empty());
         assert!(sexp.is_symbol());
@@ -1063,7 +1067,7 @@ mod tests {
     fn test_sexp_len_vector() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert_eq!(sexp.len(), 5);
         assert!(!sexp.is_empty());
         assert!(sexp.is_vector());
@@ -1073,7 +1077,7 @@ mod tests {
     fn test_sexp_bounds_check() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.integer_elt(5).is_none());
         assert!(sexp.integer_elt(-1).is_none());
         assert!(sexp.integer_elt(0).is_some());
@@ -1084,7 +1088,7 @@ mod tests {
     fn test_pairlist_iter() {
         let mut arena = RArena::new();
         let list = arena.alloc_list_chain(3);
-        let sexp = Sexp::from_raw(list).unwrap();
+        let sexp = some(Sexp::from_raw(list));
         let items: Vec<_> = PairlistIter::new(sexp).collect();
         assert_eq!(items.len(), 3);
     }
@@ -1093,8 +1097,8 @@ mod tests {
     fn test_sexp_partial_eq() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp1 = Sexp::from_raw(ptr).unwrap();
-        let sexp2 = Sexp::from_raw(ptr).unwrap();
+        let sexp1 = some(Sexp::from_raw(ptr));
+        let sexp2 = some(Sexp::from_raw(ptr));
         assert_eq!(sexp1, sexp2);
     }
 
@@ -1102,7 +1106,7 @@ mod tests {
     fn test_sexp_display() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 5);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let s = format!("{}", sexp);
         assert!(s.contains("len=5"));
     }
@@ -1111,7 +1115,7 @@ mod tests {
     fn test_set_integer_elt() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_integer_elt(0, 42));
         assert!(sexp.set_integer_elt(5, 99) == false);
         assert_eq!(sexp.integer_elt(0), Some(42));
@@ -1121,7 +1125,7 @@ mod tests {
     fn test_set_real_elt() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_real_elt(0, 3.14));
         assert!(sexp.set_real_elt(5, 99.0) == false);
         assert_eq!(sexp.real_elt(0), Some(3.14));
@@ -1131,7 +1135,7 @@ mod tests {
     fn test_set_raw_elt() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_raw_elt(0, 0xFF));
         assert!(sexp.set_raw_elt(5, 0xAA) == false);
         assert_eq!(sexp.raw_elt(0), Some(0xFF));
@@ -1141,37 +1145,37 @@ mod tests {
     fn test_as_integer_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let slice = sexp.as_integer_slice();
         assert!(slice.is_some());
-        assert_eq!(slice.unwrap().len(), 3);
+        assert_eq!(some(slice).len(), 3);
     }
 
     #[test]
     fn test_as_real_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let slice = sexp.as_real_slice();
         assert!(slice.is_some());
-        assert_eq!(slice.unwrap().len(), 4);
+        assert_eq!(some(slice).len(), 4);
     }
 
     #[test]
     fn test_as_raw_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 5);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let slice = sexp.as_raw_slice();
         assert!(slice.is_some());
-        assert_eq!(slice.unwrap().len(), 5);
+        assert_eq!(some(slice).len(), 5);
     }
 
     #[test]
     fn test_iter_integer() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let items: Vec<_> = sexp.iter_integer().collect();
         assert_eq!(items.len(), 3);
     }
@@ -1180,7 +1184,7 @@ mod tests {
     fn test_iter_real() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let items: Vec<_> = sexp.iter_real().collect();
         assert_eq!(items.len(), 4);
     }
@@ -1189,7 +1193,7 @@ mod tests {
     fn test_iter_raw() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 5);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let items: Vec<_> = sexp.iter_raw().collect();
         assert_eq!(items.len(), 5);
     }
@@ -1198,8 +1202,8 @@ mod tests {
     fn test_sexp_equality() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
-        let a = Sexp::from_raw(ptr).unwrap();
-        let b = Sexp::from_raw(ptr).unwrap();
+        let a = some(Sexp::from_raw(ptr));
+        let b = some(Sexp::from_raw(ptr));
         assert_eq!(a, b);
         assert_eq!(a.len(), b.len());
     }
@@ -1210,8 +1214,8 @@ mod tests {
         let mut arena = RArena::new();
         let p1 = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
         let p2 = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let a = Sexp::from_raw(p1).unwrap();
-        let b = Sexp::from_raw(p2).unwrap();
+        let a = some(Sexp::from_raw(p1));
+        let b = some(Sexp::from_raw(p2));
         let mut set = HashSet::new();
         set.insert(a);
         assert!(set.contains(&a));
@@ -1222,7 +1226,7 @@ mod tests {
     fn test_sexp_display_len10() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 10);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         let s = format!("{}", sexp);
         assert!(s.contains("len=10"));
     }
@@ -1231,7 +1235,7 @@ mod tests {
     fn test_sexp_mutation() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert_eq!(sexp.integer_elt(0), Some(0));
         assert!(sexp.set_integer_elt(0, 42));
         assert!(sexp.set_integer_elt(1, -7));
@@ -1247,7 +1251,7 @@ mod tests {
     fn test_sexp_real_mutation() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_real_elt(0, 1.5));
         assert!(sexp.set_real_elt(1, 2.5));
         assert!(sexp.set_real_elt(2, 3.5));
@@ -1260,12 +1264,12 @@ mod tests {
     fn test_sexp_slice_views() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 4);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_integer_elt(0, 10));
         assert!(sexp.set_integer_elt(1, 20));
         assert!(sexp.set_integer_elt(2, 30));
         assert!(sexp.set_integer_elt(3, 40));
-        let slice = sexp.as_integer_slice().unwrap();
+        let slice = some(sexp.as_integer_slice());
         assert_eq!(slice, &[10, 20, 30, 40]);
     }
 
@@ -1273,11 +1277,11 @@ mod tests {
     fn test_sexp_real_slice() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_real_elt(0, 1.1));
         assert!(sexp.set_real_elt(1, 2.2));
         assert!(sexp.set_real_elt(2, 3.3));
-        let slice = sexp.as_real_slice().unwrap();
+        let slice = some(sexp.as_real_slice());
         assert!((slice[0] - 1.1).abs() < f64::EPSILON);
         assert!((slice[1] - 2.2).abs() < f64::EPSILON);
         assert!((slice[2] - 3.3).abs() < f64::EPSILON);
@@ -1287,7 +1291,7 @@ mod tests {
     fn test_sexp_iterators() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 5);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         for i in 0..5 {
             sexp.set_integer_elt(i, (i * 10) as i32);
         }
@@ -1299,7 +1303,7 @@ mod tests {
     fn test_sexp_real_iterator() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 4);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         for i in 0..4 {
             sexp.set_real_elt(i, i as f64 * 0.5);
         }
@@ -1314,12 +1318,12 @@ mod tests {
     fn test_sexp_raw_mutation() {
         let mut arena = RArena::new();
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 4);
-        let sexp = Sexp::from_raw(ptr).unwrap();
+        let sexp = some(Sexp::from_raw(ptr));
         assert!(sexp.set_raw_elt(0, 0xDE));
         assert!(sexp.set_raw_elt(1, 0xAD));
         assert!(sexp.set_raw_elt(2, 0xBE));
         assert!(sexp.set_raw_elt(3, 0xEF));
-        let slice = sexp.as_raw_slice().unwrap();
+        let slice = some(sexp.as_raw_slice());
         assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
     }
 
@@ -1332,18 +1336,18 @@ mod tests {
         let list = arena.alloc_list_chain(2);
         let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
 
-        assert!(Sexp::from_raw(sym).unwrap().is_symbol());
-        assert!(Sexp::from_raw(closure).unwrap().is_closure());
-        assert!(Sexp::from_raw(env).unwrap().is_environment());
-        assert!(Sexp::from_raw(list).unwrap().is_pairlist());
-        assert!(Sexp::from_raw(vec).unwrap().is_vector());
-        assert!(Sexp::from_raw(vec).unwrap().is_atomic());
+        assert!(some(Sexp::from_raw(sym)).is_symbol());
+        assert!(some(Sexp::from_raw(closure)).is_closure());
+        assert!(some(Sexp::from_raw(env)).is_environment());
+        assert!(some(Sexp::from_raw(list)).is_pairlist());
+        assert!(some(Sexp::from_raw(vec)).is_vector());
+        assert!(some(Sexp::from_raw(vec)).is_atomic());
     }
 
     #[test]
     fn test_pairlist_iter_empty() {
         let nil = unsafe { crate::sexp::globals::R_NilValue() };
-        let sexp = Sexp::from_raw(nil).unwrap();
+        let sexp = some(Sexp::from_raw(nil));
         let items: Vec<_> = PairlistIter::new(sexp).collect();
         assert_eq!(items.len(), 0);
     }
@@ -1358,12 +1362,12 @@ mod tests {
             unsafe { crate::sexp::globals::R_NilValue() },
             tag_val,
         );
-        let sexp = Sexp::from_raw(cell).unwrap();
+        let sexp = some(Sexp::from_raw(cell));
         assert!(sexp.car().is_some());
         assert!(sexp.cdr().is_some());
         assert!(sexp.tag().is_some());
-        assert!(sexp.car().unwrap().is_symbol() == false);
-        assert!(sexp.tag().unwrap().is_symbol());
+        assert!(some(sexp.car()).is_symbol() == false);
+        assert!(some(sexp.tag()).is_symbol());
     }
 
     #[test]
@@ -1378,7 +1382,7 @@ mod tests {
             (*closure).data.closxp.body = body;
             (*closure).data.closxp.env = env;
         }
-        let sexp = Sexp::from_raw(closure).unwrap();
+        let sexp = some(Sexp::from_raw(closure));
         assert!(sexp.is_closure());
         assert!(sexp.formals().is_some());
         assert!(sexp.body().is_some());
@@ -1396,7 +1400,7 @@ mod tests {
             (*env).data.envsxp.enclos = enclos;
             (*env).data.envsxp.hashtab = ptr::null_mut();
         }
-        let sexp = Sexp::from_raw(env).unwrap();
+        let sexp = some(Sexp::from_raw(env));
         assert!(sexp.is_environment());
         assert!(sexp.frame().is_some());
         assert!(sexp.enclos().is_some());
@@ -1406,7 +1410,7 @@ mod tests {
     fn test_sexp_slice_wrong_type() {
         let mut arena = RArena::new();
         let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let sexp = Sexp::from_raw(sym).unwrap();
+        let sexp = some(Sexp::from_raw(sym));
         assert!(sexp.as_integer_slice().is_none());
         assert!(sexp.as_real_slice().is_none());
         assert!(sexp.as_raw_slice().is_none());
@@ -1419,7 +1423,7 @@ mod tests {
         unsafe {
             (*special).data.primsxp.offset = 42;
         }
-        let sexp = Sexp::from_raw(special).unwrap();
+        let sexp = some(Sexp::from_raw(special));
         assert!(sexp.is_special());
         assert!(sexp.is_primitive());
         assert!(!sexp.is_builtin());
@@ -1429,14 +1433,14 @@ mod tests {
         unsafe {
             (*builtin).data.primsxp.offset = 7;
         }
-        let sexp2 = Sexp::from_raw(builtin).unwrap();
+        let sexp2 = some(Sexp::from_raw(builtin));
         assert!(sexp2.is_builtin());
         assert!(sexp2.is_primitive());
         assert!(!sexp2.is_special());
         assert_eq!(sexp2.primoffset(), Some(7));
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
-        let sexp3 = Sexp::from_raw(other).unwrap();
+        let sexp3 = some(Sexp::from_raw(other));
         assert!(!sexp3.is_primitive());
         assert_eq!(sexp3.primoffset(), None);
     }
@@ -1445,14 +1449,14 @@ mod tests {
     fn test_sexp_charsxp_accessors() {
         let mut arena = RArena::new();
         let charsxp = arena.alloc_charsxp(b"hello world");
-        let sexp = Sexp::from_raw(charsxp).unwrap();
+        let sexp = some(Sexp::from_raw(charsxp));
         assert!(sexp.is_charsxp());
         assert_eq!(sexp.char_len(), Some(11));
         assert_eq!(sexp.as_bytes(), Some(&b"hello world"[..]));
         assert_eq!(sexp.as_str(), Some("hello world"));
 
         let other = arena.alloc_node(SEXPTYPE::INTSXP);
-        let sexp2 = Sexp::from_raw(other).unwrap();
+        let sexp2 = some(Sexp::from_raw(other));
         assert!(!sexp2.is_charsxp());
         assert!(sexp2.as_bytes().is_none());
         assert!(sexp2.as_str().is_none());
@@ -1462,7 +1466,7 @@ mod tests {
     fn test_sexp_complex_accessors() {
         let mut arena = RArena::new();
         let vec = arena.alloc_vector(SEXPTYPE::CPLXSXP, 3);
-        let sexp = Sexp::from_raw(vec).unwrap();
+        let sexp = some(Sexp::from_raw(vec));
 
         let c1 = Rcomplex { r: 1.0, i: 2.0 };
         let c2 = Rcomplex { r: 3.0, i: 4.0 };
@@ -1477,7 +1481,7 @@ mod tests {
         assert_eq!(sexp.complex_elt(1), Some(c2));
         assert_eq!(sexp.complex_elt(2), Some(c3));
 
-        let slice = sexp.as_complex_slice().unwrap();
+        let slice = some(sexp.as_complex_slice());
         assert_eq!(slice.len(), 3);
         assert_eq!(slice[0].r, 1.0);
         assert_eq!(slice[2].i, 6.0);
@@ -1491,11 +1495,11 @@ mod tests {
         let mut arena = RArena::new();
 
         let dots = arena.alloc_node(SEXPTYPE::DOTSXP);
-        let sexp = Sexp::from_raw(dots).unwrap();
+        let sexp = some(Sexp::from_raw(dots));
         assert!(sexp.is_dots());
 
         let bc = arena.alloc_node(SEXPTYPE::BCODESXP);
-        let sexp2 = Sexp::from_raw(bc).unwrap();
+        let sexp2 = some(Sexp::from_raw(bc));
         assert!(sexp2.is_bytecode());
 
         let ext = arena.alloc_node(SEXPTYPE::EXTPTRSXP);
@@ -1506,25 +1510,25 @@ mod tests {
                 std::ptr::null_mut(),
             ];
         }
-        let sexp3 = Sexp::from_raw(ext).unwrap();
+        let sexp3 = some(Sexp::from_raw(ext));
         assert!(sexp3.is_extptr());
         assert!(sexp3.extptr_ptr().is_some());
         assert!(sexp3.extptr_tag().is_none());
 
         let wr = arena.alloc_node(SEXPTYPE::WEAKREFSXP);
-        let sexp4 = Sexp::from_raw(wr).unwrap();
+        let sexp4 = some(Sexp::from_raw(wr));
         assert!(sexp4.is_weakref());
 
         let s4 = arena.alloc_node(SEXPTYPE::OBJSXP);
-        let sexp5 = Sexp::from_raw(s4).unwrap();
+        let sexp5 = some(Sexp::from_raw(s4));
         assert!(sexp5.is_s4());
 
         let expr = arena.alloc_vector(SEXPTYPE::EXPRSXP, 0);
-        let sexp6 = Sexp::from_raw(expr).unwrap();
+        let sexp6 = some(Sexp::from_raw(expr));
         assert!(sexp6.is_expression());
 
         let clos = arena.alloc_node(SEXPTYPE::CLOSXP);
-        let sexp7 = Sexp::from_raw(clos).unwrap();
+        let sexp7 = some(Sexp::from_raw(clos));
         assert!(sexp7.is_function());
         assert!(sexp.is_function() == false);
     }

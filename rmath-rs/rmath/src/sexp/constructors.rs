@@ -76,29 +76,33 @@ pub unsafe fn Rf_mkChar(s: *const c_char) -> SEXP {
     }
 }
 
-pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP { unsafe {
-    use std::alloc::{Layout, alloc};
-    if s.is_null() {
-        return ptr::null_mut();
+pub unsafe fn persistent_mkChar(s: *const c_char) -> SEXP {
+    unsafe {
+        use std::alloc::{Layout, alloc};
+        if s.is_null() {
+            return ptr::null_mut();
+        }
+        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+        let len = bytes.len() as R_xlen_t;
+        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
+        boxed.data = SexprecData {
+            charsxp_truelen: len,
+        };
+        let charsxp: SEXP = &mut *boxed as *mut _;
+        let total = (len as usize) + 1;
+        let Ok(layout) = Layout::from_size_align(total, 1) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = alloc(layout);
+        if data_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
+        *data_ptr.add(bytes.len()) = 0;
+        (*charsxp).gengc_next_node = data_ptr as SEXP;
+        Box::leak(boxed)
     }
-    let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-    let len = bytes.len() as R_xlen_t;
-    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
-    boxed.data = SexprecData {
-        charsxp_truelen: len,
-    };
-    let charsxp: SEXP = &mut *boxed as *mut _;
-    let total = (len as usize) + 1;
-    let layout = Layout::from_size_align(total, 1).unwrap();
-    let data_ptr = alloc(layout);
-    if data_ptr.is_null() {
-        return ptr::null_mut();
-    }
-    std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
-    *data_ptr.add(bytes.len()) = 0;
-    (*charsxp).gengc_next_node = data_ptr as SEXP;
-    Box::leak(boxed)
-}}
+}
 
 /// Create a CHARSXP from a C string with known length.
 pub unsafe fn Rf_mkCharLen(s: *const c_char, len: c_int) -> SEXP {
@@ -459,7 +463,7 @@ mod tests {
     #[test]
     fn test_mk_string() {
         unsafe {
-            let s = Rf_mkString(std::ffi::CString::new("hello").unwrap().as_ptr());
+            let s = Rf_mkString(b"hello\0".as_ptr() as *const c_char);
             assert!(!s.is_null());
             assert_eq!((*s).sxpinfo.type_of(), SEXPTYPE::STRSXP);
             assert_eq!((*s).vecsxp_length(), 1);
@@ -469,7 +473,7 @@ mod tests {
     #[test]
     fn test_mk_char() {
         unsafe {
-            let cs = Rf_mkChar(std::ffi::CString::new("test").unwrap().as_ptr());
+            let cs = Rf_mkChar(b"test\0".as_ptr() as *const c_char);
             assert!(!cs.is_null());
             assert_eq!((*cs).sxpinfo.type_of(), SEXPTYPE::CHARSXP);
         }
@@ -502,88 +506,109 @@ mod tests {
     }
 }
 
-pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP { unsafe {
-    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
-    let cell: SEXP = &mut *boxed as *mut _;
-    (*cell).data.listsxp.carval = car;
-    (*cell).data.listsxp.cdrval = cdr;
-    (*cell).data.listsxp.tagval = ptr::null_mut();
-    Box::leak(boxed)
-}}
-
-pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP { unsafe {
-    use std::alloc::{Layout, alloc};
-    let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1));
-    let layout = Layout::from_size_align(4, 4).unwrap();
-    let data_ptr = alloc(layout);
-    if data_ptr.is_null() {
-        return ptr::null_mut();
+pub unsafe fn persistent_cons(car: SEXP, cdr: SEXP) -> SEXP {
+    unsafe {
+        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
+        let cell: SEXP = &mut *boxed as *mut _;
+        (*cell).data.listsxp.carval = car;
+        (*cell).data.listsxp.cdrval = cdr;
+        (*cell).data.listsxp.tagval = ptr::null_mut();
+        Box::leak(boxed)
     }
-    *(data_ptr as *mut c_int) = val;
-    let ptr: SEXP = &mut *boxed as *mut _;
-    (*ptr).gengc_next_node = data_ptr as SEXP;
-    Box::leak(boxed)
-}}
+}
 
-pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP { unsafe {
-    use std::alloc::{Layout, alloc};
-    let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1));
-    let layout = Layout::from_size_align(4, 4).unwrap();
-    let data_ptr = alloc(layout);
-    if data_ptr.is_null() {
-        return ptr::null_mut();
+pub unsafe fn persistent_scalar_integer(val: c_int) -> SEXP {
+    unsafe {
+        use std::alloc::{Layout, alloc};
+        let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::INTSXP, 1));
+        let Ok(layout) = Layout::from_size_align(4, 4) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = alloc(layout);
+        if data_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        *(data_ptr as *mut c_int) = val;
+        let ptr: SEXP = &mut *boxed as *mut _;
+        (*ptr).gengc_next_node = data_ptr as SEXP;
+        Box::leak(boxed)
     }
-    *(data_ptr as *mut c_int) = val;
-    let ptr: SEXP = &mut *boxed as *mut _;
-    (*ptr).gengc_next_node = data_ptr as SEXP;
-    Box::leak(boxed)
-}}
+}
 
-pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP { unsafe {
-    use std::alloc::{Layout, alloc};
-    let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 1));
-    let layout = Layout::from_size_align(8, 8).unwrap();
-    let data_ptr = alloc(layout);
-    if data_ptr.is_null() {
-        return ptr::null_mut();
+pub unsafe fn persistent_scalar_logical(val: c_int) -> SEXP {
+    unsafe {
+        use std::alloc::{Layout, alloc};
+        let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::LGLSXP, 1));
+        let Ok(layout) = Layout::from_size_align(4, 4) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = alloc(layout);
+        if data_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        *(data_ptr as *mut c_int) = val;
+        let ptr: SEXP = &mut *boxed as *mut _;
+        (*ptr).gengc_next_node = data_ptr as SEXP;
+        Box::leak(boxed)
     }
-    *(data_ptr as *mut c_double) = val;
-    let ptr: SEXP = &mut *boxed as *mut _;
-    (*ptr).gengc_next_node = data_ptr as SEXP;
-    Box::leak(boxed)
-}}
+}
 
-pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP { unsafe {
-    use std::alloc::{Layout, alloc};
-    if s.is_null() {
-        return ptr::null_mut();
+pub unsafe fn persistent_scalar_real(val: c_double) -> SEXP {
+    unsafe {
+        use std::alloc::{Layout, alloc};
+        let mut boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::REALSXP, 1));
+        let Ok(layout) = Layout::from_size_align(8, 8) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = alloc(layout);
+        if data_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        *(data_ptr as *mut c_double) = val;
+        let ptr: SEXP = &mut *boxed as *mut _;
+        (*ptr).gengc_next_node = data_ptr as SEXP;
+        Box::leak(boxed)
     }
-    let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
-    let len = bytes.len() as R_xlen_t;
+}
 
-    let charsxp_boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
-    let charsxp: SEXP = Box::leak(charsxp_boxed);
-    (*charsxp).data = SexprecData {
-        charsxp_truelen: len,
-    };
-    let char_layout = Layout::from_size_align(len as usize + 1, 1).unwrap();
-    let char_data = alloc(char_layout);
-    if char_data.is_null() {
-        return ptr::null_mut();
-    }
-    std::ptr::copy_nonoverlapping(bytes.as_ptr(), char_data, bytes.len());
-    *char_data.add(bytes.len()) = 0;
-    (*charsxp).gengc_next_node = char_data as SEXP;
+pub unsafe fn persistent_mkstring(s: *const c_char) -> SEXP {
+    unsafe {
+        use std::alloc::{Layout, alloc};
+        if s.is_null() {
+            return ptr::null_mut();
+        }
+        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+        let len = bytes.len() as R_xlen_t;
 
-    let mut str_boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::STRSXP, 1));
-    let str_ptr: SEXP = &mut *str_boxed as *mut _;
-    let str_layout =
-        Layout::from_size_align(std::mem::size_of::<SEXP>(), std::mem::align_of::<SEXP>()).unwrap();
-    let str_data = alloc(str_layout);
-    if str_data.is_null() {
-        return ptr::null_mut();
+        let charsxp_boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
+        let charsxp: SEXP = Box::leak(charsxp_boxed);
+        (*charsxp).data = SexprecData {
+            charsxp_truelen: len,
+        };
+        let Ok(char_layout) = Layout::from_size_align(len as usize + 1, 1) else {
+            return ptr::null_mut();
+        };
+        let char_data = alloc(char_layout);
+        if char_data.is_null() {
+            return ptr::null_mut();
+        }
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), char_data, bytes.len());
+        *char_data.add(bytes.len()) = 0;
+        (*charsxp).gengc_next_node = char_data as SEXP;
+
+        let mut str_boxed = Box::new(SexprecCore::new_vector(SEXPTYPE::STRSXP, 1));
+        let str_ptr: SEXP = &mut *str_boxed as *mut _;
+        let Ok(str_layout) =
+            Layout::from_size_align(std::mem::size_of::<SEXP>(), std::mem::align_of::<SEXP>())
+        else {
+            return ptr::null_mut();
+        };
+        let str_data = alloc(str_layout);
+        if str_data.is_null() {
+            return ptr::null_mut();
+        }
+        *(str_data as *mut SEXP) = charsxp;
+        (*str_ptr).gengc_next_node = str_data as SEXP;
+        Box::leak(str_boxed)
     }
-    *(str_data as *mut SEXP) = charsxp;
-    (*str_ptr).gengc_next_node = str_data as SEXP;
-    Box::leak(str_boxed)
-}}
+}

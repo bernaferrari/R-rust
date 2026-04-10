@@ -759,9 +759,13 @@ pub fn lang3_in(
 mod tests {
     use super::*;
 
+    fn some<T>(opt: Option<T>) -> T {
+        opt.unwrap_or_else(|| panic!("unexpected None in test"))
+    }
+
     #[test]
     fn test_int_vector_builder() {
-        let vec = IntVector::new(&[1, 2, 3]).build().unwrap();
+        let vec = some(IntVector::new(&[1, 2, 3]).build());
         assert!(vec.is_vector());
         assert_eq!(vec.len(), 3);
         assert_eq!(vec.integer_elt(0), Some(1));
@@ -771,7 +775,7 @@ mod tests {
 
     #[test]
     fn test_int_vector_zeros() {
-        let vec = IntVector::zeros(5).build().unwrap();
+        let vec = some(IntVector::zeros(5).build());
         assert_eq!(vec.len(), 5);
         for i in 0..5 {
             assert_eq!(vec.integer_elt(i as R_xlen_t), Some(0));
@@ -780,7 +784,7 @@ mod tests {
 
     #[test]
     fn test_int_vector_na() {
-        let vec = IntVector::with_na(3).build().unwrap();
+        let vec = some(IntVector::with_na(3).build());
         assert_eq!(vec.len(), 3);
         for i in 0..3 {
             assert_eq!(
@@ -792,24 +796,24 @@ mod tests {
 
     #[test]
     fn test_real_vector_builder() {
-        let vec = RealVector::new(&[1.5, 2.5, 3.5]).build().unwrap();
+        let vec = some(RealVector::new(&[1.5, 2.5, 3.5]).build());
         assert_eq!(vec.len(), 3);
-        assert!((vec.real_elt(0).unwrap() - 1.5).abs() < f64::EPSILON);
-        assert!((vec.real_elt(1).unwrap() - 2.5).abs() < f64::EPSILON);
-        assert!((vec.real_elt(2).unwrap() - 3.5).abs() < f64::EPSILON);
+        assert!((some(vec.real_elt(0)) - 1.5).abs() < f64::EPSILON);
+        assert!((some(vec.real_elt(1)) - 2.5).abs() < f64::EPSILON);
+        assert!((some(vec.real_elt(2)) - 3.5).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_real_vector_seq() {
-        let vec = RealVector::seq(0.0, 1.0, 0.25).build().unwrap();
+        let vec = some(RealVector::seq(0.0, 1.0, 0.25).build());
         assert_eq!(vec.len(), 5);
-        assert!((vec.real_elt(0).unwrap() - 0.0).abs() < f64::EPSILON);
-        assert!((vec.real_elt(4).unwrap() - 1.0).abs() < f64::EPSILON);
+        assert!((some(vec.real_elt(0)) - 0.0).abs() < f64::EPSILON);
+        assert!((some(vec.real_elt(4)) - 1.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_logical_vector_builder() {
-        let vec = LogicalVector::new(&[true, false, true]).build().unwrap();
+        let vec = some(LogicalVector::new(&[true, false, true]).build());
         assert_eq!(vec.len(), 3);
         assert_eq!(vec.logical_elt(0), Some(1));
         assert_eq!(vec.logical_elt(1), Some(0));
@@ -818,7 +822,7 @@ mod tests {
 
     #[test]
     fn test_raw_vector_builder() {
-        let vec = RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build().unwrap();
+        let vec = some(RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build());
         assert_eq!(vec.len(), 4);
         assert_eq!(vec.raw_elt(0), Some(0xDE));
         assert_eq!(vec.raw_elt(1), Some(0xAD));
@@ -828,7 +832,7 @@ mod tests {
 
     #[test]
     fn test_string_vector_builder() {
-        let vec = StringVector::new(&["hello", "world"]).build().unwrap();
+        let vec = some(StringVector::new(&["hello", "world"]).build());
         assert_eq!(vec.len(), 2);
         assert!(vec.string_elt(0).is_some());
         assert!(vec.string_elt(1).is_some());
@@ -836,13 +840,14 @@ mod tests {
 
     #[test]
     fn test_generic_vector_builder() {
-        let int_v = IntVector::new(&[1, 2]).build().unwrap();
-        let real_v = RealVector::new(&[3.0, 4.0]).build().unwrap();
-        let vec = GenericVector::with_length(2)
-            .set(0, int_v.as_raw())
-            .set(1, real_v.as_raw())
-            .build()
-            .unwrap();
+        let int_v = some(IntVector::new(&[1, 2]).build());
+        let real_v = some(RealVector::new(&[3.0, 4.0]).build());
+        let vec = some(
+            GenericVector::with_length(2)
+                .set(0, int_v.as_raw())
+                .set(1, real_v.as_raw())
+                .build(),
+        );
         assert_eq!(vec.len(), 2);
         assert!(vec.vector_elt(0).is_some());
         assert!(vec.vector_elt(1).is_some());
@@ -853,11 +858,12 @@ mod tests {
         let mut arena = crate::sexp::memory::RArena::new();
         let a = arena.alloc_node(SEXPTYPE::INTSXP);
         let b = arena.alloc_node(SEXPTYPE::REALSXP);
-        let list = PairlistBuilder::new()
-            .push_untagged(a)
-            .push_untagged(b)
-            .build()
-            .unwrap();
+        let list = some(
+            PairlistBuilder::new()
+                .push_untagged(a)
+                .push_untagged(b)
+                .build(),
+        );
         assert!(list.is_pairlist());
         assert!(list.car().is_some());
         assert!(list.cdr().is_some());
@@ -865,53 +871,53 @@ mod tests {
 
     #[test]
     fn test_convenience_functions() {
-        let v1 = int_vec(&[10, 20, 30]).unwrap();
+        let v1 = some(int_vec(&[10, 20, 30]));
         assert_eq!(v1.integer_elt(0), Some(10));
 
-        let v2 = real_vec(&[1.0, 2.0]).unwrap();
-        assert!((v2.real_elt(0).unwrap() - 1.0).abs() < f64::EPSILON);
+        let v2 = some(real_vec(&[1.0, 2.0]));
+        assert!((some(v2.real_elt(0)) - 1.0).abs() < f64::EPSILON);
 
-        let v3 = logical_vec(&[true, false]).unwrap();
+        let v3 = some(logical_vec(&[true, false]));
         assert_eq!(v3.logical_elt(0), Some(1));
 
-        let v4 = raw_vec(&[0xFF]).unwrap();
+        let v4 = some(raw_vec(&[0xFF]));
         assert_eq!(v4.raw_elt(0), Some(0xFF));
 
-        let v5 = string_vec(&["test"]).unwrap();
+        let v5 = some(string_vec(&["test"]));
         assert_eq!(v5.len(), 1);
 
-        let v6 = seq(0.0, 2.0, 1.0).unwrap();
+        let v6 = some(seq(0.0, 2.0, 1.0));
         assert_eq!(v6.len(), 3);
     }
 
     #[test]
     fn test_scalar_constructors() {
-        let si = scalar_integer(42).unwrap();
+        let si = some(scalar_integer(42));
         assert_eq!(si.integer_elt(0), Some(42));
         assert_eq!(si.len(), 1);
 
-        let sr = scalar_real(3.14).unwrap();
-        assert!((sr.real_elt(0).unwrap() - 3.14).abs() < f64::EPSILON);
+        let sr = some(scalar_real(3.14));
+        assert!((some(sr.real_elt(0)) - 3.14).abs() < f64::EPSILON);
 
-        let sl = scalar_logical(1).unwrap();
+        let sl = some(scalar_logical(1));
         assert_eq!(sl.logical_elt(0), Some(1));
 
-        let sraw = scalar_raw(0xAB).unwrap();
+        let sraw = some(scalar_raw(0xAB));
         assert_eq!(sraw.raw_elt(0), Some(0xAB));
 
-        let ss = scalar_string("hello").unwrap();
+        let ss = some(scalar_string("hello"));
         assert_eq!(ss.len(), 1);
         assert!(ss.string_elt(0).is_some());
 
-        let sc = scalar_complex(1.0, 2.0).unwrap();
-        let c = sc.complex_elt(0).unwrap();
+        let sc = some(scalar_complex(1.0, 2.0));
+        let c = some(sc.complex_elt(0));
         assert!((c.r - 1.0).abs() < f64::EPSILON);
         assert!((c.i - 2.0).abs() < f64::EPSILON);
     }
 
     #[test]
     fn test_mk_char() {
-        let c = mk_char(b"hello").unwrap();
+        let c = some(mk_char(b"hello"));
         assert!(c.is_charsxp());
         assert_eq!(c.as_str(), Some("hello"));
         assert_eq!(c.as_bytes(), Some(&b"hello"[..]));
@@ -919,25 +925,25 @@ mod tests {
 
     #[test]
     fn test_cons_constructor() {
-        let car = scalar_integer(1).unwrap();
-        let cdr = scalar_real(2.0).unwrap();
-        let cell = cons(car, cdr, None).unwrap();
+        let car = some(scalar_integer(1));
+        let cdr = some(scalar_real(2.0));
+        let cell = some(cons(car, cdr, None));
         assert!(cell.is_pairlist());
-        assert!(cell.car().unwrap().is_vector());
+        assert!(some(cell.car()).is_vector());
     }
 
     #[test]
     fn test_lang_constructors() {
         let mut arena = crate::sexp::memory::RArena::new();
         let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
-        let fun = Sexp::from_raw(sym).unwrap();
-        let arg = scalar_integer(1).unwrap();
+        let fun = some(Sexp::from_raw(sym));
+        let arg = some(scalar_integer(1));
 
-        let call = lang2(fun, arg).unwrap();
+        let call = some(lang2(fun, arg));
         assert!(call.is_pairlist());
 
-        let arg2 = scalar_real(2.0).unwrap();
-        let call3 = lang3(fun, arg, arg2).unwrap();
+        let arg2 = some(scalar_real(2.0));
+        let call3 = some(lang3(fun, arg, arg2));
         assert!(call3.is_pairlist());
         assert!(call3.car().is_some());
     }

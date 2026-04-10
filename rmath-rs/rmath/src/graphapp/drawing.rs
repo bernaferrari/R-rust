@@ -136,15 +136,17 @@ pub unsafe fn fillrect(r: rect) {
     unsafe { gdraw::gfillrect(ds.dest, ds.hue, r) };
 }
 
-/// Draw an arc.
-pub unsafe fn drawarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {
-    // No GraphApp arc callback exists in this port; headless devices ignore arcs.
-}
+/// Draw an arc within the bounding rectangle.
+///
+/// Arc drawing is not exposed through the `gdraw` interface in this port.
+/// Headless no-op: R's graphics engine uses `GEArc`/`GECircle` directly,
+/// bypassing this GraphApp layer.
+pub unsafe fn drawarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 
-/// Fill an arc (pie slice).
-pub unsafe fn fillarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {
-    // No GraphApp pie-slice callback exists in this port; headless devices ignore fills.
-}
+/// Fill an arc (pie slice) within the bounding rectangle.
+///
+/// Headless no-op: R's graphics engine uses its own arc primitives.
+pub unsafe fn fillarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 
 /// Draw an ellipse.
 pub unsafe fn drawellipse(r: rect) {
@@ -248,9 +250,9 @@ pub unsafe fn copyrect(sb: bitmap, p: point, r: rect) {
 }
 
 /// Texture-fill a rectangle with a bitmap.
-pub unsafe fn texturerect(_sb: bitmap, _dr: rect) {
-    // No texture callback exists in this port; headless devices ignore texture fills.
-}
+///
+/// No `gdraw` texture callback exists. Headless no-op.
+pub unsafe fn texturerect(_sb: bitmap, _dr: rect) {}
 
 /// Invert a rectangle.
 pub unsafe fn invertrect(r: rect) {
@@ -265,24 +267,24 @@ pub unsafe fn drawimage(img: image, dr: rect, sr: rect) {
 }
 
 /// Draw an image in monochrome.
-pub unsafe fn drawmonochrome(_img: image, _dr: rect, _sr: rect) {
-    // No monochrome raster callback exists in this port; headless devices ignore it.
-}
+///
+/// No `gdraw` monochrome callback. Headless no-op.
+pub unsafe fn drawmonochrome(_img: image, _dr: rect, _sr: rect) {}
 
 /// Draw an image in greyscale.
-pub unsafe fn drawgreyscale(_img: image, _dr: rect, _sr: rect) {
-    // No greyscale raster callback exists in this port; headless devices ignore it.
-}
+///
+/// No `gdraw` greyscale callback. Headless no-op.
+pub unsafe fn drawgreyscale(_img: image, _dr: rect, _sr: rect) {}
 
 /// Draw an image darker.
-pub unsafe fn drawdarker(_img: image, _dr: rect, _sr: rect) {
-    // No darker-image callback exists in this port; headless devices ignore it.
-}
+///
+/// No `gdraw` darker callback. Headless no-op.
+pub unsafe fn drawdarker(_img: image, _dr: rect, _sr: rect) {}
 
 /// Draw an image brighter.
-pub unsafe fn drawbrighter(_img: image, _dr: rect, _sr: rect) {
-    // No brighter-image callback exists in this port; headless devices ignore it.
-}
+///
+/// No `gdraw` brighter callback. Headless no-op.
+pub unsafe fn drawbrighter(_img: image, _dr: rect, _sr: rect) {}
 
 /// Get the clipping rectangle.
 pub unsafe fn getcliprect() -> rect {
@@ -339,9 +341,9 @@ pub extern "C" fn drawto(dest: drawing) {
 }
 
 /// Add a control to the current window.
-pub unsafe fn addto(_dest: control) {
-    // TODO: Platform-specific
-}
+///
+/// Headless no-op: no window system to add controls to.
+pub unsafe fn addto(_dest: control) {}
 
 /// Set the current cursor.
 pub extern "C" fn setcursor(c: cursor) {
@@ -353,12 +355,12 @@ pub extern "C" fn setfont(f: font) {
     CURRENT_DRAWSTATE.with(|v| v.borrow_mut().fnt = f);
 }
 
-/// Set the caret.
-pub unsafe fn setcaret(_c: control, _x: c_int, _y: c_int, _width: c_int, _height: c_int) {
-    // TODO: Platform-specific
-}
+/// Set the caret position and size.
+///
+/// Headless no-op: no text input caret in a headless rendering environment.
+pub unsafe fn setcaret(_c: control, _x: c_int, _y: c_int, _width: c_int, _height: c_int) {}
 
 /// Show/hide the caret.
-pub unsafe fn showcaret(_c: control, _showing: c_int) {
-    // TODO: Platform-specific
-}
+///
+/// Headless no-op: no text input caret in a headless rendering environment.
+pub unsafe fn showcaret(_c: control, _showing: c_int) {}

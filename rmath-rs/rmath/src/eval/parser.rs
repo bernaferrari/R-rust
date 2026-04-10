@@ -243,7 +243,9 @@ impl Lexer {
                 s.push(ch);
                 self.advance();
                 if self.peek_char() == Some('+') || self.peek_char() == Some('-') {
-                    s.push(self.advance().unwrap());
+                    if let Some(sign) = self.advance() {
+                        s.push(sign);
+                    }
                 }
             } else if ch == 'L' {
                 self.advance();
@@ -266,7 +268,7 @@ impl Lexer {
     }
 
     fn read_string(&mut self) -> Token {
-        let quote = self.advance().unwrap();
+        let quote = self.advance().unwrap_or('"');
         let mut s = String::new();
         loop {
             match self.advance() {
@@ -377,13 +379,16 @@ impl Parser {
             return unsafe { Ok(R_NilValue()) };
         }
         if exprs.len() == 1 {
-            return Ok(exprs.into_iter().next().unwrap());
+            return Ok(exprs
+                .into_iter()
+                .next()
+                .unwrap_or_else(|| unsafe { R_NilValue() }));
         }
 
         unsafe {
-            let brace_sym = Rf_install(CString::new("{").unwrap().as_ptr());
+            let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
             let nil = R_NilValue();
-            let mut list = Rf_cons(exprs.pop().unwrap(), nil);
+            let mut list = Rf_cons(exprs.pop().unwrap_or(nil), nil);
             while let Some(e) = exprs.pop() {
                 let cell = Rf_cons(e, list);
                 list = cell;
@@ -410,7 +415,7 @@ impl Parser {
                 let _op = self.advance();
                 let right = self.parse_assignment()?;
                 unsafe {
-                    let assign_sym = Rf_install(CString::new("<-").unwrap().as_ptr());
+                    let assign_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
                     Ok(Rf_lang3(assign_sym, left, right))
                 }
             }
@@ -426,7 +431,7 @@ impl Parser {
                     self.advance();
                     let right = self.parse_and()?;
                     unsafe {
-                        let op = Rf_install(CString::new("||").unwrap().as_ptr());
+                        let op = Rf_install(CString::new("||").unwrap_or_default().as_ptr());
                         left = Rf_lang3(op, left, right);
                     }
                 }
@@ -434,7 +439,7 @@ impl Parser {
                     self.advance();
                     let right = self.parse_and()?;
                     unsafe {
-                        let op = Rf_install(CString::new("|").unwrap().as_ptr());
+                        let op = Rf_install(CString::new("|").unwrap_or_default().as_ptr());
                         left = Rf_lang3(op, left, right);
                     }
                 }
@@ -451,7 +456,7 @@ impl Parser {
                     self.advance();
                     let right = self.parse_not()?;
                     unsafe {
-                        let op = Rf_install(CString::new("&&").unwrap().as_ptr());
+                        let op = Rf_install(CString::new("&&").unwrap_or_default().as_ptr());
                         left = Rf_lang3(op, left, right);
                     }
                 }
@@ -459,7 +464,7 @@ impl Parser {
                     self.advance();
                     let right = self.parse_not()?;
                     unsafe {
-                        let op = Rf_install(CString::new("&").unwrap().as_ptr());
+                        let op = Rf_install(CString::new("&").unwrap_or_default().as_ptr());
                         left = Rf_lang3(op, left, right);
                     }
                 }
@@ -473,7 +478,7 @@ impl Parser {
             self.advance();
             let operand = self.parse_comparison()?;
             unsafe {
-                let op = Rf_install(CString::new("!").unwrap().as_ptr());
+                let op = Rf_install(CString::new("!").unwrap_or_default().as_ptr());
                 Ok(Rf_lang2(op, operand))
             }
         } else {
@@ -496,7 +501,7 @@ impl Parser {
             self.advance();
             let right = self.parse_addition()?;
             unsafe {
-                let op = Rf_install(CString::new(op_name).unwrap().as_ptr());
+                let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
                 left = Rf_lang3(op, left, right);
             }
         }
@@ -513,7 +518,7 @@ impl Parser {
             self.advance();
             let right = self.parse_multiplication()?;
             unsafe {
-                let op = Rf_install(CString::new(op_name).unwrap().as_ptr());
+                let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
                 left = Rf_lang3(op, left, right);
             }
         }
@@ -532,7 +537,7 @@ impl Parser {
             self.advance();
             let right = self.parse_power()?;
             unsafe {
-                let op = Rf_install(CString::new(op_name).unwrap().as_ptr());
+                let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
                 left = Rf_lang3(op, left, right);
             }
         }
@@ -544,7 +549,7 @@ impl Parser {
             self.advance();
             let exp = self.parse_unary()?;
             unsafe {
-                let op = Rf_install(CString::new("^").unwrap().as_ptr());
+                let op = Rf_install(CString::new("^").unwrap_or_default().as_ptr());
                 Ok(Rf_lang3(op, base, exp))
             }
         } else {
@@ -558,7 +563,7 @@ impl Parser {
                 self.advance();
                 let operand = self.parse_unary()?;
                 unsafe {
-                    let op = Rf_install(CString::new("-").unwrap().as_ptr());
+                    let op = Rf_install(CString::new("-").unwrap_or_default().as_ptr());
                     Ok(Rf_lang2(op, operand))
                 }
             }
@@ -584,7 +589,7 @@ impl Parser {
                 for (name, val) in args.into_iter().rev() {
                     let cell = Rf_cons(val, arg_list);
                     if let Some(n) = name {
-                        let sym = Rf_install(CString::new(n).unwrap().as_ptr());
+                        let sym = Rf_install(CString::new(n).unwrap_or_default().as_ptr());
                         crate::sexp::accessors::SETTAG(cell, sym);
                     }
                     arg_list = cell;
@@ -669,11 +674,12 @@ impl Parser {
                     "NA_real_" => unsafe { Ok(Rf_ScalarReal(crate::sexp::ffi::NA_REAL)) },
                     "NA_integer_" => unsafe { Ok(Rf_ScalarInteger(crate::sexp::ffi::NA_INTEGER)) },
                     "NA_character_" => unsafe {
-                        let c_na = CString::new("NA").unwrap();
+                        let c_na = CString::new("NA").unwrap_or_default();
                         Ok(Rf_mkString(c_na.as_ptr()))
                     },
                     _ => unsafe {
-                        let sym = Rf_install(CString::new(name.as_str()).unwrap().as_ptr());
+                        let sym =
+                            Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
                         Ok(sym)
                     },
                 }

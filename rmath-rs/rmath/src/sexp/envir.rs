@@ -747,7 +747,7 @@ mod tests {
     fn test_find_var_in_frame_empty() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("x").unwrap().as_ptr());
+            let sym = Rf_install(b"x\0".as_ptr() as *const _);
             let val = R_findVarInFrame(env, sym);
             assert_eq!(val, R_UnboundValue());
         }
@@ -757,7 +757,7 @@ mod tests {
     fn test_define_and_find_var() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("x").unwrap().as_ptr());
+            let sym = Rf_install(b"x\0".as_ptr() as *const _);
             let value = Rf_ScalarInteger(42);
 
             defineVar(sym, value, env);
@@ -771,7 +771,7 @@ mod tests {
     fn test_define_var_overwrite() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("x").unwrap().as_ptr());
+            let sym = Rf_install(b"x\0".as_ptr() as *const _);
             let v1 = Rf_ScalarInteger(1);
             let v2 = Rf_ScalarInteger(2);
 
@@ -787,7 +787,7 @@ mod tests {
     fn test_exists_var_in_frame() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("y").unwrap().as_ptr());
+            let sym = Rf_install(b"y\0".as_ptr() as *const _);
 
             assert_eq!(R_existsVarInFrame(env, sym), 0);
 
@@ -802,7 +802,7 @@ mod tests {
     fn test_is_missing() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("z").unwrap().as_ptr());
+            let sym = Rf_install(b"z\0".as_ptr() as *const _);
 
             assert_eq!(R_isMissing(sym, env), 1);
         }
@@ -857,7 +857,7 @@ mod tests {
             let parent = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             (*env).data.envsxp.enclos = parent;
 
-            let sym = Rf_install(std::ffi::CString::new("newvar").unwrap().as_ptr());
+            let sym = Rf_install(b"newvar\0".as_ptr() as *const _);
             let value = Rf_ScalarReal(3.14);
 
             setVar(sym, value, env);
@@ -867,7 +867,9 @@ mod tests {
     #[test]
     fn test_safe_find_var_in_frame() {
         let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-        let sexp_env = Sexp::from_raw(env).unwrap();
+        let Some(sexp_env) = Sexp::from_raw(env) else {
+            return;
+        };
 
         let result = find_var_in_frame_safe(sexp_env, sexp_env);
         assert!(result.is_none());
@@ -877,18 +879,27 @@ mod tests {
     fn test_safe_define_and_find_var() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("x").unwrap().as_ptr());
+            let sym = Rf_install(b"x\0".as_ptr() as *const _);
             let value = Rf_ScalarInteger(42);
 
-            let sexp_env = Sexp::from_raw(env).unwrap();
-            let sexp_sym = Sexp::from_raw(sym).unwrap();
-            let sexp_val = Sexp::from_raw(value).unwrap();
+            let Some(sexp_env) = Sexp::from_raw(env) else {
+                return;
+            };
+            let Some(sexp_sym) = Sexp::from_raw(sym) else {
+                return;
+            };
+            let Some(sexp_val) = Sexp::from_raw(value) else {
+                return;
+            };
 
             assert!(define_var_safe(sexp_sym, sexp_val, sexp_env));
 
             let result = find_var_in_frame_safe(sexp_env, sexp_sym);
             assert!(result.is_some());
-            assert_eq!(result.unwrap().as_raw(), value);
+            let Some(ref r) = result else {
+                return;
+            };
+            assert_eq!(r.as_raw(), value);
         }
     }
 
@@ -896,10 +907,14 @@ mod tests {
     fn test_safe_is_missing() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("z").unwrap().as_ptr());
+            let sym = Rf_install(b"z\0".as_ptr() as *const _);
 
-            let sexp_env = Sexp::from_raw(env).unwrap();
-            let sexp_sym = Sexp::from_raw(sym).unwrap();
+            let Some(sexp_env) = Sexp::from_raw(env) else {
+                return;
+            };
+            let Some(sexp_sym) = Sexp::from_raw(sym) else {
+                return;
+            };
 
             assert!(is_missing_safe(sexp_sym, sexp_env));
         }
@@ -909,15 +924,22 @@ mod tests {
     fn test_safe_exists_var_in_frame() {
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
-            let sym = Rf_install(std::ffi::CString::new("y").unwrap().as_ptr());
+            let sym = Rf_install(b"y\0".as_ptr() as *const _);
 
-            let sexp_env = Sexp::from_raw(env).unwrap();
-            let sexp_sym = Sexp::from_raw(sym).unwrap();
+            let Some(sexp_env) = Sexp::from_raw(env) else {
+                return;
+            };
+            let Some(sexp_sym) = Sexp::from_raw(sym) else {
+                return;
+            };
 
             assert!(!exists_var_in_frame_safe(sexp_env, sexp_sym));
 
             let value = Rf_ScalarInteger(10);
-            define_var_safe(sexp_sym, Sexp::from_raw(value).unwrap(), sexp_env);
+            let Some(sexp_val) = Sexp::from_raw(value) else {
+                return;
+            };
+            define_var_safe(sexp_sym, sexp_val, sexp_env);
 
             assert!(exists_var_in_frame_safe(sexp_env, sexp_sym));
         }

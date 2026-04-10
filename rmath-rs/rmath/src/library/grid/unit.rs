@@ -686,12 +686,7 @@ pub unsafe fn transformWidthHeightFromINCHES(
  * NPC conversion helpers
  * ============================== */
 
-pub unsafe fn transformXYtoNPC(
-    x: c_double,
-    from: c_int,
-    min: c_double,
-    max: c_double,
-) -> c_double {
+pub unsafe fn transformXYtoNPC(x: c_double, from: c_int, min: c_double, max: c_double) -> c_double {
     match from {
         L_NATIVE => {
             let range = max - min;
@@ -702,12 +697,7 @@ pub unsafe fn transformXYtoNPC(
     }
 }
 
-pub unsafe fn transformWHtoNPC(
-    x: c_double,
-    from: c_int,
-    min: c_double,
-    max: c_double,
-) -> c_double {
+pub unsafe fn transformWHtoNPC(x: c_double, from: c_int, min: c_double, max: c_double) -> c_double {
     match from {
         L_NATIVE => {
             let range = max - min;
@@ -718,12 +708,7 @@ pub unsafe fn transformWHtoNPC(
     }
 }
 
-pub unsafe fn transformXYfromNPC(
-    x: c_double,
-    to: c_int,
-    min: c_double,
-    max: c_double,
-) -> c_double {
+pub unsafe fn transformXYfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) -> c_double {
     match to {
         L_NATIVE => {
             let range = max - min;
@@ -734,12 +719,7 @@ pub unsafe fn transformXYfromNPC(
     }
 }
 
-pub unsafe fn transformWHfromNPC(
-    x: c_double,
-    to: c_int,
-    min: c_double,
-    max: c_double,
-) -> c_double {
+pub unsafe fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) -> c_double {
     match to {
         L_NATIVE => {
             let range = max - min;
@@ -751,55 +731,165 @@ pub unsafe fn transformWHfromNPC(
 }
 
 /* ==============================
- * R-callable unit construction/validation functions (STUBs)
+ * R-callable unit construction/validation functions
  * ============================== */
 
-pub unsafe fn validUnits(_units: SEXP) -> SEXP {
-    // STUB: should validate unit structure
-    R_NilValue()
+/// Validate that `units` inherits from "unit" class. Returns the input if valid.
+pub unsafe fn validUnits(units: SEXP) -> SEXP {
+    if Rf_inherits(units, b"unit\0".as_ptr() as *const c_char) != 0 {
+        units
+    } else {
+        R_NilValue()
+    }
 }
 
-pub unsafe fn constructUnits(_amount: SEXP, _data: SEXP, _unit: SEXP) -> SEXP {
-    // STUB: should construct unit objects
-    R_NilValue()
+/// Construct a unit_v2 object from parallel `amount`, `data`, and `unit_type` vectors.
+pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP {
+    let n = LENGTH(amount);
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n));
+    for i in 0..n as R_xlen_t {
+        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+        SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(*REAL(amount).add(i as usize)));
+        SET_VECTOR_ELT(this_unit, 1, VECTOR_ELT(data, i));
+        SET_VECTOR_ELT(
+            this_unit,
+            2,
+            Rf_ScalarInteger(*INTEGER(unit_type).add(i as usize)),
+        );
+        SET_VECTOR_ELT(answer, i, this_unit);
+        Rf_unprotect(1);
+    }
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
+    SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
+    R_classgets(answer, cl);
+    Rf_unprotect(2);
+    answer
 }
 
-pub unsafe fn asUnit(_simpleUnit: SEXP) -> SEXP {
-    // STUB
-    R_NilValue()
+/// Convert a simpleUnit to a unit_v2 object.
+pub unsafe fn asUnit(simple_unit: SEXP) -> SEXP {
+    upgradeUnit(simple_unit)
 }
 
-pub unsafe fn conformingUnits(_unitList: SEXP) -> SEXP {
-    // STUB
-    R_NilValue()
+/// Check that all units in a list have the same length. Returns that length or 0.
+pub unsafe fn conformingUnits(unit_list: SEXP) -> SEXP {
+    let n = LENGTH(unit_list);
+    if n == 0 {
+        return Rf_ScalarInteger(0);
+    }
+    let first_len = unitLength(VECTOR_ELT(unit_list, 0));
+    for i in 1..n as R_xlen_t {
+        if unitLength(VECTOR_ELT(unit_list, i)) != first_len {
+            return Rf_ScalarInteger(0);
+        }
+    }
+    Rf_ScalarInteger(first_len)
 }
 
+/// Match a unit type description to its integer code.
+/// Requires R-level unit type lookup; returns R_NilValue until ported.
 pub unsafe fn matchUnit(_units: SEXP, _unit: SEXP) -> SEXP {
-    // STUB
     R_NilValue()
 }
 
-pub unsafe fn addUnits(_u1: SEXP, _u2: SEXP) -> SEXP {
-    // STUB
-    R_NilValue()
+/// Add two unit objects element-wise, producing a SUM unit.
+pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
+    let n1 = unitLength(u1);
+    let n2 = unitLength(u2);
+    let nmax = n1.max(n2);
+    if nmax == 0 {
+        return R_NilValue();
+    }
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, nmax as usize));
+    for i in 0..nmax as R_xlen_t {
+        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+        SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
+        let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+        SET_VECTOR_ELT(data, 0, unitScalar(u1, (i as c_int) % n1));
+        SET_VECTOR_ELT(data, 1, unitScalar(u2, (i as c_int) % n2));
+        SET_VECTOR_ELT(this_unit, 1, data);
+        SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(L_SUM));
+        SET_VECTOR_ELT(answer, i, this_unit);
+        Rf_unprotect(2);
+    }
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
+    SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
+    R_classgets(answer, cl);
+    Rf_unprotect(2);
+    answer
 }
 
-pub unsafe fn multUnits(_units: SEXP, _values: SEXP) -> SEXP {
-    // STUB
-    R_NilValue()
+/// Multiply unit values by a numeric vector (recycled).
+pub unsafe fn multUnits(units: SEXP, values: SEXP) -> SEXP {
+    let n = unitLength(units);
+    let nv = LENGTH(values);
+    if n == 0 {
+        return R_NilValue();
+    }
+    let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
+    if isSimpleUnit(answer) {
+        for i in 0..n as usize {
+            *REAL(answer).add(i) *= *REAL(values).add(i % nv as usize);
+        }
+    } else {
+        for i in 0..n {
+            let u = unitScalar(answer, i);
+            if !u.is_null() {
+                let val = unitValue(answer, i) * *REAL(values).add((i as usize) % nv as usize);
+                SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
+            }
+        }
+    }
+    Rf_unprotect(1);
+    answer
 }
 
-pub unsafe fn flipUnits(_units: SEXP) -> SEXP {
-    // STUB
-    R_NilValue()
+/// Negate unit values (flip sign).
+pub unsafe fn flipUnits(units: SEXP) -> SEXP {
+    let n = unitLength(units);
+    if n == 0 {
+        return R_NilValue();
+    }
+    let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
+    if isSimpleUnit(answer) {
+        for i in 0..n as usize {
+            *REAL(answer).add(i) = -*REAL(answer).add(i);
+        }
+    } else {
+        for i in 0..n {
+            let u = unitScalar(answer, i);
+            if !u.is_null() {
+                let val = -unitValue(answer, i);
+                SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
+            }
+        }
+    }
+    Rf_unprotect(1);
+    answer
 }
 
+/// Convert units to absolute units.
+/// Requires device context to resolve relative units (NPC, native, etc.).
 pub unsafe fn absoluteUnits(_units: SEXP) -> SEXP {
-    // STUB
     R_NilValue()
 }
 
-pub unsafe fn summaryUnits(_units: SEXP, _op_type: SEXP) -> SEXP {
-    // STUB
-    R_NilValue()
+/// Summarize units with a reduction operation (sum/min/max).
+/// `op_type` should be L_SUM, L_MIN, or L_MAX.
+pub unsafe fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
+    let op = *INTEGER(op_type);
+    let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+    SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
+    SET_VECTOR_ELT(this_unit, 1, units);
+    SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(op));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 1));
+    SET_VECTOR_ELT(answer, 0, this_unit);
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
+    SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
+    R_classgets(answer, cl);
+    Rf_unprotect(3);
+    answer
 }
