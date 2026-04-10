@@ -653,3 +653,83 @@ fn test_eval_arithmetic_direct() {
         init::shutdown_r();
     }
 }
+
+#[test]
+fn test_eval_math_builtins() {
+    use crate::eval::eval::eval_safe;
+    use crate::eval::parser;
+    use crate::sexp::init;
+
+    unsafe {
+        init::initialize_r();
+    }
+
+    let mut arena = crate::sexp::memory::RArena::new();
+    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+
+    let cases: Vec<(&str, f64)> = vec![
+        ("abs(-5)", 5.0),
+        ("abs(3)", 3.0),
+        ("sqrt(16)", 4.0),
+        ("exp(0)", 1.0),
+        ("log(1)", 0.0),
+        ("log2(8)", 3.0),
+        ("log10(100)", 2.0),
+        ("ceiling(3.2)", 4.0),
+        ("floor(3.8)", 3.0),
+        ("trunc(3.9)", 3.0),
+        ("sign(-7)", -1.0),
+        ("sign(0)", 0.0),
+        ("sign(42)", 1.0),
+        ("sum(1, 2, 3)", 6.0),
+        ("min(5, 3, 8)", 3.0),
+        ("max(5, 3, 8)", 8.0),
+        ("prod(2, 3, 4)", 24.0),
+    ];
+
+    for (code, expected) in cases {
+        let expr = parser::parse(code, &mut arena).expect("parse failed");
+        let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+        let result = eval_safe(e, env);
+        assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
+        let val = result.unwrap();
+        let v = val.real_elt(0).unwrap_or(f64::NAN);
+        assert!(
+            (v - expected).abs() < 1e-10,
+            "{}: expected {}, got {}",
+            code,
+            expected,
+            v
+        );
+    }
+
+    unsafe {
+        init::shutdown_r();
+    }
+}
+
+#[test]
+fn test_eval_length_builtin() {
+    use crate::eval::eval::eval_safe;
+    use crate::eval::parser;
+    use crate::sexp::init;
+
+    unsafe {
+        init::initialize_r();
+    }
+
+    let mut arena = crate::sexp::memory::RArena::new();
+    let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
+    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+
+    let expr = parser::parse("length(42)", &mut arena).expect("parse failed");
+    let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+    let result = eval_safe(e, env).expect("eval failed");
+    let v = result.int_elt(0).unwrap_or(0);
+    assert_eq!(v, 1, "length(42) should be 1, got {}", v);
+
+    unsafe {
+        init::shutdown_r();
+    }
+}
