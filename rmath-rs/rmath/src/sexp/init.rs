@@ -13,6 +13,7 @@
 //! ```
 
 use std::ffi::CString;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::globals::{set_R_BaseEnv, set_R_EmptyEnv, set_R_GlobalEnv};
@@ -21,11 +22,19 @@ use super::symbol::Rf_install;
 
 static R_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
+static INIT_LOCK: Mutex<()> = Mutex::new(());
+
 pub fn is_initialized() -> bool {
     R_INITIALIZED.load(Ordering::Acquire)
 }
 
 pub unsafe fn initialize_r() {
+    if R_INITIALIZED.load(Ordering::Acquire) {
+        return;
+    }
+
+    let _guard = INIT_LOCK.lock().expect("init lock poisoned");
+    // Double-check: another thread may have initialized while we waited for the lock.
     if R_INITIALIZED.load(Ordering::Acquire) {
         return;
     }
@@ -172,6 +181,8 @@ pub unsafe fn shutdown_r() {
     if !R_INITIALIZED.load(Ordering::Acquire) {
         return;
     }
+
+    let _guard = INIT_LOCK.lock().expect("init lock poisoned");
 
     set_R_GlobalEnv(std::ptr::null_mut());
     set_R_BaseEnv(std::ptr::null_mut());

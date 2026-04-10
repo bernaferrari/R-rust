@@ -98,7 +98,7 @@ fn NA_LOGICAL() -> c_int {
 
 #[inline]
 fn NA_REAL() -> c_double {
-    f64::NAN
+    crate::sexp::ffi::NA_REAL
 }
 
 /* Stub extern declarations for functions not yet ported */

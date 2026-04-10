@@ -2054,7 +2054,11 @@ mod tests {
     #[test]
     fn test_print_value_rec_null() {
         unsafe {
-            PrintValueRec(ptr::null_mut(), ptr::null_mut());
+            let mut data = R_PRINT_INIT.clone();
+            PrintValueRec(
+                ptr::null_mut(),
+                &mut data as *mut R_PrintData as *mut std::ffi::c_void,
+            );
         }
     }
 

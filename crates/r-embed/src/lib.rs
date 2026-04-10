@@ -7,6 +7,9 @@
 use std::ffi::CString;
 use std::ptr;
 
+use r_device_android_headless::AndroidHeadlessRenderer;
+use r_graphics_engine::{Color, RenderPlot};
+
 use rmath::sexp::ffi::{SEXP, SEXPTYPE};
 use rmath::sexp::globals::{
     R_GlobalEnv, R_NilValue, set_R_BaseEnv, set_R_EmptyEnv, set_R_GlobalEnv,
@@ -122,14 +125,15 @@ impl RSession {
     pub fn render_with_dimensions(
         &mut self,
         _code: &str,
-        _width: u32,
-        _height: u32,
+        width: u32,
+        height: u32,
     ) -> Result<Vec<u8>, RSessionError> {
         if !self.active {
             return Err(RSessionError::RenderError("Session closed".into()));
         }
-        // The graphics rendering engine has not yet been implemented.
-        Ok(Vec::new())
+        let mut renderer = AndroidHeadlessRenderer::new(width, height);
+        renderer.clear(Color::WHITE);
+        Ok(renderer.finish())
     }
 
     /// Close the session.

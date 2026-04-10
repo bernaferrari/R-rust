@@ -16,6 +16,7 @@ pub mod altrep;
 pub mod builder;
 pub mod constructors;
 pub mod context;
+pub mod env_hash;
 pub mod envir;
 pub mod ffi;
 pub mod gengc;

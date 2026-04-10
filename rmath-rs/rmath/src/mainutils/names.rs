@@ -4511,7 +4511,7 @@ pub unsafe fn R_Primitive(primname: *const c_char) -> SEXP {
                     // It's a .Internal
                     return R_NilValue();
                 } else {
-                    return mkPRIMSXP(0, entry.eval % 10);
+                    return mkPRIMSXP(idx as c_int, entry.eval % 10);
                 }
             }
         }

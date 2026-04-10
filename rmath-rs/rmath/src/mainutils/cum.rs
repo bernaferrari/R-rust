@@ -60,9 +60,9 @@ pub fn handle_nan_double(x: &[f64], s: &mut [f64]) {
         has_nan = has_nan || ISNAN(x[i]);
         has_na = has_na || (has_nan && R_IsNA(x[i]));
         if has_na {
-            s[i] = f64::NAN; // NA_REAL
+            s[i] = crate::sexp::ffi::NA_REAL;
         } else if has_nan {
-            s[i] = f64::NAN; // R_NaN (both are NaN in this impl)
+            s[i] = crate::sexp::ffi::NA_REAL;
         }
     }
 }
@@ -82,10 +82,10 @@ pub fn chandle_nan_complex(x: &[Rcomplex], s: &mut [Rcomplex], r_is_n: bool, i_i
         has_na = has_na || (has_nan && (R_IsNA(x[i].r) || R_IsNA(x[i].i)));
         if has_na {
             if r_is_n {
-                s[i].r = f64::NAN;
+                s[i].r = crate::sexp::ffi::NA_REAL;
             }
             if i_is_n {
-                s[i].i = f64::NAN;
+                s[i].i = crate::sexp::ffi::NA_REAL;
             }
         } else if has_nan {
             if r_is_n {

@@ -54,6 +54,13 @@ pub fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> LookupResu
         return None;
     }
 
+    // Fast path: check hash table if one exists
+    if super::env_hash::env_has_hash_table(rho.as_raw()) {
+        if let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw()) {
+            return Some(unsafe { Sexp::from_raw_unchecked(val) });
+        }
+    }
+
     let frame = rho.frame()?;
 
     for cell in PairlistIter::new(frame) {
@@ -163,6 +170,9 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             unsafe {
                 SETCAR(cell.as_raw(), value.as_raw());
             }
+            if super::env_hash::env_has_hash_table(rho.as_raw()) {
+                super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), value.as_raw());
+            }
             return true;
         }
     }
@@ -173,6 +183,34 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
             SETTAG(new_cell, symbol.as_raw());
             SET_FRAME(rho.as_raw(), new_cell);
         }
+
+        if super::env_hash::env_has_hash_table(rho.as_raw()) {
+            super::env_hash::hash_insert(rho.as_raw(), symbol.as_raw(), value.as_raw());
+        }
+
+        if !super::env_hash::env_has_hash_table(rho.as_raw()) {
+            let mut count = 0usize;
+            let mut cur = unsafe { super::accessors::FRAME(rho.as_raw()) };
+            while !cur.is_null() {
+                count += 1;
+                if count >= 100 {
+                    let mut bindings = Vec::new();
+                    cur = unsafe { super::accessors::FRAME(rho.as_raw()) };
+                    while !cur.is_null() {
+                        let tag = unsafe { super::accessors::TAG(cur) };
+                        let car = unsafe { super::accessors::CAR(cur) };
+                        if !tag.is_null() {
+                            bindings.push((tag, car));
+                        }
+                        cur = unsafe { super::accessors::CDR(cur) };
+                    }
+                    super::env_hash::promote_to_hash_table(rho.as_raw(), &bindings);
+                    break;
+                }
+                cur = unsafe { super::accessors::CDR(cur) };
+            }
+        }
+
         return true;
     }
 

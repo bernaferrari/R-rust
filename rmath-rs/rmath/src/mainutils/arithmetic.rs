@@ -1506,7 +1506,7 @@ mod tests {
 
     #[test]
     fn test_R_IsNA() {
-        let na = f64::from_bits(0x7ff0000000001954);
+        let na = f64::from_bits(crate::sexp::ffi::R_NA_BIT_PATTERN);
         assert_eq!(R_IsNA(na), 1);
         assert_eq!(R_IsNA(f64::NAN), 0);
         assert_eq!(R_IsNA(1.0), 0);
@@ -1515,7 +1515,7 @@ mod tests {
     #[test]
     fn test_R_IsNaN() {
         assert_eq!(R_IsNaN(f64::NAN), 1);
-        let na = f64::from_bits(0x7ff0000000001954);
+        let na = f64::from_bits(crate::sexp::ffi::R_NA_BIT_PATTERN);
         assert_eq!(R_IsNaN(na), 0);
         assert_eq!(R_IsNaN(1.0), 0);
     }
