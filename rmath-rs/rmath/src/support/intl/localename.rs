@@ -37,7 +37,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
         if let Ok(val) = env::var("LC_ALL") {
             if let Ok(cstr) = CString::new(val.as_str()) {
                 let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
-                    .expect("unwrap on None/Err");
+                    .unwrap_or(Layout::new::<u8>());
                 let ptr = std::alloc::alloc(layout) as *mut c_char;
                 if !ptr.is_null() {
                     ptr::copy_nonoverlapping(
@@ -65,7 +65,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
         if let Ok(val) = env::var(cat_name) {
             if let Ok(cstr) = CString::new(val.as_str()) {
                 let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
-                    .expect("unwrap on None/Err");
+                    .unwrap_or(Layout::new::<u8>());
                 let ptr = std::alloc::alloc(layout) as *mut c_char;
                 if !ptr.is_null() {
                     ptr::copy_nonoverlapping(
@@ -82,7 +82,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
         if let Ok(val) = env::var("LANG") {
             if let Ok(cstr) = CString::new(val.as_str()) {
                 let layout = std::alloc::Layout::from_size_align(cstr.as_bytes_with_nul().len(), 1)
-                    .expect("unwrap on None/Err");
+                    .unwrap_or(Layout::new::<u8>());
                 let ptr = std::alloc::alloc(layout) as *mut c_char;
                 if !ptr.is_null() {
                     ptr::copy_nonoverlapping(

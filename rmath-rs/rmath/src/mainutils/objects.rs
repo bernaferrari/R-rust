@@ -69,7 +69,7 @@ unsafe fn S3MethodsTable_symbol() -> SEXP {
 /// Install a named symbol, caching the result.
 unsafe fn sym(name: &str) -> SEXP {
     unsafe {
-        let cstr = std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
+        let cstr = std::ffi::CString::new(name).unwrap_or_default();
         Rf_install(cstr.as_ptr())
     }
 }

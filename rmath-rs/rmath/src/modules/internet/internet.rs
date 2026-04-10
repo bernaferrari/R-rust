@@ -163,7 +163,7 @@ fn http_parse_url(url: &str) -> Option<(CString, u16, String)> {
                 if port_str.parse::<u16>().is_ok() {
                     (
                         &hostport[..idx],
-                        port_str.parse::<u16>().expect("unwrap on None/Err"),
+                        port_str.parse::<u16>().unwrap_or_default(),
                     )
                 } else {
                     (hostport, 80)
@@ -284,8 +284,8 @@ unsafe fn http_open(
     let header_str = String::from_utf8_lossy(&response_buf[..header_end_pos]);
     let status_code = parse_status_code(&header_str);
     if status_code.is_none()
-        || status_code.expect("unwrap on None/Err") < 200
-        || status_code.expect("unwrap on None/Err") >= 300
+        || status_code.unwrap_or_default() < 200
+        || status_code.unwrap_or_default() >= 300
     {
         // Non-2xx status
         return ptr::null_mut();
@@ -296,10 +296,10 @@ unsafe fn http_open(
 
     // Parse content type
     let content_type_cstr = match parse_content_type(&header_str) {
-        Some(ct) => CString::new(ct).unwrap_or_else(|_| {
-            CString::new("unknown").expect("CString::new failed: contains null byte")
-        }),
-        None => CString::new("unknown").expect("CString::new failed: contains null byte"),
+        Some(ct) => {
+            CString::new(ct).unwrap_or_else(|_| CString::new("unknown").unwrap_or_default())
+        }
+        None => CString::new("unknown").unwrap_or_default(),
     };
 
     // Report content info if not quiet
@@ -455,7 +455,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
     if src_file.is_null() {
         let errno_val = std::io::Error::last_os_error();
         let msg = format!("cannot open URL '{}', reason '{}'", url_str, errno_val);
-        let c_msg = CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = CString::new(msg).unwrap_or_default();
         Rf_error(c_msg.as_ptr());
     }
 
@@ -469,7 +469,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
             "cannot open destfile '{}', reason '{}'",
             file_str, errno_val
         );
-        let c_msg = CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = CString::new(msg).unwrap_or_default();
         Rf_error(c_msg.as_ptr());
     }
 
@@ -484,8 +484,7 @@ unsafe fn file_download(url: *const c_char, file: *const c_char, mode: *const c_
         if nwritten != nread {
             libc::fclose(dst_file);
             libc::fclose(src_file);
-            let msg =
-                CString::new("write failed").expect("CString::new failed: contains null byte");
+            let msg = CString::new("write failed").unwrap_or_default();
             Rf_error(msg.as_ptr());
         }
     }
@@ -523,7 +522,7 @@ unsafe fn http_download(
             "cannot open destfile '{}', reason '{}'",
             file_str, errno_val
         );
-        let c_msg = CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = CString::new(msg).unwrap_or_default();
         Rf_error(c_msg.as_ptr());
     }
 
@@ -561,7 +560,7 @@ unsafe fn http_download(
             let _ = std::fs::remove_file(file_str);
         }
         let msg = format!("cannot open URL '{}'", url_str);
-        let c_msg = CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = CString::new(msg).unwrap_or_default();
         Rf_error(c_msg.as_ptr());
     }
 
@@ -586,8 +585,7 @@ unsafe fn http_download(
         if nwritten as isize != nread {
             http_close(ctxt);
             libc::fclose(dst_file);
-            let msg =
-                CString::new("write failed").expect("CString::new failed: contains null byte");
+            let msg = CString::new("write failed").unwrap_or_default();
             Rf_error(msg.as_ptr());
         }
 
@@ -629,7 +627,7 @@ unsafe fn http_download(
             "downloaded length {:.0} != reported length {:.0}",
             nbytes as f64, total as f64
         );
-        let c_msg = CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = CString::new(msg).unwrap_or_default();
         crate::main::errors::Rf_warning(c_msg.as_ptr());
     }
 
@@ -658,8 +656,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
     let scmd = CAR(args);
     args = CDR(args);
     if !is_single_string(scmd) {
-        let msg = CString::new("invalid 'url' argument")
-            .expect("CString::new failed: contains null byte");
+        let msg = CString::new("invalid 'url' argument").unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
     let url = CHAR(STRING_ELT(scmd, 0));
@@ -668,8 +665,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
     let sfile = CAR(args);
     args = CDR(args);
     if !is_single_string(sfile) {
-        let msg = CString::new("invalid 'destfile' argument")
-            .expect("CString::new failed: contains null byte");
+        let msg = CString::new("invalid 'destfile' argument").unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
     // Use translateChar for destfile (may have encoded paths)
@@ -680,8 +676,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
     args = CDR(args);
     let quiet = asRbool(squiet);
     if quiet == NA_LOGICAL {
-        let msg = CString::new("invalid 'quiet' argument")
-            .expect("CString::new failed: contains null byte");
+        let msg = CString::new("invalid 'quiet' argument").unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
     // Update global quiet state
@@ -691,8 +686,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
     let smode = CAR(args);
     args = CDR(args);
     if !is_string_len1(smode) {
-        let msg = CString::new("invalid 'mode' argument")
-            .expect("CString::new failed: contains null byte");
+        let msg = CString::new("invalid 'mode' argument").unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
     let mode = CHAR(STRING_ELT(smode, 0));
@@ -702,8 +696,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
     args = CDR(args);
     let cacheOK = asLogical_val(scacheOK);
     if cacheOK == NA_LOGICAL {
-        let msg = CString::new("invalid 'cacheOK' argument")
-            .expect("CString::new failed: contains null byte");
+        let msg = CString::new("invalid 'cacheOK' argument").unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
     let _ = cacheOK; // Used only by Windows wininet code path
@@ -736,16 +729,16 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
             "scheme not supported in URL '{}' (use method=\"libcurl\" for https://)",
             url_rust
         ))
-        .expect("unwrap on None/Err");
+        .unwrap_or_default();
         Rf_error(msg.as_ptr());
     } else if url_rust.starts_with("ftp://") {
         // FTP is defunct in R 4.2+
-        let msg = CString::new("the 'internal' method for ftp:// URLs is defunct")
-            .expect("CString::new failed: contains null byte");
+        let msg =
+            CString::new("the 'internal' method for ftp:// URLs is defunct").unwrap_or_default();
         Rf_error(msg.as_ptr());
     } else {
-        let msg = CString::new(format!("scheme not supported in URL '{}'", url_rust))
-            .expect("CString::new failed: contains null byte");
+        let msg =
+            CString::new(format!("scheme not supported in URL '{}'", url_rust)).unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
 

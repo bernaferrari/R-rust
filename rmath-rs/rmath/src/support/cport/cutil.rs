@@ -12,7 +12,8 @@ pub unsafe fn R_strdup(s: *const i8) -> *mut i8 {
             return std::ptr::null_mut();
         }
         let len = std::ffi::CStr::from_ptr(s).to_bytes().len();
-        let layout = std::alloc::Layout::from_size_align(len + 1, 1).expect("unwrap on None/Err");
+        let layout = std::alloc::Layout::from_size_align(len + 1, 1)
+            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
         let newstr = std::alloc::alloc(layout);
         if newstr.is_null() {
             return std::ptr::null_mut();

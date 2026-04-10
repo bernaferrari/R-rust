@@ -36,8 +36,8 @@ unsafe fn _nl_find_language(name: *mut c_char) -> *mut c_char {
 /// of the string at `codeset`.
 unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *mut c_char {
     unsafe {
-        let layout =
-            std::alloc::Layout::from_size_align(name_len + 1, 1).expect("unwrap on None/Err");
+        let layout = std::alloc::Layout::from_size_align(name_len + 1, 1)
+            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
         let result = std::alloc::alloc(layout) as *mut c_char;
         if result.is_null() {
             return std::ptr::null_mut();
@@ -148,7 +148,7 @@ pub unsafe fn _nl_explode_name(
                         // Same, free the normalized copy.
                         let len = norm_cstr.to_bytes().len() + 1;
                         let layout = std::alloc::Layout::from_size_align(len, 1)
-                            .expect("unwrap on None/Err");
+                            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
                         std::alloc::dealloc(norm as *mut u8, layout);
                     } else {
                         *normalized_codeset = norm;

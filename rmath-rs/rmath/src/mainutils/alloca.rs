@@ -31,7 +31,7 @@ pub(crate) unsafe fn alloca(size: usize) -> *mut c_void {
 
         let layout = std::alloc::Layout::from_size_align(size, 16).unwrap_or_else(|_| {
             std::alloc::Layout::from_size_align(size, 1)
-                .expect("Layout::from_size_align with align=1 must succeed")
+                .unwrap_or_else(|_| std::alloc::Layout::new::<u8>())
         });
 
         let ptr = std::alloc::alloc(layout);

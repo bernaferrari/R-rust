@@ -39,14 +39,16 @@ pub unsafe fn NewEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP { unsafe {
-    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
-    let env: SEXP = &mut *boxed as *mut _;
-    (*env).data.envsxp.frame = frame;
-    (*env).data.envsxp.enclos = enclos;
-    (*env).data.envsxp.hashtab = hashtab;
-    Box::leak(boxed)
-}}
+pub unsafe fn NewPersistentEnvironment(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+    unsafe {
+        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
+        let env: SEXP = &mut *boxed as *mut _;
+        (*env).data.envsxp.frame = frame;
+        (*env).data.envsxp.enclos = enclos;
+        (*env).data.envsxp.hashtab = hashtab;
+        Box::leak(boxed)
+    }
+}
 
 // ---------------------------------------------------------------------------
 // mkPROMISE — create a promise
@@ -100,15 +102,17 @@ pub unsafe fn allocSExp(sexptype: SEXPTYPE) -> SEXP {
 }
 
 /// Create a PROMSXP binding an expression to an environment.
-pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP { unsafe {
-    let p = allocSExp(SEXPTYPE::PROMSXP);
-    if !p.is_null() {
-        (*p).data.promsxp.value = R_NilValue();
-        (*p).data.promsxp.expr = expr;
-        (*p).data.promsxp.env = env;
+pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
+    unsafe {
+        let p = allocSExp(SEXPTYPE::PROMSXP);
+        if !p.is_null() {
+            (*p).data.promsxp.value = R_NilValue();
+            (*p).data.promsxp.expr = expr;
+            (*p).data.promsxp.env = env;
+        }
+        p
     }
-    p
-}}
+}
 
 // ---------------------------------------------------------------------------
 // Raw cons cell (not arena-tracked)
@@ -284,8 +288,7 @@ pub unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
         }
         let layout =
             Layout::from_size_align(total, std::mem::align_of::<u64>()).unwrap_or_else(|_| {
-                Layout::from_size_align(total, 1)
-                    .expect("Layout::from_size_align with align=1 must succeed")
+                Layout::from_size_align(total, 1).unwrap_or_else(|_| Layout::new::<u8>())
             });
         let ptr = alloc(layout);
         if ptr.is_null() {

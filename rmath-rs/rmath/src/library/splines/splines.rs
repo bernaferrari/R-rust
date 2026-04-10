@@ -1,4 +1,3 @@
-
 //! B-spline basis evaluation and spline value computation.
 //!
 //! Port of r-source/src/library/splines/src/splines.c
@@ -176,13 +175,7 @@ unsafe fn evaluate(sp: &mut SplStruct, x: c_double, nder: c_int) -> c_double {
 ///
 /// # Safety
 /// All SEXP arguments must be valid R objects.
-pub unsafe fn spline_value(
-    knots: SEXP,
-    coeff: SEXP,
-    order: SEXP,
-    x: SEXP,
-    deriv: SEXP,
-) -> SEXP {
+pub unsafe fn spline_value(knots: SEXP, coeff: SEXP, order: SEXP, x: SEXP, deriv: SEXP) -> SEXP {
     use crate::main::coerce::coerceVector;
 
     let nk = LENGTH(knots);
@@ -191,7 +184,7 @@ pub unsafe fn spline_value(
     let der = crate::main::coerce::asInteger(deriv);
 
     if ord == NA_INTEGER || ord <= 0 {
-        let msg = std::ffi::CString::new("'ord' must be a positive integer").expect("CString::new failed: contains null byte");
+        let msg = std::ffi::CString::new("'ord' must be a positive integer").unwrap_or_default();
         Rf_error(msg.as_ptr());
     }
 
@@ -312,7 +305,7 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
                         "derivs = {} >= ord = {}, but should be in {{0,..,ord-1}}",
                         der_i, ord
                     ))
-                    .expect("unwrap on None/Err")
+                    .unwrap_or_default()
                 } else {
                     std::ffi::CString::new(format!(
                         "derivs[{}] = {} >= ord = {}, but should be in {{0,..,ord-1}}",
@@ -320,7 +313,7 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
                         der_i,
                         ord
                     ))
-                    .expect("unwrap on None/Err")
+                    .unwrap_or_default()
                 };
                 Rf_error(msg.as_ptr());
             }

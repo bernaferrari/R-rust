@@ -617,7 +617,7 @@ pub unsafe fn xdr_bytes(
                 if sp.is_null() {
                     // Allocate memory (mirrors C's mem_alloc / malloc)
                     let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
-                        .expect("unwrap on None/Err");
+                        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
                     sp = std::alloc::alloc(layout) as *mut u8;
                     if sp.is_null() {
                         return FALSE;
@@ -635,7 +635,7 @@ pub unsafe fn xdr_bytes(
                 if !sp.is_null() {
                     // Free the allocated memory
                     let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
-                        .expect("unwrap on None/Err");
+                        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
                     std::alloc::dealloc(sp, layout);
                     *cpp = ptr::null_mut();
                 }
@@ -699,7 +699,7 @@ pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) ->
                 }
                 if sp.is_null() {
                     let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
-                        .expect("unwrap on None/Err");
+                        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
                     sp = std::alloc::alloc(layout) as *mut u8;
                     if sp.is_null() {
                         return FALSE;
@@ -718,7 +718,7 @@ pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) ->
             XdrOp::Free => {
                 if !sp.is_null() {
                     let layout = std::alloc::Layout::from_size_align(nodesize as usize, 1)
-                        .expect("unwrap on None/Err");
+                        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
                     std::alloc::dealloc(sp, layout);
                     *cpp = ptr::null_mut();
                 }

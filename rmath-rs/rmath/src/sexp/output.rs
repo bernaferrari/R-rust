@@ -25,8 +25,8 @@ thread_local! {
 
 /// Start capturing R output.
 pub fn start_capture() {
-    CAPTURE_STDOUT.with(|c| *c.lock().expect("c lock poisoned") = Some(String::new()));
-    CAPTURE_STDERR.with(|c| *c.lock().expect("c lock poisoned") = Some(String::new()));
+    CAPTURE_STDOUT.with(|c| *c.lock().unwrap_or_else(|e| e.into_inner()) = Some(String::new()));
+    CAPTURE_STDERR.with(|c| *c.lock().unwrap_or_else(|e| e.into_inner()) = Some(String::new()));
     IS_CAPTURING.with(|c| c.set(true));
 }
 
@@ -34,13 +34,13 @@ pub fn start_capture() {
 pub fn stop_capture() -> RCapturedOutput {
     let stdout = CAPTURE_STDOUT.with(|c| {
         c.lock()
-            .expect("c lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
             .unwrap_or_default()
     });
     let stderr = CAPTURE_STDERR.with(|c| {
         c.lock()
-            .expect("c lock poisoned")
+            .unwrap_or_else(|e| e.into_inner())
             .take()
             .unwrap_or_default()
     });
@@ -57,7 +57,7 @@ pub fn is_capturing() -> bool {
 pub fn capture_stdout(msg: &str) {
     if is_capturing() {
         CAPTURE_STDOUT.with(|c| {
-            if let Some(s) = c.lock().expect("c lock poisoned").as_mut() {
+            if let Some(s) = c.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
                 s.push_str(msg);
             }
         });
@@ -68,7 +68,7 @@ pub fn capture_stdout(msg: &str) {
 pub fn capture_stderr(msg: &str) {
     if is_capturing() {
         CAPTURE_STDERR.with(|c| {
-            if let Some(s) = c.lock().expect("c lock poisoned").as_mut() {
+            if let Some(s) = c.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
                 s.push_str(msg);
             }
         });

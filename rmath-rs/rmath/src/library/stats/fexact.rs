@@ -570,7 +570,9 @@ unsafe fn f2xact(
                     if *lp.add(itp as usize) > 0. {
                         REprintf(
                             std::ffi::CStr::from_bytes_with_nul(b"___ LP[itp=%d] = %g > 0\n\0")
-                                .expect("unwrap on None/Err")
+                                .unwrap_or_else(|_| {
+                                    std::ffi::CStr::from_ptr(b"\0".as_ptr() as *const _)
+                                })
                                 .as_ptr(),
                         );
                         *lp.add(itp as usize) = 0.;
@@ -597,7 +599,9 @@ unsafe fn f2xact(
                     if *sp.add(itp as usize) > 0. {
                         REprintf(
                             std::ffi::CStr::from_bytes_with_nul(b"___ SP[itp=%d] = %g > 0\n\0")
-                                .expect("unwrap on None/Err")
+                                .unwrap_or_else(|_| {
+                                    std::ffi::CStr::from_ptr(b"\0".as_ptr() as *const _)
+                                })
                                 .as_ptr(),
                         );
                         *sp.add(itp as usize) = 0.;

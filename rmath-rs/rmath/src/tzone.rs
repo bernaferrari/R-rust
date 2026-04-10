@@ -2193,7 +2193,7 @@ fn r_tzset_impl(g: &mut TzGlobals) {
 /// `R_gmtime` -- convert time_t to UTC broken-down time (non-reentrant).
 pub unsafe fn R_gmtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         r_tzset_impl(&mut g);
         let t = if timep.is_null() { 0 } else { *timep };
         let mut tmp = stm::default();
@@ -2210,7 +2210,7 @@ pub unsafe fn R_gmtime(timep: *const i64) -> *mut stm {
 /// `R_gmtime_r` -- convert time_t to UTC broken-down time (reentrant).
 pub unsafe fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
@@ -2229,7 +2229,7 @@ pub unsafe fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
 /// `R_localtime` -- convert time_t to local broken-down time (non-reentrant).
 pub unsafe fn R_localtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         r_tzset_impl(&mut g);
         let t = if timep.is_null() { 0 } else { *timep };
         let mut tmp = stm::default();
@@ -2246,7 +2246,7 @@ pub unsafe fn R_localtime(timep: *const i64) -> *mut stm {
 /// `R_localtime_r` -- convert time_t to local broken-down time (reentrant).
 pub unsafe fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
@@ -2265,7 +2265,7 @@ pub unsafe fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
 /// `R_mktime` -- convert local broken-down time to time_t.
 pub unsafe fn R_mktime(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         r_tzset_impl(&mut g);
         if tmp.is_null() {
             return WRONG;
@@ -2278,7 +2278,7 @@ pub unsafe fn R_mktime(tmp: *mut stm) -> i64 {
 /// `R_timegm` -- convert UTC broken-down time to time_t.
 pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         if tmp.is_null() {
             return WRONG;
         }
@@ -2290,20 +2290,20 @@ pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
 
 /// `R_tzset` -- set timezone from TZ environment variable.
 pub unsafe fn R_tzset() {
-    let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+    let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
     r_tzset_impl(&mut g);
 }
 
 /// `R_tzsetwall` -- set timezone from system wall clock.
 pub unsafe fn R_tzsetwall() {
-    let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+    let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
     r_tzsetwall(&mut g);
 }
 
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
 pub unsafe fn R_tzname() -> *mut *mut i8 {
-    let mut g = get_tz_globals().lock().expect("tz globals mutex poisoned");
+    let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
     r_tzset_impl(&mut g);
     drop(g);
     R_TZNAME.with(|v| v.get() as *mut *mut i8)

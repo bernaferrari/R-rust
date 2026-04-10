@@ -78,25 +78,13 @@ const FUNSXP: c_int = 99;
 /// Get the "dim" symbol.
 #[inline]
 unsafe fn sym_Dim() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("dim")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "names" symbol.
 #[inline]
 unsafe fn sym_Names() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("names")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("names").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
@@ -105,7 +93,7 @@ unsafe fn sym_DimNames() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("dimnames")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -114,13 +102,7 @@ unsafe fn sym_DimNames() -> SEXP {
 /// Get the "class" symbol.
 #[inline]
 unsafe fn sym_Class() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("class")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "use.names" symbol (for subscript name passing).
@@ -129,7 +111,7 @@ unsafe fn sym_UseNames() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("use.names")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -2050,7 +2032,7 @@ unsafe fn errorNotSubsettable(x: SEXP) {
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("object of type '{}' is not subsettable", s);
-        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
         crate::mainutils::errors::Rf_error1(
             b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
             cmsg.as_ptr(),
@@ -2066,7 +2048,7 @@ unsafe fn errorMissingSubscript(x: SEXP) {
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("object of type '{}' is missing a subscript", s);
-        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
         crate::mainutils::errors::Rf_error1(
             b"invalid subscript\0".as_ptr() as *const core::ffi::c_char,
             cmsg.as_ptr(),
@@ -2082,7 +2064,7 @@ unsafe fn errorOutOfBoundsSEXP(x: SEXP, subscript: c_int, _sindex: SEXP) {
         let type_name = crate::mainutils::util_main::type2char(t);
         let s = std::ffi::CStr::from_ptr(type_name).to_string_lossy();
         let msg = format!("subscript out of bounds: type '{}' index {}", s, subscript);
-        let cmsg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let cmsg = std::ffi::CString::new(msg).unwrap_or_default();
         crate::mainutils::errors::Rf_error1(
             b"subscript out of bounds\0".as_ptr() as *const core::ffi::c_char,
             cmsg.as_ptr(),
@@ -2809,7 +2791,7 @@ pub unsafe fn SubassignTypeSym() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("SubassignTypeSym")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }

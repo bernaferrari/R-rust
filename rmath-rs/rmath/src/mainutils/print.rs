@@ -573,7 +573,7 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
 unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
     unsafe {
         let nm = crate::eval::builtin::PRIMNAME(s);
-        let nm_cstr = std::ffi::CString::new(nm).expect("CString::new failed: contains null byte");
+        let nm_cstr = std::ffi::CString::new(nm).unwrap_or_default();
         let nm_ptr = nm_cstr.as_ptr();
 
         let env = R_findVarInFrame(

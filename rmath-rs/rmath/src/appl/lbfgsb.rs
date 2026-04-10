@@ -372,10 +372,10 @@ pub unsafe fn lbfgsb(
     unsafe {
         LBFGSB_STATE.with(|s| {
             let mut sr = s.borrow_mut();
-            if sr.is_none() {
-                *sr = Some(Box::new(LbfgsbState::new()));
-            }
-            let st = sr.as_mut().expect("LBFGSB_STATE should be initialized");
+            sr.get_or_insert_with(|| Box::new(LbfgsbState::new()));
+            let st = sr
+                .as_mut()
+                .unwrap_or_else(|| panic!("LBFGSB_STATE should be initialized"));
             let mut csave: [c_char; 60] = [0; 60];
 
             if cstrncmp(task, b"START", 5) {

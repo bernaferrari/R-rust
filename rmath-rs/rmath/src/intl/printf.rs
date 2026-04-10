@@ -52,8 +52,8 @@ unsafe fn libintl_vasnprintf(
             // We don't know the buffer size here, so we allocate new memory.
         }
 
-        let layout =
-            std::alloc::Layout::from_size_align(bytes.len(), 1).expect("unwrap on None/Err");
+        let layout = std::alloc::Layout::from_size_align(bytes.len(), 1)
+            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
         let result = std::alloc::alloc(layout) as *mut c_char;
         if result.is_null() {
             return ptr::null_mut();

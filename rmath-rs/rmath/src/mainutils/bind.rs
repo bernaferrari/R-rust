@@ -914,9 +914,9 @@ unsafe fn LogicalAnswer(x: SEXP, data: *mut BindData, call: SEXP) {
                         .to_str()
                         .unwrap_or("unknown")
                 ))
-                .expect("unwrap on None/Err");
+                .unwrap_or_default();
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: msg.into_string().expect("unwrap on None/Err"),
+                    message: msg.into_string().unwrap_or_default(),
                 });
             }
         }
@@ -981,9 +981,9 @@ unsafe fn IntegerAnswer(x: SEXP, data: *mut BindData, call: SEXP) {
                         .to_str()
                         .unwrap_or("unknown")
                 ))
-                .expect("unwrap on None/Err");
+                .unwrap_or_default();
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: msg.into_string().expect("unwrap on None/Err"),
+                    message: msg.into_string().unwrap_or_default(),
                 });
             }
         }
@@ -1065,9 +1065,9 @@ unsafe fn RealAnswer(x: SEXP, data: *mut BindData, call: SEXP) {
                         .to_str()
                         .unwrap_or("unknown")
                 ))
-                .expect("unwrap on None/Err");
+                .unwrap_or_default();
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: msg.into_string().expect("unwrap on None/Err"),
+                    message: msg.into_string().unwrap_or_default(),
                 });
             }
         }
@@ -1162,9 +1162,9 @@ unsafe fn ComplexAnswer(x: SEXP, data: *mut BindData, call: SEXP) {
                         .to_str()
                         .unwrap_or("unknown")
                 ))
-                .expect("unwrap on None/Err");
+                .unwrap_or_default();
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: msg.into_string().expect("unwrap on None/Err"),
+                    message: msg.into_string().unwrap_or_default(),
                 });
             }
         }
@@ -1215,9 +1215,9 @@ unsafe fn RawAnswer(x: SEXP, data: *mut BindData, call: SEXP) {
                         .to_str()
                         .unwrap_or("unknown")
                 ))
-                .expect("unwrap on None/Err");
+                .unwrap_or_default();
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: msg.into_string().expect("unwrap on None/Err"),
+                    message: msg.into_string().unwrap_or_default(),
                 });
             }
         }
@@ -1250,8 +1250,7 @@ unsafe fn NewBase(base: SEXP, tag: SEXP) -> SEXP {
             let sb = std::ffi::CStr::from_ptr(CHAR(base)).to_str().unwrap_or("");
             let st = std::ffi::CStr::from_ptr(CHAR(tag)).to_str().unwrap_or("");
             let combined = format!("{}.{}", sb, st);
-            let c_str =
-                std::ffi::CString::new(combined).expect("CString::new failed: contains null byte");
+            let c_str = std::ffi::CString::new(combined).unwrap_or_default();
             Rf_mkChar(c_str.as_ptr())
         } else if !tag_empty {
             tag
@@ -1290,8 +1289,7 @@ unsafe fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> SEXP 
                 let sb = std::ffi::CStr::from_ptr(CHAR(base)).to_str().unwrap_or("");
                 let st = std::ffi::CStr::from_ptr(CHAR(tag)).to_str().unwrap_or("");
                 let combined = format!("{}.{}", sb, st);
-                let c_str = std::ffi::CString::new(combined)
-                    .expect("CString::new failed: contains null byte");
+                let c_str = std::ffi::CString::new(combined).unwrap_or_default();
                 Rf_mkChar(c_str.as_ptr())
             } else if count == 1 {
                 base
@@ -1299,8 +1297,7 @@ unsafe fn NewName(base: SEXP, tag: SEXP, seqno: R_xlen_t, count: c_int) -> SEXP 
                 // base<seqno>
                 let sb = std::ffi::CStr::from_ptr(CHAR(base)).to_str().unwrap_or("");
                 let combined = format!("{}{}", sb, seqno);
-                let c_str = std::ffi::CString::new(combined)
-                    .expect("CString::new failed: contains null byte");
+                let c_str = std::ffi::CString::new(combined).unwrap_or_default();
                 Rf_mkChar(c_str.as_ptr())
             }
         } else if !tag_empty {
@@ -1546,9 +1543,9 @@ unsafe fn c_Extract_opt(ans: SEXP, recurse: *mut bool, usenames: *mut bool, call
                         if n_recurse > 1 {
                             let msg =
                                 std::ffi::CString::new("repeated formal argument 'recursive'")
-                                    .expect("unwrap on None/Err");
+                                    .unwrap_or_default();
                             std::panic::panic_any(crate::sexp::context::RError {
-                                message: msg.into_string().expect("unwrap on None/Err"),
+                                message: msg.into_string().unwrap_or_default(),
                             });
                         }
                         // Check if CAR(a) is a logical
@@ -1572,9 +1569,9 @@ unsafe fn c_Extract_opt(ans: SEXP, recurse: *mut bool, usenames: *mut bool, call
                         if n_usenames > 1 {
                             let msg =
                                 std::ffi::CString::new("repeated formal argument 'use.names'")
-                                    .expect("unwrap on None/Err");
+                                    .unwrap_or_default();
                             std::panic::panic_any(crate::sexp::context::RError {
-                                message: msg.into_string().expect("unwrap on None/Err"),
+                                message: msg.into_string().unwrap_or_default(),
                             });
                         }
                         let val = CAR(a);
@@ -1779,8 +1776,7 @@ pub unsafe fn do_unlist(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Attempt method dispatch.
         // DispatchOrEval internal generic: unlist
         let mut ans: SEXP = ptr::null_mut();
-        let generic =
-            std::ffi::CString::new("unlist").expect("CString::new failed: contains null byte");
+        let generic = std::ffi::CString::new("unlist").unwrap_or_default();
         // DispatchOrEval returns 1 if dispatched (result in ans), 0 if not.
         let dispatched = DispatchOrEval(call, op, generic.as_ptr(), args, env, &mut ans, 0, 0);
         if dispatched != 0 {
@@ -1864,10 +1860,9 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             if lenient || isVector(x_arg) != 0 {
                 return x_arg;
             }
-            let msg = std::ffi::CString::new("argument not a list")
-                .expect("CString::new failed: contains null byte");
+            let msg = std::ffi::CString::new("argument not a list").unwrap_or_default();
             std::panic::panic_any(crate::sexp::context::RError {
-                message: msg.into_string().expect("unwrap on None/Err"),
+                message: msg.into_string().unwrap_or_default(),
             });
         }
 
@@ -2057,10 +2052,10 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         .to_str()
                         .unwrap_or("unknown")
                 ))
-                .expect("unwrap on None/Err");
+                .unwrap_or_default();
                 Rf_unprotect(1);
                 std::panic::panic_any(crate::sexp::context::RError {
-                    message: msg.into_string().expect("unwrap on None/Err"),
+                    message: msg.into_string().unwrap_or_default(),
                 });
             }
         }
@@ -2235,9 +2230,9 @@ unsafe fn cbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         "number of rows of matrices must match (see arg {})",
                         na + 1
                     ))
-                    .expect("unwrap on None/Err");
+                    .unwrap_or_default();
                     std::panic::panic_any(crate::sexp::context::RError {
-                        message: msg.into_string().expect("unwrap on None/Err"),
+                        message: msg.into_string().unwrap_or_default(),
                     });
                 }
                 cols += *INTEGER(dims).add(1);
@@ -2565,9 +2560,9 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
                         "number of columns of matrices must match (see arg {})",
                         na + 1
                     ))
-                    .expect("unwrap on None/Err");
+                    .unwrap_or_default();
                     std::panic::panic_any(crate::sexp::context::RError {
-                        message: msg.into_string().expect("unwrap on None/Err"),
+                        message: msg.into_string().unwrap_or_default(),
                     });
                 }
                 rows += *INTEGER(dims);

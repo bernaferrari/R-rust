@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1999-2022 The R Core Team
@@ -299,13 +298,7 @@ pub unsafe fn starma(g: *mut c_void, ifault: *mut c_int) {
 }
 
 /// Update Kalman filter by inclusion of data values w(1) to w(n).
-pub unsafe fn karma(
-    g: *mut c_void,
-    sumlog: *mut f64,
-    ssq: *mut f64,
-    iupd: c_int,
-    nit: *mut c_int,
-) {
+pub unsafe fn karma(g: *mut c_void, sumlog: *mut f64, ssq: *mut f64, iupd: c_int, nit: *mut c_int) {
     let G = &mut *(g as *mut starma_struct);
     let p = G.p;
     let q = G.q;
@@ -509,14 +502,16 @@ pub unsafe fn forkal(
     let mut ind2: c_int;
 
     /* Allocate temporary storage */
-    let store_layout = Layout::array::<c_double>(rd as usize).expect("unwrap on None/Err");
+    let store_layout = Layout::array::<c_double>(rd as usize)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<c_double>()));
     let store = alloc(store_layout) as *mut c_double;
     if store.is_null() {
         std::alloc::handle_alloc_error(store_layout);
     }
 
     /* Allocate new a and P arrays */
-    let a_layout = Layout::array::<c_double>(rd as usize).expect("unwrap on None/Err");
+    let a_layout = Layout::array::<c_double>(rd as usize)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<c_double>()));
     let new_a = alloc(a_layout) as *mut c_double;
     if new_a.is_null() {
         dealloc(store as *mut u8, store_layout);
@@ -524,7 +519,8 @@ pub unsafe fn forkal(
     }
     std::ptr::write_bytes(new_a, 0, rd as usize);
 
-    let p_layout = Layout::array::<c_double>(rz as usize).expect("unwrap on None/Err");
+    let p_layout = Layout::array::<c_double>(rz as usize)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(Layout::new::<c_double>()));
     let new_p = alloc(p_layout) as *mut c_double;
     if new_p.is_null() {
         dealloc(new_a as *mut u8, a_layout);

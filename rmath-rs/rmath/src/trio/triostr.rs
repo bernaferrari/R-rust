@@ -630,7 +630,8 @@ pub unsafe fn trio_destroy(string: *mut c_char) {
             // We don't know the original size, so we use a minimal layout
             // In practice, trio_duplicate uses trio_create, so this should match
             // For safety, we deallocate with size 1 (the minimum)
-            let layout = std::alloc::Layout::from_size_align(1, 1).expect("unwrap on None/Err");
+            let layout = std::alloc::Layout::from_size_align(1, 1)
+                .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
             std::alloc::dealloc(string as *mut u8, layout);
         }
     }

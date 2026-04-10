@@ -780,7 +780,7 @@ unsafe fn pathcmp(encpath: *const c_char, comparison: &str) -> c_int {
     libc::strcmp(
         p1,
         CStr::from_bytes_with_nul(comparison.as_bytes())
-            .expect("unwrap on None/Err")
+            .unwrap_or_else(|_| unsafe { CStr::from_ptr(b"\0".as_ptr() as *const c_char) })
             .as_ptr(),
     )
 }

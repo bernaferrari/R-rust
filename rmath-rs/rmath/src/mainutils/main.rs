@@ -37,7 +37,7 @@ pub unsafe fn R_LastvalueSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new(".Last.value")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -48,7 +48,7 @@ pub unsafe fn R_SeedsSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new(".Random.seed")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }

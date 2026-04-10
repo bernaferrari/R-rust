@@ -340,12 +340,7 @@ unsafe fn rcvHeaders(
 }
 
 /// rcvBody - callback for receiving response body (discard spurious FTP body)
-unsafe fn rcvBody(
-    buffer: *mut c_void,
-    size: size_t,
-    nmemb: size_t,
-    _userp: *mut c_void,
-) -> size_t {
+unsafe fn rcvBody(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut c_void) -> size_t {
     size * nmemb
 }
 
@@ -895,12 +890,7 @@ unsafe fn download_close_finished(c: *mut download_cleanup_info) {
 
 /// in_do_curlVersion - .Internal(curlVersion())
 /// Returns a character vector with libcurl version info and attributes.
-pub(crate) unsafe fn in_do_curlVersion(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, args, rho);
     checkArity(op, args);
 
@@ -963,12 +953,7 @@ pub(crate) unsafe fn in_do_curlVersion(
 }
 
 /// in_do_curlGetHeaders - .Internal(curlGetHeaders(url, redirect, verify, timeout, TLS))
-pub(crate) unsafe fn in_do_curlGetHeaders(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, rho);
     checkArity(op, args);
 
@@ -1097,12 +1082,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(
 }
 
 /// in_do_curlDownload - .Internal(curlDownload(urls, destfiles, quiet, mode, headers, cacheOK))
-pub(crate) unsafe fn in_do_curlDownload(
-    call: SEXP,
-    op: SEXP,
-    args: SEXP,
-    rho: SEXP,
-) -> SEXP {
+pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let _ = (call, op, rho);
     checkArity(op, args);
 
@@ -1427,7 +1407,8 @@ pub(crate) unsafe fn in_newCurlUrl(
 
     // Allocate a minimal Curlconn-like structure
     let buf_size: size_t = 16 * CURL_MAX_WRITE_SIZE;
-    let layout = std::alloc::Layout::from_size_align(buf_size, 1).expect("unwrap on None/Err");
+    let layout = std::alloc::Layout::from_size_align(buf_size, 1)
+        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
     let buf = std::alloc::alloc(layout);
     if buf.is_null() {
         Rf_error(b"allocation of url connection failed\0".as_ptr() as *const c_char);

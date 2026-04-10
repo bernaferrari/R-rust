@@ -108,7 +108,7 @@ impl FormatState {
             if !resultbuf.is_null() {
                 // Use the provided buffer. We don't know its size, so allocate.
                 let len = INITIAL_BUF_SIZE;
-                let layout = Layout::from_size_align(len, 1).expect("unwrap on None/Err");
+                let layout = Layout::from_size_align(len, 1).unwrap_or(Layout::new::<u8>());
                 let buf = alloc::alloc(layout) as *mut c_char;
                 FormatState {
                     buf,
@@ -119,7 +119,7 @@ impl FormatState {
                 }
             } else {
                 let len = INITIAL_BUF_SIZE;
-                let layout = Layout::from_size_align(len, 1).expect("unwrap on None/Err");
+                let layout = Layout::from_size_align(len, 1).unwrap_or(Layout::new::<u8>());
                 let buf = alloc::alloc(layout) as *mut c_char;
                 FormatState {
                     buf,
@@ -136,7 +136,7 @@ impl FormatState {
         unsafe {
             while self.buf_pos + additional >= self.buf_len {
                 let new_len = self.allocated_len * 2;
-                let layout = Layout::from_size_align(new_len, 1).expect("unwrap on None/Err");
+                let layout = Layout::from_size_align(new_len, 1).unwrap_or(Layout::new::<u8>());
                 let new_buf = alloc::realloc(self.buf as *mut u8, layout, new_len) as *mut c_char;
                 if new_buf.is_null() {
                     return false;
@@ -216,7 +216,7 @@ unsafe fn format_string(
                 *resultbuf = 0;
                 return resultbuf;
             }
-            let layout = Layout::from_size_align(1, 1).expect("unwrap on None/Err");
+            let layout = Layout::from_size_align(1, 1).unwrap_or(Layout::new::<u8>());
             let p = alloc::alloc(layout) as *mut c_char;
             if !p.is_null() {
                 *p = 0;

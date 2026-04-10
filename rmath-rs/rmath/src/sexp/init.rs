@@ -34,7 +34,7 @@ pub unsafe fn initialize_r() {
             return;
         }
 
-        let _guard = INIT_LOCK.lock().expect("init lock poisoned");
+        let _guard = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         // Double-check: another thread may have initialized while we waited for the lock.
         if R_INITIALIZED.load(Ordering::Acquire) {
             return;
@@ -175,7 +175,7 @@ unsafe fn pre_intern_symbols() {
         ];
 
         for name in &symbols {
-            let c_name = CString::new(*name).expect("symbol name contains null byte");
+            let c_name = CString::new(*name).unwrap_or_default();
             Rf_install(c_name.as_ptr());
         }
     }
@@ -187,7 +187,7 @@ pub unsafe fn shutdown_r() {
             return;
         }
 
-        let _guard = INIT_LOCK.lock().expect("init lock poisoned");
+        let _guard = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
 
         set_R_GlobalEnv(std::ptr::null_mut());
         set_R_BaseEnv(std::ptr::null_mut());

@@ -648,7 +648,7 @@ fn test_eval_arithmetic_direct() {
     }
 
     let mut arena = crate::sexp::memory::RArena::new();
-    let expr = parser::parse("1 + 2", &mut arena).expect("parse failed");
+    let expr = must(parser::parse("1 + 2", &mut arena));
 
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
     let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
@@ -680,7 +680,7 @@ fn test_eval_abs_debug() {
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
     let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
 
-    let expr = parser::parse("abs(-5)", &mut arena).expect("parse failed");
+    let expr = must(parser::parse("abs(-5)", &mut arena));
     eprintln!("expr ptr={:p}", expr);
     eprintln!("top type={}", unsafe { TYPEOF(expr) });
     eprintln!("car type={}", unsafe { TYPEOF(CAR(expr)) });
@@ -755,7 +755,7 @@ fn test_eval_math_builtins() {
     ];
 
     for (code, expected) in cases {
-        let expr = parser::parse(code, &mut arena).expect("parse failed");
+        let expr = must(parser::parse(code, &mut arena));
         let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
         let result = eval_safe(e, env);
         assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
@@ -792,9 +792,9 @@ fn test_eval_length_builtin() {
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
     let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
 
-    let expr = parser::parse("length(42)", &mut arena).expect("parse failed");
+    let expr = must(parser::parse("length(42)", &mut arena));
     let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
-    let result = eval_safe(e, env).expect("eval failed");
+    let result = must(eval_safe(e, env));
     let v = result.integer_elt(0).unwrap_or(0);
     assert_eq!(v, 1, "length(42) should be 1, got {}", v);
 

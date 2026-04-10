@@ -118,7 +118,7 @@ pub unsafe fn printf_parse(
         (*d).count = 0;
         (*d).dir = alloc::alloc(
             Layout::from_size_align(d_allocated * std::mem::size_of::<char_directive>(), 1)
-                .expect("unwrap on None/Err"),
+                .unwrap_or(Layout::new::<u8>()),
         ) as *mut char_directive;
         if (*d).dir.is_null() {
             return -1;
@@ -142,11 +142,13 @@ pub unsafe fn printf_parse(
                     return false;
                 }
                 let memory = if (*a).arg.is_null() {
-                    alloc::alloc(Layout::from_size_align(mem_size, 1).expect("unwrap on None/Err")) as *mut argument
+                    alloc::alloc(
+                        Layout::from_size_align(mem_size, 1).unwrap_or(Layout::new::<u8>()),
+                    ) as *mut argument
                 } else {
                     alloc::realloc(
                         (*a).arg as *mut u8,
-                        Layout::from_size_align(mem_size, 1).expect("unwrap on None/Err"),
+                        Layout::from_size_align(mem_size, 1).unwrap_or(Layout::new::<u8>()),
                         mem_size,
                     ) as *mut argument
                 };
@@ -683,7 +685,7 @@ pub unsafe fn printf_parse(
                     }
                     let memory = alloc::realloc(
                         (*d).dir as *mut u8,
-                        Layout::from_size_align(mem_size, 1).expect("unwrap on None/Err"),
+                        Layout::from_size_align(mem_size, 1).unwrap_or(Layout::new::<u8>()),
                         mem_size,
                     ) as *mut char_directive;
                     if memory.is_null() {

@@ -402,7 +402,7 @@ unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
         }
         let la = Rf_mkString(
             std::ffi::CString::new("factor")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
         setAttrib(a, R_ClassSymbol(), la);

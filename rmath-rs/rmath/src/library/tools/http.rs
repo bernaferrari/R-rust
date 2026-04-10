@@ -124,7 +124,7 @@ fn remove_dot_segments(p: &str) -> String {
         {
             idx += 3;
             // remove trailing "/segment" from output
-            while !outbuf.is_empty() && *outbuf.last().expect("unwrap on None/Err") != '/' {
+            while !outbuf.is_empty() && *outbuf.last().copied().unwrap_or('\0') != '/' {
                 outbuf.pop();
             }
             if !outbuf.is_empty() {
@@ -141,7 +141,7 @@ fn remove_dot_segments(p: &str) -> String {
             // trailing "/.." -> "/"
             inbuf.truncate(idx + 1);
             // remove trailing "/segment" from output
-            while !outbuf.is_empty() && *outbuf.last().expect("unwrap on None/Err") != '/' {
+            while !outbuf.is_empty() && *outbuf.last().copied().unwrap_or('\0') != '/' {
                 outbuf.pop();
             }
             if !outbuf.is_empty() {
@@ -209,7 +209,7 @@ pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
             }
         };
         let cleaned = remove_dot_segments(path);
-        let char_sxp = Rf_mkChar(std::ffi::CString::new(cleaned).expect("CString::new failed: contains null byte").as_ptr());
+        let char_sxp = Rf_mkChar(std::ffi::CString::new(cleaned).unwrap_or_default().as_ptr());
         SET_STRING_ELT(y, i as R_xlen_t, char_sxp);
     }
 

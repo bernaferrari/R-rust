@@ -142,7 +142,7 @@ pub unsafe fn libintl_gettext_extract_plural(
             let nplurals_pos = entry_str.find("nplurals=");
 
             if plural_pos.is_some() && nplurals_pos.is_some() {
-                let nplurals_start = nplurals_pos.expect("unwrap on None/Err") + 9; // skip "nplurals="
+                let nplurals_start = nplurals_pos.unwrap_or(0) + 9; // skip "nplurals="
 
                 // Skip leading whitespace.
                 let bytes = entry_str.as_bytes();
@@ -160,7 +160,7 @@ pub unsafe fn libintl_gettext_extract_plural(
                         *npluralsp = n;
 
                         // Try to parse the plural expression.
-                        let plural_start = plural_pos.expect("unwrap on None/Err") + 7; // skip "plural="
+                        let plural_start = plural_pos.unwrap_or(0) + 7; // skip "plural="
                         let mut args = parse_args {
                             cp: nullentry.add(plural_start),
                             res: ptr::null_mut(),

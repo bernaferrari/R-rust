@@ -194,8 +194,7 @@ pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, vars.len() as R_xlen_t));
             for (i, (key, val)) in vars.iter().enumerate() {
                 let combined = format!("{}={}", key, val);
-                let c_str = std::ffi::CString::new(combined)
-                    .expect("CString::new failed: contains null byte");
+                let c_str = std::ffi::CString::new(combined).unwrap_or_default();
                 SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
             }
             Rf_unprotect(1);
@@ -207,8 +206,7 @@ pub unsafe fn do_getenv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 let name_c = CHAR(name);
                 let name_str = std::ffi::CStr::from_ptr(name_c).to_str().unwrap_or("");
                 if let Ok(val) = std::env::var(name_str) {
-                    let c_str = std::ffi::CString::new(val)
-                        .expect("CString::new failed: contains null byte");
+                    let c_str = std::ffi::CString::new(val).unwrap_or_default();
                     SET_STRING_ELT(ans, j, Rf_mkChar(c_str.as_ptr()));
                 } else {
                     SET_STRING_ELT(ans, j, STRING_ELT(unset, 0));
@@ -298,7 +296,7 @@ pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let temp_str = temp_dir.to_string_lossy().to_string();
         Rf_mkString(
             std::ffi::CString::new(temp_str)
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -348,8 +346,7 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
             let te = std::ffi::CStr::from_ptr(te_c).to_str().unwrap_or("");
 
             if let Some(name) = R_tmpnam2(tn, td, te) {
-                let c_str =
-                    std::ffi::CString::new(name).expect("CString::new failed: contains null byte");
+                let c_str = std::ffi::CString::new(name).unwrap_or_default();
                 SET_STRING_ELT(ans, i, Rf_mkChar(c_str.as_ptr()));
             } else {
                 SET_STRING_ELT(ans, i, STRING_ELT(fileext, 0));
@@ -384,32 +381,24 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         // sysname
         let sysname = Rf_mkString(
             std::ffi::CString::new("Darwin")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
         SET_VECTOR_ELT(ans, 0, sysname);
 
         // release
-        let release = Rf_mkString(
-            std::ffi::CString::new("")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        );
+        let release = Rf_mkString(std::ffi::CString::new("").unwrap_or_default().as_ptr());
         SET_VECTOR_ELT(ans, 1, release);
 
         // version
-        let version = Rf_mkString(
-            std::ffi::CString::new("")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        );
+        let version = Rf_mkString(std::ffi::CString::new("").unwrap_or_default().as_ptr());
         SET_VECTOR_ELT(ans, 2, version);
 
         // nodename
         let hn = get_hostname();
         let nodename = Rf_mkString(
             std::ffi::CString::new(hn.as_str())
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
         SET_VECTOR_ELT(ans, 3, nodename);
@@ -417,7 +406,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
         // machine
         let machine = Rf_mkString(
             std::ffi::CString::new("x86_64")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
         SET_VECTOR_ELT(ans, 4, machine);
@@ -429,7 +418,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
             0,
             Rf_mkChar(
                 std::ffi::CString::new("sysname")
-                    .expect("CString::new failed: contains null byte")
+                    .unwrap_or_default()
                     .as_ptr(),
             ),
         );
@@ -438,7 +427,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
             1,
             Rf_mkChar(
                 std::ffi::CString::new("release")
-                    .expect("CString::new failed: contains null byte")
+                    .unwrap_or_default()
                     .as_ptr(),
             ),
         );
@@ -447,7 +436,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
             2,
             Rf_mkChar(
                 std::ffi::CString::new("version")
-                    .expect("CString::new failed: contains null byte")
+                    .unwrap_or_default()
                     .as_ptr(),
             ),
         );
@@ -456,7 +445,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
             3,
             Rf_mkChar(
                 std::ffi::CString::new("nodename")
-                    .expect("CString::new failed: contains null byte")
+                    .unwrap_or_default()
                     .as_ptr(),
             ),
         );
@@ -465,7 +454,7 @@ pub(crate) unsafe fn do_sysinfo_mainutils(_call: SEXP, _op: SEXP, _args: SEXP, _
             4,
             Rf_mkChar(
                 std::ffi::CString::new("machine")
-                    .expect("CString::new failed: contains null byte")
+                    .unwrap_or_default()
                     .as_ptr(),
             ),
         );
@@ -488,10 +477,8 @@ pub unsafe fn do_sysenvir(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
         let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, n as R_xlen_t));
 
         for (i, (key, val)) in vars.iter().enumerate() {
-            let k = std::ffi::CString::new(key.as_str())
-                .expect("CString::new failed: contains null byte");
-            let v = std::ffi::CString::new(val.as_str())
-                .expect("CString::new failed: contains null byte");
+            let k = std::ffi::CString::new(key.as_str()).unwrap_or_default();
+            let v = std::ffi::CString::new(val.as_str()).unwrap_or_default();
             SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(v.as_ptr()));
             SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(k.as_ptr()));
         }

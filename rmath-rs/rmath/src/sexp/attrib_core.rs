@@ -22,35 +22,17 @@ use super::symbol::Rf_install;
 
 /// Get the "class" symbol.
 pub unsafe fn R_ClassSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("class")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "names" symbol.
 pub unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("names")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("names").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "dim" symbol.
 pub unsafe fn R_DimSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("dim")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
@@ -58,7 +40,7 @@ pub unsafe fn R_DimNamesSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("dimnames")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -69,7 +51,7 @@ pub unsafe fn R_LevelsSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("levels")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -77,13 +59,7 @@ pub unsafe fn R_LevelsSymbol() -> SEXP {
 
 /// Get the "tsp" symbol.
 pub unsafe fn R_TspSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("tsp")
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap_or_default().as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
@@ -91,7 +67,7 @@ pub unsafe fn R_SrcRefSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("srcref")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -102,7 +78,7 @@ pub unsafe fn R_SrcFileSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("srcfile")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -113,7 +89,7 @@ pub unsafe fn R_RowNamesSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new("row.names")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -124,7 +100,7 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
     unsafe {
         Rf_install(
             std::ffi::CString::new(".Environment")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -284,11 +260,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
                 19 => "list",
                 _ => "unknown",
             };
-            return Rf_mkString(
-                std::ffi::CString::new(name)
-                    .expect("CString::new failed: contains null byte")
-                    .as_ptr(),
-            );
+            return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
         }
         class_val
     }
@@ -303,7 +275,7 @@ pub unsafe fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
         let len_sym = Rf_install(
             std::ffi::CString::new("length")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
         let val = getAttrib(x, len_sym);

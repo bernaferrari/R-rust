@@ -329,7 +329,9 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>
         } else {
             unsafe {
                 SETCDR(
-                    result_tail.expect("unwrap on None/Err").as_raw(),
+                    result_tail
+                        .unwrap_or_else(|| panic!("unexpected None"))
+                        .as_raw(),
                     cell.as_raw(),
                 );
             }
@@ -666,7 +668,7 @@ pub unsafe fn R_typeToChar(stype: c_int) -> SEXP {
         25 => "S4",
         _ => "unknown",
     };
-    let _cs = std::ffi::CString::new(_name).expect("CString::new failed: contains null byte");
+    let _cs = std::ffi::CString::new(_name).unwrap_or_default();
     ptr::null_mut()
 }
 

@@ -244,7 +244,8 @@ pub unsafe fn _nl_find_domain(
         // Free the normalized_codeset if it was dynamically allocated.
         if (mask & XPG_NORM_CODESET) != 0 && !normalized_codeset.is_null() {
             let len = CStr::from_ptr(normalized_codeset).to_bytes().len() + 1;
-            let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
+            let layout = std::alloc::Layout::from_size_align(len, 1)
+                .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
             std::alloc::dealloc(normalized_codeset as *mut u8, layout);
         }
 

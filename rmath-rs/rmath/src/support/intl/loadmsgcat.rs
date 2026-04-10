@@ -59,7 +59,7 @@ unsafe fn read_mo_file(filename: *const c_char, sizep: *mut usize) -> *mut c_cha
         data.push(0);
 
         let size = data.len();
-        let layout = Layout::from_size_align(size, 1).expect("unwrap on None/Err");
+        let layout = Layout::from_size_align(size, 1).unwrap_or(Layout::new::<u8>());
         let buf = alloc::alloc(layout) as *mut c_char;
         if buf.is_null() {
             return ptr::null_mut();
@@ -123,7 +123,7 @@ pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding:
         let domain_layout = Layout::new::<loaded_domain>();
         let domain = alloc::alloc(domain_layout) as *mut loaded_domain;
         if domain.is_null() {
-            let layout = Layout::from_size_align(file_size, 1).expect("unwrap on None/Err");
+            let layout = Layout::from_size_align(file_size, 1).unwrap_or(Layout::new::<u8>());
             alloc::dealloc(data as *mut u8, layout);
             (*domain_file).decided = 1;
             (*domain_file).data = ptr::null();
@@ -142,7 +142,7 @@ pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding:
             // File too small to be a valid .mo file.
             alloc::dealloc(
                 data as *mut u8,
-                Layout::from_size_align(file_size, 1).expect("unwrap on None/Err"),
+                Layout::from_size_align(file_size, 1).unwrap_or(Layout::new::<u8>()),
             );
             alloc::dealloc(domain as *mut u8, domain_layout);
             (*domain_file).decided = 1;
@@ -160,7 +160,7 @@ pub unsafe fn _nl_load_domain(domain_file: *mut loaded_l10nfile, _domainbinding:
             // Invalid magic number.
             alloc::dealloc(
                 data as *mut u8,
-                Layout::from_size_align(file_size, 1).expect("unwrap on None/Err"),
+                Layout::from_size_align(file_size, 1).unwrap_or(Layout::new::<u8>()),
             );
             alloc::dealloc(domain as *mut u8, domain_layout);
             (*domain_file).decided = 1;

@@ -103,7 +103,9 @@ pub unsafe fn apply_to_list(first: object, fn_: actionfn) {
         let start = (*(*first).parent).child;
         let mut obj = first;
         loop {
-            fn_.expect("unwrap on None/Err")(obj);
+            if let Some(f) = fn_ {
+                f(obj);
+            }
             obj = (*obj).next;
             if obj == start {
                 break;
@@ -221,12 +223,16 @@ unsafe fn free_private(obj: object) {
     unsafe {
         remove_object(obj);
         if !(*obj).call.is_null() && !(*(*obj).call).die.is_none() {
-            (*(*obj).call).die.expect("unwrap on None/Err")(obj);
+            if let Some(die) = (*(*obj).call).die {
+                die(obj);
+            }
         }
         update_app_globals(obj);
         // del_context(obj); // handled by context module
         if !(*obj).die.is_none() {
-            (*obj).die.expect("unwrap on None/Err")(obj);
+            if let Some(die) = (*obj).die {
+                die(obj);
+            }
         }
         remove_deleted_object(obj);
     }
@@ -368,7 +374,9 @@ pub unsafe fn remove_menu_item(obj: object) {
             return;
         }
         if !(*obj).die.is_none() {
-            (*obj).die.expect("unwrap on None/Err")(obj);
+            if let Some(die) = (*obj).die {
+                die(obj);
+            }
         }
         remove_object(obj);
         remove_deleted_object(obj);

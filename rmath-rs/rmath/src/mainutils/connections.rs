@@ -458,8 +458,8 @@ unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
         if class_vec.is_null() {
             return;
         }
-        let c1 = CString::new(specific_class).expect("CString::new failed: contains null byte");
-        let c2 = CString::new("connection").expect("CString::new failed: contains null byte");
+        let c1 = CString::new(specific_class).unwrap_or_default();
+        let c2 = CString::new("connection").unwrap_or_default();
         let charsxp1 = Rf_mkChar(c1.as_ptr());
         let charsxp2 = Rf_mkChar(c2.as_ptr());
         if !charsxp1.is_null() {
@@ -953,7 +953,9 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         };
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
         if conn.isopen {
             return R_NilValue(); // Already open, just return
         }
@@ -1111,7 +1113,9 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
-        let conn = table[i].as_ref().expect("expected Some, got None");
+        let Some(conn) = table[i].as_ref() else {
+            return Rf_ScalarLogical(0);
+        };
         let mut res = if conn.isopen { 1 } else { 0 };
         match rw {
             1 => {
@@ -1146,7 +1150,9 @@ pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) ->
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
-        let conn = table[i].as_ref().expect("expected Some, got None");
+        let Some(conn) = table[i].as_ref() else {
+            return Rf_ScalarLogical(0);
+        };
         Rf_ScalarLogical(if conn.incomplete { 1 } else { 0 })
     }
 }
@@ -1188,7 +1194,9 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
         };
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1313,9 +1321,8 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line = CString::new(line.as_str()).unwrap_or_else(|_| {
-                    CString::new("").expect("CString::new failed: contains null byte")
-                });
+                let c_line = CString::new(line.as_str())
+                    .unwrap_or_else(|_| CString::new("").unwrap_or_default());
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -1351,7 +1358,9 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
 
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1440,7 +1449,9 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         }
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -1518,7 +1529,9 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
 
         if conn.canwrite
             && let Some(ref mut writer) = conn.writer
@@ -1688,7 +1701,9 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         }
         let i = as_integer(scon) as usize;
         let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_ref().expect("expected Some, got None");
+        let Some(conn) = table[i].as_ref() else {
+            return R_NilValue();
+        };
 
         if !conn.canwrite {
             r_error("'con' is not an output textConnection");
@@ -1699,9 +1714,8 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
-                let c_line = CString::new(line.as_str()).unwrap_or_else(|_| {
-                    CString::new("").expect("CString::new failed: contains null byte")
-                });
+                let c_line = CString::new(line.as_str())
+                    .unwrap_or_else(|_| CString::new("").unwrap_or_default());
                 let charsxp = Rf_mkChar(c_line.as_ptr());
                 SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
             }
@@ -1751,7 +1765,9 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             r_error("invalid connection");
         }
 
-        let conn = table[n].as_ref().expect("expected Some, got None");
+        let Some(conn) = table[n].as_ref() else {
+            return R_NilValue();
+        };
 
         // Build a list with connection info
         // Return the integer index (like R's getConnection)
@@ -1785,9 +1801,8 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
             for i in 0..table.len() {
                 if let Some(ref conn) = table[i] {
                     let desc = format!("{} {} {}", i, conn.description, conn.mode);
-                    let c_desc = CString::new(desc).unwrap_or_else(|_| {
-                        CString::new("").expect("CString::new failed: contains null byte")
-                    });
+                    let c_desc =
+                        CString::new(desc).unwrap_or_else(|_| CString::new("").unwrap_or_default());
                     let charsxp = Rf_mkChar(c_desc.as_ptr());
                     SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     idx += 1;
@@ -1988,9 +2003,8 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                 let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nstr);
                 if !ans.is_null() {
                     for (idx, s) in strings.iter().enumerate() {
-                        let c_s = CString::new(s.as_str()).unwrap_or_else(|_| {
-                            CString::new("").expect("CString::new failed: contains null byte")
-                        });
+                        let c_s = CString::new(s.as_str())
+                            .unwrap_or_else(|_| CString::new("").unwrap_or_default());
                         let charsxp = Rf_mkChar(c_s.as_ptr());
                         SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
                     }
@@ -2023,7 +2037,9 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
         let i = as_integer(scon) as usize;
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
 
         if !conn.isopen {
             r_error("connection is not open");
@@ -2110,8 +2126,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                                 if !ans.is_null() {
                                     for (idx, s) in strings.iter().enumerate() {
                                         let c_s = CString::new(s.as_str()).unwrap_or_else(|_| {
-                                            CString::new("")
-                                                .expect("CString::new failed: contains null byte")
+                                            CString::new("").unwrap_or_default()
                                         });
                                         let charsxp = Rf_mkChar(c_s.as_ptr());
                                         SET_STRING_ELT(ans, idx as R_xlen_t, charsxp);
@@ -2226,7 +2241,9 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
 
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        let conn = table[i].as_mut().expect("expected Some, got None");
+        let Some(conn) = table[i].as_mut() else {
+            return R_NilValue();
+        };
 
         if !conn.isopen {
             r_error("connection is not open");

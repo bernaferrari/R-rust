@@ -909,7 +909,7 @@ pub unsafe fn StringFromInteger(x: c_int, _warn: *mut c_int) -> SEXP {
         }
         // Format integer as string
         let s = format!("{}", x);
-        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
+        let cstr = std::ffi::CString::new(s).unwrap_or_default();
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -928,7 +928,7 @@ pub(crate) unsafe fn StringFromReal_impl(x: c_double, _warn: *mut c_int) -> SEXP
         }
         // Use 17 significant digits for round-trip safety (matches R's DBL_DIG + 2)
         let s = format!("{:.17e}", x);
-        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
+        let cstr = std::ffi::CString::new(s).unwrap_or_default();
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -946,7 +946,7 @@ pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
         } else {
             format!("{:.17e}{:.17e}i", x.r, x.i)
         };
-        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
+        let cstr = std::ffi::CString::new(s).unwrap_or_default();
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -957,7 +957,7 @@ pub unsafe fn StringFromComplex(x: Rcomplex, _warn: *mut c_int) -> SEXP {
 pub unsafe fn StringFromRaw(x: Rbyte, _warn: *mut c_int) -> SEXP {
     unsafe {
         let s = format!("{:02x}", x);
-        let cstr = std::ffi::CString::new(s).expect("CString::new failed: contains null byte");
+        let cstr = std::ffi::CString::new(s).unwrap_or_default();
         Rf_mkChar(cstr.as_ptr())
     }
 }
@@ -2432,10 +2432,10 @@ pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             Some(s) => s,
             None => return R_NilValue(),
         };
-        if args_s.cdr().is_none() {
+        let Some(cdr) = args_s.cdr() else {
             return x.as_raw();
-        }
-        let mode_str = match args_s.cdr().expect("unwrap on None/Err").car() {
+        };
+        let mode_str = match cdr.car() {
             Some(s) => s,
             None => return R_NilValue(),
         };
@@ -2484,7 +2484,7 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
         };
         Rf_mkString(
             std::ffi::CString::new(type_name)
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         )
     }
@@ -2814,10 +2814,10 @@ pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             Some(s) => s,
             None => return R_NilValue(),
         };
-        if args_s.cdr().is_none() {
+        let Some(cdr) = args_s.cdr() else {
             return x.as_raw();
-        }
-        let mode_str = match args_s.cdr().expect("unwrap on None/Err").car() {
+        };
+        let mode_str = match cdr.car() {
             Some(s) => s,
             None => return R_NilValue(),
         };

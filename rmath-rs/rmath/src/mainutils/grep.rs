@@ -870,8 +870,7 @@ pub unsafe fn do_grep(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 if m {
                     SET_STRING_ELT(ans, i as R_xlen_t, text_charsxp);
                 } else {
-                    let empty_str = std::ffi::CString::new("")
-                        .expect("CString::new failed: contains null byte");
+                    let empty_str = std::ffi::CString::new("").unwrap_or_default();
                     SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(empty_str.as_ptr()));
                 }
             }
@@ -1169,8 +1168,7 @@ pub unsafe fn do_regexpr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Set match.length attribute
         // Use install for the attribute name
-        let match_len_str = std::ffi::CString::new("match.length")
-            .expect("CString::new failed: contains null byte");
+        let match_len_str = std::ffi::CString::new("match.length").unwrap_or_default();
         let names_sym = Rf_mkChar(match_len_str.as_ptr());
         setAttrib(ans as SEXP, names_sym, matchlen);
 

@@ -111,7 +111,10 @@ pub fn tr_build_spec(s: &[u8]) -> Option<Box<TrSpec>> {
         }
 
         *tail = Some(node);
-        tail = &mut tail.as_mut().expect("expected Some, got None").next;
+        tail = &mut tail
+            .as_mut()
+            .unwrap_or_else(|| panic!("unexpected None"))
+            .next;
     }
 
     // Remaining characters (0, 1, or 2 left)
@@ -124,7 +127,10 @@ pub fn tr_build_spec(s: &[u8]) -> Option<Box<TrSpec>> {
             last: None,
         });
         *tail = Some(node);
-        tail = &mut tail.as_mut().expect("expected Some, got None").next;
+        tail = &mut tail
+            .as_mut()
+            .unwrap_or_else(|| panic!("unexpected None"))
+            .next;
         i += 1;
     }
 
@@ -231,7 +237,10 @@ pub fn wtr_build_spec(s: &[char]) -> Option<Box<WtrSpec>> {
         }
 
         *tail = Some(node);
-        tail = &mut tail.as_mut().expect("expected Some, got None").next;
+        tail = &mut tail
+            .as_mut()
+            .unwrap_or_else(|| panic!("unexpected None"))
+            .next;
     }
 
     while i < len {
@@ -243,7 +252,10 @@ pub fn wtr_build_spec(s: &[char]) -> Option<Box<WtrSpec>> {
             last: None,
         });
         *tail = Some(node);
-        tail = &mut tail.as_mut().expect("expected Some, got None").next;
+        tail = &mut tail
+            .as_mut()
+            .unwrap_or_else(|| panic!("unexpected None"))
+            .next;
         i += 1;
     }
 
@@ -478,7 +490,7 @@ unsafe fn make_charsxp(bytes: &[u8]) -> SEXP {
         if bytes.is_empty() {
             return Rf_mkCharLen(c"".as_ptr(), 0);
         }
-        let cs = std::ffi::CString::new(bytes).expect("CString::new failed: contains null byte");
+        let cs = std::ffi::CString::new(bytes).unwrap_or_default();
         Rf_mkCharLen(cs.as_ptr(), bytes.len() as c_int)
     }
 }

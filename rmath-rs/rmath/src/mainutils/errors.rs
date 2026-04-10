@@ -717,7 +717,7 @@ pub unsafe fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_cha
         verrorcall_dflt(
             call,
             std::ffi::CString::new(formatted)
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
             ptr::null_mut(),
         );
@@ -745,8 +745,7 @@ pub unsafe fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]
                 break;
             }
         }
-        let c_result =
-            std::ffi::CString::new(result).expect("CString::new failed: contains null byte");
+        let c_result = std::ffi::CString::new(result).unwrap_or_default();
         verrorcall_dflt(call, c_result.as_ptr(), ptr::null_mut());
     }
 }
@@ -807,7 +806,7 @@ pub unsafe fn UNIMPLEMENTED(s: *const c_char) {
             CStr::from_ptr(s).to_str().unwrap_or("unknown")
         };
         let msg = format!("unimplemented feature in {}", name);
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
         let call = getCurrentCall();
         errorcall(call, c_msg.as_ptr());
     }
@@ -823,7 +822,7 @@ pub unsafe fn WrongArgCount(s: *const c_char) {
             CStr::from_ptr(s).to_str().unwrap_or("unknown")
         };
         let msg = format!("incorrect number of arguments to \"{}\"", name);
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
         let call = getCurrentCall();
         errorcall(call, c_msg.as_ptr());
     }
@@ -894,8 +893,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             // Convert warning to error
             IN_WARNING.store(0, Ordering::Relaxed);
             let full_msg = format!("(converted from warning) {}", fmt_str);
-            let c_msg =
-                std::ffi::CString::new(full_msg).expect("CString::new failed: contains null byte");
+            let c_msg = std::ffi::CString::new(full_msg).unwrap_or_default();
             errorcall(call, c_msg.as_ptr());
         } else if w == 1 || IMMEDIATE_WARNING.load(Ordering::Relaxed) {
             // Print warnings immediately
@@ -954,8 +952,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
                                 msg_to_store.push_str(&tr);
                             }
                         }
-                        let c_msg = std::ffi::CString::new(msg_to_store)
-                            .expect("CString::new failed: contains null byte");
+                        let c_msg = std::ffi::CString::new(msg_to_store).unwrap_or_default();
                         let ch = Rf_mkChar(c_msg.as_ptr());
                         SET_STRING_ELT(names, cw as R_xlen_t, ch);
                     }
@@ -1025,8 +1022,7 @@ pub unsafe fn Rf_warningcall1(call: SEXP, msg: *const c_char) {
         } else {
             CStr::from_ptr(msg).to_str().unwrap_or("")
         };
-        let c_msg =
-            std::ffi::CString::new(msg_str).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
         warningcall(call, c_msg.as_ptr());
     }
 }
@@ -1319,16 +1315,15 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Has a message
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.0));
             if isValidString(CAR(args)) == 0 {
-                let c_msg = std::ffi::CString::new(" [invalid string in stop(.)]")
-                    .expect("CString::new failed: contains null byte");
+                let c_msg =
+                    std::ffi::CString::new(" [invalid string in stop(.)]").unwrap_or_default();
                 errorcall(c_call, c_msg.as_ptr());
             }
             // Pre-format: in C this is errorcall(c_call, "%s", translateChar(...))
             // In Rust, we pre-format the string
             let msg = translateChar(STRING_ELT(CAR(args), 0));
             let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-            let c_msg =
-                std::ffi::CString::new(msg_str).expect("CString::new failed: contains null byte");
+            let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
             errorcall(c_call, c_msg.as_ptr());
             // errorcall doesn't return, but we need a return type
             ptr::null_mut()
@@ -1368,15 +1363,14 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !isNull(CAR(args)) != 0 {
             SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.0));
             if isValidString(CAR(args)) == 0 {
-                let c_msg = std::ffi::CString::new(" [invalid string in warning(.)]")
-                    .expect("CString::new failed: contains null byte");
+                let c_msg =
+                    std::ffi::CString::new(" [invalid string in warning(.)]").unwrap_or_default();
                 warningcall(c_call, c_msg.as_ptr());
             } else {
                 // Pre-format: in C this is warningcall(c_call, "%s", translateChar(...))
                 let msg = translateChar(STRING_ELT(CAR(args), 0));
                 let msg_str = CStr::from_ptr(msg).to_str().unwrap_or("");
-                let c_msg = std::ffi::CString::new(msg_str)
-                    .expect("CString::new failed: contains null byte");
+                let c_msg = std::ffi::CString::new(msg_str).unwrap_or_default();
                 warningcall(c_call, c_msg.as_ptr());
             }
         } else {
@@ -1639,7 +1633,7 @@ pub unsafe fn ErrorMessage(call: SEXP, which_error: c_int, format: *const c_char
             messages[idx].to_string()
         };
 
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
         errorcall(call, c_msg.as_ptr());
     }
 }
@@ -1661,8 +1655,7 @@ pub unsafe fn WarningMessage(call: SEXP, which_warn: c_int, format: *const c_cha
             messages.len() - 1
         };
 
-        let c_msg =
-            std::ffi::CString::new(messages[idx]).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(messages[idx]).unwrap_or_default();
         warningcall(call, c_msg.as_ptr());
     }
 }
@@ -2253,7 +2246,7 @@ pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *con
         } else {
             format!("argument \"{}\" is missing, with no default", arg_str)
         };
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
         errorcall(call, c_msg.as_ptr());
     }
 }
@@ -2269,9 +2262,7 @@ pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_cha
             CStr::from_ptr(name).to_str().unwrap_or("argument")
         };
         R_MissingArgError_c(
-            std::ffi::CString::new(arg)
-                .expect("CString::new failed: contains null byte")
-                .as_ptr(),
+            std::ffi::CString::new(arg).unwrap_or_default().as_ptr(),
             call,
             subclass,
         );
@@ -2379,7 +2370,7 @@ pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, argument: SEXP, for
             "'{}' matches multiple arguments (partial match of '{}' to '{}')",
             arg_str, arg_str, formal_str
         );
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
         R_makeWarningCondition(
             call,
@@ -2406,7 +2397,7 @@ pub unsafe fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
             "object"
         };
         let msg = format!("object of type '{}' is not subsettable", class_str);
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
         R_makeErrorCondition(
             call,
@@ -2434,7 +2425,7 @@ pub unsafe fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
             "object"
         };
         let msg = format!("subscript out of bounds for {}", class_str);
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
         R_makeErrorCondition(
             call,
@@ -2451,7 +2442,7 @@ pub unsafe fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
 pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
     unsafe {
         let msg = "subscript out of bounds";
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
         R_makeErrorCondition(
             call,
@@ -2475,7 +2466,7 @@ pub unsafe fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, ca
             format!("{}", subscript)
         };
         let msg = format!("subscript out of bounds (index {} too large)", idx_str);
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
         R_makeErrorCondition(
             call,
@@ -2492,7 +2483,7 @@ pub unsafe fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, ca
 pub unsafe fn R_makeCStackOverflowError(call: SEXP, usage: isize) -> SEXP {
     unsafe {
         let msg = format!("C stack usage {} is too close to the limit", usage);
-        let c_msg = std::ffi::CString::new(msg).expect("CString::new failed: contains null byte");
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
 
         R_makeErrorCondition(
             call,
@@ -2555,7 +2546,7 @@ pub unsafe fn R_tryCatch(
                         ptr::null_mut(),
                         0,
                         std::ffi::CString::new(e.message.clone())
-                            .expect("CString::new failed: contains null byte")
+                            .unwrap_or_default()
                             .as_ptr(),
                     )
                 } else {

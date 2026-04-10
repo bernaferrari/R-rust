@@ -151,7 +151,8 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn alloc_int_array(n: usize) -> *mut c_int {
-    let layout = std::alloc::Layout::array::<c_int>(n).expect("unwrap on None/Err");
+    let layout = std::alloc::Layout::array::<c_int>(n)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_int>()));
     let ptr = std::alloc::alloc(layout) as *mut c_int;
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);
@@ -160,7 +161,8 @@ unsafe fn alloc_int_array(n: usize) -> *mut c_int {
 }
 
 unsafe fn alloc_double_array(n: usize) -> *mut c_double {
-    let layout = std::alloc::Layout::array::<c_double>(n).expect("unwrap on None/Err");
+    let layout = std::alloc::Layout::array::<c_double>(n)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>()));
     let ptr = std::alloc::alloc(layout) as *mut c_double;
     if ptr.is_null() {
         std::alloc::handle_alloc_error(layout);

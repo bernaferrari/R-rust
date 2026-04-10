@@ -128,7 +128,7 @@ pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let comment_sym = crate::sexp::symbol::Rf_install(
             std::ffi::CString::new("comment")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
 
@@ -156,7 +156,7 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
         let val = CADR(args);
         let comment_sym = crate::sexp::symbol::Rf_install(
             std::ffi::CString::new("comment")
-                .expect("CString::new failed: contains null byte")
+                .unwrap_or_default()
                 .as_ptr(),
         );
         crate::eval::attrib_core::setAttrib(x, comment_sym, val);

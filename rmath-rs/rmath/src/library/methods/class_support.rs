@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/methods/src/class_support.c
@@ -20,12 +19,12 @@ use crate::sexp::protect::*;
 pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
     let t = TYPEOF(object);
     if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
-        let msg = CString::new("'R_get_primname' called on a non-primitive").expect("CString::new failed: contains null byte");
+        let msg = CString::new("'R_get_primname' called on a non-primitive").unwrap_or_default();
         crate::main::errors::Rf_error(msg.as_ptr());
     }
     let name = crate::main::names::getPRIMNAME(object);
     if name.is_null() {
-        let s = CString::new("").expect("CString::new failed: contains null byte");
+        let s = CString::new("").unwrap_or_default();
         Rf_mkString(s.as_ptr())
     } else {
         Rf_mkString(name)

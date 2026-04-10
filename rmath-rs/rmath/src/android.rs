@@ -67,7 +67,8 @@ impl RSession {
     }
 
     pub fn eval_integer(&mut self, value: i32) -> RResult {
-        let s = builder::scalar_integer_in(&mut self.arena, value).expect("alloc failed");
+        let s = builder::scalar_integer_in(&mut self.arena, value)
+            .unwrap_or_else(|| panic!("alloc failed"));
         let output = output::format_sexp_direct(s);
         RResult {
             value: value as f64,
@@ -76,19 +77,22 @@ impl RSession {
     }
 
     pub fn eval_real(&mut self, value: f64) -> RResult {
-        let s = builder::scalar_real_in(&mut self.arena, value).expect("alloc failed");
+        let s = builder::scalar_real_in(&mut self.arena, value)
+            .unwrap_or_else(|| panic!("alloc failed"));
         let output = output::format_sexp_direct(s);
         RResult { value, output }
     }
 
     pub fn eval_int_vector(&mut self, values: &[i32]) -> RResult {
-        let s = builder::int_vec_in(&mut self.arena, &values).expect("alloc failed");
+        let s =
+            builder::int_vec_in(&mut self.arena, &values).unwrap_or_else(|| panic!("alloc failed"));
         let output = output::format_sexp_direct(s);
         RResult { value: 0.0, output }
     }
 
     pub fn eval_real_vector(&mut self, values: &[f64]) -> RResult {
-        let s = builder::real_vec_in(&mut self.arena, &values).expect("alloc failed");
+        let s = builder::real_vec_in(&mut self.arena, &values)
+            .unwrap_or_else(|| panic!("alloc failed"));
         let output = output::format_sexp_direct(s);
         RResult { value: 0.0, output }
     }

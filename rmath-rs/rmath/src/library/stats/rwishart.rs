@@ -181,13 +181,15 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
     let ans = Rf_protect(alloc3DArray(SEXPTYPE::REALSXP.0, p, p, n));
 
     // Allocate temporary arrays (replaces R_Calloc)
-    let layout_tmp = std::alloc::Layout::array::<c_double>(psqr).expect("unwrap on None/Err");
+    let layout_tmp = std::alloc::Layout::array::<c_double>(psqr)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>()));
     let tmp = std::alloc::alloc(layout_tmp) as *mut c_double;
     if tmp.is_null() {
         std::alloc::handle_alloc_error(layout_tmp);
     }
 
-    let layout_sccp = std::alloc::Layout::array::<c_double>(psqr).expect("unwrap on None/Err");
+    let layout_sccp = std::alloc::Layout::array::<c_double>(psqr)
+        .unwrap_or_else(|_| std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>()));
     let scCp = std::alloc::alloc(layout_sccp) as *mut c_double;
     if scCp.is_null() {
         std::alloc::dealloc(tmp as *mut u8, layout_tmp);

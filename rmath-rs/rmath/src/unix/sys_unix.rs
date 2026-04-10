@@ -211,7 +211,7 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
         let machine = CStr::from_ptr(utsname.machine.as_ptr()).to_string_lossy();
 
         // Get login name
-        let login = CString::new("unknown").expect("CString::new failed: contains null byte");
+        let login = CString::new("unknown").unwrap_or_default();
         let login_ptr = libc::getlogin();
         let login_cstr = if !login_ptr.is_null() {
             CStr::from_ptr(login_ptr)
@@ -337,11 +337,7 @@ pub unsafe fn R_OpenInitFile() -> *mut libc::FILE {
             if profile.is_empty() {
                 return ptr::null_mut();
             }
-            let expanded = R_ExpandFileName(
-                CString::new(profile)
-                    .expect("CString::new failed: contains null byte")
-                    .as_ptr(),
-            );
+            let expanded = R_ExpandFileName(CString::new(profile).unwrap_or_default().as_ptr());
             let path = CStr::from_ptr(expanded);
             let mode = b"r\0".as_ptr() as *const c_char;
             let fp = libc::fopen(path.as_ptr(), mode);

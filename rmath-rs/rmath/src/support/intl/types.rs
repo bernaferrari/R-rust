@@ -355,7 +355,8 @@ pub(crate) unsafe fn c_strdup(s: *const c_char) -> *mut c_char {
             return ptr::null_mut();
         }
         let len = std::ffi::CStr::from_ptr(s).to_bytes().len() + 1;
-        let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
+        let layout = std::alloc::Layout::from_size_align(len, 1)
+            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
         let ptr = std::alloc::alloc(layout) as *mut c_char;
         if !ptr.is_null() {
             ptr::copy_nonoverlapping(s, ptr, len);
@@ -371,7 +372,8 @@ pub(crate) unsafe fn c_free(p: *mut c_char) {
             return;
         }
         let len = std::ffi::CStr::from_ptr(p).to_bytes().len() + 1;
-        let layout = std::alloc::Layout::from_size_align(len, 1).expect("unwrap on None/Err");
+        let layout = std::alloc::Layout::from_size_align(len, 1)
+            .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
         std::alloc::dealloc(p as *mut u8, layout);
     }
 }

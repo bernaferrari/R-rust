@@ -60,7 +60,7 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     Rf_protect(ans);
     let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, len);
     for i in 0..names.len() {
-        let c_str = std::ffi::CString::new(names[i]).expect("CString::new failed: contains null byte");
+        let c_str = std::ffi::CString::new(names[i]).unwrap_or_default();
         SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
     }
     crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), nm);

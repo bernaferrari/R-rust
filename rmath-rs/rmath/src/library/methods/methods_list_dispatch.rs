@@ -43,12 +43,7 @@ pub unsafe fn R_quick_dispatch(_args: SEXP, _genericEnv: SEXP, _fdef: SEXP) -> S
 }
 
 /// R_getGeneric - get the generic function definition for a given name.
-pub unsafe fn R_getGeneric(
-    _name: SEXP,
-    _mustFind: SEXP,
-    _env: SEXP,
-    _package: SEXP,
-) -> SEXP {
+pub unsafe fn R_getGeneric(_name: SEXP, _mustFind: SEXP, _env: SEXP, _package: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -76,12 +71,7 @@ pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
 }
 
 /// R_selectMethod - select a method for the given call.
-pub unsafe fn R_selectMethod(
-    _fname: SEXP,
-    _ev: SEXP,
-    _mlist: SEXP,
-    _evalArgs: SEXP,
-) -> SEXP {
+pub unsafe fn R_selectMethod(_fname: SEXP, _ev: SEXP, _mlist: SEXP, _evalArgs: SEXP) -> SEXP {
     R_NilValue()
 }
 
@@ -173,9 +163,8 @@ pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> S
         format!(".__{}__{}", prefix_c, name_c)
     };
 
-    let c_str = std::ffi::CString::new(res_str).unwrap_or_else(|_| {
-        std::ffi::CString::new("").expect("CString::new failed: contains null byte")
-    });
+    let c_str = std::ffi::CString::new(res_str)
+        .unwrap_or_else(|_| std::ffi::CString::new("").unwrap_or_default());
     Rf_mkString(c_str.as_ptr())
 }
 

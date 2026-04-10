@@ -206,7 +206,7 @@ pub unsafe fn _nl_make_l10nflist(
 
         // Allocate room for the full file name.
         let abs_filename =
-            alloc::alloc(Layout::from_size_align(total_len, 1).expect("unwrap on None/Err"))
+            alloc::alloc(Layout::from_size_align(total_len, 1).unwrap_or(Layout::new::<u8>()))
                 as *mut c_char;
         if abs_filename.is_null() {
             return ptr::null_mut();
@@ -278,7 +278,7 @@ pub unsafe fn _nl_make_l10nflist(
         }
 
         if !retval.is_null() || do_allocate == 0 {
-            let layout = Layout::from_size_align(total_len, 1).expect("unwrap on None/Err");
+            let layout = Layout::from_size_align(total_len, 1).unwrap_or(Layout::new::<u8>());
             alloc::dealloc(abs_filename as *mut u8, layout);
             return retval;
         }
@@ -295,10 +295,10 @@ pub unsafe fn _nl_make_l10nflist(
             + (extra_successors.saturating_sub(1) * std::mem::size_of::<*mut loaded_l10nfile>());
         let entry_layout =
             Layout::from_size_align(entry_size, std::mem::align_of::<loaded_l10nfile>())
-                .expect("unwrap on None/Err");
+                .unwrap_or(Layout::new::<loaded_l10nfile>());
         retval = alloc::alloc(entry_layout) as *mut loaded_l10nfile;
         if retval.is_null() {
-            let layout = Layout::from_size_align(total_len, 1).expect("unwrap on None/Err");
+            let layout = Layout::from_size_align(total_len, 1).unwrap_or(Layout::new::<u8>());
             alloc::dealloc(abs_filename as *mut u8, layout);
             return ptr::null_mut();
         }
@@ -335,7 +335,7 @@ pub unsafe fn _nl_make_l10nflist(
 pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> *const c_char {
     unsafe {
         if codeset.is_null() || name_len == 0 {
-            let layout = Layout::from_size_align(1, 1).expect("unwrap on None/Err");
+            let layout = Layout::from_size_align(1, 1).unwrap_or(Layout::new::<u8>());
             let p = alloc::alloc(layout) as *mut c_char;
             if !p.is_null() {
                 *p = 0;
@@ -357,7 +357,7 @@ pub unsafe fn _nl_normalize_codeset(codeset: *const c_char, name_len: usize) -> 
         }
 
         let alloc_len = if only_digit { 3 } else { 0 } + len + 1;
-        let layout = Layout::from_size_align(alloc_len, 1).expect("unwrap on None/Err");
+        let layout = Layout::from_size_align(alloc_len, 1).unwrap_or(Layout::new::<u8>());
         let retval = alloc::alloc(layout) as *mut c_char;
         if retval.is_null() {
             return ptr::null();
