@@ -384,11 +384,9 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     || op_name == "trunc"
                     || op_name == "round"
                 {
-                    eprintln!("do_math1: returning ScalarInteger({})", result as i32);
                     return Rf_ScalarInteger(result as i32);
                 }
             }
-            eprintln!("do_math1: returning ScalarReal({})", result);
             Rf_ScalarReal(result)
         } else {
             R_NilValue()

@@ -247,12 +247,8 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
     let fun = e.car().ok_or("empty call")?;
     let args = e.cdr().ok_or("missing args")?;
 
-    eprintln!("[EVAL_LANG] fun type={:?}", fun.typeof_());
-
     // Evaluate the function
     let fun_val = eval_safe(fun, rho)?;
-
-    eprintln!("[EVAL_LANG] fun_val type={:?}", fun_val.typeof_());
 
     // Dispatch based on function type
     match fun_val.typeof_() {
@@ -391,8 +387,6 @@ fn apply_builtin_safe<'a>(
             String::new()
         }
     };
-
-    eprintln!("[APPLY_BUILTIN] op_name='{}'", op_name);
 
     let tmp = match op_name.as_str() {
         "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => unsafe {
