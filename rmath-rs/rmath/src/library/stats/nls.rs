@@ -199,7 +199,7 @@ unsafe fn mkString(s: &str) -> SEXP {
 }
 
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    crate::main::sysutils::translateChar(x)
+    crate::sexp::accessors::translateChar(x)
 }
 
 unsafe fn MARK_NOT_MUTABLE(x: SEXP) {

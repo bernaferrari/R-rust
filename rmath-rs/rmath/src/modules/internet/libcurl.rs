@@ -1466,21 +1466,12 @@ unsafe fn asLogical(x: SEXP) -> c_int {
     crate::main::coerce::asLogical(x)
 }
 
-/// translateChar - translate CHARSXP to native encoding
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    if x.is_null() {
-        return std::ptr::null();
-    }
-    // Get the char pointer from the CHARSXP
-    let c = x as *const c_char;
-    // In the full R implementation, this handles encoding translation
-    // For now, just return the raw character data
-    c.add(8) // Skip the SexprecCore header (approximate)
+    crate::sexp::accessors::translateChar(x)
 }
 
-/// translateCharFP - translate CHARSXP for file paths
 unsafe fn translateCharFP(x: SEXP) -> *const c_char {
-    translateChar(x)
+    crate::sexp::accessors::translateChar(x)
 }
 
 /// R_ExpandFileName - expand ~ in file paths
