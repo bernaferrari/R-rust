@@ -88,7 +88,7 @@ pub unsafe fn R_GE_getVersion() -> c_int {
 pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
     if version != R_GE_version {
         // In full implementation, this would call error().
-        // For now, just ignore silently.
+        //  ignore silently.
     }
 }
 

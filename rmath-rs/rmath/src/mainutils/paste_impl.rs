@@ -88,7 +88,7 @@ fn ENC_KNOWN(s: SEXP) -> c_int {
 }
 
 // ---------------------------------------------------------------------------
-// Stub functions for R runtime features not yet ported
+// Local helpers for R runtime features
 //
 // These are plain unsafe fn (NOT #[unsafe(no_mangle)]) to avoid duplicate symbol
 // conflicts with other modules that define the same extern "C" stubs.
@@ -464,7 +464,7 @@ unsafe fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_ch
 
 /// Free the string buffer (no-op in our Rust implementation since Vec handles memory).
 unsafe fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {
-    // No-op: Rust's Vec handles memory automatically.
+    // Rust's Vec handles memory automatically.
 }
 
 // ---------------------------------------------------------------------------

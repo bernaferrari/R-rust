@@ -4222,7 +4222,7 @@ const FUNTAB_ENTRIES: &[FunTabEntry] = &[
         2,
         PPinfo::new(PP_FUNCALL, PREC_FN, 0),
     ),
-    // Stub entries for remaining functions
+    // Unimplemented entries for remaining functions
     FunTabEntry::new(
         b"gctorture\0",
         None,

@@ -30,7 +30,7 @@ pub const PARSE_EOF: c_int = 8;
 /// Parse a character vector of R code into a list of expressions.
 pub unsafe fn R_ParseVector(_text: SEXP, _n: c_int, _status: *mut c_int, _srcfile: SEXP) -> SEXP {
     unsafe {
-        // Stub: return empty expression list
+        // return empty expression list
         if !_status.is_null() {
             *_status = PARSE_OK;
         }

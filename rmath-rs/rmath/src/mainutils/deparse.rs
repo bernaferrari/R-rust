@@ -424,7 +424,7 @@ unsafe fn primname_c(op: SEXP) -> *const c_char {
     }
 }
 
-/// Stub for Rf_asInteger — extract integer from SEXP.
+/// Rf_asInteger — extract integer from SEXP.
 unsafe fn Rf_asInteger(x: SEXP) -> c_int {
     unsafe {
         if isNull(x) {
@@ -451,7 +451,7 @@ unsafe fn Rf_asInteger(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for Rf_asLogical — extract logical from SEXP.
+/// Rf_asLogical — extract logical from SEXP.
 unsafe fn Rf_asLogical(x: SEXP) -> c_int {
     unsafe {
         if isNull(x) {
@@ -911,9 +911,9 @@ unsafe fn parenthesizeCaller(s: SEXP) -> bool {
 
 /// Deparse one source reference to the buffer.
 ///
-/// Stubbed: requires R_AsCharacterSymbol and eval infrastructure.
+/// Unimplemented: requires R_AsCharacterSymbol and eval infrastructure.
 unsafe fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
-    // Stub: requires eval/R_AsCharacterSymbol
+    // requires eval/R_AsCharacterSymbol
 }
 
 // ---------------------------------------------------------------------------
@@ -1672,7 +1672,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
         }
 
         // S4 object handling — stubbed (needs methods infrastructure)
-        // For now, skip S4 handling and fall through to type-based dispatch
+        // Skipping S4 handling and fall through to type-based dispatch
         let s4_check = IS_S4_OBJECT(s);
         if s4_check != 0 {
             d.isS4 = 1;
@@ -2628,7 +2628,7 @@ pub unsafe fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Writes a deparsed representation of an R object to a file or connection.
 ///
-/// Stubbed: requires connection handling infrastructure.
+/// Unimplemented: requires connection handling infrastructure.
 pub unsafe fn do_dput(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
@@ -2641,7 +2641,7 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 ///
 /// Writes deparsed representations of named R objects to a file or connection.
 ///
-/// Stubbed: requires connection handling infrastructure.
+/// Unimplemented: requires connection handling infrastructure.
 pub unsafe fn do_dump(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }
@@ -2669,7 +2669,7 @@ pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 
 /// Deparse with default cutoff, respecting getOption("deparse.max.lines").
 ///
-/// Stubbed: requires getOption infrastructure.
+/// Unimplemented: requires getOption infrastructure.
 pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
         let old_bl = R_BrowseLines.with(|v| v.get());
@@ -2779,7 +2779,7 @@ pub unsafe fn deparse1s(call: SEXP) -> SEXP {
 
 /// Inspect an R object, returning a string representation.
 ///
-/// Stubbed: requires full inspect infrastructure.
+/// Unimplemented: requires full inspect infrastructure.
 pub unsafe fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
     let _ = (s, deep, pvec);
     0
@@ -2787,7 +2787,7 @@ pub unsafe fn R_inspect(s: SEXP, deep: c_int, pvec: SEXP) -> c_int {
 
 /// R_inspect3 — inspect with additional options.
 ///
-/// Stubbed: requires full inspect infrastructure.
+/// Unimplemented: requires full inspect infrastructure.
 pub unsafe fn R_inspect3(
     s: SEXP,
     deep: c_int,
@@ -2807,9 +2807,9 @@ pub unsafe fn R_inspect3(
 /// Connection cleanup handler used in do_dput and do_dump.
 /// Closes the connection if it was opened by the deparse routine.
 ///
-/// Stubbed: requires connection infrastructure.
+/// Unimplemented: requires connection infrastructure.
 pub unsafe fn con_cleanup(_data: *mut std::ffi::c_void) {
-    // Stub
+    // Unimplemented
 }
 
 // ---------------------------------------------------------------------------

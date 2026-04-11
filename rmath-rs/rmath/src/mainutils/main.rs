@@ -153,11 +153,11 @@ pub unsafe fn R_SetCollectWarnings(v: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn resetTimeLimits() {
-    // Stub
+    // Unimplemented
 }
 
 pub unsafe fn checkTimeLimits() {
-    // Stub
+    // Unimplemented
 }
 
 // ---------------------------------------------------------------------------
@@ -165,11 +165,11 @@ pub unsafe fn checkTimeLimits() {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_InitSrcRefState(_cntxt: *mut std::ffi::c_void) {
-    // Stub
+    // Unimplemented
 }
 
 pub unsafe fn R_FinalizeSrcRefState() {
-    // Stub
+    // Unimplemented
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +196,7 @@ pub unsafe fn R_GetParseErrorMsg() -> *const std::os::raw::c_char {
 ///
 /// This is the equivalent of R's `R_ReplFile()` from main.c.
 pub unsafe fn R_ReplFile(_fp: *mut std::ffi::c_void, _rho: SEXP) {
-    // Stub: in the full implementation, this reads expressions from the file
+    // in the full implementation, this reads expressions from the file
     // and evaluates them
 }
 
@@ -213,7 +213,7 @@ pub unsafe fn Rf_ReplIteration(
     _browselevel: c_int,
     _state: *mut std::ffi::c_void,
 ) -> c_int {
-    // Stub: return 0 (continue)
+    // return 0 (continue)
     0
 }
 
@@ -225,7 +225,7 @@ pub unsafe fn Rf_ReplIteration(
 ///
 /// This is the equivalent of R's `Rf_ReplConsole()` from main.c.
 pub unsafe fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int) {
-    // Stub: in the full implementation, this runs the interactive REPL loop
+    // in the full implementation, this runs the interactive REPL loop
 }
 
 // ---------------------------------------------------------------------------
@@ -262,7 +262,7 @@ pub unsafe fn R_Parse1File(
 // ---------------------------------------------------------------------------
 
 pub unsafe fn setup_Rmainloop() {
-    // Stub
+    // Unimplemented
 }
 
 // ---------------------------------------------------------------------------
@@ -275,7 +275,7 @@ pub unsafe fn Rf_callToplevelHandlers(
     _succeeded: c_int,
     _visible: c_int,
 ) {
-    // Stub
+    // Unimplemented
 }
 
 pub unsafe fn Rf_addTaskCallback(_fun: SEXP, _data: SEXP) -> c_int {

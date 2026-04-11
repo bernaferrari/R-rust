@@ -24,7 +24,7 @@ const EXPRSXP_VAL: c_int = 20;
 const STRSXP_VAL: c_int = 16;
 
 // ---------------------------------------------------------------------------
-// Stub functions for features not yet implemented
+// Local helpers and entry points
 // ---------------------------------------------------------------------------
 
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {}

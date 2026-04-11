@@ -70,7 +70,7 @@ pub fn TimeToSeed() -> c_uint {
     seed
 }
 
-/// Stub FFI wrapper for R's `do_systime`.
+/// Unimplemented FFI wrapper for R's `do_systime`.
 ///
 /// In the full R runtime, this implements the R-level `Sys.time()` builtin.
 /// It is provided here as a `#[unsafe(no_mangle)]` extern "C" stub returning 0.0

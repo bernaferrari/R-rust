@@ -47,18 +47,18 @@ const NINTERRUPT: R_xlen_t = 10_000_000;
 // Error helper stubs
 // ---------------------------------------------------------------------------
 
-/// Stub: report an out-of-bounds error. In full R this would call
+/// report an out-of-bounds error. In full R this would call
 /// R_makeOutOfBoundsError / R_signalErrorCondition.
 pub unsafe fn ECALL_OutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _call: SEXP) {
     // Full implementation requires R's condition/error infrastructure.
 }
 
-/// Stub: report a missing subscript error.
+/// report a missing subscript error.
 pub unsafe fn ECALL_MissingSubs(_call: SEXP) {
     // Full implementation requires R's condition/error infrastructure.
 }
 
-/// Stub: report an out-of-bounds error for character subscripts.
+/// report an out-of-bounds error for character subscripts.
 pub unsafe fn ECALL_OutOfBoundsCHAR(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
     // Full implementation requires R's condition/error infrastructure.
 }

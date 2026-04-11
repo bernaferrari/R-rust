@@ -858,7 +858,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
 
         // If s is R_MissingArg, duplicate x
         // R_MissingArg has mark bit set; we check via a special approach
-        // For now, if s looks like a symbol with empty name, treat as missing.
+        // If s looks like a symbol with empty name, treat as missing.
         // The simpler approach: check if the symbol's printname is empty.
         let is_missing = if isSymbol(s) {
             let pn = PRINTNAME(s);

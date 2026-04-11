@@ -1199,7 +1199,7 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
         let _conn = CADR(args);
 
         // Serialize to a raw vector, then the connection layer would write it
-        // For now, just do the serialization
+        //  do the serialization
         R_serialize(
             object,
             R_NilValue(),
@@ -1230,7 +1230,7 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 
         // For connection objects, we would need to read all bytes from the
         // connection first. This requires the connection infrastructure.
-        // For now, return nil for non-raw connections.
+        // Returning nil for non-raw connections.
         R_NilValue()
     }
 }
@@ -1577,7 +1577,7 @@ unsafe fn AddReadRef(table: SEXP, value: SEXP) {}
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_InitSerializeRoutines() {
-    // No-op: all routines are statically available.
+    // all routines are statically available.
 }
 
 // ---------------------------------------------------------------------------

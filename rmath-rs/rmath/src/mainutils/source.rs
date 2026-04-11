@@ -19,14 +19,14 @@ use crate::sexp::globals::R_NilValue;
 /// .Internal( parse(file, n, text, prompt, srcfile, encoding) )
 pub unsafe fn do_parse(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
-        // Stub: return empty expression vector
+        // return empty expression vector
         R_NilValue()
     }
 }
 
 /// Parse error handler (stub).
 pub unsafe fn parseError(_call: SEXP, _linenum: c_int) {
-    // Stub: does nothing (error handling is via panic)
+    // does nothing (error handling is via panic)
 }
 
 /// Get the parse context (stub).

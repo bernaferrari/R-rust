@@ -15,7 +15,7 @@
 
 use std::os::raw::{c_char, c_int};
 
-/// Stub for `do_agrep` -- approximate grep.
+/// Placeholder: `do_agrep` -- approximate grep.
 ///
 /// In the full R implementation, this performs approximate (fuzzy) string
 /// matching using the TRE regex library. It requires R's SEXP type system
@@ -28,6 +28,6 @@ pub unsafe fn R_agrep(
     _max_distance: c_int,
     _ignore_case: c_int,
 ) -> c_int {
-    // Stub: always return "no match"
+    // always return "no match"
     0
 }

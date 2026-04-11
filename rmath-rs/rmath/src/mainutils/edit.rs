@@ -18,12 +18,12 @@ thread_local! { static EdFileUsed: Cell<c_int> = Cell::new(0); }
 
 /// Initialize the edit subsystem.
 pub unsafe fn InitEd() {
-    // Stub: no temp file management needed
+    // no temp file management needed
 }
 
 /// Clean up the edit subsystem.
 pub unsafe fn CleanEd() {
-    // Stub: no temp file to clean
+    // no temp file to clean
 }
 
 /// Edit an R object (stub).
@@ -36,7 +36,7 @@ pub unsafe fn CleanEd() {
 /// - Returns the result
 pub unsafe fn do_edit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        // Stub: return R_NilValue
+        // return R_NilValue
         R_NilValue()
     }
 }

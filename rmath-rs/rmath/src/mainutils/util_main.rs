@@ -1238,7 +1238,7 @@ pub unsafe fn bincode_impl(
 }
 
 // ---------------------------------------------------------------------------
-// Stub functions for SEXP-dependent APIs from util.c
+// SEXP-dependent API helpers from util.c
 // ---------------------------------------------------------------------------
 
 /// Number of rows of a matrix-like object.
@@ -1456,7 +1456,7 @@ pub unsafe fn type2char(t: c_int) -> *const c_char {
     }
 }
 
-/// Stub: `isBlankString` depends on mbcslocale global.
+/// `isBlankString` depends on mbcslocale global.
 /// This simplified version only does ASCII whitespace checking.
 pub unsafe fn isBlankString(s: *const c_char) -> Rboolean {
     unsafe {

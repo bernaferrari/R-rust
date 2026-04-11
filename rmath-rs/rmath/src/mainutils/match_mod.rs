@@ -160,7 +160,7 @@ unsafe fn getCharCE(s: SEXP) -> c_int { unsafe {
 /// checkArity — stub, no-op.
 #[inline(always)]
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // No-op stub
+    // No action needed stub
 }
 
 /// asInteger — extract integer value from scalar.
@@ -266,7 +266,7 @@ unsafe fn length(x: SEXP) -> c_int {
 /// In full R, this signals a condition when warnPartialMatchArgs is TRUE.
 #[inline(always)]
 unsafe fn R_warn_partial_match_dots(_call: SEXP, _btag: SEXP, _ftag: SEXP) {
-    // No-op stub: warning conditions not yet implemented
+    // No action needed stub: warning conditions not yet implemented
 }
 
 /// Seql — check if two CHARSXP are string-equal.
@@ -814,7 +814,7 @@ pub unsafe fn matchArgs_RC(formals: SEXP, supplied: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let args = matchArgs_NR_local(formals, supplied, call);
         // In full R, this would enable reference counting on the arglist.
-        // Stub: just return the result as-is.
+        // just return the result as-is.
         args
     }
 }

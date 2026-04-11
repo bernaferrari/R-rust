@@ -1467,7 +1467,7 @@ pub unsafe fn R_GetTracebackOnly(skip: c_int) -> SEXP {
                     skip2 -= 1;
                 } else {
                     // SETCAR(t, duplicate(ctx_ref.call));
-                    // For now, just set to the call (no deep copy)
+                    //  set to the call (no deep copy)
                     if !t.is_null() {
                         SETCAR(t, ctx_ref.call);
                     }

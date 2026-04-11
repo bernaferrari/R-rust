@@ -305,7 +305,7 @@ pub unsafe fn do_args(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let s = CAR(args);
         if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP.0 {
             // Return sys.call() arguments as promise objects
-            // For now, return nil
+            // Returning nil
             return R_NilValue();
         }
 

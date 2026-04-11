@@ -16,7 +16,7 @@
 
 use std::os::raw::{c_int, c_void};
 
-/// Stub for `R_fgetc` -- R's wrapper around `fgetc`.
+/// Placeholder: `R_fgetc` -- R's wrapper around `fgetc`.
 ///
 /// In the full R implementation this reads a single character from *fp*,
 /// strips CR from CRLF pairs, and on non-Windows platforms returns

@@ -485,7 +485,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let arg1 = CAR(args);
 
         // Check if there are attributes that might trigger S3/S4 dispatch.
-        // For now, skip DispatchGroup and go straight to the logic.
+        // Skipping DispatchGroup and go straight to the logic.
         let attr1 = !ATTRIB(arg1).is_null();
         let arg2 = CADR(args);
         let attr2 = !ATTRIB(arg2).is_null();

@@ -120,7 +120,7 @@ pub unsafe fn savePalette(save: c_int) {
 // SEXP-dependent stubs
 // ---------------------------------------------------------------------------
 
-/// Stub for `RGBpar3(SEXP x, int i, unsigned int bg) -> unsigned int`.
+/// Placeholder: `RGBpar3(SEXP x, int i, unsigned int bg) -> unsigned int`.
 ///
 /// Used in grid/src/gpar.c with `bg = R_TRANWHITE`, and in packages Cairo,
 /// canvas, and jpeg.  Depends on `SEXP` and the grDevices function pointer.
@@ -138,7 +138,7 @@ pub unsafe fn RGBpar3(
     0
 }
 
-/// Stub for `RGBpar(SEXP x, int i) -> unsigned int`.
+/// Placeholder: `RGBpar(SEXP x, int i) -> unsigned int`.
 ///
 /// Convenience wrapper that calls `RGBpar3` with `bg = R_TRANWHITE`.
 /// Depends on `SEXP`.

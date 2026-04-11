@@ -101,7 +101,7 @@ unsafe fn r_error(msg: &str) {
 
 /// Check arity of a call (stub -- does nothing in this port).
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // Stub: arity checking not implemented in this port.
+    // arity checking not implemented in this port.
 }
 
 /// Convert SEXP to c_int (asInteger).

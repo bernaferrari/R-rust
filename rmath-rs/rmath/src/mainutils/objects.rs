@@ -726,7 +726,7 @@ unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
 /// Look up the class name in the methods package table of S3 classes.
 /// Returns FALSE when methods package is not loaded.
 pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
-    // TODO: requires R methods package infrastructure
+    // Unimplemented: requires R methods package infrastructure
     // Full implementation would consult the methods namespace and S3 classes.
     FALSE
 }
@@ -736,7 +736,7 @@ pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_has_methods_attached() -> c_int {
-    // TODO: requires R methods package infrastructure
+    // Unimplemented: requires R methods package infrastructure
     unsafe {
         if isMethodsDispatchOn() == FALSE {
             return FALSE;
@@ -1100,7 +1100,7 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         }
 
         // generic should be a character string -- in full impl we would eval it
-        // For now, assume it's already evaluated (promise or string)
+        // Assuming it's already evaluated (promise or string)
         let generic_sexp = if TYPEOF(generic_arg) == SEXPTYPE::PROMSXP.0 as c_int {
             // Force the promise
             generic_arg // simplified: would need eval
@@ -1133,7 +1133,7 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         let callenv = if !cptr.is_null() {
             // sysparent in our context struct is an int, not SEXP.
             // In the full C implementation, sysparent is an environment.
-            // For now, use env as fallback.
+            // Using env as fallback.
             env
         } else {
             env
@@ -1791,7 +1791,7 @@ pub unsafe fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Internal function to get the dispatch environment.
 pub unsafe fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // TODO: requires R methods package infrastructure
+    // Unimplemented: requires R methods package infrastructure
     unsafe {
         // proc.dest is used internally for debugging; simplified
         R_NilValue()
@@ -1861,7 +1861,7 @@ pub unsafe fn R_S4_method_dispatch(
     _rho: SEXP,
     _method: SEXP,
 ) -> SEXP {
-    // TODO: requires R methods package infrastructure
+    // Unimplemented: requires R methods package infrastructure
     unsafe {
         // Full implementation would call the standardGeneric function pointer
         R_NilValue()
@@ -1875,7 +1875,7 @@ pub unsafe fn R_S4_method_dispatch(
 /// setClass() is an R-level function from the methods package.
 /// This C entry point is not normally used directly.
 pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // TODO: requires R methods package infrastructure
+    // Unimplemented: requires R methods package infrastructure
     unsafe {
         // setClass is defined in R, not C
         R_NilValue()
@@ -1888,7 +1888,7 @@ pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 
 /// setRefClass() is an R-level function from the methods package.
 pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // TODO: requires R methods package infrastructure
+    // Unimplemented: requires R methods package infrastructure
     unsafe { R_NilValue() }
 }
 

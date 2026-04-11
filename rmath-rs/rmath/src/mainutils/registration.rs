@@ -8,7 +8,7 @@
 use std::os::raw::{c_int, c_void};
 
 // ---------------------------------------------------------------------------
-// Stub: R_registerRoutines, R_useDynamicSymbols, R_forceSymbols
+// R_registerRoutines, R_useDynamicSymbols, R_forceSymbols
 // ---------------------------------------------------------------------------
 
 /// Opaque DllInfo type (placeholder).
@@ -40,5 +40,5 @@ pub unsafe fn R_init_base(_dll: *mut DllInfo) {
     // In the full R implementation, this registers:
     // - callMethods: R_addTaskCallback, R_getTaskCallbackNames, R_removeTaskCallback
     // - fortranMethods: dqrcf, dqrdc2, dqrqty, dqrqy, dqrrsd, dqrxb, dtrco
-    // For now, these are stubs since the routines themselves aren't ported.
+    // these are stubs since the routines themselves aren't ported.
 }

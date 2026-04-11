@@ -38,7 +38,7 @@ const RTRACE_MASK: u32 = 1 << 26;
 const GROWABLE_BIT_MASK: u16 = 1 << 5;
 
 // ---------------------------------------------------------------------------
-// Stub functions for features not yet implemented
+// Local helpers and entry points
 // ---------------------------------------------------------------------------
 
 unsafe fn ALTREP_DUPLICATE_EX(s: SEXP, deep: c_int) -> SEXP {

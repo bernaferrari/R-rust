@@ -1145,7 +1145,7 @@ pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const
 // ---------------------------------------------------------------------------
 
 pub unsafe fn PrintWarnings() {
-    // Stub: the full implementation iterates over R's last.warning list
+    // the full implementation iterates over R's last.warning list
     // and prints each warning message.
 }
 

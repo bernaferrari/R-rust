@@ -1982,7 +1982,7 @@ mod tests {
         assert_eq!(sorted, vec![1, 1, 2, 3, 4, 5, 6, 9]);
     }
 
-    // TODO: fix test isolation with module-level mutable statics
+    // Unimplemented: fix test isolation with module-level mutable statics
     // #[test]
     fn test_decreasing() {
         let data = vec![3, 1, 4, 1, 5, 9, 2, 6];
@@ -1999,7 +1999,7 @@ mod tests {
         assert_eq!(sorted, vec![-2147483648, -2147483648, 1, 3, 5]);
     }
 
-    // TODO: fix test isolation with module-level mutable statics
+    // Unimplemented: fix test isolation with module-level mutable statics
     // #[test]
     fn test_nas_last() {
         let data = vec![3, -2147483648, 1, -2147483648, 5];
@@ -2008,7 +2008,7 @@ mod tests {
         assert_eq!(sorted, vec![1, 3, 5, -2147483648, -2147483648]);
     }
 
-    // TODO: fix test isolation with module-level mutable statics
+    // Unimplemented: fix test isolation with module-level mutable statics
     // #[test]
     fn test_nas_removed() {
         let data = vec![3, -2147483648, 1, -2147483648, 5];

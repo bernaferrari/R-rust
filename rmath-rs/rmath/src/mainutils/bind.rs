@@ -110,7 +110,7 @@ unsafe fn resolve_promise(x: SEXP) -> SEXP {
 }
 
 /// checkArity: verify argument count matches the expected arity for op.
-/// Stub: currently a no-op, consistent with other modules.
+/// currently a no-op, consistent with other modules.
 #[inline(always)]
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
 
@@ -1989,7 +1989,7 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // Note: PRIMVAL is a stub that always returns 0 in this port.
         let generic_name = if !op.is_null() {
             // Access the internal value; in R, PRIMVAL(op) is stored in sxpinfo.
-            // For now, read from the m_info field if available.
+            // read from the m_info field if available.
             let primval = crate::mainutils::relop::PRIMVAL(op);
             if primval == 1 { "cbind" } else { "rbind" }
         } else {
@@ -2076,7 +2076,7 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_cbind -- convenience wrapper (public stub)
 // ---------------------------------------------------------------------------
 
-/// Stub for the `cbind` internal helper.
+/// the `cbind` internal helper.
 pub unsafe fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { do_bind(call, op, args, env) }
 }
@@ -2085,7 +2085,7 @@ pub unsafe fn do_cbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // do_rbind -- convenience wrapper (public stub)
 // ---------------------------------------------------------------------------
 
-/// Stub for the `rbind` internal helper.
+/// the `rbind` internal helper.
 pub unsafe fn do_rbind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe { do_bind(call, op, args, env) }
 }

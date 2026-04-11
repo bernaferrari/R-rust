@@ -325,10 +325,10 @@ pub unsafe fn strtoraw(nptr: *const c_char, endptr: *mut *mut c_char) -> std::os
 }
 
 // ---------------------------------------------------------------------------
-// Stub: do_scan (.Internal(scan ...))
+// do_scan (.Internal(scan ...))
 // ---------------------------------------------------------------------------
 
-/// Stub for `do_scan` -- the `.Internal(scan ...)` entry point.
+/// Placeholder: `do_scan` -- the `.Internal(scan ...)` entry point.
 ///
 /// In the full R implementation this reads data from a connection, parsing
 /// fields according to `what`, `sep`, `dec`, quote/comment rules, etc.
@@ -338,10 +338,10 @@ pub unsafe fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// Stub: do_readln (readline())
+// do_readln (readline())
 // ---------------------------------------------------------------------------
 
-/// Stub for `do_readln` -- the `readline()` entry point.
+/// Placeholder: `do_readln` -- the `readline()` entry point.
 ///
 /// In the full R implementation this reads a line from the interactive
 /// console, stripping leading and trailing whitespace.  It depends on

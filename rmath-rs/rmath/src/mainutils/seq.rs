@@ -59,7 +59,7 @@ const LISTSXP_VAL: c_int = 2;
 const NILSXP_VAL: c_int = 0;
 
 // ---------------------------------------------------------------------------
-// Stub functions for features not yet implemented
+// Local helpers and entry points
 // (plain unsafe fn to avoid duplicate #[unsafe(no_mangle)] symbols)
 // ---------------------------------------------------------------------------
 

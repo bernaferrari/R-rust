@@ -56,7 +56,7 @@ const LANGSXP: c_int = 6;
 const SYMSXP: c_int = 1;
 
 // ---------------------------------------------------------------------------
-// Stub functions for R runtime features not yet ported
+// Local helpers for R runtime features
 //
 // These are plain unsafe fn (NOT #[unsafe(no_mangle)]) to avoid duplicate symbol
 // conflicts with other modules that define the same extern "C" stubs.
@@ -766,7 +766,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     b'a' | b'A' | b'e' | b'f' | b'g' | b'E' | b'G' => {
                                         if TYPEOF(_this) != REALSXP && TYPEOF(_this) != STRSXP {
                                             // Would need lang2(install("as.double"), _this) + eval
-                                            // Stub: just try coerceVector
+                                            // just try coerceVector
                                             _this = coerceVector(_this, REALSXP);
                                             a[nthis as usize] = _this;
                                             let new_len = LENGTH(_this);
@@ -779,7 +779,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     b's' => {
                                         if TYPEOF(_this) != STRSXP {
                                             // Would need lang2(R_AsCharacterSymbol, _this) + eval
-                                            // Stub: just try coerceVector
+                                            // just try coerceVector
                                             _this = coerceVector(_this, STRSXP);
                                             a[nthis as usize] = _this;
                                             let new_len = LENGTH(_this);

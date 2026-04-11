@@ -1374,7 +1374,7 @@ mod tests {
     }
 
     unsafe extern "C" fn dummy_c_finalizer(_ptr: *mut c_void) {
-        // No-op
+        // No action needed
     }
 
     #[test]

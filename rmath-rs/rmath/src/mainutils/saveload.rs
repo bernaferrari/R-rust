@@ -250,24 +250,24 @@ pub fn InDoubleAscii(reader: &mut impl BufRead) -> io::Result<f64> {
 // SEXP-dependent stubs
 // ---------------------------------------------------------------------------
 
-/// Stub for `do_save` — requires SEXP.
+/// Placeholder: `do_save` — requires SEXP.
 pub unsafe fn do_save(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::globals::R_NilValue;
 
         // save(list, file, ascii=FALSE, version=2, envir=.GlobalEnv)
-        // For now, return nil — full implementation requires file I/O + serialization
+        // Returning nil — full implementation requires file I/O + serialization
         R_NilValue()
     }
 }
 
-/// Stub for `do_load` — requires SEXP.
+/// Placeholder: `do_load` — requires SEXP.
 pub unsafe fn do_load(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         use crate::sexp::globals::R_NilValue;
 
         // load(file, envir=.GlobalEnv, verbose=FALSE)
-        // For now, return nil — full implementation requires file I/O + deserialization
+        // Returning nil — full implementation requires file I/O + deserialization
         R_NilValue()
     }
 }

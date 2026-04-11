@@ -1350,7 +1350,7 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 // Stubs for TRE/PCRE-dependent functions (kept for ABI compatibility)
 // ---------------------------------------------------------------------------
 
-/// Stub for `R_agrep_fixed` -- fixed-string approximate grep.
+/// Placeholder: `R_agrep_fixed` -- fixed-string approximate grep.
 ///
 /// In the full R implementation this performs approximate (fuzzy) string
 /// matching using TRE. This stub returns 0 (no match).
@@ -1363,7 +1363,7 @@ pub unsafe fn R_agrep_fixed(
     0
 }
 
-/// Stub for `R_pcre_exec` -- PCRE regex matching.
+/// Placeholder: `R_pcre_exec` -- PCRE regex matching.
 ///
 /// In the full R implementation this executes a PCRE regex against a subject
 /// string. This stub returns -1 (no match).
@@ -1380,7 +1380,7 @@ pub unsafe fn R_pcre_exec(
     -1
 }
 
-/// Stub for `R_pcre_config` -- PCRE configuration query.
+/// Placeholder: `R_pcre_config` -- PCRE configuration query.
 ///
 /// Returns 0 as a safe stub.
 pub unsafe fn R_pcre_config_stub(_what: c_int, _where: *mut c_int) -> c_int {

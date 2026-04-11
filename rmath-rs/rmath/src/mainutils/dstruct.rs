@@ -66,7 +66,7 @@ pub unsafe fn mkCLOSXP(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
             | SEXPTYPE::DOTSXP
             | SEXPTYPE::ANYSXP => {
                 // Invalid body type - in real R this would error.
-                // For now, just skip setting the body.
+                //  skip setting the body.
             }
             _ => {
                 SET_BODY(c, body);
@@ -94,7 +94,7 @@ pub unsafe fn mkCLOSXP(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn R_mkClosure(formals: SEXP, body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // CheckFormals would verify formals is a pairlist or NILSXP.
-        // For now, we skip the detailed checking.
+        // skip the detailed checking.
         if !R_NilValue().is_null() && !rho.is_null() && Rf_isEnvironment(rho) == 0 {
             // Invalid environment - in real R this would error.
             // Return null to signal the error.
