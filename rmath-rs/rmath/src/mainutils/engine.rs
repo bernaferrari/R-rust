@@ -98,7 +98,7 @@ pub unsafe fn R_GE_checkVersionOrDie(version: c_int) {
 
 /// Destroy a graphics device description, freeing all associated resources.
 pub unsafe fn GEdestroyDevDesc(dd: *mut c_void) {
-    // Stub: no-op
+    let _ = dd;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,8 @@ pub unsafe fn GEsystemState(dd: *mut c_void, index: c_int) -> *mut c_void {
 
 /// Register all current graphics systems with a new device.
 pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
-    // Stub: no-op
+    let _ = dd;
+    // No devices in headless mode
 }
 
 // ---------------------------------------------------------------------------
@@ -127,9 +128,19 @@ pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
 pub unsafe fn GEregisterSystem(
     cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
     systemRegisterIndex: *mut c_int,
-) {
-    // Stub: no-op
-}
+) { unsafe {
+    let _ = cb;
+    numGraphicsSystems.with(|v| {
+        let current = v.get();
+        if current >= MAX_GRAPHICS_SYSTEMS {
+            return;
+        }
+        if !systemRegisterIndex.is_null() {
+            *systemRegisterIndex = current;
+        }
+        v.set(current + 1);
+    });
+}}
 
 // ---------------------------------------------------------------------------
 // GEunregisterSystem
@@ -137,7 +148,13 @@ pub unsafe fn GEregisterSystem(
 
 /// Unregister a graphics system from the engine.
 pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
-    // Stub: no-op
+    let _ = registerIndex;
+    numGraphicsSystems.with(|v| {
+        let current = v.get();
+        if current > 0 {
+            v.set(current - 1);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -145,9 +162,9 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Handle a graphics event, forwarding to all registered systems.
-pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // Coordinate transformation stubs
@@ -203,9 +220,9 @@ pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 }
 
 /// Convert a line end code to an R string.
-pub unsafe fn GE_LENDget(lend: c_int) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Parse a line join specification from an R SEXP value.
 pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
@@ -213,9 +230,9 @@ pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 }
 
 /// Convert a line join code to an R string.
-pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // GESetClip
@@ -223,7 +240,7 @@ pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP { unsafe {
 
 /// Set the clipping rectangle on the current device.
 pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +256,7 @@ pub unsafe fn GELine(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -254,7 +271,7 @@ pub unsafe fn GEPolyline(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -269,7 +286,7 @@ pub unsafe fn GEPolygon(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +301,7 @@ pub unsafe fn GECircle(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -300,7 +317,7 @@ pub unsafe fn GERect(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -317,7 +334,7 @@ pub unsafe fn GEPath(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -338,7 +355,7 @@ pub unsafe fn GERaster(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -346,9 +363,9 @@ pub unsafe fn GERaster(
 // ---------------------------------------------------------------------------
 
 /// Capture the current device contents as a raster image.
-pub unsafe fn GECap(dd: *mut c_void) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // GEText
@@ -366,7 +383,7 @@ pub unsafe fn GEText(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -384,9 +401,9 @@ pub unsafe fn GEXspline(
     draw: c_int,
     gc: *const c_void,
     dd: *mut c_void,
-) -> SEXP { unsafe {
-    R_NilValue()
-}}
+) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // GEMode
@@ -394,7 +411,7 @@ pub unsafe fn GEXspline(
 
 /// Set the graphics mode on a device.
 pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -410,7 +427,7 @@ pub unsafe fn GESymbol(
     gc: *const c_void,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -419,7 +436,7 @@ pub unsafe fn GESymbol(
 
 /// Calculate pretty axis tick positions (wrapper around R_pretty).
 pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
-    // Stub: no-op -- in full implementation, calls R_pretty()
+    // Headless: no rendering -- in full implementation, calls R_pretty()
 }
 
 // ---------------------------------------------------------------------------
@@ -434,18 +451,20 @@ pub unsafe fn GEMetricInfo(
     descent: *mut c_double,
     width: *mut c_double,
     dd: *mut c_void,
-) { unsafe {
-    // Stub: return zeros
-    if !ascent.is_null() {
-        *ascent = 0.0;
+) {
+    unsafe {
+        // Headless: return zeros
+        if !ascent.is_null() {
+            *ascent = 0.0;
+        }
+        if !descent.is_null() {
+            *descent = 0.0;
+        }
+        if !width.is_null() {
+            *width = 0.0;
+        }
     }
-    if !descent.is_null() {
-        *descent = 0.0;
-    }
-    if !width.is_null() {
-        *width = 0.0;
-    }
-}}
+}
 
 // ---------------------------------------------------------------------------
 // GEStrWidth
@@ -488,18 +507,20 @@ pub unsafe fn GEStrMetric(
     descent: *mut c_double,
     width: *mut c_double,
     dd: *mut c_void,
-) { unsafe {
-    // Stub: return zeros
-    if !ascent.is_null() {
-        *ascent = 0.0;
+) {
+    unsafe {
+        // Headless: return zeros
+        if !ascent.is_null() {
+            *ascent = 0.0;
+        }
+        if !descent.is_null() {
+            *descent = 0.0;
+        }
+        if !width.is_null() {
+            *width = 0.0;
+        }
     }
-    if !descent.is_null() {
-        *descent = 0.0;
-    }
-    if !width.is_null() {
-        *width = 0.0;
-    }
-}}
+}
 
 // ---------------------------------------------------------------------------
 // GENewPage
@@ -507,7 +528,7 @@ pub unsafe fn GEStrMetric(
 
 /// Start a new page on the device.
 pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -521,12 +542,12 @@ pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
 
 /// Mark a device as having received output.
 pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Mark a device as clean (no output recorded).
 pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -553,7 +574,7 @@ pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
 
 /// Record a graphics operation for display list replay.
 pub unsafe fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -562,7 +583,7 @@ pub unsafe fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: *mut c_void) {
 
 /// Initialize the display list for a device.
 pub unsafe fn GEinitDisplayList(dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -571,7 +592,7 @@ pub unsafe fn GEinitDisplayList(dd: *mut c_void) {
 
 /// Replay the display list on a device.
 pub unsafe fn GEplayDisplayList(dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -580,7 +601,7 @@ pub unsafe fn GEplayDisplayList(dd: *mut c_void) {
 
 /// Copy the display list from one device to another.
 pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -588,9 +609,9 @@ pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Create a snapshot of the current display, including graphics system state.
-pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // GEplaySnapshot
@@ -598,7 +619,7 @@ pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP { unsafe {
 
 /// Recreate a saved display from a snapshot.
 pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -606,23 +627,23 @@ pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
 // ---------------------------------------------------------------------------
 
 /// recordPlot() -- R internal entry point.
-pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// replayPlot() -- R internal entry point.
-pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // do_recordGraphics
 // ---------------------------------------------------------------------------
 
 /// .Internal(recordGraphics(...)) -- R internal entry point.
-pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // GEonExit
@@ -630,7 +651,7 @@ pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
 
 /// Reset graphics state on error/interrupt.
 pub unsafe fn GEonExit() {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -652,9 +673,9 @@ pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
 }
 
 /// Convert a line type code to an R string.
-pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // Raster image operations
@@ -669,7 +690,7 @@ pub unsafe fn R_GE_rasterScale(
     dw: c_int,
     dh: c_int,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Scale a raster image using bilinear interpolation.
@@ -681,7 +702,7 @@ pub unsafe fn R_GE_rasterInterpolate(
     dw: c_int,
     dh: c_int,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Calculate the size needed for a rotated raster image.
@@ -691,14 +712,16 @@ pub unsafe fn R_GE_rasterRotatedSize(
     angle: c_double,
     wnew: *mut c_int,
     hnew: *mut c_int,
-) { unsafe {
-    if !wnew.is_null() {
-        *wnew = w;
+) {
+    unsafe {
+        if !wnew.is_null() {
+            *wnew = w;
+        }
+        if !hnew.is_null() {
+            *hnew = h;
+        }
     }
-    if !hnew.is_null() {
-        *hnew = h;
-    }
-}}
+}
 
 /// Calculate the offset for a rotated raster image.
 pub unsafe fn R_GE_rasterRotatedOffset(
@@ -708,14 +731,16 @@ pub unsafe fn R_GE_rasterRotatedOffset(
     botleft: c_int,
     xoff: *mut c_double,
     yoff: *mut c_double,
-) { unsafe {
-    if !xoff.is_null() {
-        *xoff = 0.0;
+) {
+    unsafe {
+        if !xoff.is_null() {
+            *xoff = 0.0;
+        }
+        if !yoff.is_null() {
+            *yoff = 0.0;
+        }
     }
-    if !yoff.is_null() {
-        *yoff = 0.0;
-    }
-}}
+}
 
 /// Copy a raster image into the middle of a larger raster (for rotation).
 pub unsafe fn R_GE_rasterResizeForRotation(
@@ -727,7 +752,7 @@ pub unsafe fn R_GE_rasterResizeForRotation(
     hnew: c_int,
     gc: *const c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Rotate a raster image.
@@ -740,7 +765,7 @@ pub unsafe fn R_GE_rasterRotate(
     gc: *const c_void,
     smoothAlpha: c_int,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -749,17 +774,17 @@ pub unsafe fn R_GE_rasterRotate(
 
 /// Stroke (outline) a path on the device.
 pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Fill a path on the device.
 pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Fill and stroke a path on the device.
 pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -767,49 +792,49 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 // ---------------------------------------------------------------------------
 
 /// Get the glyphs component from a glyphInfo SEXP.
-pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the fonts component from a glyphInfo SEXP.
-pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph IDs from a glyphs SEXP.
-pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph X positions from a glyphs SEXP.
-pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph Y positions from a glyphs SEXP.
-pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph font indices from a glyphs SEXP.
-pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph sizes from a glyphs SEXP.
-pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph colours from a glyphs SEXP.
-pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Get the glyph rotations from a glyphs SEXP.
-pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 /// Check whether a glyphs SEXP has rotation information.
 pub unsafe fn R_GE_hasGlyphRotation(glyphs: SEXP) -> c_int {
@@ -886,7 +911,7 @@ pub unsafe fn GEGlyph(
     rot: c_double,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------
@@ -894,9 +919,9 @@ pub unsafe fn GEGlyph(
 // ---------------------------------------------------------------------------
 
 /// Evaluate an expression within a graphics device context (with device locking).
-pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP { unsafe {
-    R_NilValue()
-}}
+pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
+    unsafe { R_NilValue() }
+}
 
 // ---------------------------------------------------------------------------
 // Module-private helper stubs (not #[unsafe(no_mangle)], avoid duplicate symbols)
@@ -912,7 +937,7 @@ pub(crate) unsafe fn compute_open_spline(
     precision: c_int,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 /// Internal helper: compute closed spline (from xspline.c).
@@ -924,7 +949,7 @@ pub(crate) unsafe fn compute_closed_spline(
     precision: c_int,
     dd: *mut c_void,
 ) {
-    // Stub: no-op
+    // Headless: no rendering
 }
 
 // ---------------------------------------------------------------------------

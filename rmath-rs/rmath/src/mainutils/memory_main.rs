@@ -675,7 +675,7 @@ pub unsafe fn R_SetMaxNSize(_size: u64) -> c_int {
 
 /// Set the protection stack size.
 pub unsafe fn R_SetPPSize(_size: u64) {
-    // No-op stub.
+    // Arena-based allocation doesn't need PP stack sizing
 }
 
 // ---------------------------------------------------------------------------
@@ -698,12 +698,11 @@ pub(crate) unsafe fn R_ReadConsole_memory(
 /// Write to the console (stub).
 /// Duplicate — no #[unsafe(no_mangle)] (already in unix/system.rs).
 pub(crate) unsafe fn R_WriteConsole_memory(_buf: *const c_char, _len: c_int) {
-    // No-op stub.
+    // Headless: console output suppressed
 }
 
 // ---------------------------------------------------------------------------
 // readline stub
-// ---------------------------------------------------------------------------
 
 /// GNU readline wrapper (stub).
 ///
@@ -1055,14 +1054,14 @@ pub unsafe fn R_signal_unprotect_error() {
 ///
 /// This is the equivalent of R's `InitMemory()`.
 pub unsafe fn InitMemory() {
-    // No-op stub. The real implementation sets up GC heaps, R_NilValue, etc.
+    // Arena/GC initialized statically via thread_local; no explicit init needed
 }
 
 /// Reset the protection stack.
 ///
 /// This is the equivalent of R's `initStack()`.
 pub unsafe fn initStack() {
-    // No-op stub.
+    // Arena-based allocation doesn't need PP stack sizing
 }
 
 // ---------------------------------------------------------------------------
