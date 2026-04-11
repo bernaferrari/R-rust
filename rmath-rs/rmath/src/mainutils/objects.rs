@@ -231,17 +231,17 @@ unsafe fn isValidString(x: SEXP) -> c_int {
     }
 }
 
-unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int {
+unsafe fn asRbool(x: SEXP, call: SEXP) -> c_int { unsafe {
     crate::mainutils::coerce::asRbool(x, call)
-}
+}}
 
-unsafe fn asLogical(x: SEXP) -> c_int {
+unsafe fn asLogical(x: SEXP) -> c_int { unsafe {
     crate::mainutils::coerce::asLogical(x)
-}
+}}
 
-unsafe fn asInteger(x: SEXP) -> c_int {
+unsafe fn asInteger(x: SEXP) -> c_int { unsafe {
     crate::mainutils::coerce::asInteger(x)
-}
+}}
 
 /// isNull check.
 unsafe fn isNull(x: SEXP) -> c_int {
@@ -374,9 +374,9 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
 // Helper: translateChar -- get the translated character string from a CHARSXP
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(x)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Helper: R_data_class2 -- S4-aware class lookup

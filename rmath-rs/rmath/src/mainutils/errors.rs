@@ -389,27 +389,27 @@ unsafe fn CHAR_local(s: SEXP) -> *const c_char {
     }
 }
 
-unsafe fn translateChar(s: SEXP) -> *const c_char {
+unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
     let r = crate::sexp::accessors::translateChar(s);
     if r.is_null() {
         b"\0" as *const u8 as *const c_char
     } else {
         r
     }
-}
+}}
 
 /// Check argument arity (simplified).
 unsafe fn checkArity(_op: SEXP, _args: SEXP) {
     // Full implementation needs builtin.rs infrastructure
 }
 
-unsafe fn ScalarInteger(x: c_int) -> SEXP {
+unsafe fn ScalarInteger(x: c_int) -> SEXP { unsafe {
     crate::sexp::constructors::Rf_ScalarInteger(x)
-}
+}}
 
-unsafe fn ScalarLogical(x: c_int) -> SEXP {
+unsafe fn ScalarLogical(x: c_int) -> SEXP { unsafe {
     crate::sexp::constructors::Rf_ScalarLogical(x)
-}
+}}
 
 /// Get/set class attribute (simplified).
 unsafe fn classgets(x: SEXP, klass: SEXP) -> SEXP {

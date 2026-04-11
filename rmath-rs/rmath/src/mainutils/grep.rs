@@ -23,7 +23,6 @@
 
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -37,9 +36,9 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 #[inline(always)]
-unsafe fn NA_STRING() -> SEXP {
+unsafe fn NA_STRING() -> SEXP { unsafe {
     crate::mainutils::relop::NA_STRING()
-}
+}}
 
 #[inline(always)]
 unsafe fn isNA_STRING(s: SEXP) -> bool {
@@ -63,9 +62,9 @@ unsafe fn isNull(x: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char {
+unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(s)
-}
+}}
 
 /// checkArity -- stub, no-op.
 #[inline(always)]
@@ -112,24 +111,24 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn PRIMVAL(op: SEXP) -> c_int {
+unsafe fn PRIMVAL(op: SEXP) -> c_int { unsafe {
     crate::mainutils::relop::PRIMVAL(op)
-}
+}}
 
 #[inline(always)]
-unsafe fn R_NamesSymbol() -> SEXP {
+unsafe fn R_NamesSymbol() -> SEXP { unsafe {
     crate::eval::attrib_core::R_NamesSymbol()
-}
+}}
 
 #[inline(always)]
-unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP { unsafe {
     crate::eval::attrib_core::getAttrib(x, which)
-}
+}}
 
 #[inline(always)]
-unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) { unsafe {
     crate::eval::attrib_core::setAttrib(x, which, value);
-}
+}}
 
 /// ScalarString -- create scalar STRSXP.
 #[inline(always)]
@@ -150,9 +149,9 @@ unsafe fn allocVector(sexptype: c_int, length: R_xlen_t) -> SEXP {
 }
 
 #[inline(always)]
-unsafe fn install(name: *const c_char) -> SEXP {
+unsafe fn install(name: *const c_char) -> SEXP { unsafe {
     crate::sexp::symbol::Rf_install(name)
-}
+}}
 
 /// Rf_warning -- issue a warning (forward to errors module).
 #[inline(always)]

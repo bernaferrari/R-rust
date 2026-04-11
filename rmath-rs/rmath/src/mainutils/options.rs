@@ -291,9 +291,9 @@ unsafe fn EnsureString(x: SEXP) -> SEXP {
     }
 }
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(x)
-}
+}}
 
 /// asChar -- get the first string element as a CHARSXP.
 unsafe fn asChar(x: SEXP) -> SEXP {

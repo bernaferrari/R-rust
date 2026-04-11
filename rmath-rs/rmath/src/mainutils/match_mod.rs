@@ -90,9 +90,9 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
 }
 
 #[inline(always)]
-unsafe fn NA_STRING() -> SEXP {
+unsafe fn NA_STRING() -> SEXP { unsafe {
     crate::mainutils::relop::NA_STRING()
-}
+}}
 
 #[inline(always)]
 unsafe fn isNA_STRING(s: SEXP) -> bool {
@@ -126,15 +126,15 @@ unsafe fn isNull(x: SEXP) -> bool {
 
 /// IS_BYTES check — delegates to sexp::accessors.
 #[inline(always)]
-unsafe fn IS_BYTES(s: SEXP) -> c_int {
+unsafe fn IS_BYTES(s: SEXP) -> c_int { unsafe {
     crate::sexp::accessors::IS_BYTES(s)
-}
+}}
 
 /// ENC_KNOWN check — delegates to sexp::accessors.
 #[inline(always)]
-unsafe fn ENC_KNOWN(s: SEXP) -> c_int {
+unsafe fn ENC_KNOWN(s: SEXP) -> c_int { unsafe {
     crate::sexp::accessors::ENC_KNOWN(s)
-}
+}}
 
 /// IS_CACHED check — stub, always returns true.
 #[inline(always)]
@@ -143,19 +143,19 @@ unsafe fn IS_CACHED(_s: SEXP) -> c_int {
 }
 
 #[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char {
+unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(s)
-}
+}}
 
 #[inline(always)]
-unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
+unsafe fn translateCharUTF8(s: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateCharUTF8(s)
-}
+}}
 
 #[inline(always)]
-unsafe fn getCharCE(s: SEXP) -> c_int {
+unsafe fn getCharCE(s: SEXP) -> c_int { unsafe {
     crate::sexp::accessors::getCharCE(s)
-}
+}}
 
 /// checkArity — stub, no-op.
 #[inline(always)]

@@ -237,8 +237,7 @@ pub unsafe fn Rf_ReplConsole(_rho: SEXP, _savestack: c_int, _browselevel: c_int)
 /// This is the equivalent of R's `Rf_mainloop()` from main.c.
 /// Called from main() after Rf_initialize_R().
 pub unsafe fn Rf_mainloop() {
-    // Stub: in the full implementation, this sets up and runs the REPL
-    eprintln!("Rf_mainloop() called (stub — no REPL implementation yet)");
+    // Headless: no REPL loop. For embedded use, call eval() directly.
 }
 
 // ---------------------------------------------------------------------------
@@ -300,11 +299,11 @@ pub unsafe fn R_GetMaxNSize() -> u64 {
 }
 
 pub unsafe fn R_GetVSize() -> u64 {
-    0
+    crate::sexp::memory::with_arena(|a| a.total_bytes_allocated() as u64)
 }
 
 pub unsafe fn R_GetNSize() -> u64 {
-    0
+    crate::sexp::memory::with_arena(|a| a.node_count() as u64)
 }
 
 // ---------------------------------------------------------------------------

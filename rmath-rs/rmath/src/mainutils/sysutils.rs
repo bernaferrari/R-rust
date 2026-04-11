@@ -146,9 +146,9 @@ unsafe fn isString(x: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char {
+unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(s)
-}
+}}
 
 /// R_Interactive flag. Set to false (non-interactive mode).
 static R_INTERACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

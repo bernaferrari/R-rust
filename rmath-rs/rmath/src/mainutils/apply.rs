@@ -362,9 +362,9 @@ macro_rules! r_error {
     }};
 }
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP { unsafe {
     crate::mainutils::coerce::coerceVector(x, type_)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // checkArgIsSymbol: validate that the given SEXP is a symbol

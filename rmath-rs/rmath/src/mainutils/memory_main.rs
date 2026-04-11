@@ -413,13 +413,13 @@ pub(crate) unsafe fn Rf_isObject_memory(s: SEXP) -> c_int {
 // Already in sexp/protect.rs with #[unsafe(no_mangle)].
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn R_PreserveObject_memory(s: SEXP) {
+pub(crate) unsafe fn R_PreserveObject_memory(s: SEXP) { unsafe {
     crate::sexp::protect::R_PreserveObject(s);
-}
+}}
 
-pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
+pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) { unsafe {
     crate::sexp::protect::R_ReleaseObject(s);
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Weak references and finalizers
@@ -474,17 +474,17 @@ pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
+pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) { unsafe {
     R_RegisterFinalizerEx(s, fun, 0);
-}
+}}
 
 pub unsafe fn R_RegisterFinalizerEx(_s: SEXP, _fun: SEXP, _onexit: c_int) {
     // R-level finalizer registration — stores the function for later execution.
 }
 
-pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
+pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) { unsafe {
     R_RegisterCFinalizerEx(s, fun, 0);
-}
+}}
 
 pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
     if s.is_null() {
@@ -507,13 +507,13 @@ pub unsafe fn R_RunPendingFinalizers() {
     }
 }
 
-pub unsafe fn R_RunFinalizers() {
+pub unsafe fn R_RunFinalizers() { unsafe {
     R_RunPendingFinalizers();
-}
+}}
 
-pub(crate) unsafe fn R_RunExitFinalizers_memory() {
+pub(crate) unsafe fn R_RunExitFinalizers_memory() { unsafe {
     R_RunFinalizers();
-}
+}}
 
 // ---------------------------------------------------------------------------
 // External pointer management
@@ -912,19 +912,19 @@ pub unsafe fn R_resizeVector(x: SEXP, newlen: R_xlen_t) {
 /// Signal a protect stack overflow error.
 ///
 /// This is the equivalent of R's `R_signal_protect_error()`.
-pub unsafe fn R_signal_protect_error() {
+pub unsafe fn R_signal_protect_error() { unsafe {
     crate::mainutils::errors::errorcall(
         R_NilValue(),
         b"protect stack overflow\0".as_ptr() as *const c_char,
     );
-}
+}}
 
-pub unsafe fn R_signal_unprotect_error() {
+pub unsafe fn R_signal_unprotect_error() { unsafe {
     crate::mainutils::errors::errorcall(
         R_NilValue(),
         b"unprotect stack underflow\0".as_ptr() as *const c_char,
     );
-}
+}}
 
 // ---------------------------------------------------------------------------
 // InitMemory / initStack stubs
@@ -1018,9 +1018,9 @@ pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 /// String equality test, encoding-aware.
 ///
 /// This is the equivalent of R's `Seql()`.
-pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
+pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int { unsafe {
     crate::mainutils::relop::Seql(a, b)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Tests

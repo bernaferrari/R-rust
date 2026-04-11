@@ -221,9 +221,9 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(x)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // Helper: streql — compare two C strings

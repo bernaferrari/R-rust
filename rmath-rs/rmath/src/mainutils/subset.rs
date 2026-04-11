@@ -584,9 +584,9 @@ pub(crate) unsafe fn installTrChar(input: SEXP) -> SEXP {
 // translateChar -- get the UTF-8 string from a CHARSXP
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(x: SEXP) -> *const c_char {
+unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
     crate::sexp::accessors::translateChar(x)
-}
+}}
 
 // ---------------------------------------------------------------------------
 // checkArity -- local stub (no-op for now)
