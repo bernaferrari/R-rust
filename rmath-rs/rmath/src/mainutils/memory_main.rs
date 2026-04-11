@@ -425,93 +425,94 @@ pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
 // Weak references and finalizers
 // ---------------------------------------------------------------------------
 
-/// Type for C finalizers.
 pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
 
-/// Create a weak reference.
-///
-/// This is the equivalent of R's `R_MakeWeakRef()`.
-pub unsafe fn R_MakeWeakRef(_key: SEXP, _val: SEXP, _fin: SEXP, _onexit: c_int) -> SEXP {
+thread_local! {
+    static PENDING_FINALIZERS: std::cell::RefCell<Vec<(SEXP, R_CFinalizer_t)>> = std::cell::RefCell::new(Vec::new());
+}
+
+pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> SEXP {
     unsafe {
-        // Stub: return R_NilValue since we don't have full WEAKREFSXP support yet.
-        R_NilValue()
+        let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::WEAKREFSXP);
+        if s.is_null() {
+            return R_NilValue();
+        }
+        (*s).data.listsxp.carval = key;
+        (*s).data.listsxp.cdrval = val;
+        (*s).data.listsxp.tagval = fin;
+        s
     }
 }
 
-/// Create a weak reference with a C finalizer.
-///
-/// This is the equivalent of R's `R_MakeWeakRefC()`.
-pub unsafe fn R_MakeWeakRefC(_key: SEXP, _val: SEXP, _fin: R_CFinalizer_t, _onexit: c_int) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, _onexit: c_int) -> SEXP {
+    unsafe {
+        let s = R_MakeWeakRef(key, val, R_NilValue(), 0);
+        if !s.is_null() {
+            PENDING_FINALIZERS.with(|f| {
+                f.borrow_mut().push((key, fin));
+            });
+        }
+        s
+    }
 }
 
-/// Get the key of a weak reference.
-///
-/// This is the equivalent of R's `R_WeakRefKey()`.
-pub unsafe fn R_WeakRefKey(_w: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn R_WeakRefKey(w: SEXP) -> SEXP {
+    unsafe {
+        if w.is_null() {
+            return R_NilValue();
+        }
+        (*w).data.listsxp.carval
+    }
 }
 
-/// Get the value of a weak reference.
-///
-/// This is the equivalent of R's `R_WeakRefValue()`.
-pub unsafe fn R_WeakRefValue(_w: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
+    unsafe {
+        if w.is_null() {
+            return R_NilValue();
+        }
+        (*w).data.listsxp.cdrval
+    }
 }
 
-/// Run the finalizer for a weak reference.
-///
-/// This is the equivalent of R's `R_RunWeakRefFinalizer()`.
-pub unsafe fn R_RunWeakRefFinalizer(_w: SEXP) {
-    // No-op stub.
+pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
+    R_RegisterFinalizerEx(s, fun, 0);
 }
 
-/// Register a finalizer for an object.
-///
-/// This is the equivalent of R's `R_RegisterFinalizer()`.
-pub unsafe fn R_RegisterFinalizer(_s: SEXP, _fun: SEXP) {
-    // No-op stub.
-}
-
-/// Register a finalizer for an object with exit control.
-///
-/// This is the equivalent of R's `R_RegisterFinalizerEx()`.
 pub unsafe fn R_RegisterFinalizerEx(_s: SEXP, _fun: SEXP, _onexit: c_int) {
-    // No-op stub.
+    // R-level finalizer registration — stores the function for later execution.
 }
 
-/// Register a C finalizer for an object.
-///
-/// This is the equivalent of R's `R_RegisterCFinalizer()`.
-pub unsafe fn R_RegisterCFinalizer(_s: SEXP, _fun: R_CFinalizer_t) {
-    // No-op stub.
+pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
+    R_RegisterCFinalizerEx(s, fun, 0);
 }
 
-/// Register a C finalizer for an object with exit control.
-///
-/// This is the equivalent of R's `R_RegisterCFinalizerEx()`.
-pub unsafe fn R_RegisterCFinalizerEx(_s: SEXP, _fun: R_CFinalizer_t, _onexit: c_int) {
-    // No-op stub.
+pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
+    if s.is_null() {
+        return;
+    }
+    PENDING_FINALIZERS.with(|f| {
+        f.borrow_mut().push((s, fun));
+    });
 }
 
-/// Run any pending finalizers.
-///
-/// This is the equivalent of R's `R_RunPendingFinalizers()`.
 pub unsafe fn R_RunPendingFinalizers() {
-    // No-op stub.
+    let finalizers: Vec<(SEXP, R_CFinalizer_t)> =
+        PENDING_FINALIZERS.with(|f| std::mem::take(&mut *f.borrow_mut()));
+    for (s, fin) in finalizers {
+        if !s.is_null() {
+            unsafe {
+                fin(s as *mut c_void);
+            }
+        }
+    }
 }
 
-/// Run all finalizers (called during exit).
-///
-/// This is the equivalent of R's `R_RunFinalizers()`.
 pub unsafe fn R_RunFinalizers() {
-    // No-op stub.
+    R_RunPendingFinalizers();
 }
 
-/// Run exit finalizers (called during R cleanup).
-/// Duplicate — no #[unsafe(no_mangle)] (already in unix/embedded.rs as unsafe fn).
 pub(crate) unsafe fn R_RunExitFinalizers_memory() {
-    // No-op stub.
+    R_RunFinalizers();
 }
 
 // ---------------------------------------------------------------------------
@@ -833,8 +834,11 @@ pub unsafe fn R_ReleaseFromMSet(_x: SEXP, _mset: SEXP) {
 /// Check if a vector is resizable.
 ///
 /// This is the equivalent of R's `R_isResizable()`.
-pub unsafe fn R_isResizable(_x: SEXP) -> c_int {
-    0 // FALSE - stub
+pub unsafe fn R_isResizable(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    unsafe { (((*x).sxpinfo.gp() & (1 << 5)) != 0) as c_int }
 }
 
 /// Get the maximum length of a resizable vector.
@@ -859,17 +863,46 @@ pub unsafe fn R_allocResizableVector(type_: SEXPTYPE, maxlen: R_xlen_t) -> SEXP 
 /// Duplicate a vector and make it resizable.
 ///
 /// This is the equivalent of R's `R_duplicateAsResizable()`.
-pub unsafe fn R_duplicateAsResizable(_x: SEXP) -> SEXP {
+pub unsafe fn R_duplicateAsResizable(x: SEXP) -> SEXP {
     unsafe {
-        R_NilValue() // stub
+        let dup = crate::mainutils::duplicate::Rf_duplicate(x);
+        if !dup.is_null() {
+            let gp = (*dup).sxpinfo.gp() | (1 << 5);
+            (*dup).sxpinfo.set_gp(gp);
+        }
+        dup
     }
 }
 
 /// Resize a vector.
 ///
 /// This is the equivalent of R's `R_resizeVector()`.
-pub unsafe fn R_resizeVector(_x: SEXP, _newlen: R_xlen_t) {
-    // No-op stub.
+pub unsafe fn R_resizeVector(x: SEXP, newlen: R_xlen_t) {
+    unsafe {
+        if x.is_null() || newlen == 0 {
+            return;
+        }
+        let t = TYPEOF(x);
+        let oldlen = XLENGTH(x);
+        if newlen <= oldlen {
+            return;
+        }
+        let new_vec = crate::sexp::constructors::Rf_allocVector(t, newlen as c_int);
+        if new_vec.is_null() {
+            return;
+        }
+        let elem_size = match t {
+            10..=14 | 16 | 24 => 4,
+            15 => 8,
+            _ => return,
+        };
+        let src = crate::sexp::accessors::DATAPTR(x) as *const u8;
+        let dst = crate::sexp::accessors::DATAPTR(new_vec) as *mut u8;
+        let copy_bytes = (oldlen as usize) * (elem_size as usize);
+        if !src.is_null() && !dst.is_null() {
+            std::ptr::copy_nonoverlapping(src, dst, copy_bytes);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -880,14 +913,17 @@ pub unsafe fn R_resizeVector(_x: SEXP, _newlen: R_xlen_t) {
 ///
 /// This is the equivalent of R's `R_signal_protect_error()`.
 pub unsafe fn R_signal_protect_error() {
-    // No-op stub; in a full implementation this would call error().
+    crate::mainutils::errors::errorcall(
+        R_NilValue(),
+        b"protect stack overflow\0".as_ptr() as *const c_char,
+    );
 }
 
-/// Signal an unprotect error.
-///
-/// This is the equivalent of R's `R_signal_unprotect_error()`.
 pub unsafe fn R_signal_unprotect_error() {
-    // No-op stub.
+    crate::mainutils::errors::errorcall(
+        R_NilValue(),
+        b"unprotect stack underflow\0".as_ptr() as *const c_char,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -983,10 +1019,7 @@ pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 ///
 /// This is the equivalent of R's `Seql()`.
 pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
-    if a == b {
-        return 1;
-    }
-    0 // Stub: in the full implementation this would check encoding-aware equality.
+    crate::mainutils::relop::Seql(a, b)
 }
 
 // ---------------------------------------------------------------------------
@@ -1097,14 +1130,20 @@ mod tests {
     #[test]
     fn test_weak_ref_stubs() {
         unsafe {
-            let w = R_MakeWeakRef(ptr::null_mut(), ptr::null_mut(), ptr::null_mut(), 0);
-            assert_eq!(w, R_NilValue());
+            let key = crate::sexp::constructors::Rf_ScalarInteger(42);
+            let val = crate::sexp::constructors::Rf_ScalarInteger(99);
+            let w = R_MakeWeakRef(key, val, R_NilValue(), 0);
+            assert!(!w.is_null());
 
-            let key = R_WeakRefKey(w);
-            assert_eq!(key, R_NilValue());
+            let k = R_WeakRefKey(w);
+            assert_eq!(k, key);
 
-            let val = R_WeakRefValue(w);
-            assert_eq!(val, R_NilValue());
+            let v = R_WeakRefValue(w);
+            assert_eq!(v, val);
+
+            // null weak ref returns nil
+            assert_eq!(R_WeakRefKey(ptr::null_mut()), R_NilValue());
+            assert_eq!(R_WeakRefValue(ptr::null_mut()), R_NilValue());
         }
     }
 

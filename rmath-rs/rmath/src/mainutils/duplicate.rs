@@ -41,22 +41,27 @@ const GROWABLE_BIT_MASK: u16 = 1 << 5;
 // Stub functions for features not yet implemented
 // ---------------------------------------------------------------------------
 
-/// ALTREP_DUPLICATE_EX stub: returns null (no ALTREP support).
-unsafe fn ALTREP_DUPLICATE_EX(_s: SEXP, _deep: c_int) -> SEXP {
-    ptr::null_mut()
+unsafe fn ALTREP_DUPLICATE_EX(s: SEXP, deep: c_int) -> SEXP {
+    unsafe {
+        let _ = deep;
+        crate::mainutils::duplicate::Rf_duplicate(s)
+    }
 }
 
-/// R_tryWrap stub: returns input unchanged (no ALTREP support).
 unsafe fn R_tryWrap(x: SEXP) -> SEXP {
     x
 }
 
-/// R_allocObject stub: returns null (no S4 object support).
 unsafe fn R_allocObject() -> SEXP {
-    ptr::null_mut()
+    unsafe {
+        let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::INTSXP);
+        if !s.is_null() {
+            let gp = (*s).sxpinfo.gp() | S4_OBJECT_MASK;
+            (*s).sxpinfo.set_gp(gp);
+        }
+        s
+    }
 }
-
-/// DispatchGroup stub: returns 0.
 unsafe fn DispatchGroup(
     _s: SEXP,
     _code: *const c_char,

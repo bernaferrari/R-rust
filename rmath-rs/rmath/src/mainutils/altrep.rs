@@ -27,57 +27,65 @@ use crate::sexp::memory::with_arena;
 ///
 /// In R, data1 stores the class descriptor. For built-in classes
 /// (compact_intseq, compact_realseq), it may hold a named SEXP.
-pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP { unsafe {
-    if x.is_null() || ALTREP(x) == 0 {
-        return R_NilValue();
+pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || ALTREP(x) == 0 {
+            return R_NilValue();
+        }
+        let data_ptr = (*x).gengc_next_node as *mut SEXP;
+        if data_ptr.is_null() {
+            return R_NilValue();
+        }
+        *data_ptr
     }
-    let data_ptr = (*x).gengc_next_node as *mut SEXP;
-    if data_ptr.is_null() {
-        return R_NilValue();
-    }
-    *data_ptr
-}}
+}
 
 /// Get the ALTREP data2 field.
 ///
 /// In R, data2 stores instance-specific data. For compact sequences,
 /// this is the expanded/materialized vector (or R_NilValue if not yet expanded).
-pub unsafe fn R_altrep_data2(x: SEXP) -> SEXP { unsafe {
-    if x.is_null() || ALTREP(x) == 0 {
-        return R_NilValue();
+pub unsafe fn R_altrep_data2(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || ALTREP(x) == 0 {
+            return R_NilValue();
+        }
+        let data_ptr = (*x).gengc_next_node as *mut SEXP;
+        if data_ptr.is_null() {
+            return R_NilValue();
+        }
+        let data2_ptr = data_ptr.add(1);
+        *data2_ptr
     }
-    let data_ptr = (*x).gengc_next_node as *mut SEXP;
-    if data_ptr.is_null() {
-        return R_NilValue();
-    }
-    let data2_ptr = data_ptr.add(1);
-    *data2_ptr
-}}
+}
 
 /// Set the ALTREP data1 field.
-pub unsafe fn R_set_altrep_data1(x: SEXP, v: SEXP) { unsafe {
-    if x.is_null() || ALTREP(x) == 0 {
-        return;
+pub unsafe fn R_set_altrep_data1(x: SEXP, v: SEXP) {
+    unsafe {
+        if x.is_null() || ALTREP(x) == 0 {
+            return;
+        }
+        let data_ptr = (*x).gengc_next_node as *mut SEXP;
+        if data_ptr.is_null() {
+            return;
+        }
+        *data_ptr = v;
     }
-    let data_ptr = (*x).gengc_next_node as *mut SEXP;
-    if data_ptr.is_null() {
-        return;
-    }
-    *data_ptr = v;
-}}
+}
 
 /// Set the ALTREP data2 field.
-pub unsafe fn R_set_altrep_data2(x: SEXP, v: SEXP) { unsafe {
-    if x.is_null() || ALTREP(x) == 0 {
-        return;
+pub unsafe fn R_set_altrep_data2(x: SEXP, v: SEXP) {
+    unsafe {
+        if x.is_null() || ALTREP(x) == 0 {
+            return;
+        }
+        let data_ptr = (*x).gengc_next_node as *mut SEXP;
+        if data_ptr.is_null() {
+            return;
+        }
+        let data2_ptr = data_ptr.add(1);
+        *data2_ptr = v;
     }
-    let data_ptr = (*x).gengc_next_node as *mut SEXP;
-    if data_ptr.is_null() {
-        return;
-    }
-    let data2_ptr = data_ptr.add(1);
-    *data2_ptr = v;
-}}
+}
 
 // ---------------------------------------------------------------------------
 // ALTREP constructors
@@ -88,130 +96,136 @@ pub unsafe fn R_set_altrep_data2(x: SEXP, v: SEXP) { unsafe {
 /// Allocates a VECSXP(2) with the ALT bit set, storing `data1` in
 /// slot 0 and `data2` in slot 1. The class descriptor is stored as
 /// the ATTRIB of the object. This follows R's internal layout.
-pub unsafe fn R_new_altrep(class_def: SEXP, data1: SEXP, data2: SEXP) -> SEXP { unsafe {
-    with_arena(|arena| {
-        let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
-        if vec.is_null() {
-            return R_NilValue();
-        }
+pub unsafe fn R_new_altrep(class_def: SEXP, data1: SEXP, data2: SEXP) -> SEXP {
+    unsafe {
+        with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
+            if vec.is_null() {
+                return R_NilValue();
+            }
 
-        (*vec).sxpinfo.set_alt(true);
+            (*vec).sxpinfo.set_alt(true);
 
-        // Store class descriptor as ATTRIB
-        (*vec).attrib = class_def;
+            // Store class descriptor as ATTRIB
+            (*vec).attrib = class_def;
 
-        let slots = (*vec).gengc_next_node as *mut SEXP;
-        if slots.is_null() {
-            return R_NilValue();
-        }
+            let slots = (*vec).gengc_next_node as *mut SEXP;
+            if slots.is_null() {
+                return R_NilValue();
+            }
 
-        *slots = data1;
-        *slots.add(1) = data2;
+            *slots = data1;
+            *slots.add(1) = data2;
 
-        vec
-    })
-}}
+            vec
+        })
+    }
+}
 
 /// Create a compact integer sequence ALTREP.
 ///
 /// For n <= 1, returns a simple scalar integer vector.
 /// For n > 1, returns an ALTREP object that computes elements on demand.
-pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP { unsafe {
-    let n = if to >= from {
-        to - from + 1
-    } else {
-        from - to + 1
-    };
+pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP {
+    unsafe {
+        let n = if to >= from {
+            to - from + 1
+        } else {
+            from - to + 1
+        };
 
-    if n <= 1 {
-        return with_arena(|arena| {
-            let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        if n <= 1 {
+            return with_arena(|arena| {
+                let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+                if vec.is_null() {
+                    return R_NilValue();
+                }
+                let data_ptr = (*vec).gengc_next_node as *mut c_int;
+                if !data_ptr.is_null() {
+                    *data_ptr = from as c_int;
+                }
+                vec
+            });
+        }
+
+        let inc = if to >= from {
+            1 as R_xlen_t
+        } else {
+            -1 as R_xlen_t
+        };
+        let class_sym = R_NilValue();
+
+        let info = with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
             if vec.is_null() {
                 return R_NilValue();
             }
             let data_ptr = (*vec).gengc_next_node as *mut c_int;
-            if !data_ptr.is_null() {
-                *data_ptr = from as c_int;
+            if data_ptr.is_null() {
+                return R_NilValue();
             }
+            *data_ptr = from as c_int;
+            *data_ptr.add(1) = to as c_int;
+            *data_ptr.add(2) = inc as c_int;
             vec
         });
-    }
 
-    let inc = if to >= from {
-        1 as R_xlen_t
-    } else {
-        -1 as R_xlen_t
-    };
-    let class_sym = R_NilValue();
-
-    let info = with_arena(|arena| {
-        let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-        if vec.is_null() {
-            return R_NilValue();
+        let altrep = R_new_altrep(class_sym, info, R_NilValue());
+        if !altrep.is_null() {
+            (*altrep).sxpinfo.set_type(SEXPTYPE::INTSXP);
+            (*altrep).data.vecsxp.length = n;
+            (*altrep).data.vecsxp.truelength = n;
         }
-        let data_ptr = (*vec).gengc_next_node as *mut c_int;
-        if data_ptr.is_null() {
-            return R_NilValue();
-        }
-        *data_ptr = from as c_int;
-        *data_ptr.add(1) = to as c_int;
-        *data_ptr.add(2) = inc as c_int;
-        vec
-    });
-
-    let altrep = R_new_altrep(class_sym, info, R_NilValue());
-    if !altrep.is_null() {
-        (*altrep).sxpinfo.set_type(SEXPTYPE::INTSXP);
-        (*altrep).data.vecsxp.length = n;
-        (*altrep).data.vecsxp.truelength = n;
+        altrep
     }
-    altrep
-}}
+}
 
 /// Create a compact real sequence ALTREP.
 ///
 /// Creates a lazy real sequence [from, from+by, from+2*by, ...] with the
 /// given length. For length <= 1, returns a simple scalar real vector.
-pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP { unsafe {
-    if length <= 1 {
-        return with_arena(|arena| {
-            let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP {
+    unsafe {
+        if length <= 1 {
+            return with_arena(|arena| {
+                let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+                if vec.is_null() {
+                    return R_NilValue();
+                }
+                let data_ptr = (*vec).gengc_next_node as *mut f64;
+                if !data_ptr.is_null() {
+                    *data_ptr = from;
+                }
+                vec
+            });
+        }
+
+        let class_sym = R_NilValue();
+
+        let info = with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
             if vec.is_null() {
                 return R_NilValue();
             }
             let data_ptr = (*vec).gengc_next_node as *mut f64;
-            if !data_ptr.is_null() {
-                *data_ptr = from;
+            if data_ptr.is_null() {
+                return R_NilValue();
             }
+            *data_ptr = from;
+            *data_ptr.add(1) = from + by * (length as f64 - 1.0);
+            *data_ptr.add(2) = by;
             vec
         });
-    }
 
-    let class_sym = R_NilValue();
-
-    let info = with_arena(|arena| {
-        let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
-        if vec.is_null() {
-            return R_NilValue();
+        let altrep = R_new_altrep(class_sym, info, R_NilValue());
+        if !altrep.is_null() {
+            (*altrep).sxpinfo.set_type(SEXPTYPE::REALSXP);
+            (*altrep).data.vecsxp.length = length;
+            (*altrep).data.vecsxp.truelength = length;
         }
-        let data_ptr = (*vec).gengc_next_node as *mut f64;
-        if data_ptr.is_null() {
-            return R_NilValue();
-        }
-        *data_ptr = from;
-        *data_ptr.add(1) = from + by * (length as f64 - 1.0);
-        *data_ptr.add(2) = by;
-        vec
-    });
-
-    let altrep = R_new_altrep(class_sym, info, R_NilValue());
-    if !altrep.is_null() {
-        (*altrep).sxpinfo.set_type(SEXPTYPE::REALSXP);
-        (*altrep).data.vecsxp.length = length;
-        (*altrep).data.vecsxp.truelength = length;
+        altrep
     }
-    altrep
-}}
+}
 
 // ---------------------------------------------------------------------------
 // ALTREP class structure
@@ -220,20 +234,24 @@ pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP { 
 pub const R_ALTREP_CLASS_TYPE: c_int = 255;
 
 /// Get the ALTREP class (stored as ATTRIB).
-pub unsafe fn R_altrep_class(x: SEXP) -> SEXP { unsafe {
-    if x.is_null() || ALTREP(x) == 0 {
-        return R_NilValue();
+pub unsafe fn R_altrep_class(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() || ALTREP(x) == 0 {
+            return R_NilValue();
+        }
+        (*x).attrib
     }
-    (*x).attrib
-}}
+}
 
 /// Get the ALTREP length.
-pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t { unsafe {
-    if x.is_null() || ALTREP(x) == 0 {
-        return 0;
+pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t {
+    unsafe {
+        if x.is_null() || ALTREP(x) == 0 {
+            return 0;
+        }
+        XLENGTH(x)
     }
-    XLENGTH(x)
-}}
+}
 
 // ---------------------------------------------------------------------------
 // ALTREP realization
@@ -243,133 +261,141 @@ pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t { unsafe {
 ///
 /// For compact sequences, this expands the sequence into a contiguous vector.
 /// For other ALTREP types, returns the object unchanged.
-pub unsafe fn R_altrep_realize(x: SEXP) -> SEXP { unsafe {
-    if x.is_null() {
-        return R_NilValue();
-    }
-    if ALTREP(x) == 0 {
-        return x;
-    }
+pub unsafe fn R_altrep_realize(x: SEXP) -> SEXP {
+    unsafe {
+        if x.is_null() {
+            return R_NilValue();
+        }
+        if ALTREP(x) == 0 {
+            return x;
+        }
 
-    let data2 = R_altrep_data2(x);
-    if !data2.is_null() {
-        return data2;
-    }
+        let data2 = R_altrep_data2(x);
+        if !data2.is_null() {
+            return data2;
+        }
 
-    let tp = TYPEOF(x);
-    match tp {
-        t if t == SEXPTYPE::INTSXP.0 => compact_intseq_expand(x),
-        t if t == SEXPTYPE::REALSXP.0 => compact_realseq_expand(x),
-        _ => x,
+        let tp = TYPEOF(x);
+        match tp {
+            t if t == SEXPTYPE::INTSXP.0 => compact_intseq_expand(x),
+            t if t == SEXPTYPE::REALSXP.0 => compact_realseq_expand(x),
+            _ => x,
+        }
     }
-}}
+}
 
 /// Expand a compact integer sequence into a contiguous INTSXP.
-unsafe fn compact_intseq_expand(x: SEXP) -> SEXP { unsafe {
-    let data1 = R_altrep_data1(x);
-    if data1.is_null() {
-        return x;
-    }
-
-    let data_ptr = (*data1).gengc_next_node as *mut c_int;
-    if data_ptr.is_null() {
-        return x;
-    }
-    let n1 = *data_ptr;
-    let _n2 = *data_ptr.add(1);
-    let inc = *data_ptr.add(2);
-    let len = XLENGTH(x);
-
-    let expanded = with_arena(|arena| {
-        let vec = arena.alloc_vector(SEXPTYPE::INTSXP, len);
-        if vec.is_null() {
-            return R_NilValue();
+unsafe fn compact_intseq_expand(x: SEXP) -> SEXP {
+    unsafe {
+        let data1 = R_altrep_data1(x);
+        if data1.is_null() {
+            return x;
         }
-        let out = (*vec).gengc_next_node as *mut c_int;
-        if out.is_null() {
-            return R_NilValue();
-        }
-        for i in 0..len as isize {
-            *out.add(i as usize) = n1 + (i as c_int) * inc;
-        }
-        vec
-    });
 
-    if !expanded.is_null() {
-        R_set_altrep_data2(x, expanded);
+        let data_ptr = (*data1).gengc_next_node as *mut c_int;
+        if data_ptr.is_null() {
+            return x;
+        }
+        let n1 = *data_ptr;
+        let _n2 = *data_ptr.add(1);
+        let inc = *data_ptr.add(2);
+        let len = XLENGTH(x);
+
+        let expanded = with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::INTSXP, len);
+            if vec.is_null() {
+                return R_NilValue();
+            }
+            let out = (*vec).gengc_next_node as *mut c_int;
+            if out.is_null() {
+                return R_NilValue();
+            }
+            for i in 0..len as isize {
+                *out.add(i as usize) = n1 + (i as c_int) * inc;
+            }
+            vec
+        });
+
+        if !expanded.is_null() {
+            R_set_altrep_data2(x, expanded);
+        }
+        expanded
     }
-    expanded
-}}
+}
 
 /// Expand a compact real sequence into a contiguous REALSXP.
-unsafe fn compact_realseq_expand(x: SEXP) -> SEXP { unsafe {
-    let data1 = R_altrep_data1(x);
-    if data1.is_null() {
-        return x;
-    }
-
-    let data_ptr = (*data1).gengc_next_node as *mut f64;
-    if data_ptr.is_null() {
-        return x;
-    }
-    let n1 = *data_ptr;
-    let _n2 = *data_ptr.add(1);
-    let by = *data_ptr.add(2);
-    let len = XLENGTH(x);
-
-    let expanded = with_arena(|arena| {
-        let vec = arena.alloc_vector(SEXPTYPE::REALSXP, len);
-        if vec.is_null() {
-            return R_NilValue();
+unsafe fn compact_realseq_expand(x: SEXP) -> SEXP {
+    unsafe {
+        let data1 = R_altrep_data1(x);
+        if data1.is_null() {
+            return x;
         }
-        let out = (*vec).gengc_next_node as *mut f64;
-        if out.is_null() {
-            return R_NilValue();
-        }
-        for i in 0..len as isize {
-            *out.add(i as usize) = n1 + (i as f64) * by;
-        }
-        vec
-    });
 
-    if !expanded.is_null() {
-        R_set_altrep_data2(x, expanded);
+        let data_ptr = (*data1).gengc_next_node as *mut f64;
+        if data_ptr.is_null() {
+            return x;
+        }
+        let n1 = *data_ptr;
+        let _n2 = *data_ptr.add(1);
+        let by = *data_ptr.add(2);
+        let len = XLENGTH(x);
+
+        let expanded = with_arena(|arena| {
+            let vec = arena.alloc_vector(SEXPTYPE::REALSXP, len);
+            if vec.is_null() {
+                return R_NilValue();
+            }
+            let out = (*vec).gengc_next_node as *mut f64;
+            if out.is_null() {
+                return R_NilValue();
+            }
+            for i in 0..len as isize {
+                *out.add(i as usize) = n1 + (i as f64) * by;
+            }
+            vec
+        });
+
+        if !expanded.is_null() {
+            R_set_altrep_data2(x, expanded);
+        }
+        expanded
     }
-    expanded
-}}
+}
 
 /// Duplicate an ALTREP.
-pub unsafe fn R_altrep_duplicate(x: SEXP, _deep: c_int) -> SEXP { unsafe {
-    if x.is_null() {
-        return R_NilValue();
-    }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return R_NilValue();
-    }
-    let len = XLENGTH(realized);
-    let tp = TYPEOF(realized);
-
-    with_arena(|arena| {
-        let dup = arena.alloc_vector(SEXPTYPE(tp), len);
-        if dup.is_null() {
+pub unsafe fn R_altrep_duplicate(x: SEXP, _deep: c_int) -> SEXP {
+    unsafe {
+        if x.is_null() {
             return R_NilValue();
         }
-        let src_data = (*realized).gengc_next_node as *const u8;
-        let dst_data = (*dup).gengc_next_node as *mut u8;
-        if !src_data.is_null() && !dst_data.is_null() {
-            let type_size: usize = match tp as u32 {
-                13 => std::mem::size_of::<c_int>(),
-                14 => std::mem::size_of::<f64>(),
-                15 => std::mem::size_of::<crate::sexp::ffi::Rcomplex>(),
-                16 => 1,
-                _ => std::mem::size_of::<SEXP>(),
-            };
-            std::ptr::copy_nonoverlapping(src_data, dst_data, (len as usize) * type_size);
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return R_NilValue();
         }
-        dup
-    })
-}}
+        let len = XLENGTH(realized);
+        let tp = TYPEOF(realized);
+
+        with_arena(|arena| {
+            let dup = arena.alloc_vector(SEXPTYPE(tp), len);
+            if dup.is_null() {
+                return R_NilValue();
+            }
+            let src_data = (*realized).gengc_next_node as *const u8;
+            let dst_data = (*dup).gengc_next_node as *mut u8;
+            if !src_data.is_null() && !dst_data.is_null() {
+                let type_size: usize = match tp as u32 {
+                    13 => std::mem::size_of::<c_int>(),
+                    14 => std::mem::size_of::<f64>(),
+                    15 => std::mem::size_of::<crate::sexp::ffi::Rcomplex>(),
+                    16 => 1,
+                    _ => std::mem::size_of::<SEXP>(),
+                };
+                std::ptr::copy_nonoverlapping(src_data, dst_data, (len as usize) * type_size);
+            }
+            dup
+        })
+    }
+}
 
 /// Inspect an ALTREP.
 pub unsafe fn R_altrep_inspect(_x: SEXP, _pre: c_int, _deep: c_int) -> c_int {
@@ -381,220 +407,276 @@ pub unsafe fn R_altrep_inspect(_x: SEXP, _pre: c_int, _deep: c_int) -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Get integer element from ALTREP integer vector.
-pub unsafe fn ALTINTEGER_ELT(x: SEXP, i: R_xlen_t) -> c_int { unsafe {
-    if x.is_null() {
-        return NA_INTEGER;
-    }
-    // Directly compute from data1 without going through realize (avoids arena borrow conflict)
-    if ALTREP(x) != 0 {
-        let data1 = R_altrep_data1(x);
-        if !data1.is_null() {
-            let tp = TYPEOF(data1);
-            if tp == SEXPTYPE::INTSXP.0 {
-                let data_ptr = (*data1).gengc_next_node as *const c_int;
-                if !data_ptr.is_null() {
-                    let n1 = *data_ptr;
-                    let inc = *data_ptr.add(2);
-                    return n1 + (i as c_int) * inc;
+pub unsafe fn ALTINTEGER_ELT(x: SEXP, i: R_xlen_t) -> c_int {
+    unsafe {
+        if x.is_null() {
+            return NA_INTEGER;
+        }
+        // Directly compute from data1 without going through realize (avoids arena borrow conflict)
+        if ALTREP(x) != 0 {
+            let data1 = R_altrep_data1(x);
+            if !data1.is_null() {
+                let tp = TYPEOF(data1);
+                if tp == SEXPTYPE::INTSXP.0 {
+                    let data_ptr = (*data1).gengc_next_node as *const c_int;
+                    if !data_ptr.is_null() {
+                        let n1 = *data_ptr;
+                        let inc = *data_ptr.add(2);
+                        return n1 + (i as c_int) * inc;
+                    }
                 }
             }
         }
+        // Fallback: try realize
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return NA_INTEGER;
+        }
+        let data_ptr = (*realized).gengc_next_node as *const c_int;
+        if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
+            return NA_INTEGER;
+        }
+        *data_ptr.add(i as usize)
     }
-    // Fallback: try realize
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return NA_INTEGER;
-    }
-    let data_ptr = (*realized).gengc_next_node as *const c_int;
-    if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
-        return NA_INTEGER;
-    }
-    *data_ptr.add(i as usize)
-}}
+}
 
 /// Set integer element in ALTREP integer vector.
-pub unsafe fn ALTINTEGER_SET_ELT(x: SEXP, i: R_xlen_t, v: c_int) { unsafe {
-    if x.is_null() {
-        return;
+pub unsafe fn ALTINTEGER_SET_ELT(x: SEXP, i: R_xlen_t, v: c_int) {
+    unsafe {
+        if x.is_null() {
+            return;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return;
+        }
+        let data_ptr = (*realized).gengc_next_node as *mut c_int;
+        if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
+            *data_ptr.add(i as usize) = v;
+        }
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return;
-    }
-    let data_ptr = (*realized).gengc_next_node as *mut c_int;
-    if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
-        *data_ptr.add(i as usize) = v;
-    }
-}}
+}
 
 /// Get real element from ALTREP real vector.
-pub unsafe fn ALTREAL_ELT(x: SEXP, i: R_xlen_t) -> f64 { unsafe {
-    if x.is_null() {
-        return crate::sexp::ffi::NA_REAL;
-    }
-    // Directly compute from data1 without going through realize (avoids arena borrow conflict)
-    if ALTREP(x) != 0 {
-        let data1 = R_altrep_data1(x);
-        if !data1.is_null() {
-            let tp = TYPEOF(data1);
-            if tp == SEXPTYPE::REALSXP.0 {
-                let data_ptr = (*data1).gengc_next_node as *const f64;
-                if !data_ptr.is_null() {
-                    let n1 = *data_ptr;
-                    let by = *data_ptr.add(2);
-                    return n1 + (i as f64) * by;
+pub unsafe fn ALTREAL_ELT(x: SEXP, i: R_xlen_t) -> f64 {
+    unsafe {
+        if x.is_null() {
+            return crate::sexp::ffi::NA_REAL;
+        }
+        // Directly compute from data1 without going through realize (avoids arena borrow conflict)
+        if ALTREP(x) != 0 {
+            let data1 = R_altrep_data1(x);
+            if !data1.is_null() {
+                let tp = TYPEOF(data1);
+                if tp == SEXPTYPE::REALSXP.0 {
+                    let data_ptr = (*data1).gengc_next_node as *const f64;
+                    if !data_ptr.is_null() {
+                        let n1 = *data_ptr;
+                        let by = *data_ptr.add(2);
+                        return n1 + (i as f64) * by;
+                    }
                 }
             }
         }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return crate::sexp::ffi::NA_REAL;
+        }
+        let data_ptr = (*realized).gengc_next_node as *const f64;
+        if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
+            return crate::sexp::ffi::NA_REAL;
+        }
+        *data_ptr.add(i as usize)
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return crate::sexp::ffi::NA_REAL;
-    }
-    let data_ptr = (*realized).gengc_next_node as *const f64;
-    if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
-        return crate::sexp::ffi::NA_REAL;
-    }
-    *data_ptr.add(i as usize)
-}}
+}
 
 /// Set real element in ALTREP real vector.
-pub unsafe fn ALTREAL_SET_ELT(x: SEXP, i: R_xlen_t, v: f64) { unsafe {
-    if x.is_null() {
-        return;
+pub unsafe fn ALTREAL_SET_ELT(x: SEXP, i: R_xlen_t, v: f64) {
+    unsafe {
+        if x.is_null() {
+            return;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return;
+        }
+        let data_ptr = (*realized).gengc_next_node as *mut f64;
+        if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
+            *data_ptr.add(i as usize) = v;
+        }
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return;
-    }
-    let data_ptr = (*realized).gengc_next_node as *mut f64;
-    if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
-        *data_ptr.add(i as usize) = v;
-    }
-}}
+}
 
 /// Get logical element from ALTREP logical vector.
-pub unsafe fn ALTLOGICAL_ELT(x: SEXP, i: R_xlen_t) -> c_int { unsafe {
-    if x.is_null() {
-        return crate::sexp::ffi::NA_LOGICAL;
+pub unsafe fn ALTLOGICAL_ELT(x: SEXP, i: R_xlen_t) -> c_int {
+    unsafe {
+        if x.is_null() {
+            return crate::sexp::ffi::NA_LOGICAL;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return crate::sexp::ffi::NA_LOGICAL;
+        }
+        let data_ptr = (*realized).gengc_next_node as *const c_int;
+        if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
+            return crate::sexp::ffi::NA_LOGICAL;
+        }
+        *data_ptr.add(i as usize)
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return crate::sexp::ffi::NA_LOGICAL;
-    }
-    let data_ptr = (*realized).gengc_next_node as *const c_int;
-    if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
-        return crate::sexp::ffi::NA_LOGICAL;
-    }
-    *data_ptr.add(i as usize)
-}}
+}
 
 /// Set logical element in ALTREP logical vector.
-pub unsafe fn ALTLOGICAL_SET_ELT(x: SEXP, i: R_xlen_t, v: c_int) { unsafe {
-    if x.is_null() {
-        return;
+pub unsafe fn ALTLOGICAL_SET_ELT(x: SEXP, i: R_xlen_t, v: c_int) {
+    unsafe {
+        if x.is_null() {
+            return;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return;
+        }
+        let data_ptr = (*realized).gengc_next_node as *mut c_int;
+        if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
+            *data_ptr.add(i as usize) = v;
+        }
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return;
-    }
-    let data_ptr = (*realized).gengc_next_node as *mut c_int;
-    if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
-        *data_ptr.add(i as usize) = v;
-    }
-}}
+}
 
 /// Get raw element from ALTREP raw vector.
-pub unsafe fn ALTRAW_ELT(x: SEXP, i: R_xlen_t) -> u8 { unsafe {
-    if x.is_null() {
-        return 0;
+pub unsafe fn ALTRAW_ELT(x: SEXP, i: R_xlen_t) -> u8 {
+    unsafe {
+        if x.is_null() {
+            return 0;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return 0;
+        }
+        let data_ptr = (*realized).gengc_next_node as *const u8;
+        if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
+            return 0;
+        }
+        *data_ptr.add(i as usize)
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return 0;
-    }
-    let data_ptr = (*realized).gengc_next_node as *const u8;
-    if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
-        return 0;
-    }
-    *data_ptr.add(i as usize)
-}}
+}
 
 /// Set raw element in ALTREP raw vector.
-pub unsafe fn ALTRAW_SET_ELT(x: SEXP, i: R_xlen_t, v: u8) { unsafe {
-    if x.is_null() {
-        return;
+pub unsafe fn ALTRAW_SET_ELT(x: SEXP, i: R_xlen_t, v: u8) {
+    unsafe {
+        if x.is_null() {
+            return;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return;
+        }
+        let data_ptr = (*realized).gengc_next_node as *mut u8;
+        if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
+            *data_ptr.add(i as usize) = v;
+        }
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return;
-    }
-    let data_ptr = (*realized).gengc_next_node as *mut u8;
-    if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
-        *data_ptr.add(i as usize) = v;
-    }
-}}
+}
 
 /// Get string element from ALTREP string vector.
-pub unsafe fn ALTSTRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP { unsafe {
-    if x.is_null() {
-        return R_NilValue();
+pub unsafe fn ALTSTRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
+    unsafe {
+        if x.is_null() {
+            return R_NilValue();
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return R_NilValue();
+        }
+        let data_ptr = (*realized).gengc_next_node as *const SEXP;
+        if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
+            return R_NilValue();
+        }
+        *data_ptr.add(i as usize)
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return R_NilValue();
-    }
-    let data_ptr = (*realized).gengc_next_node as *const SEXP;
-    if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
-        return R_NilValue();
-    }
-    *data_ptr.add(i as usize)
-}}
+}
 
 /// Set string element in ALTREP string vector.
-pub unsafe fn ALTSTRING_SET_ELT(x: SEXP, i: R_xlen_t, v: SEXP) { unsafe {
-    if x.is_null() {
-        return;
+pub unsafe fn ALTSTRING_SET_ELT(x: SEXP, i: R_xlen_t, v: SEXP) {
+    unsafe {
+        if x.is_null() {
+            return;
+        }
+        let realized = R_altrep_realize(x);
+        if realized.is_null() {
+            return;
+        }
+        let data_ptr = (*realized).gengc_next_node as *mut SEXP;
+        if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
+            *data_ptr.add(i as usize) = v;
+        }
     }
-    let realized = R_altrep_realize(x);
-    if realized.is_null() {
-        return;
-    }
-    let data_ptr = (*realized).gengc_next_node as *mut SEXP;
-    if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
-        *data_ptr.add(i as usize) = v;
-    }
-}}
+}
 
 // ---------------------------------------------------------------------------
 // ALTREP method registration (stubs - no dynamic dispatch needed)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_set_altrep_finalizer(_class: SEXP, _finalizer: Option<unsafe extern "C" fn(SEXP)>) {
+use std::cell::RefCell;
+use std::collections::HashMap;
+
+type AltrepFinalizer = Option<unsafe extern "C" fn(SEXP)>;
+type AltrepDuplicateMethod = Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>;
+type AltrepInspectMethod = Option<unsafe extern "C" fn(SEXP, c_int, c_int) -> c_int>;
+type AltrepLengthMethod = Option<unsafe extern "C" fn(SEXP) -> R_xlen_t>;
+type AltrepCoerceMethod = Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>;
+
+struct AltrepClassMethods {
+    finalizer: AltrepFinalizer,
+    duplicate: AltrepDuplicateMethod,
+    inspect: AltrepInspectMethod,
+    length: AltrepLengthMethod,
+    coerce: AltrepCoerceMethod,
 }
 
-pub unsafe fn R_set_altrep_duplicate_method(
-    _class: SEXP,
-    _method: Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>,
-) {
+impl Default for AltrepClassMethods {
+    fn default() -> Self {
+        Self {
+            finalizer: None,
+            duplicate: None,
+            inspect: None,
+            length: None,
+            coerce: None,
+        }
+    }
 }
 
-pub unsafe fn R_set_altrep_inspect_method(
-    _class: SEXP,
-    _method: Option<unsafe extern "C" fn(SEXP, c_int, c_int) -> c_int>,
-) {
+thread_local! {
+    static ALTREP_METHODS: RefCell<HashMap<usize, AltrepClassMethods>> = RefCell::new(HashMap::new());
 }
 
-pub unsafe fn R_set_altrep_length_method(
-    _class: SEXP,
-    _method: Option<unsafe extern "C" fn(SEXP) -> R_xlen_t>,
-) {
+fn with_methods<F, R>(class: SEXP, f: F) -> R
+where
+    F: FnOnce(&mut AltrepClassMethods) -> R,
+{
+    ALTREP_METHODS.with(|m| {
+        let key = class as usize;
+        f(m.borrow_mut().entry(key).or_default())
+    })
 }
 
-pub unsafe fn R_set_altrep_coerce_method(
-    _class: SEXP,
-    _method: Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>,
-) {
+pub unsafe fn R_set_altrep_finalizer(class: SEXP, finalizer: AltrepFinalizer) {
+    with_methods(class, |m| m.finalizer = finalizer);
+}
+
+pub unsafe fn R_set_altrep_duplicate_method(class: SEXP, method: AltrepDuplicateMethod) {
+    with_methods(class, |m| m.duplicate = method);
+}
+
+pub unsafe fn R_set_altrep_inspect_method(class: SEXP, method: AltrepInspectMethod) {
+    with_methods(class, |m| m.inspect = method);
+}
+
+pub unsafe fn R_set_altrep_length_method(class: SEXP, method: AltrepLengthMethod) {
+    with_methods(class, |m| m.length = method);
+}
+
+pub unsafe fn R_set_altrep_coerce_method(class: SEXP, method: AltrepCoerceMethod) {
+    with_methods(class, |m| m.coerce = method);
 }
 
 // ---------------------------------------------------------------------------
