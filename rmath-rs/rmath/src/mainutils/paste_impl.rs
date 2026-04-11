@@ -94,9 +94,7 @@ fn ENC_KNOWN(s: SEXP) -> c_int {
 // conflicts with other modules that define the same extern "C" stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // Arity checking is handled by the dispatch infrastructure
-}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 // error/errorcall use panic_any(RError{..}) in the full port.
 unsafe fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) { unsafe {

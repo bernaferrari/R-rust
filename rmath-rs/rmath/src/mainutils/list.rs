@@ -27,57 +27,16 @@ const STRSXP_VAL: c_int = 16;
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe {
+    crate::mainutils::relop::checkArity(op, args)
+}}
 
 unsafe fn asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_LOGICAL;
-        }
-        match TYPEOF(x) {
-            10 => {
-                // LGLSXP
-                let p = crate::sexp::accessors::LOGICAL(x);
-                if p.is_null() { NA_LOGICAL } else { *p }
-            }
-            13 => {
-                // INTSXP
-                let p = crate::sexp::accessors::INTEGER(x);
-                if p.is_null() { NA_LOGICAL } else { *p }
-            }
-            _ => 0,
-        }
-    }
+    unsafe { crate::mainutils::coerce::asLogical(x) }
 }
 
 unsafe fn asInteger(x: SEXP) -> c_int {
-    unsafe {
-        if x.is_null() {
-            return NA_INTEGER;
-        }
-        match TYPEOF(x) {
-            13 => {
-                // INTSXP
-                let p = crate::sexp::accessors::INTEGER(x);
-                if p.is_null() { NA_INTEGER } else { *p }
-            }
-            14 => {
-                // REALSXP
-                let p = crate::sexp::accessors::REAL(x);
-                if p.is_null() {
-                    NA_INTEGER
-                } else {
-                    let v = *p;
-                    if v.is_nan() || v > i32::MAX as f64 || v < i32::MIN as f64 {
-                        NA_INTEGER
-                    } else {
-                        v as c_int
-                    }
-                }
-            }
-            _ => 0,
-        }
-    }
+    unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
 // ---------------------------------------------------------------------------

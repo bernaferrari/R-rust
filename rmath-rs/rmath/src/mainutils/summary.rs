@@ -500,7 +500,7 @@ unsafe fn matchArgExact(tag: SEXP, list: *mut SEXP) -> SEXP { unsafe {
 
 /// checkArity -- verify argument count matches expected arity.
 #[inline]
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 /// fixup_NaRm — ensure na.rm is the last argument and exists.
 /// Returns the potentially modified args list.

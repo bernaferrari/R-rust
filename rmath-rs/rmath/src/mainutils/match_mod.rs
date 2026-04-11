@@ -159,9 +159,7 @@ unsafe fn getCharCE(s: SEXP) -> c_int { unsafe {
 
 /// checkArity — stub, no-op.
 #[inline(always)]
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // No action needed stub
-}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 /// asInteger — extract integer value from scalar.
 #[inline(always)]

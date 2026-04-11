@@ -68,7 +68,7 @@ unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
 
 /// checkArity -- stub, no-op.
 #[inline(always)]
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 /// asLogical -- extract logical value from scalar.
 #[inline(always)]

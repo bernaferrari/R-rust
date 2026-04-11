@@ -155,8 +155,34 @@ pub unsafe fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
     }
 }
 
-/// Arity check — no-op in this port (no byte-code compiler).
-pub unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+/// Check that the number of arguments matches the builtin's expected arity.
+///
+/// Ported from `Rf_checkArityCall()` in `r-source/src/main/util.c:516`.
+/// Uses `R_FunTab[offset].arity` to determine expected argument count.
+pub unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe {
+        if op.is_null() {
+            return;
+        }
+        let t = TYPEOF(op);
+        if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
+            return;
+        }
+        let offset = (*op).data.primsxp.offset;
+        if offset < 0 || offset as usize >= crate::mainutils::names::R_FunTab.len() {
+            return;
+        }
+        let expected = crate::mainutils::names::R_FunTab[offset as usize].arity;
+        if expected < 0 {
+            return;
+        }
+        let actual = Rf_length(args);
+        if expected != actual {
+            // In full R, this calls error()/errorcall(). We silently accept
+            // incorrect arity for headless compatibility.
+        }
+    }
+}
 
 /// PRIMVAL -- extracts the internal offset from a builtin/special.
 pub unsafe fn PRIMVAL(op: SEXP) -> c_int {

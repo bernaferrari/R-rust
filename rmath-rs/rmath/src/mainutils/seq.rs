@@ -76,7 +76,7 @@ unsafe fn DispatchOrEval(
     0
 }
 
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 unsafe fn check1arg(_args: SEXP, _call: SEXP, _name: *const c_char) {}
 

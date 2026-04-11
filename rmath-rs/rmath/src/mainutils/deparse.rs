@@ -424,48 +424,14 @@ unsafe fn primname_c(op: SEXP) -> *const c_char {
     }
 }
 
-/// Rf_asInteger — extract integer from SEXP.
+/// Extract integer from SEXP — delegates to canonical `coerce::asInteger`.
 unsafe fn Rf_asInteger(x: SEXP) -> c_int {
-    unsafe {
-        if isNull(x) {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 && LENGTH(x) >= 1 {
-            let p = INTEGER(x);
-            if !p.is_null() {
-                return *p;
-            }
-        } else if t == SEXPTYPE::REALSXP.0 && LENGTH(x) >= 1 {
-            let p = REAL(x);
-            if !p.is_null() {
-                return *p as c_int;
-            }
-        } else if t == SEXPTYPE::LGLSXP.0 && LENGTH(x) >= 1 {
-            let p = LOGICAL(x);
-            if !p.is_null() {
-                return *p;
-            }
-        }
-        NA_INTEGER
-    }
+    unsafe { crate::mainutils::coerce::asInteger(x) }
 }
 
-/// Rf_asLogical — extract logical from SEXP.
+/// Extract logical from SEXP — delegates to canonical `coerce::asLogical`.
 unsafe fn Rf_asLogical(x: SEXP) -> c_int {
-    unsafe {
-        if isNull(x) {
-            return NA_INTEGER;
-        }
-        let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 && LENGTH(x) >= 1 {
-            let p = LOGICAL(x);
-            if !p.is_null() {
-                return *p;
-            }
-        }
-        NA_INTEGER
-    }
+    unsafe { crate::mainutils::coerce::asLogical(x) }
 }
 
 // ---------------------------------------------------------------------------

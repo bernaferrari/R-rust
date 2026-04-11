@@ -399,9 +399,7 @@ unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
 }}
 
 /// Check argument arity (simplified).
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // Full implementation needs builtin.rs infrastructure
-}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 unsafe fn ScalarInteger(x: c_int) -> SEXP { unsafe {
     crate::sexp::constructors::Rf_ScalarInteger(x)

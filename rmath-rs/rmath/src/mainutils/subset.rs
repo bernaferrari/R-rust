@@ -593,9 +593,7 @@ unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
 // ---------------------------------------------------------------------------
 
 /// Check that the number of arguments matches the function arity.
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // Full implementation checks op's arity against length(args).
-}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 // ---------------------------------------------------------------------------
 // R_FINITE -- check if a double is finite

@@ -57,7 +57,7 @@ const NILSXP_VAL: c_int = SEXPTYPE::NILSXP.0;
 // ---------------------------------------------------------------------------
 
 /// Check arity -- no-op since the R-level wrapper handles this.
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 /// Coerce to logical scalar.
 unsafe fn asLogical(x: SEXP) -> c_int {

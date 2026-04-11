@@ -112,7 +112,7 @@ unsafe fn resolve_promise(x: SEXP) -> SEXP {
 /// checkArity: verify argument count matches the expected arity for op.
 /// currently a no-op, consistent with other modules.
 #[inline(always)]
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
 
 /// R_listCompact: destructively removes R_NilValue ('NULL') elements from a
 /// pairlist.  Ported from R's src/main/util.c.

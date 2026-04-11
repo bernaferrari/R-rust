@@ -100,9 +100,9 @@ unsafe fn r_error(msg: &str) {
 }
 
 /// Check arity of a call (stub -- does nothing in this port).
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {
-    // arity checking not implemented in this port.
-}
+unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe {
+    crate::mainutils::relop::checkArity(op, args);
+}}
 
 /// Convert SEXP to c_int (asInteger).
 unsafe fn asInteger(x: SEXP) -> c_int {

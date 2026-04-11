@@ -1297,7 +1297,7 @@ unsafe fn isNull(x: SEXP) -> bool {
     unsafe { x.is_null() || x == R_NilValue() }
 }
 
-unsafe fn checkArity(_op: SEXP, _args: SEXP) {
+unsafe fn checkArity(op: SEXP, args: SEXP) {
     // stub
 }
 
