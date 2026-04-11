@@ -650,7 +650,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             // Complex input
             let px = COMPLEX(x);
             // Default to case 1 (Re) since PRIMVAL(op) is stubbed to 0
-            let primval = 0; // stub: PRIMVAL(op) returns 0
+            let primval = crate::mainutils::relop::PRIMVAL(_op);
 
             match primval {
                 1 => {
@@ -741,7 +741,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 return R_NilValue();
             }
             let py = REAL(y);
-            let primval = 0; // stub
+            let primval = crate::mainutils::relop::PRIMVAL(_op);
 
             match primval {
                 1 | 5 => {
@@ -810,7 +810,7 @@ pub unsafe fn complex_math1(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
         let px = COMPLEX(x);
         let py = COMPLEX(y);
 
-        let primval = 0; // stub: PRIMVAL(op)
+        let primval = crate::mainutils::relop::PRIMVAL(_op);
 
         // Create slices for cmath1
         let x_slice = std::slice::from_raw_parts(px, n as usize);
@@ -886,7 +886,7 @@ pub unsafe fn complex_math2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
         let b = COMPLEX(sb);
         let y = COMPLEX(sy);
 
-        let primval = 0; // stub
+        let primval = crate::mainutils::relop::PRIMVAL(_op);
 
         let mut i1 = 0usize;
         let mut i2 = 0usize;

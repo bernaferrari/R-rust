@@ -36,16 +36,18 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // Local helper functions (matching patterns from match_mod.rs etc.)
 // ---------------------------------------------------------------------------
 
-/// NA_STRING sentinel -- returns null pointer.
 #[inline(always)]
 unsafe fn NA_STRING() -> SEXP {
-    ptr::null_mut()
+    crate::mainutils::relop::NA_STRING()
 }
 
-/// Check if SEXP is NA_STRING.
 #[inline(always)]
 unsafe fn isNA_STRING(s: SEXP) -> bool {
-    s.is_null()
+    if s.is_null() {
+        return true;
+    }
+    let gp = unsafe { (*s).sxpinfo.gp() };
+    gp & 1 != 0
 }
 
 /// isString check -- STRSXP type.
@@ -110,27 +112,25 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
     }
 }
 
-/// PRIMVAL -- get the primitive's internal integer value.
 #[inline(always)]
-unsafe fn PRIMVAL(_op: SEXP) -> c_int {
-    0
+unsafe fn PRIMVAL(op: SEXP) -> c_int {
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
-/// R_NamesSymbol -- symbol for "names" attribute.
 #[inline(always)]
 unsafe fn R_NamesSymbol() -> SEXP {
-    ptr::null_mut()
+    crate::eval::attrib_core::R_NamesSymbol()
 }
 
-/// getAttrib -- get attribute (stub returning nil).
 #[inline(always)]
-unsafe fn getAttrib(_x: SEXP, _which: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+    crate::eval::attrib_core::getAttrib(x, which)
 }
 
-/// setAttrib -- set attribute (stub, no-op).
 #[inline(always)]
-unsafe fn setAttrib(_x: SEXP, _which: SEXP, _value: SEXP) {}
+unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+    crate::eval::attrib_core::setAttrib(x, which, value);
+}
 
 /// ScalarString -- create scalar STRSXP.
 #[inline(always)]
@@ -150,10 +150,9 @@ unsafe fn allocVector(sexptype: c_int, length: R_xlen_t) -> SEXP {
     unsafe { Rf_allocVector3(sexptype, length) }
 }
 
-/// install -- intern a symbol name (stub, returns nil).
 #[inline(always)]
-unsafe fn install(_name: *const c_char) -> SEXP {
-    ptr::null_mut()
+unsafe fn install(name: *const c_char) -> SEXP {
+    crate::sexp::symbol::Rf_install(name)
 }
 
 /// Rf_warning -- issue a warning (forward to errors module).

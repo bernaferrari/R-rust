@@ -733,7 +733,8 @@ unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
 /// Look up the class name in the methods package table of S3 classes.
 /// Returns FALSE when methods package is not loaded.
 pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
-    // Full implementation requires R_MethodsNamespace and .S3MethodsClasses
+    // TODO: requires R methods package infrastructure
+    // Full implementation would consult the methods namespace and S3 classes.
     FALSE
 }
 
@@ -742,6 +743,7 @@ pub unsafe fn isBasicClass(_ss: *const c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_has_methods_attached() -> c_int {
+    // TODO: requires R methods package infrastructure
     unsafe {
         if isMethodsDispatchOn() == FALSE {
             return FALSE;
@@ -1796,6 +1798,7 @@ pub unsafe fn do_oldClass(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
 /// Internal function to get the dispatch environment.
 pub unsafe fn do_procdest(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    // TODO: requires R methods package infrastructure
     unsafe {
         // proc.dest is used internally for debugging; simplified
         R_NilValue()
@@ -1865,6 +1868,7 @@ pub unsafe fn R_S4_method_dispatch(
     _rho: SEXP,
     _method: SEXP,
 ) -> SEXP {
+    // TODO: requires R methods package infrastructure
     unsafe {
         // Full implementation would call the standardGeneric function pointer
         R_NilValue()
@@ -1878,6 +1882,7 @@ pub unsafe fn R_S4_method_dispatch(
 /// setClass() is an R-level function from the methods package.
 /// This C entry point is not normally used directly.
 pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    // TODO: requires R methods package infrastructure
     unsafe {
         // setClass is defined in R, not C
         R_NilValue()
@@ -1890,6 +1895,7 @@ pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 
 /// setRefClass() is an R-level function from the methods package.
 pub unsafe fn do_setRefClass(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    // TODO: requires R methods package infrastructure
     unsafe { R_NilValue() }
 }
 

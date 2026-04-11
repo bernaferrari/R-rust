@@ -56,9 +56,9 @@ type Rbyte = u8;
 use crate::mainutils::printvector::{MutPtr, R_PrintData};
 
 /// Get the global R_print parameters.
-unsafe fn get_R_print_full() -> MutPtr<R_PrintData> { unsafe {
-    crate::mainutils::printvector::get_R_PrintData()
-}}
+unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
+    unsafe { crate::mainutils::printvector::get_R_PrintData() }
+}
 
 // ---------------------------------------------------------------------------
 // Functions from printutils (non-SEXP taking ones)
@@ -77,22 +77,14 @@ use crate::mainutils::printutils::{
 // are stubs (returning 0 and "" respectively), we define local wrappers.
 // ---------------------------------------------------------------------------
 
-/// Local Rstrlen stub: returns display width of a CHARSXP.
-unsafe fn local_Rstrlen(_s: SEXP, _quote: c_int) -> c_int {
-    // Stub: return 0. The real implementation would compute escaped display width.
-    0
+unsafe fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int {
+    crate::mainutils::printutils::Rstrlen(s, quote)
 }
 
-/// Local EncodeString stub: returns encoded string for a CHARSXP.
 static EMPTY_CSTR: [u8; 1] = [0];
 
-unsafe fn local_EncodeString(
-    _s: SEXP,
-    _w: c_int,
-    _quote: c_int,
-    _justify: Rprt_adj,
-) -> *const c_char {
-    EMPTY_CSTR.as_ptr() as *const c_char
+unsafe fn local_EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
+    crate::mainutils::printutils::EncodeString(s, w, quote, justify)
 }
 
 // ---------------------------------------------------------------------------
@@ -147,7 +139,7 @@ use crate::eval::attrib_core::getAttrib;
 // ---------------------------------------------------------------------------
 
 unsafe fn NA_STRING() -> SEXP {
-    unsafe { R_NilValue() }
+    crate::mainutils::relop::NA_STRING()
 }
 
 // ---------------------------------------------------------------------------

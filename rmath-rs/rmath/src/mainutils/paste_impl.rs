@@ -68,11 +68,11 @@ const RAWSXP: c_int = 24;
 const EXTPTRSXP: c_int = 22;
 
 fn IS_ASCII(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_ASCII(s) }
+    unsafe { crate::sexp::accessors::IS_ASCII(s) != 0 }
 }
 
 fn IS_UTF8(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_UTF8(s) }
+    unsafe { crate::sexp::accessors::IS_UTF8(s) != 0 }
 }
 
 fn IS_BYTES(s: SEXP) -> bool {
@@ -80,7 +80,7 @@ fn IS_BYTES(s: SEXP) -> bool {
 }
 
 fn IS_LATIN1(s: SEXP) -> bool {
-    unsafe { crate::sexp::accessors::IS_LATIN1(s) }
+    unsafe { crate::sexp::accessors::IS_LATIN1(s) != 0 }
 }
 
 fn ENC_KNOWN(s: SEXP) -> c_int {
@@ -537,11 +537,12 @@ unsafe fn c_strcpy(dest: *mut c_char, src: *const c_char) {
 // NA_STRING check
 // ---------------------------------------------------------------------------
 
-/// Check if a CHARSXP is R's NA_STRING.
-/// In R, NA_STRING is a specific CHARSXP sentinel. We check by comparing
-/// against the global NA_STRING() stub or by checking the data pointer.
 unsafe fn isNA_STRING(s: SEXP) -> bool {
-    s.is_null()
+    if s.is_null() {
+        return true;
+    }
+    let gp = unsafe { (*s).sxpinfo.gp() };
+    gp & 1 != 0
 }
 
 // ---------------------------------------------------------------------------

@@ -577,24 +577,12 @@ unsafe fn installTrChar(input: SEXP) -> SEXP {
     }
 }
 
-/// ScalarInteger: create a length-1 integer vector.
 unsafe fn ScalarInteger(x: c_int) -> SEXP {
-    unsafe {
-        let s = Rf_protect(Rf_allocVector3(INTSXP, 1));
-        *INTEGER(s) = x;
-        Rf_unprotect(1);
-        s
-    }
+    crate::sexp::constructors::Rf_ScalarInteger(x)
 }
 
-/// ScalarReal: create a length-1 real vector.
 unsafe fn ScalarReal(x: c_double) -> SEXP {
-    unsafe {
-        let s = Rf_protect(Rf_allocVector3(REALSXP, 1));
-        *REAL(s) = x;
-        Rf_unprotect(1);
-        s
-    }
+    crate::sexp::constructors::Rf_ScalarReal(x)
 }
 
 /// ScalarString: create a length-1 character vector from a CHARSXP.

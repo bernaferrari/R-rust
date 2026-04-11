@@ -1016,19 +1016,21 @@ const UTF8_MASK: u16 = 1 << 3; // 0x08
 const IS_ASCII_MASK: u16 = 1 << 6; // 0x40
 
 /// IS_ASCII: check if CHARSXP has ASCII encoding marker.
-pub unsafe fn IS_ASCII(x: SEXP) -> bool {
+pub unsafe fn IS_ASCII(x: SEXP) -> c_int {
     if x.is_null() {
-        return false;
+        return 0;
     }
-    unsafe { ((*x).sxpinfo.gp() & IS_ASCII_MASK) != 0 }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    if (gp & IS_ASCII_MASK) != 0 { 1 } else { 0 }
 }
 
 /// IS_UTF8: check if CHARSXP has UTF-8 encoding marker.
-pub unsafe fn IS_UTF8(x: SEXP) -> bool {
+pub unsafe fn IS_UTF8(x: SEXP) -> c_int {
     if x.is_null() {
-        return false;
+        return 0;
     }
-    unsafe { ((*x).sxpinfo.gp() & UTF8_MASK) != 0 }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    if (gp & UTF8_MASK) != 0 { 1 } else { 0 }
 }
 
 /// IS_BYTES: check if CHARSXP has bytes encoding marker.
@@ -1036,15 +1038,17 @@ pub unsafe fn IS_BYTES(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
-    unsafe { (((*x).sxpinfo.gp() & BYTES_MASK) != 0) as c_int }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    if (gp & BYTES_MASK) != 0 { 1 } else { 0 }
 }
 
 /// IS_LATIN1: check if CHARSXP has Latin-1 encoding marker.
-pub unsafe fn IS_LATIN1(x: SEXP) -> bool {
+pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
     if x.is_null() {
-        return false;
+        return 0;
     }
-    unsafe { ((*x).sxpinfo.gp() & LATIN1_MASK) != 0 }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    if (gp & LATIN1_MASK) != 0 { 1 } else { 0 }
 }
 
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
@@ -1053,5 +1057,6 @@ pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
     }
-    unsafe { ((*x).sxpinfo.gp() & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    (gp & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int
 }

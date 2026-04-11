@@ -404,28 +404,12 @@ unsafe fn checkArity(_op: SEXP, _args: SEXP) {
     // Full implementation needs builtin.rs infrastructure
 }
 
-/// Create a scalar integer.
 unsafe fn ScalarInteger(x: c_int) -> SEXP {
-    unsafe {
-        let s = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
-        if !s.is_null() {
-            *INTEGER(s) = x;
-            (*s).sxpinfo.set_scalar(true);
-        }
-        s
-    }
+    crate::sexp::constructors::Rf_ScalarInteger(x)
 }
 
-/// Create a scalar logical.
 unsafe fn ScalarLogical(x: c_int) -> SEXP {
-    unsafe {
-        let s = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
-        if !s.is_null() {
-            *LOGICAL(s) = x;
-            (*s).sxpinfo.set_scalar(true);
-        }
-        s
-    }
+    crate::sexp::constructors::Rf_ScalarLogical(x)
 }
 
 /// Get/set class attribute (simplified).

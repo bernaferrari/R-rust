@@ -25,37 +25,55 @@ use crate::sexp::globals::set_R_Visible;
 // up in accessors.rs. For now they are safe no-ops / zero-returning stubs.
 // ---------------------------------------------------------------------------
 
-/// Set the DEBUG bit on an SEXP (stub).
-unsafe fn SET_RDEBUG(_x: SEXP, _v: c_int) {
-    let _ = (_x, _v);
+unsafe fn SET_RDEBUG(x: SEXP, v: c_int) {
+    if x.is_null() {
+        return;
+    }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    let new_gp = if v != 0 { gp | 0x400 } else { gp & !0x400 };
+    unsafe {
+        (*x).sxpinfo.set_gp(new_gp);
+    }
 }
 
-/// Get the DEBUG bit from an SEXP (stub — always returns 0).
-unsafe fn RDEBUG(_x: SEXP) -> c_int {
-    let _ = _x;
-    0
+unsafe fn RDEBUG(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    unsafe { (((*x).sxpinfo.gp() & 0x400) != 0) as c_int }
 }
 
-/// Set the STEP bit on an SEXP (stub).
-unsafe fn SET_RSTEP(_x: SEXP, _v: c_int) {
-    let _ = (_x, _v);
+unsafe fn SET_RSTEP(x: SEXP, v: c_int) {
+    if x.is_null() {
+        return;
+    }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    let new_gp = if v != 0 { gp | 0x100 } else { gp & !0x100 };
+    unsafe {
+        (*x).sxpinfo.set_gp(new_gp);
+    }
 }
 
-/// Set the TRACE bit on an SEXP (stub).
-unsafe fn SET_RTRACE(_x: SEXP, _v: c_int) {
-    let _ = (_x, _v);
+unsafe fn SET_RTRACE(x: SEXP, v: c_int) {
+    if x.is_null() {
+        return;
+    }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    let new_gp = if v != 0 { gp | 0x10 } else { gp & !0x10 };
+    unsafe {
+        (*x).sxpinfo.set_gp(new_gp);
+    }
 }
 
-/// Get the TRACE bit from an SEXP (stub — always returns 0).
-unsafe fn RTRACE(_x: SEXP) -> c_int {
-    let _ = _x;
-    0
+unsafe fn RTRACE(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    unsafe { (((*x).sxpinfo.gp() & 0x10) != 0) as c_int }
 }
 
-/// Get the PRIMVAL (primitive internal code) from an SEXP (stub — always returns 0).
-unsafe fn PRIMVAL(_x: SEXP) -> c_int {
-    let _ = _x;
-    0
+unsafe fn PRIMVAL(op: SEXP) -> c_int {
+    crate::mainutils::relop::PRIMVAL(op)
 }
 
 // ---------------------------------------------------------------------------

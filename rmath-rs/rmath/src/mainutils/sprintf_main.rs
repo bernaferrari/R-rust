@@ -97,12 +97,11 @@ unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
 }
 
 unsafe fn isNA_STRING(s: SEXP) -> bool {
+    // Compare against the canonical NA_STRING sentinel from relop.rs
     if s.is_null() {
-        return true;
+        return false;
     }
-    // In R, NA_STRING is a CHARSXP with gp bits indicating NA (gp & 1 != 0)
-    let gp = unsafe { (*s).sxpinfo.gp() };
-    gp & 1 != 0
+    unsafe { s == crate::mainutils::relop::NA_STRING() }
 }
 
 // ---------------------------------------------------------------------------

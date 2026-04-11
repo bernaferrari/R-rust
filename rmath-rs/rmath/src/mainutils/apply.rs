@@ -362,21 +362,8 @@ macro_rules! r_error {
     }};
 }
 
-/// coerceVector: coerce an SEXP to a target type.
-/// This is a simplified version handling the common coercions needed by vapply.
-unsafe fn coerceVector(x: SEXP, _type: c_int) -> SEXP {
-    unsafe {
-        // In the full implementation, this would do proper type coercion.
-        // For the types used by vapply, we handle the common cases:
-        // LGLSXP -> INTSXP, INTSXP -> REALSXP, LGLSXP -> REALSXP, INTSXP -> CPLXSXP,
-        // LGLSXP -> CPLXSXP, REALSXP -> CPLXSXP
-        //
-        // Since this is a complex function to fully port, we return a shallow
-        // duplicate for now. The full implementation lives in coerce.c.
-        // In practice, the R-level vapply wrapper already ensures type compatibility
-        // for most cases.
-        shallow_duplicate(x)
-    }
+unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+    crate::mainutils::coerce::coerceVector(x, type_)
 }
 
 // ---------------------------------------------------------------------------

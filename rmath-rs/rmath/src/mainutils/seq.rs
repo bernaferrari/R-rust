@@ -80,9 +80,13 @@ unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
 
 unsafe fn check1arg(_args: SEXP, _call: SEXP, _name: *const c_char) {}
 
-unsafe fn errorcall(_call: SEXP, _format: *const c_char) {}
+unsafe fn errorcall(call: SEXP, format: *const c_char) {
+    crate::mainutils::errors::errorcall(call, format);
+}
 
-unsafe fn warningcall(_call: SEXP, _format: *const c_char) {}
+unsafe fn warningcall(call: SEXP, format: *const c_char) {
+    crate::mainutils::errors::warningcall(call, format);
+}
 
 unsafe fn R_typeToChar(_s: SEXP) -> *const c_char {
     ptr::null()

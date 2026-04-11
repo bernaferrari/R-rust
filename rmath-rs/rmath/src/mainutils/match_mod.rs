@@ -89,16 +89,18 @@ unsafe fn streql(s1: *const c_char, s2: *const c_char) -> c_int {
     }
 }
 
-/// NA_STRING sentinel — returns null pointer in this codebase.
 #[inline(always)]
 unsafe fn NA_STRING() -> SEXP {
-    ptr::null_mut()
+    crate::mainutils::relop::NA_STRING()
 }
 
-/// Check if SEXP is NA_STRING.
 #[inline(always)]
 unsafe fn isNA_STRING(s: SEXP) -> bool {
-    s.is_null()
+    if s.is_null() {
+        return true;
+    }
+    let gp = unsafe { (*s).sxpinfo.gp() };
+    gp & 1 != 0
 }
 
 /// isString check — STRSXP type.
