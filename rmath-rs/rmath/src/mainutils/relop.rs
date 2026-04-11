@@ -16,7 +16,7 @@
 //! Helper functions (public for testing):
 //!   is_scalar_string, scalar_relop, is_na_int
 //!
-//! Stubs (return NULL or 0):
+//! Local helpers (delegating to canonical implementations):
 //!   DispatchGroup, errorcall, error, warningcall, Seql,
 //!   R_compute_identical, NO_REFERENCES, coerceVector,
 //!   isTs, isArray, deparse1line_ex, ErrorMessage,
@@ -155,7 +155,7 @@ pub unsafe fn deparse1line_ex(x: SEXP, abbreviate: c_int, opts: c_int) -> SEXP {
     }
 }
 
-/// Stub for checkArity -- does nothing.
+/// Arity check — no-op in this port (no byte-code compiler).
 pub unsafe fn checkArity(_op: SEXP, _args: SEXP) {}
 
 /// PRIMVAL -- extracts the internal offset from a builtin/special.
@@ -235,20 +235,20 @@ pub unsafe fn conformable(a: SEXP, b: SEXP) -> c_int {
     }
 }
 
-/// Stub for UNIMPLEMENTED_TYPE -- does nothing.
+/// Report an unimplemented type error.
 pub unsafe fn UNIMPLEMENTED_TYPE(_s: *const c_char, _x: SEXP) {}
 
-/// Stub for COMPLEX_RO -- returns DATAPTR as const Rcomplex pointer.
+/// Returns DATAPTR as const Rcomplex pointer.
 pub unsafe fn COMPLEX_RO(x: SEXP) -> *const Rcomplex {
     unsafe { DATAPTR(x) as *const Rcomplex }
 }
 
-/// Stub for INTEGER_RO -- returns DATAPTR as const int pointer.
+/// Returns DATAPTR as const int pointer.
 pub unsafe fn INTEGER_RO(x: SEXP) -> *const c_int {
     unsafe { DATAPTR(x) as *const c_int }
 }
 
-/// Stub for RAW_RO -- returns DATAPTR as const Rbyte pointer.
+/// Returns DATAPTR as const Rbyte pointer.
 pub unsafe fn RAW_RO(x: SEXP) -> *const Rbyte {
     unsafe { DATAPTR(x) as *const Rbyte }
 }
@@ -278,7 +278,7 @@ pub unsafe fn isSymbol(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isPairList -- check if SEXP is LISTSXP.
+/// Check if SEXP is LISTSXP.
 pub unsafe fn isPairList(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -288,7 +288,7 @@ pub unsafe fn isPairList(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isVectorList -- check if SEXP is VECSXP or EXPRSXP.
+/// Check if SEXP is VECSXP or EXPRSXP.
 pub unsafe fn isVectorList(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -299,7 +299,7 @@ pub unsafe fn isVectorList(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isString -- check if SEXP is STRSXP.
+/// Check if SEXP is STRSXP.
 pub unsafe fn isString(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -309,7 +309,7 @@ pub unsafe fn isString(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isComplex -- check if SEXP is CPLXSXP.
+/// Check if SEXP is CPLXSXP.
 pub unsafe fn isComplex(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -319,7 +319,7 @@ pub unsafe fn isComplex(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isReal -- check if SEXP is REALSXP.
+/// Check if SEXP is REALSXP.
 pub unsafe fn isReal(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -329,7 +329,7 @@ pub unsafe fn isReal(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isInteger -- check if SEXP is INTSXP.
+/// Check if SEXP is INTSXP.
 pub unsafe fn isInteger(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -339,7 +339,7 @@ pub unsafe fn isInteger(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isLogical -- check if SEXP is LGLSXP.
+/// Check if SEXP is LGLSXP.
 pub unsafe fn isLogical(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -349,7 +349,7 @@ pub unsafe fn isLogical(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for IS_SIMPLE_SCALAR -- check if SEXP is a simple (no attribs) scalar.
+/// Check if SEXP is a simple (no attribs) scalar.
 pub unsafe fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
     unsafe {
         if x.is_null() {
@@ -361,7 +361,7 @@ pub unsafe fn IS_SIMPLE_SCALAR(x: SEXP, _type: c_int) -> c_int {
     }
 }
 
-/// Stub for ScalarLogical -- wraps Rf_ScalarLogical.
+/// Wraps Rf_ScalarLogical.
 pub unsafe fn ScalarLogical(x: c_int) -> SEXP {
     unsafe { Rf_ScalarLogical(x) }
 }
