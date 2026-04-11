@@ -268,14 +268,8 @@ unsafe fn inherits_cstr(x: SEXP, class_name: *const c_char) -> c_int {
     }
 }
 
-/// translateChar stub.
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe {
-        if x.is_null() {
-            return ptr::null();
-        }
-        CHAR(x)
-    }
+    crate::sexp::accessors::translateChar(x)
 }
 
 /// isValidName stub.

@@ -389,13 +389,12 @@ unsafe fn CHAR_local(s: SEXP) -> *const c_char {
     }
 }
 
-/// Get C string from STRING_ELT.
 unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe {
-        if s.is_null() {
-            return b"\0" as *const u8 as *const c_char;
-        }
-        CHAR_local(s)
+    let r = crate::sexp::accessors::translateChar(s);
+    if r.is_null() {
+        b"\0" as *const u8 as *const c_char
+    } else {
+        r
     }
 }
 

@@ -374,15 +374,8 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
 // Helper: translateChar -- get the translated character string from a CHARSXP
 // ---------------------------------------------------------------------------
 
-/// Get the C string from a CHARSXP. In this implementation we just use CHAR()
-/// directly since we don't have encoding translation infrastructure.
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe {
-        if x.is_null() {
-            return ptr::null();
-        }
-        CHAR(x)
-    }
+    crate::sexp::accessors::translateChar(x)
 }
 
 // ---------------------------------------------------------------------------

@@ -128,21 +128,11 @@ unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
 }
 
 unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe {
-        if s.is_null() {
-            return ptr::null();
-        }
-        CHAR(s)
-    }
+    crate::sexp::accessors::translateChar(s)
 }
 
 unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
-    unsafe {
-        if s.is_null() {
-            return ptr::null();
-        }
-        CHAR(s)
-    }
+    crate::sexp::accessors::translateCharUTF8(s)
 }
 
 unsafe fn translateCharFP(s: SEXP) -> *const c_char {

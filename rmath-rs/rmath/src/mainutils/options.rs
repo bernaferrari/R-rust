@@ -291,14 +291,8 @@ unsafe fn EnsureString(x: SEXP) -> SEXP {
     }
 }
 
-/// translateChar -- translate a CHARSXP to native encoding.
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe {
-        if x.is_null() {
-            return ptr::null();
-        }
-        CHAR(x)
-    }
+    crate::sexp::accessors::translateChar(x)
 }
 
 /// asChar -- get the first string element as a CHARSXP.

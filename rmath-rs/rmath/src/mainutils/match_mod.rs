@@ -142,22 +142,19 @@ unsafe fn IS_CACHED(_s: SEXP) -> c_int {
     1
 }
 
-/// translateChar — stub, just returns CHAR().
 #[inline(always)]
 unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { CHAR(s) }
+    crate::sexp::accessors::translateChar(s)
 }
 
-/// translateCharUTF8 — stub, just returns CHAR().
 #[inline(always)]
 unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
-    unsafe { CHAR(s) }
+    crate::sexp::accessors::translateCharUTF8(s)
 }
 
-/// getCharCE — stub, returns 0 (CE_NATIVE).
 #[inline(always)]
-unsafe fn getCharCE(_s: SEXP) -> c_int {
-    0
+unsafe fn getCharCE(s: SEXP) -> c_int {
+    crate::sexp::accessors::getCharCE(s)
 }
 
 /// checkArity — stub, no-op.

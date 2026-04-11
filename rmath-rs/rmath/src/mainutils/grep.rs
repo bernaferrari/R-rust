@@ -62,10 +62,9 @@ unsafe fn isNull(x: SEXP) -> bool {
     unsafe { x.is_null() || x == R_NilValue() }
 }
 
-/// translateChar -- stub, just returns CHAR().
 #[inline(always)]
 unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { CHAR(s) }
+    crate::sexp::accessors::translateChar(s)
 }
 
 /// checkArity -- stub, no-op.

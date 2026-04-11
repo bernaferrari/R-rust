@@ -584,14 +584,8 @@ pub(crate) unsafe fn installTrChar(input: SEXP) -> SEXP {
 // translateChar -- get the UTF-8 string from a CHARSXP
 // ---------------------------------------------------------------------------
 
-/// Translate a CHARSXP to a native charset string (returns pointer to data).
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe {
-        if isNull(x) {
-            return b"\0".as_ptr() as *const c_char;
-        }
-        CHAR(x)
-    }
+    crate::sexp::accessors::translateChar(x)
 }
 
 // ---------------------------------------------------------------------------

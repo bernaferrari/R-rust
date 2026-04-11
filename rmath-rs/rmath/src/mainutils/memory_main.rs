@@ -413,16 +413,12 @@ pub(crate) unsafe fn Rf_isObject_memory(s: SEXP) -> c_int {
 // Already in sexp/protect.rs with #[unsafe(no_mangle)].
 // ---------------------------------------------------------------------------
 
-/// Permanently protect an SEXP from garbage collection.
-/// Stub — the real implementation is in sexp/protect.rs.
-pub(crate) unsafe fn R_PreserveObject_memory(_s: SEXP) {
-    // No-op stub. Real implementation in sexp/protect.rs.
+pub(crate) unsafe fn R_PreserveObject_memory(s: SEXP) {
+    crate::sexp::protect::R_PreserveObject(s);
 }
 
-/// Release a previously preserved object.
-/// Stub — the real implementation is in sexp/protect.rs.
-pub(crate) unsafe fn R_ReleaseObject_memory(_s: SEXP) {
-    // No-op stub. Real implementation in sexp/protect.rs.
+pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
+    crate::sexp::protect::R_ReleaseObject(s);
 }
 
 // ---------------------------------------------------------------------------

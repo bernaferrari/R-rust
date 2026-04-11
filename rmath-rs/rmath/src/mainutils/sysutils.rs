@@ -145,10 +145,9 @@ unsafe fn isString(x: SEXP) -> bool {
     }
 }
 
-/// Translate a CHARSXP to a C string (stub: just returns CHAR()).
 #[inline(always)]
 unsafe fn translateChar(s: SEXP) -> *const c_char {
-    unsafe { CHAR(s) }
+    crate::sexp::accessors::translateChar(s)
 }
 
 /// R_Interactive flag. Set to false (non-interactive mode).

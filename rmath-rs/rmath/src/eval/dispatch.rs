@@ -222,12 +222,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
 
 #[unsafe(no_mangle)]
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    unsafe {
-        if x.is_null() {
-            return ptr::null();
-        }
-        CHAR(x)
-    }
+    crate::sexp::accessors::translateChar(x)
 }
 
 // ---------------------------------------------------------------------------

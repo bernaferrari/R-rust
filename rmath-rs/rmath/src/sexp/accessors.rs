@@ -1060,3 +1060,47 @@ pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
     let gp = unsafe { (*x).sxpinfo.gp() };
     (gp & (LATIN1_MASK | UTF8_MASK | BYTES_MASK)) as c_int
 }
+
+/// translateChar: return the CHAR pointer for a CHARSXP.
+/// In the full R implementation, this re-encodes to native encoding.
+/// Since we operate in UTF-8 mode, return CHAR(s) directly for UTF-8/ASCII,
+/// and fall back to CHAR(s) for other encodings (best-effort).
+pub unsafe fn translateChar(x: SEXP) -> *const c_char {
+    if x.is_null() {
+        return std::ptr::null();
+    }
+    CHAR(x)
+}
+
+/// translateCharUTF8: return the CHAR pointer for a CHARSXP as UTF-8.
+/// For UTF-8 or ASCII strings, return directly. For others, return as-is (best-effort).
+pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
+    if x.is_null() {
+        return std::ptr::null();
+    }
+    CHAR(x)
+}
+
+/// getCharCE: return the character encoding of a CHARSXP.
+/// Returns CE_NATIVE (0) for native, CE_UTF8 (2) for UTF-8, etc.
+pub unsafe fn getCharCE(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    let gp = unsafe { (*x).sxpinfo.gp() };
+    if (gp & UTF8_MASK) != 0 {
+        2
+    }
+    // CE_UTF8
+    else if (gp & LATIN1_MASK) != 0 {
+        3
+    }
+    // CE_LATIN1
+    else if (gp & BYTES_MASK) != 0 {
+        4
+    }
+    // CE_BYTES
+    else {
+        0
+    } // CE_NATIVE
+}
