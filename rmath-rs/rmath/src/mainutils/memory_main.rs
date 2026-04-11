@@ -59,7 +59,7 @@ pub unsafe fn R_gc() {
 /// This is the equivalent of R's `R_gc_lite()`.
 pub unsafe fn R_gc_lite() {
     gc_count.with(|v| v.set(v.get() + 1));
-    // No actual GC implementation yet; stub.
+    crate::sexp::gengc::minor_gc();
 }
 
 /// GC torture settings (no-op).
@@ -195,8 +195,8 @@ pub unsafe fn R_chk_calloc(nelem: usize, elsize: usize) -> *mut c_void {
     unsafe {
         let p = libc::calloc(nelem, elsize);
         if p.is_null() {
-            // In a full implementation this would call error()
-            // For now we just return null
+            static MSG: &[u8] = b"memory allocation failed (calloc)\0";
+            crate::mainutils::errors::Rf_error(MSG.as_ptr() as *const c_char);
         }
         p
     }
@@ -213,7 +213,8 @@ pub unsafe fn R_chk_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
             libc::malloc(size)
         };
         if p.is_null() {
-            // In a full implementation this would call error()
+            static MSG: &[u8] = b"memory allocation failed (realloc)\0";
+            crate::mainutils::errors::Rf_error(MSG.as_ptr() as *const c_char);
         }
         p
     }
@@ -413,13 +414,17 @@ pub(crate) unsafe fn Rf_isObject_memory(s: SEXP) -> c_int {
 // Already in sexp/protect.rs with #[unsafe(no_mangle)].
 // ---------------------------------------------------------------------------
 
-pub(crate) unsafe fn R_PreserveObject_memory(s: SEXP) { unsafe {
-    crate::sexp::protect::R_PreserveObject(s);
-}}
+pub(crate) unsafe fn R_PreserveObject_memory(s: SEXP) {
+    unsafe {
+        crate::sexp::protect::R_PreserveObject(s);
+    }
+}
 
-pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) { unsafe {
-    crate::sexp::protect::R_ReleaseObject(s);
-}}
+pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
+    unsafe {
+        crate::sexp::protect::R_ReleaseObject(s);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Weak references and finalizers
@@ -474,17 +479,21 @@ pub unsafe fn R_WeakRefValue(w: SEXP) -> SEXP {
     }
 }
 
-pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) { unsafe {
-    R_RegisterFinalizerEx(s, fun, 0);
-}}
+pub unsafe fn R_RegisterFinalizer(s: SEXP, fun: SEXP) {
+    unsafe {
+        R_RegisterFinalizerEx(s, fun, 0);
+    }
+}
 
 pub unsafe fn R_RegisterFinalizerEx(_s: SEXP, _fun: SEXP, _onexit: c_int) {
     // R-level finalizer registration — stores the function for later execution.
 }
 
-pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) { unsafe {
-    R_RegisterCFinalizerEx(s, fun, 0);
-}}
+pub unsafe fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t) {
+    unsafe {
+        R_RegisterCFinalizerEx(s, fun, 0);
+    }
+}
 
 pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_int) {
     if s.is_null() {
@@ -507,13 +516,17 @@ pub unsafe fn R_RunPendingFinalizers() {
     }
 }
 
-pub unsafe fn R_RunFinalizers() { unsafe {
-    R_RunPendingFinalizers();
-}}
+pub unsafe fn R_RunFinalizers() {
+    unsafe {
+        R_RunPendingFinalizers();
+    }
+}
 
-pub(crate) unsafe fn R_RunExitFinalizers_memory() { unsafe {
-    R_RunFinalizers();
-}}
+pub(crate) unsafe fn R_RunExitFinalizers_memory() {
+    unsafe {
+        R_RunFinalizers();
+    }
+}
 
 // ---------------------------------------------------------------------------
 // External pointer management
@@ -797,18 +810,26 @@ pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
 /// Create a new multi-set for protecting objects.
 ///
 /// This is the equivalent of R's `R_NewPreciousMSet()`.
+///
+/// Multi-set representation: `CONS(store, npreserved)` with `TAG() == initialSize`.
+/// `store` is a VECSXP or R_NilValue. `npreserved` is an INTSXP of length 1.
 pub unsafe fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
     unsafe {
         let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
         if npreserved.is_null() {
             return R_NilValue();
         }
+        crate::sexp::accessors::SET_INTEGER_ELT(npreserved, 0, 0);
+
         let mset = Rf_cons(R_NilValue(), npreserved);
         if mset.is_null() {
             return R_NilValue();
         }
-        let isize = Rf_ScalarInteger(if initialSize < 0 { 0 } else { initialSize });
-        // SET_TAG(mset, isize)
+
+        let size = if initialSize < 0 { 0 } else { initialSize };
+        let isize = Rf_ScalarInteger(size);
+        crate::sexp::accessors::SETTAG(mset, isize);
+
         mset
     }
 }
@@ -816,15 +837,99 @@ pub unsafe fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
 /// Add an object to a multi-set.
 ///
 /// This is the equivalent of R's `R_PreserveInMSet()`.
-pub unsafe fn R_PreserveInMSet(_x: SEXP, _mset: SEXP) {
-    // No-op stub.
+///
+/// Ported from `r-source/src/main/memory.c:3733`.
+pub unsafe fn R_PreserveInMSet(x: SEXP, mset: SEXP) {
+    unsafe {
+        if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
+            return;
+        }
+
+        let store = crate::sexp::accessors::CAR(mset);
+        let n_ptr = crate::sexp::accessors::INTEGER(crate::sexp::accessors::CDR(mset));
+        if n_ptr.is_null() {
+            return;
+        }
+        let n = *n_ptr;
+
+        let mut store = store;
+        if store == R_NilValue() {
+            let mut newsize =
+                crate::sexp::accessors::INTEGER_ELT(crate::sexp::accessors::TAG(mset), 0)
+                    as R_xlen_t;
+            if newsize == 0 {
+                newsize = 4;
+            }
+            store = Rf_allocVector3(SEXPTYPE::VECSXP.0, newsize);
+            crate::sexp::accessors::SETCAR(mset, store);
+        }
+
+        let size = crate::sexp::accessors::XLENGTH(store);
+        if n as R_xlen_t == size {
+            let newsize = 2 * size;
+            if newsize >= i32::MAX as R_xlen_t || newsize < size {
+                return;
+            }
+            let newstore = Rf_allocVector3(SEXPTYPE::VECSXP.0, newsize);
+            for i in 0..size {
+                crate::sexp::accessors::SET_VECTOR_ELT(
+                    newstore,
+                    i,
+                    crate::sexp::accessors::VECTOR_ELT(store, i),
+                );
+            }
+            crate::sexp::accessors::SETCAR(mset, newstore);
+            store = newstore;
+        }
+
+        crate::sexp::accessors::SET_VECTOR_ELT(store, n as R_xlen_t, x);
+        *n_ptr = n + 1;
+    }
 }
 
-/// Remove an object from a multi-set.
+/// Remove (one instance of) the object from the multi-set.
 ///
 /// This is the equivalent of R's `R_ReleaseFromMSet()`.
-pub unsafe fn R_ReleaseFromMSet(_x: SEXP, _mset: SEXP) {
-    // No-op stub.
+///
+/// Ported from `r-source/src/main/memory.c:3767`.
+pub unsafe fn R_ReleaseFromMSet(x: SEXP, mset: SEXP) {
+    unsafe {
+        if x == R_NilValue() || crate::mainutils::relop::isSymbol(x) != 0 {
+            return;
+        }
+
+        let store = crate::sexp::accessors::CAR(mset);
+        if store == R_NilValue() {
+            return;
+        }
+
+        let n_ptr = crate::sexp::accessors::INTEGER(crate::sexp::accessors::CDR(mset));
+        if n_ptr.is_null() {
+            return;
+        }
+        let n = *n_ptr;
+
+        let mut i = (n as R_xlen_t) - 1;
+        loop {
+            if crate::sexp::accessors::VECTOR_ELT(store, i) == x {
+                while i < (n as R_xlen_t) - 1 {
+                    crate::sexp::accessors::SET_VECTOR_ELT(
+                        store,
+                        i,
+                        crate::sexp::accessors::VECTOR_ELT(store, i + 1),
+                    );
+                    i += 1;
+                }
+                crate::sexp::accessors::SET_VECTOR_ELT(store, i, R_NilValue());
+                *n_ptr = n - 1;
+                return;
+            }
+            if i == 0 {
+                break;
+            }
+            i -= 1;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -912,19 +1017,23 @@ pub unsafe fn R_resizeVector(x: SEXP, newlen: R_xlen_t) {
 /// Signal a protect stack overflow error.
 ///
 /// This is the equivalent of R's `R_signal_protect_error()`.
-pub unsafe fn R_signal_protect_error() { unsafe {
-    crate::mainutils::errors::errorcall(
-        R_NilValue(),
-        b"protect stack overflow\0".as_ptr() as *const c_char,
-    );
-}}
+pub unsafe fn R_signal_protect_error() {
+    unsafe {
+        crate::mainutils::errors::errorcall(
+            R_NilValue(),
+            b"protect stack overflow\0".as_ptr() as *const c_char,
+        );
+    }
+}
 
-pub unsafe fn R_signal_unprotect_error() { unsafe {
-    crate::mainutils::errors::errorcall(
-        R_NilValue(),
-        b"unprotect stack underflow\0".as_ptr() as *const c_char,
-    );
-}}
+pub unsafe fn R_signal_unprotect_error() {
+    unsafe {
+        crate::mainutils::errors::errorcall(
+            R_NilValue(),
+            b"unprotect stack underflow\0".as_ptr() as *const c_char,
+        );
+    }
+}
 
 // ---------------------------------------------------------------------------
 // InitMemory / initStack stubs
@@ -1018,9 +1127,9 @@ pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
 /// String equality test, encoding-aware.
 ///
 /// This is the equivalent of R's `Seql()`.
-pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int { unsafe {
-    crate::mainutils::relop::Seql(a, b)
-}}
+pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
+    unsafe { crate::mainutils::relop::Seql(a, b) }
+}
 
 // ---------------------------------------------------------------------------
 // Tests

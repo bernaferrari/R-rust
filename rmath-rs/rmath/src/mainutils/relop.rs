@@ -61,20 +61,26 @@ const BITWISE_SHIFT_L: c_int = 5;
 const BITWISE_SHIFT_R: c_int = 6;
 
 // ---------------------------------------------------------------------------
-// Stubs for unimplemented R functions
+// Local helpers delegating to canonical implementations
 // ---------------------------------------------------------------------------
 
-pub unsafe fn errorcall_stub(call: SEXP, format: *const c_char) { unsafe {
-    crate::mainutils::errors::errorcall(call, format);
-}}
+pub unsafe fn errorcall_stub(call: SEXP, format: *const c_char) {
+    unsafe {
+        crate::mainutils::errors::errorcall(call, format);
+    }
+}
 
-pub unsafe fn error_stub(format: *const c_char) { unsafe {
-    crate::mainutils::errors::errorcall(R_NilValue(), format);
-}}
+pub unsafe fn error_stub(format: *const c_char) {
+    unsafe {
+        crate::mainutils::errors::errorcall(R_NilValue(), format);
+    }
+}
 
-pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) { unsafe {
-    crate::mainutils::errors::warningcall(call, format);
-}}
+pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) {
+    unsafe {
+        crate::mainutils::errors::warningcall(call, format);
+    }
+}
 
 /// Seql (string equality) -- checks if two CHARSXP are equal.
 pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
@@ -185,12 +191,12 @@ pub unsafe fn PRIMNAME(op: SEXP) -> *const c_char {
     }
 }
 
-/// Stub for getAttrib -- delegates to eval::attrib_core.
+/// Helper for getAttrib -- delegates to eval::attrib_core.
 pub(crate) unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     unsafe { crate::eval::attrib_core::getAttrib(x, what) }
 }
 
-/// Stub for setAttrib -- delegates to eval::attrib_core.
+/// Helper for setAttrib -- delegates to eval::attrib_core.
 pub(crate) unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
     unsafe {
         crate::eval::attrib_core::setAttrib(x, what, value);
@@ -220,12 +226,12 @@ pub unsafe fn RAW_RO(x: SEXP) -> *const Rbyte {
     unsafe { DATAPTR(x) as *const Rbyte }
 }
 
-/// Stub for isNull -- matches R_NilValue.
+/// Helper for isNull -- matches R_NilValue.
 pub unsafe fn isNull(x: SEXP) -> c_int {
     unsafe { (x == R_NilValue()) as c_int }
 }
 
-/// Stub for isVector -- check if SEXP is a vector type.
+/// Check if SEXP is a vector type.
 pub unsafe fn isVector(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
@@ -235,7 +241,7 @@ pub unsafe fn isVector(x: SEXP) -> c_int {
     }
 }
 
-/// Stub for isSymbol -- check if SEXP is SYMSXP.
+/// Check if SEXP is SYMSXP.
 pub unsafe fn isSymbol(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
