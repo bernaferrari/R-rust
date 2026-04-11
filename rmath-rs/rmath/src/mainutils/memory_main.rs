@@ -28,7 +28,7 @@ use std::ptr;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -38,6 +38,8 @@ use crate::sexp::globals::R_NilValue;
 thread_local! { static R_in_gc: Cell<c_int> = Cell::new(0); }
 thread_local! { static gc_reporting: Cell<c_int> = Cell::new(0); }
 thread_local! { static gc_count: Cell<c_int> = Cell::new(0); }
+thread_local! { static gc_force_gap: Cell<c_int> = Cell::new(0); }
+thread_local! { static gc_force_wait: Cell<c_int> = Cell::new(0); }
 
 /// Returns whether a GC is currently running.
 ///
@@ -62,11 +64,21 @@ pub unsafe fn R_gc_lite() {
     crate::sexp::gengc::minor_gc();
 }
 
-/// GC torture settings (no-op).
+/// GC torture settings.
 ///
-/// This is the equivalent of R's `R_gc_torture()`.
-pub unsafe fn R_gc_torture(_gap: c_int, _wait: c_int, _inhibit: c_int) {
-    // No-op stub.
+/// When `gap > 0`, every `gap` allocations will force a GC cycle.
+/// This is a debugging aid for finding GC-safety bugs.
+pub unsafe fn R_gc_torture(gap: c_int, wait: c_int, _inhibit: c_int) {
+    gc_force_gap.with(|v| {
+        if gap != NA_INTEGER && gap >= 0 {
+            v.set(gap);
+        }
+    });
+    gc_force_wait.with(|v| {
+        if gap > 0 && wait != NA_INTEGER && wait > 0 {
+            v.set(wait);
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
