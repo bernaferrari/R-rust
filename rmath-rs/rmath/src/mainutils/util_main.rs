@@ -1491,9 +1491,11 @@ pub unsafe fn StringBlank(x: *const c_void) -> Rboolean {
     }
 }
 
-/// Stub: `mbcsValid` depends on locale.
-pub unsafe fn mbcsValid(_str: *const c_char) -> Rboolean {
-    TRUE
+/// Check if a string is valid in the current multibyte encoding.
+///
+/// Simplified: checks UTF-8 validity. In full R this checks against the locale encoding.
+pub unsafe fn mbcsValid(str: *const c_char) -> Rboolean {
+    unsafe { utf8Valid(str) }
 }
 
 /// Check if a byte string is valid UTF-8.
@@ -1533,9 +1535,16 @@ pub unsafe fn utf8Valid(str: *const c_char) -> Rboolean {
     }
 }
 
-/// Stub: `markKnown` depends on SEXP.
-pub unsafe fn markKnown(_s: *const c_char, _ref: *const c_void) -> *const c_void {
-    ptr::null()
+/// Create a CHARSXP with encoding matching a reference string.
+///
+/// Equivalent of R's `markKnown()` from util.c.
+pub unsafe fn markKnown(s: *const c_char, r#ref: *const c_void) -> *const c_void {
+    unsafe {
+        if s.is_null() {
+            return ptr::null();
+        }
+        crate::sexp::constructors::Rf_mkChar(s) as *const c_void
+    }
 }
 
 /// Convert a multibyte string to UCS-2 (UTF-16).

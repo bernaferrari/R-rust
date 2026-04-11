@@ -17,3 +17,4 @@ Cargo.lock
 .dolt/
 *.db
 .beads-credential-key
+r-source/

@@ -31,8 +31,8 @@ use std::ptr;
 use crate::mainutils::coerce::coerceVector;
 use crate::mainutils::identical::R_compute_identical;
 use crate::sexp::accessors::{
-    ATTRIB, CADR, CAR, CDR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LOGICAL, PRINTNAME, REAL,
-    REAL_ELT, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
+    ATTRIB, CADR, CAR, CDR, CHAR, DATAPTR, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, NAMED, PRINTNAME,
+    REAL, REAL_ELT, SET_STRING_ELT, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
 use crate::sexp::constructors::{
     Rf_ScalarLogical, Rf_allocVector, Rf_allocVector3, Rf_cons, Rf_length, Rf_mkChar,
@@ -100,9 +100,14 @@ pub unsafe fn Seql(x: SEXP, y: SEXP) -> c_int {
     }
 }
 
-/// Stub for NO_REFERENCES -- returns 0.
-pub unsafe fn NO_REFERENCES(_x: SEXP) -> c_int {
-    0
+/// Check if SEXP has no references (NAMED == 0).
+pub unsafe fn NO_REFERENCES(x: SEXP) -> c_int {
+    unsafe {
+        if x.is_null() {
+            return 0;
+        }
+        (NAMED(x) == 0) as c_int
+    }
 }
 
 /// isTs -- returns 1 if x has a tsp attribute (time series).
@@ -203,9 +208,31 @@ pub(crate) unsafe fn setAttrib(x: SEXP, what: SEXP, value: SEXP) {
     }
 }
 
-/// Stub for conformable -- returns 1 (conformable).
-pub unsafe fn conformable(_a: SEXP, _b: SEXP) -> c_int {
-    1
+/// Check if two arrays have conformable dimensions.
+pub unsafe fn conformable(a: SEXP, b: SEXP) -> c_int {
+    unsafe {
+        if a.is_null() || b.is_null() {
+            return 1;
+        }
+        let da = crate::eval::attrib_core::getAttrib(a, crate::eval::attrib_core::R_DimSymbol());
+        let db = crate::eval::attrib_core::getAttrib(b, crate::eval::attrib_core::R_DimSymbol());
+        let la = LENGTH(da);
+        let lb = LENGTH(db);
+        if la != lb {
+            return 0;
+        }
+        let ia = INTEGER(da);
+        let ib = INTEGER(db);
+        if ia.is_null() || ib.is_null() {
+            return 1;
+        }
+        for i in 0..la {
+            if *ia.add(i as usize) != *ib.add(i as usize) {
+                return 0;
+            }
+        }
+        1
+    }
 }
 
 /// Stub for UNIMPLEMENTED_TYPE -- does nothing.
