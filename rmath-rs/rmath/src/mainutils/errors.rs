@@ -389,25 +389,29 @@ unsafe fn CHAR_local(s: SEXP) -> *const c_char {
     }
 }
 
-unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
-    let r = crate::sexp::accessors::translateChar(s);
-    if r.is_null() {
-        b"\0" as *const u8 as *const c_char
-    } else {
-        r
+unsafe fn translateChar(s: SEXP) -> *const c_char {
+    unsafe {
+        let r = crate::sexp::accessors::translateChar(s);
+        if r.is_null() {
+            b"\0" as *const u8 as *const c_char
+        } else {
+            r
+        }
     }
-}}
+}
 
 /// Check argument arity (simplified).
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
-unsafe fn ScalarInteger(x: c_int) -> SEXP { unsafe {
-    crate::sexp::constructors::Rf_ScalarInteger(x)
-}}
+unsafe fn ScalarInteger(x: c_int) -> SEXP {
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(x) }
+}
 
-unsafe fn ScalarLogical(x: c_int) -> SEXP { unsafe {
-    crate::sexp::constructors::Rf_ScalarLogical(x)
-}}
+unsafe fn ScalarLogical(x: c_int) -> SEXP {
+    unsafe { crate::sexp::constructors::Rf_ScalarLogical(x) }
+}
 
 /// Get/set class attribute (simplified).
 unsafe fn classgets(x: SEXP, klass: SEXP) -> SEXP {
@@ -548,11 +552,12 @@ unsafe fn findCall() -> SEXP {
 /// is already the final message.
 unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
-        // Check for recursive error
-        let in_err = IN_ERROR.fetch_add(1, Ordering::Relaxed);
-        if in_err > 0 {
+        // Check for recursive error using specific state values:
+        // 0 = no error, 1 = internal error, 2 = traceback, 3 = user handler
+        let old_in_err = IN_ERROR.load(Ordering::Relaxed);
+        if old_in_err > 0 {
             // fail-safe handler for recursive errors
-            if in_err >= 3 {
+            if old_in_err >= 3 {
                 eprint!("Error during wrapup: ");
                 if !format.is_null() {
                     let mut buf = vec![0u8; BUFSIZE + 1];
@@ -581,12 +586,9 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             );
             R_Expressions_keep();
             jump_to_top_ex(0, 0, 0, 0, 0);
-            // unreachable — jump_to_top_ex panics
             return;
         }
 
-        // Save old inError and set to 1
-        let old_in_err = in_err;
         IN_ERROR.store(1, Ordering::Relaxed);
 
         // Format the variadic message
@@ -671,7 +673,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
 /// For formatted errors, use `Rf_errorcall1()` or pre-format before calling.
 ///
 /// It does not return — it panics with an RError payload.
-pub unsafe fn errorcall(call: SEXP, format: *const c_char) {
+pub fn errorcall(call: SEXP, format: *const c_char) {
     unsafe {
         verrorcall_dflt(call, format, ptr::null_mut());
     }
@@ -679,7 +681,7 @@ pub unsafe fn errorcall(call: SEXP, format: *const c_char) {
 
 /// Report a formatted error with one string argument.
 /// Equivalent to C's `errorcall(call, "%s", msg)`.
-pub unsafe fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_char) {
+pub fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_char) {
     unsafe {
         let msg = if arg.is_null() {
             ""
@@ -707,7 +709,7 @@ pub unsafe fn Rf_errorcall1(call: SEXP, format: *const c_char, arg: *const c_cha
 
 /// Report a formatted error with call, using printf-style formatting.
 /// This is a Rust-native helper that supports simple format strings.
-pub unsafe fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
+pub fn Rf_errorcall_fmt(call: SEXP, format: *const c_char, args: &[&CStr]) {
     unsafe {
         if format.is_null() {
             verrorcall_dflt(call, b"\0".as_ptr() as *const c_char, ptr::null_mut());
