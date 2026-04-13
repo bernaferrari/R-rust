@@ -434,10 +434,12 @@ unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
 
 unsafe fn seq_colon(n1: c_double, n2: c_double, call: SEXP) -> SEXP {
     unsafe {
-        let _ = call;
         let r = (n2 - n1).abs();
         if r >= R_XLEN_T_MAX_DBL {
-            return ptr::null_mut();
+            errorcall(
+                call,
+                b"result would be too long a vector\0".as_ptr() as *const c_char,
+            );
         }
 
         // If both n1 and n2 are exact integers (as R_xlen_t), use compact intrange
