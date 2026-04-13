@@ -1104,22 +1104,38 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// gcinfo() implementation (stub).
 ///
 /// This is the equivalent of R's `do_gcinfo()`.
-pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(gc_reporting.with(|v| v.get())) }
+pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let old = Rf_ScalarLogical(gc_reporting.with(|v| v.get()));
+        let i = crate::mainutils::coerce::asLogical(CAR(args));
+        if i != crate::sexp::ffi::NA_LOGICAL {
+            gc_reporting.with(|v| v.set(i));
+        }
+        old
+    }
 }
 
-/// gctorture() implementation (stub).
-///
-/// This is the equivalent of R's `do_gctorture()`.
-pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarLogical(0) }
+pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let old = Rf_ScalarLogical(if gc_force_wait.with(|v| v.get()) > 0 {
+            crate::sexp::ffi::TRUE
+        } else {
+            crate::sexp::ffi::FALSE
+        });
+        let gap = crate::mainutils::coerce::asLogical(CAR(args));
+        R_gc_torture(gap, 0, 0);
+        old
+    }
 }
 
-/// gctorture2() implementation (stub).
-///
-/// This is the equivalent of R's `do_gctorture2()`.
-pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { Rf_ScalarInteger(0) }
+pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let old = Rf_ScalarInteger(gc_force_gap.with(|v| v.get()));
+        let gap = crate::mainutils::coerce::asInteger(CAR(args));
+        let _wait = crate::mainutils::coerce::asInteger(CADR(args));
+        R_gc_torture(gap, 0, 0);
+        old
+    }
 }
 
 /// maxVSize() implementation (stub).
@@ -1139,8 +1155,24 @@ pub unsafe fn do_maxNSize(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
 /// Register finalizer .Internal call (stub).
 ///
 /// This is the equivalent of R's `do_regFinaliz()`.
-pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let fun = CADR(args);
+        let onexit = crate::mainutils::coerce::asLogical(CADDR(args));
+        let t = TYPEOF(obj);
+        if t != SEXPTYPE::ENVSXP.0 && t != SEXPTYPE::EXTPTRSXP.0 {
+            error("first argument must be environment or external pointer");
+        }
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP.0 {
+            error("second argument must be a function");
+        }
+        if onexit == crate::sexp::ffi::NA_LOGICAL {
+            error("third argument must be 'TRUE' or 'FALSE'");
+        }
+        R_RegisterFinalizerEx(obj, fun, onexit);
+        R_NilValue()
+    }
 }
 
 // ---------------------------------------------------------------------------
