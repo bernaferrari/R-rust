@@ -18,6 +18,7 @@ pub mod bc_stack;
 pub mod builtin;
 pub mod bytecode;
 pub mod closure;
+pub mod complex_arith;
 pub mod context;
 pub mod dispatch;
 #[allow(clippy::module_inception)]

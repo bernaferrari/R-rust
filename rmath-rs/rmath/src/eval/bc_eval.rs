@@ -595,19 +595,65 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 opcodes::OP_STARTSUBSET | opcodes::OP_ENDSUBSET => {
-                    let _nargs = *code_ptr.add(pc as usize);
+                    let nargs = *code_ptr.add(pc as usize);
                     pc += 1;
-                    let idx = *code_ptr.add(pc as usize);
+                    let _idx = *code_ptr.add(pc as usize);
                     pc += 1;
-                    stack.push(R_NilValue());
+                    // x[i, j, ...] — pop nargs index values, then the object
+                    let mut indices: Vec<SEXP> = Vec::new();
+                    for _ in 0..nargs {
+                        indices.push(stack.pop());
+                    }
+                    let obj = stack.pop();
+                    if obj.is_null() || indices.is_empty() {
+                        stack.push(R_NilValue());
+                    } else {
+                        // Call `[`(obj, i, j, ...)
+                        unsafe {
+                            let bracket_sym =
+                                crate::sexp::symbol::Rf_install(std::ffi::CString::new("[").unwrap_or_default().as_ptr());
+                            let nil = R_NilValue();
+                            let mut arg_list = nil;
+                            // Build args in reverse order
+                            for idx_expr in indices.into_iter().rev() {
+                                arg_list = Rf_cons(idx_expr, arg_list);
+                            }
+                            // Prepend the object
+                            arg_list = Rf_cons(obj, arg_list);
+                            let call = Rf_cons(bracket_sym, arg_list);
+                            if !call.is_null() {
+                                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            }
+                            let result = crate::eval::eval::Rf_eval(call, rho);
+                            stack.push(result);
+                        }
+                    }
                 }
 
                 opcodes::OP_STARTSUBSET2 | opcodes::OP_ENDSUBSET2 => {
-                    let _nargs = *code_ptr.add(pc as usize);
+                    let nargs = *code_ptr.add(pc as usize);
                     pc += 1;
-                    let idx = *code_ptr.add(pc as usize);
+                    let _idx = *code_ptr.add(pc as usize);
                     pc += 1;
-                    stack.push(R_NilValue());
+                    // x[[i]] — pop index value, then the object
+                    let idx = if nargs > 0 { stack.pop() } else { R_NilValue() };
+                    let obj = stack.pop();
+                    if obj.is_null() {
+                        stack.push(R_NilValue());
+                    } else {
+                        unsafe {
+                            let dbracket_sym =
+                                crate::sexp::symbol::Rf_install(std::ffi::CString::new("[[").unwrap_or_default().as_ptr());
+                            let nil = R_NilValue();
+                            let args = Rf_cons(obj, Rf_cons(idx, nil));
+                            let call = Rf_cons(dbracket_sym, args);
+                            if !call.is_null() {
+                                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                            }
+                            let result = crate::eval::eval::Rf_eval(call, rho);
+                            stack.push(result);
+                        }
+                    }
                 }
 
                 opcodes::OP_LDCLOSURE => {
@@ -643,12 +689,55 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     stack.push(val);
                 }
 
-                opcodes::OP_SWASTORE
-                | opcodes::OP_SWLOAD
-                | opcodes::OP_PUTBASE
-                | opcodes::OP_PUTBASE_SEP
-                | opcodes::OP_SEQBEGIN
-                | opcodes::OP_SEQEND => {
+                opcodes::OP_SWASTORE => {
+                    // Store a value into the switch table
+                    let _idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = stack.pop();
+                    stack.push(val); // simplified: just pass through
+                }
+
+                opcodes::OP_SWLOAD => {
+                    // Load from switch table by index
+                    let idx = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let _switch_val = stack.pop();
+                    // In full implementation, this loads from the switch dispatch table
+                    // For now, push the index as a fallback
+                    stack.push(R_NilValue());
+                }
+
+                opcodes::OP_PUTBASE => {
+                    // Assign value to base environment
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = stack.pop();
+                    let sym = stack.pop();
+                    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP.0 {
+                        unsafe {
+                            defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
+                        }
+                    }
+                    stack.push(val);
+                    set_R_Visible(FALSE);
+                }
+
+                opcodes::OP_PUTBASE_SEP => {
+                    // Separated base assignment
+                    let _nargs = *code_ptr.add(pc as usize);
+                    pc += 1;
+                    let val = stack.pop();
+                    let sym = stack.pop();
+                    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP.0 {
+                        unsafe {
+                            defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
+                        }
+                    }
+                    stack.push(val);
+                }
+
+                opcodes::OP_SEQBEGIN | opcodes::OP_SEQEND => {
+                    // Sequence begin/end — skip operand, no-op
                     pc += 1;
                 }
 

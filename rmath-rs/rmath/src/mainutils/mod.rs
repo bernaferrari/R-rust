@@ -71,6 +71,7 @@ pub mod registration;
 pub mod relop;
 pub mod rlocale;
 pub mod rng;
+pub mod rng_dispatch;
 pub mod saveload;
 pub mod scan;
 pub mod seq;

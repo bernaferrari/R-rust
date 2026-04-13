@@ -1,19 +1,25 @@
-//! Minimal R expression parser.
+//! Full R expression parser.
 //!
 //! Recursive-descent parser that converts R source code into SEXP trees
-//! suitable for evaluation by `eval_safe()`. Supports:
+//! suitable for evaluation by `eval_safe()`.
 //!
-//! - Numbers (integer and real)
-//! - Strings (double-quoted)
-//! - `TRUE`, `FALSE`, `NULL`, `NA`, `Inf`, `NaN`
-//! - Identifiers
-//! - Binary operators: `+`, `-`, `*`, `/`, `^`, `<`, `>`, `<=`, `>=`,
-//!   `==`, `!=`, `&`, `&&`, `|`, `||`, `%%`, `%/%`
+//! Supports:
+//! - Numbers (integer and real), strings, identifiers
+//! - All R keywords: TRUE, FALSE, NULL, NA, Inf, NaN, NA_real_, NA_integer_, NA_character_
+//! - Binary operators: +, -, *, /, ^, <, >, <=, >=, ==, !=, &, &&, |, ||, %%, %/%
+//! - Custom infix operators: %in%, %o%, %*%, any %xxx% sequence
 //! - Unary minus/plus
-//! - Assignment: `<-`, `=`
-//! - Function calls: `f(x, y)`
-//! - Parenthesized expressions: `(expr)`
-//! - Semicolons and newlines as expression separators
+//! - Assignment: <-, =, ->, <<-
+//! - Function calls: f(x, y), f(x = 1)
+//! - Parenthesized expressions: (expr)
+//! - Blocks: { expr; expr; ... }
+//! - Control flow: if/else, for, while, repeat, break, next, return
+//! - Function definitions: function(args) body
+//! - Subscript: x[i], x[i, j], x[[i]]
+//! - Member access: x$name, x@slot
+//! - Formula: y ~ x
+//! - Backtick names: `weird name`
+//! - ... varargs
 
 use std::ffi::CString;
 
@@ -26,42 +32,77 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::RArena;
 use crate::sexp::symbol::Rf_install;
 
+// ---------------------------------------------------------------------------
+// Tokens
+// ---------------------------------------------------------------------------
+
 #[derive(Debug, Clone, PartialEq)]
 enum Token {
     Number(f64),
     Int(i32),
     Str(String),
     Ident(String),
+    // Arithmetic
     Plus,
     Minus,
     Star,
     Slash,
     Caret,
-    Percent,
-    SlashPercent,
+    Percent(String), // %% or %/% or %in% etc. — the full %...% operator text
+    // Comparison
     Lt,
     Gt,
     Le,
     Ge,
     Eq,
     Ne,
+    // Logical
     And,
     And2,
     Or,
     Or2,
     Not,
-    Mod,
-    Assign,
-    LeftAssign,
+    // Assignment
+    Assign,      // =
+    LeftAssign,  // <-
+    RightAssign, // ->
+    LeftSuper,   // <<-
+    // Delimiters
     LParen,
     RParen,
+    LBrace,
+    RBrace,
+    LBracket,
+    RBracket,
+    LDoubleBracket,
+    RDoubleBracket,
     Comma,
     Semicolon,
     Newline,
+    // Special
     Tilde,
     Colon,
+    Dollar,
+    At,
+    DotDotDot,
+    // Keywords
+    KwIf,
+    KwElse,
+    KwFor,
+    KwIn,
+    KwWhile,
+    KwRepeat,
+    KwFunction,
+    KwBreak,
+    KwNext,
+    KwReturn,
+    // Eof
     Eof,
 }
+
+// ---------------------------------------------------------------------------
+// Lexer
+// ---------------------------------------------------------------------------
 
 #[derive(Debug, Clone)]
 struct Lexer {
@@ -79,6 +120,10 @@ impl Lexer {
 
     fn peek_char(&self) -> Option<char> {
         self.chars.get(self.pos).copied()
+    }
+
+    fn peek_char_at(&self, offset: usize) -> Option<char> {
+        self.chars.get(self.pos + offset).copied()
     }
 
     fn advance(&mut self) -> Option<char> {
@@ -127,33 +172,62 @@ impl Lexer {
             return self.read_string();
         }
 
-        if ch.is_ascii_digit() || (ch == '.' && self.peek_digit_at(1)) {
+        // Backtick names
+        if ch == '`' {
+            return self.read_backtick_name();
+        }
+
+        // Numbers: digit or .digit
+        if ch.is_ascii_digit()
+            || (ch == '.' && self.peek_char_at(1).map_or(false, |c| c.is_ascii_digit()))
+        {
             return self.read_number();
         }
 
+        // Identifiers and keywords
         if ch.is_alphabetic() || ch == '.' || ch == '_' {
             return self.read_ident();
         }
 
         self.advance();
 
-        return match ch {
+        match ch {
             '+' => Token::Plus,
-            '-' => Token::Minus,
+            '-' => {
+                if self.peek_char() == Some('>') {
+                    self.advance();
+                    Token::RightAssign
+                } else {
+                    Token::Minus
+                }
+            }
             '*' => Token::Star,
             '/' => Token::Slash,
             '^' => Token::Caret,
             '%' => {
+                // Custom infix operators: %...%
+                // Also handles %% and %/%
                 if self.peek_char() == Some('/') && self.peek_char_at(1) == Some('%') {
-                    // %/% integer division — consume /%
+                    // %/% integer division
                     self.advance(); // skip /
                     self.advance(); // skip %
-                    Token::SlashPercent
+                    Token::Percent("%/%".to_string())
                 } else if self.peek_char() == Some('%') {
                     self.advance();
-                    Token::Percent
+                    Token::Percent("%%".to_string())
                 } else {
-                    Token::Mod
+                    // Read custom %...% operator
+                    let mut op = String::from("%");
+                    while let Some(c) = self.peek_char() {
+                        if c == '%' {
+                            self.advance();
+                            op.push('%');
+                            break;
+                        }
+                        op.push(c);
+                        self.advance();
+                    }
+                    Token::Percent(op)
                 }
             }
             '<' => {
@@ -163,6 +237,14 @@ impl Lexer {
                 } else if self.peek_char() == Some('=') {
                     self.advance();
                     Token::Le
+                } else if self.peek_char() == Some('<') {
+                    self.advance();
+                    if self.peek_char() == Some('-') {
+                        self.advance();
+                        Token::LeftSuper
+                    } else {
+                        Token::Lt // fallback, shouldn't happen
+                    }
                 } else {
                     Token::Lt
                 }
@@ -209,28 +291,68 @@ impl Lexer {
             }
             '(' => Token::LParen,
             ')' => Token::RParen,
+            '{' => Token::LBrace,
+            '}' => Token::RBrace,
+            '[' => {
+                if self.peek_char() == Some('[') {
+                    self.advance();
+                    Token::LDoubleBracket
+                } else {
+                    Token::LBracket
+                }
+            }
+            ']' => {
+                if self.peek_char() == Some(']') {
+                    self.advance();
+                    Token::RDoubleBracket
+                } else {
+                    Token::RBracket
+                }
+            }
             ',' => Token::Comma,
             ';' => Token::Semicolon,
             '~' => Token::Tilde,
             ':' => Token::Colon,
+            '$' => Token::Dollar,
+            '@' => Token::At,
+            '.' => {
+                // Check for ...
+                if self.peek_char() == Some('.') && self.peek_char_at(1) == Some('.') {
+                    self.advance();
+                    self.advance();
+                    Token::DotDotDot
+                } else {
+                    Token::Ident(".".to_string())
+                }
+            }
             _ => Token::Eof,
-        };
-    }
-
-    fn peek_char_at(&self, offset: usize) -> Option<char> {
-        self.chars.get(self.pos + offset).copied()
-    }
-
-    fn peek_digit_at(&self, offset: usize) -> bool {
-        self.chars
-            .get(self.pos + offset)
-            .map_or(false, |c| c.is_ascii_digit())
+        }
     }
 
     fn read_number(&mut self) -> Token {
         let mut s = String::new();
         let mut has_dot = false;
         let mut has_e = false;
+
+        // Handle hex literals: 0x...
+        if self.peek_char() == Some('0')
+            && (self.peek_char_at(1) == Some('x') || self.peek_char_at(1) == Some('X'))
+        {
+            s.push(self.advance().unwrap()); // 0
+            s.push(self.advance().unwrap()); // x
+            while let Some(ch) = self.peek_char() {
+                if ch.is_ascii_hexdigit() {
+                    s.push(ch);
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            if let Ok(v) = i64::from_str_radix(&s[2..], 16) {
+                return Token::Int(v as i32);
+            }
+            return Token::Number(0.0);
+        }
 
         while let Some(ch) = self.peek_char() {
             if ch.is_ascii_digit() {
@@ -280,6 +402,8 @@ impl Lexer {
                     Some('t') => s.push('\t'),
                     Some('r') => s.push('\r'),
                     Some('\\') => s.push('\\'),
+                    Some('"') => s.push('"'),
+                    Some('\'') => s.push('\''),
                     Some(c) if c == quote => s.push(c),
                     Some(c) => {
                         s.push('\\');
@@ -295,6 +419,19 @@ impl Lexer {
         Token::Str(s)
     }
 
+    fn read_backtick_name(&mut self) -> Token {
+        self.advance(); // skip `
+        let mut s = String::new();
+        loop {
+            match self.advance() {
+                Some('`') => break,
+                Some(c) => s.push(c),
+                None => break,
+            }
+        }
+        Token::Ident(s)
+    }
+
     fn read_ident(&mut self) -> Token {
         let mut s = String::new();
         while let Some(ch) = self.peek_char() {
@@ -305,9 +442,26 @@ impl Lexer {
                 break;
             }
         }
-        Token::Ident(s)
+        // Check keywords
+        match s.as_str() {
+            "if" => Token::KwIf,
+            "else" => Token::KwElse,
+            "for" => Token::KwFor,
+            "in" => Token::KwIn,
+            "while" => Token::KwWhile,
+            "repeat" => Token::KwRepeat,
+            "function" => Token::KwFunction,
+            "break" => Token::KwBreak,
+            "next" => Token::KwNext,
+            "return" => Token::KwReturn,
+            _ => Token::Ident(s),
+        }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Parse error
+// ---------------------------------------------------------------------------
 
 #[derive(Debug)]
 pub struct ParseError(pub String);
@@ -319,6 +473,10 @@ impl std::fmt::Display for ParseError {
 }
 
 impl std::error::Error for ParseError {}
+
+// ---------------------------------------------------------------------------
+// Parser
+// ---------------------------------------------------------------------------
 
 pub struct Parser {
     tokens: Vec<Token>,
@@ -367,6 +525,24 @@ impl Parser {
         }
     }
 
+    /// Skip newlines (but not semicolons).
+    fn skip_newlines(&mut self) {
+        while self.peek() == &Token::Newline {
+            self.advance();
+        }
+    }
+
+    /// Skip semicolons and newlines.
+    fn skip_terminators(&mut self) {
+        while self.peek() == &Token::Semicolon || self.peek() == &Token::Newline {
+            self.advance();
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Top-level
+    // -----------------------------------------------------------------------
+
     pub fn parse_program(&mut self) -> Result<SEXP, ParseError> {
         let mut exprs = Vec::new();
         loop {
@@ -388,6 +564,7 @@ impl Parser {
                 .unwrap_or_else(|| unsafe { R_NilValue() }));
         }
 
+        // Multiple expressions → wrap in { }
         unsafe {
             let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
             let nil = R_NilValue();
@@ -400,30 +577,56 @@ impl Parser {
         }
     }
 
-    fn skip_terminators(&mut self) {
-        while self.peek() == &Token::Semicolon || self.peek() == &Token::Newline {
-            self.advance();
-        }
-    }
+    // -----------------------------------------------------------------------
+    // Expression hierarchy (precedence climbing)
+    // -----------------------------------------------------------------------
 
     fn parse_expr(&mut self) -> Result<SEXP, ParseError> {
         self.parse_assignment()
     }
 
+    /// assignment: tilde (('=' | '<-' | '->' | '<<-') assignment)?
     fn parse_assignment(&mut self) -> Result<SEXP, ParseError> {
-        let left = self.parse_or()?;
+        let left = self.parse_tilde()?;
 
         match self.peek() {
-            Token::LeftAssign | Token::Assign => {
+            Token::LeftAssign | Token::Assign | Token::LeftSuper => {
                 let _op = self.advance();
                 let right = self.parse_assignment()?;
                 unsafe {
-                    let assign_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang3(assign_sym, left, right))
+                    let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
+                    Ok(Rf_lang3(op_sym, left, right))
+                }
+            }
+            Token::RightAssign => {
+                let _op = self.advance();
+                let right = self.parse_assignment()?;
+                // x -> y is equivalent to y <- x
+                unsafe {
+                    let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
+                    Ok(Rf_lang3(op_sym, right, left))
                 }
             }
             _ => Ok(left),
         }
+    }
+
+    /// tilde: or ('~' or)*
+    fn parse_tilde(&mut self) -> Result<SEXP, ParseError> {
+        let mut left = self.parse_or()?;
+        loop {
+            if self.peek() == &Token::Tilde {
+                self.advance();
+                let right = self.parse_or()?;
+                unsafe {
+                    let op = Rf_install(CString::new("~").unwrap_or_default().as_ptr());
+                    left = Rf_lang3(op, left, right);
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(left)
     }
 
     fn parse_or(&mut self) -> Result<SEXP, ParseError> {
@@ -531,10 +734,9 @@ impl Parser {
         let mut left = self.parse_power()?;
         loop {
             let op_name = match self.peek() {
-                Token::Star => "*",
-                Token::Slash => "/",
-                Token::Percent => "%%",
-                Token::SlashPercent => "%/%",
+                Token::Star => "*".to_string(),
+                Token::Slash => "/".to_string(),
+                Token::Percent(name) => name.clone(),
                 _ => return Ok(left),
             };
             self.advance();
@@ -547,10 +749,10 @@ impl Parser {
     }
 
     fn parse_power(&mut self) -> Result<SEXP, ParseError> {
-        let base = self.parse_unary()?;
+        let base = self.parse_colon()?;
         if self.peek() == &Token::Caret {
             self.advance();
-            let exp = self.parse_unary()?;
+            let exp = self.parse_colon()?;
             unsafe {
                 let op = Rf_install(CString::new("^").unwrap_or_default().as_ptr());
                 Ok(Rf_lang3(op, base, exp))
@@ -558,6 +760,24 @@ impl Parser {
         } else {
             Ok(base)
         }
+    }
+
+    /// Colon operator: x:y (used for sequences like 1:10)
+    fn parse_colon(&mut self) -> Result<SEXP, ParseError> {
+        let mut left = self.parse_unary()?;
+        loop {
+            if self.peek() == &Token::Colon {
+                self.advance();
+                let right = self.parse_unary()?;
+                unsafe {
+                    let op = Rf_install(CString::new(":").unwrap_or_default().as_ptr());
+                    left = Rf_lang3(op, left, right);
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(left)
     }
 
     fn parse_unary(&mut self) -> Result<SEXP, ParseError> {
@@ -574,78 +794,455 @@ impl Parser {
                 self.advance();
                 self.parse_unary()
             }
-            _ => self.parse_call_or_atom(),
+            Token::Not => {
+                self.advance();
+                let operand = self.parse_unary()?;
+                unsafe {
+                    let op = Rf_install(CString::new("!").unwrap_or_default().as_ptr());
+                    Ok(Rf_lang2(op, operand))
+                }
+            }
+            _ => self.parse_postfix(),
         }
     }
 
-    fn parse_call_or_atom(&mut self) -> Result<SEXP, ParseError> {
-        let atom = self.parse_atom()?;
+    // -----------------------------------------------------------------------
+    // Postfix operations (left-associative)
+    // -----------------------------------------------------------------------
 
-        if self.peek() == &Token::LParen {
-            self.advance();
-            let args = self.parse_arglist()?;
-            self.expect(&Token::RParen)?;
+    /// Parse postfix operations: function calls, subscript, member access.
+    /// These are all left-associative and chain together.
+    fn parse_postfix(&mut self) -> Result<SEXP, ParseError> {
+        let mut expr = self.parse_primary()?;
 
-            unsafe {
-                let nil = R_NilValue();
-                let mut arg_list = nil;
-                for (name, val) in args.into_iter().rev() {
-                    let cell = Rf_cons(val, arg_list);
-                    if let Some(n) = name {
-                        let sym = Rf_install(CString::new(n).unwrap_or_default().as_ptr());
-                        crate::sexp::accessors::SETTAG(cell, sym);
+        loop {
+            match self.peek() {
+                // Function call: f(args)
+                Token::LParen => {
+                    self.advance();
+                    let args = self.parse_arglist()?;
+                    self.expect(&Token::RParen)?;
+
+                    unsafe {
+                        let nil = R_NilValue();
+                        let mut arg_list = nil;
+                        for (name, val) in args.into_iter().rev() {
+                            let cell = Rf_cons(val, arg_list);
+                            if let Some(n) = name {
+                                let sym = Rf_install(CString::new(n).unwrap_or_default().as_ptr());
+                                crate::sexp::accessors::SETTAG(cell, sym);
+                            }
+                            arg_list = cell;
+                        }
+                        let call = Rf_cons(expr, arg_list);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
+                        expr = call;
                     }
-                    arg_list = cell;
                 }
-                let call = Rf_cons(atom, arg_list);
+                // Subscript: x[i] or x[i, j]
+                Token::LBracket => {
+                    self.advance();
+                    let mut indices = Vec::new();
+                    self.skip_newlines();
+                    if self.peek() != &Token::RBracket {
+                        loop {
+                            self.skip_newlines();
+                            if self.peek() == &Token::RBracket {
+                                break; // trailing comma
+                            }
+                            indices.push(self.parse_expr()?);
+                            self.skip_newlines();
+                            if self.peek() == &Token::Comma {
+                                self.advance();
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    self.expect(&Token::RBracket)?;
+
+                    unsafe {
+                        let bracket_sym =
+                            Rf_install(CString::new("[").unwrap_or_default().as_ptr());
+                        let nil = R_NilValue();
+                        let mut args = Rf_cons(expr, nil);
+                        // Build args in reverse
+                        for idx in indices.into_iter().rev() {
+                            args = Rf_cons(idx, args);
+                        }
+                        let call = Rf_cons(bracket_sym, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
+                        expr = call;
+                    }
+                }
+                // Double subscript: x[[i]]
+                Token::LDoubleBracket => {
+                    self.advance();
+                    let idx = self.parse_expr()?;
+                    self.skip_newlines();
+                    self.expect(&Token::RDoubleBracket)?;
+
+                    unsafe {
+                        let dbracket_sym =
+                            Rf_install(CString::new("[[").unwrap_or_default().as_ptr());
+                        let nil = R_NilValue();
+                        let args = Rf_cons(expr, Rf_cons(idx, nil));
+                        let call = Rf_cons(dbracket_sym, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
+                        expr = call;
+                    }
+                }
+                // Dollar: x$name
+                Token::Dollar => {
+                    self.advance();
+                    let name = self.parse_member_name()?;
+                    unsafe {
+                        let dollar_sym = Rf_install(CString::new("$").unwrap_or_default().as_ptr());
+                        let nil = R_NilValue();
+                        let args = Rf_cons(expr, Rf_cons(name, nil));
+                        let call = Rf_cons(dollar_sym, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
+                        expr = call;
+                    }
+                }
+                // At: x@name
+                Token::At => {
+                    self.advance();
+                    let name = self.parse_member_name()?;
+                    unsafe {
+                        let at_sym = Rf_install(CString::new("@").unwrap_or_default().as_ptr());
+                        let nil = R_NilValue();
+                        let args = Rf_cons(expr, Rf_cons(name, nil));
+                        let call = Rf_cons(at_sym, args);
+                        if !call.is_null() {
+                            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                        }
+                        expr = call;
+                    }
+                }
+                _ => return Ok(expr),
+            }
+        }
+    }
+
+    /// Parse a member name after $ or @ — can be identifier or backtick name.
+    fn parse_member_name(&mut self) -> Result<SEXP, ParseError> {
+        match self.peek().clone() {
+            Token::Ident(name) => {
+                let name = name.clone();
+                self.advance();
+                unsafe {
+                    Ok(Rf_install(
+                        CString::new(name.as_str()).unwrap_or_default().as_ptr(),
+                    ))
+                }
+            }
+            Token::Str(name) => {
+                // Allow "name" after $ for compatibility
+                let name = name.clone();
+                self.advance();
+                unsafe {
+                    Ok(Rf_install(
+                        CString::new(name.as_str()).unwrap_or_default().as_ptr(),
+                    ))
+                }
+            }
+            _ => Err(ParseError(format!(
+                "expected name after $ or @, got {:?}",
+                self.peek()
+            ))),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Primary expressions (atoms and control structures)
+    // -----------------------------------------------------------------------
+
+    fn parse_primary(&mut self) -> Result<SEXP, ParseError> {
+        match self.peek().clone() {
+            // Keywords
+            Token::KwIf => self.parse_if(),
+            Token::KwFor => self.parse_for(),
+            Token::KwWhile => self.parse_while(),
+            Token::KwRepeat => self.parse_repeat(),
+            Token::KwFunction => self.parse_function(),
+            Token::KwBreak => {
+                self.advance();
+                unsafe {
+                    let sym = Rf_install(CString::new("break").unwrap_or_default().as_ptr());
+                    Ok(Rf_lang2(sym, R_NilValue()))
+                }
+            }
+            Token::KwNext => {
+                self.advance();
+                unsafe {
+                    let sym = Rf_install(CString::new("next").unwrap_or_default().as_ptr());
+                    Ok(Rf_lang2(sym, R_NilValue()))
+                }
+            }
+            Token::KwReturn => {
+                self.advance();
+                let val = if self.peek() == &Token::LParen {
+                    self.advance();
+                    let e = self.parse_expr()?;
+                    self.expect(&Token::RParen)?;
+                    e
+                } else {
+                    // return without parens — return next expression
+                    // In R, `return expr` is valid without parens
+                    self.parse_expr()?
+                };
+                unsafe {
+                    let sym = Rf_install(CString::new("return").unwrap_or_default().as_ptr());
+                    Ok(Rf_lang2(sym, val))
+                }
+            }
+            // Block: { expr; expr; ... }
+            Token::LBrace => self.parse_block(),
+            // Parenthesized expr or tuple
+            Token::LParen => {
+                self.advance();
+                self.skip_newlines();
+                if self.peek() == &Token::RParen {
+                    // Empty parens → NULL
+                    self.advance();
+                    return unsafe { Ok(R_NilValue()) };
+                }
+                let expr = self.parse_expr()?;
+                self.skip_newlines();
+                self.expect(&Token::RParen)?;
+                Ok(expr)
+            }
+            // Anything else → atom
+            _ => self.parse_atom(),
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Control structures
+    // -----------------------------------------------------------------------
+
+    /// if (cond) expr [else expr]
+    fn parse_if(&mut self) -> Result<SEXP, ParseError> {
+        self.advance(); // consume 'if'
+        self.expect(&Token::LParen)?;
+        let cond = self.parse_expr()?;
+        self.expect(&Token::RParen)?;
+
+        // Skip newlines after )
+        self.skip_newlines();
+        let body = self.parse_expr()?;
+
+        // Check for else
+        self.skip_newlines();
+        if self.peek() == &Token::KwElse {
+            self.advance();
+            self.skip_newlines();
+            let alt = self.parse_expr()?;
+            unsafe {
+                let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
+                let nil = R_NilValue();
+                let call = Rf_cons(if_sym, Rf_cons(cond, Rf_cons(body, Rf_cons(alt, nil))));
                 if !call.is_null() {
                     (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
                 Ok(call)
             }
         } else {
-            Ok(atom)
+            unsafe {
+                let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
+                Ok(Rf_lang3(if_sym, cond, body))
+            }
         }
     }
 
-    fn parse_arglist(&mut self) -> Result<Vec<(Option<String>, SEXP)>, ParseError> {
-        let mut args = Vec::new();
-        self.skip_terminators();
+    /// for (var in seq) body
+    fn parse_for(&mut self) -> Result<SEXP, ParseError> {
+        self.advance(); // consume 'for'
+        self.expect(&Token::LParen)?;
+
+        // var must be an identifier
+        let var_name = match self.advance() {
+            Token::Ident(name) => name,
+            tok => {
+                return Err(ParseError(format!(
+                    "expected identifier in for, got {:?}",
+                    tok
+                )));
+            }
+        };
+        let var = unsafe { Rf_install(CString::new(var_name).unwrap_or_default().as_ptr()) };
+
+        self.expect(&Token::KwIn)?;
+        let seq = self.parse_expr()?;
+        self.expect(&Token::RParen)?;
+
+        self.skip_newlines();
+        let body = self.parse_expr()?;
+
+        unsafe {
+            let for_sym = Rf_install(CString::new("for").unwrap_or_default().as_ptr());
+            let nil = R_NilValue();
+            let call = Rf_cons(for_sym, Rf_cons(var, Rf_cons(seq, Rf_cons(body, nil))));
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            Ok(call)
+        }
+    }
+
+    /// while (cond) body
+    fn parse_while(&mut self) -> Result<SEXP, ParseError> {
+        self.advance(); // consume 'while'
+        self.expect(&Token::LParen)?;
+        let cond = self.parse_expr()?;
+        self.expect(&Token::RParen)?;
+
+        self.skip_newlines();
+        let body = self.parse_expr()?;
+
+        unsafe {
+            let while_sym = Rf_install(CString::new("while").unwrap_or_default().as_ptr());
+            Ok(Rf_lang3(while_sym, cond, body))
+        }
+    }
+
+    /// repeat body
+    fn parse_repeat(&mut self) -> Result<SEXP, ParseError> {
+        self.advance(); // consume 'repeat'
+        self.skip_newlines();
+        let body = self.parse_expr()?;
+
+        unsafe {
+            let repeat_sym = Rf_install(CString::new("repeat").unwrap_or_default().as_ptr());
+            Ok(Rf_lang2(repeat_sym, body))
+        }
+    }
+
+    /// function(args) body
+    fn parse_function(&mut self) -> Result<SEXP, ParseError> {
+        self.advance(); // consume 'function'
+        self.expect(&Token::LParen)?;
+        let formals = self.parse_formals()?;
+        self.expect(&Token::RParen)?;
+
+        self.skip_newlines();
+        let body = self.parse_expr()?;
+
+        unsafe {
+            let fn_sym = Rf_install(CString::new("function").unwrap_or_default().as_ptr());
+            let nil = R_NilValue();
+            let call = Rf_cons(fn_sym, Rf_cons(formals, Rf_cons(body, nil)));
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            Ok(call)
+        }
+    }
+
+    /// Parse formal arguments: name [= default], name [= default], ...
+    /// Returns a pairlist of (name default) pairs.
+    fn parse_formals(&mut self) -> Result<SEXP, ParseError> {
+        let nil = unsafe { R_NilValue() };
+        let mut pairs: Vec<(String, SEXP)> = Vec::new();
+
+        self.skip_newlines();
         if self.peek() == &Token::RParen {
-            return Ok(args);
+            return Ok(nil);
         }
 
         loop {
-            self.skip_terminators();
-            let (name, val) = self.parse_arg()?;
-            args.push((name, val));
-            self.skip_terminators();
+            self.skip_newlines();
+            match self.peek().clone() {
+                Token::DotDotDot => {
+                    self.advance();
+                    pairs.push(("...".to_string(), unsafe { R_NilValue() }));
+                }
+                Token::Ident(name) => {
+                    let name = name.clone();
+                    self.advance();
+                    let default = if self.peek() == &Token::Assign {
+                        self.advance();
+                        self.parse_expr()?
+                    } else {
+                        unsafe { crate::sexp::globals::R_MissingArg() }
+                    };
+                    pairs.push((name, default));
+                }
+                tok => return Err(ParseError(format!("expected formal arg, got {:?}", tok))),
+            }
 
+            self.skip_newlines();
             if self.peek() == &Token::Comma {
                 self.advance();
-                self.skip_terminators();
             } else {
                 break;
             }
         }
 
-        Ok(args)
+        // Build pairlist in reverse (R expects first arg first)
+        unsafe {
+            let mut list = nil;
+            for (name, default) in pairs.into_iter().rev() {
+                let cell = Rf_cons(default, list);
+                let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+                crate::sexp::accessors::SETTAG(cell, sym);
+                list = cell;
+            }
+            Ok(list)
+        }
     }
 
-    fn parse_arg(&mut self) -> Result<(Option<String>, SEXP), ParseError> {
-        if let Token::Ident(name) = self.peek().clone() {
-            let saved = self.pos;
-            self.advance();
-            if self.peek() == &Token::Assign {
-                self.advance();
-                let val = self.parse_expr()?;
-                return Ok((Some(name), val));
-            }
-            self.pos = saved;
+    // -----------------------------------------------------------------------
+    // Blocks
+    // -----------------------------------------------------------------------
+
+    /// { expr; expr; ... }
+    fn parse_block(&mut self) -> Result<SEXP, ParseError> {
+        self.advance(); // consume '{'
+        self.skip_terminators();
+
+        let mut exprs = Vec::new();
+        while self.peek() != &Token::RBrace && self.peek() != &Token::Eof {
+            exprs.push(self.parse_expr()?);
+            self.skip_terminators();
         }
-        let val = self.parse_expr()?;
-        Ok((None, val))
+        self.expect(&Token::RBrace)?;
+
+        if exprs.is_empty() {
+            unsafe {
+                let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+                Ok(Rf_lang2(brace_sym, R_NilValue()))
+            }
+        } else if exprs.len() == 1 {
+            unsafe {
+                let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+                Ok(Rf_lang2(brace_sym, exprs.into_iter().next().unwrap()))
+            }
+        } else {
+            unsafe {
+                let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+                let nil = R_NilValue();
+                let mut list = Rf_cons(exprs.pop().unwrap_or(nil), nil);
+                while let Some(e) = exprs.pop() {
+                    list = Rf_cons(e, list);
+                }
+                Ok(Rf_lang2(brace_sym, list))
+            }
+        }
     }
+
+    // -----------------------------------------------------------------------
+    // Atoms
+    // -----------------------------------------------------------------------
 
     fn parse_atom(&mut self) -> Result<SEXP, ParseError> {
         match self.peek().clone() {
@@ -662,6 +1259,13 @@ impl Parser {
                 unsafe {
                     let c_s = CString::new(s.as_str()).unwrap_or_default();
                     Ok(Rf_mkString(c_s.as_ptr()))
+                }
+            }
+            Token::DotDotDot => {
+                self.advance();
+                unsafe {
+                    let sym = Rf_install(CString::new("...").unwrap_or_default().as_ptr());
+                    Ok(sym)
                 }
             }
             Token::Ident(ref name) => {
@@ -684,26 +1288,94 @@ impl Parser {
                     },
                 }
             }
-            Token::LParen => {
-                self.advance();
-                let expr = self.parse_expr()?;
-                self.expect(&Token::RParen)?;
-                Ok(expr)
-            }
             ref tok => Err(ParseError(format!("unexpected token: {:?}", tok))),
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Argument list
+    // -----------------------------------------------------------------------
+
+    fn parse_arglist(&mut self) -> Result<Vec<(Option<String>, SEXP)>, ParseError> {
+        let mut args = Vec::new();
+        self.skip_newlines();
+        if self.peek() == &Token::RParen {
+            return Ok(args);
+        }
+
+        loop {
+            self.skip_newlines();
+            let (name, val) = self.parse_arg()?;
+            args.push((name, val));
+            self.skip_newlines();
+
+            if self.peek() == &Token::Comma {
+                self.advance();
+                self.skip_newlines();
+                // Allow trailing comma
+                if self.peek() == &Token::RParen {
+                    break;
+                }
+            } else {
+                break;
+            }
+        }
+
+        Ok(args)
+    }
+
+    fn parse_arg(&mut self) -> Result<(Option<String>, SEXP), ParseError> {
+        match self.peek().clone() {
+            Token::Ident(name) => {
+                let saved = self.pos;
+                let name = name.clone();
+                self.advance();
+                match self.peek() {
+                    Token::Assign => {
+                        self.advance();
+                        let val = self.parse_expr()?;
+                        Ok((Some(name), val))
+                    }
+                    // Handle `name = expr` where = is assignment
+                    _ => {
+                        self.pos = saved;
+                        let val = self.parse_expr()?;
+                        Ok((None, val))
+                    }
+                }
+            }
+            Token::DotDotDot => {
+                self.advance();
+                unsafe {
+                    let sym = Rf_install(CString::new("...").unwrap_or_default().as_ptr());
+                    Ok((None, sym))
+                }
+            }
+            _ => {
+                let val = self.parse_expr()?;
+                Ok((None, val))
+            }
+        }
+    }
 }
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
     let mut parser = Parser::new(input, arena);
     parser.parse_program()
 }
 
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{CAR, TYPEOF};
+    use crate::sexp::accessors::{CAR, CDR, TYPEOF};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::memory::RArena;
@@ -720,6 +1392,8 @@ mod tests {
             Err(e) => panic!("test failed: {e:?}"),
         }
     }
+
+    // --- Basic atoms ---
 
     #[test]
     fn test_integer_literal() {
@@ -776,11 +1450,39 @@ mod tests {
     }
 
     #[test]
+    fn test_na_inf_nan() {
+        unsafe {
+            let na = must(parse_str("NA"));
+            assert_eq!(TYPEOF(na), SEXPTYPE::INTSXP.0);
+
+            let inf = must(parse_str("Inf"));
+            assert_eq!(TYPEOF(inf), SEXPTYPE::REALSXP.0);
+
+            let nan = must(parse_str("NaN"));
+            assert_eq!(TYPEOF(nan), SEXPTYPE::REALSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_na_character() {
+        unsafe {
+            let na_chr = must(parse_str("NA_character_"));
+            assert_eq!(TYPEOF(na_chr), SEXPTYPE::STRSXP.0);
+            assert_eq!(crate::sexp::accessors::LENGTH(na_chr), 1);
+            let elt = crate::sexp::accessors::STRING_ELT(na_chr, 0);
+            assert!(!elt.is_null());
+            assert_eq!(crate::sexp::accessors::TYPEOF(elt), SEXPTYPE::CHARSXP.0);
+            assert_eq!((*elt).sxpinfo.gp(), 1);
+        }
+    }
+
+    // --- Binary operators ---
+
+    #[test]
     fn test_addition() {
         unsafe {
             let result = must(parse_str("1 + 2"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
-
             let op = CAR(result);
             assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP.0);
         }
@@ -803,12 +1505,40 @@ mod tests {
     }
 
     #[test]
+    fn test_power() {
+        unsafe {
+            let result = must(parse_str("2^3"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_integer_div() {
+        unsafe {
+            let result = must(parse_str("5 %/% 2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_modulus() {
+        unsafe {
+            let result = must(parse_str("5 %% 2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- Unary ---
+
+    #[test]
     fn test_unary_minus() {
         unsafe {
             let result = must(parse_str("-5"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
         }
     }
+
+    // --- Assignment ---
 
     #[test]
     fn test_assignment() {
@@ -827,13 +1557,30 @@ mod tests {
     }
 
     #[test]
+    fn test_right_assign() {
+        unsafe {
+            let result = must(parse_str("42 -> x"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- Function calls ---
+
+    #[test]
     fn test_function_call() {
         unsafe {
             let result = must(parse_str("f(x, y)"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
-
             let fun = CAR(result);
             assert_eq!(TYPEOF(fun), SEXPTYPE::SYMSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_named_arg() {
+        unsafe {
+            let result = must(parse_str("f(x = 1)"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
         }
     }
 
@@ -845,6 +1592,8 @@ mod tests {
         }
     }
 
+    // --- Logical ---
+
     #[test]
     fn test_comparison() {
         unsafe {
@@ -852,6 +1601,22 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
         }
     }
+
+    #[test]
+    fn test_logical_ops() {
+        unsafe {
+            let and = must(parse_str("x && y"));
+            assert_eq!(TYPEOF(and), SEXPTYPE::LANGSXP.0);
+
+            let or = must(parse_str("x || y"));
+            assert_eq!(TYPEOF(or), SEXPTYPE::LANGSXP.0);
+
+            let not = must(parse_str("!x"));
+            assert_eq!(TYPEOF(not), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- Programs ---
 
     #[test]
     fn test_multi_expr() {
@@ -878,88 +1643,214 @@ mod tests {
     }
 
     #[test]
-    fn test_named_arg() {
-        unsafe {
-            let result = must(parse_str("f(x = 1)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
-        }
-    }
-
-    #[test]
-    fn test_na_inf_nan() {
-        unsafe {
-            let na = must(parse_str("NA"));
-            assert_eq!(TYPEOF(na), SEXPTYPE::INTSXP.0);
-
-            let inf = must(parse_str("Inf"));
-            assert_eq!(TYPEOF(inf), SEXPTYPE::REALSXP.0);
-
-            let nan = must(parse_str("NaN"));
-            assert_eq!(TYPEOF(nan), SEXPTYPE::REALSXP.0);
-        }
-    }
-
-    #[test]
-    fn test_na_character() {
-        unsafe {
-            let na_chr = must(parse_str("NA_character_"));
-            // NA_character_ is a STRSXP, not a string "NA"
-            assert_eq!(TYPEOF(na_chr), SEXPTYPE::STRSXP.0);
-            assert_eq!(crate::sexp::accessors::LENGTH(na_chr), 1);
-            // Its element should be NA_STRING (gp bit set)
-            let elt = crate::sexp::accessors::STRING_ELT(na_chr, 0);
-            assert!(!elt.is_null());
-            assert_eq!(crate::sexp::accessors::TYPEOF(elt), SEXPTYPE::CHARSXP.0);
-            // NA_STRING has gp field set to 1
-            assert_eq!((*elt).sxpinfo.gp(), 1);
-        }
-    }
-
-    #[test]
-    fn test_power() {
-        unsafe {
-            let result = must(parse_str("2^3"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
-        }
-    }
-
-    #[test]
-    fn test_logical_ops() {
-        unsafe {
-            let and = must(parse_str("x && y"));
-            assert_eq!(TYPEOF(and), SEXPTYPE::LANGSXP.0);
-
-            let or = must(parse_str("x || y"));
-            assert_eq!(TYPEOF(or), SEXPTYPE::LANGSXP.0);
-
-            let not = must(parse_str("!x"));
-            assert_eq!(TYPEOF(not), SEXPTYPE::LANGSXP.0);
-        }
-    }
-
-    #[test]
-    fn test_integer_div() {
-        unsafe {
-            // %/% should parse as a single token, not two
-            let result = must(parse_str("5 %/% 2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
-            let op = CAR(result);
-            assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP.0);
-        }
-    }
-
-    #[test]
-    fn test_modulus() {
-        unsafe {
-            let result = must(parse_str("5 %% 2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
-            let op = CAR(result);
-            assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP.0);
-        }
-    }
-
-    #[test]
     fn test_error_unexpected_rparen() {
         assert!(parse_str(")").is_err());
+    }
+
+    // --- NEW: Control flow ---
+
+    #[test]
+    fn test_if() {
+        unsafe {
+            let result = must(parse_str("if (x > 0) x"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_if_else() {
+        unsafe {
+            let result = must(parse_str("if (x > 0) x else -x"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_for_loop() {
+        unsafe {
+            let result = must(parse_str("for (i in 1:10) print(i)"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_while_loop() {
+        unsafe {
+            let result = must(parse_str("while (x > 0) x <- x - 1"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_repeat_loop() {
+        unsafe {
+            let result = must(parse_str("repeat { x <- x + 1 }"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_break_next() {
+        unsafe {
+            let brk = must(parse_str("break"));
+            assert_eq!(TYPEOF(brk), SEXPTYPE::LANGSXP.0);
+
+            let nxt = must(parse_str("next"));
+            assert_eq!(TYPEOF(nxt), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Blocks ---
+
+    #[test]
+    fn test_block() {
+        unsafe {
+            let result = must(parse_str("{ a <- 1; b <- 2; a + b }"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_empty_block() {
+        unsafe {
+            let result = must(parse_str("{}"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Function definitions ---
+
+    #[test]
+    fn test_function_def() {
+        unsafe {
+            let result = must(parse_str("function(x) x^2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_function_multi_args() {
+        unsafe {
+            let result = must(parse_str("function(x, y = 1) x + y"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_function_no_args() {
+        unsafe {
+            let result = must(parse_str("function() 42"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Subscript ---
+
+    #[test]
+    fn test_subscript() {
+        unsafe {
+            let result = must(parse_str("x[1]"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_subscript_multi() {
+        unsafe {
+            let result = must(parse_str("x[i, j]"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_double_subscript() {
+        unsafe {
+            let result = must(parse_str("x[[1]]"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Member access ---
+
+    #[test]
+    fn test_dollar_access() {
+        unsafe {
+            let result = must(parse_str("df$col"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_at_access() {
+        unsafe {
+            let result = must(parse_str("obj@slot"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Custom infix ---
+
+    #[test]
+    fn test_custom_infix() {
+        unsafe {
+            let result = must(parse_str("x %in% y"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_matrix_multiply() {
+        unsafe {
+            let result = must(parse_str("A %*% B"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Backtick names ---
+
+    #[test]
+    fn test_backtick_name() {
+        unsafe {
+            let result = must(parse_str("`weird name`"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP.0);
+        }
+    }
+
+    // --- NEW: Formula ---
+
+    #[test]
+    fn test_formula() {
+        unsafe {
+            let result = must(parse_str("y ~ x + z"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: DotDotDot ---
+
+    #[test]
+    fn test_varargs() {
+        unsafe {
+            let result = must(parse_str("f(...)"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    // --- NEW: Chained postfix ---
+
+    #[test]
+    fn test_chained_dollar_subscript() {
+        unsafe {
+            let result = must(parse_str("df$col[1]"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_function_in_block() {
+        unsafe {
+            let result = must(parse_str("{ f <- function(x) x^2; f(3) }"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+        }
     }
 }

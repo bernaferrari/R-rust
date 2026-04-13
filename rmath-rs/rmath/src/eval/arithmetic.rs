@@ -161,7 +161,7 @@ fn result_length(a: SEXP, b: SEXP) -> R_xlen_t {
 ///
 /// Returns REALSXP if either operand is REALSXP, otherwise returns INTSXP/LGLSXP.
 /// Integer overflow produces NA_INTEGER.
-unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         let n = result_length(sa, sb);
         if n == 0 {
