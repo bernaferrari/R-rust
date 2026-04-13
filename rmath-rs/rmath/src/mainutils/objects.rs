@@ -12,6 +12,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::eval::attrib_core::{R_ClassSymbol, R_data_class, getAttrib, isObject, setAttrib};
+use crate::eval::eval::Rf_eval;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::{R_GlobalContext, RCNTXT};
@@ -539,13 +540,13 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
             }
         }
 
-        if !s.is_null()
-            && TYPEOF(s) == SEXPTYPE::PROMSXP.0 as c_int
-            && PROMISE_IS_EVALUATED(s) != FALSE
-        {
-            s = PRVALUE(s);
+        if TYPEOF(s) == SEXPTYPE::PROMSXP.0 as c_int {
+            if PROMISE_IS_EVALUATED(s) == FALSE {
+                s = unsafe { Rf_eval(s, R_BaseEnv()) };
+            } else {
+                s = PRVALUE(s);
+            }
         }
-        // else: leave as promise (caller will force it)
 
         s
     }
@@ -951,9 +952,14 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         }
 
         // Try the .__S3MethodsTable__. in defrho
-        if !defrho.is_null() && defrho != R_NilValue() {
+        let effective_defrho = if defrho == R_BaseEnv() {
+            R_BaseEnv()
+        } else {
+            defrho
+        };
+        if !effective_defrho.is_null() && effective_defrho != R_NilValue() {
             let s3_table_sym = S3MethodsTable_symbol();
-            let table = crate::sexp::envir::R_findVarInFrame(defrho, s3_table_sym);
+            let table = crate::sexp::envir::R_findVarInFrame(effective_defrho, s3_table_sym);
             if table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP.0 as c_int {
                 Rf_protect(table);
                 let val2 = crate::sexp::envir::R_findVarInFrame(table, method);
