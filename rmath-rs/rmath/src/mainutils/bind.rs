@@ -112,7 +112,9 @@ unsafe fn resolve_promise(x: SEXP) -> SEXP {
 /// checkArity: verify argument count matches the expected arity for op.
 /// currently a no-op, consistent with other modules.
 #[inline(always)]
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 /// R_listCompact: destructively removes R_NilValue ('NULL') elements from a
 /// pairlist.  Ported from R's src/main/util.c.
@@ -541,11 +543,9 @@ unsafe fn STRING_PTR(x: SEXP) -> *mut SEXP {
     }
 }
 
-/// lazy_duplicate: for now just returns x (shallow copy).
-/// A full implementation would shallow-copy the object.
 #[inline(always)]
 unsafe fn lazy_duplicate(x: SEXP) -> SEXP {
-    x
+    crate::mainutils::duplicate::lazy_duplicate(x)
 }
 
 /// EnsureString: ensure x is a single string (CHARSXP).
@@ -1564,7 +1564,7 @@ unsafe fn c_Extract_opt(ans: SEXP, recurse: *mut bool, usenames: *mut bool, call
                         a = next;
                         continue;
                     }
-                    if name_str.starts_with("use.na") {
+                    if name_str.starts_with("use.name") {
                         n_usenames += 1;
                         if n_usenames > 1 {
                             let msg =
@@ -1967,16 +1967,8 @@ unsafe fn do_unlist_default(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
 pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         // The first argument is "deparse.level". Evaluate it.
-        // missing(deparse.level): we skip this check since we don't have R_missing.
-        let deparse_level_val = CAR(args);
-        let deparse_level: c_int = if !deparse_level_val.is_null()
-            && deparse_level_val != R_NilValue()
-            && TYPEOF(deparse_level_val) == INTSXP_I
-        {
-            *INTEGER(deparse_level_val)
-        } else {
-            0
-        };
+        let deparse_level_val = crate::eval::eval::Rf_eval(CAR(args), env);
+        let deparse_level: c_int = crate::mainutils::coerce::asInteger(deparse_level_val);
         let try_s4 = deparse_level >= 0;
 
         // Build promises for lazy evaluation and method dispatch.
