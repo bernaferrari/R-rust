@@ -542,7 +542,7 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
         if TYPEOF(s) == SEXPTYPE::PROMSXP.0 as c_int {
             if PROMISE_IS_EVALUATED(s) == FALSE {
-                s = unsafe { Rf_eval(s, R_BaseEnv()) };
+                s = Rf_eval(s, R_BaseEnv());
             } else {
                 s = PRVALUE(s);
             }

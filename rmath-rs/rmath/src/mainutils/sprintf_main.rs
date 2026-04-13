@@ -82,6 +82,12 @@ unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
     unsafe { Rf_mkChar(s) }
 }
 
+unsafe fn error(fmt: *const c_char) {
+    unsafe {
+        crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
+    }
+}
+
 unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
     unsafe {
         crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), fmt);
@@ -89,7 +95,6 @@ unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
 }
 
 unsafe fn isNA_STRING(s: SEXP) -> bool {
-    // Compare against the canonical NA_STRING sentinel from relop.rs
     if s.is_null() {
         return false;
     }
@@ -109,8 +114,6 @@ impl RStringBuffer {
         RStringBuffer { buf: Vec::new() }
     }
 
-    /// Ensure the buffer has at least `len` bytes of capacity.
-    /// Returns a mutable pointer to the buffer.
     fn ensure_capacity(&mut self, len: usize) -> *mut c_char {
         if len > self.buf.len() {
             self.buf.resize(len, 0);
@@ -147,14 +150,11 @@ unsafe fn get_outbuff() -> MutPtr<RStringBuffer> {
     }))
 }
 
-/// Allocate or grow the string buffer to hold at least `buflen` characters.
-/// Returns a mutable pointer to the buffer.
 unsafe fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
     let len = if buflen < 0 { 0 } else { buflen as usize + 1 };
     buf.ensure_capacity(len)
 }
 
-/// Free the string buffer (no-op in our Rust implementation since Vec handles memory).
 unsafe fn R_FreeStringBufferL(_buf: &mut RStringBuffer) {}
 
 // ---------------------------------------------------------------------------
@@ -229,23 +229,8 @@ unsafe fn c_strcspn(s: *const c_char, reject: *const c_char) -> usize {
 
 // ---------------------------------------------------------------------------
 // findspec  (static in C, exported here as sprintf_findspec)
-//
-// Given a format string that starts with '%', skip past flags, width,
-// precision and return a pointer to the conversion specifier character
-// (e.g. 'd', 'f', 's', ...).
-//
-// This is not strict about checking where '.' is allowed.  It should
-// allow  - + ' ' # 0 as flags and m m. .n n.m as width/precision.
 // ---------------------------------------------------------------------------
 
-/// Skip past flags/width/precision in a printf format string.
-///
-/// Given a pointer `str` that starts with '%', return a pointer to the
-/// conversion specifier character.  If `str` does not start with '%',
-/// it is returned unchanged.
-///
-/// # Safety
-/// `str` must be a valid NUL-terminated C string.
 pub unsafe fn sprintf_findspec(str: *const c_char) -> *const c_char {
     unsafe {
         if str.is_null() {
@@ -262,7 +247,6 @@ pub unsafe fn sprintf_findspec(str: *const c_char) -> *const c_char {
                 p = p.add(1);
                 continue;
             }
-            // '*' will currently have been substituted before this point
             if ch == b'*' || (ch >= b'0' && ch <= b'9') {
                 p = p.add(1);
                 continue;
@@ -275,44 +259,31 @@ pub unsafe fn sprintf_findspec(str: *const c_char) -> *const c_char {
 
 // ---------------------------------------------------------------------------
 // checkfmt  (static in C, exported here as sprintf_checkfmt)
-//
-// Verify that a format string's conversion specifier matches one of the
-// characters in `pattern`.  Returns false (success) if the specifier is
-// found in pattern, true (error) otherwise.
 // ---------------------------------------------------------------------------
 
-/// Check that a format string's conversion specifier is in `pattern`.
-///
-/// Returns `false` if valid (specifier found in pattern), `true` if invalid.
-///
-/// # Safety
-/// Both `fmt` and `pattern` must be valid NUL-terminated C strings.
 pub unsafe fn sprintf_checkfmt(fmt: *const c_char, pattern: *const c_char) -> bool {
     unsafe {
         if fmt.is_null() || pattern.is_null() {
-            return true; // error
+            return true;
         }
         if *fmt != b'%' as c_char {
-            return true; // error: not a format
+            return true;
         }
 
         let p = sprintf_findspec(fmt);
 
-        // strcspn: find the first character in p that is in pattern
         let p_cstr = std::ffi::CStr::from_ptr(p);
         let pat_cstr = std::ffi::CStr::from_ptr(pattern);
         let p_bytes = p_cstr.to_bytes();
         let pat_bytes = pat_cstr.to_bytes();
 
-        // Build a set of allowed chars from pattern
         let mut allowed = [false; 256];
         for &b in pat_bytes {
             allowed[b as usize] = true;
         }
 
-        // Check if the first character of p (the conversion specifier) is allowed
         if p_bytes.is_empty() {
-            return true; // error: no specifier
+            return true;
         }
         let spec = p_bytes[0] as usize;
         !allowed[spec]
@@ -370,22 +341,6 @@ unsafe fn c_strcat(dest: *mut c_char, src: *const c_char) {
 
 // ---------------------------------------------------------------------------
 // do_sprintf
-//
-// Port of R's do_sprintf from src/main/sprintf.c.
-//
-// .Internal(sprintf(fmt, ...))
-//
-// Processes a format string and substitutes arguments according to
-// printf-style format specifiers. Supports:
-//   - %d, %i, %o, %x, %X for integers
-//   - %f, %e, %E, %g, %G, %a, %A for reals
-//   - %s for strings
-//   - %% for literal percent
-//   - %n$ positional arguments
-//   - * width/precision with optional %n$ position
-//   - Recycling of shorter arguments
-//   - NA handling (NA_INTEGER -> "NA", NA_REAL -> "NA"/"NaN"/"Inf"/"-Inf")
-//   - Automatic type coercion on first use (real->int for %d, any->double for %f, etc.)
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
@@ -394,15 +349,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let mut nfmt: c_int = 0;
         let nprotect: c_int = 0;
 
-        // fmt2 is a copy of fmt with '*' expanded.
-        // bit will hold the result of each snprintf call.
         let mut fmt: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
         let mut fmt2: [c_char; MAXLINE + 10] = [0; MAXLINE + 10];
         let mut bit: [c_char; MAXLINE + 1] = [0; MAXLINE + 1];
 
         let format = CAR(args);
         if Rf_isString(format) == 0 {
-            return ptr::null_mut();
+            error(b"'fmt' is not a character vector\0".as_ptr() as *const c_char);
         }
         nfmt = LENGTH(format);
         if nfmt == 0 {
@@ -411,10 +364,9 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let args_rest = CDR(args);
         nargs = LENGTH(args_rest);
         if nargs as usize >= MAXNARGS {
-            return ptr::null_mut();
+            error(b"only 100 arguments are allowed\0".as_ptr() as *const c_char);
         }
 
-        // record the args for possible coercion and later re-ordering
         let mut a: [SEXP; MAXNARGS] = [ptr::null_mut(); MAXNARGS];
         let mut used: [bool; MAXNARGS] = [false; MAXNARGS];
         let mut lens: [c_int; MAXNARGS] = [0; MAXNARGS];
@@ -425,7 +377,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             a[i] = CAR(tmp_args);
             used[i] = false;
             if t_ai == LANGSXP || t_ai == SYMSXP {
-                return ptr::null_mut();
+                error(b"invalid type of argument\0".as_ptr() as *const c_char);
             }
             lens[i] = LENGTH(a[i]);
             if lens[i] == 0 {
@@ -434,7 +386,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             tmp_args = CDR(tmp_args);
         }
 
-        // CHECK_maxlen macro
         let mut maxlen: c_int = nfmt;
         for i in 0..nargs as usize {
             if maxlen < lens[i] {
@@ -442,22 +393,23 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             }
         }
         if maxlen != 0 && nfmt != 0 && maxlen % nfmt != 0 {
-            return ptr::null_mut();
+            error(b"arguments cannot be recycled to the same length\0".as_ptr() as *const c_char);
         }
         for i in 0..nargs as usize {
             if lens[i] != 0 && maxlen % lens[i] != 0 {
-                return ptr::null_mut();
+                error(
+                    b"arguments cannot be recycled to the same length\0".as_ptr() as *const c_char,
+                );
             }
         }
 
         let mut outbuff = get_outbuff();
 
-        // We do the format analysis a row at a time
         let mut ans: SEXP = ptr::null_mut();
 
         for ns in 0..maxlen as R_xlen_t {
             let outputString = R_AllocStringBuffer(0, &mut outbuff);
-            *outputString = 0; // NUL-terminate
+            *outputString = 0;
 
             let use_UTF8 = getCharCE(STRING_ELT(format, ns % nfmt as R_xlen_t)) == CE_UTF8;
 
@@ -468,10 +420,11 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             };
             let n = c_strlen(formatString);
             if n > MAXLINE {
-                return ptr::null_mut();
+                error(
+                    b"'fmt' length exceeds maximal format length 8192\0".as_ptr() as *const c_char,
+                );
             }
 
-            // process the format string
             let mut cur: usize = 0;
             let mut cnt: c_int = 0;
 
@@ -481,16 +434,12 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                 let chunk: usize;
 
                 if *curFormat == b'%' as c_char {
-                    // handle special format command
                     if cur < n - 1 && *curFormat.add(1) == b'%' as c_char {
-                        // take care of %% in the format
                         chunk = 2;
                         bit[0] = b'%' as c_char;
                         bit[1] = 0;
                     } else {
-                        // recognise selected types from Table B-1 of K&R
                         let spec_chars = b"diosfeEgGxXaA";
-                        // strcspn from curFormat+1
                         let mut skip: usize = 0;
                         {
                             let mut p = curFormat.add(1);
@@ -505,15 +454,14 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                 p = p.add(1);
                             }
                             if !found {
-                                skip = n - cur - 1; // rest of string
+                                skip = n - cur - 1;
                             }
                         }
                         chunk = skip + 2;
                         if cur + chunk > n {
-                            return ptr::null_mut();
+                            error(b"unrecognised format specification\0".as_ptr() as *const c_char);
                         }
 
-                        // Copy format spec into fmt
                         for j in 0..chunk {
                             fmt[j] = *curFormat.add(j);
                         }
@@ -521,7 +469,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
                         let mut nthis: c_int = -1;
 
-                        // now look for %n$ or %nn$ form
                         let fmt_len = c_strlen(fmt.as_ptr());
                         if fmt_len > 3 {
                             let c1 = fmt[1] as u8;
@@ -529,10 +476,10 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                 let mut v = (c1 - b'0') as c_int;
                                 if fmt[2] == b'$' as c_char {
                                     if v > nargs as c_int {
-                                        return ptr::null_mut();
+                                        error(b"reference to non-existent argument\0".as_ptr()
+                                            as *const c_char);
                                     }
                                     nthis = v - 1;
-                                    // memmove fmt+1, fmt+3, strlen(fmt)-2
                                     let move_len = fmt_len - 2;
                                     let mut j = 1usize;
                                     while j <= move_len {
@@ -549,10 +496,10 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     {
                                         v = 10 * v + (c2 - b'0') as c_int;
                                         if v > nargs as c_int {
-                                            return ptr::null_mut();
+                                            error(b"reference to non-existent argument\0".as_ptr()
+                                                as *const c_char);
                                         }
                                         nthis = v - 1;
-                                        // memmove fmt+1, fmt+4, strlen(fmt)-3
                                         let move_len = fmt_len - 3;
                                         let mut j = 1usize;
                                         while j <= move_len {
@@ -565,11 +512,9 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                             }
                         }
 
-                        // Handle * format if present
                         let mut has_star = false;
                         let mut star_arg: c_int = 0;
 
-                        // Find '*' within fmt array
                         let mut star_idx: Option<usize> = None;
                         for (idx, &ch) in fmt.iter().enumerate() {
                             if ch == 0 {
@@ -590,10 +535,10 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     let mut v = (c1 - b'0') as c_int;
                                     if fmt[si + 2] == b'$' as c_char {
                                         if v > nargs as c_int {
-                                            return ptr::null_mut();
+                                            error(b"reference to non-existent argument\0".as_ptr()
+                                                as *const c_char);
                                         }
                                         nstar = v - 1;
-                                        // memmove fmt[si+1..], fmt[si+3..], strlen(starc)-2
                                         let move_len = star_len - 2;
                                         let mut j = 1usize;
                                         while j <= move_len {
@@ -610,10 +555,12 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                         {
                                             v = 10 * v + (c2 - b'0') as c_int;
                                             if v > nargs as c_int {
-                                                return ptr::null_mut();
+                                                error(
+                                                    b"reference to non-existent argument\0".as_ptr()
+                                                        as *const c_char,
+                                                );
                                             }
                                             nstar = v - 1;
-                                            // memmove fmt[si+1..], fmt[si+4..], strlen(starc)-3
                                             let move_len = star_len - 3;
                                             let mut j = 1usize;
                                             while j <= move_len {
@@ -628,13 +575,12 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
                             if nstar < 0 {
                                 if cnt >= nargs {
-                                    return ptr::null_mut();
+                                    error(b"too few arguments\0".as_ptr() as *const c_char);
                                 }
                                 nstar = cnt;
                                 cnt += 1;
                             }
 
-                            // Check for at most one asterisk
                             {
                                 let mut found_second = false;
                                 for j in (si + 1)..fmt.len() {
@@ -647,14 +593,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     }
                                 }
                                 if found_second {
-                                    return ptr::null_mut();
+                                    error(b"at most one asterisk '*' is supported in each conversion specification\0".as_ptr() as *const c_char);
                                 }
                             }
 
                             let _this = a[nstar as usize];
                             used[nstar as usize] = true;
 
-                            // Coerce star arg to INTSXP if REALSXP on first use
                             if ns == 0 && TYPEOF(_this) == REALSXP {
                                 a[nstar as usize] = coerceVector(_this, INTSXP);
                             }
@@ -667,7 +612,11 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     .add((ns % this_len as R_xlen_t) as usize)
                                     == NA_INTEGER
                             {
-                                return ptr::null_mut();
+                                error(
+                                    b"argument for '*' conversion specification must be a number\0"
+                                        .as_ptr()
+                                        as *const c_char,
+                                );
                             }
                             star_arg = *INTEGER(a[nstar as usize])
                                 .add((ns % this_len as R_xlen_t) as usize);
@@ -676,7 +625,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
                         let fmt_len_now = c_strlen(fmt.as_ptr());
                         if fmt_len_now > 0 && fmt[fmt_len_now - 1] == b'%' as c_char {
-                            // handle % with formatting options
                             if has_star {
                                 let nc = libc::snprintf(
                                     bit.as_mut_ptr(),
@@ -685,7 +633,11 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     star_arg,
                                 );
                                 if nc > MAXLINE as c_int {
-                                    return ptr::null_mut();
+                                    error(
+                                        b"required resulting string length exceeds maximal 8192\0"
+                                            .as_ptr()
+                                            as *const c_char,
+                                    );
                                 }
                             } else {
                                 c_strcpy(bit.as_mut_ptr(), fmt.as_ptr());
@@ -695,7 +647,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
                             if nthis < 0 {
                                 if cnt >= nargs {
-                                    return ptr::null_mut();
+                                    error(b"too few arguments\0".as_ptr() as *const c_char);
                                 }
                                 nthis = cnt;
                                 cnt += 1;
@@ -706,7 +658,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
                             let fmtp: *const c_char;
                             if has_star {
-                                // Expand * in fmt to the actual value, storing in fmt2
                                 let mut q = fmt2.as_mut_ptr();
                                 let mut p = fmt.as_ptr();
                                 while *p != 0 {
@@ -726,27 +677,28 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                 *q = 0;
                                 let nf = c_strlen(fmt2.as_ptr());
                                 if nf > MAXLINE {
-                                    return ptr::null_mut();
+                                    error(
+                                        b"'fmt' length exceeds maximal format length 8192\0"
+                                            .as_ptr()
+                                            as *const c_char,
+                                    );
                                 }
                                 fmtp = fmt2.as_ptr();
                             } else {
                                 fmtp = fmt.as_ptr();
                             }
 
-                            // CHECK_this_length
                             let thislen = LENGTH(_this);
                             if thislen == 0 {
-                                return ptr::null_mut();
+                                error(b"coercion has changed vector length to 0\0".as_ptr()
+                                    as *const c_char);
                             }
 
-                            // Now let us see if some minimal coercion
-                            // would be sensible, but only do so once, for ns = 0:
                             if ns == 0 {
                                 let spec = *sprintf_findspec(fmtp);
                                 match spec as u8 {
                                     b'd' | b'i' | b'o' | b'x' | b'X' => {
                                         if TYPEOF(_this) == REALSXP {
-                                            // Check if all values are exactly integer
                                             let mut exactly_integer = true;
                                             let n_vals = XLENGTH(_this);
                                             for ii in 0..n_vals {
@@ -767,31 +719,35 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     }
                                     b'a' | b'A' | b'e' | b'f' | b'g' | b'E' | b'G' => {
                                         if TYPEOF(_this) != REALSXP && TYPEOF(_this) != STRSXP {
-                                            // Would need lang2(install("as.double"), _this) + eval
-                                            // just try coerceVector
                                             _this = coerceVector(_this, REALSXP);
                                             a[nthis as usize] = _this;
                                             let new_len = LENGTH(_this);
                                             if new_len == 0 {
-                                                return ptr::null_mut();
+                                                error(
+                                                    b"coercion has changed vector length to 0\0"
+                                                        .as_ptr()
+                                                        as *const c_char,
+                                                );
                                             }
                                             lens[nthis as usize] = new_len;
                                         }
                                     }
                                     b's' => {
                                         if TYPEOF(_this) != STRSXP {
-                                            // Would need lang2(R_AsCharacterSymbol, _this) + eval
-                                            // just try coerceVector
                                             _this = coerceVector(_this, STRSXP);
                                             a[nthis as usize] = _this;
                                             let new_len = LENGTH(_this);
                                             if new_len == 0 {
-                                                return ptr::null_mut();
+                                                error(
+                                                    b"coercion has changed vector length to 0\0"
+                                                        .as_ptr()
+                                                        as *const c_char,
+                                                );
                                             }
                                             lens[nthis as usize] = new_len;
                                         }
                                     }
-                                    _ => {} // intentionally unhandled: unknown format specifier type
+                                    _ => {}
                                 }
                             }
 
@@ -802,7 +758,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                     let x =
                                         *LOGICAL(_this).add((ns % thislen as R_xlen_t) as usize);
                                     if sprintf_checkfmt(fmtp, b"di\0".as_ptr() as *const c_char) {
-                                        return ptr::null_mut();
+                                        error(b"invalid format '%s'; use format %d or %i for logical objects\0".as_ptr() as *const c_char);
                                     }
                                     if x == NA_LOGICAL {
                                         let fmtp_len = c_strlen(fmtp);
@@ -815,13 +771,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                             b"NA\0".as_ptr(),
                                         );
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     } else {
                                         let nc =
                                             libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, x);
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     }
                                 }
@@ -830,7 +786,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                         *INTEGER(_this).add((ns % thislen as R_xlen_t) as usize);
                                     if sprintf_checkfmt(fmtp, b"dioxX\0".as_ptr() as *const c_char)
                                     {
-                                        return ptr::null_mut();
+                                        error(b"invalid format '%s'; use format %d, %i, %o, %x or %X for integer objects\0".as_ptr() as *const c_char);
                                     }
                                     if x == NA_INTEGER {
                                         let fmtp_len = c_strlen(fmtp);
@@ -843,13 +799,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                             b"NA\0".as_ptr(),
                                         );
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     } else {
                                         let nc =
                                             libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, x);
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     }
                                 }
@@ -859,21 +815,19 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                         fmtp,
                                         b"aAfeEgG\0".as_ptr() as *const c_char,
                                     ) {
-                                        return ptr::null_mut();
+                                        error(b"invalid format '%s'; use format %f, %e, %g or %a for numeric objects\0".as_ptr() as *const c_char);
                                     }
                                     if R_FINITE(x) {
                                         let nc =
                                             libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, x);
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     } else {
-                                        // Non-finite: NA, NaN, Inf, -Inf
                                         let dot = c_strchr(fmtp, b'.' as c_int);
                                         let fmtp_buf = fmt.as_mut_ptr();
                                         let fmtp_len = c_strlen(fmtp);
                                         if !dot.is_null() {
-                                            // Replace '.' with 's' and terminate
                                             let dot_off = dot.offset_from(fmtp) as usize;
                                             *fmtp_buf.add(dot_off) = b's' as c_char;
                                             *fmtp_buf.add(dot_off + 1) = 0;
@@ -913,7 +867,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                                 b"Inf\0".as_ptr() as *const c_char
                                             }
                                         } else {
-                                            // R_NegInf
                                             b"-Inf\0".as_ptr() as *const c_char
                                         };
 
@@ -924,13 +877,13 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                             na_str,
                                         );
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                     }
                                 }
                                 STRSXP => {
                                     if sprintf_checkfmt(fmtp, b"s\0".as_ptr() as *const c_char) {
-                                        return ptr::null_mut();
+                                        error(b"invalid format '%s'; use format %s for character objects\0".as_ptr() as *const c_char);
                                     }
 
                                     ss = if use_UTF8 {
@@ -942,7 +895,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                         translateChar(STRING_ELT(_this, ns % thislen as R_xlen_t))
                                     };
                                     if *fmtp.add(1) != b's' as c_char {
-                                        // Has width/precision: use snprintf
                                         if c_strlen(ss) > MAXLINE {
                                             warning(
                                             b"likely truncation of character string to %d characters\0"
@@ -954,20 +906,19 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                                         let nc =
                                             libc::snprintf(bit.as_mut_ptr(), MAXLINE + 1, fmtp, ss);
                                         if nc > MAXLINE as c_int {
-                                            return ptr::null_mut();
+                                            error(b"required resulting string length exceeds maximal 8192\0".as_ptr() as *const c_char);
                                         }
                                         bit[MAXLINE] = 0;
                                         ss = ptr::null();
                                     }
                                 }
                                 _ => {
-                                    return ptr::null_mut();
+                                    error(b"unsupported type\0".as_ptr() as *const c_char);
                                 }
                             }
                         }
                     }
                 } else {
-                    // not '%' : handle string part
                     let ch = c_strchr(curFormat, b'%' as c_int);
                     chunk = if !ch.is_null() {
                         (ch as usize) - (curFormat as usize)
@@ -980,7 +931,6 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                     bit[chunk] = 0;
                 }
 
-                // Append to output string
                 let append_str = if !ss.is_null() { ss } else { bit.as_ptr() };
                 let outputString = R_AllocStringBuffer(
                     (c_strlen(outputString) + c_strlen(append_str)) as i64,
@@ -989,16 +939,15 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                 c_strcat(outputString, append_str);
 
                 cur += chunk;
-            } // end for ( each chunk )
+            }
 
             if ns == 0 {
                 ans = Rf_allocVector(STRSXP, maxlen);
             }
             let ienc = if use_UTF8 { CE_UTF8 } else { CE_NATIVE };
             SET_STRING_ELT(ans, ns, mkCharCE(outputString, ienc));
-        } // end for(ns ...)
+        }
 
-        // Check for unused arguments and issue warnings
         let mut nunused: c_int = 0;
         for i in 0..nargs as usize {
             if !used[i] {
@@ -1021,7 +970,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                         0,
                     );
                 }
-                let _ = f; // suppress unused warning
+                let _ = f;
             } else {
                 if nunused == 1 {
                     warning(
@@ -1059,8 +1008,6 @@ mod tests {
             Err(err) => panic!("test setup failed: {err}"),
         }
     }
-
-    // --- sprintf_findspec tests ---
 
     #[test]
     fn test_findspec_percent_d() {
@@ -1151,8 +1098,6 @@ mod tests {
         }
     }
 
-    // --- sprintf_checkfmt tests ---
-
     #[test]
     fn test_checkfmt_valid_d() {
         unsafe {
@@ -1223,8 +1168,6 @@ mod tests {
         }
     }
 
-    // --- Helper function tests ---
-
     #[test]
     fn test_c_strlen() {
         unsafe {
@@ -1241,7 +1184,6 @@ mod tests {
             let s = test_ok(CString::new("hello"));
             let result = c_strchr(s.as_ptr(), b'l' as c_int);
             assert_eq!(*result, b'l' as c_char);
-            // Should point to first 'l'
             assert_eq!(result.offset_from(s.as_ptr()), 2);
         }
     }
@@ -1273,8 +1215,6 @@ mod tests {
         }
     }
 
-    // --- Constant tests ---
-
     #[test]
     fn test_maxline() {
         assert_eq!(MAXLINE, 8192);
@@ -1284,8 +1224,6 @@ mod tests {
     fn test_maxnargs() {
         assert_eq!(MAXNARGS, 100);
     }
-
-    // --- RStringBuffer tests ---
 
     #[test]
     fn test_rstring_buffer() {
