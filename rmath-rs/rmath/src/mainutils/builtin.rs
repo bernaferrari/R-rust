@@ -6,21 +6,19 @@ use crate::mainutils::coerce::{ISNAN, R_FINITE, asInteger, asLogical, asReal};
 use crate::mainutils::duplicate::{duplicate, shallow_duplicate};
 use crate::mainutils::relop::{PRIMNAME, checkArity};
 use crate::sexp::accessors::{
-    BODY, CADDR, CADR, CAR, CDR, CHAR, CLOENV, COMPLEX, ENCLOS, FORMALS, INTEGER, LENGTH, PRINTNAME, RAW, REAL, SET_BODY, SET_CLOENV, SET_ENCLOS, SET_FORMALS, SET_STRING_ELT,
-    SET_VECTOR_ELT, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
-    translateChar,
+    BODY, CADDR, CADR, CAR, CDR, CHAR, CLOENV, COMPLEX, ENCLOS, FORMALS, INTEGER, LENGTH,
+    PRINTNAME, RAW, REAL, SET_BODY, SET_CLOENV, SET_ENCLOS, SET_FORMALS, SET_STRING_ELT,
+    SET_VECTOR_ELT, SETCAR, SETCDR, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH, translateChar,
 };
 use crate::sexp::attrib_core::{getAttrib, setAttrib};
 use crate::sexp::constructors::{
-    Rf_allocVector, Rf_cons, Rf_isEnvironment, Rf_isString, Rf_isVectorAtomic,
-    Rf_length, Rf_mkString,
+    Rf_allocVector, Rf_cons, Rf_isEnvironment, Rf_isString, Rf_isVectorAtomic, Rf_length,
+    Rf_mkString,
 };
 use crate::sexp::context::{R_GlobalContext, ctxt_flags};
 use crate::sexp::envir::{R_findVarInFrame, defineVar, findFun, matchArgs_NR};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{
-    R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue,
-};
+use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::{allocFormalsList3, allocSExp, mkPROMISE};
 use crate::sexp::symbol::Rf_install;
 
@@ -34,18 +32,20 @@ unsafe fn error(msg: &str) {
     });
 }
 
-unsafe fn errorcall(_call: SEXP, msg: &str) { unsafe {
-    error(msg);
-}}
+unsafe fn errorcall(_call: SEXP, msg: &str) {
+    unsafe {
+        error(msg);
+    }
+}
 
 unsafe fn warningcall(_call: SEXP, msg: &str) {
     // In embedded mode, warnings are logged but not fatal
     let _ = msg;
 }
 
-unsafe fn isNull(x: SEXP) -> bool { unsafe {
-    crate::sexp::accessors::Rf_isNull(x) != 0
-}}
+unsafe fn isNull(x: SEXP) -> bool {
+    unsafe { crate::sexp::accessors::Rf_isNull(x) != 0 }
+}
 
 unsafe fn installTrChar(x: SEXP) -> SEXP {
     unsafe {
@@ -68,12 +68,14 @@ unsafe fn listAppend(s: SEXP, t: SEXP) -> SEXP {
     }
 }
 
-unsafe fn RAISE_NAMED(x: SEXP, v: c_int) { unsafe {
-    let n = crate::sexp::accessors::NAMED(x);
-    if n < v {
-        crate::sexp::accessors::SET_NAMED(x, v);
+unsafe fn RAISE_NAMED(x: SEXP, v: c_int) {
+    unsafe {
+        let n = crate::sexp::accessors::NAMED(x);
+        if n < v {
+            crate::sexp::accessors::SET_NAMED(x, v);
+        }
     }
-}}
+}
 
 fn na_str() -> *const c_char {
     b"NA\0".as_ptr() as *const c_char as *const c_char

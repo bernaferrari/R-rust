@@ -18,7 +18,8 @@
 use std::ffi::CString;
 
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_lang2, Rf_lang3, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_lang2, Rf_lang3, Rf_mkNAString,
+    Rf_mkString,
 };
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
@@ -140,17 +141,15 @@ impl Lexer {
             '+' => Token::Plus,
             '-' => Token::Minus,
             '*' => Token::Star,
-            '/' => {
-                if self.peek_char() == Some('%') {
-                    self.advance();
-                    Token::SlashPercent
-                } else {
-                    Token::Slash
-                }
-            }
+            '/' => Token::Slash,
             '^' => Token::Caret,
             '%' => {
-                if self.peek_char() == Some('%') {
+                if self.peek_char() == Some('/') && self.peek_char_at(1) == Some('%') {
+                    // %/% integer division — consume /%
+                    self.advance(); // skip /
+                    self.advance(); // skip %
+                    Token::SlashPercent
+                } else if self.peek_char() == Some('%') {
                     self.advance();
                     Token::Percent
                 } else {
@@ -218,6 +217,10 @@ impl Lexer {
         };
     }
 
+    fn peek_char_at(&self, offset: usize) -> Option<char> {
+        self.chars.get(self.pos + offset).copied()
+    }
+
     fn peek_digit_at(&self, offset: usize) -> bool {
         self.chars
             .get(self.pos + offset)
@@ -243,9 +246,10 @@ impl Lexer {
                 s.push(ch);
                 self.advance();
                 if (self.peek_char() == Some('+') || self.peek_char() == Some('-'))
-                    && let Some(sign) = self.advance() {
-                        s.push(sign);
-                    }
+                    && let Some(sign) = self.advance()
+                {
+                    s.push(sign);
+                }
             } else if ch == 'L' {
                 self.advance();
                 if let Ok(v) = s.parse::<i32>() {
@@ -672,10 +676,7 @@ impl Parser {
                     "NaN" => unsafe { Ok(Rf_ScalarReal(f64::NAN)) },
                     "NA_real_" => unsafe { Ok(Rf_ScalarReal(crate::sexp::ffi::NA_REAL)) },
                     "NA_integer_" => unsafe { Ok(Rf_ScalarInteger(crate::sexp::ffi::NA_INTEGER)) },
-                    "NA_character_" => unsafe {
-                        let c_na = CString::new("NA").unwrap_or_default();
-                        Ok(Rf_mkString(c_na.as_ptr()))
-                    },
+                    "NA_character_" => unsafe { Ok(Rf_mkNAString()) },
                     _ => unsafe {
                         let sym =
                             Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
@@ -899,6 +900,22 @@ mod tests {
     }
 
     #[test]
+    fn test_na_character() {
+        unsafe {
+            let na_chr = must(parse_str("NA_character_"));
+            // NA_character_ is a STRSXP, not a string "NA"
+            assert_eq!(TYPEOF(na_chr), SEXPTYPE::STRSXP.0);
+            assert_eq!(crate::sexp::accessors::LENGTH(na_chr), 1);
+            // Its element should be NA_STRING (gp bit set)
+            let elt = crate::sexp::accessors::STRING_ELT(na_chr, 0);
+            assert!(!elt.is_null());
+            assert_eq!(crate::sexp::accessors::TYPEOF(elt), SEXPTYPE::CHARSXP.0);
+            // NA_STRING has gp field set to 1
+            assert_eq!((*elt).sxpinfo.gp(), 1);
+        }
+    }
+
+    #[test]
     fn test_power() {
         unsafe {
             let result = must(parse_str("2^3"));
@@ -917,6 +934,27 @@ mod tests {
 
             let not = must(parse_str("!x"));
             assert_eq!(TYPEOF(not), SEXPTYPE::LANGSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_integer_div() {
+        unsafe {
+            // %/% should parse as a single token, not two
+            let result = must(parse_str("5 %/% 2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            let op = CAR(result);
+            assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP.0);
+        }
+    }
+
+    #[test]
+    fn test_modulus() {
+        unsafe {
+            let result = must(parse_str("5 %% 2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            let op = CAR(result);
+            assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP.0);
         }
     }
 

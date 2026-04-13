@@ -284,18 +284,19 @@ impl RArena {
                     if total_bytes > 0
                         && let Ok(layout) =
                             Layout::from_size_align(total_bytes, std::mem::align_of::<u64>())
-                        {
-                            dealloc(data_ptr, layout);
-                            self.data_bufs.retain(|(p, _)| *p != data_ptr);
-                        }
+                    {
+                        dealloc(data_ptr, layout);
+                        self.data_bufs.retain(|(p, _)| *p != data_ptr);
+                    }
                 } else if sexptype == SEXPTYPE::CHARSXP {
                     let truelen = (*ptr).data.charsxp_truelen;
                     let total_bytes = (truelen as usize).saturating_add(1);
                     if total_bytes > 0
-                        && let Ok(layout) = Layout::from_size_align(total_bytes, 1) {
-                            dealloc(data_ptr, layout);
-                            self.data_bufs.retain(|(p, _)| *p != data_ptr);
-                        }
+                        && let Ok(layout) = Layout::from_size_align(total_bytes, 1)
+                    {
+                        dealloc(data_ptr, layout);
+                        self.data_bufs.retain(|(p, _)| *p != data_ptr);
+                    }
                 }
             }
         }

@@ -634,7 +634,6 @@ struct AltrepClassMethods {
     coerce: AltrepCoerceMethod,
 }
 
-
 thread_local! {
     static ALTREP_METHODS: RefCell<HashMap<usize, AltrepClassMethods>> = RefCell::new(HashMap::new());
 }

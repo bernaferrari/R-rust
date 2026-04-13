@@ -136,6 +136,23 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
     }
 }
 
+/// Create a scalar STRSXP containing NA_STRING (R's NA_character_).
+///
+/// This is the R literal `NA_character_` — a length-1 STRSXP whose sole
+/// element is the NA_STRING sentinel. `is.na()` on this returns TRUE,
+/// unlike the string `"NA"` which is a normal string value.
+pub unsafe fn Rf_mkNAString() -> SEXP {
+    unsafe {
+        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        if strsxp.is_null() {
+            return ptr::null_mut();
+        }
+        let data = (*strsxp).gengc_next_node as *mut SEXP;
+        *data = super::globals::R_NaString();
+        strsxp
+    }
+}
+
 /// Create a scalar logical value.
 pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
     unsafe {

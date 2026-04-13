@@ -41,30 +41,34 @@ static mut WORKSPACE_NAME: *mut c_char = ptr::null_mut();
 static DEFAULT_WORKSPACE_BYTES: &[u8] = b".RData\0";
 
 // Get current workspace name (as C string pointer).
-pub unsafe fn get_workspace_name() -> *const c_char { unsafe {
-    if WORKSPACE_NAME.is_null() {
-        // Default value as in the original C source
-        DEFAULT_WORKSPACE_BYTES.as_ptr() as *const c_char
-    } else {
-        WORKSPACE_NAME
+pub unsafe fn get_workspace_name() -> *const c_char {
+    unsafe {
+        if WORKSPACE_NAME.is_null() {
+            // Default value as in the original C source
+            DEFAULT_WORKSPACE_BYTES.as_ptr() as *const c_char
+        } else {
+            WORKSPACE_NAME
+        }
     }
-}}
+}
 
 // Set workspace name. The previous name, if any, is discarded.
-pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool { unsafe {
-    if fn_ptr.is_null() {
-        return false;
+pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool {
+    unsafe {
+        if fn_ptr.is_null() {
+            return false;
+        }
+        if let Ok(new_name) = CStr::from_ptr(fn_ptr).to_str() {
+            // Free previous if needed (best-effort; we leak here to keep it simple and
+            // avoid unsafe deallocation semantics around lifetime management in this port).
+            let cs = CString::new(new_name).unwrap_or_default();
+            WORKSPACE_NAME = cs.into_raw();
+            true
+        } else {
+            false
+        }
     }
-    if let Ok(new_name) = CStr::from_ptr(fn_ptr).to_str() {
-        // Free previous if needed (best-effort; we leak here to keep it simple and
-        // avoid unsafe deallocation semantics around lifetime management in this port).
-        let cs = CString::new(new_name).unwrap_or_default();
-        WORKSPACE_NAME = cs.into_raw();
-        true
-    } else {
-        false
-    }
-}}
+}
 
 // ---------------------------------------------------------------------------
 // Core entry points (C -> Rust translations)
@@ -91,92 +95,100 @@ pub unsafe fn R_SaveGlobalEnv() {
 
 // Open a library file from the standard R library path.
 // Builds the path: <R_HOME>/library/base/R/<file> and opens it for reading.
-pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut FILE { unsafe {
-    if file.is_null() {
-        return ptr::null_mut();
-    }
-    let file_str = match CStr::from_ptr(file).to_str() {
-        Ok(s) => s,
-        Err(_) => return ptr::null_mut(),
-    };
-
-    if let Some(home) = R_HomeDir() {
-        let path = format!("{}/library/base/R/{}", home, file_str);
-        if let Ok(cpath) = CString::new(path) {
-            return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+pub unsafe fn R_OpenLibraryFile(file: *const c_char) -> *mut FILE {
+    unsafe {
+        if file.is_null() {
+            return ptr::null_mut();
         }
+        let file_str = match CStr::from_ptr(file).to_str() {
+            Ok(s) => s,
+            Err(_) => return ptr::null_mut(),
+        };
+
+        if let Some(home) = R_HomeDir() {
+            let path = format!("{}/library/base/R/{}", home, file_str);
+            if let Ok(cpath) = CString::new(path) {
+                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+            }
+        }
+        ptr::null_mut()
     }
-    ptr::null_mut()
-}}
+}
 
 // Write a fully-qualified library file path into the provided buffer.
 pub unsafe fn R_LibraryFileName(
     file: *const c_char,
     buf: *mut c_char,
     bsize: usize,
-) -> *mut c_char { unsafe {
-    if file.is_null() || buf.is_null() {
-        return ptr::null_mut();
-    }
-    let file_str = match CStr::from_ptr(file).to_str() {
-        Ok(s) => s,
-        Err(_) => return buf,
-    };
-    let home = match R_HomeDir() {
-        Some(h) => h,
-        None => return buf,
-    };
-    let path = format!("{}/library/base/R/{}", home, file_str);
-    let bytes = path.as_bytes();
-    let max = if bytes.len() < bsize {
-        bytes.len()
-    } else {
-        bsize.saturating_sub(1)
-    };
-    ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, max);
-    *buf.add(max) = 0;
-    buf
-}}
-
-// Open the R profile init file (Rprofile) in the system.
-pub unsafe fn R_OpenSysInitFile() -> *mut FILE { unsafe {
-    if let Some(home) = R_HomeDir() {
-        let path = format!("{}/library/base/R/Rprofile", home);
-        if let Ok(cpath) = CString::new(path) {
-            return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
-        }
-    }
-    ptr::null_mut()
-}}
-
-// Open the site init file (Rprofile.site) if enabled.
-pub unsafe fn R_OpenSiteFile() -> *mut FILE { unsafe {
-    // Simple, straightforward implementation mirroring the C logic but without
-    // complex expansion/ARCH handling.
-    // Check environment variable first, then fall back to R_HOME/etc.
-    // LoadSiteFile flag is always true in this port unless explicitly disabled.
-    #[allow(unused_mut)]
-    let mut _load_site = true;
-    if !_load_site {
-        return ptr::null_mut();
-    }
-
-    if let Ok(p) = std::env::var("R_PROFILE") {
-        if p.is_empty() {
+) -> *mut c_char {
+    unsafe {
+        if file.is_null() || buf.is_null() {
             return ptr::null_mut();
         }
-        if let Ok(cpath) = CString::new(p) {
-            return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
-        }
+        let file_str = match CStr::from_ptr(file).to_str() {
+            Ok(s) => s,
+            Err(_) => return buf,
+        };
+        let home = match R_HomeDir() {
+            Some(h) => h,
+            None => return buf,
+        };
+        let path = format!("{}/library/base/R/{}", home, file_str);
+        let bytes = path.as_bytes();
+        let max = if bytes.len() < bsize {
+            bytes.len()
+        } else {
+            bsize.saturating_sub(1)
+        };
+        ptr::copy_nonoverlapping(bytes.as_ptr(), buf as *mut u8, max);
+        *buf.add(max) = 0;
+        buf
     }
-    if let Some(home) = R_HomeDir() {
-        let path = format!("{}/etc/Rprofile.site", home);
-        if let Ok(cpath) = CString::new(path) {
-            return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+}
+
+// Open the R profile init file (Rprofile) in the system.
+pub unsafe fn R_OpenSysInitFile() -> *mut FILE {
+    unsafe {
+        if let Some(home) = R_HomeDir() {
+            let path = format!("{}/library/base/R/Rprofile", home);
+            if let Ok(cpath) = CString::new(path) {
+                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+            }
         }
+        ptr::null_mut()
     }
-    ptr::null_mut()
-}}
+}
+
+// Open the site init file (Rprofile.site) if enabled.
+pub unsafe fn R_OpenSiteFile() -> *mut FILE {
+    unsafe {
+        // Simple, straightforward implementation mirroring the C logic but without
+        // complex expansion/ARCH handling.
+        // Check environment variable first, then fall back to R_HOME/etc.
+        // LoadSiteFile flag is always true in this port unless explicitly disabled.
+        #[allow(unused_mut)]
+        let mut _load_site = true;
+        if !_load_site {
+            return ptr::null_mut();
+        }
+
+        if let Ok(p) = std::env::var("R_PROFILE") {
+            if p.is_empty() {
+                return ptr::null_mut();
+            }
+            if let Ok(cpath) = CString::new(p) {
+                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+            }
+        }
+        if let Some(home) = R_HomeDir() {
+            let path = format!("{}/etc/Rprofile.site", home);
+            if let Ok(cpath) = CString::new(path) {
+                return libc::fopen(cpath.as_ptr(), b"r\0".as_ptr() as *const c_char);
+            }
+        }
+        ptr::null_mut()
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Initialization helpers (minimal, self-contained implementations)
@@ -190,9 +202,11 @@ pub unsafe fn R_DefParamsEx(_Rp: *mut c_void, _RstartVersion: c_int) -> c_int {
 }
 
 // Define default startup parameters.
-pub unsafe fn R_DefParams(_Rp: *mut c_void) { unsafe {
-    let _ = R_DefParamsEx(_Rp, 0);
-}}
+pub unsafe fn R_DefParams(_Rp: *mut c_void) {
+    unsafe {
+        let _ = R_DefParamsEx(_Rp, 0);
+    }
+}
 
 // Process environment-driven size hints for vectors and language/runtime heaps.
 pub unsafe fn R_SizeFromEnv(_Rp: *mut c_void) {

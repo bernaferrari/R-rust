@@ -271,6 +271,33 @@ pub unsafe fn R_False() -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
+// NA_STRING sentinel
+// ---------------------------------------------------------------------------
+
+/// R_NaString: the NA_STRING sentinel (a special CHARSXP with NA bit in gp).
+static NA_STRING_PTR: OnceLock<usize> = OnceLock::new();
+
+/// Get a pointer to R's NA_STRING — a CHARSXP sentinel representing NA.
+///
+/// In R, `NA_character_` is a STRSXP of length 1 whose sole element is this
+/// sentinel. The sentinel itself has type CHARSXP and the NA bit set in its
+/// gp field.
+pub unsafe fn R_NaString() -> SEXP {
+    *NA_STRING_PTR.get_or_init(|| {
+        let mut info = SxpInfo::new(SEXPTYPE::CHARSXP);
+        // Set gp=1 to mark as NA (R's convention for NA_STRING)
+        info.set_gp(1);
+        Box::into_raw(Box::new(SexprecCore {
+            sxpinfo: info,
+            attrib: ptr::null_mut(),
+            gengc_next_node: ptr::null_mut(),
+            gengc_prev_node: ptr::null_mut(),
+            data: SexprecData::default(),
+        })) as usize
+    }) as SEXP
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

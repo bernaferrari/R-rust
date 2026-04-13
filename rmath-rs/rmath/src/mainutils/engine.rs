@@ -457,18 +457,20 @@ pub unsafe fn GEMetricInfo(
     descent: *mut c_double,
     width: *mut c_double,
     dd: *mut c_void,
-) { unsafe {
-    // Headless: return sensible defaults to enable layout in headless mode.
-    if !ascent.is_null() {
-        *ascent = 0.8;
+) {
+    unsafe {
+        // Headless: return sensible defaults to enable layout in headless mode.
+        if !ascent.is_null() {
+            *ascent = 0.8;
+        }
+        if !descent.is_null() {
+            *descent = 0.2;
+        }
+        if !width.is_null() {
+            *width = 0.5;
+        }
     }
-    if !descent.is_null() {
-        *descent = 0.2;
-    }
-    if !width.is_null() {
-        *width = 0.5;
-    }
-}}
+}
 
 // ---------------------------------------------------------------------------
 // GEStrWidth

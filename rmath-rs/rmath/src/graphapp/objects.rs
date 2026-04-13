@@ -222,16 +222,19 @@ unsafe fn update_app_globals(obj: object) {
 unsafe fn free_private(obj: object) {
     unsafe {
         remove_object(obj);
-        if !(*obj).call.is_null() && !(*(*obj).call).die.is_none()
-            && let Some(die) = (*(*obj).call).die {
-                die(obj);
-            }
+        if !(*obj).call.is_null()
+            && !(*(*obj).call).die.is_none()
+            && let Some(die) = (*(*obj).call).die
+        {
+            die(obj);
+        }
         update_app_globals(obj);
         // del_context(obj); // handled by context module
         if !(*obj).die.is_none()
-            && let Some(die) = (*obj).die {
-                die(obj);
-            }
+            && let Some(die) = (*obj).die
+        {
+            die(obj);
+        }
         remove_deleted_object(obj);
     }
 }
@@ -372,9 +375,10 @@ pub unsafe fn remove_menu_item(obj: object) {
             return;
         }
         if !(*obj).die.is_none()
-            && let Some(die) = (*obj).die {
-                die(obj);
-            }
+            && let Some(die) = (*obj).die
+        {
+            die(obj);
+        }
         remove_object(obj);
         remove_deleted_object(obj);
     }

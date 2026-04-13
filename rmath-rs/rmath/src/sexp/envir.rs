@@ -56,9 +56,10 @@ pub fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> LookupResu
 
     // Fast path: check hash table if one exists
     if super::env_hash::env_has_hash_table(rho.as_raw())
-        && let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw()) {
-            return Some(unsafe { Sexp::from_raw_unchecked(val) });
-        }
+        && let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw())
+    {
+        return Some(unsafe { Sexp::from_raw_unchecked(val) });
+    }
 
     let frame = rho.frame()?;
 
