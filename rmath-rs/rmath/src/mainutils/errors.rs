@@ -665,6 +665,71 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Handler dispatch for tryCatch/withCallingHandlers support
+// ---------------------------------------------------------------------------
+
+unsafe fn findSimpleErrorHandler() -> SEXP {
+    let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
+    while !list.is_null() && list != globals::R_NilValue() {
+        let entry = unsafe { CAR(list) };
+        let class_ptr = unsafe { CHAR(ENTRY_CLASS(entry)) };
+        if !class_ptr.is_null() {
+            let class_str = unsafe { CStr::from_ptr(class_ptr) }.to_bytes();
+            if class_str == b"simpleError" || class_str == b"error" || class_str == b"condition" {
+                return list;
+            }
+        }
+        list = unsafe { CDR(list) };
+    }
+    globals::R_NilValue()
+}
+
+unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
+    let result = ENTRY_RETURN_RESULT(entry);
+    SET_VECTOR_ELT(result, 0, cond);
+    SET_VECTOR_ELT(result, 1, call);
+    SET_VECTOR_ELT(result, 2, ENTRY_HANDLER(entry));
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: "exiting handler".to_string(),
+    });
+}
+
+unsafe fn vsignalError(call: SEXP, format: *const c_char) {
+    let localbuf = if format.is_null() {
+        String::new()
+    } else {
+        CStr::from_ptr(format).to_str().unwrap_or("").to_string()
+    };
+
+    let mut list = findSimpleErrorHandler();
+    while !list.is_null() && list != globals::R_NilValue() {
+        let entry = unsafe { CAR(list) };
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = unsafe { CDR(list) };
+        });
+        if unsafe { IS_CALLING_ENTRY(entry) } != 0 {
+            if ENTRY_HANDLER(entry) == globals::R_RestartToken() {
+                break;
+            }
+            let hooksym = Rf_install(b".handleSimpleError\0".as_ptr() as *const c_char);
+            let msg_cstr = std::ffi::CString::new(localbuf.as_str()).unwrap_or_default();
+            let msg_sexp = Rf_mkString(msg_cstr.as_ptr());
+            crate::sexp::protect::Rf_protect(msg_sexp);
+            let handler = ENTRY_HANDLER(entry);
+            let inner = Rf_lang2(handler, msg_sexp);
+            crate::sexp::protect::Rf_protect(inner);
+            let hcall = Rf_lang3(hooksym, inner, call);
+            crate::sexp::protect::Rf_protect(hcall);
+            let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
+            crate::sexp::protect::Rf_unprotect(3);
+        } else {
+            gotoExitingHandler(globals::R_NilValue(), call, entry);
+        }
+        list = findSimpleErrorHandler();
+    }
+}
+
 /// Report an error with a call.
 ///
 /// This is the equivalent of R's `errorcall()`.
@@ -675,6 +740,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
 /// It does not return — it panics with an RError payload.
 pub fn errorcall(call: SEXP, format: *const c_char) {
     unsafe {
+        vsignalError(call, format);
         verrorcall_dflt(call, format, ptr::null_mut());
     }
 }
