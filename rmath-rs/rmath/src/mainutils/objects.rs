@@ -558,7 +558,7 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
 
 /// Apply a method (SPECIALSXP, BUILTINSXP, or CLOSXP) with given arguments.
 /// Note: This is a simplified version. Full implementation requires eval infrastructure.
-unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, _newvars: SEXP) -> SEXP {
+unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP) -> SEXP {
     unsafe {
         if op.is_null() || op == R_NilValue() {
             return R_NilValue();
@@ -566,20 +566,18 @@ unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, _newvars: SEX
 
         let t = TYPEOF(op);
         if t == SEXPTYPE::SPECIALSXP.0 as c_int {
-            // Special: args are already matched
             let primfun = crate::eval::builtin::PRIMFUN(op);
             if let Some(fn_ptr) = primfun {
                 return fn_ptr(call, op, args, rho);
             }
         } else if t == SEXPTYPE::BUILTINSXP.0 as c_int {
-            // Builtin: evaluate args first
-            // Simplified: just call the primitive directly
+            let evald_args = crate::eval::dispatch::evalList(args, rho, call, 0);
             let primfun = crate::eval::builtin::PRIMFUN(op);
             if let Some(fn_ptr) = primfun {
-                return fn_ptr(call, op, args, rho);
+                return fn_ptr(call, op, evald_args, rho);
             }
         } else if t == SEXPTYPE::CLOSXP.0 as c_int {
-            return crate::eval::closure::applyClosure(call, op, args, rho, rho, 0);
+            return crate::eval::closure::applyClosure(call, op, args, newvars, rho, 0);
         }
 
         R_NilValue()
