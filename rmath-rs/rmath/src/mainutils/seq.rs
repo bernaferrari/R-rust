@@ -91,6 +91,11 @@ unsafe fn warningcall(call: SEXP, format: *const c_char) {
     unsafe { crate::mainutils::errors::warningcall(call, format) }
 }
 
+unsafe fn error(msg: &str) {
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    crate::mainutils::errors::errorcall(std::ptr::null_mut(), c_msg.as_ptr() as *const c_char);
+}
+
 unsafe fn R_typeToChar(_s: SEXP) -> *const c_char {
     ptr::null()
 }
@@ -1430,7 +1435,10 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         x = CAR(args);
 
         if TYPEOF(x) == LISTSXP_VAL {
-            return ptr::null_mut();
+            errorcall(
+                call,
+                b"replication of pairlists is defunct\0".as_ptr() as *const c_char,
+            );
         }
 
         let lx = XLENGTH(x);
@@ -1441,7 +1449,10 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let slen = asReal(length_out_arg);
             if R_FINITE(slen) {
                 if slen <= -1.0 || slen >= R_XLEN_T_MAX_DBL + 1.0 {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"invalid 'length.out' argument\0".as_ptr() as *const c_char,
+                    );
                 }
                 len = slen as R_xlen_t;
             } else {
@@ -1450,7 +1461,10 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             len = asInteger(length_out_arg) as R_xlen_t;
             if len != NA_INTEGER as R_xlen_t && len < 0 {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"invalid 'length.out' argument\0".as_ptr() as *const c_char,
+                );
             }
         }
 
@@ -1460,7 +1474,7 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let seach = asReal(each_arg);
             if R_FINITE(seach) {
                 if seach <= -1.0 || (lx > 0 && seach >= R_XLEN_T_MAX_DBL + 1.0) {
-                    return ptr::null_mut();
+                    errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
                 }
                 each = if lx == 0 {
                     NA_INTEGER as R_xlen_t
@@ -1473,7 +1487,7 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             each = asInteger(each_arg) as R_xlen_t;
             if each != NA_INTEGER as R_xlen_t && each < 0 {
-                return ptr::null_mut();
+                errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
             }
         }
         if each == NA_INTEGER as R_xlen_t {
@@ -1490,7 +1504,11 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if isVector(x) == 0 {
-            return ptr::null_mut();
+            errorcall(
+                call,
+                b"attempt to replicate an object of type 'not-a-vector'\0".as_ptr()
+                    as *const c_char,
+            );
         }
 
         // Determine final length using 'times' and 'each'
@@ -1512,28 +1530,43 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 if TYPEOF(times) == REALSXP_VAL {
                     let rt = *REAL(times);
                     if ISNAN(rt) || rt <= -1.0 || rt >= R_XLEN_T_MAX_DBL + 1.0 {
-                        return ptr::null_mut();
+                        errorcall(
+                            call,
+                            b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                        );
                     }
                     it = rt as R_xlen_t;
                 } else {
                     it = *INTEGER(times) as R_xlen_t;
                     if it as c_int == NA_INTEGER || it < 0 {
-                        return ptr::null_mut();
+                        errorcall(
+                            call,
+                            b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                        );
                     }
                 }
                 if lx as c_double * it as c_double * each as c_double > R_XLEN_T_MAX_DBL {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"length(x) * 'times' * 'each' is too large\0".as_ptr() as *const c_char,
+                    );
                 }
                 len = lx * it * each;
             } else {
                 if nt as c_double != lx as c_double * each as c_double {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                    );
                 }
                 if TYPEOF(times) == REALSXP_VAL {
                     for i in 0..nt {
                         let rt = *REAL(times).add(i as usize);
                         if ISNAN(rt) || rt <= -1.0 || rt >= R_XLEN_T_MAX_DBL + 1.0 {
-                            return ptr::null_mut();
+                            errorcall(
+                                call,
+                                b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                            );
                         }
                         sum += rt as R_xlen_t as c_double;
                     }
@@ -1541,20 +1574,26 @@ pub unsafe fn do_rep(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     for i in 0..nt {
                         let it = *INTEGER(times).add(i as usize);
                         if it == NA_INTEGER || it < 0 {
-                            return ptr::null_mut();
+                            errorcall(
+                                call,
+                                b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                            );
                         }
                         sum += it as c_double;
                     }
                 }
                 if sum > R_XLEN_T_MAX_DBL {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"invalid 'times' argument\0".as_ptr() as *const c_char,
+                    );
                 }
                 len = sum as R_xlen_t;
             }
         }
 
         if len > 0 && each == 0 {
-            return ptr::null_mut();
+            errorcall(call, b"invalid 'each' argument\0".as_ptr() as *const c_char);
         }
 
         let xn = getAttrib(x, R_NamesSymbol());
@@ -1625,7 +1664,10 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if lf == 1 && (TYPEOF(from) == INTSXP_VAL || TYPEOF(from) == REALSXP_VAL) {
                 let rfrom = asReal(from);
                 if !R_FINITE(rfrom) {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'from' must be a finite number\0".as_ptr() as *const c_char,
+                    );
                 }
                 ans = seq_colon(1.0, rfrom, call);
             } else if lf > 0 {
@@ -1651,14 +1693,23 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else if len_arg != R_MissingArg() && len_arg != R_NilValue() {
             let mut rout = asReal(len_arg);
             if !R_FINITE(rout) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'length.out' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             if ISNAN(rout) || rout <= -0.5 {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'length.out' must be a non-negative number\0".as_ptr() as *const c_char,
+                );
             }
             rout = rout.ceil();
             if rout >= R_XLEN_T_MAX_DBL {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"result would be too long a vector\0".as_ptr() as *const c_char,
+                );
             }
             lout = rout as R_xlen_t;
         }
@@ -1669,11 +1720,17 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 1.0
             } else {
                 if LENGTH(from) != 1 {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'from' must be of length 1\0".as_ptr() as *const c_char,
+                    );
                 }
                 let v = asReal(from);
                 if !R_FINITE(v) {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'from' must be a finite number\0".as_ptr() as *const c_char,
+                    );
                 }
                 v
             };
@@ -1682,11 +1739,17 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 1.0
             } else {
                 if LENGTH(to) != 1 {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'to' must be of length 1\0".as_ptr() as *const c_char,
+                    );
                 }
                 let v = asReal(to);
                 if !R_FINITE(v) {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'to' must be a finite number\0".as_ptr() as *const c_char,
+                    );
                 }
                 v
             };
@@ -1696,7 +1759,10 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             } else {
                 // 'by' specified
                 if LENGTH(by) != 1 {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'by' must be of length 1\0".as_ptr() as *const c_char,
+                    );
                 }
                 let del = rto - rfrom;
                 if del == 0.0 && rto == 0.0 {
@@ -1717,17 +1783,26 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     if del == 0.0 && rby == 0.0 {
                         return if miss_from { ScalarReal(rfrom) } else { from };
                     } else {
-                        return ptr::null_mut();
+                        errorcall(
+                            call,
+                            b"invalid '(to - from)/by'\0".as_ptr() as *const c_char,
+                        );
                     }
                 }
                 if finite_del && del.abs() / fmax2(rto.abs(), rfrom.abs()) < 100.0 * DBL_EPSILON_C {
                     return if miss_from { ScalarReal(rfrom) } else { from };
                 }
                 if n > 100.0 * INT_MAX_C {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"'by' argument is much too small\0".as_ptr() as *const c_char,
+                    );
                 }
                 if n < -FEPS {
-                    return ptr::null_mut();
+                    errorcall(
+                        call,
+                        b"wrong sign in 'by' argument\0".as_ptr() as *const c_char,
+                    );
                 }
 
                 if (!miss_from || TYPEOF(from) == INTSXP_VAL)
@@ -1786,10 +1861,16 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rfrom = rto - (lout as c_double) + 1.0;
             }
             if !R_FINITE(rfrom) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'from' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             if !R_FINITE(rto) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'to' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             let mut finite_del = false;
             if lout > 2 {
@@ -1848,10 +1929,16 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 rfrom = 1.0;
             }
             if !R_FINITE(rfrom) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'from' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             if !R_FINITE(rby) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'by' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             let rto = rfrom + (lout - 1) as c_double * rby;
             if rfrom <= INT_MAX_C
@@ -1877,10 +1964,16 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let rby = asReal(by);
             let rfrom = rto - (lout - 1) as c_double * rby;
             if !R_FINITE(rto) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'to' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             if !R_FINITE(rby) {
-                return ptr::null_mut();
+                errorcall(
+                    call,
+                    b"'by' must be a finite number\0".as_ptr() as *const c_char,
+                );
             }
             if rby == rby as c_int as c_double
                 && rto == rto as c_int as c_double
@@ -1902,7 +1995,7 @@ pub unsafe fn do_seq(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         } else {
             // Too many arguments
-            return ptr::null_mut();
+            errorcall(call, b"too many arguments\0".as_ptr() as *const c_char);
         }
 
         ans
@@ -1947,10 +2040,16 @@ pub unsafe fn do_seq_len(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let dlen = asReal(CAR(args));
         if !R_FINITE(dlen) || dlen < 0.0 {
-            return ptr::null_mut();
+            errorcall(
+                call,
+                b"argument must be coercible to non-negative integer\0".as_ptr() as *const c_char,
+            );
         }
         if dlen >= R_XLEN_T_MAX_DBL {
-            return ptr::null_mut();
+            errorcall(
+                call,
+                b"result would be too long a vector\0".as_ptr() as *const c_char,
+            );
         }
         let len = dlen as R_xlen_t;
 
@@ -1973,15 +2072,15 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let lengths = CAR(args);
         if isInteger(lengths) == 0 {
-            return ptr::null_mut();
+            error("'nvec' is not of mode integer");
         }
         let from = CADR(args);
         if isInteger(from) == 0 {
-            return ptr::null_mut();
+            error("'from' is not of mode integer");
         }
         let by = CADDR(args);
         if isInteger(by) == 0 {
-            return ptr::null_mut();
+            error("'by' is not of mode integer");
         }
         let recycle_1st_arg = CADDDR(args);
         let recycle_1st = asBool2(recycle_1st_arg, call) != 0;
@@ -1995,10 +2094,10 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         if !recycle_1st && lengths_len != 0 {
             if from_len == 0 {
-                return ptr::null_mut();
+                error("'from' has length 0, but not 'nvec'; 'recycle = TRUE' returns empty here");
             }
             if by_len == 0 {
-                return ptr::null_mut();
+                error("'by' has length 0, but not 'nvec'; 'recycle = TRUE' returns empty here");
             }
         } else {
             if from_len == 0 || by_len == 0 {
@@ -2019,7 +2118,7 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             let len_i = *lengths_elt.add(i1 as usize);
             if len_i == NA_INTEGER || len_i < 0 {
-                return ptr::null_mut();
+                error("'nvec' must be a vector of non-negative integers");
             }
             ans_len += len_i as R_xlen_t;
             i1 += 1;
@@ -2047,11 +2146,11 @@ pub unsafe fn do_sequence(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let length_i = *lengths_elt.add(i1 as usize) as R_xlen_t;
             let from_val = *pfrom.add(i2 as usize);
             if length_i != 0 && from_val == NA_INTEGER {
-                return ptr::null_mut();
+                error("'from' contains NAs");
             }
             let by_val = *pby.add(i3 as usize);
             if length_i >= 2 && by_val == NA_INTEGER {
-                return ptr::null_mut();
+                error("'by' contains NAs");
             }
             let mut j = from_val;
             for _k in 0..length_i {
