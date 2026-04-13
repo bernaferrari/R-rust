@@ -19,7 +19,7 @@
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::eval::attrib_core::{getAttrib, setAttrib};
+use crate::eval::attrib_core::{R_data_class, getAttrib, isObject, setAttrib};
 use crate::eval::dispatch::DispatchOrEval;
 use crate::eval::dispatch::promiseArgs;
 use crate::sexp::accessors::*;
@@ -1637,15 +1637,41 @@ pub unsafe fn do_c(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
 
-        // Remove any NULL elements before dispatch so
-        // they never influence the method implementation.
-        let args = R_listCompact(args, /* keep_initial */ true);
+        let args = R_listCompact(args, true);
 
-        // Attempt method dispatch.
-        // DispatchAnyOrEval is not yet available; skip directly to default.
-        // A full implementation would:
-        //   if (DispatchAnyOrEval(call, op, "c", args, env, &ans, 1, 1))
-        //       return(ans);
+        // S3 method dispatch: check if any arg is an object with a "c" method
+        let mut method: SEXP = R_NilValue();
+        let mut a = args;
+        while !a.is_null() && a != R_NilValue() && method == R_NilValue() {
+            let obj = crate::eval::eval::Rf_eval(CAR(a), env);
+            if isObject(obj) != 0 {
+                let classlist = R_data_class(obj);
+                let classlen = Rf_length(classlist);
+                for i in 0..classlen {
+                    let class_str = translateChar(STRING_ELT(classlist, i as R_xlen_t));
+                    let s = std::ffi::CStr::from_ptr(class_str).to_str().unwrap_or("");
+                    let method_name = format!("c.{}\0", s);
+                    let sym =
+                        crate::sexp::symbol::Rf_install(method_name.as_ptr() as *const c_char);
+                    let classmethod = crate::mainutils::objects::R_LookupMethod(
+                        sym,
+                        env,
+                        env,
+                        crate::sexp::globals::R_BaseEnv(),
+                    );
+                    if classmethod != crate::sexp::globals::R_UnboundValue() {
+                        method = classmethod;
+                        break;
+                    }
+                }
+            }
+            a = CDR(a);
+        }
+
+        if method != R_NilValue() {
+            return crate::eval::closure::applyClosure(call, method, args, env, R_NilValue(), 0);
+        }
+
         do_c_dflt(call, op, args, env)
     }
 }
@@ -1980,29 +2006,61 @@ pub unsafe fn do_bind(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // PRIMVAL(op) == 1 for cbind, other for rbind.
         // Note: PRIMVAL is a stub that always returns 0 in this port.
         let generic_name = if !op.is_null() {
-            // Access the internal value; in R, PRIMVAL(op) is stored in sxpinfo.
-            // read from the m_info field if available.
             let primval = crate::mainutils::relop::PRIMVAL(op);
             if primval == 1 { "cbind" } else { "rbind" }
         } else {
             "rbind"
         };
 
-        // Skip method dispatch for now.
-        // A full implementation would:
-        //   1. Iterate through args, evaluating each and checking for S3/S4 objects
-        //   2. Look up methods like "cbind.data.frame" via R_LookupMethod
-        //   3. If found, call applyClosure with the method
-        // This infrastructure (R_data_class2, R_LookupMethod, isS4, etc.) exists
-        // but wiring it up correctly requires the full R evaluation environment.
-        // Instead, we proceed to the default code path.
+        let mut method: SEXP = R_NilValue();
+        let mut any_s4 = false;
+        let mut a = CDR(args);
+        while !a.is_null() && a != R_NilValue() && method == R_NilValue() {
+            let obj = Rf_protect(crate::eval::eval::Rf_eval(CAR(a), env));
+            if try_s4 && !any_s4 && crate::mainutils::objects::isS4(obj) != 0 {
+                any_s4 = true;
+            }
+            if isObject(obj) != 0 {
+                let classlist = Rf_protect(R_data_class(obj));
+                let classlen = Rf_length(classlist);
+                for i in 0..classlen {
+                    let class_str = translateChar(STRING_ELT(classlist, i as R_xlen_t));
+                    let s = std::ffi::CStr::from_ptr(class_str).to_str().unwrap_or("");
+                    let method_name = format!("{}.{}\0", generic_name, s);
+                    let sym =
+                        crate::sexp::symbol::Rf_install(method_name.as_ptr() as *const c_char);
+                    let classmethod = crate::mainutils::objects::R_LookupMethod(
+                        sym,
+                        env,
+                        env,
+                        crate::sexp::globals::R_BaseEnv(),
+                    );
+                    if classmethod != crate::sexp::globals::R_UnboundValue() {
+                        method = classmethod;
+                        break;
+                    }
+                }
+                Rf_unprotect(1);
+            }
+            Rf_unprotect(1);
+            a = CDR(a);
+        }
 
-        // Discard 'deparse.level' from args.
+        if method != R_NilValue() {
+            Rf_protect(method);
+            let dispatched_args = CDR(args);
+            let ans = crate::eval::closure::applyClosure(
+                call,
+                method,
+                dispatched_args,
+                env,
+                R_NilValue(),
+                0,
+            );
+            Rf_unprotect(2);
+            return ans;
+        }
         let args = CDR(args);
-
-        // Dispatch based on class membership has failed.
-        // The default code for rbind/cbind.default follows.
-        // First, extract the evaluated arguments using PRVALUE.
         let mut data = BindData {
             ans_flags: 0,
             ans_ptr: ptr::null_mut(),
