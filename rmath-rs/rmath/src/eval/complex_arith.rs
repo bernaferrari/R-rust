@@ -5,7 +5,7 @@
 //! and complex constructors.
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, REAL, TYPEOF, XLENGTH};
-use crate::sexp::constructors::{Rf_ScalarComplex, Rf_allocVector3};
+use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::Rf_protect;
