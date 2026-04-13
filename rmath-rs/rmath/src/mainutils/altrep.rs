@@ -19,6 +19,12 @@ use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::with_arena;
 
+unsafe fn error(msg: &str) {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // ALTREP data1/data2 accessors
 // ---------------------------------------------------------------------------
@@ -30,11 +36,11 @@ use crate::sexp::memory::with_arena;
 pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || ALTREP(x) == 0 {
-            return R_NilValue();
+            error("object is not an ALTREP");
         }
         let data_ptr = (*x).gengc_next_node as *mut SEXP;
         if data_ptr.is_null() {
-            return R_NilValue();
+            error("ALTREP internal data is null");
         }
         *data_ptr
     }
@@ -47,11 +53,11 @@ pub unsafe fn R_altrep_data1(x: SEXP) -> SEXP {
 pub unsafe fn R_altrep_data2(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || ALTREP(x) == 0 {
-            return R_NilValue();
+            error("object is not an ALTREP");
         }
         let data_ptr = (*x).gengc_next_node as *mut SEXP;
         if data_ptr.is_null() {
-            return R_NilValue();
+            error("ALTREP internal data is null");
         }
         let data2_ptr = data_ptr.add(1);
         *data2_ptr
@@ -101,7 +107,7 @@ pub unsafe fn R_new_altrep(class_def: SEXP, data1: SEXP, data2: SEXP) -> SEXP {
         with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::VECSXP, 2);
             if vec.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
 
             (*vec).sxpinfo.set_alt(true);
@@ -111,7 +117,7 @@ pub unsafe fn R_new_altrep(class_def: SEXP, data1: SEXP, data2: SEXP) -> SEXP {
 
             let slots = (*vec).gengc_next_node as *mut SEXP;
             if slots.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
 
             *slots = data1;
@@ -138,7 +144,7 @@ pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP {
             return with_arena(|arena| {
                 let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
                 if vec.is_null() {
-                    return R_NilValue();
+                    error("could not allocate vector");
                 }
                 let data_ptr = (*vec).gengc_next_node as *mut c_int;
                 if !data_ptr.is_null() {
@@ -158,11 +164,11 @@ pub unsafe fn R_compact_intseq(from: R_xlen_t, to: R_xlen_t) -> SEXP {
         let info = with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
             if vec.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             let data_ptr = (*vec).gengc_next_node as *mut c_int;
             if data_ptr.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             *data_ptr = from as c_int;
             *data_ptr.add(1) = to as c_int;
@@ -190,7 +196,7 @@ pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP {
             return with_arena(|arena| {
                 let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
                 if vec.is_null() {
-                    return R_NilValue();
+                    error("could not allocate vector");
                 }
                 let data_ptr = (*vec).gengc_next_node as *mut f64;
                 if !data_ptr.is_null() {
@@ -205,11 +211,11 @@ pub unsafe fn R_compact_realseq(from: f64, by: f64, length: R_xlen_t) -> SEXP {
         let info = with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::REALSXP, 3);
             if vec.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             let data_ptr = (*vec).gengc_next_node as *mut f64;
             if data_ptr.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             *data_ptr = from;
             *data_ptr.add(1) = from + by * (length as f64 - 1.0);
@@ -237,7 +243,7 @@ pub const R_ALTREP_CLASS_TYPE: c_int = 255;
 pub unsafe fn R_altrep_class(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || ALTREP(x) == 0 {
-            return R_NilValue();
+            error("object is not an ALTREP");
         }
         (*x).attrib
     }
@@ -264,7 +270,7 @@ pub unsafe fn R_altrep_length(x: SEXP) -> R_xlen_t {
 pub unsafe fn R_altrep_realize(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() {
-            return R_NilValue();
+            error("ALTREP object is null");
         }
         if ALTREP(x) == 0 {
             return x;
@@ -304,11 +310,11 @@ unsafe fn compact_intseq_expand(x: SEXP) -> SEXP {
         let expanded = with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::INTSXP, len);
             if vec.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             let out = (*vec).gengc_next_node as *mut c_int;
             if out.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             for i in 0..len as isize {
                 *out.add(i as usize) = n1 + (i as c_int) * inc;
@@ -343,11 +349,11 @@ unsafe fn compact_realseq_expand(x: SEXP) -> SEXP {
         let expanded = with_arena(|arena| {
             let vec = arena.alloc_vector(SEXPTYPE::REALSXP, len);
             if vec.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             let out = (*vec).gengc_next_node as *mut f64;
             if out.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             for i in 0..len as isize {
                 *out.add(i as usize) = n1 + (i as f64) * by;
@@ -366,11 +372,11 @@ unsafe fn compact_realseq_expand(x: SEXP) -> SEXP {
 pub unsafe fn R_altrep_duplicate(x: SEXP, _deep: c_int) -> SEXP {
     unsafe {
         if x.is_null() {
-            return R_NilValue();
+            error("ALTREP object is null");
         }
         let realized = R_altrep_realize(x);
         if realized.is_null() {
-            return R_NilValue();
+            error("could not duplicate ALTREP object");
         }
         let len = XLENGTH(realized);
         let tp = TYPEOF(realized);
@@ -378,7 +384,7 @@ pub unsafe fn R_altrep_duplicate(x: SEXP, _deep: c_int) -> SEXP {
         with_arena(|arena| {
             let dup = arena.alloc_vector(SEXPTYPE(tp), len);
             if dup.is_null() {
-                return R_NilValue();
+                error("could not allocate vector");
             }
             let src_data = (*realized).gengc_next_node as *const u8;
             let dst_data = (*dup).gengc_next_node as *mut u8;
@@ -581,15 +587,15 @@ pub unsafe fn ALTRAW_SET_ELT(x: SEXP, i: R_xlen_t, v: u8) {
 pub unsafe fn ALTSTRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if x.is_null() {
-            return R_NilValue();
+            error("cannot get ALTSTRING_ELT during GC");
         }
         let realized = R_altrep_realize(x);
         if realized.is_null() {
-            return R_NilValue();
+            error("cannot get ALTSTRING_ELT during GC");
         }
         let data_ptr = (*realized).gengc_next_node as *const SEXP;
         if data_ptr.is_null() || i < 0 || i >= XLENGTH(realized) {
-            return R_NilValue();
+            error("cannot get ALTSTRING_ELT during GC");
         }
         *data_ptr.add(i as usize)
     }
@@ -599,11 +605,11 @@ pub unsafe fn ALTSTRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
 pub unsafe fn ALTSTRING_SET_ELT(x: SEXP, i: R_xlen_t, v: SEXP) {
     unsafe {
         if x.is_null() {
-            return;
+            error("cannot set ALTSTRING_ELT during GC");
         }
         let realized = R_altrep_realize(x);
         if realized.is_null() {
-            return;
+            error("cannot set ALTSTRING_ELT during GC");
         }
         let data_ptr = (*realized).gengc_next_node as *mut SEXP;
         if !data_ptr.is_null() && i >= 0 && i < XLENGTH(realized) {
@@ -677,10 +683,10 @@ mod tests {
     use super::*;
 
     #[test]
+    #[should_panic]
     fn test_altrep_class_null() {
         unsafe {
-            let result = R_altrep_class(std::ptr::null_mut());
-            assert_eq!(result, R_NilValue());
+            R_altrep_class(std::ptr::null_mut());
         }
     }
 
@@ -692,10 +698,11 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_altrep_data_null() {
         unsafe {
-            assert_eq!(R_altrep_data1(std::ptr::null_mut()), R_NilValue());
-            assert_eq!(R_altrep_data2(std::ptr::null_mut()), R_NilValue());
+            R_altrep_data1(std::ptr::null_mut());
+            R_altrep_data2(std::ptr::null_mut());
         }
     }
 

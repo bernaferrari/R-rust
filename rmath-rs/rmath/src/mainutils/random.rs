@@ -23,7 +23,12 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 use std::cell::Cell;
 use std::os::raw::{c_double, c_int};
-use std::ptr;
+
+unsafe fn error(msg: &str) {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
 
 // ---------------------------------------------------------------------------
 // RNG type enumerations (matching R_ext/Random.h)
@@ -1316,14 +1321,14 @@ pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         checkArity(op, args);
 
         if !isVector(CAR(args)) || !isNumeric(CADR(args)) {
-            return ptr::null_mut();
+            error("invalid arguments");
         }
 
         let n: R_xlen_t;
         if XLENGTH(CAR(args)) == 1 {
             let dn = asReal_local(CAR(args));
             if dn.is_nan() || dn < 0.0 {
-                return ptr::null_mut();
+                error("invalid arguments");
             }
             n = dn as R_xlen_t;
         } else {
@@ -1391,14 +1396,14 @@ pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         checkArity(op, args);
 
         if !isVector(CAR(args)) || !isNumeric(CADR(args)) || !isNumeric(CADDR(args)) {
-            return ptr::null_mut();
+            error("invalid arguments");
         }
 
         let n: R_xlen_t;
         if XLENGTH(CAR(args)) == 1 {
             let dn = asReal_local(CAR(args));
             if dn.is_nan() || dn < 0.0 {
-                return ptr::null_mut();
+                error("invalid arguments");
             }
             n = dn as R_xlen_t;
         } else {
@@ -1602,14 +1607,14 @@ pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         checkArity(op, args);
 
         if !isVector(CAR(args)) {
-            return ptr::null_mut();
+            error("invalid arguments");
         }
 
         let n: R_xlen_t;
         if XLENGTH(CAR(args)) == 1 {
             let dn = asReal_local(CAR(args));
             if dn.is_nan() || dn < 0.0 {
-                return ptr::null_mut();
+                error("invalid arguments");
             }
             n = dn as R_xlen_t;
         } else {
@@ -1759,7 +1764,7 @@ pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         if !isNull(CAR(args)) {
             let v = asInteger_local(CAR(args));
             if v == NA_INTEGER {
-                return ptr::null_mut();
+                error("supplied seed is not a valid integer");
             }
             seed = v as i64;
         } else {
@@ -1843,14 +1848,14 @@ pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let prob = CAR(args4);
 
         if LENGTH(sk) != 1 {
-            return ptr::null_mut();
+            error("invalid 'size' argument");
         }
         if LENGTH(sreplace) != 1 {
-            return ptr::null_mut();
+            error("invalid 'replace' argument");
         }
         let replace = asLogical_local(sreplace);
         if replace == NA_INTEGER {
-            return ptr::null_mut();
+            error("invalid 'replace' argument");
         }
 
         GetRNGstate();
@@ -1860,15 +1865,15 @@ pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let k = asInteger_local(sk);
             if n == NA_INTEGER || n < 0 || (k > 0 && n == 0) {
                 PutRNGstate();
-                return ptr::null_mut();
+                error("invalid first argument");
             }
             if k == NA_INTEGER || k < 0 {
                 PutRNGstate();
-                return ptr::null_mut();
+                error("invalid 'size' argument");
             }
             if replace == 0 && k > n {
                 PutRNGstate();
-                return ptr::null_mut();
+                error("cannot take a sample larger than the population when 'replace = FALSE'");
             }
 
             let y = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, k));
@@ -1889,15 +1894,15 @@ pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         };
         if !dn.is_finite() || dn < 0.0 || dn > 4.5e15 {
             PutRNGstate();
-            return ptr::null_mut();
+            error("invalid first argument");
         }
         if k < 0 {
             PutRNGstate();
-            return ptr::null_mut();
+            error("invalid 'size' argument");
         }
         if replace == 0 && k > dn as R_xlen_t {
             PutRNGstate();
-            return ptr::null_mut();
+            error("cannot take a sample larger than the population when 'replace = FALSE'");
         }
 
         if dn > i32::MAX as f64 || k > i32::MAX as R_xlen_t {

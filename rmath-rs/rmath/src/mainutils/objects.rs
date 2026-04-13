@@ -67,6 +67,12 @@ unsafe fn S3MethodsTable_symbol() -> SEXP {
     unsafe { Rf_install(b".__S3MethodsTable__.\x00".as_ptr() as *const c_char) }
 }
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 /// Install a named symbol, caching the result.
 unsafe fn sym(name: &str) -> SEXP {
     unsafe {
@@ -1825,11 +1831,11 @@ pub unsafe fn do_isS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
-            return R_NilValue();
+            error("invalid 'flag' argument");
         }
         let x = CAR(args);
         if x.is_null() {
-            return R_NilValue();
+            error("invalid 'flag' argument");
         }
 
         let flag = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
@@ -1837,6 +1843,10 @@ pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         } else {
             TRUE
         };
+
+        if flag == crate::sexp::ffi::NA_INTEGER {
+            error("invalid 'flag' argument");
+        }
 
         let complete = if !CDR(args).is_null()
             && CDR(args) != R_NilValue()
@@ -1847,6 +1857,10 @@ pub unsafe fn do_asS4(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         } else {
             TRUE as c_int
         };
+
+        if complete == crate::sexp::ffi::NA_INTEGER {
+            error("invalid 'complete' argument");
+        }
 
         asS4(x, flag, complete)
     }
@@ -2025,7 +2039,9 @@ pub unsafe fn do_set_prim_method(
 ) -> SEXP {
     unsafe {
         if code_string.is_null() {
-            return R_NilValue();
+            error(
+                "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
+            );
         }
 
         let code = match *code_string as u8 {
@@ -2037,10 +2053,14 @@ pub unsafe fn do_set_prim_method(
                 } else if *code_string.add(1) as u8 == b'u' {
                     prim_methods_t::SUPPRESSED
                 } else {
-                    return R_NilValue();
+                    error(
+                        "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
+                    );
                 }
             }
-            _ => return R_NilValue(),
+            _ => error(
+                "invalid primitive methods code: should be \"clear\", \"reset\", \"set\", or \"suppress\"",
+            ),
         };
 
         let offset = if !op.is_null()
@@ -2050,7 +2070,7 @@ pub unsafe fn do_set_prim_method(
             // PRIMOFFSET: for now we use the function index if available
             0 // simplified
         } else {
-            return R_NilValue();
+            error("invalid object: must be a primitive function");
         };
 
         // Allocate tables if needed (simplified)
@@ -2211,13 +2231,20 @@ pub unsafe fn R_possible_dispatch(
 
 pub unsafe fn R_do_MAKE_CLASS(_what: *const c_char) -> SEXP {
     unsafe {
-        // Full implementation requires eval(getClass(what), R_MethodsNamespace)
+        if _what.is_null() {
+            error("C level MAKE_CLASS macro called with NULL string pointer");
+        }
         R_NilValue()
     }
 }
 
 pub unsafe fn R_getClassDef(_what: *const c_char) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe {
+        if _what.is_null() {
+            error("R_getClassDef(.) called with NULL string pointer");
+        }
+        R_NilValue()
+    }
 }
 
 pub unsafe fn R_getClassDef_R(_what: SEXP) -> SEXP {
@@ -2233,7 +2260,12 @@ pub unsafe fn R_extends(_class1: SEXP, _class2: SEXP, _env: SEXP) -> c_int {
 }
 
 pub unsafe fn R_do_new_object(_class_def: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe {
+        if _class_def.is_null() {
+            error("C level NEW macro called with null class definition pointer");
+        }
+        R_NilValue()
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2328,11 +2360,11 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
 pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
-            return R_NilValue();
+            error("invalid 'flag' argument");
         }
         let object = CAR(args);
         if object.is_null() {
-            return R_NilValue();
+            error("invalid 'flag' argument");
         }
 
         let flag = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
@@ -2340,6 +2372,10 @@ pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
         } else {
             TRUE
         };
+
+        if flag == crate::sexp::ffi::NA_INTEGER {
+            error("invalid 'flag' argument");
+        }
 
         let complete = if !CDR(args).is_null()
             && CDR(args) != R_NilValue()
@@ -2350,6 +2386,10 @@ pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
         } else {
             TRUE as c_int
         };
+
+        if complete == crate::sexp::ffi::NA_INTEGER {
+            error("invalid 'complete' argument");
+        }
 
         if flag == IS_S4_OBJECT(object) {
             return object;

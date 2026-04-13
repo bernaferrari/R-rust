@@ -62,6 +62,12 @@ pub fn char_hash_str(s: &[u8]) -> u32 {
 // Local helper functions
 // ---------------------------------------------------------------------------
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    })
+}
+
 /// Check if a CHARSXP is non-null and non-empty.
 unsafe fn isValidStringF(x: SEXP) -> bool {
     unsafe {
@@ -94,7 +100,7 @@ unsafe fn installTrChar(x: SEXP) -> SEXP {
     unsafe {
         let p = CHAR(x);
         if p.is_null() {
-            return R_NilValue();
+            error("invalid string in installTrChar");
         }
         crate::sexp::symbol::Rf_install(p)
     }
@@ -426,7 +432,7 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         use crate::sexp::symbol::Rf_install;
 
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("invalid first argument");
         }
 
         // First arg: variable name (string)
@@ -434,13 +440,13 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let sym = if isString(name_arg) && LENGTH(name_arg) >= 1 {
             let s = STRING_ELT(name_arg, 0);
             if s.is_null() || s == R_NilValue() {
-                return R_NilValue();
+                error("invalid first argument");
             }
             Rf_install(CHAR(s))
         } else if TYPEOF(name_arg) == SEXPTYPE::SYMSXP.0 {
             name_arg
         } else {
-            return R_NilValue();
+            error("invalid first argument");
         };
 
         // Second arg: value
@@ -451,7 +457,7 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let aenv = CADDR(args);
         if !isEnvironment(aenv) {
             Rf_unprotect(1);
-            return R_NilValue();
+            error("invalid 'envir' argument");
         }
 
         // Fourth arg: inherits
@@ -492,16 +498,16 @@ pub unsafe fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         use crate::sexp::symbol::Rf_install;
 
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("invalid first argument");
         }
 
         // First arg: list of names to remove
         let name = CAR(args);
         if isNull(name) {
-            return R_NilValue();
+            error("invalid first argument");
         }
         if !isString(name) {
-            return R_NilValue();
+            error("invalid first argument");
         }
 
         let mut rest = CDR(args);
@@ -577,7 +583,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         use crate::sexp::protect::Rf_unprotect;
 
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("invalid first argument");
         }
 
         // pos argument
@@ -603,7 +609,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         // Create a new environment
         let s = allocSExp(SEXPTYPE(SEXPTYPE::ENVSXP.0));
         if s.is_null() {
-            return R_NilValue();
+            error("could not allocate environment");
         }
         Rf_protect(s);
 
@@ -690,7 +696,7 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         use crate::sexp::protect::Rf_unprotect;
 
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("invalid 'pos' argument");
         }
 
         let pos_arg = CAR(args);
@@ -713,7 +719,7 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let base_env = R_BaseEnv();
 
         if global_env.is_null() || base_env.is_null() {
-            return R_NilValue();
+            error("invalid 'pos' argument");
         }
 
         // Count the total number of environments in the search path
@@ -726,7 +732,7 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         // Cannot detach base
         if pos == n {
-            return R_NilValue();
+            error("detaching \"package:base\" is not allowed");
         }
 
         // Walk to the position
@@ -738,13 +744,13 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         if remaining != 2 {
-            return R_NilValue();
+            error("invalid 'pos' argument");
         }
 
         // t now points to the environment before the one we want to detach
         let s = ENCLOS(t);
         if s.is_null() || s == base_env {
-            return R_NilValue();
+            error("invalid 'pos' argument");
         }
 
         Rf_protect(s);
@@ -790,7 +796,7 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
         if ans.is_null() {
-            return R_NilValue();
+            error("could not allocate search result");
         }
         Rf_protect(ans);
 

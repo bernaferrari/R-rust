@@ -27,6 +27,12 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // do_dimgets — set dim attribute
 // ---------------------------------------------------------------------------
@@ -36,7 +42,7 @@ pub unsafe fn do_dimgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -54,7 +60,7 @@ pub unsafe fn do_dimnamesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -72,7 +78,7 @@ pub unsafe fn do_levelsgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -95,7 +101,7 @@ pub unsafe fn do_tsp(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_TspSymbol());
         }
 
-        R_NilValue()
+        error("wrong number of arguments");
     }
 }
 
@@ -108,7 +114,7 @@ pub unsafe fn do_tspgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -137,7 +143,7 @@ pub unsafe fn do_comment(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return crate::eval::attrib_core::getAttrib(x, comment_sym);
         }
 
-        R_NilValue()
+        error("wrong number of arguments");
     }
 }
 
@@ -150,7 +156,7 @@ pub unsafe fn do_commentgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -175,7 +181,7 @@ pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let nargs = Rf_length(args);
         if nargs < 2 {
-            return R_NilValue();
+            error("either 2 or 3 arguments are required");
         }
 
         let x = CAR(args);
@@ -185,7 +191,7 @@ pub unsafe fn do_attr(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return crate::eval::attrib_core::getAttrib(x, which);
         }
 
-        R_NilValue()
+        error("either 2 or 3 arguments are required");
     }
 }
 
@@ -198,7 +204,7 @@ pub unsafe fn do_attrgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 3 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let which = CADR(args);
@@ -217,7 +223,7 @@ pub unsafe fn do_attributesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> 
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         CAR(args)
     }
@@ -232,7 +238,7 @@ pub unsafe fn do_classgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -249,7 +255,7 @@ pub unsafe fn do_namesgets(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 2 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         let val = CADR(args);
@@ -267,7 +273,7 @@ pub unsafe fn do_isobject(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let _ = (call, op, env);
         if Rf_length(args) < 1 {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
         let x = CAR(args);
         Rf_ScalarLogical(crate::eval::attrib_core::isObject(x))
@@ -354,119 +360,119 @@ mod tests {
     use super::*;
 
     #[test]
+    #[should_panic]
     fn test_do_dimgets_null() {
         unsafe {
-            let result = do_dimgets(
+            do_dimgets(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_dimnamesgets_null() {
         unsafe {
-            let result = do_dimnamesgets(
+            do_dimnamesgets(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_tsp_null() {
         unsafe {
-            let result = do_tsp(
+            do_tsp(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_comment_null() {
         unsafe {
-            let result = do_comment(
+            do_comment(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_attr_null() {
         unsafe {
-            let result = do_attr(
+            do_attr(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_attrgets_null() {
         unsafe {
-            let result = do_attrgets(
+            do_attrgets(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_isobject_null() {
         unsafe {
-            let result = do_isobject(
+            do_isobject(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_classgets_null() {
         unsafe {
-            let result = do_classgets(
+            do_classgets(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_do_namesgets_null() {
         unsafe {
-            let result = do_namesgets(
+            do_namesgets(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
