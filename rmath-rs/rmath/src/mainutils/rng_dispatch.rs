@@ -7,7 +7,9 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
 
+#[allow(unused_imports)]
 use crate::sexp::accessors::{CAR, CDR, INTEGER, LENGTH, REAL, TYPEOF, XLENGTH};
+#[allow(unused_imports)]
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
 use crate::sexp::ffi::{NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -350,13 +352,7 @@ pub unsafe fn register_rng_builtins(env: SEXP) {
 
         static RNG_SEXPS: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
         let rng_fns = [
-            "set.seed",
-            "RNGkind",
-            "runif",
-            "rnorm",
-            "rpois",
-            "rexp",
-            "sample",
+            "set.seed", "RNGkind", "runif", "rnorm", "rpois", "rexp", "sample",
         ];
 
         let builtins = RNG_SEXPS.get_or_init(|| {

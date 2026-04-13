@@ -5,6 +5,7 @@
 //! and complex constructors.
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, REAL, TYPEOF, XLENGTH};
+#[allow(unused_imports)]
 use crate::sexp::constructors::{Rf_ScalarComplex, Rf_allocVector3};
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -340,7 +341,11 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         for i in 0..n {
             let r = elt_real_coerce(re, i);
-            let im_val = if im_n > 0 { elt_real_coerce(im, i) } else { 0.0 };
+            let im_val = if im_n > 0 {
+                elt_real_coerce(im, i)
+            } else {
+                0.0
+            };
             *dst.add(i as usize) = Rcomplex { r, i: im_val };
         }
 

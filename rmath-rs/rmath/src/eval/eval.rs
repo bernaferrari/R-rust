@@ -445,6 +445,36 @@ fn apply_builtin_safe<'a>(
         "table" => unsafe {
             crate::mainutils::essentials::do_table(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
+        "as.integer" => unsafe {
+            crate::mainutils::essentials::do_as_integer(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "as.double" => unsafe {
+            crate::mainutils::essentials::do_as_double(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "as.character" => unsafe {
+            crate::mainutils::essentials::do_as_character(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "as.logical" => unsafe {
+            crate::mainutils::essentials::do_as_logical(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "as.vector" => unsafe {
+            crate::mainutils::essentials::do_as_vector(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "as.list" => unsafe {
+            crate::mainutils::essentials::do_as_list(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "nchar" => unsafe {
+            crate::mainutils::essentials::do_nchar(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "substr" => unsafe {
+            crate::mainutils::essentials::do_substr(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "tolower" => unsafe {
+            crate::mainutils::essentials::do_tolower(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "toupper" => unsafe {
+            crate::mainutils::essentials::do_toupper(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
         "set.seed" => unsafe {
             crate::mainutils::rng_dispatch::do_set_seed(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
