@@ -31,6 +31,12 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
+unsafe fn error(msg: &str) {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // GC control
 // ---------------------------------------------------------------------------
@@ -248,6 +254,9 @@ pub unsafe fn R_chk_free(ptr: *mut c_void) {
 /// This is the equivalent of R's `R_chk_memcpy()`.
 pub unsafe fn R_chk_memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *mut c_void {
     unsafe {
+        if n >= isize::MAX as usize {
+            error(&format!("object is too large ({} bytes)", n));
+        }
         if n > 0 {
             ptr::copy_nonoverlapping(src as *const u8, dest as *mut u8, n);
         }
@@ -260,6 +269,9 @@ pub unsafe fn R_chk_memcpy(dest: *mut c_void, src: *const c_void, n: usize) -> *
 /// This is the equivalent of R's `R_chk_memset()`.
 pub unsafe fn R_chk_memset(s: *mut c_void, c: c_int, n: usize) -> *mut c_void {
     unsafe {
+        if n >= isize::MAX as usize {
+            error(&format!("object is too large ({} bytes)", n));
+        }
         if n > 0 {
             ptr::write_bytes(s as *mut u8, c as u8, n);
         }
