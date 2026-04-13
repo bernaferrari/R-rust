@@ -20,6 +20,7 @@ pub mod complex_cmath;
 pub mod connections;
 pub mod cum;
 pub mod datetime;
+pub mod essentials;
 pub mod dcf;
 pub mod debug;
 pub mod deparse;

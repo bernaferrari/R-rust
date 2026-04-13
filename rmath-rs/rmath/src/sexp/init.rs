@@ -55,6 +55,8 @@ pub unsafe fn initialize_r() {
 
         crate::eval::arithmetic::register_arithmetic_builtins(base_env);
         crate::eval::arithmetic::register_special_forms(base_env);
+        crate::mainutils::essentials::register_essentials_builtins(base_env);
+        crate::mainutils::rng_dispatch::register_rng_builtins(base_env);
 
         R_INITIALIZED.store(true, Ordering::Release);
     }

@@ -406,6 +406,66 @@ fn apply_builtin_safe<'a>(
         "is.numeric" | "is.integer" | "is.double" | "is.logical" | "is.character" | "is.null" => unsafe {
             super::arithmetic::do_is_type(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
+        "c" => unsafe {
+            crate::mainutils::essentials::do_c(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "seq" => unsafe {
+            crate::mainutils::essentials::do_seq(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "rep" => unsafe {
+            crate::mainutils::essentials::do_rep(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "paste" => unsafe {
+            crate::mainutils::essentials::do_paste(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "paste0" => unsafe {
+            crate::mainutils::essentials::do_paste0(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "cat" => unsafe {
+            crate::mainutils::essentials::do_cat(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "print" => unsafe {
+            crate::mainutils::essentials::do_print(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "typeof" => unsafe {
+            crate::mainutils::essentials::do_typeof(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.na" => unsafe {
+            crate::mainutils::essentials::do_is_na(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "names" => unsafe {
+            crate::mainutils::essentials::do_names(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "which" => unsafe {
+            crate::mainutils::essentials::do_which(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "ifelse" => unsafe {
+            crate::mainutils::essentials::do_ifelse(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "table" => unsafe {
+            crate::mainutils::essentials::do_table(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "set.seed" => unsafe {
+            crate::mainutils::rng_dispatch::do_set_seed(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "RNGkind" => unsafe {
+            crate::mainutils::rng_dispatch::do_RNGkind(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "runif" => unsafe {
+            crate::mainutils::rng_dispatch::do_runif(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "rnorm" => unsafe {
+            crate::mainutils::rng_dispatch::do_rnorm(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "rpois" => unsafe {
+            crate::mainutils::rng_dispatch::do_rpois(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "rexp" => unsafe {
+            crate::mainutils::rng_dispatch::do_rexp(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "sample" => unsafe {
+            crate::mainutils::rng_dispatch::do_sample(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
