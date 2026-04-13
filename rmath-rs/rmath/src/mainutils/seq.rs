@@ -13,10 +13,11 @@ use std::ptr;
 use crate::sexp::accessors::{
     CADDDR, CADDR, CADR, CAR, CDDDR, CDDR, CDR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL,
     SET_STRING_ELT, SET_VECTOR_ELT, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    translateChar,
 };
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_isInteger, Rf_isNull, Rf_isReal,
-    Rf_isVector, Rf_mkChar, Rf_mkString,
+    Rf_isVector, Rf_length, Rf_mkChar, Rf_mkString,
 };
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_LOGICAL, NA_REAL, R_FINITE, R_xlen_t, SEXP};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
@@ -378,8 +379,12 @@ const _S4_rep_keepClass: bool = true;
 
 unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
     unsafe {
-        let _ = call;
-        let n = LENGTH(s);
+        let ns = Rf_length(s);
+        let nt = Rf_length(t);
+        if ns != nt {
+            errorcall(call, b"unequal factor lengths\0".as_ptr() as *const c_char);
+        }
+        let n = ns;
         let ls = getAttrib(s, R_LevelsSymbol());
         let lt = getAttrib(t, R_LevelsSymbol());
         let nls = LENGTH(ls);
@@ -400,8 +405,13 @@ unsafe fn cross_colon(call: SEXP, s: SEXP, t: SEXP) -> SEXP {
             let la = Rf_allocVector(STRSXP_VAL, (nls as R_xlen_t * nlt as R_xlen_t) as c_int);
             let mut k: R_xlen_t = 0;
             for i in 0..nls as R_xlen_t {
-                for _j in 0..nlt as R_xlen_t {
-                    let ch = Rf_mkChar(ptr::null());
+                let vi_ptr = translateChar(STRING_ELT(ls, i as R_xlen_t));
+                let vi = std::ffi::CStr::from_ptr(vi_ptr).to_str().unwrap_or("");
+                for j in 0..nlt as R_xlen_t {
+                    let vj_ptr = translateChar(STRING_ELT(lt, j as R_xlen_t));
+                    let vj = std::ffi::CStr::from_ptr(vj_ptr).to_str().unwrap_or("");
+                    let label = format!("{}:{}\0", vi, vj);
+                    let ch = Rf_mkChar(label.as_ptr() as *const c_char);
                     SET_STRING_ELT(la, k, ch);
                     k += 1;
                 }
