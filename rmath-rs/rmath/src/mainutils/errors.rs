@@ -669,7 +669,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
 // Handler dispatch for tryCatch/withCallingHandlers support
 // ---------------------------------------------------------------------------
 
-unsafe fn findSimpleErrorHandler() -> SEXP {
+unsafe fn findSimpleErrorHandler() -> SEXP { unsafe {
     let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
     while !list.is_null() && list != globals::R_NilValue() {
         let entry = unsafe { CAR(list) };
@@ -683,9 +683,9 @@ unsafe fn findSimpleErrorHandler() -> SEXP {
         list = unsafe { CDR(list) };
     }
     globals::R_NilValue()
-}
+}}
 
-unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
+unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) { unsafe {
     let result = ENTRY_RETURN_RESULT(entry);
     SET_VECTOR_ELT(result, 0, cond);
     SET_VECTOR_ELT(result, 1, call);
@@ -693,9 +693,9 @@ unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
     std::panic::panic_any(crate::sexp::context::RError {
         message: "exiting handler".to_string(),
     });
-}
+}}
 
-unsafe fn vsignalError(call: SEXP, format: *const c_char) {
+unsafe fn vsignalError(call: SEXP, format: *const c_char) { unsafe {
     let localbuf = if format.is_null() {
         String::new()
     } else {
@@ -728,7 +728,7 @@ unsafe fn vsignalError(call: SEXP, format: *const c_char) {
         }
         list = findSimpleErrorHandler();
     }
-}
+}}
 
 /// Report an error with a call.
 ///

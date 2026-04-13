@@ -913,7 +913,7 @@ unsafe fn free_dll_info(info: *mut DllInfo) {
 // DeleteDLL — remove a DLL from the table
 // ---------------------------------------------------------------------------
 
-unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
+unsafe fn call_dll_unload(dll_info: *mut DllInfo) { unsafe {
     let name = CStr::from_ptr((*dll_info).name);
     let name_bytes = name.to_bytes();
     let buf = format!("R_unload_{}\0", std::str::from_utf8_unchecked(name_bytes));
@@ -927,7 +927,7 @@ unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
             f(dll_info);
         }
     }
-}
+}}
 
 unsafe fn delete_dll(path: *const c_char) -> bool {
     unsafe {

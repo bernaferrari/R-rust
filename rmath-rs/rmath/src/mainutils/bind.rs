@@ -544,9 +544,9 @@ unsafe fn STRING_PTR(x: SEXP) -> *mut SEXP {
 }
 
 #[inline(always)]
-unsafe fn lazy_duplicate(x: SEXP) -> SEXP {
+unsafe fn lazy_duplicate(x: SEXP) -> SEXP { unsafe {
     crate::mainutils::duplicate::lazy_duplicate(x)
-}
+}}
 
 /// EnsureString: ensure x is a single string (CHARSXP).
 #[inline(always)]

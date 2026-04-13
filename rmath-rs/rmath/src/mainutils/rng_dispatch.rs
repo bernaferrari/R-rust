@@ -8,7 +8,7 @@ use std::ffi::CString;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, CDR, INTEGER, LENGTH, REAL, TYPEOF, XLENGTH};
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_ScalarString, Rf_allocVector3};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
 use crate::sexp::ffi::{NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::Rf_protect;

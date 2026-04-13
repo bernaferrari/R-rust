@@ -10,7 +10,6 @@
 //! recycled to match the length of the longer operand.
 
 use std::ffi::CString;
-use std::os::raw::c_int;
 
 use crate::sexp::accessors::{CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{
@@ -234,12 +233,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     && val <= i32::MAX as f64
                 {
                     let ival = val as i32;
-                    // For %% and %/%, use floor semantics
-                    if op == "%%" || op == "%/%" {
-                        *INTEGER(result).add(i as usize) = ival;
-                    } else {
-                        *INTEGER(result).add(i as usize) = ival;
-                    }
+                    *INTEGER(result).add(i as usize) = ival;
                 } else {
                     *INTEGER(result).add(i as usize) = NA_INTEGER;
                 }
@@ -257,7 +251,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     let x_na = x.to_bits() == R_NA_BIT_PATTERN;
                     let y_na = y.to_bits() == R_NA_BIT_PATTERN;
                     if x_na || y_na || y == 0.0 {
-                        *REAL(reals).add(i as usize) = if y == 0.0 { NA_REAL } else { NA_REAL };
+                        *REAL(reals).add(i as usize) = NA_REAL;
                     } else {
                         *REAL(reals).add(i as usize) = x / y;
                     }
@@ -364,7 +358,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             if x.to_bits() == R_NA_BIT_PATTERN {
                 *dst.add(i as usize) = NA_REAL;
             } else {
-                let mut r = f(x);
+                let r = f(x);
                 // Preserve incoming NaN (don't replace with NA_REAL)
                 if r.is_nan() && !x.is_nan() {
                     // Newly produced NaN from valid input → leave as NaN

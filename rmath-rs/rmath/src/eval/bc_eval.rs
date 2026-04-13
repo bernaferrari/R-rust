@@ -609,7 +609,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         stack.push(R_NilValue());
                     } else {
                         // Call `[`(obj, i, j, ...)
-                        unsafe {
+                        {
                             let bracket_sym =
                                 crate::sexp::symbol::Rf_install(std::ffi::CString::new("[").unwrap_or_default().as_ptr());
                             let nil = R_NilValue();
@@ -641,7 +641,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     if obj.is_null() {
                         stack.push(R_NilValue());
                     } else {
-                        unsafe {
+                        {
                             let dbracket_sym =
                                 crate::sexp::symbol::Rf_install(std::ffi::CString::new("[[").unwrap_or_default().as_ptr());
                             let nil = R_NilValue();
@@ -714,7 +714,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let val = stack.pop();
                     let sym = stack.pop();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP.0 {
-                        unsafe {
+                        {
                             defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
                         }
                     }
@@ -729,7 +729,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let val = stack.pop();
                     let sym = stack.pop();
                     if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP.0 {
-                        unsafe {
+                        {
                             defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
                         }
                     }
