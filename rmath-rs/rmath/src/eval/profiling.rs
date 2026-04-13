@@ -501,8 +501,7 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
                 let eval_internal = crate::sexp::accessors::INTERNAL(eval_sym);
                 if parent_callfun == eval_internal {
                     let sysparent = (*cptr).sysparent;
-                    result =
-                        main_context::R_findExecContext((*parent).nextcontext, sysparent as SEXP);
+                    result = main_context::R_findExecContext((*parent).nextcontext, sysparent);
                 }
             }
         }

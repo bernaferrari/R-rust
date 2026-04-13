@@ -38,11 +38,10 @@ impl std::fmt::Debug for TextFont {
 
 fn load_system_font() -> Option<TextFont> {
     for path in SYSTEM_FONT_PATHS {
-        if let Ok(data) = std::fs::read(path) {
-            if let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default()) {
+        if let Ok(data) = std::fs::read(path)
+            && let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default()) {
                 return Some(TextFont(font));
             }
-        }
     }
     None
 }

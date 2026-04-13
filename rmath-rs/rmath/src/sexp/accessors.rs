@@ -1065,21 +1065,25 @@ pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
 /// In the full R implementation, this re-encodes to native encoding.
 /// Since we operate in UTF-8 mode, return CHAR(s) directly for UTF-8/ASCII,
 /// and fall back to CHAR(s) for other encodings (best-effort).
-pub unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
-    if x.is_null() {
-        return std::ptr::null();
+pub unsafe fn translateChar(x: SEXP) -> *const c_char {
+    unsafe {
+        if x.is_null() {
+            return std::ptr::null();
+        }
+        CHAR(x)
     }
-    CHAR(x)
-}}
+}
 
 /// translateCharUTF8: return the CHAR pointer for a CHARSXP as UTF-8.
 /// For UTF-8 or ASCII strings, return directly. For others, return as-is (best-effort).
-pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char { unsafe {
-    if x.is_null() {
-        return std::ptr::null();
+pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
+    unsafe {
+        if x.is_null() {
+            return std::ptr::null();
+        }
+        CHAR(x)
     }
-    CHAR(x)
-}}
+}
 
 /// getCharCE: return the character encoding of a CHARSXP.
 /// Returns CE_NATIVE (0) for native, CE_UTF8 (2) for UTF-8, etc.

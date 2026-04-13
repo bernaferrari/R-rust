@@ -57,7 +57,9 @@ const NILSXP_VAL: c_int = SEXPTYPE::NILSXP.0;
 // ---------------------------------------------------------------------------
 
 /// Check arity -- no-op since the R-level wrapper handles this.
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 /// Coerce to logical scalar.
 unsafe fn asLogical(x: SEXP) -> c_int {
@@ -362,9 +364,9 @@ macro_rules! r_error {
     }};
 }
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP { unsafe {
-    crate::mainutils::coerce::coerceVector(x, type_)
-}}
+unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
+    unsafe { crate::mainutils::coerce::coerceVector(x, type_) }
+}
 
 // ---------------------------------------------------------------------------
 // checkArgIsSymbol: validate that the given SEXP is a symbol

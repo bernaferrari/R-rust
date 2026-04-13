@@ -70,12 +70,15 @@ pub fn TimeToSeed() -> c_uint {
     seed
 }
 
-/// Unimplemented FFI wrapper for R's `do_systime`.
+/// Returns the current system time as a floating-point number of seconds
+/// since the Unix epoch.
 ///
-/// In the full R runtime, this implements the R-level `Sys.time()` builtin.
-/// It is provided here as a `#[unsafe(no_mangle)]` extern "C" stub returning 0.0
-/// so that downstream C code linking against this library can resolve the
-/// symbol.
+/// Ported from `do_systime()` in `src/main/times.c`. In the full R runtime
+/// this is the R-level `Sys.time()` builtin — it checks argument arity then
+/// wraps `ScalarReal(currentTime())`.
+///
+/// The simplified signature (no SEXP arguments) is retained because this
+/// port does not yet wire into the SEXP call-dispatch table.
 pub unsafe fn do_systime() -> f64 {
-    0.0
+    currentTime()
 }

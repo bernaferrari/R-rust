@@ -15,7 +15,9 @@ use crate::sexp::globals::R_NilValue;
 // checkArity
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 // ---------------------------------------------------------------------------
 // R_setLapackRoutines

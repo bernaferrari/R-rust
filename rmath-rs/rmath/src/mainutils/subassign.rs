@@ -577,13 +577,13 @@ unsafe fn installTrChar(input: SEXP) -> SEXP {
     }
 }
 
-unsafe fn ScalarInteger(x: c_int) -> SEXP { unsafe {
-    crate::sexp::constructors::Rf_ScalarInteger(x)
-}}
+unsafe fn ScalarInteger(x: c_int) -> SEXP {
+    unsafe { crate::sexp::constructors::Rf_ScalarInteger(x) }
+}
 
-unsafe fn ScalarReal(x: c_double) -> SEXP { unsafe {
-    crate::sexp::constructors::Rf_ScalarReal(x)
-}}
+unsafe fn ScalarReal(x: c_double) -> SEXP {
+    unsafe { crate::sexp::constructors::Rf_ScalarReal(x) }
+}
 
 /// ScalarString: create a length-1 character vector from a CHARSXP.
 unsafe fn ScalarString(x: SEXP) -> SEXP {
@@ -617,7 +617,9 @@ unsafe fn nthcdr(x: SEXP, mut n: c_int) -> SEXP {
 
 /// checkArity: check function arity.
 #[inline]
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 /// GetArrayDimnames: get dimnames attribute.
 unsafe fn GetArrayDimnames(x: SEXP) -> SEXP {

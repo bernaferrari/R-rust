@@ -59,9 +59,7 @@ pub fn handle_nan_double(x: &[f64], s: &mut [f64]) {
     for i in 0..len {
         has_nan = has_nan || ISNAN(x[i]);
         has_na = has_na || (has_nan && R_IsNA(x[i]));
-        if has_na {
-            s[i] = crate::sexp::ffi::NA_REAL;
-        } else if has_nan {
+        if has_na || has_nan {
             s[i] = crate::sexp::ffi::NA_REAL;
         }
     }

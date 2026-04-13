@@ -1,28 +1,34 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
-//! Stub port of R's src/main/gram-ex.c
-//!
-//! Formerly in gram.y, this file provides `R_fgetc`, a wrapper around
-//! standard `fgetc()` that normalises CRLF line termination and, on
-//! non-Windows platforms, translates hard EOF into `R_EOF`.
-//!
-//! The original C implementation depends on:
-//! - `<stdio.h>` for `fgetc`, `ungetc`, `feof`
-//! - `R_EOF` constant (defined in R's internal headers)
-//! - Platform `#ifdef Win32` branching
-//!
-//! A faithful port would need a concrete definition of `R_EOF` and a
-//! real `FILE *` wrapper.  This module provides an FFI-compatible stub.
-
 use std::os::raw::{c_int, c_void};
 
-/// Placeholder: `R_fgetc` -- R's wrapper around `fgetc`.
+/// R_EOF sentinel — on non-Windows platforms R defines this as `-1`.
+const R_EOF: c_int = -1;
+
+/// Port of `R_fgetc` from `src/main/gram-ex.c`.
 ///
-/// In the full R implementation this reads a single character from *fp*,
-/// strips CR from CRLF pairs, and on non-Windows platforms returns
-/// `R_EOF` when the stream is exhausted.  The stub simply returns `R_EOF`
-/// (represented as -1 here) unconditionally.
-pub unsafe fn R_fgetc(_fp: *mut c_void) -> c_int {
-    // R_EOF is typically -1; return that as a safe stub.
-    -1
+/// Reads a single character from the C FILE stream `fp`, normalising CRLF
+/// line termination to LF. Returns `R_EOF` (-1) when the stream is at EOF.
+///
+/// Non-Windows path only: the original C code branches on `#ifdef Win32`
+/// with a two-phase EOF protocol (return `'\n'` on first EOF hit, then
+/// `R_EOF` on the next call). We skip that branch — this port targets
+/// Android / Unix where `R_EOF` is `-1`.
+pub unsafe fn R_fgetc(fp: *mut c_void) -> c_int {
+    // SAFETY: caller guarantees `fp` is a valid, non-null FILE pointer.
+    let c = unsafe { libc::fgetc(fp as *mut libc::FILE) };
+    if c == '\r' as c_int {
+        // SAFETY: same fp guarantee.
+        let next = unsafe { libc::fgetc(fp as *mut libc::FILE) };
+        if next != '\n' as c_int {
+            unsafe { libc::ungetc(next, fp as *mut libc::FILE) };
+            return '\r' as c_int;
+        }
+        return '\n' as c_int;
+    }
+    if unsafe { libc::feof(fp as *mut libc::FILE) } != 0 {
+        R_EOF
+    } else {
+        c
+    }
 }

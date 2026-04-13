@@ -632,7 +632,7 @@ pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 /// Re, Im, Mod, Arg, Conj functions.
 ///
 /// Ported from lines 245-356 of complex.c.
-pub unsafe fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
             return R_NilValue();
@@ -649,8 +649,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         if xtype == SEXPTYPE::CPLXSXP.0 {
             // Complex input
             let px = COMPLEX(x);
-            // Default to case 1 (Re) since PRIMVAL(op) is stubbed to 0
-            let primval = crate::mainutils::relop::PRIMVAL(_op);
+            let primval = crate::mainutils::relop::PRIMVAL(op);
 
             match primval {
                 1 => {
@@ -741,7 +740,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 return R_NilValue();
             }
             let py = REAL(y);
-            let primval = crate::mainutils::relop::PRIMVAL(_op);
+            let primval = crate::mainutils::relop::PRIMVAL(op);
 
             match primval {
                 1 | 5 => {

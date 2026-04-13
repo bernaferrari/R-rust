@@ -65,15 +65,11 @@ const BITWISE_SHIFT_R: c_int = 6;
 // ---------------------------------------------------------------------------
 
 pub unsafe fn errorcall_stub(call: SEXP, format: *const c_char) {
-    unsafe {
-        crate::mainutils::errors::errorcall(call, format);
-    }
+    crate::mainutils::errors::errorcall(call, format);
 }
 
 pub unsafe fn error_stub(format: *const c_char) {
-    unsafe {
-        crate::mainutils::errors::errorcall(R_NilValue(), format);
-    }
+    unsafe { crate::mainutils::errors::errorcall(R_NilValue(), format) }
 }
 
 pub unsafe fn warningcall_stub(call: SEXP, format: *const c_char) {

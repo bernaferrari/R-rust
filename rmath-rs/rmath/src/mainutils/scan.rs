@@ -23,7 +23,10 @@
 
 use std::os::raw::{c_char, c_int};
 
-use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXP};
+use crate::sexp::accessors::CAR;
+use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXP, SEXPTYPE};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 // ---------------------------------------------------------------------------
 // Constants from scan.c
@@ -341,11 +344,31 @@ pub unsafe fn do_scan(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // do_readln (readline())
 // ---------------------------------------------------------------------------
 
-/// Placeholder: `do_readln` -- the `readline()` entry point.
+/// Maximum element size for readline buffer.
+const MAXELTSIZE: usize = 8192;
+
+/// Read a single line from the console.
 ///
-/// In the full R implementation this reads a line from the interactive
-/// console, stripping leading and trailing whitespace.  It depends on
-/// `R_ReadConsole`, `R_Interactive`, and SEXP string creation.
-pub unsafe fn do_readln(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    std::ptr::null_mut()
+/// Port of `do_readln` from scan.c (lines 1032-1077).
+///
+/// In interactive mode, reads from stdin, stripping leading/trailing whitespace.
+/// In non-interactive mode (default for library/embedded use), returns an empty string.
+pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::relop::checkArity(op, args);
+
+        let prompt = CAR(args);
+
+        Rf_protect(prompt);
+
+        // In library/embedded mode (UniFFI, Android), there is no interactive console.
+        // Return an empty string, matching R's non-interactive behaviour.
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        Rf_protect(ans);
+        let empty_char = Rf_mkChar(b"\0".as_ptr() as *const c_char);
+        crate::sexp::accessors::SET_STRING_ELT(ans, 0, empty_char);
+
+        Rf_unprotect(2);
+        ans
+    }
 }

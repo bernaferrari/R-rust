@@ -556,29 +556,31 @@ pub unsafe fn do_qsort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// String comparison for sorting, handling NA_STRING.
 ///
 /// Returns -1, 0, or 1. NA strings sort last when `nalast` is true.
-pub unsafe fn scmp(x: *mut c_void, y: *mut c_void, nalast: bool) -> c_int { unsafe {
-    let x = x as SEXP;
-    let y = y as SEXP;
-    let na = crate::mainutils::relop::NA_STRING();
-    if x == na && y == na {
-        return 0;
+pub unsafe fn scmp(x: *mut c_void, y: *mut c_void, nalast: bool) -> c_int {
+    unsafe {
+        let x = x as SEXP;
+        let y = y as SEXP;
+        let na = crate::mainutils::relop::NA_STRING();
+        if x == na && y == na {
+            return 0;
+        }
+        if x == na {
+            return if nalast { 1 } else { -1 };
+        }
+        if y == na {
+            return if nalast { -1 } else { 1 };
+        }
+        if x == y {
+            return 0;
+        }
+        let cx = crate::sexp::accessors::CHAR(x);
+        let cy = crate::sexp::accessors::CHAR(y);
+        if cx.is_null() || cy.is_null() {
+            return 0;
+        }
+        libc::strcmp(cx, cy)
     }
-    if x == na {
-        return if nalast { 1 } else { -1 };
-    }
-    if y == na {
-        return if nalast { -1 } else { 1 };
-    }
-    if x == y {
-        return 0;
-    }
-    let cx = crate::sexp::accessors::CHAR(x);
-    let cy = crate::sexp::accessors::CHAR(y);
-    if cx.is_null() || cy.is_null() {
-        return 0;
-    }
-    libc::strcmp(cx, cy)
-}}
+}
 
 /// Order vector for multiple sort keys (from sort.c).
 ///

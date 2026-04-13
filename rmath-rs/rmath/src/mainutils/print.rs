@@ -268,9 +268,9 @@ unsafe fn inherits_cstr(x: SEXP, class_name: *const c_char) -> c_int {
     }
 }
 
-unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(x)
-}}
+unsafe fn translateChar(x: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(x) }
+}
 
 /// isValidName stub.
 unsafe fn isValidName(s: *const c_char) -> bool {

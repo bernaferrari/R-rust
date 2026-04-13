@@ -94,16 +94,20 @@ fn ENC_KNOWN(s: SEXP) -> c_int {
 // conflicts with other modules that define the same extern "C" stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 // error/errorcall use panic_any(RError{..}) in the full port.
-unsafe fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) { unsafe {
-    crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
-}}
+unsafe fn error(fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
+    unsafe {
+        crate::mainutils::errors::errorcall(crate::sexp::globals::R_NilValue(), fmt);
+    }
+}
 
-unsafe fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) { unsafe {
+unsafe fn errorcall(_call: SEXP, fmt: *const c_char, _a1: usize, _a2: usize, _a3: usize) {
     crate::mainutils::errors::errorcall(_call, fmt);
-}}
+}
 
 unsafe fn asLogical(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asLogical(x) }
@@ -125,13 +129,13 @@ unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
     unsafe { crate::mainutils::coerce::coerceVector(s, t) }
 }
 
-unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(s)
-}}
+unsafe fn translateChar(s: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(s) }
+}
 
-unsafe fn translateCharUTF8(s: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateCharUTF8(s)
-}}
+unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateCharUTF8(s) }
+}
 
 unsafe fn translateCharFP(s: SEXP) -> *const c_char {
     unsafe {
@@ -151,9 +155,11 @@ unsafe fn trCharUTF8(s: SEXP) -> *const c_char {
     }
 }
 
-unsafe fn PrintDefaults() { unsafe {
-    crate::mainutils::print::PrintDefaults();
-}}
+unsafe fn PrintDefaults() {
+    unsafe {
+        crate::mainutils::print::PrintDefaults();
+    }
+}
 
 unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
     unsafe { crate::mainutils::printutils::EncodeLogical(x, w) }
@@ -173,13 +179,13 @@ unsafe fn EncodeReal0(
     unsafe { crate::mainutils::printutils::EncodeReal0(x, w, d, e, outdec) }
 }
 
-unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char { unsafe {
-    crate::mainutils::printutils::EncodeEnvironment(x)
-}}
+unsafe fn EncodeEnvironment(x: SEXP) -> *const c_char {
+    unsafe { crate::mainutils::printutils::EncodeEnvironment(x) }
+}
 
-unsafe fn EncodeExtptr(x: SEXP) -> *const c_char { unsafe {
-    crate::mainutils::printutils::EncodeExtptr(x)
-}}
+unsafe fn EncodeExtptr(x: SEXP) -> *const c_char {
+    unsafe { crate::mainutils::printutils::EncodeExtptr(x) }
+}
 
 unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
@@ -332,9 +338,9 @@ unsafe fn R_AsCharacterSymbol() -> SEXP {
     unsafe { crate::sexp::symbol::Rf_install(b"as.character\x00".as_ptr() as *const c_char) }
 }
 
-unsafe fn NA_STRING() -> SEXP { unsafe {
-    crate::mainutils::relop::NA_STRING()
-}}
+unsafe fn NA_STRING() -> SEXP {
+    unsafe { crate::mainutils::relop::NA_STRING() }
+}
 
 unsafe fn PRIMARITY(_op: SEXP) -> c_int {
     0

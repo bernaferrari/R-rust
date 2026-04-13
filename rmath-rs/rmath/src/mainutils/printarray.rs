@@ -77,15 +77,15 @@ use crate::mainutils::printutils::{
 // are stubs (returning 0 and "" respectively), we define local wrappers.
 // ---------------------------------------------------------------------------
 
-unsafe fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int { unsafe {
-    crate::mainutils::printutils::Rstrlen(s, quote)
-}}
+unsafe fn local_Rstrlen(s: SEXP, quote: c_int) -> c_int {
+    unsafe { crate::mainutils::printutils::Rstrlen(s, quote) }
+}
 
 static EMPTY_CSTR: [u8; 1] = [0];
 
-unsafe fn local_EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char { unsafe {
-    crate::mainutils::printutils::EncodeString(s, w, quote, justify)
-}}
+unsafe fn local_EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
+    unsafe { crate::mainutils::printutils::EncodeString(s, w, quote, justify) }
+}
 
 // ---------------------------------------------------------------------------
 // Functions from format (extern "C" linkage)
@@ -138,9 +138,9 @@ use crate::eval::attrib_core::getAttrib;
 // is not yet available.
 // ---------------------------------------------------------------------------
 
-unsafe fn NA_STRING() -> SEXP { unsafe {
-    crate::mainutils::relop::NA_STRING()
-}}
+unsafe fn NA_STRING() -> SEXP {
+    unsafe { crate::mainutils::relop::NA_STRING() }
+}
 
 // ---------------------------------------------------------------------------
 // Helper: ceil_DIV(a, b) = ceil(a / b) in integer arithmetic

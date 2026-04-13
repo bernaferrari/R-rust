@@ -100,9 +100,11 @@ unsafe fn r_error(msg: &str) {
 }
 
 /// Check arity of a call (stub -- does nothing in this port).
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe {
-    crate::mainutils::relop::checkArity(op, args);
-}}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe {
+        crate::mainutils::relop::checkArity(op, args);
+    }
+}
 
 /// Convert SEXP to c_int (asInteger).
 unsafe fn asInteger(x: SEXP) -> c_int {
@@ -291,9 +293,9 @@ unsafe fn EnsureString(x: SEXP) -> SEXP {
     }
 }
 
-unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(x)
-}}
+unsafe fn translateChar(x: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(x) }
+}
 
 /// asChar -- get the first string element as a CHARSXP.
 unsafe fn asChar(x: SEXP) -> SEXP {
@@ -447,7 +449,7 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
             .unwrap_or_else(|e| e.into_inner());
         if let Some(&val) = table.options.get(name) {
             let addr = val as usize;
-            if addr > 0x1000 && (addr & 0x7) == 0 {
+            if addr > 0x1000 && addr.trailing_zeros() >= 3 {
                 val
             } else {
                 R_NilValue()

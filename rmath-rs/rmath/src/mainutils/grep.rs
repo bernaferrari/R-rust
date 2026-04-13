@@ -36,9 +36,9 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 #[inline(always)]
-unsafe fn NA_STRING() -> SEXP { unsafe {
-    crate::mainutils::relop::NA_STRING()
-}}
+unsafe fn NA_STRING() -> SEXP {
+    unsafe { crate::mainutils::relop::NA_STRING() }
+}
 
 #[inline(always)]
 unsafe fn isNA_STRING(s: SEXP) -> bool {
@@ -62,13 +62,15 @@ unsafe fn isNull(x: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(s)
-}}
+unsafe fn translateChar(s: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(s) }
+}
 
 /// checkArity -- stub, no-op.
 #[inline(always)]
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 /// asLogical -- extract logical value from scalar.
 #[inline(always)]
@@ -111,24 +113,26 @@ unsafe fn asBool2(x: SEXP, _call: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn PRIMVAL(op: SEXP) -> c_int { unsafe {
-    crate::mainutils::relop::PRIMVAL(op)
-}}
+unsafe fn PRIMVAL(op: SEXP) -> c_int {
+    unsafe { crate::mainutils::relop::PRIMVAL(op) }
+}
 
 #[inline(always)]
-unsafe fn R_NamesSymbol() -> SEXP { unsafe {
-    crate::eval::attrib_core::R_NamesSymbol()
-}}
+unsafe fn R_NamesSymbol() -> SEXP {
+    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+}
 
 #[inline(always)]
-unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP { unsafe {
-    crate::eval::attrib_core::getAttrib(x, which)
-}}
+unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
+    unsafe { crate::eval::attrib_core::getAttrib(x, which) }
+}
 
 #[inline(always)]
-unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) { unsafe {
-    crate::eval::attrib_core::setAttrib(x, which, value);
-}}
+unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
+    unsafe {
+        crate::eval::attrib_core::setAttrib(x, which, value);
+    }
+}
 
 /// ScalarString -- create scalar STRSXP.
 #[inline(always)]
@@ -149,9 +153,9 @@ unsafe fn allocVector(sexptype: c_int, length: R_xlen_t) -> SEXP {
 }
 
 #[inline(always)]
-unsafe fn install(name: *const c_char) -> SEXP { unsafe {
-    crate::sexp::symbol::Rf_install(name)
-}}
+unsafe fn install(name: *const c_char) -> SEXP {
+    unsafe { crate::sexp::symbol::Rf_install(name) }
+}
 
 /// Rf_warning -- issue a warning (forward to errors module).
 #[inline(always)]
@@ -1347,20 +1351,70 @@ pub unsafe fn do_grepraw(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// Stubs for TRE/PCRE-dependent functions (kept for ABI compatibility)
+// Approximate (fuzzy) fixed-string matching — Levenshtein distance
 // ---------------------------------------------------------------------------
 
-/// Placeholder: `R_agrep_fixed` -- fixed-string approximate grep.
+/// Compute the Levenshtein distance between two byte strings.
 ///
-/// In the full R implementation this performs approximate (fuzzy) string
-/// matching using TRE. This stub returns 0 (no match).
+/// Uses the Wagner-Fischer algorithm with O(min(m,n)) space.
+/// Returns the edit distance (insertions, deletions, substitutions).
+fn levenshtein_distance(a: &[u8], b: &[u8]) -> usize {
+    let (long, short) = if a.len() >= b.len() { (a, b) } else { (b, a) };
+    let m = long.len();
+    let n = short.len();
+
+    if n == 0 {
+        return m;
+    }
+
+    // Two-row DP: prev[i] = distance(short[..i], long[..j-1]), curr[i] = distance(short[..i], long[..j])
+    let mut prev = (0..=n).collect::<Vec<usize>>();
+    let mut curr = vec![0usize; n + 1];
+
+    for j in 1..=m {
+        curr[0] = j;
+        for i in 1..=n {
+            let cost = if short[i - 1] == long[j - 1] { 0 } else { 1 };
+            curr[i] = (prev[i] + 1) // deletion
+                .min(curr[i - 1] + 1) // insertion
+                .min(prev[i - 1] + cost); // substitution
+        }
+        std::mem::swap(&mut prev, &mut curr);
+    }
+
+    prev[n]
+}
+
+/// Approximate fixed-string grep using Levenshtein distance.
+///
+/// Returns 1 if the edit distance between `pat` and `target` is ≤ `max_distance`,
+/// 0 otherwise.  When `ignore_case` ≠ 0, both strings are compared in lowercase.
+///
+/// Port of R's TRE-based `R_agrep_fixed`, reimplemented with Wagner-Fischer.
 pub unsafe fn R_agrep_fixed(
-    _pat: *const c_char,
-    _target: *const c_char,
-    _max_distance: c_int,
-    _ignore_case: c_int,
+    pat: *const c_char,
+    target: *const c_char,
+    max_distance: c_int,
+    ignore_case: c_int,
 ) -> c_int {
-    0
+    unsafe {
+        if pat.is_null() || target.is_null() || max_distance < 0 {
+            return 0;
+        }
+
+        let pat_bytes = match CStr::from_ptr(pat).to_bytes().to_ascii_lowercase() {
+            b if b.is_empty() => return 1, // empty pattern matches anything
+            b => b,
+        };
+        let target_bytes: Vec<u8> = if ignore_case != 0 {
+            CStr::from_ptr(target).to_bytes().to_ascii_lowercase()
+        } else {
+            CStr::from_ptr(target).to_bytes().to_vec()
+        };
+
+        let dist = levenshtein_distance(&pat_bytes, &target_bytes);
+        if dist <= max_distance as usize { 1 } else { 0 }
+    }
 }
 
 /// Placeholder: `R_pcre_exec` -- PCRE regex matching.

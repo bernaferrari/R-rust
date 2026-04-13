@@ -13,6 +13,7 @@
 
 pub mod accessors;
 pub mod altrep;
+pub mod attrib_core;
 pub mod builder;
 pub mod constructors;
 pub mod context;

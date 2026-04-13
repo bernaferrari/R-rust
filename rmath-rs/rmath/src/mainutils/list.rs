@@ -27,9 +27,9 @@ const STRSXP_VAL: c_int = 16;
 // Local helpers and entry points
 // ---------------------------------------------------------------------------
 
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe {
-    crate::mainutils::relop::checkArity(op, args)
-}}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 unsafe fn asLogical(x: SEXP) -> c_int {
     unsafe { crate::mainutils::coerce::asLogical(x) }

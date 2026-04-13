@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2000--2023  The R Core Team
@@ -10,7 +9,7 @@
 
 use std::os::raw::c_int;
 
-use crate::main::registration::DllInfo;
+use crate::mainutils::registration::DllInfo;
 
 /// Initialize the tcltk package's registered routines.
 ///

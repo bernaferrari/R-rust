@@ -584,16 +584,18 @@ pub(crate) unsafe fn installTrChar(input: SEXP) -> SEXP {
 // translateChar -- get the UTF-8 string from a CHARSXP
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(x: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(x)
-}}
+unsafe fn translateChar(x: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(x) }
+}
 
 // ---------------------------------------------------------------------------
 // checkArity -- local stub (no-op for now)
 // ---------------------------------------------------------------------------
 
 /// Check that the number of arguments matches the function arity.
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 // ---------------------------------------------------------------------------
 // R_FINITE -- check if a double is finite

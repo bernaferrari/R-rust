@@ -242,11 +242,10 @@ impl Lexer {
                 has_dot = true;
                 s.push(ch);
                 self.advance();
-                if self.peek_char() == Some('+') || self.peek_char() == Some('-') {
-                    if let Some(sign) = self.advance() {
+                if (self.peek_char() == Some('+') || self.peek_char() == Some('-'))
+                    && let Some(sign) = self.advance() {
                         s.push(sign);
                     }
-                }
             } else if ch == 'L' {
                 self.advance();
                 if let Ok(v) = s.parse::<i32>() {

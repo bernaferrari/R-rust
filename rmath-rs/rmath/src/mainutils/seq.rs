@@ -76,25 +76,27 @@ unsafe fn DispatchOrEval(
     0
 }
 
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 unsafe fn check1arg(_args: SEXP, _call: SEXP, _name: *const c_char) {}
 
-unsafe fn errorcall(call: SEXP, format: *const c_char) { unsafe {
+unsafe fn errorcall(call: SEXP, format: *const c_char) {
     crate::mainutils::errors::errorcall(call, format);
-}}
+}
 
-unsafe fn warningcall(call: SEXP, format: *const c_char) { unsafe {
-    crate::mainutils::errors::warningcall(call, format);
-}}
+unsafe fn warningcall(call: SEXP, format: *const c_char) {
+    unsafe { crate::mainutils::errors::warningcall(call, format) }
+}
 
 unsafe fn R_typeToChar(_s: SEXP) -> *const c_char {
     ptr::null()
 }
 
-unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP { unsafe {
-    crate::mainutils::coerce::coerceVector(s, t)
-}}
+unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+    unsafe { crate::mainutils::coerce::coerceVector(s, t) }
+}
 
 unsafe fn UNIMPLEMENTED_TYPE(_mesg: *const c_char, _s: SEXP) {}
 
@@ -248,41 +250,41 @@ unsafe fn R_compact_intrange(from: R_xlen_t, to: R_xlen_t) -> SEXP {
     }
 }
 
-unsafe fn shallow_duplicate(x: SEXP) -> SEXP { unsafe {
-    crate::mainutils::duplicate::shallow_duplicate(x)
-}}
+unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
+    unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
+}
 
-unsafe fn lazy_duplicate(x: SEXP) -> SEXP { unsafe {
-    crate::mainutils::duplicate::lazy_duplicate(x)
-}}
+unsafe fn lazy_duplicate(x: SEXP) -> SEXP {
+    unsafe { crate::mainutils::duplicate::lazy_duplicate(x) }
+}
 
-unsafe fn Rf_duplicate(x: SEXP) -> SEXP { unsafe {
-    crate::mainutils::duplicate::Rf_duplicate(x)
-}}
+unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
+    unsafe { crate::mainutils::duplicate::Rf_duplicate(x) }
+}
 
-unsafe fn Rf_shallow_duplicate(x: SEXP) -> SEXP { unsafe {
-    crate::mainutils::duplicate::shallow_duplicate(x)
-}}
+unsafe fn Rf_shallow_duplicate(x: SEXP) -> SEXP {
+    unsafe { crate::mainutils::duplicate::shallow_duplicate(x) }
+}
 
-unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) { unsafe {
-    crate::eval::attrib_core::setAttrib(x, what, val)
-}}
+unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
+    unsafe { crate::eval::attrib_core::setAttrib(x, what, val) }
+}
 
-unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP { unsafe {
-    crate::eval::attrib_core::getAttrib(x, what)
-}}
+unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
+    unsafe { crate::eval::attrib_core::getAttrib(x, what) }
+}
 
-unsafe fn R_NamesSymbol() -> SEXP { unsafe {
-    crate::eval::attrib_core::R_NamesSymbol()
-}}
+unsafe fn R_NamesSymbol() -> SEXP {
+    unsafe { crate::eval::attrib_core::R_NamesSymbol() }
+}
 
-unsafe fn R_ClassSymbol() -> SEXP { unsafe {
-    crate::eval::attrib_core::R_ClassSymbol()
-}}
+unsafe fn R_ClassSymbol() -> SEXP {
+    unsafe { crate::eval::attrib_core::R_ClassSymbol() }
+}
 
-unsafe fn R_LevelsSymbol() -> SEXP { unsafe {
-    crate::eval::attrib_core::R_LevelsSymbol()
-}}
+unsafe fn R_LevelsSymbol() -> SEXP {
+    unsafe { crate::eval::attrib_core::R_LevelsSymbol() }
+}
 
 unsafe fn isObject(x: SEXP) -> c_int {
     0
@@ -318,13 +320,13 @@ unsafe fn IS_S4_OBJECT(_x: SEXP) -> c_int {
     0
 }
 
-unsafe fn Rf_install_stub(name: *const c_char) -> SEXP { unsafe {
-    crate::sexp::symbol::Rf_install(name)
-}}
+unsafe fn Rf_install_stub(name: *const c_char) -> SEXP {
+    unsafe { crate::sexp::symbol::Rf_install(name) }
+}
 
-unsafe fn R_DotsSymbol() -> SEXP { unsafe {
-    crate::sexp::symbol::R_DotsSymbol()
-}}
+unsafe fn R_DotsSymbol() -> SEXP {
+    unsafe { crate::sexp::symbol::R_DotsSymbol() }
+}
 
 // ---------------------------------------------------------------------------
 // Helpers

@@ -2593,23 +2593,138 @@ pub unsafe fn do_deparse(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Implementation of R's `dput()` function.
 ///
 /// Writes a deparsed representation of an R object to a file or connection.
-///
-/// Unimplemented: requires connection handling infrastructure.
-pub unsafe fn do_dput(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
-}
+/// Port of `do_dput` in deparse.c.
+pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::relop::checkArity(_op, args);
+        let tval_raw = CAR(args);
+        let sfile = CADR(args);
+        let opts_arg = CADDR(args);
+        let opts = if isNull(opts_arg) {
+            SHOWATTRIBUTES
+        } else {
+            Rf_asInteger(opts_arg)
+        };
 
-// ---------------------------------------------------------------------------
-// do_dump — .Internal(dump(list, file, envir, opts, evaluate))
-// ---------------------------------------------------------------------------
+        let tval = deparse1(tval_raw, false, opts);
+        Rf_protect(tval);
+
+        // Write to stdout (connection index 1) or a connection
+        let ifile = crate::mainutils::coerce::asInteger(sfile);
+        if ifile == 1 {
+            for i in 0..LENGTH(tval) {
+                let s = CHAR(STRING_ELT(tval, i as R_xlen_t));
+                if !s.is_null() {
+                    let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+                    let line = String::from_utf8_lossy(bytes);
+                    println!("{}", line);
+                }
+            }
+        } else if ifile >= 3 {
+            // Write to a connection
+            let con_sexp = sfile;
+            let lines_sexp = tval;
+            // Build a STRSXP with newlines appended for writeLines
+            let n = LENGTH(lines_sexp);
+            let text = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
+            Rf_protect(text);
+            for i in 0..n as R_xlen_t {
+                SET_STRING_ELT(text, i, STRING_ELT(lines_sexp, i));
+            }
+            crate::mainutils::connections::do_writeLines(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                Rf_cons(
+                    text,
+                    Rf_cons(
+                        con_sexp,
+                        Rf_cons(Rf_mkString(b"\n\0".as_ptr() as *const c_char), R_NilValue()),
+                    ),
+                ),
+                R_NilValue(),
+            );
+            Rf_unprotect(1);
+        }
+
+        Rf_unprotect(1);
+        CAR(args)
+    }
+}
 
 /// Implementation of R's `dump()` function.
 ///
 /// Writes deparsed representations of named R objects to a file or connection.
-///
-/// Unimplemented: requires connection handling infrastructure.
-pub unsafe fn do_dump(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+/// Port of `do_dump` in deparse.c.
+pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        crate::mainutils::relop::checkArity(_op, args);
+        let names = CAR(args);
+        let sfile = CADR(args);
+        let _source = CADDR(args);
+        let opts = Rf_asInteger(CADDDR(args));
+        let _evaluate = CAR(CDR(CDR(CDR(CDR(args)))));
+
+        if !isString(names) {
+            return R_NilValue();
+        }
+        let nobjs = LENGTH(names);
+        if nobjs < 1 {
+            return R_NilValue();
+        }
+
+        let ifile = crate::mainutils::coerce::asInteger(sfile);
+
+        for i in 0..nobjs as R_xlen_t {
+            let name_charsxp = STRING_ELT(names, i);
+            if name_charsxp.is_null() {
+                continue;
+            }
+            let obj_name = CHAR(name_charsxp);
+            if obj_name.is_null() {
+                continue;
+            }
+            let name_str = std::ffi::CStr::from_ptr(obj_name)
+                .to_string_lossy()
+                .into_owned();
+
+            // Deparse the object — in this port we deparse the name itself as a symbol
+            let sym = Rf_install(obj_name);
+            let tval = deparse1(
+                sym,
+                false,
+                if opts == NA_INTEGER {
+                    DEFAULTDEPARSE
+                } else {
+                    opts
+                },
+            );
+            Rf_protect(tval);
+
+            if ifile == 1 {
+                if isValidName(obj_name) {
+                    println!("{} <-", name_str);
+                } else {
+                    println!("`{}` <-", name_str);
+                }
+                for j in 0..LENGTH(tval) {
+                    let s = CHAR(STRING_ELT(tval, j as R_xlen_t));
+                    if !s.is_null() {
+                        let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
+                        let line = String::from_utf8_lossy(bytes);
+                        println!("{}", line);
+                    }
+                }
+            }
+
+            Rf_unprotect(1);
+        }
+
+        let outnames = Rf_allocVector(SEXPTYPE::STRSXP.0, nobjs);
+        for i in 0..nobjs as R_xlen_t {
+            SET_STRING_ELT(outnames, i, STRING_ELT(names, i));
+        }
+        outnames
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2771,11 +2886,26 @@ pub unsafe fn R_inspect3(
 // ---------------------------------------------------------------------------
 
 /// Connection cleanup handler used in do_dput and do_dump.
-/// Closes the connection if it was opened by the deparse routine.
+/// Closes the connection identified by the data pointer (an INTSXP containing
+/// the connection index) if it was opened by the deparse routine.
 ///
-/// Unimplemented: requires connection infrastructure.
-pub unsafe fn con_cleanup(_data: *mut std::ffi::c_void) {
-    // Unimplemented
+/// Port of `con_cleanup` in deparse.c:378.
+pub unsafe fn con_cleanup(data: *mut std::ffi::c_void) {
+    unsafe {
+        if data.is_null() {
+            return;
+        }
+        let scon = data as SEXP;
+        if scon.is_null() {
+            return;
+        }
+        crate::mainutils::connections::do_close(
+            scon,
+            std::ptr::null_mut(),
+            scon,
+            std::ptr::null_mut(),
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

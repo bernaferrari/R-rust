@@ -128,19 +128,25 @@ pub unsafe fn GEregisterWithDevice(dd: *mut c_void) {
 pub unsafe fn GEregisterSystem(
     cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
     systemRegisterIndex: *mut c_int,
-) { unsafe {
-    let _ = cb;
-    numGraphicsSystems.with(|v| {
-        let current = v.get();
-        if current >= MAX_GRAPHICS_SYSTEMS {
-            return;
-        }
-        if !systemRegisterIndex.is_null() {
-            *systemRegisterIndex = current;
-        }
-        v.set(current + 1);
-    });
-}}
+) {
+    unsafe {
+        let _ = cb;
+        numGraphicsSystems.with(|v| {
+            let current = v.get();
+            if current >= MAX_GRAPHICS_SYSTEMS {
+                return;
+            }
+            if !systemRegisterIndex.is_null() {
+                *systemRegisterIndex = current;
+            }
+            // Increment the count of registered graphics systems
+            v.set(current + 1);
+            // Wire-up with any active devices. In headless mode there are no devices,
+            // but call the hook to keep behavior consistent with the original C API.
+            GEregisterWithDevice(ptr::null_mut());
+        });
+    }
+}
 
 // ---------------------------------------------------------------------------
 // GEunregisterSystem
@@ -451,20 +457,18 @@ pub unsafe fn GEMetricInfo(
     descent: *mut c_double,
     width: *mut c_double,
     dd: *mut c_void,
-) {
-    unsafe {
-        // Headless: return zeros
-        if !ascent.is_null() {
-            *ascent = 0.0;
-        }
-        if !descent.is_null() {
-            *descent = 0.0;
-        }
-        if !width.is_null() {
-            *width = 0.0;
-        }
+) { unsafe {
+    // Headless: return sensible defaults to enable layout in headless mode.
+    if !ascent.is_null() {
+        *ascent = 0.8;
     }
-}
+    if !descent.is_null() {
+        *descent = 0.2;
+    }
+    if !width.is_null() {
+        *width = 0.5;
+    }
+}}
 
 // ---------------------------------------------------------------------------
 // GEStrWidth
@@ -556,7 +560,12 @@ pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
 
 /// Check whether all registered graphics systems are in a valid state.
 pub unsafe fn GEcheckState(dd: *mut c_void) -> c_int {
-    1 // TRUE
+    // Headless: if no device is provided, consider state OK (0)
+    if dd.is_null() {
+        0 // FALSE in R's convention means OK for headless checks
+    } else {
+        1 // TRUE: there is a device/state to check
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -999,15 +1008,15 @@ mod tests {
     }
 
     #[test]
-    fn test_GEMetricInfo_returns_zeros() {
+    fn test_GEMetricInfo_returns_defaults() {
         unsafe {
             let mut a = 1.0;
             let mut d = 1.0;
             let mut w = 1.0;
             GEMetricInfo(77, ptr::null(), &mut a, &mut d, &mut w, ptr::null_mut());
-            assert_eq!(a, 0.0);
-            assert_eq!(d, 0.0);
-            assert_eq!(w, 0.0);
+            assert_eq!(a, 0.8);
+            assert_eq!(d, 0.2);
+            assert_eq!(w, 0.5);
         }
     }
 
@@ -1060,9 +1069,10 @@ mod tests {
     }
 
     #[test]
-    fn test_GEcheckState_returns_true() {
+    fn test_GEcheckState_returns_false_for_null() {
         unsafe {
-            assert_eq!(GEcheckState(ptr::null_mut()), 1);
+            // null device = headless, returns FALSE (0) meaning no device state to check
+            assert_eq!(GEcheckState(ptr::null_mut()), 0);
         }
     }
 

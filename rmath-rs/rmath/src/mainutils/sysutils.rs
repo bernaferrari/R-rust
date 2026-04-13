@@ -132,7 +132,9 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 /// checkArity — stub, no-op.
 #[inline(always)]
-unsafe fn checkArity(op: SEXP, args: SEXP) { unsafe { crate::mainutils::relop::checkArity(op, args) }}
+unsafe fn checkArity(op: SEXP, args: SEXP) {
+    unsafe { crate::mainutils::relop::checkArity(op, args) }
+}
 
 /// isString check — STRSXP type.
 #[inline(always)]
@@ -146,9 +148,9 @@ unsafe fn isString(x: SEXP) -> bool {
 }
 
 #[inline(always)]
-unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(s)
-}}
+unsafe fn translateChar(s: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(s) }
+}
 
 /// R_Interactive flag. Set to false (non-interactive mode).
 static R_INTERACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);

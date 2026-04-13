@@ -51,8 +51,8 @@ pub struct RCNTXT {
     pub call: SEXP,
     /// The closure/environment for function contexts
     pub cloenv: SEXP,
-    /// System function pointer (for .C/.Call/.External)
-    pub sysparent: c_int,
+    pub sysparent: SEXP,
+    pub callfun: SEXP,
     /// Function to call on exit (on.exit handlers)
     pub cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
     /// Closure being evaluated
@@ -83,6 +83,12 @@ pub struct RCNTXT {
     pub returnValue: SEXP,
     /// Number of protect entries at context entry
     pub protectCount: usize,
+    /// on.exit expression list (conexit in R)
+    pub conexit: SEXP,
+    /// cleanup function pointer (cend in R)
+    pub cend: Option<unsafe extern "C" fn(*mut std::os::raw::c_void)>,
+    /// cleanup function data (cenddata in R)
+    pub cenddata: *mut std::os::raw::c_void,
 }
 
 impl RCNTXT {
@@ -93,7 +99,8 @@ impl RCNTXT {
             callflag: 0,
             call: ptr::null_mut(),
             cloenv: ptr::null_mut(),
-            sysparent: 0,
+            sysparent: ptr::null_mut(),
+            callfun: ptr::null_mut(),
             cfn: None,
             closure: ptr::null_mut(),
             promiseargs: ptr::null_mut(),
@@ -109,6 +116,9 @@ impl RCNTXT {
             rpvbase: 0,
             returnValue: ptr::null_mut(),
             protectCount: 0,
+            conexit: ptr::null_mut(),
+            cend: None,
+            cenddata: ptr::null_mut(),
         }
     }
 }
@@ -148,7 +158,7 @@ pub unsafe fn Rf_begincontext(
     callflag: c_int,
     call: SEXP,
     cloenv: SEXP,
-    sysparent: c_int,
+    sysparent: SEXP,
     cfn: Option<unsafe extern "C" fn(*mut SexprecCore) -> *mut SexprecCore>,
     closure: SEXP,
     promiseargs: SEXP,
@@ -284,7 +294,7 @@ mod tests {
                 ctxt_flags::CTXT_TOPLEVEL,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                0,
+                ptr::null_mut(),
                 None,
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -305,7 +315,7 @@ mod tests {
                 ctxt_flags::CTXT_TOPLEVEL,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                0,
+                ptr::null_mut(),
                 None,
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -314,7 +324,7 @@ mod tests {
                 ctxt_flags::CTXT_FUNCTION,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                0,
+                ptr::null_mut(),
                 None,
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -349,7 +359,7 @@ mod tests {
                 ctxt_flags::CTXT_TOPLEVEL,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                0,
+                ptr::null_mut(),
                 None,
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -358,7 +368,7 @@ mod tests {
                 ctxt_flags::CTXT_FUNCTION,
                 ptr::null_mut(),
                 ptr::null_mut(),
-                0,
+                ptr::null_mut(),
                 None,
                 ptr::null_mut(),
                 ptr::null_mut(),

@@ -625,6 +625,7 @@ type AltrepInspectMethod = Option<unsafe extern "C" fn(SEXP, c_int, c_int) -> c_
 type AltrepLengthMethod = Option<unsafe extern "C" fn(SEXP) -> R_xlen_t>;
 type AltrepCoerceMethod = Option<unsafe extern "C" fn(SEXP, c_int) -> SEXP>;
 
+#[derive(Default)]
 struct AltrepClassMethods {
     finalizer: AltrepFinalizer,
     duplicate: AltrepDuplicateMethod,
@@ -633,17 +634,6 @@ struct AltrepClassMethods {
     coerce: AltrepCoerceMethod,
 }
 
-impl Default for AltrepClassMethods {
-    fn default() -> Self {
-        Self {
-            finalizer: None,
-            duplicate: None,
-            inspect: None,
-            length: None,
-            coerce: None,
-        }
-    }
-}
 
 thread_local! {
     static ALTREP_METHODS: RefCell<HashMap<usize, AltrepClassMethods>> = RefCell::new(HashMap::new());

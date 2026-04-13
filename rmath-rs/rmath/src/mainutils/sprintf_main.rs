@@ -62,29 +62,31 @@ const SYMSXP: c_int = 1;
 // conflicts with other modules that define the same extern "C" stubs.
 // ---------------------------------------------------------------------------
 
-unsafe fn translateChar(s: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateChar(s)
-}}
+unsafe fn translateChar(s: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateChar(s) }
+}
 
-unsafe fn translateCharUTF8(s: SEXP) -> *const c_char { unsafe {
-    crate::sexp::accessors::translateCharUTF8(s)
-}}
+unsafe fn translateCharUTF8(s: SEXP) -> *const c_char {
+    unsafe { crate::sexp::accessors::translateCharUTF8(s) }
+}
 
-unsafe fn getCharCE(s: SEXP) -> c_int { unsafe {
-    crate::sexp::accessors::getCharCE(s)
-}}
+unsafe fn getCharCE(s: SEXP) -> c_int {
+    unsafe { crate::sexp::accessors::getCharCE(s) }
+}
 
-unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP { unsafe {
-    crate::mainutils::coerce::coerceVector(s, t)
-}}
+unsafe fn coerceVector(s: SEXP, t: c_int) -> SEXP {
+    unsafe { crate::mainutils::coerce::coerceVector(s, t) }
+}
 
 unsafe fn mkCharCE(s: *const c_char, _enc: c_int) -> SEXP {
     unsafe { Rf_mkChar(s) }
 }
 
-unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) { unsafe {
-    crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), fmt);
-}}
+unsafe fn warning(fmt: *const c_char, _a1: usize, _a2: usize) {
+    unsafe {
+        crate::mainutils::errors::warningcall(crate::sexp::globals::R_NilValue(), fmt);
+    }
+}
 
 unsafe fn isNA_STRING(s: SEXP) -> bool {
     // Compare against the canonical NA_STRING sentinel from relop.rs

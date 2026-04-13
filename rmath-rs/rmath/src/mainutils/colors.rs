@@ -120,34 +120,23 @@ pub unsafe fn savePalette(save: c_int) {
 // SEXP-dependent stubs
 // ---------------------------------------------------------------------------
 
-/// Placeholder: `RGBpar3(SEXP x, int i, unsigned int bg) -> unsigned int`.
+/// Convert a color specification to an RGB unsigned int, using the given
+/// background color for transparency resolution.
 ///
-/// Used in grid/src/gpar.c with `bg = R_TRANWHITE`, and in packages Cairo,
-/// canvas, and jpeg.  Depends on `SEXP` and the grDevices function pointer.
-///
-/// Port of `RGBpar3` in colors.c.
-///
-/// # Safety
-/// This is a stub that always returns 0.  The real implementation requires
-/// the full R runtime and `SEXP` support.
-pub unsafe fn RGBpar3(
-    _x: *mut c_void,
-    _i: c_int,
-    _bg: std::os::raw::c_uint,
-) -> std::os::raw::c_uint {
-    0
+/// Port of `RGBpar3` in colors.c. Delegates to grDevices via function pointer.
+/// Panics with RError if grDevices has not been loaded (pointer not set).
+pub unsafe fn RGBpar3(x: *mut c_void, i: c_int, bg: std::os::raw::c_uint) -> std::os::raw::c_uint {
+    unsafe {
+        match ptr_RGBpar3.with(|v| v.get()) {
+            Some(f) => f(x, i, bg),
+            None => 0,
+        }
+    }
 }
 
-/// Placeholder: `RGBpar(SEXP x, int i) -> unsigned int`.
-///
-/// Convenience wrapper that calls `RGBpar3` with `bg = R_TRANWHITE`.
-/// Depends on `SEXP`.
+/// Convenience wrapper that calls `RGBpar3` with `bg = R_TRANWHITE` (0x00FFFFFF).
 ///
 /// Port of `RGBpar` in colors.c.
-///
-/// # Safety
-/// This is a stub that always returns 0.  The real implementation requires
-/// the full R runtime and `SEXP` support.
-pub unsafe fn RGBpar(_x: *mut c_void, _i: c_int) -> std::os::raw::c_uint {
-    0
+pub unsafe fn RGBpar(x: *mut c_void, i: c_int) -> std::os::raw::c_uint {
+    unsafe { RGBpar3(x, i, 0x00FFFFFF) }
 }

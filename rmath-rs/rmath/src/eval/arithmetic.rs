@@ -152,14 +152,13 @@ pub unsafe fn do_arith(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         match op_name {
             "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => {
                 if args == R_NilValue() || CDR(args) == R_NilValue() {
-                    if op_name == "-" {
-                        if let Some(x) = real_val(CAR(args)) {
+                    if op_name == "-"
+                        && let Some(x) = real_val(CAR(args)) {
                             if let Some(iv) = int_val(CAR(args)) {
                                 return Rf_ScalarInteger(-iv);
                             }
                             return Rf_ScalarReal(-x);
                         }
-                    }
                     if op_name == "+" {
                         return CAR(args);
                     }
@@ -445,12 +444,12 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let result = match op_name {
             "sum" => vals.iter().fold(0.0, |a, &b| a + b),
-            "min" => vals.iter().cloned().fold(f64::INFINITY, f64::min),
-            "max" => vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max),
+            "min" => vals.iter().copied().fold(f64::INFINITY, f64::min),
+            "max" => vals.iter().copied().fold(f64::NEG_INFINITY, f64::max),
             "prod" => vals.iter().fold(1.0, |a, &b| a * b),
             "range" => {
-                let lo = vals.iter().cloned().fold(f64::INFINITY, f64::min);
-                let hi = vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
+                let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
                 let v = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
                 let data = crate::sexp::accessors::REAL(v);
                 *data.add(0) = lo;

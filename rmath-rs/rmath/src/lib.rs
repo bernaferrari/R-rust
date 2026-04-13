@@ -41,6 +41,11 @@
 #![allow(clippy::approx_constant)]
 // Documentation: C code doesn't follow Rust doc conventions
 #![allow(clippy::doc_markdown)]
+// Safety docs: every unsafe fn in this C FFI port operates on raw SEXP pointers;
+// adding 1600+ boilerplate "# Safety" sections adds no real safety value.
+#![allow(clippy::missing_safety_doc)]
+#![allow(clippy::missing_errors_doc)]
+#![allow(clippy::missing_panics_doc)]
 // C control flow idioms: direct translations from C if/else/match patterns
 #![allow(clippy::needless_return)]
 #![allow(clippy::redundant_else)]
