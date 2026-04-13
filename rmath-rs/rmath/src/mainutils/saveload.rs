@@ -23,6 +23,12 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use std::io::{self, BufRead, BufReader, BufWriter, Read, Write};
 use std::os::raw::c_int;
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -269,21 +275,20 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let file_sexp = CADR(args);
         let ascii_flag = CADDR(args);
 
-        let file_path = if !file_sexp.is_null() {
-            let charsxp = STRING_ELT(file_sexp, 0);
-            if charsxp.is_null() {
-                return R_NilValue();
-            }
-            let cstr = CHAR(charsxp);
-            if cstr.is_null() {
-                return R_NilValue();
-            }
-            match std::ffi::CStr::from_ptr(cstr).to_str() {
-                Ok(s) => s.to_owned(),
-                Err(_) => return R_NilValue(),
-            }
-        } else {
-            return R_NilValue();
+        if file_sexp.is_null() {
+            error("'file' must be non-empty string");
+        }
+        let charsxp = STRING_ELT(file_sexp, 0);
+        if charsxp.is_null() {
+            error("'file' must be non-empty string");
+        }
+        let cstr = CHAR(charsxp);
+        if cstr.is_null() {
+            error("'file' must be non-empty string");
+        }
+        let file_path = match std::ffi::CStr::from_ptr(cstr).to_str() {
+            Ok(s) => s.to_owned(),
+            Err(_) => error("'file' must be non-empty string"),
         };
 
         let use_ascii = crate::mainutils::coerce::asInteger(ascii_flag) != 0;
@@ -291,7 +296,7 @@ pub unsafe fn do_save(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         let file = match std::fs::File::create(&file_path) {
             Ok(f) => f,
-            Err(_) => return R_NilValue(),
+            Err(_) => error("cannot open file"),
         };
         let mut writer = BufWriter::new(file);
 
@@ -350,41 +355,40 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let _envir = CADR(args);
         let _verbose = CADDR(args);
 
-        let file_path = if !file_sexp.is_null() {
-            let charsxp = STRING_ELT(file_sexp, 0);
-            if charsxp.is_null() {
-                return R_NilValue();
-            }
-            let cstr = CHAR(charsxp);
-            if cstr.is_null() {
-                return R_NilValue();
-            }
-            match std::ffi::CStr::from_ptr(cstr).to_str() {
-                Ok(s) => s.to_owned(),
-                Err(_) => return R_NilValue(),
-            }
-        } else {
-            return R_NilValue();
+        if file_sexp.is_null() {
+            error("first argument must be a file name");
+        }
+        let charsxp = STRING_ELT(file_sexp, 0);
+        if charsxp.is_null() {
+            error("first argument must be a file name");
+        }
+        let cstr = CHAR(charsxp);
+        if cstr.is_null() {
+            error("first argument must be a file name");
+        }
+        let file_path = match std::ffi::CStr::from_ptr(cstr).to_str() {
+            Ok(s) => s.to_owned(),
+            Err(_) => error("first argument must be a file name"),
         };
 
         let file = match std::fs::File::open(&file_path) {
             Ok(f) => f,
-            Err(_) => return R_NilValue(),
+            Err(_) => error("unable to open file"),
         };
         let mut reader = BufReader::new(file);
 
         let magic = R_ReadMagic(&mut reader);
         if magic == R_MAGIC_EMPTY || magic == R_MAGIC_CORRUPT {
-            return R_NilValue();
+            error("bad restore file magic number (file may be corrupted) -- no data loaded");
         }
 
         let n = match InIntegerAscii(&mut reader) {
             Ok(v) => v,
-            Err(_) => return R_NilValue(),
+            Err(_) => error("a read error occurred"),
         };
 
         if n <= 0 {
-            return R_NilValue();
+            error("restore file may be empty -- no data loaded");
         }
 
         let names = Rf_allocVector(crate::sexp::ffi::SEXPTYPE::STRSXP.0, n);

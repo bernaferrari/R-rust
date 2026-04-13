@@ -24,6 +24,12 @@ use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
 use crate::sexp::symbol::Rf_install;
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -880,16 +886,9 @@ pub unsafe fn R_Serialize(s: SEXP, stream: R_outpstream_t) {
 pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
     unsafe {
         if stream.is_null() {
-            return R_NilValue();
+            error("read error");
         }
-
-        // Read format header
-        // For the C stream API, we would need InChar/InBytes to build a buffer.
-        // This requires the stream to have InBytes set. We read all data into a
-        // Vec<u8> and then use our internal reader.
-        // Since we don't know the total length from a stream, we return nil
-        // and rely on the R_serialize/R_unserialize memory-based paths instead.
-        R_NilValue()
+        error("read error");
     }
 }
 
@@ -898,7 +897,7 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 // ---------------------------------------------------------------------------
@@ -906,7 +905,7 @@ pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
@@ -1056,7 +1055,7 @@ pub unsafe fn R_serialize(
 ) -> SEXP {
     unsafe {
         if object.is_null() {
-            return R_NilValue();
+            error("read error");
         }
 
         // Build the header
@@ -1091,18 +1090,18 @@ pub unsafe fn R_serialize(
 pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
     unsafe {
         if icon.is_null() {
-            return R_NilValue();
+            error("read error");
         }
 
         // Must be RAWSXP
         let stype = TYPEOF(icon);
         if stype != SEXPTYPE::RAWSXP.0 {
-            return R_NilValue();
+            error("not a proper raw vector");
         }
 
         let len = XLENGTH(icon) as usize;
         if len == 0 {
-            return R_NilValue();
+            error("read error");
         }
 
         let raw_ptr = RAW(icon);
@@ -1114,14 +1113,13 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         let fmt1 = reader.read_byte().unwrap_or(0);
         let fmt2 = reader.read_byte().unwrap_or(0);
         if fmt1 != b'B' || fmt2 != b'\n' {
-            // Could be other formats; for now only support binary
-            return R_NilValue();
+            error("unknown input format");
         }
 
         // Read version
         let version = reader.read_i32().unwrap_or(0);
         if version != 2 && version != 3 {
-            return R_NilValue();
+            error("version not supported");
         }
 
         // Read writer_version and min_reader_version
@@ -1141,7 +1139,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
         let mut ref_table = ReadRefTable::new();
         match ReadItemInternal(&mut reader, &mut ref_table) {
             Ok(s) => s,
-            Err(_) => R_NilValue(),
+            Err(_) => error("read error"),
         }
     }
 }
@@ -1151,7 +1149,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 // ---------------------------------------------------------------------------
@@ -1162,7 +1160,7 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
 
         // serialize(object, connection, ascii)
@@ -1191,7 +1189,7 @@ pub unsafe fn do_serializeToConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP) ->
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
 
         // serializeToConn(object, connection, ascii)
@@ -1218,7 +1216,7 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
     unsafe {
         let _ = (call, op, env);
         if args.is_null() || args == R_NilValue() {
-            return R_NilValue();
+            error("wrong number of arguments");
         }
 
         // unserializeFromConn(connection, hook)
@@ -1228,10 +1226,7 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
             return R_unserialize(conn, R_NilValue());
         }
 
-        // For connection objects, we would need to read all bytes from the
-        // connection first. This requires the connection infrastructure.
-        // Returning nil for non-raw connections.
-        R_NilValue()
+        error("connection not open for reading");
     }
 }
 
@@ -1240,19 +1235,19 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 // ---------------------------------------------------------------------------
@@ -1434,11 +1429,11 @@ unsafe fn HashGet(item: SEXP, ht: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 unsafe fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("names in persistent strings are not supported yet") }
 }
 
 unsafe fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 unsafe fn SaveSpecialHookItem(item: SEXP) -> c_int {
@@ -1472,7 +1467,7 @@ unsafe fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
 }
 
 unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 unsafe fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
@@ -1537,7 +1532,7 @@ unsafe fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
 unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {}
 
 unsafe fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 // ---------------------------------------------------------------------------
@@ -1567,7 +1562,7 @@ unsafe fn MakeReadRefTable() -> SEXP {
 }
 
 unsafe fn GetReadRef(table: SEXP, index: c_int) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("reference index out of range") }
 }
 
 unsafe fn AddReadRef(table: SEXP, value: SEXP) {}
@@ -1741,11 +1736,11 @@ unsafe fn InitMemOutPStream(
 unsafe fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
     unsafe {
         if stream.is_null() {
-            return R_NilValue();
+            error("cannot allocate buffer");
         }
         let mb = (*stream).data as *mut membuf_st;
         if mb.is_null() {
-            return R_NilValue();
+            error("cannot allocate buffer");
         }
         let count = (*mb).count;
         let val = Rf_allocVector3(SEXPTYPE::RAWSXP.0, count as R_xlen_t);
@@ -1816,7 +1811,7 @@ pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) 
 // ---------------------------------------------------------------------------
 
 unsafe fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 unsafe fn checkNotPromise(val: SEXP) -> SEXP {
@@ -1824,11 +1819,11 @@ unsafe fn checkNotPromise(val: SEXP) -> SEXP {
 }
 
 unsafe fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("write failed") }
 }
 
 unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read failed") }
 }
 
 unsafe fn R_lazyLoadDBinsertValue(
@@ -1838,11 +1833,11 @@ unsafe fn R_lazyLoadDBinsertValue(
     compsxp: SEXP,
     hook: SEXP,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("write failed") }
 }
 
 unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("read error") }
 }
 
 // ---------------------------------------------------------------------------
@@ -1850,20 +1845,20 @@ unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_compress1(inp: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 pub unsafe fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
     unsafe {
         if !err.is_null() {
-            *err = 0; // FALSE
+            *err = 0;
         }
-        R_NilValue()
+        error("not implemented")
     }
 }
 
 pub unsafe fn R_compress2(inp: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 pub unsafe fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
@@ -1871,12 +1866,12 @@ pub unsafe fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
         if !err.is_null() {
             *err = 0;
         }
-        R_NilValue()
+        error("not implemented")
     }
 }
 
 pub unsafe fn R_compress3(inp: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    unsafe { error("not implemented") }
 }
 
 pub unsafe fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
@@ -1884,7 +1879,7 @@ pub unsafe fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
         if !err.is_null() {
             *err = 0;
         }
-        R_NilValue()
+        error("not implemented")
     }
 }
 
@@ -2135,6 +2130,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_r_serialize_returns_nil_for_null() {
         unsafe {
             let result = R_serialize(
@@ -2149,6 +2145,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_r_unserialize_returns_nil_for_null() {
         unsafe {
             let result = R_unserialize(R_NilValue(), R_NilValue());
@@ -2157,6 +2154,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_r_unserialize_returns_nil_for_empty_raw() {
         unsafe {
             let raw = Rf_allocVector3(SEXPTYPE::RAWSXP.0, 0);
@@ -2166,6 +2164,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_r_unserialize_returns_nil_for_non_raw() {
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
@@ -2175,6 +2174,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_r_serialize_info_returns_nil() {
         unsafe {
             let result = R_SerializeInfo(ptr::null_mut());
@@ -2183,6 +2183,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_serialize_returns_nil() {
         unsafe {
             let result = do_serialize(
@@ -2196,6 +2197,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_serialize_to_conn_returns_nil() {
         unsafe {
             let result = do_serializeToConn(
@@ -2209,6 +2211,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_unserialize_from_conn_returns_nil() {
         unsafe {
             let result = do_unserializeFromConn(
@@ -2222,6 +2225,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_lazy_load_db_flush_returns_nil() {
         unsafe {
             let result = do_lazyLoadDBflush(
@@ -2235,6 +2239,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_lazy_load_db_fetch_returns_nil() {
         unsafe {
             let result = do_lazyLoadDBfetch(
@@ -2248,6 +2253,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_get_vars_from_frame_returns_nil() {
         unsafe {
             let result = do_getVarsFromFrame(
@@ -2261,6 +2267,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_do_lazy_load_db_insert_value_returns_nil() {
         unsafe {
             let result = do_lazyLoadDBinsertValue(
@@ -2274,6 +2281,7 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_r_compress_decompress_returns_nil() {
         unsafe {
             let nil = R_NilValue();

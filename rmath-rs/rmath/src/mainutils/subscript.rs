@@ -33,6 +33,12 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, Rboolean, SEXP, SEXPTYP
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -76,20 +82,19 @@ pub unsafe fn ECALL_OutOfBoundsCHAR(_x: SEXP, _subscript: c_int, _sindex: SEXP, 
 /// Returns -1 on error (in full R this would be unreachable due to error calls).
 #[inline]
 unsafe fn integerOneIndex(i: c_int, len: R_xlen_t, _call: SEXP) -> R_xlen_t {
-    let mut indx: R_xlen_t = -1;
-    if i > 0 {
-        // regular 1-based index from R
-        indx = (i - 1) as R_xlen_t;
-    } else if i == 0 || len < 2 {
-        // ECALL3(call, "attempt to select less than one element in integerOneIndex");
-        indx = -1;
-    } else if len == 2 && i > -3 {
-        indx = (2 + i) as R_xlen_t;
-    } else {
-        // ECALL3(call, "attempt to select more than one element in integerOneIndex");
-        indx = -1;
+    unsafe {
+        let mut indx: R_xlen_t = -1;
+        if i > 0 {
+            indx = (i - 1) as R_xlen_t;
+        } else if i == 0 || len < 2 {
+            error("attempt to select less than one element in integerOneIndex");
+        } else if len == 2 && i > -3 {
+            indx = (2 + i) as R_xlen_t;
+        } else {
+            error("attempt to select more than one element in integerOneIndex");
+        }
+        indx
     }
-    indx
 }
 
 // ---------------------------------------------------------------------------
@@ -115,12 +120,10 @@ pub unsafe fn OneIndex(
         let mut _indx: R_xlen_t = -1;
 
         if _pos < 0 && LENGTH(s) > 1 {
-            // ECALL3(call, "attempt to select more than one element in OneIndex");
-            return -1;
+            error("attempt to select more than one element in OneIndex");
         }
         if _pos < 0 && LENGTH(s) < 1 {
-            // ECALL3(call, "attempt to select less than one element in OneIndex");
-            return -1;
+            error("attempt to select less than one element in OneIndex");
         }
 
         if _pos < 0 {
@@ -141,13 +144,11 @@ pub unsafe fn OneIndex(
                 if dblind >= 1.0 {
                     _indx = (dblind - 1.0) as R_xlen_t;
                 } else if dblind > -1.0 || nx < 2 {
-                    // ECALL3(call, "attempt to select less than one element in OneIndex <real>");
-                    _indx = -1;
+                    error("attempt to select less than one element in OneIndex");
                 } else if nx == 2 && dblind > -3.0 {
                     _indx = (2.0 + dblind) as R_xlen_t;
                 } else {
-                    // ECALL3(call, "attempt to select more than one element in OneIndex <real>");
-                    _indx = -1;
+                    error("attempt to select more than one element in OneIndex");
                 }
             }
         } else if stype == SEXPTYPE::STRSXP.0 {
@@ -228,7 +229,7 @@ pub unsafe fn OneIndex(
             }
             crate::sexp::memory_ext::vmaxset(_vmax);
         } else {
-            // ECALL3(call, "invalid subscript type '%s'", R_typeToChar(s));
+            error("invalid subscript type 'unknown'");
         }
         _indx
     }
@@ -266,11 +267,13 @@ pub unsafe fn get1index(
         }
 
         if _pos < 0 && LENGTH(s) != 1 {
-            // ECALL3(call, "attempt to select more/less than one element in get1index");
-            return -1;
+            if LENGTH(s) > 1 {
+                error("attempt to select more than one element in get1index");
+            } else {
+                error("attempt to select less than one element in get1index");
+            }
         } else if _pos >= LENGTH(s) {
-            // ECALL(call, "internal error in use of recursive indexing");
-            return -1;
+            error("internal error in use of recursive indexing");
         }
 
         if _pos < 0 {
@@ -293,13 +296,11 @@ pub unsafe fn get1index(
                         indx = (dblind - 1.0) as R_xlen_t;
                     }
                 } else if dblind > -1.0 || len < 2 {
-                    // ECALL3(call, "invalid negative subscript / attempt to select less than one element");
-                    indx = -1;
+                    error("attempt to select less than one element in get1index");
                 } else if len == 2 && dblind > -3.0 {
                     indx = (2.0 + dblind) as R_xlen_t;
                 } else {
-                    // ECALL3(call, "invalid negative subscript / attempt to select more than one element");
-                    indx = -1;
+                    error("attempt to select more than one element in get1index");
                 }
             }
         } else if stype == SEXPTYPE::STRSXP.0 {
@@ -375,7 +376,7 @@ pub unsafe fn get1index(
             }
             crate::sexp::memory_ext::vmaxset(_vmax);
         } else {
-            // ECALL3(call, "invalid subscript type '%s'", R_typeToChar(s));
+            error("invalid subscript type 'unknown'");
         }
         indx
     }
@@ -424,23 +425,22 @@ pub unsafe fn vectorIndex(
             let len = XLENGTH(y);
             let indx = get1index(thesub, names, len, pok, i, call);
             if indx < 0 || indx >= len {
-                return R_NilValue();
+                error("no such index at level 1");
             }
             if Rf_isVector(y) != 0 {
                 if TYPEOF(y) == SEXPTYPE::VECSXP.0 || TYPEOF(y) == SEXPTYPE::EXPRSXP.0 {
                     y = VECTOR_ELT(y, indx);
                 } else {
-                    return R_NilValue();
+                    error("recursive indexing failed at level 1");
                 }
             } else if TYPEOF(y) == SEXPTYPE::LISTSXP.0 {
-                // Walk pairlist to position indx
                 let mut p = y;
                 for _ in 0..indx {
                     p = CDR(p);
                 }
                 y = CAR(p);
             } else {
-                return R_NilValue();
+                error("attempt to select more than one element in vectorIndex");
             }
         }
         y
@@ -463,13 +463,13 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
         let ndim = LENGTH(dims);
 
         if nrs != ndim {
-            return R_NilValue();
+            error("incorrect number of columns in matrix subscript");
         }
 
         // Get the number of rows (subscripts) from the dim attribute of s
         let s_dim = crate::eval::attrib_core::getAttrib(s, crate::eval::attrib_core::R_DimSymbol());
         if s_dim.is_null() || LENGTH(s_dim) < 2 {
-            return R_NilValue();
+            error("subscript is not a matrix");
         }
         let nr = INTEGER_ELT(s_dim, 0) as R_xlen_t;
 
@@ -588,7 +588,7 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
         // Get dimensions of the subscript matrix
         let s_dim = crate::eval::attrib_core::getAttrib(s, crate::eval::attrib_core::R_DimSymbol());
         if s_dim.is_null() || LENGTH(s_dim) < 2 {
-            return R_NilValue();
+            error("no 'dimnames' attribute for array");
         }
         let nr = INTEGER_ELT(s_dim, 0) as R_xlen_t;
         let nc = INTEGER_ELT(s_dim, 1) as c_int;
@@ -756,21 +756,16 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
         for i in 0..slen {
             let v = INTEGER_ELT(s, i as c_int);
             if v == NA_INTEGER {
-                // NA in negative subscript: error
-                // ECALL3(call, "NA's in subscript are not allowed");
-                return R_NilValue();
+                error("NA's in subscript are not allowed");
             }
             if v < 0 {
                 let idx = (-v) as usize;
                 if idx >= 1 && idx <= nx as usize {
-                    *mp.add(idx - 1) = 0; // FALSE = exclude
+                    *mp.add(idx - 1) = 0;
                 }
             } else if v == 0 {
-                // 0 in negative subscript: error
-                return R_NilValue();
             } else {
-                // Positive value mixed with negative: error
-                return R_NilValue();
+                error("only 0's may be mixed with negative subscripts");
             }
         }
 
@@ -863,9 +858,7 @@ unsafe fn integerSubscript(
         }
 
         if has_neg && has_pos {
-            // Mixed positive and negative: error
-            // ECALL3(call, "can't mix positive and negative subscripts");
-            return R_NilValue();
+            error("only 0's may be mixed with negative subscripts");
         }
 
         if has_neg {
@@ -951,8 +944,7 @@ unsafe fn realSubscript(
         }
 
         if conv_has_neg && conv_has_pos {
-            // Mixed: error
-            return R_NilValue();
+            error("only 0's may be mixed with negative subscripts");
         }
 
         if conv_has_neg {
@@ -1092,7 +1084,10 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
                 x,
                 crate::eval::attrib_core::R_DimNamesSymbol(),
             );
-            let dnames_col = if !dnames.is_null() && dim < LENGTH(dnames) {
+            if dnames.is_null() || dnames == R_NilValue() {
+                error("no 'dimnames' attribute for array");
+            }
+            let dnames_col = if dim < LENGTH(dnames) {
                 VECTOR_ELT(dnames, dim as R_xlen_t)
             } else {
                 R_NilValue()
@@ -1110,8 +1105,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
         } else if stype == SEXPTYPE::SYMSXP.0 {
             nullSubscript(nd as R_xlen_t)
         } else {
-            // ECALL3(call, "invalid subscript type '%s'", R_typeToChar(s));
-            R_NilValue()
+            error("invalid subscript type 'unknown'");
         }
     }
 }
@@ -1205,8 +1199,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
             }
             nullSubscript(nx)
         } else {
-            // ECALL3(call, "invalid subscript type '%s'", R_typeToChar(s));
-            R_NilValue()
+            error("invalid subscript type 'unknown'");
         }
     }
 }
@@ -1232,10 +1225,10 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_integer_one_index_zero() {
         unsafe {
-            // Index 0 is invalid -> returns -1 (error in full R)
-            assert_eq!(integerOneIndex(0, 10, ptr::null_mut()), -1);
+            integerOneIndex(0, 10, ptr::null_mut());
         }
     }
 
@@ -1249,29 +1242,27 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_integer_one_index_negative_len2_out_of_range() {
         unsafe {
-            // -3 for length-2 vector is too many elements -> -1 (error in full R)
-            assert_eq!(integerOneIndex(-3, 2, ptr::null_mut()), -1);
+            integerOneIndex(-3, 2, ptr::null_mut());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_integer_one_index_negative_other_lengths() {
         unsafe {
-            // Negative indices for non-length-2 vectors are errors
-            assert_eq!(integerOneIndex(-1, 1, ptr::null_mut()), -1);
-            assert_eq!(integerOneIndex(-1, 3, ptr::null_mut()), -1);
-            assert_eq!(integerOneIndex(-1, 10, ptr::null_mut()), -1);
+            integerOneIndex(-1, 1, ptr::null_mut());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_one_index_null_args() {
         unsafe {
-            // Calling with null pointers should not crash
             let mut newname: SEXP = ptr::null_mut();
-            let result = OneIndex(
+            OneIndex(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 10,
@@ -1280,26 +1271,22 @@ mod tests {
                 -1,
                 ptr::null_mut(),
             );
-            // With null s, LENGTH returns 0 < 1, so error path -> -1
-            assert_eq!(result, -1);
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_get1index_null_args() {
         unsafe {
-            let result = get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, -1, ptr::null_mut());
-            // With null s, LENGTH returns 0 != 1, so error path -> -1
-            assert_eq!(result, -1);
+            get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, -1, ptr::null_mut());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_get1index_pos_out_of_range() {
         unsafe {
-            // pos >= length(s) -> internal error -> -1
-            let result = get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, 5, ptr::null_mut());
-            assert_eq!(result, -1);
+            get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, 5, ptr::null_mut());
         }
     }
 
@@ -1320,28 +1307,28 @@ mod tests {
     }
 
     #[test]
+    #[should_panic]
     fn test_mat2indsub_stub() {
         unsafe {
-            let result = mat2indsub(
+            mat2indsub(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 
     #[test]
+    #[should_panic]
     fn test_strmat2intmat_stub() {
         unsafe {
-            let result = strmat2intmat(
+            strmat2intmat(
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
         }
     }
 

@@ -954,10 +954,10 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
         if conn.isopen {
-            return R_NilValue(); // Already open, just return
+            return R_NilValue();
         }
 
         conn.mode = open_mode.clone();
@@ -1195,7 +1195,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if !conn.isopen {
@@ -1359,7 +1359,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if !conn.isopen {
@@ -1450,7 +1450,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if !conn.isopen {
@@ -1530,7 +1530,7 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if conn.canwrite
@@ -1702,7 +1702,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
         let i = as_integer(scon) as usize;
         let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_ref() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if !conn.canwrite {
@@ -1765,8 +1765,8 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
             r_error("invalid connection");
         }
 
-        let Some(conn) = table[n].as_ref() else {
-            return R_NilValue();
+        let Some(_conn) = table[n].as_ref() else {
+            r_error("invalid connection");
         };
 
         // Build a list with connection info
@@ -2038,7 +2038,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
 
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if !conn.isopen {
@@ -2242,7 +2242,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         let i = as_integer(scon) as usize;
         let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
         let Some(conn) = table[i].as_mut() else {
-            return R_NilValue();
+            r_error("invalid connection");
         };
 
         if !conn.isopen {

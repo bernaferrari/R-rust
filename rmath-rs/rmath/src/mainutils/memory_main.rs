@@ -31,7 +31,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
-unsafe fn error(msg: &str) {
+unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
@@ -464,7 +464,7 @@ pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> 
     unsafe {
         let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::WEAKREFSXP);
         if s.is_null() {
-            return R_NilValue();
+            error("could not allocate weak reference");
         }
         (*s).data.listsxp.carval = key;
         (*s).data.listsxp.cdrval = val;
@@ -568,7 +568,7 @@ pub unsafe fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP {
     unsafe {
         let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::EXTPTRSXP);
         if s.is_null() {
-            return s;
+            error("could not allocate external pointer");
         }
         (*s).data.extptr[0] = p;
         (*s).data.extptr[1] = prot as *mut c_void;
@@ -751,12 +751,12 @@ impl Default for R_StringBuffer {
 pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut c_void {
     unsafe {
         if buf.is_null() {
-            return ptr::null_mut();
+            error("R_AllocStringBuffer called with null buffer");
         }
         let buf = &mut *buf;
 
         if blen == usize::MAX {
-            return buf.data as *mut c_void; // error in real impl
+            error("R_AllocStringBuffer( (size_t)-1 ) is no longer allowed");
         }
 
         let needed = (blen + 1) * std::mem::size_of::<c_char>();
@@ -782,7 +782,7 @@ pub unsafe fn R_AllocStringBuffer(blen: usize, buf: *mut R_StringBuffer) -> *mut
 
         if buf.data.is_null() {
             buf.bufsize = 0;
-            return ptr::null_mut();
+            error("could not allocate memory in R_AllocStringBuffer");
         }
 
         buf.bufsize = newsize;
@@ -840,13 +840,13 @@ pub unsafe fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
     unsafe {
         let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
         if npreserved.is_null() {
-            return R_NilValue();
+            error("could not allocate precious mset");
         }
         crate::sexp::accessors::SET_INTEGER_ELT(npreserved, 0, 0);
 
         let mset = Rf_cons(R_NilValue(), npreserved);
         if mset.is_null() {
-            return R_NilValue();
+            error("could not allocate precious mset");
         }
 
         let size = if initialSize < 0 { 0 } else { initialSize };

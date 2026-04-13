@@ -22,6 +22,12 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
+unsafe fn error(msg: &str) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: msg.to_string(),
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
@@ -1022,13 +1028,11 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         let mut ap = args;
         while !ap.is_null() && ap != R_NilValue() {
             if Rf_isVectorAtomic(CAR(ap)) == 0 {
-                eprintln!("argument {} is not a vector", narg + 1);
-                return R_NilValue();
+                error(&format!("argument {} is not a vector", narg + 1));
             }
             let this_len = XLENGTH(CAR(ap));
             if this_len != nl {
-                eprintln!("argument lengths differ");
-                return R_NilValue();
+                error("argument lengths differ");
             }
             ap = CDR(ap);
             narg += 1;
@@ -1036,13 +1040,11 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
 
         // Validate decreasing length
         if narg != Rf_length(decreasing) {
-            eprintln!("length(decreasing) must match the number of order arguments");
-            return R_NilValue();
+            error("length(decreasing) must match the number of order arguments");
         }
         for i in 0..narg {
             if *LOGICAL(decreasing).add(i as usize) == NA_LOGICAL {
-                eprintln!("'decreasing' elements must be TRUE or FALSE");
-                return R_NilValue();
+                error("'decreasing' elements must be TRUE or FALSE");
             }
         }
 
@@ -1059,8 +1061,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
 
         // Long vector check
         if nl > c_int::MAX as R_xlen_t {
-            eprintln!("long vectors not supported");
-            return R_NilValue();
+            error("long vectors not supported");
         }
         n = nl as c_int;
 
@@ -1090,9 +1091,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 tmp = csorted(xd, n);
             }
             _ => {
-                eprintln!("First arg is type '{}', not yet supported", xtype);
-                Rf_unprotect(1);
-                return R_NilValue();
+                error(&format!("First arg is type '{}', not yet supported", xtype));
             }
         }
 
@@ -1132,8 +1131,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                     csort(xd, o, n);
                 }
                 _ => {
-                    Rf_unprotect(1);
-                    return R_NilValue();
+                    error(&format!("unsupported type in sort: {}", xtype));
                 }
             }
         }
@@ -1149,27 +1147,16 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             // double is the largest type, 8
             xsub = libc_alloc(maxgrpn_first as usize * std::mem::size_of::<f64>());
             if xsub.is_null() {
-                eprintln!(
-                    "Couldn't allocate xsub in do_radixsort, requested {} * {} bytes.",
-                    maxgrpn_first,
-                    std::mem::size_of::<f64>()
-                );
                 Rf_unprotect(1);
                 gsfree();
-                return R_NilValue();
+                error("Could not allocate working memory");
             }
             let newo =
                 libc_alloc(maxgrpn_first as usize * std::mem::size_of::<c_int>()) as *mut c_int;
             if newo.is_null() {
-                eprintln!(
-                    "Couldn't allocate newo in do_radixsort, requested {} * {} bytes.",
-                    maxgrpn_first,
-                    std::mem::size_of::<c_int>()
-                );
-                libc_free(xsub);
                 Rf_unprotect(1);
                 gsfree();
-                return R_NilValue();
+                error("Could not allocate working memory");
             }
             NEWO.with(|v| v.set(newo));
         }
@@ -1698,7 +1685,7 @@ pub unsafe fn dsorted(x: *mut c_void, n: c_int) -> c_int {
 /// Requires CHARSXP access infrastructure to read string data.
 /// Currently returns null — needs full CHARSXP/STRING_ELT support.
 pub unsafe fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_void {
-    ptr::null_mut()
+    unsafe { error("Not yet used, still using iradix instead") }
 }
 
 /// Sort dispatcher for character data (STRSXP vectors).
@@ -1706,7 +1693,7 @@ pub unsafe fn cradix_r(_xsub: *mut c_void, _n: c_int, _radix: c_int) -> *mut c_v
 /// Requires CHARSXP access infrastructure.
 /// Currently returns null — needs full CHARSXP/STRING_ELT support.
 pub unsafe fn csort(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
-    ptr::null_mut()
+    unsafe { error("Not yet used, still using iradix instead") }
 }
 
 /// Pre-processing for character sort — translate CHARSXP to byte offsets.
@@ -1714,7 +1701,7 @@ pub unsafe fn csort(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
 /// Requires CHARSXP access infrastructure.
 /// Currently returns null.
 pub unsafe fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
-    ptr::null_mut()
+    unsafe { error("character sort not yet implemented") }
 }
 
 /// Grouping for character data — find group boundaries after sorting.
@@ -1722,7 +1709,7 @@ pub unsafe fn csort_pre(_x: *mut c_void, _n: c_int) -> *mut c_void {
 /// Requires CHARSXP access infrastructure.
 /// Currently returns null.
 pub unsafe fn cgroup(_x: *mut c_void, _o: *mut c_int, _n: c_int) -> *mut c_void {
-    ptr::null_mut()
+    unsafe { error("character grouping not yet implemented") }
 }
 
 /// Sortedness test for character data (STRSXP vectors).
