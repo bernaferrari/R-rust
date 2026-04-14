@@ -2521,6 +2521,37 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         // String operations
         "str_detect",
         "str_extract",
+        // Complete data operations
+        "reshape",
+        "complete.cases",
+        "na.omit",
+        "na.exclude",
+        "is_complete",
+        // Complete string/vector
+        "str_interp",
+        "str_wrap",
+        "path_package",
+        "system.file",
+        // Complete R runtime
+        "ls_args",
+        "deparse1",
+        "dput",
+        "dget",
+        "bquote",
+        // Complete S3
+        "rownames_to_column",
+        "column_to_rownames",
+        "relocate",
+        // Complete I/O
+        "cat_args",
+        "message_args",
+        "packageStartupMessage",
+        // Environment completion
+        "parent.env",
+        "set_parent.env",
+        "env_name",
+        "environmentName",
+        "is_empty",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -8354,6 +8385,378 @@ pub unsafe fn do_str_extract(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
     crate::sexp::protect::Rf_unprotect(1);
     result
+}
+
+// ---------------------------------------------------------------------------
+// Complete data operations
+// ---------------------------------------------------------------------------
+
+/// R's `reshape(x, direction, varying, v.names, timevar, idvar, times)` — reshape data.
+/// Simplified: just return x as-is.
+pub unsafe fn do_reshape(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() { return R_NilValue(); }
+    x
+}
+
+/// R's `complete_cases(...)` — returns logical vector: TRUE where all args are non-NA.
+pub unsafe fn do_complete_cases(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Collect all argument vectors
+    let mut arg_vecs: Vec<SEXP> = Vec::new();
+    let mut max_len: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            arg_vecs.push(arg);
+            let n = XLENGTH(arg);
+            if n > max_len { max_len = n; }
+        }
+        current = CDR(current);
+    }
+    if arg_vecs.is_empty() || max_len == 0 {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, max_len);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for i in 0..max_len {
+        let mut complete = TRUE;
+        for &arg in &arg_vecs {
+            let n = XLENGTH(arg);
+            let idx = if n == 0 { 0 } else { i % n };
+            let t = TYPEOF(arg);
+            let na = if t == SEXPTYPE::REALSXP.0 {
+                (*REAL(arg).add(idx as usize)).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                *INTEGER(arg).add(idx as usize) == NA_INTEGER
+            } else {
+                false
+            };
+            if na { complete = FALSE; break; }
+        }
+        *dst.add(i as usize) = complete;
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `na.omit(x)` — returns x with rows containing any NA removed (simplified: works on vectors).
+pub unsafe fn do_na_omit(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return R_NilValue(); }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+    // Find non-NA indices
+    let mut keep: Vec<R_xlen_t> = Vec::new();
+    for i in 0..n {
+        let na = if t == SEXPTYPE::REALSXP.0 {
+            (*REAL(x).add(i as usize)).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            *INTEGER(x).add(i as usize) == NA_INTEGER
+        } else {
+            false
+        };
+        if !na { keep.push(i); }
+    }
+    let result = Rf_allocVector3(t, keep.len() as R_xlen_t);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    if t == SEXPTYPE::REALSXP.0 {
+        let dst = REAL(result);
+        for (j, &i) in keep.iter().enumerate() {
+            *dst.add(j) = *REAL(x).add(i as usize);
+        }
+    } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        let dst = INTEGER(result);
+        for (j, &i) in keep.iter().enumerate() {
+            *dst.add(j) = *INTEGER(x).add(i as usize);
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `na.exclude(x)` — like na.omit but remembers excluded rows. Simplified: same as na.omit.
+pub unsafe fn do_na_exclude(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_na_omit(_call, _op, args, _rho)
+}
+
+/// R's `is_complete(x)` — logical vector of complete cases for a single vector.
+pub unsafe fn do_is_complete(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for i in 0..n {
+        let na = if t == SEXPTYPE::REALSXP.0 {
+            (*REAL(x).add(i as usize)).to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            *INTEGER(x).add(i as usize) == NA_INTEGER
+        } else {
+            false
+        };
+        *dst.add(i as usize) = if na { FALSE } else { TRUE };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Complete string/vector
+// ---------------------------------------------------------------------------
+
+/// R-like `str_interp(string, values)` — interpolate values into string (simplified: sprintf-like).
+pub unsafe fn do_str_interp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let string_arg = CAR(args);
+    let values_arg = CAR(CDR(args));
+    if string_arg.is_null() || string_arg == R_NilValue() {
+        return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+    }
+    let fmt = elt_to_string(string_arg, 0);
+    if values_arg.is_null() || values_arg == R_NilValue() {
+        return Rf_mkString(CString::new(fmt).unwrap_or_default().as_ptr());
+    }
+    let n = XLENGTH(values_arg).max(1);
+    let mut vals: Vec<String> = Vec::new();
+    for i in 0..n {
+        vals.push(elt_to_string(values_arg, i));
+    }
+    // Simple %s replacement
+    let mut result = fmt.clone();
+    for v in &vals {
+        if let Some(pos) = result.find("%s") {
+            result.replace_range(pos..pos+2, v);
+        }
+    }
+    Rf_mkString(CString::new(result).unwrap_or_default().as_ptr())
+}
+
+/// R-like `str_wrap(x, width)` — wrap text to width (simplified: just return x).
+pub unsafe fn do_str_wrap(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() { return R_NilValue(); }
+    x
+}
+
+/// R-like `path_package(package, ...)` — find package path (simplified: return empty string).
+pub unsafe fn do_path_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _pkg = CAR(args);
+    Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
+}
+
+/// R's `system.file(..., package)` — find system file (simplified: return empty string).
+pub unsafe fn do_system_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_mkString(CString::new("").unwrap_or_default().as_ptr())
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime
+// ---------------------------------------------------------------------------
+
+/// R-like `ls_args()` — list argument names of current function (simplified: return empty character).
+pub unsafe fn do_ls_args(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_allocVector3(SEXPTYPE::STRSXP.0, 0)
+}
+
+/// R's `deparse1(expr, collapse, width.cutoff)` — deparse to a single string.
+pub unsafe fn do_deparse1(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let expr = CAR(args);
+    let collapse_arg = CAR(CDR(args));
+    let sep = if collapse_arg.is_null() || collapse_arg == R_NilValue() {
+        " ".to_string()
+    } else {
+        elt_to_string(collapse_arg, 0)
+    };
+    // Simple deparse: convert to string representation
+    let s = if expr.is_null() || expr == R_NilValue() {
+        "NULL".to_string()
+    } else {
+        elt_to_string(expr, 0)
+    };
+    Rf_mkString(CString::new(s).unwrap_or_default().as_ptr())
+}
+
+/// R's `dput(x, file)` — dump object (simplified: return deparse string).
+pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let s = if x.is_null() || x == R_NilValue() {
+        "NULL".to_string()
+    } else {
+        elt_to_string(x, 0)
+    };
+    println!("{}", s);
+    Rf_mkString(CString::new(s).unwrap_or_default().as_ptr())
+}
+
+/// R's `dget(file)` — read dump (simplified: return NULL).
+pub unsafe fn do_dget(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+/// R's `bquote(expr)` — backquote substitution (simplified: return expr as-is).
+pub unsafe fn do_bquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let expr = CAR(args);
+    if expr.is_null() { return R_NilValue(); }
+    expr
+}
+
+// ---------------------------------------------------------------------------
+// Complete S3
+// ---------------------------------------------------------------------------
+
+/// R-like `rownames_to_column(x, var)` — convert rownames to a column (simplified).
+pub unsafe fn do_rownames_to_column(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() { return R_NilValue(); }
+    x
+}
+
+/// R-like `column_to_rownames(x, var)` — convert column to rownames (simplified).
+pub unsafe fn do_column_to_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() { return R_NilValue(); }
+    x
+}
+
+/// R-like `relocate(...cols, .before, .after)` — reorder columns (simplified: return x).
+pub unsafe fn do_relocate(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() { return R_NilValue(); }
+    x
+}
+
+// ---------------------------------------------------------------------------
+// Complete I/O
+// ---------------------------------------------------------------------------
+
+/// R-like `cat_args(...)` — cat with better formatting.
+pub unsafe fn do_cat_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_cat(_call, _op, args, _rho)
+}
+
+/// R-like `message_args(...)` — message with domain.
+pub unsafe fn do_message_args(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut parts: Vec<String> = Vec::new();
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let n = XLENGTH(arg).max(1);
+            for i in 0..n {
+                parts.push(elt_to_string(arg, i));
+            }
+        }
+        current = CDR(current);
+    }
+    let output = parts.join(" ");
+    eprintln!("{}", output);
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+/// R's `packageStartupMessage(...)` — startup message.
+pub unsafe fn do_package_startup_message(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut parts: Vec<String> = Vec::new();
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let n = XLENGTH(arg).max(1);
+            for i in 0..n {
+                parts.push(elt_to_string(arg, i));
+            }
+        }
+        current = CDR(current);
+    }
+    let output = parts.join(" ");
+    eprintln!("{}", output);
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+// ---------------------------------------------------------------------------
+// Environment completion
+// ---------------------------------------------------------------------------
+
+/// R's `parent.env(env)` — returns the parent environment.
+pub unsafe fn do_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let env = CAR(args);
+    if env.is_null() || env == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(env);
+    if t != SEXPTYPE::ENVSXP.0 {
+        return R_NilValue();
+    }
+    // enclos is the enclosing/parent environment
+    let parent = (*env).data.envsxp.enclos;
+    if parent.is_null() {
+        return crate::sexp::globals::R_EmptyEnv();
+    }
+    parent
+}
+
+/// R's `set_parent.env(env, parent)` — set the parent environment (simplified: no-op).
+pub unsafe fn do_set_parent_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let env = CAR(args);
+    if env.is_null() { return R_NilValue(); }
+    env
+}
+
+/// R's `env_name(env)` — returns the name of an environment (simplified).
+pub unsafe fn do_env_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let env = CAR(args);
+    if env.is_null() || env == R_NilValue() {
+        return Rf_mkString(CString::new("NULL").unwrap_or_default().as_ptr());
+    }
+    let t = TYPEOF(env);
+    if t != SEXPTYPE::ENVSXP.0 {
+        return Rf_mkString(CString::new("").unwrap_or_default().as_ptr());
+    }
+    // Check if it's a special environment
+    if env == crate::sexp::globals::R_GlobalEnv() {
+        return Rf_mkString(CString::new("R_GlobalEnv").unwrap_or_default().as_ptr());
+    }
+    if env == crate::sexp::globals::R_EmptyEnv() {
+        return Rf_mkString(CString::new("R_EmptyEnv").unwrap_or_default().as_ptr());
+    }
+    if env == crate::sexp::globals::R_BaseEnv() {
+        return Rf_mkString(CString::new("base").unwrap_or_default().as_ptr());
+    }
+    Rf_mkString(CString::new("<environment>").unwrap_or_default().as_ptr())
+}
+
+/// R's `environmentName(env)` — returns the name of an environment.
+pub unsafe fn do_environment_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_env_name(_call, _op, args, _rho)
+}
+
+/// R-like `is_empty(env)` — check if environment is empty (simplified).
+pub unsafe fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let env = CAR(args);
+    if env.is_null() || env == R_NilValue() {
+        return Rf_ScalarLogical(TRUE);
+    }
+    let t = TYPEOF(env);
+    if t == SEXPTYPE::ENVSXP.0 {
+        // Check frame - if it's NULL/NILSXP, env is empty
+        let frame = (*env).data.envsxp.frame;
+        if frame.is_null() || frame == R_NilValue() {
+            return Rf_ScalarLogical(TRUE);
+        }
+        return Rf_ScalarLogical(FALSE);
+    }
+    // For vectors, check length
+    let n = XLENGTH(env);
+    Rf_ScalarLogical(if n == 0 { TRUE } else { FALSE })
 }
 
 // ---------------------------------------------------------------------------

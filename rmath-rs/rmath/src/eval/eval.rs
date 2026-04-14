@@ -2006,6 +2006,212 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Complete data operations
+        "reshape" => unsafe {
+            crate::mainutils::essentials::do_reshape(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "complete.cases" => unsafe {
+            crate::mainutils::essentials::do_complete_cases(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "na.omit" => unsafe {
+            crate::mainutils::essentials::do_na_omit(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "na.exclude" => unsafe {
+            crate::mainutils::essentials::do_na_exclude(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is_complete" => unsafe {
+            crate::mainutils::essentials::do_is_complete(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete string/vector
+        "str_interp" => unsafe {
+            crate::mainutils::essentials::do_str_interp(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "str_wrap" => unsafe {
+            crate::mainutils::essentials::do_str_wrap(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "path_package" => unsafe {
+            crate::mainutils::essentials::do_path_package(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "system.file" => unsafe {
+            crate::mainutils::essentials::do_system_file(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete R runtime
+        "ls_args" => unsafe {
+            crate::mainutils::essentials::do_ls_args(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "deparse1" => unsafe {
+            crate::mainutils::essentials::do_deparse1(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "dput" => unsafe {
+            crate::mainutils::essentials::do_dput(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "dget" => unsafe {
+            crate::mainutils::essentials::do_dget(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "bquote" => unsafe {
+            crate::mainutils::essentials::do_bquote(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete S3
+        "rownames_to_column" => unsafe {
+            crate::mainutils::essentials::do_rownames_to_column(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "column_to_rownames" => unsafe {
+            crate::mainutils::essentials::do_column_to_rownames(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "relocate" => unsafe {
+            crate::mainutils::essentials::do_relocate(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete I/O
+        "cat_args" => unsafe {
+            crate::mainutils::essentials::do_cat_args(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "message_args" => unsafe {
+            crate::mainutils::essentials::do_message_args(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "packageStartupMessage" => unsafe {
+            crate::mainutils::essentials::do_package_startup_message(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Environment completion
+        "parent.env" => unsafe {
+            crate::mainutils::essentials::do_parent_env(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "set_parent.env" => unsafe {
+            crate::mainutils::essentials::do_set_parent_env(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "env_name" => unsafe {
+            crate::mainutils::essentials::do_env_name(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "environmentName" => unsafe {
+            crate::mainutils::essentials::do_environment_name(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is_empty" => unsafe {
+            crate::mainutils::essentials::do_is_empty(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
