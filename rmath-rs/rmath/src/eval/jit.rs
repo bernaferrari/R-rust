@@ -29,22 +29,22 @@ use crate::sexp::symbol::Rf_install;
 // JIT state (static globals)
 // ---------------------------------------------------------------------------
 
-/// Minimum score for JIT compilation.
+// Minimum score for JIT compilation.
 thread_local! { static MIN_JIT_SCORE: Cell<c_int> = Cell::new(50); }
 
-/// Loop JIT score threshold.
+// Loop JIT score threshold.
 thread_local! { static LOOP_JIT_SCORE: Cell<c_int> = Cell::new(50); }
 
-/// Whether JIT is enabled (0 = disabled, 3 = default enabled).
+// Whether JIT is enabled (0 = disabled, 3 = default enabled).
 thread_local! { static R_jit_enabled: Cell<c_int> = Cell::new(0); }
 
-/// Whether to compile package code.
+// Whether to compile package code.
 thread_local! { static R_compile_pkgs: Cell<c_int> = Cell::new(0); }
 
-/// Whether bytecode is disabled.
+// Whether bytecode is disabled.
 thread_local! { static R_disable_bytecode: Cell<c_int> = Cell::new(0); }
 
-/// Constant checking level (0 = no checking, default).
+// Constant checking level (0 = no checking, default).
 thread_local! { static R_check_constants: Cell<c_int> = Cell::new(0); }
 
 /// JIT statistics.

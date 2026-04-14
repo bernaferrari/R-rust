@@ -1406,7 +1406,6 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         }
 
         error("cannot coerce type to vector");
-        ptr::null_mut() // unreachable
     }
 }
 
@@ -1534,7 +1533,6 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         }
 
         error("list object cannot be coerced to type");
-        ptr::null_mut() // unreachable
     }
 }
 
@@ -1674,7 +1672,6 @@ unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
         }
 
         errorcall(call, "cannot coerce type to vector of type");
-        u // unreachable
     }
 }
 
@@ -1735,7 +1732,6 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
             t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => coerceVectorList(v, target),
             t if t == SEXPTYPE::ENVSXP.0 => {
                 error("environments cannot be coerced to other types");
-                ptr::null_mut() // unreachable
             }
             // Atomic vector types
             t if t == SEXPTYPE::LGLSXP.0
@@ -1758,13 +1754,11 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
                     t if t == SEXPTYPE::LISTSXP.0 => coerceToPairList(v),
                     _ => {
                         error("cannot coerce type to vector of type");
-                        ptr::null_mut() // unreachable
                     }
                 }
             }
             _ => {
                 error("cannot coerce type to vector of type");
-                ptr::null_mut() // unreachable
             }
         };
 

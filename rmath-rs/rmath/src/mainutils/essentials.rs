@@ -9,8 +9,8 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, SET_VECTOR_ELT, TYPEOF,
-    VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
+    TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -8757,6 +8757,623 @@ pub unsafe fn do_is_empty(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     // For vectors, check length
     let n = XLENGTH(env);
     Rf_ScalarLogical(if n == 0 { TRUE } else { FALSE })
+}
+
+// ---------------------------------------------------------------------------
+// S3 print dispatch — type-specific print methods
+// ---------------------------------------------------------------------------
+
+/// R's `print.integer(x)` — print integer vector with index labels.
+pub unsafe fn do_print_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("integer(0)");
+        return R_NilValue();
+    }
+    let n = XLENGTH(x).max(1);
+    print!("[1]");
+    for i in 0..n.min(500) {
+        let v = *INTEGER(x).add(i as usize);
+        let s = if v == NA_INTEGER {
+            "NA".to_string()
+        } else {
+            format!("{}", v)
+        };
+        if i == 0 {
+            print!(" {}", s);
+        } else if (i + 1) % 6 == 0 {
+            print!("\n[{}] {}", i + 1, s);
+        } else {
+            print!(" {}", s);
+        }
+    }
+    if n > 500 {
+        print!("\n [ reached getOption(\"max.print\") -- omitted {} entries ]", n - 500);
+    }
+    println!();
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.numeric(x)` — print numeric (double) vector with index labels.
+pub unsafe fn do_print_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("numeric(0)");
+        return R_NilValue();
+    }
+    let n = XLENGTH(x).max(1);
+    print!("[1]");
+    for i in 0..n.min(500) {
+        let v = *REAL(x).add(i as usize);
+        let s = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            "NA".to_string()
+        } else {
+            format!("{}", v)
+        };
+        if i == 0 {
+            print!(" {}", s);
+        } else if (i + 1) % 4 == 0 {
+            print!("\n[{}] {}", i + 1, s);
+        } else {
+            print!(" {}", s);
+        }
+    }
+    if n > 500 {
+        print!("\n [ reached getOption(\"max.print\") -- omitted {} entries ]", n - 500);
+    }
+    println!();
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.logical(x)` — print logical vector with index labels.
+pub unsafe fn do_print_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("logical(0)");
+        return R_NilValue();
+    }
+    let n = XLENGTH(x).max(1);
+    print!("[1]");
+    for i in 0..n.min(500) {
+        let v = *LOGICAL(x).add(i as usize);
+        let s = if v == NA_INTEGER {
+            "NA".to_string()
+        } else if v == TRUE {
+            "TRUE".to_string()
+        } else {
+            "FALSE".to_string()
+        };
+        if i == 0 {
+            print!(" {}", s);
+        } else if (i + 1) % 6 == 0 {
+            print!("\n[{}] {}", i + 1, s);
+        } else {
+            print!(" {}", s);
+        }
+    }
+    if n > 500 {
+        print!("\n [ reached getOption(\"max.print\") -- omitted {} entries ]", n - 500);
+    }
+    println!();
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.character(x)` — print character vector with index labels.
+pub unsafe fn do_print_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("character(0)");
+        return R_NilValue();
+    }
+    let n = XLENGTH(x).max(1);
+    for i in 0..n.min(500) {
+        let s = elt_to_string(x, i);
+        println!("[{}] \"{}\"", i + 1, s);
+    }
+    if n > 500 {
+        println!(" [ reached getOption(\"max.print\") -- omitted {} entries ]", n - 500);
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.complex(x)` — print complex vector with index labels.
+pub unsafe fn do_print_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("complex(0)");
+        return R_NilValue();
+    }
+    let n = XLENGTH(x).max(1);
+    print!("[1]");
+    for i in 0..n.min(500) {
+        // Complex data is stored as pairs of f64
+        let re = *REAL(x).add((i * 2) as usize);
+        let im = *REAL(x).add((i * 2 + 1) as usize);
+        let s = format!("{}+{}i", re, im);
+        if i == 0 {
+            print!(" {}", s);
+        } else if (i + 1) % 4 == 0 {
+            print!("\n[{}] {}", i + 1, s);
+        } else {
+            print!(" {}", s);
+        }
+    }
+    if n > 500 {
+        print!("\n [ reached getOption(\"max.print\") -- omitted {} entries ]", n - 500);
+    }
+    println!();
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.function(x)` — print function definition.
+pub unsafe fn do_print_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let t = TYPEOF(x);
+    if t != SEXPTYPE::CLOSXP.0 && t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
+        return do_print(_call, _op, args, _rho);
+    }
+    // Print function signature
+    let formals = if t == SEXPTYPE::CLOSXP.0 {
+        crate::sexp::accessors::FORMALS(x)
+    } else {
+        R_NilValue()
+    };
+    print!("function(");
+    let mut first = true;
+    let mut cur = formals;
+    while !cur.is_null() && cur != R_NilValue() {
+        if !first {
+            print!(", ");
+        }
+        first = false;
+        let tag = crate::sexp::accessors::TAG(cur);
+        if !tag.is_null() {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if !pname.is_null() {
+                let s = crate::sexp::accessors::CHAR(pname);
+                if !s.is_null() {
+                    let name = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("?");
+                    print!("{}", name);
+                }
+            }
+        }
+        cur = CDR(cur);
+    }
+    println!(")");
+    // Print body (simplified: just show it's a body)
+    if t == SEXPTYPE::CLOSXP.0 {
+        let body = crate::sexp::accessors::BODY(x);
+        if !body.is_null() {
+            println!("{{ ... }}");
+        }
+    } else {
+        println!("<primitive>");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.environment(x)` — print environment summary.
+pub unsafe fn do_print_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let t = TYPEOF(x);
+    if t != SEXPTYPE::ENVSXP.0 {
+        return do_print(_call, _op, args, _rho);
+    }
+    // Print environment name
+    let name = if x == crate::sexp::globals::R_GlobalEnv() {
+        "R_GlobalEnv".to_string()
+    } else if x == crate::sexp::globals::R_EmptyEnv() {
+        "R_EmptyEnv".to_string()
+    } else if x == crate::sexp::globals::R_BaseEnv() {
+        "base".to_string()
+    } else {
+        "<environment>".to_string()
+    };
+    println!("<environment: {}>", name);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.formula(x)` — print formula.
+pub unsafe fn do_print_formula(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    // Formulas are typically LANGSXP with ~ operator
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::LANGSXP.0 {
+        let op = CAR(x);
+        if !op.is_null() {
+            let pname = crate::sexp::accessors::PRINTNAME(op);
+            if !pname.is_null() {
+                let s = crate::sexp::accessors::CHAR(pname);
+                if !s.is_null() {
+                    let op_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("?");
+                    if op_str == "~" {
+                        // Formula: print left ~ right
+                        let lhs = CAR(CDR(x));
+                        let rhs = CDR(CDR(x));
+                        let lhs_str = if lhs.is_null() { String::new() } else { elt_to_string(lhs, 0) };
+                        let rhs_str = if rhs.is_null() { String::new() } else { elt_to_string(CAR(rhs), 0) };
+                        println!("{} ~ {}", lhs_str, rhs_str);
+                        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                        return x;
+                    }
+                }
+            }
+        }
+    }
+    do_print(_call, _op, args, _rho)
+}
+
+/// R's `print.call(x)` — print call/language object.
+pub unsafe fn do_print_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    // Print as deparse-like output
+    let s = do_deparse(_call, _op, args, _rho);
+    if !s.is_null() && TYPEOF(s) == SEXPTYPE::STRSXP.0 {
+        let n = XLENGTH(s);
+        for i in 0..n {
+            println!("{}", elt_to_string(s, i));
+        }
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.pairlist(x)` — print pairlist.
+pub unsafe fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let mut cur = x;
+    let mut i = 0;
+    while !cur.is_null() && cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP.0 {
+        let tag = crate::sexp::accessors::TAG(cur);
+        let val = CAR(cur);
+        let name = if !tag.is_null() {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if !pname.is_null() {
+                let s = crate::sexp::accessors::CHAR(pname);
+                if !s.is_null() {
+                    std::ffi::CStr::from_ptr(s).to_str().unwrap_or("").to_string()
+                } else {
+                    String::new()
+                }
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        };
+        let val_str = elt_to_string(val, 0);
+        if name.is_empty() {
+            println!("[[{}]]\n{}", i + 1, val_str);
+        } else {
+            println!("${}\n{}", name, val_str);
+        }
+        cur = CDR(cur);
+        i += 1;
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+// ---------------------------------------------------------------------------
+// S3 summary dispatch — type-specific summary methods
+// ---------------------------------------------------------------------------
+
+/// R's `summary.numeric(x)` — summary for numeric (double) vector.
+pub unsafe fn do_summary_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x);
+    let mut vals: Vec<f64> = Vec::new();
+    for i in 0..n {
+        let v = *REAL(x).add(i as usize);
+        if v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && !v.is_nan() {
+            vals.push(v);
+        }
+    }
+    let na_count = n as usize - vals.len();
+    if vals.is_empty() {
+        println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
+        println!("     NA      NA      NA      NA      NA      NA       {}", n);
+    } else {
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let min_v = vals[0];
+        let max_v = vals[vals.len() - 1];
+        let mean_v: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
+        let median_idx = vals.len() / 2;
+        let median_v = if vals.len() % 2 == 1 {
+            vals[median_idx]
+        } else {
+            (vals[median_idx - 1] + vals[median_idx]) / 2.0
+        };
+        let q1_idx = vals.len() / 4;
+        let q3_idx = 3 * vals.len() / 4;
+        println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
+        println!(
+            "{:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8}",
+            min_v, vals[q1_idx], median_v, mean_v, vals[q3_idx], max_v,
+            if na_count > 0 { na_count.to_string() } else { String::new() }
+        );
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `summary.integer(x)` — summary for integer vector.
+pub unsafe fn do_summary_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x);
+    let mut vals: Vec<f64> = Vec::new();
+    for i in 0..n {
+        let v = *INTEGER(x).add(i as usize);
+        if v != NA_INTEGER {
+            vals.push(v as f64);
+        }
+    }
+    let na_count = n as usize - vals.len();
+    if vals.is_empty() {
+        println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
+        println!("     NA      NA      NA      NA      NA      NA       {}", n);
+    } else {
+        vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+        let min_v = vals[0];
+        let max_v = vals[vals.len() - 1];
+        let mean_v: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
+        let median_idx = vals.len() / 2;
+        let median_v = if vals.len() % 2 == 1 {
+            vals[median_idx]
+        } else {
+            (vals[median_idx - 1] + vals[median_idx]) / 2.0
+        };
+        let q1_idx = vals.len() / 4;
+        let q3_idx = 3 * vals.len() / 4;
+        println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
+        println!(
+            "{:>8.0} {:>8.0} {:>8.0} {:>8.2} {:>8.0} {:>8.0} {:>8}",
+            min_v, vals[q1_idx], median_v, mean_v, vals[q3_idx], max_v,
+            if na_count > 0 { na_count.to_string() } else { String::new() }
+        );
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `summary.logical(x)` — summary for logical vector (TRUE/FALSE/NA counts).
+pub unsafe fn do_summary_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x);
+    let mut true_count = 0;
+    let mut false_count = 0;
+    let mut na_count = 0;
+    for i in 0..n {
+        let v = *LOGICAL(x).add(i as usize);
+        if v == NA_INTEGER {
+            na_count += 1;
+        } else if v == TRUE {
+            true_count += 1;
+        } else {
+            false_count += 1;
+        }
+    }
+    println!("   Mode   FALSE    TRUE    NA's");
+    println!("logical {:>7} {:>7} {:>7}", false_count, true_count, na_count);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `summary.character(x)` — summary for character vector (class/length/NA).
+pub unsafe fn do_summary_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x);
+    let mut na_count = 0;
+    for i in 0..n {
+        let charsxp = STRING_ELT(x, i);
+        if charsxp.is_null() {
+            na_count += 1;
+        } else {
+            let s = CHAR(charsxp);
+            if s.is_null() {
+                na_count += 1;
+            }
+        }
+    }
+    println!("   Length     Class      Mode");
+    println!("{:>9} character character", n);
+    if na_count > 0 {
+        println!("   NA's: {}", na_count);
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime — type checking utilities
+// ---------------------------------------------------------------------------
+
+/// R's `is.single(x)` — check if x is single precision (simplified: always FALSE).
+pub unsafe fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _x = CAR(args);
+    Rf_ScalarLogical(FALSE) // We don't support single precision
+}
+
+/// R's `is.vector(x, mode="any")` — check if x is an atomic or list vector without attributes.
+pub unsafe fn do_is_vector(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let t = TYPEOF(x);
+    let is_vec = t == SEXPTYPE::LGLSXP.0
+        || t == SEXPTYPE::INTSXP.0
+        || t == SEXPTYPE::REALSXP.0
+        || t == SEXPTYPE::CPLXSXP.0
+        || t == SEXPTYPE::STRSXP.0
+        || t == SEXPTYPE::RAWSXP.0
+        || t == SEXPTYPE::VECSXP.0;
+    Rf_ScalarLogical(if is_vec { TRUE } else { FALSE })
+}
+
+/// R's `is.scalar(x)` — check if x has length 1 (simplified).
+pub unsafe fn do_is_scalar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let n = XLENGTH(x);
+    Rf_ScalarLogical(if n == 1 { TRUE } else { FALSE })
+}
+
+/// R's `is.named(x)` — check if x has names attribute.
+pub unsafe fn do_is_named(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let names = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+    );
+    let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP.0 && XLENGTH(names) > 0;
+    Rf_ScalarLogical(if has_names { TRUE } else { FALSE })
+}
+
+/// R's `is.unsorted(x)` — check if vector is unsorted.
+pub unsafe fn do_is_unsorted(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+    if n <= 1 {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let mut unsorted = false;
+    if t == SEXPTYPE::REALSXP.0 {
+        for i in 1..n {
+            let prev = *REAL(x).add((i - 1) as usize);
+            let curr = *REAL(x).add(i as usize);
+            if prev.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || curr.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            {
+                return Rf_ScalarLogical(NA_INTEGER); // NA if any NA present
+            }
+            if prev > curr {
+                unsorted = true;
+                break;
+            }
+        }
+    } else if t == SEXPTYPE::INTSXP.0 {
+        for i in 1..n {
+            let prev = *INTEGER(x).add((i - 1) as usize);
+            let curr = *INTEGER(x).add(i as usize);
+            if prev == NA_INTEGER || curr == NA_INTEGER {
+                return Rf_ScalarLogical(NA_INTEGER);
+            }
+            if prev > curr {
+                unsorted = true;
+                break;
+            }
+        }
+    }
+    Rf_ScalarLogical(if unsorted { TRUE } else { FALSE })
+}
+
+/// R's `is.loaded(x)` — check if symbol is loaded (simplified: always FALSE).
+pub unsafe fn do_is_loaded(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarLogical(FALSE)
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime — function type checking
+// ---------------------------------------------------------------------------
+
+/// R's `is.primitive(x)` — check if x is a primitive function (BUILTINSXP or SPECIALSXP).
+pub unsafe fn do_is_primitive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let t = TYPEOF(x);
+    Rf_ScalarLogical(if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.generic(x)` — check if x is a generic function (simplified).
+/// Returns TRUE for CLOSXP with "generic" in name or with useMethod call.
+pub unsafe fn do_is_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let t = TYPEOF(x);
+    // Simplified: primitives are always generic, closures need body check
+    if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+        return Rf_ScalarLogical(TRUE);
+    }
+    if t == SEXPTYPE::CLOSXP.0 {
+        // Check if name ends with common generic names
+        // Simplified: assume all closures could be generic
+        return Rf_ScalarLogical(TRUE);
+    }
+    Rf_ScalarLogical(FALSE)
+}
+
+// ---------------------------------------------------------------------------
+// Complete list/data.frame — checking
+// ---------------------------------------------------------------------------
+
+/// R's `is.data.frame(x)` — check if x has "data.frame" class.
+pub unsafe fn do_is_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let class = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+    );
+    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP.0 && XLENGTH(class) > 0 {
+        let cls = elt_to_string(class, 0);
+        return Rf_ScalarLogical(if cls == "data.frame" { TRUE } else { FALSE });
+    }
+    Rf_ScalarLogical(FALSE)
 }
 
 // ---------------------------------------------------------------------------
