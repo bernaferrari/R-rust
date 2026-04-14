@@ -25,7 +25,7 @@ use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
 use crate::eval::attrib_core::getAttrib;
-use crate::eval::context::R_sysframe;
+
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
 };
@@ -105,17 +105,17 @@ pub enum rpe_type {
 
 thread_local! { static R_Profiling_Event: Cell<rpe_type> = Cell::new(rpe_type::RPE_CPU); }
 
-/// Output file handle for profiling.
-/// On Unix, this is a file descriptor (int). On Windows, it would be a FILE*.
+// Output file handle for profiling.
+// On Unix, this is a file descriptor (int). On Windows, it would be a FILE*.
 thread_local! { static R_ProfileOutfile: Cell<c_int> = Cell::new(-1); }
 
-/// Array of source file name pointers for line profiling.
+// Array of source file name pointers for line profiling.
 thread_local! { static R_Srcfiles: Cell<*mut *mut c_char> = Cell::new(ptr::null_mut()); }
 
-/// Count of source file buffer entries.
+// Count of source file buffer entries.
 thread_local! { static R_Srcfile_bufcount: Cell<usize> = Cell::new(0); }
 
-/// Raw SEXP buffer for filenames and pointers.
+// Raw SEXP buffer for filenames and pointers.
 thread_local! { static R_Srcfiles_buffer: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
@@ -1190,15 +1190,13 @@ pub unsafe fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `dobcprof()` in eval.c.
 unsafe fn dobcprof(_sig: c_int) {
-    unsafe {
-        let op = current_opcode.with(|v| v.get());
-        if op >= 0 && (op as usize) < OPCOUNT {
-            opcode_counts.with(|counts| {
-                counts.borrow_mut()[op as usize] += 1;
-            });
-        }
-        // Reinstall handler: signal(SIGPROF, dobcprof);
+    let op = current_opcode.with(|v| v.get());
+    if op >= 0 && (op as usize) < OPCOUNT {
+        opcode_counts.with(|counts| {
+            counts.borrow_mut()[op as usize] += 1;
+        });
     }
+    // Reinstall handler: signal(SIGPROF, dobcprof);
 }
 
 // ---------------------------------------------------------------------------

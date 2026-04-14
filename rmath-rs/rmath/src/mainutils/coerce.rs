@@ -2796,7 +2796,7 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let name_elt = STRING_ELT(names, i as R_xlen_t);
                 if name_elt != R_NilValue() {
                     let c = CHAR(name_elt);
-                    if !c.is_null() && unsafe { *c != 0 } {
+                    if !c.is_null() && *c != 0 {
                         SETTAG(current, crate::mainutils::subset::installTrChar(name_elt));
                     }
                 }
@@ -2880,7 +2880,7 @@ pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                         let name_elt = STRING_ELT(names, i as R_xlen_t);
                         if name_elt != R_NilValue() {
                             let c = CHAR(name_elt);
-                            if !c.is_null() && unsafe { *c != 0 } {
+                            if !c.is_null() && *c != 0 {
                                 SETTAG(ap, crate::mainutils::subset::installTrChar(name_elt));
                             }
                         }

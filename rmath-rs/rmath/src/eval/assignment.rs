@@ -146,7 +146,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         Rf_protect(target_expr);
 
         // Build replacement call: (assign_fn target_expr idx... rhs)
-        let mut call_args = CDDR(lhs);
+        let call_args = CDDR(lhs);
         let arg_list = crate::sexp::constructors::Rf_cons(
             target_expr,
             crate::sexp::constructors::Rf_cons(rhs, call_args),

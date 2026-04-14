@@ -474,14 +474,16 @@ pub unsafe fn get_R_check_constants() -> c_int {
 // R_exec_token -- for tail call optimization
 // ---------------------------------------------------------------------------
 
-/// Token used for tail call (Exec) optimization.
+// Token used for tail call (Exec) optimization.
 thread_local! { static R_exec_token: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
-/// Initialize the exec token for tail call support.
+// Initialize the exec token for tail call support.
 pub unsafe fn init_exec_token() {
-    let sym = Rf_install(b".__EXEC__.\x00".as_ptr() as *const c_char);
-    let token = Rf_cons(sym, R_NilValue());
-    R_exec_token.with(|v| v.set(token));
+    unsafe {
+        let sym = Rf_install(b".__EXEC__.\x00".as_ptr() as *const c_char);
+        let token = Rf_cons(sym, R_NilValue());
+        R_exec_token.with(|v| v.set(token));
+    }
     // In the full implementation, R_PreserveObject would be called here
 }
 

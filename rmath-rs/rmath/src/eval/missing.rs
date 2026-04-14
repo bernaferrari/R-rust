@@ -154,7 +154,7 @@ pub unsafe fn DispatchAnyOrEval(
 
         if has_methods != FALSE {
             let mut nprotect: c_int = 0;
-            let mut argValue: SEXP = R_NilValue();
+            let argValue: SEXP;
 
             if argsevald == 0 {
                 // Evaluate all arguments
@@ -775,7 +775,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             while !a.is_null() && a != R_NilValue() && count < n {
                 let p = CAR(a);
                 if TYPEOF(p) == SEXPTYPE::PROMSXP.0 {
-                    Rf_eval(p, rho);
+                    let _ = Rf_eval(p, rho);
                 } else if p == R_MissingArg() {
                     eprintln!("Error: argument {} is empty", count + 1);
                     std::panic::panic_any(RError {
@@ -989,7 +989,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
 // R_BCIntActive -- bytecode interpreter reentrancy flag
 // ---------------------------------------------------------------------------
 
-/// Whether the bytecode interpreter is active (to prevent recursion).
+// Whether the bytecode interpreter is active (to prevent recursion).
 thread_local! { static R_BCIntActive: Cell<c_int> = Cell::new(0); }
 
 /// Get whether the bytecode interpreter is active.
