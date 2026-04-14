@@ -11259,7 +11259,7 @@ pub unsafe fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         // Header
         let mut header_parts: Vec<String> = Vec::new();
         if write_row_names {
-            header_parts.push("".to_string());
+            header_parts.push(String::new());
         }
         for j in 0..ncols {
             let nm = if !names.is_null() {

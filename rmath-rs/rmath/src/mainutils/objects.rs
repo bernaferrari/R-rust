@@ -257,7 +257,7 @@ unsafe fn isNull(x: SEXP) -> c_int {
 }
 
 /// asChar: coerce to a single character string.
-unsafe fn asChar(x: SEXP) -> SEXP {
+pub(crate) unsafe fn asChar(x: SEXP) -> SEXP {
     unsafe {
         if isString(x) != FALSE {
             return STRING_ELT(x, 0);
