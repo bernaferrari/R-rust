@@ -610,8 +610,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     } else {
                         // Call `[`(obj, i, j, ...)
                         {
-                            let bracket_sym =
-                                crate::sexp::symbol::Rf_install(std::ffi::CString::new("[").unwrap_or_default().as_ptr());
+                            let bracket_sym = crate::sexp::symbol::Rf_install(
+                                std::ffi::CString::new("[").unwrap_or_default().as_ptr(),
+                            );
                             let nil = R_NilValue();
                             let mut arg_list = nil;
                             // Build args in reverse order
@@ -642,8 +643,9 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         stack.push(R_NilValue());
                     } else {
                         {
-                            let dbracket_sym =
-                                crate::sexp::symbol::Rf_install(std::ffi::CString::new("[[").unwrap_or_default().as_ptr());
+                            let dbracket_sym = crate::sexp::symbol::Rf_install(
+                                std::ffi::CString::new("[[").unwrap_or_default().as_ptr(),
+                            );
                             let nil = R_NilValue();
                             let args = Rf_cons(obj, Rf_cons(idx, nil));
                             let call = Rf_cons(dbracket_sym, args);

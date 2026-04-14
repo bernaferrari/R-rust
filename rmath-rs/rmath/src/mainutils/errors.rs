@@ -550,10 +550,23 @@ unsafe fn findCall() -> SEXP {
 /// The `ap` parameter is a `*mut c_void` that should be cast to `va_list`.
 /// When called from Rust code, ap is typically null and the format string
 /// is already the final message.
+/// Drop guard that mirrors C's `restore_inError` callback.
+/// Guaranteed to run even if the panic is caught mid-stack, because
+/// Drop runs during unwinding before catch_unwind handlers.
+struct RestoreInError {
+    old_in_error: i32,
+    old_expressions: c_int,
+}
+
+impl Drop for RestoreInError {
+    fn drop(&mut self) {
+        IN_ERROR.store(self.old_in_error, Ordering::Relaxed);
+        R_SetExpressions(self.old_expressions);
+    }
+}
+
 unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
-        // Check for recursive error using specific state values:
-        // 0 = no error, 1 = internal error, 2 = traceback, 3 = user handler
         let old_in_err = IN_ERROR.load(Ordering::Relaxed);
         if old_in_err > 0 {
             // fail-safe handler for recursive errors
@@ -589,6 +602,13 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             return;
         }
 
+        // Push a Drop guard — equivalent to C's begincontext + cend = &restore_inError.
+        // This guarantees IN_ERROR and R_Expressions are restored even if the panic
+        // is caught by an intermediate catch_unwind frame.
+        let _guard = RestoreInError {
+            old_in_error: old_in_err,
+            old_expressions: R_Expressions(),
+        };
         IN_ERROR.store(1, Ordering::Relaxed);
 
         // Format the variadic message
@@ -657,8 +677,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             PrintWarnings();
         }
 
-        // Restore inError and panic
-        IN_ERROR.store(old_in_err, Ordering::Relaxed);
+        // The Drop guard (_guard) will restore IN_ERROR and R_Expressions automatically
         std::panic::panic_any(RError {
             message: R_GetErrorBuf(),
         });
@@ -690,12 +709,14 @@ unsafe fn findSimpleErrorHandler() -> SEXP {
 
 unsafe fn gotoExitingHandler(cond: SEXP, call: SEXP, entry: SEXP) {
     unsafe {
+        let rho = ENTRY_TARGET_ENVIR(entry);
         let result = ENTRY_RETURN_RESULT(entry);
         SET_VECTOR_ELT(result, 0, cond);
         SET_VECTOR_ELT(result, 1, call);
         SET_VECTOR_ELT(result, 2, ENTRY_HANDLER(entry));
-        std::panic::panic_any(crate::sexp::context::RError {
-            message: "exiting handler".to_string(),
+        std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler {
+            target_env: rho,
+            result,
         });
     }
 }
@@ -1383,8 +1404,6 @@ pub unsafe fn jump_to_top_ex(
             PrintWarnings();
         }
 
-        
-
         if ignore_restart == 0 {
             try_jump_to_restart();
         }
@@ -1404,25 +1423,27 @@ pub unsafe fn jump_to_top_ex(
     }
 }
 
-unsafe fn try_jump_to_restart() { unsafe {
-    let mut list = R_RESTART_STACK.with(|s| *s.borrow());
-    while !list.is_null() && list != globals::R_NilValue() {
-        let restart = CAR(list);
-        if TYPEOF(restart) == SEXPTYPE::VECSXP.0 && LENGTH(restart) > 1 {
-            let name = crate::sexp::accessors::VECTOR_ELT(restart, 0);
-            if TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) == 1 {
-                let cname = CHAR(STRING_ELT(name, 0));
-                if !cname.is_null() {
-                    let bytes = CStr::from_ptr(cname).to_bytes();
-                    if bytes == b"browser" || bytes == b"tryRestart" || bytes == b"abort" {
-                        invokeRestart(restart, globals::R_NilValue());
+unsafe fn try_jump_to_restart() {
+    unsafe {
+        let mut list = R_RESTART_STACK.with(|s| *s.borrow());
+        while !list.is_null() && list != globals::R_NilValue() {
+            let restart = CAR(list);
+            if TYPEOF(restart) == SEXPTYPE::VECSXP.0 && LENGTH(restart) > 1 {
+                let name = crate::sexp::accessors::VECTOR_ELT(restart, 0);
+                if TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) == 1 {
+                    let cname = CHAR(STRING_ELT(name, 0));
+                    if !cname.is_null() {
+                        let bytes = CStr::from_ptr(cname).to_bytes();
+                        if bytes == b"browser" || bytes == b"tryRestart" || bytes == b"abort" {
+                            invokeRestart(restart, globals::R_NilValue());
+                        }
                     }
                 }
             }
+            list = CDR(list);
         }
-        list = CDR(list);
     }
-}}
+}
 
 unsafe fn invokeRestart(restart: SEXP, _args: SEXP) {
     std::panic::panic_any(RSignal::Error {
@@ -2071,58 +2092,62 @@ pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
     }
 }
 
-unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) { unsafe {
-    let h = GetOption1(Rf_install(
-        b"browser.error.handler\0".as_ptr() as *const c_char
-    ));
-    let h = if !h.is_null() && TYPEOF(h) == SEXPTYPE::CLOSXP.0 {
-        h
-    } else {
-        globals::R_RestartToken()
-    };
-    let rho = (*cptr).cloenv;
-    let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
-    crate::sexp::protect::Rf_protect(klass);
-    let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);
-    let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
-    let new_top = Rf_cons(entry, old_stack);
-    R_HANDLER_STACK.with(|s| {
-        *s.borrow_mut() = new_top;
-    });
-    crate::sexp::protect::Rf_unprotect(1);
+unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
+    unsafe {
+        let h = GetOption1(Rf_install(
+            b"browser.error.handler\0".as_ptr() as *const c_char
+        ));
+        let h = if !h.is_null() && TYPEOF(h) == SEXPTYPE::CLOSXP.0 {
+            h
+        } else {
+            globals::R_RestartToken()
+        };
+        let rho = (*cptr).cloenv;
+        let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
+        crate::sexp::protect::Rf_protect(klass);
+        let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);
+        let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+        let new_top = Rf_cons(entry, old_stack);
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = new_top;
+        });
+        crate::sexp::protect::Rf_unprotect(1);
 
-    addInternalRestart(cptr, cname);
-}}
+        addInternalRestart(cptr, cname);
+    }
+}
 
-unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) { unsafe {
-    let cname_str = CStr::from_ptr(cname).to_bytes();
-    let name = Rf_mkString(
-        std::ffi::CString::new(cname_str)
-            .unwrap_or_default()
-            .as_ptr(),
-    );
-    crate::sexp::protect::Rf_protect(name);
-    let entry = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
-    crate::sexp::protect::Rf_protect(entry);
-    crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
-    let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
-        cptr as *mut c_void,
-        globals::R_NilValue(),
-        globals::R_NilValue(),
-    );
-    crate::sexp::accessors::SET_VECTOR_ELT(entry, 1, ext_ptr);
-    crate::eval::attrib_core::setAttrib(
-        entry,
-        R_ClassSymbol(),
-        Rf_mkString(b"restart\0".as_ptr() as *const c_char),
-    );
-    let old_stack = R_RESTART_STACK.with(|s| *s.borrow());
-    let new_top = Rf_cons(entry, old_stack);
-    R_RESTART_STACK.with(|s| {
-        *s.borrow_mut() = new_top;
-    });
-    crate::sexp::protect::Rf_unprotect(2);
-}}
+unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) {
+    unsafe {
+        let cname_str = CStr::from_ptr(cname).to_bytes();
+        let name = Rf_mkString(
+            std::ffi::CString::new(cname_str)
+                .unwrap_or_default()
+                .as_ptr(),
+        );
+        crate::sexp::protect::Rf_protect(name);
+        let entry = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+        crate::sexp::protect::Rf_protect(entry);
+        crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
+        let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
+            cptr as *mut c_void,
+            globals::R_NilValue(),
+            globals::R_NilValue(),
+        );
+        crate::sexp::accessors::SET_VECTOR_ELT(entry, 1, ext_ptr);
+        crate::eval::attrib_core::setAttrib(
+            entry,
+            R_ClassSymbol(),
+            Rf_mkString(b"restart\0".as_ptr() as *const c_char),
+        );
+        let old_stack = R_RESTART_STACK.with(|s| *s.borrow());
+        let new_top = Rf_cons(entry, old_stack);
+        R_RESTART_STACK.with(|s| {
+            *s.borrow_mut() = new_top;
+        });
+        crate::sexp::protect::Rf_unprotect(2);
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Condition signaling
@@ -2416,7 +2441,46 @@ pub unsafe fn R_tryCatchError(
         match result {
             Ok(val) => val,
             Err(payload) => {
-                if handler.is_some() {
+                // Check for ExitingHandler signal — targeted context jump.
+                // If our context stack has the target environment, consume the signal
+                // and return the result vector. Otherwise re-panic to continue unwinding.
+                if let Some(signal) = payload.downcast_ref::<crate::sexp::context::RSignal>() {
+                    match signal {
+                        crate::sexp::context::RSignal::ExitingHandler { target_env, result } => {
+                            let target = *target_env;
+                            let res = *result;
+                            if crate::sexp::context::context_env_exists(target) {
+                                res
+                            } else {
+                                std::panic::panic_any(
+                                    crate::sexp::context::RSignal::ExitingHandler {
+                                        target_env: target,
+                                        result: res,
+                                    },
+                                );
+                            }
+                        }
+                        _ => {
+                            if handler.is_some() {
+                                let cond = crate::sexp::constructors::Rf_allocVector(
+                                    SEXPTYPE::STRSXP.0,
+                                    1,
+                                );
+                                if !cond.is_null() {
+                                    let msg = Rf_mkString(b"error\0".as_ptr() as *const c_char);
+                                    crate::sexp::accessors::SET_STRING_ELT(cond, 0, msg);
+                                }
+                                if let Some(h) = handler {
+                                    h(cond, hdata)
+                                } else {
+                                    globals::R_NilValue()
+                                }
+                            } else {
+                                std::panic::resume_unwind(payload)
+                            }
+                        }
+                    }
+                } else if handler.is_some() {
                     let cond = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
                     if !cond.is_null() {
                         let msg = Rf_mkString(b"error\0".as_ptr() as *const c_char);
@@ -2565,26 +2629,30 @@ pub unsafe fn jump_to_toplevel() {
 
 /// R_MissingArgError_c — report a missing argument error.
 /// Matches C's `void R_MissingArgError_c(const char* arg, SEXP call, const char* subclass)`
-#[allow(clippy::if_same_then_else)]
 pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *const c_char) {
     unsafe {
         let arg_str = if arg.is_null() {
-            "argument"
-        } else {
-            CStr::from_ptr(arg).to_str().unwrap_or("argument")
-        };
-        let sub = if subclass.is_null() {
             ""
         } else {
-            CStr::from_ptr(subclass).to_str().unwrap_or("")
+            CStr::from_ptr(arg).to_str().unwrap_or("")
         };
-        let msg = if sub.is_empty() {
+        crate::sexp::protect::Rf_protect(call);
+        let msg = if !arg_str.is_empty() {
             format!("argument \"{}\" is missing, with no default", arg_str)
         } else {
-            format!("argument \"{}\" is missing, with no default", arg_str)
+            "argument is missing, with no default".to_string()
         };
-        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-        errorcall(call, c_msg.as_ptr());
+        let c_msg = std::ffi::CString::new(msg.clone()).unwrap_or_default();
+        let cond = R_makeErrorCondition(
+            call,
+            b"missingArgError\0".as_ptr() as *const c_char,
+            subclass,
+            0,
+            c_msg.as_ptr(),
+        );
+        crate::sexp::protect::Rf_protect(cond);
+        R_signalErrorCondition(cond, call);
+        crate::sexp::protect::Rf_unprotect(2);
     }
 }
 
@@ -2593,16 +2661,16 @@ pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *con
 pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
     unsafe {
         let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP.0 {
-            "argument"
+            b"\0".as_ptr() as *const c_char
         } else {
             let name = CHAR_local(PRINTNAME(symbol));
-            CStr::from_ptr(name).to_str().unwrap_or("argument")
+            if name.is_null() {
+                b"\0".as_ptr() as *const c_char
+            } else {
+                name
+            }
         };
-        R_MissingArgError_c(
-            std::ffi::CString::new(arg).unwrap_or_default().as_ptr(),
-            call,
-            subclass,
-        );
+        R_MissingArgError_c(arg, call, subclass);
     }
 }
 
@@ -2875,6 +2943,22 @@ pub unsafe fn R_tryCatch(
         })) {
             Ok(result) => result,
             Err(panic_payload) => {
+                // ExitingHandler: targeted context jump — pass through unless we are the target
+                if let Some(signal) = panic_payload.downcast_ref::<crate::sexp::context::RSignal>()
+                    && let crate::sexp::context::RSignal::ExitingHandler { target_env, result } =
+                        signal
+                {
+                    let target = *target_env;
+                    let res = *result;
+                    if crate::sexp::context::context_env_exists(target) {
+                        return res;
+                    } else {
+                        std::panic::panic_any(crate::sexp::context::RSignal::ExitingHandler {
+                            target_env: target,
+                            result: res,
+                        });
+                    }
+                }
                 // Try to extract the error condition
                 let cond = if let Some(ref e) = panic_payload.downcast_ref::<RError>() {
                     R_makeErrorCondition(

@@ -282,10 +282,19 @@ impl std::error::Error for RError {}
 /// Each variant represents a distinct R control flow mechanism.
 #[derive(Debug)]
 pub enum RSignal {
-    Error { message: String },
+    Error {
+        message: String,
+    },
     Break,
     Next,
     Return(SEXP),
+    /// Targeted context jump for exiting handlers (tryCatch/withCallingHandlers).
+    /// Carries the target environment to match against context stack entries,
+    /// and the result vector containing [cond, call, handler].
+    ExitingHandler {
+        target_env: SEXP,
+        result: SEXP,
+    },
 }
 
 unsafe impl Send for RSignal {}
@@ -327,6 +336,16 @@ pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
             Err(payload) => std::panic::resume_unwind(payload),
         },
     }
+}
+
+/// Check whether any context on the stack has `cloenv == target_env`.
+/// Used by ExitingHandler signal handling to determine if the current
+/// catch_unwind frame is the intended target.
+pub fn context_env_exists(target_env: SEXP) -> bool {
+    CONTEXT_STACK.with(|stack| {
+        let stack = stack.borrow();
+        stack.iter().rev().any(|ctx| ctx.cloenv == target_env)
+    })
 }
 
 // ---------------------------------------------------------------------------
