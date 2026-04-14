@@ -1138,6 +1138,134 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "is.atomic" => unsafe {
+            crate::mainutils::essentials::do_is_atomic(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.recursive" => unsafe {
+            crate::mainutils::essentials::do_is_recursive(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.object" => unsafe {
+            crate::mainutils::essentials::do_is_object(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "file" => unsafe {
+            crate::mainutils::essentials::do_file(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "url" => unsafe {
+            crate::mainutils::essentials::do_url(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "close" => unsafe {
+            crate::mainutils::essentials::do_close(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "flush" => unsafe {
+            crate::mainutils::essentials::do_flush(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "print.matrix" => unsafe {
+            crate::mainutils::essentials::do_print_matrix(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "print.list" => unsafe {
+            crate::mainutils::essentials::do_print_list(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "summary" => unsafe {
+            crate::mainutils::essentials::do_summary_default(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "str" => unsafe {
+            crate::mainutils::essentials::do_str(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "as.data.frame" => unsafe {
+            crate::mainutils::essentials::do_as_data_frame(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "c.list" => unsafe {
+            crate::mainutils::essentials::do_c_list(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "unlist" => unsafe {
+            crate::mainutils::essentials::do_unlist(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "list.get" => unsafe {
+            crate::mainutils::essentials::do_list_get(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "list.set" => unsafe {
+            crate::mainutils::essentials::do_list_set(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }

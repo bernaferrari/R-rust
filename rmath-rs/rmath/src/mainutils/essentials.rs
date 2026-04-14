@@ -1864,6 +1864,22 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "rpois",
         "rexp",
         "sample",
+        "is.atomic",
+        "is.recursive",
+        "is.object",
+        "file",
+        "url",
+        "close",
+        "flush",
+        "print.matrix",
+        "print.list",
+        "summary",
+        "str",
+        "as.data.frame",
+        "c.list",
+        "unlist",
+        "list.get",
+        "list.set",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -4620,5 +4636,682 @@ pub unsafe fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     let result_str = parts.join("\n");
     let cstr = CString::new(result_str).unwrap_or_default();
     Rf_mkString(cstr.as_ptr())
+}
+
+// ---------------------------------------------------------------------------
+// List operations
+// ---------------------------------------------------------------------------
+
+/// R's `lengths(x)` alias — lengths of list elements.
+/// Wrapper that delegates to do_lengths (already registered separately).
+pub unsafe fn do_length_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_lengths(_call, _op, args, _rho)
+}
+
+/// R's `names(x)` for lists — names of list elements.
+/// Wrapper that delegates to do_names.
+pub unsafe fn do_names_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_names(_call, _op, args, _rho)
+}
+
+/// R's `[[i]]` — get element i from a list (1-indexed).
+pub unsafe fn do_list_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let i = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || i.is_null() || i == R_NilValue() {
+        return R_NilValue();
+    }
+    let idx = real_or_default(i, 0.0) as i64;
+    if idx < 1 || TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x) as i64;
+    if idx > n {
+        return R_NilValue();
+    }
+    VECTOR_ELT(x, idx - 1)
+}
+
+/// R's `[[i]] <- value` — set element i in a list (1-indexed).
+pub unsafe fn do_list_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let i = CAR(CDR(args));
+    let value = CAR(CDR(CDR(args)));
+    if x.is_null() || x == R_NilValue() || i.is_null() || i == R_NilValue() {
+        return R_NilValue();
+    }
+    let idx = real_or_default(i, 0.0) as i64;
+    if idx < 1 || TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x) as i64;
+    if idx > n {
+        return R_NilValue();
+    }
+    SET_VECTOR_ELT(x, idx - 1, value);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `c(...)` for lists — concatenate lists together.
+/// If all args are VECSXP, result is a flattened VECSXP.
+pub unsafe fn do_c_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut total_len: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            total_len += XLENGTH(arg);
+        }
+        current = CDR(current);
+    }
+    if total_len == 0 {
+        return Rf_allocVector3(SEXPTYPE::VECSXP.0, 0);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, total_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let mut offset: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let n = XLENGTH(arg);
+            if TYPEOF(arg) == SEXPTYPE::VECSXP.0 {
+                for i in 0..n {
+                    SET_VECTOR_ELT(result, (offset + i) as i64, VECTOR_ELT(arg, i as i64));
+                }
+            } else {
+                // Wrap scalar/vector in a single slot
+                SET_VECTOR_ELT(result, offset as i64, arg);
+            }
+            offset += n;
+        }
+        current = CDR(current);
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `unlist(x)` — flatten nested list to a vector.
+/// Simplified: if list elements are all numeric, return REALSXP.
+pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        return x;
+    }
+    let n = XLENGTH(x);
+    // Collect all elements and determine output type
+    let mut all_values: Vec<f64> = Vec::new();
+    let mut all_ints: Vec<i32> = Vec::new();
+    let mut all_strs: Vec<String> = Vec::new();
+    let mut result_type: u32;
+    let mut saw_str = false;
+
+    for i in 0..n {
+        let elem = VECTOR_ELT(x, i as i64);
+        if elem.is_null() {
+            continue;
+        }
+        let t = TYPEOF(elem);
+        let m = XLENGTH(elem);
+        for j in 0..m {
+            if t == SEXPTYPE::REALSXP.0 {
+                all_values.push(*REAL(elem).add(j as usize));
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(elem).add(j as usize);
+                all_ints.push(v);
+            } else if t == SEXPTYPE::STRSXP.0 {
+                all_strs.push(elt_to_string(elem, j));
+                saw_str = true;
+            } else if t == SEXPTYPE::VECSXP.0 {
+                // Nested list — recurse via extraction
+                let inner = VECTOR_ELT(elem, j as i64);
+                if !inner.is_null() && TYPEOF(inner) == SEXPTYPE::REALSXP.0 {
+                    all_values.push(*REAL(inner));
+                } else {
+                    saw_str = true;
+                    all_strs.push(elt_to_string(inner, 0));
+                }
+            } else {
+                all_values.push(NA_REAL);
+            }
+        }
+    }
+    let result_type = if saw_str {
+        SEXPTYPE::STRSXP.0
+    } else if !all_values.is_empty() {
+        SEXPTYPE::REALSXP.0
+    } else {
+        SEXPTYPE::INTSXP.0
+    };
+
+    let total: R_xlen_t = if result_type == SEXPTYPE::STRSXP.0 {
+        all_strs.len() as R_xlen_t
+    } else if result_type == SEXPTYPE::REALSXP.0 {
+        (all_values.len() + all_ints.len()) as R_xlen_t
+    } else {
+        all_ints.len() as R_xlen_t
+    };
+
+    let result = Rf_allocVector3(result_type, total);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+
+    if result_type == SEXPTYPE::REALSXP.0 {
+        let dst = REAL(result);
+        let mut idx = 0usize;
+        for &v in &all_values {
+            *dst.add(idx) = v;
+            idx += 1;
+        }
+        for &v in &all_ints {
+            *dst.add(idx) = if v == NA_INTEGER { NA_REAL } else { v as f64 };
+            idx += 1;
+        }
+    } else if result_type == SEXPTYPE::INTSXP.0 {
+        let dst = INTEGER(result);
+        for (idx, &v) in all_ints.iter().enumerate() {
+            *dst.add(idx) = v;
+        }
+    } else if result_type == SEXPTYPE::STRSXP.0 {
+        for (idx, s) in all_strs.iter().enumerate() {
+            let cstr = CString::new(s.as_str()).unwrap_or_default();
+            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            if !charsxp.is_null() {
+                let data = (*result).gengc_next_node as *mut SEXP;
+                *data.add(idx) = charsxp;
+            }
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `is.atomic(x)` — TRUE for non-recursive types (not list, pairlist, etc.).
+pub unsafe fn do_is_atomic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(TRUE);
+    }
+    let t = TYPEOF(x);
+    let is_atomic = t == SEXPTYPE::LGLSXP.0
+        || t == SEXPTYPE::INTSXP.0
+        || t == SEXPTYPE::REALSXP.0
+        || t == SEXPTYPE::CPLXSXP.0
+        || t == SEXPTYPE::STRSXP.0
+        || t == SEXPTYPE::RAWSXP.0
+        || t == SEXPTYPE::CHARSXP.0
+        || t == SEXPTYPE::NILSXP.0;
+    Rf_ScalarLogical(if is_atomic { TRUE } else { FALSE })
+}
+
+/// R's `is.recursive(x)` — TRUE for recursive types (list, pairlist, language, etc.).
+pub unsafe fn do_is_recursive(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let t = TYPEOF(x);
+    let is_rec = t == SEXPTYPE::VECSXP.0
+        || t == SEXPTYPE::LISTSXP.0
+        || t == SEXPTYPE::LANGSXP.0
+        || t == SEXPTYPE::CLOSXP.0
+        || t == SEXPTYPE::BUILTINSXP.0
+        || t == SEXPTYPE::SPECIALSXP.0
+        || t == SEXPTYPE::ENVSXP.0
+        || t == SEXPTYPE::EXPRSXP.0;
+    Rf_ScalarLogical(if is_rec { TRUE } else { FALSE })
+}
+
+/// R's `is.object(x)` — TRUE if x has a "class" attribute.
+pub unsafe fn do_is_object(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let class = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+    );
+    Rf_ScalarLogical(if !class.is_null() { TRUE } else { FALSE })
+}
+
+// ---------------------------------------------------------------------------
+// Connection basics (simplified)
+// ---------------------------------------------------------------------------
+
+/// R's `file(description)` — create a file connection.
+/// Simplified: validate the path exists and return the path as a STRSXP.
+pub unsafe fn do_file(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let path_arg = CAR(args);
+    if path_arg.is_null() || path_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let path_str = elt_to_string(path_arg, 0);
+    // Simplified: just check if path is non-empty and return it
+    if path_str.is_empty() {
+        return R_NilValue();
+    }
+    let cstr = CString::new(path_str).unwrap_or_default();
+    Rf_mkString(cstr.as_ptr())
+}
+
+/// R's `url(description)` — create a URL connection.
+/// Simplified: just return the description string.
+pub unsafe fn do_url(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let desc = CAR(args);
+    if desc.is_null() || desc == R_NilValue() {
+        return R_NilValue();
+    }
+    desc
+}
+
+/// R's `close(con)` — close a connection.
+/// Simplified: no-op that returns the connection.
+pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let con = CAR(args);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    con
+}
+
+/// R's `flush(con)` — flush a connection.
+/// Simplified: no-op that returns NULL.
+pub unsafe fn do_flush(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
+}
+
+// ---------------------------------------------------------------------------
+// Print / summary methods
+// ---------------------------------------------------------------------------
+
+/// R's `print.matrix(x)` — print a matrix with proper row/col formatting.
+pub unsafe fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) = if !dim_attr.is_null()
+        && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0
+        && LENGTH(dim_attr) >= 2
+    {
+        (*INTEGER(dim_attr) as R_xlen_t, *INTEGER(dim_attr.add(1)) as R_xlen_t)
+    } else {
+        let n = XLENGTH(x).max(1);
+        (n, 1)
+    };
+
+    // Get colnames
+    let colnames = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
+    );
+    let col_names_vec: Vec<String> = if !colnames.is_null()
+        && TYPEOF(colnames) == SEXPTYPE::VECSXP.0
+        && LENGTH(colnames) >= 2
+    {
+        let cn = VECTOR_ELT(colnames, 1);
+        if !cn.is_null() && TYPEOF(cn) == SEXPTYPE::STRSXP.0 {
+            let m = XLENGTH(cn).min(ncol);
+            (0..m).map(|i| elt_to_string(cn, i)).collect()
+        } else {
+            (0..ncol).map(|i| format!("[,{}]", i + 1)).collect()
+        }
+    } else {
+        (0..ncol).map(|i| format!("[,{}]", i + 1)).collect()
+    };
+
+    // Print column headers
+    let mut header = String::from("     ");
+    for name in &col_names_vec {
+        header.push_str(&format!("{:>12}", name));
+    }
+    println!("{}", header);
+
+    // Print rows
+    for r in 0..nrow {
+        let row_label = format!("[{},]", r + 1);
+        print!("{:>4} ", row_label);
+        for c in 0..ncol {
+            let idx = c * nrow + r;
+            let s = elt_to_string(x, idx as R_xlen_t);
+            print!("{:>12}", s);
+        }
+        println!();
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.list(x)` — print a list with element names.
+pub unsafe fn do_print_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let n = XLENGTH(x);
+    // Get names
+    let names = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+    );
+    let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP.0;
+
+    for i in 0..n {
+        let name = if has_names && i < XLENGTH(names) {
+            let s = elt_to_string(names, i);
+            if s.is_empty() {
+                format!("${}", i + 1)
+            } else {
+                format!("${}", s)
+            }
+        } else {
+            format!("${}", i + 1)
+        };
+        let elem = VECTOR_ELT(x, i as i64);
+        let type_str = if elem.is_null() {
+            "NULL".to_string()
+        } else {
+            let t = TYPEOF(elem);
+            match t {
+                t if t == SEXPTYPE::REALSXP.0 => "num".to_string(),
+                t if t == SEXPTYPE::INTSXP.0 => "int".to_string(),
+                t if t == SEXPTYPE::LGLSXP.0 => "logi".to_string(),
+                t if t == SEXPTYPE::STRSXP.0 => "chr".to_string(),
+                t if t == SEXPTYPE::VECSXP.0 => "list".to_string(),
+                _ => "obj".to_string(),
+            }
+        };
+        let preview = if elem.is_null() {
+            "NULL".to_string()
+        } else {
+            let m = XLENGTH(elem).min(3);
+            let parts: Vec<String> = (0..m).map(|j| elt_to_string(elem, j)).collect();
+            format!("{}: {}", type_str, parts.join(" "))
+        };
+        println!("{}\n{}", name, preview);
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `summary.default(x)` — basic summary statistics.
+pub unsafe fn do_summary_default(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(x);
+    if t != SEXPTYPE::REALSXP.0 && t != SEXPTYPE::INTSXP.0 {
+        // For non-numeric, just return type info
+        return do_typeof(_call, _op, args, _rho);
+    }
+    let n = XLENGTH(x);
+    if n == 0 {
+        return R_NilValue();
+    }
+    let mut vals: Vec<f64> = Vec::new();
+    for i in 0..n {
+        let v = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else {
+            let iv = *INTEGER(x).add(i as usize);
+            if iv == NA_INTEGER {
+                NA_REAL
+            } else {
+                iv as f64
+            }
+        };
+        if v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && !v.is_nan() {
+            vals.push(v);
+        }
+    }
+    if vals.is_empty() {
+        println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
+        println!("     NA      NA      NA      NA      NA      NA       {}", n);
+        return x;
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let min_v = vals[0];
+    let max_v = vals[vals.len() - 1];
+    let mean_v: f64 = vals.iter().sum::<f64>() / vals.len() as f64;
+    let median_idx = vals.len() / 2;
+    let median_v = if vals.len() % 2 == 1 {
+        vals[median_idx]
+    } else {
+        (vals[median_idx - 1] + vals[median_idx]) / 2.0
+    };
+    let q1_idx = vals.len() / 4;
+    let q3_idx = 3 * vals.len() / 4;
+    let q1_v = vals[q1_idx];
+    let q3_v = vals[q3_idx];
+    let na_count = n - vals.len() as R_xlen_t;
+
+    println!("   Min. 1st Qu.  Median    Mean 3rd Qu.    Max.    NA's");
+    println!(
+        "{:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8.2} {:>8}",
+        min_v, q1_v, median_v, mean_v, q3_v, max_v, if na_count > 0 { na_count.to_string() } else { String::new() }
+    );
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `str(x)` — compact structure display.
+pub unsafe fn do_str(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!(" NULL");
+        return R_NilValue();
+    }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+
+    if t == SEXPTYPE::VECSXP.0 {
+        // List
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        );
+        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP.0;
+
+        // Check for data.frame class
+        let class = crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+        );
+        let is_df = if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP.0 {
+            elt_to_string(class, 0) == "data.frame"
+        } else {
+            false
+        };
+
+        if is_df {
+            let ncol = n;
+            let nrow = if ncol > 0 {
+                let first = VECTOR_ELT(x, 0);
+                if first.is_null() { 0 } else { XLENGTH(first) }
+            } else { 0 };
+            println!("'data.frame':\t{} obs. of  {} variables:", nrow, ncol);
+            for i in 0..ncol.min(6) {
+                let name = if has_names && i < XLENGTH(names) {
+                    elt_to_string(names, i)
+                } else {
+                    format!("$ {}", i + 1)
+                };
+                let elem = VECTOR_ELT(x, i as i64);
+                let elem_type = if elem.is_null() {
+                    "NULL".to_string()
+                } else {
+                    let et = TYPEOF(elem);
+                    let m = XLENGTH(elem);
+                    match et {
+                        t if t == SEXPTYPE::REALSXP.0 => format!("num [1:{}]", m),
+                        t if t == SEXPTYPE::INTSXP.0 => format!("int [1:{}]", m),
+                        t if t == SEXPTYPE::LGLSXP.0 => format!("logi [1:{}]", m),
+                        t if t == SEXPTYPE::STRSXP.0 => format!("chr [1:{}]", m),
+                        _ => format!("? [1:{}]", m),
+                    }
+                };
+                println!(" ${:<12}: {}", name, elem_type);
+            }
+        } else {
+            println!("List of {}", n);
+            for i in 0..n.min(6) {
+                let name = if has_names && i < XLENGTH(names) {
+                    elt_to_string(names, i)
+                } else {
+                    format!("[[{}]]", i + 1)
+                };
+                let elem = VECTOR_ELT(x, i as i64);
+                let elem_type = if elem.is_null() {
+                    "NULL".to_string()
+                } else {
+                    let et = TYPEOF(elem);
+                    let m = XLENGTH(elem);
+                    match et {
+                        t if t == SEXPTYPE::REALSXP.0 => format!("num [1:{}]", m),
+                        t if t == SEXPTYPE::INTSXP.0 => format!("int [1:{}]", m),
+                        t if t == SEXPTYPE::LGLSXP.0 => format!("logi [1:{}]", m),
+                        t if t == SEXPTYPE::STRSXP.0 => format!("chr [1:{}]", m),
+                        t if t == SEXPTYPE::VECSXP.0 => format!("list [1:{}]", m),
+                        _ => format!("? [1:{}]", m),
+                    }
+                };
+                println!(" $ {}: {}", name, elem_type);
+            }
+        }
+    } else {
+        // Atomic vector or other
+        let type_name = match t {
+            t if t == SEXPTYPE::REALSXP.0 => "num",
+            t if t == SEXPTYPE::INTSXP.0 => "int",
+            t if t == SEXPTYPE::LGLSXP.0 => "logi",
+            t if t == SEXPTYPE::STRSXP.0 => "chr",
+            t if t == SEXPTYPE::CPLXSXP.0 => "cplx",
+            t if t == SEXPTYPE::RAWSXP.0 => "raw",
+            _ => "?",
+        };
+        let preview_n = n.min(6);
+        let parts: Vec<String> = (0..preview_n).map(|i| elt_to_string(x, i)).collect();
+        print!(" {} [1:{}]", type_name, n);
+        if !parts.is_empty() {
+            print!(": {}", parts.join(" "));
+        }
+        if n > preview_n {
+            print!(" ...");
+        }
+        println!();
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+// ---------------------------------------------------------------------------
+// S3 generics
+// ---------------------------------------------------------------------------
+
+/// R's `as.data.frame(x)` — convert to data.frame.
+/// Simplified: wraps x in a list with data.frame class.
+pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    // If already a data.frame, return as-is
+    let class = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+    );
+    if !class.is_null() && TYPEOF(class) == SEXPTYPE::STRSXP.0 {
+        let cls_name = elt_to_string(class, 0);
+        if cls_name == "data.frame" {
+            return x;
+        }
+    }
+    // Wrap in a single-element list and set class
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, 1);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    SET_VECTOR_ELT(result, 0, x);
+
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    if !class_vec.is_null() {
+        let _p2 = Rf_protect(class_vec);
+        let cstr = CString::new("data.frame").unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*class_vec).gengc_next_node as *mut SEXP;
+            *data.add(0) = charsxp;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            class_vec,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    // Set row.names
+    let nrow = XLENGTH(x);
+    let rn = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+    if !rn.is_null() {
+        let _p3 = Rf_protect(rn);
+        *INTEGER(rn) = NA_INTEGER;
+        *INTEGER(rn.add(1)) = -(nrow as i32);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+            rn,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    // Set column name to "x"
+    let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    if !names_vec.is_null() {
+        let _p4 = Rf_protect(names_vec);
+        let cstr = CString::new("x").unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*names_vec).gengc_next_node as *mut SEXP;
+            *data.add(0) = charsxp;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+            names_vec,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `as.list(x)` — generic list conversion.
+/// Delegates to do_as_list but available as a separate entry point.
+pub unsafe fn do_as_list_generic(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_as_list(_call, _op, args, _rho)
 }
 
