@@ -52,15 +52,15 @@ thread_local! {
 }
 
 unsafe fn get_R_InBCInterpreter() -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
-    R_GlobalContext()
+    unsafe { R_GlobalContext() }
 }
 
 unsafe fn R_findBCInterpreterSrcref(_cptr: *mut RCNTXT) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 // ---------------------------------------------------------------------------
@@ -836,10 +836,7 @@ unsafe fn doprof_null(_sig: c_int) {
 ///
 /// Note: In this Rust port, threading is handled via std::thread.
 /// This is a simplified version that uses sleep instead of pthread_cond_timedwait.
-fn profile_thread_entry(
-    interval_us: u64,
-    terminate_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-) {
+fn profile_thread_entry(interval_us: u64, terminate_flag: &std::sync::atomic::AtomicBool) {
     use std::sync::atomic::Ordering;
     use std::time::Duration;
 

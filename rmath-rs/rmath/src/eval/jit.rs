@@ -391,30 +391,30 @@ pub unsafe fn R_init_jit_enabled() {
         let mut val: c_int = 3;
 
         // Check R_ENABLE_JIT environment variable
-        if let Ok(enable) = std::env::var("R_ENABLE_JIT") {
-            if let Ok(v) = enable.parse::<c_int>() {
-                val = v;
-            }
+        if let Ok(enable) = std::env::var("R_ENABLE_JIT")
+            && let Ok(v) = enable.parse::<c_int>()
+        {
+            val = v;
         }
 
         if val != 0 {
-            //         // loadCompilerNamespace(); // stub: not yet implemented // stub: not yet implemented
+            // loadCompilerNamespace(); // stub: not yet implemented
             checkCompilerOptions(val);
         }
         R_jit_enabled.with(|v| v.set(val));
 
         // Check _R_COMPILE_PKGS_
-        if let Ok(compile) = std::env::var("_R_COMPILE_PKGS_") {
-            if let Ok(v) = compile.parse::<c_int>() {
-                R_compile_pkgs.with(|cell| cell.set(if v > 0 { TRUE } else { FALSE }));
-            }
+        if let Ok(compile) = std::env::var("_R_COMPILE_PKGS_")
+            && let Ok(v) = compile.parse::<c_int>()
+        {
+            R_compile_pkgs.with(|cell| cell.set(if v > 0 { TRUE } else { FALSE }));
         }
 
         // Check R_DISABLE_BYTECODE
-        if let Ok(disable) = std::env::var("R_DISABLE_BYTECODE") {
-            if let Ok(v) = disable.parse::<c_int>() {
-                R_disable_bytecode.with(|cell| cell.set(if v > 0 { TRUE } else { FALSE }));
-            }
+        if let Ok(disable) = std::env::var("R_DISABLE_BYTECODE")
+            && let Ok(v) = disable.parse::<c_int>()
+        {
+            R_disable_bytecode.with(|cell| cell.set(if v > 0 { TRUE } else { FALSE }));
         }
     }
 }

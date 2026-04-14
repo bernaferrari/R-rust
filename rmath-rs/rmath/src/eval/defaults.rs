@@ -315,9 +315,7 @@ pub unsafe fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
 pub unsafe fn isNumericOnly(x: SEXP) -> c_int {
     unsafe {
         let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::CPLXSXP.0 {
-            TRUE
-        } else if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::CPLXSXP.0 || t == SEXPTYPE::INTSXP.0 {
             TRUE
         } else {
             FALSE
