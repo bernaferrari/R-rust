@@ -25,7 +25,7 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use crate::sexp::globals;
 
 // Re-export common accessors/constructors for convenience
-use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol};
+use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, getAttrib};
 use crate::mainutils::coerce::coerceVector;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -1039,7 +1039,27 @@ unsafe fn setup_warnings() {
 /// Unlike errors, warnings do not terminate execution.
 pub unsafe fn warningcall(call: SEXP, format: *const c_char) {
     unsafe {
-        vwarningcall_dflt(call, format, ptr::null_mut());
+        vsignalWarning(call, format);
+    }
+}
+
+unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
+    unsafe {
+        let hooksym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
+        if SYMVALUE(hooksym) != globals::R_UnboundValue() {
+            let msg = if format.is_null() {
+                Rf_mkString(b"\0".as_ptr() as *const c_char)
+            } else {
+                Rf_mkString(format)
+            };
+            crate::sexp::protect::Rf_protect(msg);
+            let hcall = Rf_lang3(hooksym, msg, call);
+            crate::sexp::protect::Rf_protect(hcall);
+            let _ = crate::eval::eval::Rf_eval(hcall, globals::R_BaseEnv());
+            crate::sexp::protect::Rf_unprotect(2);
+        } else {
+            vwarningcall_dflt(call, format, ptr::null_mut());
+        }
     }
 }
 
@@ -1248,7 +1268,8 @@ pub unsafe fn PrintWarnings() {
         }
 
         // Set last.warning
-        // Full implementation would create a proper list; for now just print
+        let sym = Rf_install(b"last.warning\0".as_ptr() as *const c_char);
+        SET_SYMVALUE(sym, warnings_ptr);
 
         IN_PRINT_WARNINGS.store(0, Ordering::Relaxed);
         R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
@@ -1593,7 +1614,11 @@ pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
                     };
 
                     // Skip internal functions
-                    if this == "stop" || this == "warning" || this == "suppressWarnings" {
+                    if this == "stop"
+                        || this == "warning"
+                        || this == "suppressWarnings"
+                        || this == ".signalSimpleWarning"
+                    {
                         buf.clear();
                         ncalls = 0;
                         too_many = false;
@@ -1971,11 +1996,83 @@ pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 // Condition signaling
 // ---------------------------------------------------------------------------
 
-/// do_signalCondition — signal a condition.
+unsafe fn findConditionHandler(cond: SEXP) -> SEXP { unsafe {
+    let classes = getAttrib(cond, R_ClassSymbol());
+    if TYPEOF(classes) != SEXPTYPE::STRSXP.0 {
+        return globals::R_NilValue();
+    }
+    let n_classes = LENGTH(classes);
+    let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
+    while !list.is_null() && list != globals::R_NilValue() {
+        let entry = CAR(list);
+        let entry_class = ENTRY_CLASS(entry);
+        if !entry_class.is_null() {
+            let entry_bytes = CHAR(entry_class);
+            if !entry_bytes.is_null() {
+                let entry_str = CStr::from_ptr(entry_bytes).to_bytes();
+                for i in 0..n_classes {
+                    let cls = STRING_ELT(classes, i as R_xlen_t);
+                    if !cls.is_null() {
+                        let cls_bytes = CHAR(cls);
+                        if !cls_bytes.is_null() {
+                            let cls_str = CStr::from_ptr(cls_bytes).to_bytes();
+                            if entry_str == cls_str {
+                                return list;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        list = CDR(list);
+    }
+    globals::R_NilValue()
+}}
+
+/// do_signalCondition — signal a condition through the handler stack.
 pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        // Simplified: for now just return nil
+        let cond = CAR(args);
+        let msg = CADR(args);
+        let ecall = CADDR(args);
+
+        let oldstack = R_HANDLER_STACK.with(|s| *s.borrow());
+        crate::sexp::protect::Rf_protect(oldstack);
+
+        let mut list = findConditionHandler(cond);
+        while !list.is_null() && list != globals::R_NilValue() {
+            let entry = CAR(list);
+            R_HANDLER_STACK.with(|s| {
+                *s.borrow_mut() = CDR(list);
+            });
+            if IS_CALLING_ENTRY(entry) != 0 {
+                let h = ENTRY_HANDLER(entry);
+                if h == globals::R_RestartToken() {
+                    let msgstr = if TYPEOF(msg) == SEXPTYPE::STRSXP.0 && LENGTH(msg) > 0 {
+                        let c = translateChar(STRING_ELT(msg, 0));
+                        CStr::from_ptr(c).to_str().unwrap_or("error")
+                    } else {
+                        "error message not a string"
+                    };
+                    let cmsg = std::ffi::CString::new(msgstr).unwrap_or_default();
+                    verrorcall_dflt(ecall, cmsg.as_ptr(), ptr::null_mut());
+                } else {
+                    let hcall = Rf_lang2(h, cond);
+                    crate::sexp::protect::Rf_protect(hcall);
+                    let _ = crate::eval::eval::Rf_eval(hcall, globals::R_GlobalEnv());
+                    crate::sexp::protect::Rf_unprotect(1);
+                }
+            } else {
+                gotoExitingHandler(cond, ecall, entry);
+            }
+            list = findConditionHandler(cond);
+        }
+
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = oldstack;
+        });
+        crate::sexp::protect::Rf_unprotect(1);
         globals::R_NilValue()
     }
 }
@@ -1989,7 +2086,7 @@ pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
         let ecall = CADR(args);
-        warningcall(ecall, msg);
+        vwarningcall_dflt(ecall, msg, ptr::null_mut());
         globals::R_NilValue()
     }
 }
@@ -2003,8 +2100,8 @@ pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
         let ecall = CADR(args);
-        errorcall(ecall, msg);
-        ptr::null_mut() // unreachable
+        verrorcall_dflt(ecall, msg, ptr::null_mut());
+        ptr::null_mut()
     }
 }
 
