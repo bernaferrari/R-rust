@@ -1733,6 +1733,537 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 }
 
 // ---------------------------------------------------------------------------
+// do_order — order indices for sorting
+// ---------------------------------------------------------------------------
+
+/// R's `order(...)` — returns permutation of indices that sort the input.
+pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let mut indices: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let v = elt_real_safe(x, i);
+        indices.push((v, i));
+    }
+    indices.sort_by(|a, b| {
+        let a_na = a.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+        let b_na = b.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+        if a_na && b_na { return std::cmp::Ordering::Equal; }
+        if a_na { return std::cmp::Ordering::Greater; }
+        if b_na { return std::cmp::Ordering::Less; }
+        a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    for (i, &(_, orig_idx)) in indices.iter().enumerate() {
+        *dst.add(i) = (orig_idx + 1) as c_int;
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// do_rank — ranks of elements
+// ---------------------------------------------------------------------------
+
+/// R's `rank(x)` — returns ranks of elements (average ties method).
+pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let mut indexed: Vec<(f64, R_xlen_t)> = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        indexed.push((elt_real_safe(x, i), i));
+    }
+    indexed.sort_by(|a, b| {
+        let a_na = a.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+        let b_na = b.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
+        if a_na && b_na { return std::cmp::Ordering::Equal; }
+        if a_na { return std::cmp::Ordering::Greater; }
+        if b_na { return std::cmp::Ordering::Less; }
+        a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+    });
+    let mut ranks = vec![NA_REAL; n as usize];
+    let mut i = 0usize;
+    while i < indexed.len() {
+        let val = indexed[i].0;
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            for j in i..indexed.len() { ranks[indexed[j].1 as usize] = NA_REAL; }
+            break;
+        }
+        let mut j = i + 1;
+        while j < indexed.len() && indexed[j].0 == val { j += 1; }
+        let avg_rank = (i + j + 1) as f64 / 2.0;
+        for k in i..j { ranks[indexed[k].1 as usize] = avg_rank; }
+        i = j;
+    }
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n { *dst.add(i as usize) = ranks[i as usize]; }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// do_duplicated — identify duplicates
+// ---------------------------------------------------------------------------
+
+/// R's `duplicated(x)` — returns LGLSXP with TRUE for duplicate elements.
+pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        if seen.contains(&s) {
+            *dst.add(i as usize) = TRUE;
+        } else {
+            seen.insert(s);
+            *dst.add(i as usize) = FALSE;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// do_anyDuplicated — check for any duplicates
+// ---------------------------------------------------------------------------
+
+/// R's `anyDuplicated(x)` — returns index of first duplicate (0 if none).
+pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarInteger(0); }
+    let n = XLENGTH(x);
+    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        if seen.contains(&s) { return Rf_ScalarInteger((i + 1) as c_int); }
+        seen.insert(s);
+    }
+    Rf_ScalarInteger(0)
+}
+
+// ---------------------------------------------------------------------------
+// do_match — match values in table
+// ---------------------------------------------------------------------------
+
+/// R's `match(x, table)` — returns integer indices of x in table (NA if not found).
+pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let table = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    let mut lookup: std::collections::BTreeMap<String, c_int> = std::collections::BTreeMap::new();
+    if !table.is_null() && table != R_NilValue() {
+        let tn = XLENGTH(table);
+        for i in 0..tn {
+            let s = elt_to_string(table, i);
+            lookup.entry(s).or_insert((i + 1) as c_int);
+        }
+    }
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        *dst.add(i as usize) = *lookup.get(&s).unwrap_or(&NA_INTEGER);
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// do_findInterval — find interval in sorted vector
+// ---------------------------------------------------------------------------
+
+/// R's `findInterval(x, vec)` — for each x, find j such that vec[j] <= x < vec[j+1].
+pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let vec = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || vec.is_null() || vec == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let vn = XLENGTH(vec);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    let mut vvals: Vec<f64> = Vec::with_capacity(vn as usize);
+    for i in 0..vn { vvals.push(elt_real_safe(vec, i)); }
+    for i in 0..n {
+        let xi = elt_real_safe(x, i);
+        if xi.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || xi.is_nan() {
+            *dst.add(i as usize) = NA_INTEGER;
+            continue;
+        }
+        let mut lo = 0i32;
+        let mut hi = vn as i32;
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            if vvals[mid as usize] <= xi { lo = mid + 1; } else { hi = mid; }
+        }
+        *dst.add(i as usize) = lo;
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// do_cut — cut numeric vector into intervals
+// ---------------------------------------------------------------------------
+
+/// R's `cut(x, breaks)` — cuts numeric vector into intervals, returns STRSXP.
+pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let breaks_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let mut break_pts: Vec<f64> = Vec::new();
+    if !breaks_arg.is_null() && breaks_arg != R_NilValue() {
+        let bt = TYPEOF(breaks_arg);
+        if bt == SEXPTYPE::INTSXP.0 || bt == SEXPTYPE::REALSXP.0 {
+            let bn = XLENGTH(breaks_arg);
+            if bn == 1 {
+                let nbins = elt_real_safe(breaks_arg, 0) as i64;
+                if nbins < 1 { return Rf_allocVector3(SEXPTYPE::STRSXP.0, 0); }
+                let mut lo = f64::INFINITY;
+                let mut hi = f64::NEG_INFINITY;
+                for i in 0..n {
+                    let v = elt_real_safe(x, i);
+                    if v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN && !v.is_nan() {
+                        if v < lo { lo = v; }
+                        if v > hi { hi = v; }
+                    }
+                }
+                if lo == f64::INFINITY { lo = 0.0; hi = 1.0; }
+                let step = (hi - lo) / nbins as f64;
+                for i in 0..=nbins { break_pts.push(lo + i as f64 * step); }
+                if let Some(last) = break_pts.last_mut() { *last += step * 0.001; }
+            } else {
+                for i in 0..bn { break_pts.push(elt_real_safe(breaks_arg, i)); }
+            }
+        }
+    }
+    if break_pts.len() < 2 { break_pts = vec![0.0, 1.0]; }
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    for i in 0..n {
+        let v = elt_real_safe(x, i);
+        let label = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
+            "NA".to_string()
+        } else {
+            let mut lo_idx = break_pts.len() - 1;
+            for j in 0..break_pts.len() - 1 {
+                if v >= break_pts[j] && v < break_pts[j + 1] { lo_idx = j; break; }
+            }
+            format!("({},{})", break_pts[lo_idx], break_pts[lo_idx + 1])
+        };
+        let cstr = CString::new(label).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*result).gengc_next_node as *mut SEXP;
+            *data.add(i as usize) = charsxp;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// String operations: startsWith, endsWith, str_pad, str_count, str_replace
+// ---------------------------------------------------------------------------
+
+/// R's `startsWith(x, prefix)` — check if strings start with prefix.
+pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let prefix_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || prefix_arg.is_null() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+    let prefix = elt_to_string(prefix_arg, 0);
+    let n = XLENGTH(x).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        *dst.add(i as usize) = if s.starts_with(&prefix) { TRUE } else { FALSE };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `endsWith(x, suffix)` — check if strings end with suffix.
+pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let suffix_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || suffix_arg.is_null() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+    let suffix = elt_to_string(suffix_arg, 0);
+    let n = XLENGTH(x).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        *dst.add(i as usize) = if s.ends_with(&suffix) { TRUE } else { FALSE };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `str_pad(x, width, side="left", pad=" ")` — pad strings to a width.
+pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let width_arg = CAR(CDR(args));
+    let side_arg = CAR(CDR(CDR(args)));
+    let pad_arg = CAR(CDR(CDR(CDR(args))));
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP.0, 0);
+    }
+    let width = if width_arg.is_null() || width_arg == R_NilValue() { 1usize } else {
+        real_or_default(width_arg, 1.0).max(0.0) as usize
+    };
+    let side = if side_arg.is_null() || side_arg == R_NilValue() { "left".to_string() } else {
+        elt_to_string(side_arg, 0)
+    };
+    let pad_char = if pad_arg.is_null() || pad_arg == R_NilValue() { " ".to_string() } else {
+        elt_to_string(pad_arg, 0)
+    };
+    let n = XLENGTH(x).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let slen = s.chars().count();
+        let padded = if slen >= width { s } else {
+            let diff = width - slen;
+            let pad_str: String = pad_char.chars().cycle().take(diff).collect();
+            match side.as_str() {
+                "left" => format!("{}{}", pad_str, s),
+                "right" => format!("{}{}", s, pad_str),
+                "both" => {
+                    let left = diff / 2;
+                    let right = diff - left;
+                    let lp: String = pad_char.chars().cycle().take(left).collect();
+                    let rp: String = pad_char.chars().cycle().take(right).collect();
+                    format!("{}{}{}", lp, s, rp)
+                }
+                _ => format!("{}{}", pad_str, s),
+            }
+        };
+        let cstr = CString::new(padded).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*result).gengc_next_node as *mut SEXP;
+            *data.add(i as usize) = charsxp;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `str_count(x, pattern)` — count occurrences of pattern in strings.
+pub unsafe fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let pattern_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || pattern_arg.is_null() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+    }
+    let pattern = elt_to_string(pattern_arg, 0);
+    let n = XLENGTH(x).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    for i in 0..n {
+        let s = elt_to_string(x, i);
+        let count = if pattern.is_empty() { s.len() + 1 } else { s.matches(&pattern).count() };
+        *dst.add(i as usize) = count as c_int;
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `str_replace(x, pattern, replacement)` — alias for sub.
+pub unsafe fn do_str_replace(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_sub(_call, _op, args, _rho)
+}
+
+// ---------------------------------------------------------------------------
+// R runtime type checks: is.language, is.call, is.symbol, is.name,
+//   is.pairlist, is.function, is.expression, is.environment
+// ---------------------------------------------------------------------------
+
+/// R's `is.language(x)` — TRUE for LANGSXP, SYMSXP, or EXPRSXP.
+pub unsafe fn do_is_language(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    let t = TYPEOF(x);
+    Rf_ScalarLogical(if t == SEXPTYPE::LANGSXP.0 || t == SEXPTYPE::SYMSXP.0 || t == SEXPTYPE::EXPRSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.call(x)` — TRUE for LANGSXP.
+pub unsafe fn do_is_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LANGSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.symbol(x)` — TRUE for SYMSXP.
+pub unsafe fn do_is_symbol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::SYMSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.name(x)` — alias for is.symbol.
+pub unsafe fn do_is_name(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_is_symbol(_call, _op, args, _rho)
+}
+
+/// R's `is.pairlist(x)` — TRUE for LISTSXP.
+pub unsafe fn do_is_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::LISTSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.function(x)` — TRUE for CLOSXP, BUILTINSXP, or SPECIALSXP.
+pub unsafe fn do_is_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    let t = TYPEOF(x);
+    Rf_ScalarLogical(if t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.expression(x)` — TRUE for EXPRSXP.
+pub unsafe fn do_is_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::EXPRSXP.0 { TRUE } else { FALSE })
+}
+
+/// R's `is.environment(x)` — TRUE for ENVSXP.
+pub unsafe fn do_is_environment(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    Rf_ScalarLogical(if TYPEOF(x) == SEXPTYPE::ENVSXP.0 { TRUE } else { FALSE })
+}
+
+// ---------------------------------------------------------------------------
+// S3: setOldClass, methods
+// ---------------------------------------------------------------------------
+
+/// R's `setOldClass(Class)` — register old-style S3 class. Simplified: returns Class.
+pub unsafe fn do_setOldClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let class_arg = CAR(args);
+    if class_arg.is_null() || class_arg == R_NilValue() { return R_NilValue(); }
+    class_arg
+}
+
+/// R's `methods(generic)` — list methods for a generic. Simplified: returns empty STRSXP.
+pub unsafe fn do_methods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let generic_arg = CAR(args);
+    if generic_arg.is_null() || generic_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP.0, 0);
+    }
+    Rf_allocVector3(SEXPTYPE::STRSXP.0, 0)
+}
+
+// ---------------------------------------------------------------------------
+// Matrix: lower.tri, upper.tri
+// ---------------------------------------------------------------------------
+
+/// R's `lower.tri(x, diag=FALSE)` — TRUE for lower triangle of matrix.
+pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let diag_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    let include_diag = !diag_arg.is_null() && diag_arg != R_NilValue() && real_or_default(diag_arg, 0.0) != 0.0;
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x, Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) = if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+        (*INTEGER(dim_attr) as R_xlen_t, *INTEGER(dim_attr.add(1)) as R_xlen_t)
+    } else {
+        let n = XLENGTH(x); (n, 1)
+    };
+    let total = nrow * ncol;
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, total);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for j in 0..ncol {
+        for i in 0..nrow {
+            let idx = (j * nrow + i) as usize;
+            let is_lower = if include_diag { i >= j } else { i > j };
+            *dst.add(idx) = if is_lower { TRUE } else { FALSE };
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `upper.tri(x, diag=FALSE)` — TRUE for upper triangle of matrix.
+pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let diag_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+    let include_diag = !diag_arg.is_null() && diag_arg != R_NilValue() && real_or_default(diag_arg, 0.0) != 0.0;
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x, Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) = if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+        (*INTEGER(dim_attr) as R_xlen_t, *INTEGER(dim_attr.add(1)) as R_xlen_t)
+    } else {
+        let n = XLENGTH(x); (n, 1)
+    };
+    let total = nrow * ncol;
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, total);
+    if result.is_null() { return R_NilValue(); }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for j in 0..ncol {
+        for i in 0..nrow {
+            let idx = (j * nrow + i) as usize;
+            let is_upper = if include_diag { i <= j } else { i < j };
+            *dst.add(idx) = if is_upper { TRUE } else { FALSE };
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Register essentials builtins
 // ---------------------------------------------------------------------------
 
@@ -1912,6 +2443,35 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "pmatch",
         "strtoi",
         "strtrim",
+        // Data manipulation
+        "order",
+        "rank",
+        "duplicated",
+        "anyDuplicated",
+        "match",
+        "findInterval",
+        "cut",
+        // String operations
+        "startsWith",
+        "endsWith",
+        "str_pad",
+        "str_count",
+        "str_replace",
+        // R runtime type checks
+        "is.language",
+        "is.call",
+        "is.symbol",
+        "is.name",
+        "is.pairlist",
+        "is.function",
+        "is.expression",
+        "is.environment",
+        // S3
+        "setOldClass",
+        "methods",
+        // Matrix
+        "lower.tri",
+        "upper.tri",
         // Math2 builtins
         "round",
         "signif",

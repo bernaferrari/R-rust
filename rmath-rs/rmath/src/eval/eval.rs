@@ -1644,6 +1644,203 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Data manipulation
+        "order" => unsafe {
+            crate::mainutils::essentials::do_order(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "rank" => unsafe {
+            crate::mainutils::essentials::do_rank(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "duplicated" => unsafe {
+            crate::mainutils::essentials::do_duplicated(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "anyDuplicated" => unsafe {
+            crate::mainutils::essentials::do_anyDuplicated(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "match" => unsafe {
+            crate::mainutils::essentials::do_match(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "findInterval" => unsafe {
+            crate::mainutils::essentials::do_findInterval(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "cut" => unsafe {
+            crate::mainutils::essentials::do_cut(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // String operations
+        "startsWith" => unsafe {
+            crate::mainutils::essentials::do_startsWith(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "endsWith" => unsafe {
+            crate::mainutils::essentials::do_endsWith(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "str_pad" => unsafe {
+            crate::mainutils::essentials::do_str_pad(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "str_count" => unsafe {
+            crate::mainutils::essentials::do_str_count(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "str_replace" => unsafe {
+            crate::mainutils::essentials::do_str_replace(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // R runtime type checks
+        "is.language" => unsafe {
+            crate::mainutils::essentials::do_is_language(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.call" => unsafe {
+            crate::mainutils::essentials::do_is_call(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.symbol" => unsafe {
+            crate::mainutils::essentials::do_is_symbol(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.name" => unsafe {
+            crate::mainutils::essentials::do_is_name(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.pairlist" => unsafe {
+            crate::mainutils::essentials::do_is_pairlist(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.function" => unsafe {
+            crate::mainutils::essentials::do_is_function(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.expression" => unsafe {
+            crate::mainutils::essentials::do_is_expression(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is.environment" => unsafe {
+            crate::mainutils::essentials::do_is_environment(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // S3
+        "setOldClass" => unsafe {
+            crate::mainutils::essentials::do_setOldClass(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "methods" => unsafe {
+            crate::mainutils::essentials::do_methods(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Matrix
+        "lower.tri" => unsafe {
+            crate::mainutils::essentials::do_lower_tri(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "upper.tri" => unsafe {
+            crate::mainutils::essentials::do_upper_tri(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
