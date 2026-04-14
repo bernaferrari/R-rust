@@ -1841,6 +1841,171 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Math/Statistics
+        "cov" => unsafe {
+            crate::mainutils::essentials::do_cov(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "cor" => unsafe {
+            crate::mainutils::essentials::do_cor(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "scale" => unsafe {
+            crate::mainutils::essentials::do_scale(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "rle" => unsafe {
+            crate::mainutils::essentials::do_rle(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "inverse.rle" => unsafe {
+            crate::mainutils::essentials::do_inverse_rle(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Matrix
+        "which_array" => unsafe {
+            crate::mainutils::essentials::do_which_array(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // R runtime
+        "commandArgs" => unsafe {
+            crate::mainutils::essentials::do_commandArgs(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "getOption" => unsafe {
+            crate::mainutils::essentials::do_getOption(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "options" => unsafe {
+            crate::mainutils::essentials::do_options(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "interactive" => unsafe {
+            crate::mainutils::essentials::do_interactive(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is_interactive" => unsafe {
+            crate::mainutils::essentials::do_is_interactive(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "getRversion" => unsafe {
+            crate::mainutils::essentials::do_getRversion(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "R.version.string" => unsafe {
+            crate::mainutils::essentials::do_R_version_string(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // List operations
+        "list.append" => unsafe {
+            crate::mainutils::essentials::do_list_append(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "list.prepend" => unsafe {
+            crate::mainutils::essentials::do_list_prepend(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "compact" => unsafe {
+            crate::mainutils::essentials::do_compact(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "keep" => unsafe {
+            crate::mainutils::essentials::do_keep(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "discard" => unsafe {
+            crate::mainutils::essentials::do_discard(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // String operations
+        "str_detect" => unsafe {
+            crate::mainutils::essentials::do_str_detect(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "str_extract" => unsafe {
+            crate::mainutils::essentials::do_str_extract(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
