@@ -1841,12 +1841,83 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // do_duplicated — identify duplicates
 // ---------------------------------------------------------------------------
 
-/// R's `duplicated(x)` — returns LGLSXP with TRUE for duplicate elements.
+/// R's `duplicated(x, incomparables, fromLast, nmax)` — returns logical vector, TRUE for duplicated elements.
+///
+/// - `incomparables`: values to exclude from duplicate checking (typically NA or FALSE)
+/// - `fromLast`: if TRUE, consider last occurrence as original (mark earlier as dup)
+/// - `nmax`: max number of unique elements expected (optimization hint; NA_INTEGER = no limit)
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     if x.is_null() || x == R_NilValue() {
         return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
     }
+
+    // Parse optional args: incomparables, fromLast, nmax
+    let incomparables = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            let a = CAR(rest);
+            if a == R_NilValue() || a.is_null() {
+                R_NilValue()
+            } else {
+                a
+            }
+        }
+    };
+
+    let from_last = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            false
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
+                false
+            } else {
+                let v = real_or_default(CAR(rest2), 0.0);
+                v != 0.0
+            }
+        }
+    };
+
+    let nmax = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            NA_INTEGER
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
+                NA_INTEGER
+            } else {
+                let rest3 = CDR(rest2);
+                if rest3.is_null() || rest3 == R_NilValue() {
+                    NA_INTEGER
+                } else {
+                    let v = real_or_default(CAR(rest3), NA_REAL);
+                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        NA_INTEGER
+                    } else {
+                        v as c_int
+                    }
+                }
+            }
+        }
+    };
+
+    // Build incomparables set
+    let mut incomparable_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if !incomparables.is_null() && incomparables != R_NilValue() {
+        let in_n = XLENGTH(incomparables);
+        for i in 0..in_n {
+            let s = elt_to_string(incomparables, i);
+            if s != "NA" {
+                incomparable_set.insert(s);
+            }
+        }
+    }
+
     let n = XLENGTH(x);
     let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
     if result.is_null() {
@@ -1854,16 +1925,68 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     }
     let _p = Rf_protect(result);
     let dst = LOGICAL(result);
-    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        if seen.contains(&s) {
-            *dst.add(i as usize) = TRUE;
-        } else {
-            seen.insert(s);
-            *dst.add(i as usize) = FALSE;
+
+    // Compute nmax limit
+    let effective_nmax: usize = if nmax == NA_INTEGER || nmax <= 0 {
+        usize::MAX
+    } else {
+        nmax as usize
+    };
+
+    if from_last {
+        // Scan from last to first; last occurrence is original, earlier are duplicates
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        // First pass: collect all unique values (from end)
+        for i in (0..n).rev() {
+            let s = elt_to_string(x, i);
+            if !incomparable_set.contains(&s) {
+                seen.insert(s);
+                if seen.len() >= effective_nmax {
+                    break;
+                }
+            }
+        }
+        // Second pass: mark as duplicated if already seen (from start)
+        let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            if incomparable_set.contains(&s) {
+                *dst.add(i as usize) = FALSE;
+            } else if encountered.contains(&s) {
+                *dst.add(i as usize) = TRUE;
+            } else {
+                encountered.insert(s);
+                *dst.add(i as usize) = FALSE;
+            }
+        }
+    } else {
+        // Scan from first to last; first occurrence is original, later are duplicates
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            if incomparable_set.contains(&s) {
+                *dst.add(i as usize) = FALSE;
+            } else if seen.contains(&s) {
+                *dst.add(i as usize) = TRUE;
+            } else {
+                seen.insert(s);
+                *dst.add(i as usize) = FALSE;
+                if seen.len() >= effective_nmax {
+                    // Everything remaining is a duplicate
+                    for j in (i + 1)..n {
+                        let sj = elt_to_string(x, j);
+                        if incomparable_set.contains(&sj) {
+                            *dst.add(j as usize) = FALSE;
+                        } else {
+                            *dst.add(j as usize) = TRUE;
+                        }
+                    }
+                    break;
+                }
+            }
         }
     }
+
     crate::sexp::protect::Rf_unprotect(1);
     result
 }
@@ -1872,22 +1995,466 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 // do_anyDuplicated — check for any duplicates
 // ---------------------------------------------------------------------------
 
-/// R's `anyDuplicated(x)` — returns index of first duplicate (0 if none).
+/// R's `anyDuplicated(x, incomparables, fromLast, nmax)` — returns index of first duplicate (0 if none).
+///
+/// Supports incomparables, fromLast, and nmax parameters just like `duplicated()`.
 pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     if x.is_null() || x == R_NilValue() {
         return Rf_ScalarInteger(0);
     }
-    let n = XLENGTH(x);
-    let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        if seen.contains(&s) {
-            return Rf_ScalarInteger((i + 1) as c_int);
+
+    // Parse optional args: incomparables, fromLast, nmax
+    let incomparables = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            R_NilValue()
+        } else {
+            let a = CAR(rest);
+            if a == R_NilValue() || a.is_null() {
+                R_NilValue()
+            } else {
+                a
+            }
         }
-        seen.insert(s);
+    };
+
+    let from_last = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            false
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
+                false
+            } else {
+                let v = real_or_default(CAR(rest2), 0.0);
+                v != 0.0
+            }
+        }
+    };
+
+    let nmax = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            NA_INTEGER
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
+                NA_INTEGER
+            } else {
+                let rest3 = CDR(rest2);
+                if rest3.is_null() || rest3 == R_NilValue() {
+                    NA_INTEGER
+                } else {
+                    let v = real_or_default(CAR(rest3), NA_REAL);
+                    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                        NA_INTEGER
+                    } else {
+                        v as c_int
+                    }
+                }
+            }
+        }
+    };
+
+    // Build incomparables set
+    let mut incomparable_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    if !incomparables.is_null() && incomparables != R_NilValue() {
+        let in_n = XLENGTH(incomparables);
+        for i in 0..in_n {
+            let s = elt_to_string(incomparables, i);
+            if s != "NA" {
+                incomparable_set.insert(s);
+            }
+        }
     }
-    Rf_ScalarInteger(0)
+
+    let n = XLENGTH(x);
+    let effective_nmax: usize = if nmax == NA_INTEGER || nmax <= 0 {
+        usize::MAX
+    } else {
+        nmax as usize
+    };
+
+    if from_last {
+        // From last: find last duplicated element index
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let mut result_idx = 0i32;
+        for i in (0..n).rev() {
+            let s = elt_to_string(x, i);
+            if !incomparable_set.contains(&s) {
+                if seen.contains(&s) {
+                    result_idx = (i + 1) as c_int; // R is 1-indexed
+                } else {
+                    seen.insert(s);
+                    if seen.len() >= effective_nmax {
+                        break;
+                    }
+                }
+            }
+        }
+        Rf_ScalarInteger(result_idx)
+    } else {
+        // From first: find first duplicated element index
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            if !incomparable_set.contains(&s) {
+                if seen.contains(&s) {
+                    return Rf_ScalarInteger((i + 1) as c_int);
+                }
+                seen.insert(s);
+                if seen.len() >= effective_nmax {
+                    break;
+                }
+            }
+        }
+        Rf_ScalarInteger(0)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_duplicated.array — array deduplication along margins
+// ---------------------------------------------------------------------------
+
+/// R's `duplicated.array(x, MARGIN, fromLast)` — finds duplicated rows/columns in an array.
+///
+/// - `x`: array or matrix
+/// - `MARGIN`: which margin to check (1=rows, 2=cols, etc.)
+/// - `fromLast`: if TRUE, last occurrence is original
+pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+
+    // Parse MARGIN (default = 1, i.e. rows)
+    let margin = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            1i32
+        } else {
+            real_or_default(CAR(rest), 1.0) as i32
+        }
+    };
+
+    // Parse fromLast (default = FALSE)
+    let from_last = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            false
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
+                false
+            } else {
+                let v = real_or_default(CAR(rest2), 0.0);
+                v != 0.0
+            }
+        }
+    };
+
+    let n = XLENGTH(x);
+    if n == 0 {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+
+    // Get dimensions
+    let dim = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+
+    if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
+        // Not really an array — fall back to regular duplicated
+        let mut new_args = R_NilValue();
+        // push nmax as NA
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(R_NilValue(), new_args); // incomparables
+        new_args = Rf_cons(x, new_args);
+        return do_duplicated(_call, _op, new_args, _rho);
+    }
+
+    let dims_len = XLENGTH(dim);
+    let dim_vals = INTEGER(dim);
+    let nrows = *dim_vals as usize;
+    let ncols = if dims_len >= 2 {
+        (*dim_vals.add(1)) as usize
+    } else {
+        1
+    };
+
+    // For 2D arrays, support MARGIN=1 (rows) and MARGIN=2 (columns)
+    if margin == 1 && dims_len == 2 {
+        // Duplicate rows
+        let total = nrows;
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, total as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        let dst = LOGICAL(result);
+
+        // Hash each row as a string
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        let t = TYPEOF(x);
+
+        if from_last {
+            // First pass collect, second pass mark
+            let mut row_strings: Vec<String> = Vec::with_capacity(total);
+            for row in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows; // column-major
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                row_strings.push(parts.join("\x01"));
+            }
+            // Collect from end
+            let mut unique_from_end: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for row in (0..total).rev() {
+                unique_from_end.insert(row_strings[row].clone());
+            }
+            // Mark from start
+            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for row in 0..total {
+                if encountered.contains(&row_strings[row]) {
+                    *dst.add(row) = TRUE;
+                } else {
+                    encountered.insert(row_strings[row].clone());
+                    *dst.add(row) = FALSE;
+                }
+            }
+        } else {
+            for row in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows; // column-major
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    *dst.add(row) = TRUE;
+                } else {
+                    seen.insert(key);
+                    *dst.add(row) = FALSE;
+                }
+            }
+        }
+
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    } else if margin == 2 && dims_len == 2 {
+        // Duplicate columns
+        let total = ncols;
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, total as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        let dst = LOGICAL(result);
+
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+
+        if from_last {
+            let mut col_strings: Vec<String> = Vec::with_capacity(total);
+            for col in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                col_strings.push(parts.join("\x01"));
+            }
+            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for col in 0..total {
+                if encountered.contains(&col_strings[col]) {
+                    *dst.add(col) = TRUE;
+                } else {
+                    encountered.insert(col_strings[col].clone());
+                    *dst.add(col) = FALSE;
+                }
+            }
+        } else {
+            for col in 0..total {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    *dst.add(col) = TRUE;
+                } else {
+                    seen.insert(key);
+                    *dst.add(col) = FALSE;
+                }
+            }
+        }
+
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    } else {
+        // Generic: flatten along margin — fallback to duplicated on flattened vector
+        // For higher-dimensional arrays, treat as 1D
+        let mut new_args = R_NilValue();
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(R_NilValue(), new_args);
+        new_args = Rf_cons(x, new_args);
+        do_duplicated(_call, _op, new_args, _rho)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_anyDuplicated.array — check for any duplicates in array along margin
+// ---------------------------------------------------------------------------
+
+/// R's `anyDuplicated.array(x, MARGIN, fromLast)` — returns index of first duplicate in array (0 if none).
+pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+
+    // Parse MARGIN (default = 1)
+    let margin = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            1i32
+        } else {
+            real_or_default(CAR(rest), 1.0) as i32
+        }
+    };
+
+    // Parse fromLast (default = FALSE)
+    let from_last = {
+        let rest = CDR(args);
+        if rest.is_null() || rest == R_NilValue() {
+            false
+        } else {
+            let rest2 = CDR(rest);
+            if rest2.is_null() || rest2 == R_NilValue() {
+                false
+            } else {
+                let v = real_or_default(CAR(rest2), 0.0);
+                v != 0.0
+            }
+        }
+    };
+
+    // Get dimensions
+    let dim = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+
+    if dim.is_null() || dim == R_NilValue() || XLENGTH(dim) < 2 {
+        // Not really an array — fall back to regular anyDuplicated
+        let mut new_args = R_NilValue();
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(R_NilValue(), new_args);
+        new_args = Rf_cons(x, new_args);
+        return do_anyDuplicated(_call, _op, new_args, _rho);
+    }
+
+    let dims_len = XLENGTH(dim);
+    let dim_vals = INTEGER(dim);
+    let nrows = *dim_vals as usize;
+    let ncols = if dims_len >= 2 {
+        (*dim_vals.add(1)) as usize
+    } else {
+        1
+    };
+
+    if margin == 1 && dims_len == 2 {
+        // Check duplicate rows
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if from_last {
+            let mut row_strings: Vec<String> = Vec::with_capacity(nrows);
+            for row in 0..nrows {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                row_strings.push(parts.join("\x01"));
+            }
+            let mut result_idx = 0i32;
+            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for row in (0..nrows).rev() {
+                if encountered.contains(&row_strings[row]) {
+                    result_idx = (row + 1) as c_int; // R 1-indexed
+                } else {
+                    encountered.insert(row_strings[row].clone());
+                }
+            }
+            Rf_ScalarInteger(result_idx)
+        } else {
+            for row in 0..nrows {
+                let mut parts: Vec<String> = Vec::with_capacity(ncols);
+                for col in 0..ncols {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    return Rf_ScalarInteger((row + 1) as c_int);
+                }
+                seen.insert(key);
+            }
+            Rf_ScalarInteger(0)
+        }
+    } else if margin == 2 && dims_len == 2 {
+        // Check duplicate columns
+        let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+        if from_last {
+            let mut col_strings: Vec<String> = Vec::with_capacity(ncols);
+            for col in 0..ncols {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                col_strings.push(parts.join("\x01"));
+            }
+            let mut result_idx = 0i32;
+            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            for col in (0..ncols).rev() {
+                if encountered.contains(&col_strings[col]) {
+                    result_idx = (col + 1) as c_int;
+                } else {
+                    encountered.insert(col_strings[col].clone());
+                }
+            }
+            Rf_ScalarInteger(result_idx)
+        } else {
+            for col in 0..ncols {
+                let mut parts: Vec<String> = Vec::with_capacity(nrows);
+                for row in 0..nrows {
+                    let idx = row + col * nrows;
+                    parts.push(elt_to_string(x, idx as R_xlen_t));
+                }
+                let key = parts.join("\x01");
+                if seen.contains(&key) {
+                    return Rf_ScalarInteger((col + 1) as c_int);
+                }
+                seen.insert(key);
+            }
+            Rf_ScalarInteger(0)
+        }
+    } else {
+        // Generic fallback
+        let mut new_args = R_NilValue();
+        new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
+        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(R_NilValue(), new_args);
+        new_args = Rf_cons(x, new_args);
+        do_anyDuplicated(_call, _op, new_args, _rho)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2835,6 +3402,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "rank",
         "duplicated",
         "anyDuplicated",
+        "duplicated.array",
+        "anyDuplicated.array",
         "match",
         "findInterval",
         "cut",

@@ -1941,6 +1941,22 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "duplicated.array" => unsafe {
+            crate::mainutils::essentials::do_duplicated_array(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "anyDuplicated.array" => unsafe {
+            crate::mainutils::essentials::do_anyDuplicated_array(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "match" => unsafe {
             crate::mainutils::essentials::do_match(
                 call.as_raw(),
