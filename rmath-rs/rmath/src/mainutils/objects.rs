@@ -7,6 +7,7 @@
 //!
 //! Original file: r-source/src/main/objects.c (1,879 lines)
 
+use libc;
 use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -494,7 +495,7 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
             while !b_iter.is_null() && b_iter != R_NilValue() {
                 let b_tag = TAG(b_iter);
                 if !b_tag.is_null() && b_tag != R_NilValue() {
-                    // pmatch(tag, TAG(b), 1) -- exact match
+                    // Exact match: TAG(b_iter) equals tag
                     if b_tag == tag {
                         if !s.is_null() {
                             // multiple match error
@@ -502,6 +503,27 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
                             break;
                         }
                         s = CAR(b_iter);
+                    } else {
+                        // Partial match: compare tag name prefix against TAG(b_iter)
+                        let tag_name = PRINTNAME(tag);
+                        let tag_name_c = translateChar(tag_name);
+                        let b_tag_name = PRINTNAME(b_tag);
+                        let b_tag_name_c = translateChar(b_tag_name);
+                        if !tag_name_c.is_null() && !b_tag_name_c.is_null() {
+                            let tlen = libc::strlen(tag_name_c);
+                            if tlen > 0 {
+                                let blen = libc::strlen(b_tag_name_c);
+                                if blen >= tlen
+                                    && libc::strncmp(b_tag_name_c, tag_name_c, tlen) == 0
+                                {
+                                    if !s.is_null() {
+                                        s = CAR(b_iter); // ambiguous match
+                                        break;
+                                    }
+                                    s = CAR(b_iter);
+                                }
+                            }
+                        }
                     }
                 }
                 b_iter = CDR(b_iter);
