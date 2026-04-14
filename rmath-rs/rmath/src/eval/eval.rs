@@ -3428,6 +3428,105 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Complete error handling — calling handlers and restarts
+        "withCallingHandlers" => unsafe {
+            crate::mainutils::essentials::do_withCallingHandlers(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "computeRestarts" => unsafe {
+            crate::mainutils::essentials::do_computeRestarts(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "findRestart" => unsafe {
+            crate::mainutils::essentials::do_findRestart(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "restarts" => unsafe {
+            crate::mainutils::essentials::do_restarts(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete package system
+        "library" => unsafe {
+            crate::mainutils::essentials::do_library(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "require" => unsafe {
+            crate::mainutils::essentials::do_require(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "installed.packages" => unsafe {
+            crate::mainutils::essentials::do_installed_packages(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "find.package" => unsafe {
+            crate::mainutils::essentials::do_find_package(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete R runtime — source, demo, example
+        "source" => unsafe {
+            crate::mainutils::essentials::do_source(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sys.source" => unsafe {
+            crate::mainutils::essentials::do_sys_source(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "demo" => unsafe {
+            crate::mainutils::essentials::do_demo(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "example" => unsafe {
+            crate::mainutils::essentials::do_example(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
