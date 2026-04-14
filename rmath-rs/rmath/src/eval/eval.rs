@@ -496,6 +496,96 @@ fn apply_builtin_safe<'a>(
         "sample" => unsafe {
             crate::mainutils::rng_dispatch::do_sample(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
+        "apply" => unsafe {
+            crate::mainutils::essentials::do_apply(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "tapply" => unsafe {
+            crate::mainutils::essentials::do_tapply(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "mapply" => unsafe {
+            crate::mainutils::essentials::do_mapply(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "outer" => unsafe {
+            crate::mainutils::essentials::do_outer(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "sweep" => unsafe {
+            crate::mainutils::essentials::do_sweep(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "trimws" => unsafe {
+            crate::mainutils::essentials::do_trimws(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "sprintf" => unsafe {
+            crate::mainutils::essentials::do_sprintf(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "gsub" => unsafe {
+            crate::mainutils::essentials::do_gsub(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "sub" => unsafe {
+            crate::mainutils::essentials::do_sub(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "strsplit" => unsafe {
+            crate::mainutils::essentials::do_strsplit(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "pmin" => unsafe {
+            crate::mainutils::essentials::do_pmin(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "pmax" => unsafe {
+            crate::mainutils::essentials::do_pmax(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "which.min" => unsafe {
+            crate::mainutils::essentials::do_which_min(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "which.max" => unsafe {
+            crate::mainutils::essentials::do_which_max(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "append" => unsafe {
+            crate::mainutils::essentials::do_append(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "head" => unsafe {
+            crate::mainutils::essentials::do_head(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "tail" => unsafe {
+            crate::mainutils::essentials::do_tail(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "[" => unsafe {
+            crate::mainutils::essentials::do_subset(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "setdiff" => unsafe {
+            crate::mainutils::essentials::do_setdiff(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "union" => unsafe {
+            crate::mainutils::essentials::do_union(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "intersect" => unsafe {
+            crate::mainutils::essentials::do_intersect(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "setequal" => unsafe {
+            crate::mainutils::essentials::do_setequal(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.finite" => unsafe {
+            crate::mainutils::essentials::do_is_finite(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.infinite" => unsafe {
+            crate::mainutils::essentials::do_is_infinite(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.nan" => unsafe {
+            crate::mainutils::essentials::do_is_nan(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.matrix" => unsafe {
+            crate::mainutils::essentials::do_is_matrix(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.array" => unsafe {
+            crate::mainutils::essentials::do_is_array(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "is.list" => unsafe {
+            crate::mainutils::essentials::do_is_list(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "chartr" => unsafe {
+            crate::mainutils::essentials::do_chartr(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "format" => unsafe {
+            crate::mainutils::essentials::do_format(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }

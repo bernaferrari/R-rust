@@ -18,7 +18,6 @@ use crate::sexp::ffi::SEXP;
 use crate::sexp::safe::Sexp;
 use std::os::raw::c_int;
 
-use crate::mainutils::relop::NA_STRING;
 use crate::sexp::accessors::{
     COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT,
     SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,

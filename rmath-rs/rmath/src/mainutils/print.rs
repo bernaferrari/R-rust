@@ -1048,16 +1048,16 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                         let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                             .to_str()
                             .unwrap_or("");
-                        eprintln!("{}", s);
+                        println!("{}", s);
                     });
 
                     PrintDispatch(VECTOR_ELT(s, i), data);
 
                     tagbuf_set(taglen, 0);
                 }
-                eprintln!();
+                println!();
                 if (n_pr as i64) < ns {
-                    eprintln!(
+                    println!(
                         " [ reached 'max' / getOption(\"max.print\") -- omitted {} entries ]",
                         ns - n_pr as i64
                     );
@@ -1065,9 +1065,9 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
             } else {
                 // Empty list
                 if names != R_NilValue() {
-                    eprint!("named ");
+                    print!("named ");
                 }
-                eprintln!("list()");
+                println!("list()");
             }
             Rf_unprotect(1); // names
         }
