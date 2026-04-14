@@ -2259,12 +2259,52 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
     let ans = match op {
         0 => is_null_safe(x),
         10 => (x.typeof_() == SEXPTYPE::LGLSXP) as c_int,
-        13 => (x.typeof_() == SEXPTYPE::INTSXP) as c_int,
+        13 => {
+            let t = x.typeof_();
+            if t == SEXPTYPE::INTSXP {
+                let x_raw = x.as_raw();
+                unsafe {
+                    let is_factor = crate::mainutils::objects::inherits2(
+                        x_raw,
+                        b"factor\0".as_ptr() as *const c_char,
+                    ) != 0;
+                    let is_ordered = crate::mainutils::objects::inherits2(
+                        x_raw,
+                        b"ordered\0".as_ptr() as *const c_char,
+                    ) != 0;
+                    if is_factor || is_ordered { 0 } else { 1 }
+                }
+            } else {
+                0
+            }
+        }
         14 => (x.typeof_() == SEXPTYPE::REALSXP) as c_int,
         15 => (x.typeof_() == SEXPTYPE::CPLXSXP) as c_int,
         16 => (x.typeof_() == SEXPTYPE::STRSXP) as c_int,
-        1 => (x.typeof_() == SEXPTYPE::SYMSXP) as c_int,
-        4 => (x.typeof_() == SEXPTYPE::ENVSXP) as c_int,
+        1 => {
+            let x_raw = x.as_raw();
+            unsafe {
+                if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP.0 {
+                    let dot_x_data =
+                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::SYMSXP.0);
+                    (TYPEOF(dot_x_data) == SEXPTYPE::SYMSXP.0) as c_int
+                } else {
+                    (TYPEOF(x_raw) == SEXPTYPE::SYMSXP.0) as c_int
+                }
+            }
+        }
+        4 => {
+            let x_raw = x.as_raw();
+            unsafe {
+                if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP.0 {
+                    let dot_x_data =
+                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::ENVSXP.0);
+                    (TYPEOF(dot_x_data) == SEXPTYPE::ENVSXP.0) as c_int
+                } else {
+                    (TYPEOF(x_raw) == SEXPTYPE::ENVSXP.0) as c_int
+                }
+            }
+        }
         19 => {
             let t = x.typeof_();
             (t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP) as c_int
@@ -2276,15 +2316,33 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         20 => (x.typeof_() == SEXPTYPE::EXPRSXP) as c_int,
         24 => (x.typeof_() == SEXPTYPE::RAWSXP) as c_int,
         6 => (x.typeof_() == SEXPTYPE::LANGSXP) as c_int,
+        50 => unsafe { crate::sexp::accessors::OBJECT(x.as_raw()) },
+        51 => unsafe { IS_S4_OBJECT(x.as_raw()) },
         100 => is_numeric_safe(x),
         101 => is_matrix_safe(x),
         102 => is_array_safe(x),
-        300 => {
+        200 => is_atomic_safe(x),
+        201 => {
+            let t = x.typeof_();
+            matches!(
+                t,
+                SEXPTYPE::VECSXP
+                    | SEXPTYPE::LISTSXP
+                    | SEXPTYPE::CLOSXP
+                    | SEXPTYPE::ENVSXP
+                    | SEXPTYPE::PROMSXP
+                    | SEXPTYPE::LANGSXP
+                    | SEXPTYPE::SPECIALSXP
+                    | SEXPTYPE::BUILTINSXP
+                    | SEXPTYPE::EXPRSXP
+            ) as c_int
+        }
+        300 => (x.typeof_() == SEXPTYPE::LANGSXP) as c_int,
+        301 => {
             let t = x.typeof_();
             (t == SEXPTYPE::SYMSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::EXPRSXP) as c_int
         }
         302 => is_function_safe(x),
-        200 => is_atomic_safe(x),
         _ => 0,
     };
     Ok(ans)

@@ -669,7 +669,7 @@ unsafe fn DispatchOrEval(
 ///
 /// For S4 objects, returns the `.Data` attribute which holds the
 /// underlying data. For non-S4 objects, returns the input unchanged.
-unsafe fn R_getS4DataSlot(x: SEXP, _type_: c_int) -> SEXP {
+pub unsafe fn R_getS4DataSlot(x: SEXP, _type_: c_int) -> SEXP {
     unsafe {
         if isNull(x) || IS_S4_OBJECT(x) == 0 {
             return x;
