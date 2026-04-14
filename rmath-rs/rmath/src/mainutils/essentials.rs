@@ -3803,3 +3803,152 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     Rf_ScalarInteger(0) // Simplified
 }
+
+// ---------------------------------------------------------------------------
+// S3 dispatch, environment functions, I/O extensions
+// ---------------------------------------------------------------------------
+
+/// R's `usemethod(generic, obj)` — simplified S3 dispatch.
+/// In a full implementation this would look for generic.class methods.
+/// For now, this is a no-op that signals "use default method".
+pub unsafe fn do_usemethod(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarLogical(FALSE) // Simplified: no method found
+}
+
+/// R's `missing(x)` — check if argument was missing in call.
+pub unsafe fn do_missing(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarLogical(FALSE) // Simplified
+}
+
+/// R's `parent.frame(n)` — get enclosing environment.
+pub unsafe fn do_parent_frame(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    rho // Simplified: return current env
+}
+
+/// R's `sys.call(which)` — get the call that's currently being evaluated.
+pub unsafe fn do_sys_call(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue() // Simplified
+}
+
+/// R's `sys.frame(which)` — get frame at specified level.
+pub unsafe fn do_sys_frame(_call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
+    rho // Simplified: return current env
+}
+
+/// R's `getwd()` — get working directory.
+pub unsafe fn do_getwd(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        match std::env::current_dir() {
+            Ok(path) => {
+                let s = path.to_string_lossy();
+                let cstr = CString::new(s.as_ref()).unwrap_or_default();
+                Rf_mkString(cstr.as_ptr())
+            }
+            Err(_) => R_NilValue(),
+        }
+    }
+}
+
+/// R's `setwd(dir)` — set working directory.
+pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let dir_arg = CAR(args);
+        if dir_arg.is_null() { return R_NilValue(); }
+        let path = elt_to_string(dir_arg, 0);
+        match std::env::set_current_dir(&path) {
+            Ok(()) => {
+                crate::sexp::globals::set_R_Visible(FALSE);
+                let cstr = CString::new(path).unwrap_or_default();
+                Rf_mkString(cstr.as_ptr())
+            }
+            Err(_) => {
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: format!("cannot change working directory to '{}'", path),
+                });
+            }
+        }
+    }
+}
+
+/// R's `dir.exists(paths)` — check if directories exist.
+pub unsafe fn do_dir_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+        let n = XLENGTH(x).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        let dst = LOGICAL(result);
+        for i in 0..n {
+            let path = elt_to_string(x, i);
+            *dst.add(i as usize) = if std::path::Path::new(&path).is_dir() { TRUE } else { FALSE };
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R's `file.create(...)` — create empty files.
+pub unsafe fn do_file_create(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+        let n = XLENGTH(x).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        let dst = LOGICAL(result);
+        for i in 0..n {
+            let path = elt_to_string(x, i);
+            *dst.add(i as usize) = match std::fs::File::create(&path) {
+                Ok(_) => TRUE,
+                Err(_) => FALSE,
+            };
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R's `unlink(x, recursive)` — delete files or directories.
+pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() { return Rf_ScalarInteger(0); }
+        let n = XLENGTH(x).max(1);
+        let mut count = 0;
+        for i in 0..n {
+            let path = elt_to_string(x, i);
+            let p = std::path::Path::new(&path);
+            let result = if p.is_dir() {
+                std::fs::remove_dir_all(p)
+            } else {
+                std::fs::remove_file(p)
+            };
+            if result.is_ok() { count += 1; }
+        }
+        crate::sexp::globals::set_R_Visible(FALSE);
+        Rf_ScalarInteger(count)
+    }
+}
+
+/// R's `nzchar(x)` — check if strings are non-empty.
+pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+        let n = XLENGTH(x).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        let dst = LOGICAL(result);
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            *dst.add(i as usize) = if s.is_empty() { FALSE } else { TRUE };
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
