@@ -405,8 +405,8 @@ fn apply_builtin_safe<'a>(
         "<" | ">" | "<=" | ">=" | "==" | "!=" => unsafe {
             super::arithmetic::do_relop(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
-        "abs" | "sqrt" | "log" | "log2" | "log10" | "exp" | "ceiling" | "floor" | "trunc"
-        | "round" | "sign" => unsafe {
+        "abs" | "sqrt" | "log" | "log10" | "exp" | "ceiling" | "floor"
+        | "sign" => unsafe {
             super::arithmetic::do_math1(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
         "length" => unsafe {
@@ -1448,6 +1448,196 @@ fn apply_builtin_safe<'a>(
         },
         "body" => unsafe {
             crate::mainutils::essentials::do_body(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // String/vector completion
+        "charmatch" => unsafe {
+            crate::mainutils::essentials::do_charmatch(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pmatch" => unsafe {
+            crate::mainutils::essentials::do_pmatch(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "strtoi" => unsafe {
+            crate::mainutils::essentials::do_strtoi(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "strtrim" => unsafe {
+            crate::mainutils::essentials::do_strtrim(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Math2 builtins
+        "round" => unsafe {
+            crate::mainutils::essentials::do_round(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "signif" => unsafe {
+            crate::mainutils::essentials::do_signif(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "trunc" => unsafe {
+            crate::mainutils::essentials::do_trunc(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "log2" => unsafe {
+            crate::mainutils::essentials::do_log2(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // R runtime
+        "eval" => unsafe {
+            crate::mainutils::essentials::do_eval(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "substitute" => unsafe {
+            crate::mainutils::essentials::do_substitute(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "quote" => unsafe {
+            crate::mainutils::essentials::do_quote(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "parse" => unsafe {
+            crate::mainutils::essentials::do_parse(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Error system
+        "conditionMessage" => unsafe {
+            crate::mainutils::essentials::do_conditionMessage(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "conditionCall" => unsafe {
+            crate::mainutils::essentials::do_conditionCall(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "simpleError" => unsafe {
+            crate::mainutils::essentials::do_simpleError(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "simpleWarning" => unsafe {
+            crate::mainutils::essentials::do_simpleWarning(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "withRestarts" => unsafe {
+            crate::mainutils::essentials::do_withRestarts(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // S3/S4
+        "isS4" => unsafe {
+            crate::mainutils::essentials::do_isS4(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "is" => unsafe {
+            crate::mainutils::essentials::do_is(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "S3_class" => unsafe {
+            crate::mainutils::essentials::do_S3_class(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // I/O
+        "scan" => unsafe {
+            crate::mainutils::essentials::do_scan(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "write.table" => unsafe {
+            crate::mainutils::essentials::do_write_table(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sink" => unsafe {
+            crate::mainutils::essentials::do_sink(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,

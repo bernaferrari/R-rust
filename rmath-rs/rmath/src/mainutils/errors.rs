@@ -20,7 +20,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 
-use crate::sexp::context::RError;
+use crate::sexp::context::{RError, RSignal};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use crate::sexp::globals;
 
@@ -1339,23 +1339,95 @@ pub unsafe fn R_CheckUserInterrupt() {
 /// Jump to the top-level context.
 /// In C, this uses longjmp. In Rust, we panic with RError.
 pub unsafe fn jump_to_top_ex(
-    _swap: c_int,
-    _eval: c_int,
-    _print: c_int,
-    _reset: c_int,
-    _skip: c_int,
+    traceback: c_int,
+    try_user_handler: c_int,
+    process_warnings: c_int,
+    reset_console: c_int,
+    ignore_restart: c_int,
 ) {
     unsafe {
-        // Print pending warnings if requested
-        if _print != 0 && R_COLLECT_WARNINGS.load(Ordering::Relaxed) > 0 {
+        let old_in_error = IN_ERROR.load(Ordering::Relaxed);
+        let mut have_handler = false;
+
+        if try_user_handler != 0 && old_in_error < 3 {
+            if old_in_error == 0 {
+                IN_ERROR.store(1, Ordering::Relaxed);
+            }
+            let err_opt = GetOption1(Rf_install(b"error\0".as_ptr() as *const c_char));
+            have_handler = !err_opt.is_null() && err_opt != globals::R_NilValue();
+            if have_handler {
+                let is_lang = TYPEOF(err_opt) == SEXPTYPE::LANGSXP.0;
+                let is_expr = TYPEOF(err_opt) == SEXPTYPE::EXPRSXP.0;
+                if !is_lang && !is_expr {
+                    eprintln!("invalid option \"error\"");
+                } else {
+                    IN_ERROR.store(3, Ordering::Relaxed);
+                    if is_lang {
+                        let _ = crate::eval::eval::Rf_eval(err_opt, globals::R_GlobalEnv());
+                    } else {
+                        let n = LENGTH(err_opt);
+                        for i in 0..n {
+                            let _ = crate::eval::eval::Rf_eval(
+                                crate::sexp::accessors::VECTOR_ELT(err_opt, i as R_xlen_t),
+                                globals::R_GlobalEnv(),
+                            );
+                        }
+                    }
+                    IN_ERROR.store(old_in_error, Ordering::Relaxed);
+                }
+            }
+            IN_ERROR.store(old_in_error, Ordering::Relaxed);
+        }
+
+        if process_warnings != 0 && R_COLLECT_WARNINGS.load(Ordering::Relaxed) > 0 {
             PrintWarnings();
         }
 
+        
+
+        if ignore_restart == 0 {
+            try_jump_to_restart();
+        }
+
+        if traceback != 0 && old_in_error < 2 {
+            IN_ERROR.store(2, Ordering::Relaxed);
+            let tb = R_GetTracebackOnly(0);
+            let sym = Rf_install(b".Traceback\0".as_ptr() as *const c_char);
+            SET_SYMVALUE(sym, tb);
+            IN_ERROR.store(old_in_error, Ordering::Relaxed);
+        }
+
         IN_ERROR.store(0, Ordering::Relaxed);
-        std::panic::panic_any(RError {
+        std::panic::panic_any(RSignal::Error {
             message: "jump_to_top".to_string(),
         });
     }
+}
+
+unsafe fn try_jump_to_restart() { unsafe {
+    let mut list = R_RESTART_STACK.with(|s| *s.borrow());
+    while !list.is_null() && list != globals::R_NilValue() {
+        let restart = CAR(list);
+        if TYPEOF(restart) == SEXPTYPE::VECSXP.0 && LENGTH(restart) > 1 {
+            let name = crate::sexp::accessors::VECTOR_ELT(restart, 0);
+            if TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) == 1 {
+                let cname = CHAR(STRING_ELT(name, 0));
+                if !cname.is_null() {
+                    let bytes = CStr::from_ptr(cname).to_bytes();
+                    if bytes == b"browser" || bytes == b"tryRestart" || bytes == b"abort" {
+                        invokeRestart(restart, globals::R_NilValue());
+                    }
+                }
+            }
+        }
+        list = CDR(list);
+    }
+}}
+
+unsafe fn invokeRestart(restart: SEXP, _args: SEXP) {
+    std::panic::panic_any(RSignal::Error {
+        message: "restart invoked".to_string(),
+    });
 }
 
 /// Handle interrupt signal.
@@ -1987,47 +2059,109 @@ pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
 pub unsafe fn do_addTryHandlers(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        // Simplified: mark the current context as a try context
+        let global_ctx = crate::sexp::context::R_GlobalContext();
+        if global_ctx.is_null()
+            || (*global_ctx).callflag & crate::sexp::context::ctxt_flags::CTXT_FUNCTION == 0
+        {
+            errorcall(call, b"not in a try context\0".as_ptr() as *const c_char);
+        }
+        (*global_ctx).callflag |= crate::sexp::context::ctxt_flags::CTXT_RETURN;
+        R_InsertRestartHandlers(global_ctx, b"tryRestart\0".as_ptr() as *const c_char);
         globals::R_NilValue()
     }
 }
+
+unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) { unsafe {
+    let h = GetOption1(Rf_install(
+        b"browser.error.handler\0".as_ptr() as *const c_char
+    ));
+    let h = if !h.is_null() && TYPEOF(h) == SEXPTYPE::CLOSXP.0 {
+        h
+    } else {
+        globals::R_RestartToken()
+    };
+    let rho = (*cptr).cloenv;
+    let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
+    crate::sexp::protect::Rf_protect(klass);
+    let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);
+    let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+    let new_top = Rf_cons(entry, old_stack);
+    R_HANDLER_STACK.with(|s| {
+        *s.borrow_mut() = new_top;
+    });
+    crate::sexp::protect::Rf_unprotect(1);
+
+    addInternalRestart(cptr, cname);
+}}
+
+unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *const c_char) { unsafe {
+    let cname_str = CStr::from_ptr(cname).to_bytes();
+    let name = Rf_mkString(
+        std::ffi::CString::new(cname_str)
+            .unwrap_or_default()
+            .as_ptr(),
+    );
+    crate::sexp::protect::Rf_protect(name);
+    let entry = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+    crate::sexp::protect::Rf_protect(entry);
+    crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
+    let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
+        cptr as *mut c_void,
+        globals::R_NilValue(),
+        globals::R_NilValue(),
+    );
+    crate::sexp::accessors::SET_VECTOR_ELT(entry, 1, ext_ptr);
+    crate::eval::attrib_core::setAttrib(
+        entry,
+        R_ClassSymbol(),
+        Rf_mkString(b"restart\0".as_ptr() as *const c_char),
+    );
+    let old_stack = R_RESTART_STACK.with(|s| *s.borrow());
+    let new_top = Rf_cons(entry, old_stack);
+    R_RESTART_STACK.with(|s| {
+        *s.borrow_mut() = new_top;
+    });
+    crate::sexp::protect::Rf_unprotect(2);
+}}
 
 // ---------------------------------------------------------------------------
 // Condition signaling
 // ---------------------------------------------------------------------------
 
-unsafe fn findConditionHandler(cond: SEXP) -> SEXP { unsafe {
-    let classes = getAttrib(cond, R_ClassSymbol());
-    if TYPEOF(classes) != SEXPTYPE::STRSXP.0 {
-        return globals::R_NilValue();
-    }
-    let n_classes = LENGTH(classes);
-    let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
-    while !list.is_null() && list != globals::R_NilValue() {
-        let entry = CAR(list);
-        let entry_class = ENTRY_CLASS(entry);
-        if !entry_class.is_null() {
-            let entry_bytes = CHAR(entry_class);
-            if !entry_bytes.is_null() {
-                let entry_str = CStr::from_ptr(entry_bytes).to_bytes();
-                for i in 0..n_classes {
-                    let cls = STRING_ELT(classes, i as R_xlen_t);
-                    if !cls.is_null() {
-                        let cls_bytes = CHAR(cls);
-                        if !cls_bytes.is_null() {
-                            let cls_str = CStr::from_ptr(cls_bytes).to_bytes();
-                            if entry_str == cls_str {
-                                return list;
+unsafe fn findConditionHandler(cond: SEXP) -> SEXP {
+    unsafe {
+        let classes = getAttrib(cond, R_ClassSymbol());
+        if TYPEOF(classes) != SEXPTYPE::STRSXP.0 {
+            return globals::R_NilValue();
+        }
+        let n_classes = LENGTH(classes);
+        let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
+        while !list.is_null() && list != globals::R_NilValue() {
+            let entry = CAR(list);
+            let entry_class = ENTRY_CLASS(entry);
+            if !entry_class.is_null() {
+                let entry_bytes = CHAR(entry_class);
+                if !entry_bytes.is_null() {
+                    let entry_str = CStr::from_ptr(entry_bytes).to_bytes();
+                    for i in 0..n_classes {
+                        let cls = STRING_ELT(classes, i as R_xlen_t);
+                        if !cls.is_null() {
+                            let cls_bytes = CHAR(cls);
+                            if !cls_bytes.is_null() {
+                                let cls_str = CStr::from_ptr(cls_bytes).to_bytes();
+                                if entry_str == cls_str {
+                                    return list;
+                                }
                             }
                         }
                     }
                 }
             }
+            list = CDR(list);
         }
-        list = CDR(list);
+        globals::R_NilValue()
     }
-    globals::R_NilValue()
-}}
+}
 
 /// do_signalCondition — signal a condition through the handler stack.
 pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
@@ -2241,12 +2375,62 @@ pub unsafe fn R_tryCatchError(
     hdata: *mut c_void,
 ) -> SEXP {
     unsafe {
-        // Simplified: just call the body directly
-        // Full implementation needs condition handler infrastructure
-        if let Some(f) = body {
-            f(bdata)
+        let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
+        crate::sexp::protect::Rf_protect(klass);
+        let handler_fn = if handler.is_some() {
+            Rf_mkString(b"tryCatchError\0".as_ptr() as *const c_char)
         } else {
             globals::R_NilValue()
+        };
+        let entry = mkHandlerEntry(
+            klass,
+            globals::R_GlobalEnv(),
+            handler_fn,
+            globals::R_NilValue(),
+            globals::R_NilValue(),
+            0,
+        );
+        crate::sexp::protect::Rf_protect(entry);
+
+        let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+        crate::sexp::protect::Rf_protect(old_stack);
+        let new_top = Rf_cons(entry, old_stack);
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = new_top;
+        });
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            if let Some(f) = body {
+                f(bdata)
+            } else {
+                globals::R_NilValue()
+            }
+        }));
+
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = old_stack;
+        });
+
+        crate::sexp::protect::Rf_unprotect(3);
+
+        match result {
+            Ok(val) => val,
+            Err(payload) => {
+                if handler.is_some() {
+                    let cond = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+                    if !cond.is_null() {
+                        let msg = Rf_mkString(b"error\0".as_ptr() as *const c_char);
+                        crate::sexp::accessors::SET_STRING_ELT(cond, 0, msg);
+                    }
+                    if let Some(h) = handler {
+                        h(cond, hdata)
+                    } else {
+                        globals::R_NilValue()
+                    }
+                } else {
+                    std::panic::resume_unwind(payload)
+                }
+            }
         }
     }
 }
@@ -2730,12 +2914,41 @@ pub unsafe fn R_withCallingErrorHandler(
     hdata: *mut c_void,
 ) -> SEXP {
     unsafe {
-        // Simplified: just run the body
-        if let Some(f) = body {
+        let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
+        crate::sexp::protect::Rf_protect(klass);
+        let handler_fn = if let Some(h) = handler {
+            Rf_mkString(b"withCallingErrorHandler\0".as_ptr() as *const c_char)
+        } else {
+            globals::R_NilValue()
+        };
+        let entry = mkHandlerEntry(
+            klass,
+            globals::R_GlobalEnv(),
+            handler_fn,
+            globals::R_NilValue(),
+            globals::R_NilValue(),
+            1,
+        );
+        crate::sexp::protect::Rf_protect(entry);
+
+        let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+        crate::sexp::protect::Rf_protect(old_stack);
+        let new_top = Rf_cons(entry, old_stack);
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = new_top;
+        });
+
+        let val = if let Some(f) = body {
             f(bdata)
         } else {
             globals::R_NilValue()
-        }
+        };
+
+        R_HANDLER_STACK.with(|s| {
+            *s.borrow_mut() = old_stack;
+        });
+        crate::sexp::protect::Rf_unprotect(3);
+        val
     }
 }
 
