@@ -2121,6 +2121,55 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Complete base R — colSums, rowSums, colMeans, rowMeans, col, row
+        "colSums" => unsafe {
+            crate::mainutils::essentials::do_colSums(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "rowSums" => unsafe {
+            crate::mainutils::essentials::do_rowSums(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "colMeans" => unsafe {
+            crate::mainutils::essentials::do_colMeans(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "rowMeans" => unsafe {
+            crate::mainutils::essentials::do_rowMeans(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "col" => unsafe {
+            crate::mainutils::essentials::do_col(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "row" => unsafe {
+            crate::mainutils::essentials::do_row(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         // Math/Statistics
         "cov" => unsafe {
             crate::mainutils::essentials::do_cov(

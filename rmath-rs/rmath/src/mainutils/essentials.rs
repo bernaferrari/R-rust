@@ -3665,6 +3665,13 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "sys.source",
         "demo",
         "example",
+        // Complete base R — colSums, rowSums, colMeans, rowMeans, col, row
+        "colSums",
+        "rowSums",
+        "colMeans",
+        "rowMeans",
+        "col",
+        "row",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -13914,7 +13921,321 @@ pub unsafe fn do_saveRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     R_NilValue()
 }
 
-// --------------------------------------------------------------------------- 
+// ---------------------------------------------------------------------------
+// Complete base R — colSums, rowSums, colMeans, rowMeans, col, row
+// ---------------------------------------------------------------------------
+
+/// R's `colSums(x, na.rm = FALSE, dims = 1)` — column sums of a matrix or array.
+pub unsafe fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) =
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+            )
+        } else {
+            let n = XLENGTH(x);
+            (n, 1)
+        };
+
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, ncol);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for j in 0..ncol {
+        let mut sum = 0.0f64;
+        let mut has_na = false;
+        for i in 0..nrow {
+            let idx = (j * nrow + i) as usize;
+            let val = if t == SEXPTYPE::REALSXP.0 {
+                *REAL(x).add(idx)
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(idx);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                has_na = true;
+                if !na_rm { sum = NA_REAL; break; }
+            } else {
+                sum += val;
+            }
+        }
+        *dst.add(j as usize) = if has_na && na_rm && sum.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN { sum } else if has_na && !na_rm { NA_REAL } else { sum };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `rowSums(x, na.rm = FALSE, dims = 1)` — row sums of a matrix or array.
+pub unsafe fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) =
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+            )
+        } else {
+            let n = XLENGTH(x);
+            (n, 1)
+        };
+
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, nrow);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..nrow {
+        let mut sum = 0.0f64;
+        let mut has_na = false;
+        for j in 0..ncol {
+            let idx = (j * nrow + i) as usize;
+            let val = if t == SEXPTYPE::REALSXP.0 {
+                *REAL(x).add(idx)
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(idx);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                has_na = true;
+                if !na_rm { sum = NA_REAL; break; }
+            } else {
+                sum += val;
+            }
+        }
+        *dst.add(i as usize) = if has_na && !na_rm { NA_REAL } else { sum };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `colMeans(x, na.rm = FALSE, dims = 1)` — column means of a matrix or array.
+pub unsafe fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) =
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+            )
+        } else {
+            let n = XLENGTH(x);
+            (n, 1)
+        };
+
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, ncol);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for j in 0..ncol {
+        let mut sum = 0.0f64;
+        let mut count = 0i64;
+        let mut has_na = false;
+        for i in 0..nrow {
+            let idx = (j * nrow + i) as usize;
+            let val = if t == SEXPTYPE::REALSXP.0 {
+                *REAL(x).add(idx)
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(idx);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                has_na = true;
+                if !na_rm { sum = NA_REAL; break; }
+            } else {
+                sum += val;
+                count += 1;
+            }
+        }
+        *dst.add(j as usize) = if has_na && !na_rm { NA_REAL } else if count > 0 { sum / count as f64 } else { NA_REAL };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `rowMeans(x, na.rm = FALSE, dims = 1)` — row means of a matrix or array.
+pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) =
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+            )
+        } else {
+            let n = XLENGTH(x);
+            (n, 1)
+        };
+
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, nrow);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..nrow {
+        let mut sum = 0.0f64;
+        let mut count = 0i64;
+        let mut has_na = false;
+        for j in 0..ncol {
+            let idx = (j * nrow + i) as usize;
+            let val = if t == SEXPTYPE::REALSXP.0 {
+                *REAL(x).add(idx)
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(idx);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+            if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+                has_na = true;
+                if !na_rm { sum = NA_REAL; break; }
+            } else {
+                sum += val;
+                count += 1;
+            }
+        }
+        *dst.add(i as usize) = if has_na && !na_rm { NA_REAL } else if count > 0 { sum / count as f64 } else { NA_REAL };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `col(x)` — column indices for a matrix.
+pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) =
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+            )
+        } else {
+            let n = XLENGTH(x);
+            (n, 1)
+        };
+    let total = nrow * ncol;
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, total);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    for j in 0..ncol {
+        for i in 0..nrow {
+            let idx = (j * nrow + i) as usize;
+            *dst.add(idx) = (j + 1) as c_int;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `row(x)` — row indices for a matrix.
+pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    let (nrow, ncol) =
+        if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            (
+                *INTEGER(dim_attr) as R_xlen_t,
+                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+            )
+        } else {
+            let n = XLENGTH(x);
+            (n, 1)
+        };
+    let total = nrow * ncol;
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, total);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    for j in 0..ncol {
+        for i in 0..nrow {
+            let idx = (j * nrow + i) as usize;
+            *dst.add(idx) = (i + 1) as c_int;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
 // Complete R runtime — parallel operations (simplified)
 // ---------------------------------------------------------------------------
 
