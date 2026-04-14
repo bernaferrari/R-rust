@@ -9,11 +9,12 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, TYPEOF, XLENGTH,
+    CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, SET_VECTOR_ELT, TYPEOF,
+    VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector3, Rf_cons, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkString,
 };
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
@@ -1808,6 +1809,61 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "log2",
         "log10",
         "exp",
+        "dlnorm",
+        "plnorm",
+        "qlnorm",
+        "dlogis",
+        "plogis",
+        "qlogis",
+        "dsignrank",
+        "psignrank",
+        "qsignrank",
+        "dwilcox",
+        "pwilcox",
+        "qwilcox",
+        "dhyper",
+        "phyper",
+        "qhyper",
+        "ptukey",
+        "qtukey",
+        "dmultinom",
+        "NROW",
+        "NCOL",
+        "lengths",
+        "rownames",
+        "colnames",
+        "class",
+        "list",
+        "data.frame",
+        "Names",
+        "attr",
+        "noquote",
+        "deparse",
+        "nargs",
+        "useMethod",
+        "missing",
+        "parent.frame",
+        "sys.call",
+        "sys.frame",
+        "getwd",
+        "setwd",
+        "dir.exists",
+        "file.create",
+        "unlink",
+        "nzchar",
+        "lapply",
+        "sapply",
+        "vapply",
+        "Map",
+        "Filter",
+        "do.call",
+        "set.seed",
+        "RNGkind",
+        "runif",
+        "rnorm",
+        "rpois",
+        "rexp",
+        "sample",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -3015,6 +3071,221 @@ pub unsafe fn do_qgeom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     })
 }
 
+// ---------------------------------------------------------------------------
+// Distribution functions: lnorm, logistic, signrank, wilcox, hyper, tukey
+// ---------------------------------------------------------------------------
+
+/// R's `dlnorm(x, meanlog=0, sdlog=1)` — lognormal density.
+pub unsafe fn do_dlnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 0.0, 1.0, |x, meanlog, sdlog| {
+        crate::dist::lnorm::dlnorm_inner(x, meanlog, sdlog, false)
+    })
+}
+
+/// R's `plnorm(q, meanlog=0, sdlog=1)` — lognormal CDF.
+pub unsafe fn do_plnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 0.0, 1.0, |q, meanlog, sdlog| {
+        crate::dist::lnorm::plnorm_inner(q, meanlog, sdlog, true, false)
+    })
+}
+
+/// R's `qlnorm(p, meanlog=0, sdlog=1)` — lognormal quantile.
+pub unsafe fn do_qlnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 0.0, 1.0, |p, meanlog, sdlog| {
+        crate::dist::lnorm::qlnorm_inner(p, meanlog, sdlog, true, false)
+    })
+}
+
+/// R's `dlogis(x, location=0, scale=1)` — logistic density.
+pub unsafe fn do_dlogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 0.0, 1.0, |x, location, scale| {
+        crate::dist::logistic::dlogis_inner(x, location, scale, false)
+    })
+}
+
+/// R's `plogis(q, location=0, scale=1)` — logistic CDF.
+pub unsafe fn do_plogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 0.0, 1.0, |q, location, scale| {
+        crate::dist::logistic::plogis_inner(q, location, scale, true, false)
+    })
+}
+
+/// R's `qlogis(p, location=0, scale=1)` — logistic quantile.
+pub unsafe fn do_qlogis(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 0.0, 1.0, |p, location, scale| {
+        crate::dist::logistic::qlogis_inner(p, location, scale, true, false)
+    })
+}
+
+/// R's `dsignrank(x, n)` — Wilcoxon signed rank density.
+pub unsafe fn do_dsignrank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 1.0, 0.0, |x, n, _| {
+        crate::dist::signrank::dsignrank_inner(x, n, false)
+    })
+}
+
+/// R's `psignrank(q, n)` — Wilcoxon signed rank CDF.
+pub unsafe fn do_psignrank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 1.0, 0.0, |q, n, _| {
+        crate::dist::signrank::psignrank_inner(q, n, true, false)
+    })
+}
+
+/// R's `qsignrank(p, n)` — Wilcoxon signed rank quantile.
+pub unsafe fn do_qsignrank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 1.0, 0.0, |p, n, _| {
+        crate::dist::signrank::qsignrank_inner(p, n, true, false)
+    })
+}
+
+/// R's `dwilcox(x, m, n)` — Wilcoxon rank sum density.
+pub unsafe fn do_dwilcox(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 1.0, 1.0, |x, m, n| {
+        crate::dist::wilcox::dwilcox_inner(x, m, n, false)
+    })
+}
+
+/// R's `pwilcox(q, m, n)` — Wilcoxon rank sum CDF.
+pub unsafe fn do_pwilcox(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 1.0, 1.0, |q, m, n| {
+        crate::dist::wilcox::pwilcox_inner(q, m, n, true, false)
+    })
+}
+
+/// R's `qwilcox(p, m, n)` — Wilcoxon rank sum quantile.
+pub unsafe fn do_qwilcox(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 1.0, 1.0, |p, m, n| {
+        crate::dist::wilcox::qwilcox_inner(p, m, n, true, false)
+    })
+}
+
+/// R's `dhyper(x, m, n, k)` — hypergeometric density (4 params).
+pub unsafe fn do_dhyper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_tertiary(args, 1.0, 1.0, 1.0, |x, m, n, k| {
+        crate::dist::hypergeometric::dhyper_inner(x, m, n, k, false)
+    })
+}
+
+/// R's `phyper(q, m, n, k)` — hypergeometric CDF (4 params).
+pub unsafe fn do_phyper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_tertiary(args, 1.0, 1.0, 1.0, |q, m, n, k| {
+        crate::dist::hypergeometric::phyper_inner(q, m, n, k, true, false)
+    })
+}
+
+/// R's `qhyper(p, m, n, k)` — hypergeometric quantile (4 params).
+pub unsafe fn do_qhyper(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_tertiary(args, 1.0, 1.0, 1.0, |p, m, n, k| {
+        crate::dist::hypergeometric::qhyper_inner(p, m, n, k, true, false)
+    })
+}
+
+/// R's `dtukey(q, nmeans, df)` — Studentized range CDF (nranges defaults to 1).
+pub unsafe fn do_ptukey(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 2.0, 1.0, |q, nmeans, df| {
+        crate::dist::tukey::ptukey_inner(q, 1.0, nmeans, df, true, false)
+    })
+}
+
+/// R's `qtukey(p, nmeans, df)` — Studentized range quantile (nranges defaults to 1).
+pub unsafe fn do_qtukey(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_dist_unary(args, 2.0, 1.0, |p, nmeans, df| {
+        crate::dist::tukey::qtukey_inner(p, 1.0, nmeans, df, true, false)
+    })
+}
+
+/// R's `dmultinom(x, prob, log=FALSE)` — multinomial probability.
+pub unsafe fn do_dmultinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x_arg = CAR(args);
+        let prob_arg = CAR(CDR(args));
+        let log_arg = CAR(CDR(CDR(args)));
+
+        if x_arg.is_null() || prob_arg.is_null() {
+            return R_NilValue();
+        }
+
+        let nx = XLENGTH(x_arg).max(1);
+        let np = XLENGTH(prob_arg).max(1);
+        let give_log = if log_arg.is_null() || log_arg == R_NilValue() {
+            false
+        } else {
+            real_or_default(log_arg, 0.0) != 0.0
+        };
+
+        // Collect x values
+        let mut xv: Vec<f64> = Vec::with_capacity(nx as usize);
+        for i in 0..nx {
+            xv.push(elt_real_safe(x_arg, i));
+        }
+
+        // Collect prob values
+        let mut pv: Vec<f64> = Vec::with_capacity(np as usize);
+        for i in 0..np {
+            pv.push(elt_real_safe(prob_arg, i));
+        }
+
+        // dmultinom: log-probability of multinomial outcome
+        // Uses lgammafn(x+1) for log-factorial terms
+        let k = xv.len().min(pv.len());
+        let n_total: f64 = xv.iter().sum();
+
+        let mut log_prob = crate::special::gamma::lgammafn(n_total + 1.0);
+        for i in 0..k {
+            log_prob -= crate::special::gamma::lgammafn(xv[i] + 1.0);
+            if pv[i] > 0.0 {
+                log_prob += xv[i] * pv[i].ln();
+            } else if xv[i] > 0.0 {
+                log_prob = f64::NEG_INFINITY;
+            }
+        }
+
+        let result = if give_log { log_prob } else { log_prob.exp() };
+        Rf_ScalarReal(result)
+    }
+}
+
+/// Generic vectorized distribution function with 3 extra parameters (4 total: x, p1, p2, p3).
+fn do_dist_tertiary(
+    args: SEXP,
+    default_p1: f64,
+    default_p2: f64,
+    default_p3: f64,
+    f: fn(f64, f64, f64, f64) -> f64,
+) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        let p1 = real_or_default(CAR(CDR(args)), default_p1);
+        let p2_arg = CAR(CDR(CDR(args)));
+        let p2 = if p2_arg.is_null() || p2_arg == R_NilValue() {
+            default_p2
+        } else {
+            real_or_default(p2_arg, default_p2)
+        };
+        let p3_arg = CAR(CDR(CDR(CDR(args))));
+        let p3 = if p3_arg.is_null() || p3_arg == R_NilValue() {
+            default_p3
+        } else {
+            real_or_default(p3_arg, default_p3)
+        };
+        if x.is_null() {
+            return R_NilValue();
+        }
+        let n = XLENGTH(x).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        let dst = REAL(result);
+        for i in 0..n {
+            *dst.add(i as usize) = f(elt_real_safe(x, i), p1, p2, p3);
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
 /// Generic vectorized distribution function with 2 parameters.
 fn do_dist_unary(
     args: SEXP,
@@ -3937,10 +4208,14 @@ pub unsafe fn do_unlink(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() { return Rf_ScalarLogical(FALSE); }
+        if x.is_null() || x == R_NilValue() {
+            return Rf_ScalarLogical(FALSE);
+        }
         let n = XLENGTH(x).max(1);
         let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
-        if result.is_null() { return R_NilValue(); }
+        if result.is_null() {
+            return R_NilValue();
+        }
         let _p = Rf_protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
@@ -3950,5 +4225,400 @@ pub unsafe fn do_nzchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         crate::sexp::protect::Rf_unprotect(1);
         result
     }
+}
+
+// ---------------------------------------------------------------------------
+// S3 dispatch helpers — NROW, NCOL, lengths, rownames, colnames, names, class
+// ---------------------------------------------------------------------------
+
+/// R's `NROW(x)` — number of rows; falls back to length(x) if no dim.
+pub unsafe fn do_NROW(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 1 {
+        Rf_ScalarInteger(*INTEGER(dim_attr))
+    } else {
+        Rf_ScalarInteger(XLENGTH(x) as i32)
+    }
+}
+
+/// R's `NCOL(x)` — number of columns; returns 1 for vectors.
+pub unsafe fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarInteger(0);
+    }
+    let dim_attr = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+    );
+    if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+        Rf_ScalarInteger(*INTEGER(dim_attr.add(1)))
+    } else {
+        Rf_ScalarInteger(1)
+    }
+}
+
+/// R's `lengths(x)` — length of each element in a list/vector.
+pub unsafe fn do_lengths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+    }
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::VECSXP.0 {
+        for i in 0..n {
+            let elem = VECTOR_ELT(x, i as i64);
+            *dst.add(i as usize) = if elem.is_null() {
+                0
+            } else {
+                XLENGTH(elem) as i32
+            };
+        }
+    } else {
+        for i in 0..n {
+            *dst.add(i as usize) = 1;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `rownames(x)` — get row names attribute.
+pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+    )
+}
+
+/// R's `colnames(x)` — get column names attribute.
+pub unsafe fn do_colnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let dimnames = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
+    );
+    if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP.0 && LENGTH(dimnames) >= 2 {
+        VECTOR_ELT(dimnames, 1)
+    } else {
+        R_NilValue()
+    }
+}
+
+/// R's `names(x)` — get names attribute (alias for do_names).
+pub unsafe fn do_names_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_names(_call, _op, args, _rho)
+}
+
+/// R's `names(x) <- value` — set names attribute.
+pub unsafe fn do_names_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        value,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `class(x)` — get class attribute.
+pub unsafe fn do_class_get(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let class = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+    );
+    if class.is_null() || class == R_NilValue() {
+        let t = TYPEOF(x);
+        let name = if t == SEXPTYPE::REALSXP.0 {
+            "numeric"
+        } else if t == SEXPTYPE::INTSXP.0 {
+            "integer"
+        } else if t == SEXPTYPE::LGLSXP.0 {
+            "logical"
+        } else if t == SEXPTYPE::STRSXP.0 {
+            "character"
+        } else if t == SEXPTYPE::VECSXP.0 {
+            "list"
+        } else {
+            "NULL"
+        };
+        let cstr = CString::new(name).unwrap_or_default();
+        Rf_mkString(cstr.as_ptr())
+    } else {
+        class
+    }
+}
+
+/// R's `class(x) <- value` — set class attribute.
+pub unsafe fn do_class_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+        value,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `Names(x)` — get names (alias, commonly used internally).
+pub unsafe fn do_Names(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_names(_call, _op, args, _rho)
+}
+
+// ---------------------------------------------------------------------------
+// List / data.frame operations
+// ---------------------------------------------------------------------------
+
+/// R's `list(...)` — create a VECSXP (list) from arguments.
+pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut n: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        n += 1;
+        current = CDR(current);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let mut i: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        SET_VECTOR_ELT(result, i as i64, arg);
+        i += 1;
+        current = CDR(current);
+    }
+    // Copy names from the pairlist tags if present
+    let mut name_parts: Vec<String> = Vec::new();
+    let mut has_names = false;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let tag = (*current).data.listsxp.tagval;
+        if !tag.is_null() && tag != R_NilValue() {
+            let pname = crate::sexp::accessors::PRINTNAME(tag);
+            if !pname.is_null() {
+                let s = crate::sexp::accessors::CHAR(pname);
+                if !s.is_null() {
+                    name_parts.push(
+                        std::ffi::CStr::from_ptr(s)
+                            .to_str()
+                            .unwrap_or("")
+                            .to_string(),
+                    );
+                    has_names = true;
+                } else {
+                    name_parts.push(String::new());
+                }
+            } else {
+                name_parts.push(String::new());
+            }
+        } else {
+            name_parts.push(String::new());
+        }
+        current = CDR(current);
+    }
+    if has_names {
+        let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, n);
+        if !names_vec.is_null() {
+            let _p2 = Rf_protect(names_vec);
+            for (j, name) in name_parts.iter().enumerate() {
+                let cstr = CString::new(name.as_str()).unwrap_or_default();
+                let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+                if !charsxp.is_null() {
+                    let data = (*names_vec).gengc_next_node as *mut SEXP;
+                    *data.add(j) = charsxp;
+                }
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+                names_vec,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `data.frame(...)` — simplified: create list with "data.frame" class and row.names.
+pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let result = do_list(_call, _op, args, _rho);
+    if result.is_null() || result == R_NilValue() {
+        return result;
+    }
+    let _p = Rf_protect(result);
+
+    // Set class to "data.frame"
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    if !class_vec.is_null() {
+        let _p2 = Rf_protect(class_vec);
+        let cstr = CString::new("data.frame").unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*class_vec).gengc_next_node as *mut SEXP;
+            *data.add(0) = charsxp;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            class_vec,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    // Determine number of rows from the first column
+    let ncol = XLENGTH(result);
+    if ncol > 0 {
+        let first_col = VECTOR_ELT(result, 0);
+        if !first_col.is_null() {
+            let nrow = XLENGTH(first_col);
+            let rn = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+            if !rn.is_null() {
+                let _p3 = Rf_protect(rn);
+                *INTEGER(rn) = NA_INTEGER;
+                *INTEGER(rn.add(1)) = -(nrow as i32);
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
+                    rn,
+                );
+                crate::sexp::protect::Rf_unprotect(1);
+            }
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Attribute access helpers
+// ---------------------------------------------------------------------------
+
+/// R's `attr(x, which)` — get arbitrary attribute by name.
+pub unsafe fn do_attr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let which = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+        return R_NilValue();
+    }
+    let attr_name = elt_to_string(which, 0);
+    crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
+    )
+}
+
+/// R's `attr(x, which) <- value` — set arbitrary attribute by name.
+pub unsafe fn do_setattr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let which = CAR(CDR(args));
+    let value = CAR(CDR(CDR(args)));
+    if x.is_null() || x == R_NilValue() || which.is_null() || which == R_NilValue() {
+        return R_NilValue();
+    }
+    let attr_name = elt_to_string(which, 0);
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        Rf_install(CString::new(attr_name).unwrap_or_default().as_ptr()),
+        value,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+// ---------------------------------------------------------------------------
+// String formatting
+// ---------------------------------------------------------------------------
+
+/// R's `noquote(x)` — mark object to prevent quoting in print.
+pub unsafe fn do_noquote(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return x;
+    }
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    if !class_vec.is_null() {
+        let cstr = CString::new("noquote").unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*class_vec).gengc_next_node as *mut SEXP;
+            *data.add(0) = charsxp;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            x,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            class_vec,
+        );
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `deparse(x)` — convert SEXP to string representation (simplified).
+pub unsafe fn do_deparse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_mkString(CString::new("NULL").unwrap_or_default().as_ptr());
+    }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x).max(1);
+    let mut parts: Vec<String> = Vec::new();
+
+    if n == 1 {
+        parts.push(elt_to_string(x, 0));
+    } else {
+        let mut inner: Vec<String> = Vec::new();
+        for i in 0..n {
+            let s = elt_to_string(x, i);
+            if t == SEXPTYPE::STRSXP.0 {
+                inner.push(format!("\"{}\"", s));
+            } else {
+                inner.push(s);
+            }
+        }
+        parts.push(format!("c({})", inner.join(", ")));
+    }
+    let result_str = parts.join("\n");
+    let cstr = CString::new(result_str).unwrap_or_default();
+    Rf_mkString(cstr.as_ptr())
 }
 
