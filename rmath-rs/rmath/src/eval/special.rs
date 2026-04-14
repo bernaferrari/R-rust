@@ -71,7 +71,7 @@ unsafe fn dispatch_special_by_name(
             "next" => do_next(),
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
-            "=" | "<-" | "<<-" => super::assignment::do_set(CAR(call), CDR(call), rho),
+            "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
             _ => {
                 eprintln!("Warning: unimplemented special form '{}'", name);
                 R_NilValue()
