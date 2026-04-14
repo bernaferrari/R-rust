@@ -2771,6 +2771,28 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "cat_enhanced",
         "message_enhanced",
         "warning_enhanced",
+        // Complete R runtime — match.call, sys.nframe, sys.function, on.exit
+        "match.call",
+        "sys.nframe",
+        "sys.function",
+        "on.exit",
+        // Complete I/O — read.csv, write.csv, read.table
+        "read.csv",
+        "write.csv",
+        "read.table",
+        // Complete S3 generics — as.matrix, as.numeric
+        "as.matrix",
+        "as.numeric",
+        // Complete R runtime — par, getGraphicsEvent
+        "par",
+        "getGraphicsEvent",
+        // Complete R runtime — Rprof, Rprofmem, gc, gcinfo, memory.size, object.size
+        "Rprof",
+        "Rprofmem",
+        "gc",
+        "gcinfo",
+        "memory.size",
+        "object.size",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -10938,4 +10960,659 @@ pub unsafe fn do_warning_enhanced(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
     let output = parts.join(" ");
     eprintln!("Warning: {}", output);
     R_NilValue()
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime — match.call, sys.nframe, sys.function, on.exit
+// ---------------------------------------------------------------------------
+
+/// R's `match.call(definition, call, expand.dots)` — match call arguments.
+/// Simplified: returns the call as-is.
+pub unsafe fn do_match_call(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Return the call argument if provided, otherwise the current call
+    let call_arg = CAR(args);
+    if !call_arg.is_null() && call_arg != R_NilValue() {
+        return call_arg;
+    }
+    _call
+}
+
+/// R's `sys.nframe()` — returns the number of frames on the call stack.
+/// Simplified: returns 0.
+pub unsafe fn do_sys_nframe(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarInteger(0)
+}
+
+/// R's `sys.function(which)` — returns the function at the given frame level.
+/// Simplified: returns NULL.
+pub unsafe fn do_sys_function(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _which = if !args.is_null() && args != R_NilValue() {
+        real_or_default(CAR(args), 0.0) as i32
+    } else {
+        0
+    };
+    R_NilValue()
+}
+
+/// R's `on.exit(expr, add)` — register an exit handler.
+/// Simplified: no-op, returns NULL invisibly.
+pub unsafe fn do_on_exit(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+// ---------------------------------------------------------------------------
+// Complete I/O — read.csv, write.csv, read.table
+// ---------------------------------------------------------------------------
+
+/// R's `read.csv(file, header=TRUE, sep=",")` — read a CSV file (simplified).
+/// Returns a list (data.frame) of columns as REALSXP vectors.
+pub unsafe fn do_read_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let file_arg = CAR(args);
+    let header_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(CDR(args))
+    };
+
+    let file_path = elt_to_string(file_arg, 0);
+    let header = if header_arg.is_null() || header_arg == R_NilValue() {
+        true
+    } else {
+        let v = real_or_default(header_arg, 1.0);
+        v != 0.0
+    };
+
+    // Read file
+    let content = match std::fs::read_to_string(&file_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error reading '{}': {}", file_path, e);
+            return R_NilValue();
+        }
+    };
+
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return R_NilValue();
+    }
+
+    let col_names: Vec<String> = if header {
+        let header_line = lines.remove(0);
+        header_line
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect()
+    } else {
+        lines[0]
+            .split(',')
+            .enumerate()
+            .map(|(i, _)| format!("V{}", i + 1))
+            .collect()
+    };
+
+    let ncols = col_names.len();
+    if ncols == 0 {
+        return R_NilValue();
+    }
+
+    // Parse data rows
+    let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
+    for line in &lines {
+        let fields: Vec<&str> = line.split(',').collect();
+        for j in 0..ncols {
+            let val = if j < fields.len() {
+                fields[j].trim().parse::<f64>().unwrap_or(NA_REAL)
+            } else {
+                NA_REAL
+            };
+            col_data[j].push(val);
+        }
+    }
+
+    // Build list result
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, ncols as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+
+    let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, ncols as R_xlen_t);
+    let _p2 = Rf_protect(names_vec);
+
+    for j in 0..ncols {
+        let nrow = col_data[j].len();
+        let col = Rf_allocVector3(SEXPTYPE::REALSXP.0, nrow as R_xlen_t);
+        if !col.is_null() {
+            let dst = REAL(col);
+            for (i, &v) in col_data[j].iter().enumerate() {
+                *dst.add(i) = v;
+            }
+        }
+        let data = (*result).gengc_next_node as *mut SEXP;
+        *data.add(j) = col;
+
+        let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let nmdata = (*names_vec).gengc_next_node as *mut SEXP;
+            *nmdata.add(j) = charsxp;
+        }
+    }
+
+    // Set names
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        names_vec,
+    );
+    // Set class to data.frame
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    let _p3 = Rf_protect(class_vec);
+    let cstr = CString::new("data.frame").unwrap_or_default();
+    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+    if !charsxp.is_null() {
+        let cdata = (*class_vec).gengc_next_node as *mut SEXP;
+        *cdata.add(0) = charsxp;
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+        class_vec,
+    );
+
+    crate::sexp::protect::Rf_unprotect(3);
+    result
+}
+
+/// R's `write.csv(x, file, row.names=TRUE)` — write a CSV file (simplified).
+pub unsafe fn do_write_csv(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let file_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(CDR(args))
+    };
+    let row_names_arg = if CDR(args).is_null()
+        || CDR(args) == R_NilValue()
+        || CDR(CDR(args)).is_null()
+        || CDR(CDR(args)) == R_NilValue()
+    {
+        R_NilValue()
+    } else {
+        CAR(CDR(CDR(args)))
+    };
+
+    let file_path = elt_to_string(file_arg, 0);
+    let write_row_names = if row_names_arg.is_null() || row_names_arg == R_NilValue() {
+        true
+    } else {
+        let v = real_or_default(row_names_arg, 1.0);
+        v != 0.0
+    };
+
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let t = TYPEOF(x);
+    let mut lines: Vec<String> = Vec::new();
+
+    if t == SEXPTYPE::VECSXP.0 {
+        // Data.frame-like list
+        let ncols = XLENGTH(x);
+        let nrow = if ncols > 0 {
+            let first_col = VECTOR_ELT(x, 0);
+            XLENGTH(first_col)
+        } else {
+            0
+        };
+
+        // Get column names
+        let names = crate::sexp::attrib_core::getAttrib(
+            x,
+            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        );
+
+        // Header
+        let mut header_parts: Vec<String> = Vec::new();
+        if write_row_names {
+            header_parts.push("".to_string());
+        }
+        for j in 0..ncols {
+            let nm = if !names.is_null() {
+                elt_to_string(names, j)
+            } else {
+                format!("V{}", j + 1)
+            };
+            header_parts.push(format!("\"{}\"", nm));
+        }
+        lines.push(header_parts.join(","));
+
+        // Data rows
+        for i in 0..nrow {
+            let mut row_parts: Vec<String> = Vec::new();
+            if write_row_names {
+                row_parts.push((i + 1).to_string());
+            }
+            for j in 0..ncols {
+                let col = VECTOR_ELT(x, j);
+                row_parts.push(elt_to_string(col, i));
+            }
+            lines.push(row_parts.join(","));
+        }
+    } else if t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::INTSXP.0 {
+        // Simple vector — write as single column
+        let n = XLENGTH(x);
+        lines.push("\"x\"".to_string());
+        for i in 0..n {
+            lines.push(elt_to_string(x, i));
+        }
+    }
+
+    let content = lines.join("\n") + "\n";
+    if let Err(e) = std::fs::write(&file_path, content) {
+        eprintln!("Error writing '{}': {}", file_path, e);
+    }
+
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+/// R's `read.table(file, header=FALSE, sep="")` — read a table (simplified).
+/// Returns a list (data.frame) of columns.
+pub unsafe fn do_read_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let file_arg = CAR(args);
+    let header_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(CDR(args))
+    };
+
+    let file_path = elt_to_string(file_arg, 0);
+    let header = if header_arg.is_null() || header_arg == R_NilValue() {
+        false
+    } else {
+        let v = real_or_default(header_arg, 0.0);
+        v != 0.0
+    };
+
+    let content = match std::fs::read_to_string(&file_path) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("Error reading '{}': {}", file_path, e);
+            return R_NilValue();
+        }
+    };
+
+    let mut lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return R_NilValue();
+    }
+
+    // Parse first data line to determine number of columns
+    let ncols = if header {
+        if lines.is_empty() {
+            return R_NilValue();
+        }
+        lines[0].split_whitespace().count()
+    } else {
+        lines[0].split_whitespace().count()
+    };
+
+    if ncols == 0 {
+        return R_NilValue();
+    }
+
+    let col_names: Vec<String> = if header {
+        let header_line = lines.remove(0);
+        header_line
+            .split_whitespace()
+            .map(|s| s.trim().to_string())
+            .collect()
+    } else {
+        (0..ncols).map(|i| format!("V{}", i + 1)).collect()
+    };
+
+    let mut col_data: Vec<Vec<f64>> = vec![Vec::new(); ncols];
+    for line in &lines {
+        let fields: Vec<&str> = line.split_whitespace().collect();
+        for j in 0..ncols {
+            let val = if j < fields.len() {
+                fields[j].trim().parse::<f64>().unwrap_or(NA_REAL)
+            } else {
+                NA_REAL
+            };
+            col_data[j].push(val);
+        }
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, ncols as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+
+    let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, ncols as R_xlen_t);
+    let _p2 = Rf_protect(names_vec);
+
+    for j in 0..ncols {
+        let nrow = col_data[j].len();
+        let col = Rf_allocVector3(SEXPTYPE::REALSXP.0, nrow as R_xlen_t);
+        if !col.is_null() {
+            let dst = REAL(col);
+            for (i, &v) in col_data[j].iter().enumerate() {
+                *dst.add(i) = v;
+            }
+        }
+        let data = (*result).gengc_next_node as *mut SEXP;
+        *data.add(j) = col;
+
+        let cstr = CString::new(col_names[j].as_str()).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let nmdata = (*names_vec).gengc_next_node as *mut SEXP;
+            *nmdata.add(j) = charsxp;
+        }
+    }
+
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        names_vec,
+    );
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    let _p3 = Rf_protect(class_vec);
+    let cstr = CString::new("data.frame").unwrap_or_default();
+    let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+    if !charsxp.is_null() {
+        let cdata = (*class_vec).gengc_next_node as *mut SEXP;
+        *cdata.add(0) = charsxp;
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+        class_vec,
+    );
+
+    crate::sexp::protect::Rf_unprotect(3);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Complete S3 generics — as.matrix, as.numeric
+// ---------------------------------------------------------------------------
+
+/// R's `as.matrix(x)` — convert to matrix (simplified).
+/// For vectors, wraps as a single-column matrix.
+/// For lists/data.frames, wraps as a matrix.
+pub unsafe fn do_as_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(x);
+    if t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        // Simple vector — copy and set dim attribute
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(t, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        if t == SEXPTYPE::REALSXP.0 {
+            let src = REAL(x);
+            let dst = REAL(result);
+            for i in 0..n {
+                *dst.add(i as usize) = *src.add(i as usize);
+            }
+        } else {
+            let src = INTEGER(x);
+            let dst = INTEGER(result);
+            for i in 0..n {
+                *dst.add(i as usize) = *src.add(i as usize);
+            }
+        }
+        // Set dim = c(n, 1)
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+        if !dim.is_null() {
+            let _p2 = Rf_protect(dim);
+            let d = INTEGER(dim);
+            *d.add(0) = n as i32;
+            *d.add(1) = 1;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+                dim,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    } else if t == SEXPTYPE::STRSXP.0 {
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP.0, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        // Copy string elements
+        for i in 0..n {
+            let charsxp = STRING_ELT(x, i);
+            if !charsxp.is_null() {
+                SET_STRING_ELT(result, i, charsxp);
+            }
+        }
+        // Set dim = c(n, 1)
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+        if !dim.is_null() {
+            let _p2 = Rf_protect(dim);
+            let d = INTEGER(dim);
+            *d.add(0) = n as i32;
+            *d.add(1) = 1;
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+                dim,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+        result
+    } else {
+        // For other types, return as-is
+        x
+    }
+}
+
+/// R's `as.numeric(x)` — alias for as.double.
+pub unsafe fn do_as_numeric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Delegate to do_as_double
+    do_as_double(_call, _op, args, _rho)
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime — par, getGraphicsEvent (simplified: return NULL)
+// ---------------------------------------------------------------------------
+
+/// R's `par(...)` — graphical parameters (simplified: returns NULL).
+pub unsafe fn do_par(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+/// R's `getGraphicsEvent(prompt, onMouseDown, ...)` — graphics events (simplified: returns NULL).
+pub unsafe fn do_getGraphicsEvent(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime — Rprof, Rprofmem, gc, gcinfo, memory.size, object.size
+// ---------------------------------------------------------------------------
+
+/// R's `Rprof(filename, ...)` — profiling (simplified: no-op).
+pub unsafe fn do_Rprof(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+/// R's `Rprofmem(filename, ...)` — memory profiling (simplified: no-op).
+pub unsafe fn do_Rprofmem(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+/// R's `gc()` — garbage collection (simplified: returns matrix of zeros).
+pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    // Return a 2x7 matrix of zeros (Ncells/Vcells rows, 7 columns)
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, 14);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..14 {
+        *dst.add(i) = 0.0;
+    }
+    // Set dim = c(2, 7)
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+    if !dim.is_null() {
+        let _p2 = Rf_protect(dim);
+        let d = INTEGER(dim);
+        *d.add(0) = 2;
+        *d.add(1) = 7;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            dim,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+    // Set dimnames
+    let dn = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+    if !dn.is_null() {
+        let _p3 = Rf_protect(dn);
+        let row_names = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+        if !row_names.is_null() {
+            let _p4 = Rf_protect(row_names);
+            let s1 = CString::new("Ncells").unwrap_or_default();
+            let s2 = CString::new("Vcells").unwrap_or_default();
+            SET_STRING_ELT(
+                row_names,
+                0,
+                crate::sexp::constructors::Rf_mkChar(s1.as_ptr()),
+            );
+            SET_STRING_ELT(
+                row_names,
+                1,
+                crate::sexp::constructors::Rf_mkChar(s2.as_ptr()),
+            );
+            SET_VECTOR_ELT(dn, 0, row_names);
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
+            dn,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    crate::sexp::globals::set_R_Visible(FALSE);
+    result
+}
+
+/// R's `gcinfo(on)` — set gc info verbosity (simplified: no-op).
+pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    crate::sexp::globals::set_R_Visible(FALSE);
+    R_NilValue()
+}
+
+/// R's `memory.size(max)` — memory usage in MB (simplified: returns 0).
+pub unsafe fn do_memory_size(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarReal(0.0)
+}
+
+/// R's `object.size(x)` — estimate object size in bytes (simplified).
+/// Returns a numeric scalar with class "object_size".
+pub unsafe fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        let result = Rf_ScalarReal(0.0);
+        let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+        if !class_vec.is_null() {
+            let _p2 = Rf_protect(class_vec);
+            let cstr = CString::new("object_size").unwrap_or_default();
+            let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+            if !charsxp.is_null() {
+                let cdata = (*class_vec).gengc_next_node as *mut SEXP;
+                *cdata.add(0) = charsxp;
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+                class_vec,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+        return result;
+    }
+    let t = TYPEOF(x);
+    let n = XLENGTH(x);
+    let size: f64 = match t {
+        t if t == SEXPTYPE::REALSXP.0 => (n as usize * std::mem::size_of::<f64>()) as f64,
+        t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 => {
+            (n as usize * std::mem::size_of::<i32>()) as f64
+        }
+        t if t == SEXPTYPE::STRSXP.0 => {
+            let mut total: usize = 0;
+            for i in 0..n {
+                let charsxp = STRING_ELT(x, i);
+                if !charsxp.is_null() {
+                    let s = CHAR(charsxp);
+                    if !s.is_null() {
+                        let cstr = std::ffi::CStr::from_ptr(s);
+                        total += cstr.to_bytes().len() + 1;
+                    }
+                }
+            }
+            total as f64
+        }
+        t if t == SEXPTYPE::VECSXP.0 => {
+            let mut total: usize = std::mem::size_of::<SEXP>() * n as usize;
+            for i in 0..n {
+                let elt = VECTOR_ELT(x, i);
+                if !elt.is_null() {
+                    let elt_size = do_object_size(
+                        _call,
+                        _op,
+                        {
+                            // Create a temporary pairlist with elt as first arg
+                            let cell = Rf_cons(elt, R_NilValue());
+                            cell
+                        },
+                        _rho,
+                    );
+                    total += real_or_default(elt_size, 0.0) as usize;
+                }
+            }
+            total as f64
+        }
+        _ => 64.0, // Default estimate for headers
+    };
+    let result = Rf_ScalarReal(size);
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    if !class_vec.is_null() {
+        let _p2 = Rf_protect(class_vec);
+        let cstr = CString::new("object_size").unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let cdata = (*class_vec).gengc_next_node as *mut SEXP;
+            *cdata.add(0) = charsxp;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            class_vec,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+    result
 }

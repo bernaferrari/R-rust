@@ -2866,6 +2866,147 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Complete R runtime — match.call, sys.nframe, sys.function, on.exit
+        "match.call" => unsafe {
+            crate::mainutils::essentials::do_match_call(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sys.nframe" => unsafe {
+            crate::mainutils::essentials::do_sys_nframe(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sys.function" => unsafe {
+            crate::mainutils::essentials::do_sys_function(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "on.exit" => unsafe {
+            crate::mainutils::essentials::do_on_exit(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete I/O — read.csv, write.csv, read.table
+        "read.csv" => unsafe {
+            crate::mainutils::essentials::do_read_csv(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "write.csv" => unsafe {
+            crate::mainutils::essentials::do_write_csv(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "read.table" => unsafe {
+            crate::mainutils::essentials::do_read_table(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete S3 generics — as.matrix, as.numeric
+        "as.matrix" => unsafe {
+            crate::mainutils::essentials::do_as_matrix(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "as.numeric" => unsafe {
+            crate::mainutils::essentials::do_as_numeric(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete R runtime — par, getGraphicsEvent
+        "par" => unsafe {
+            crate::mainutils::essentials::do_par(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "getGraphicsEvent" => unsafe {
+            crate::mainutils::essentials::do_getGraphicsEvent(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete R runtime — Rprof, Rprofmem, gc, gcinfo, memory.size, object.size
+        "Rprof" => unsafe {
+            crate::mainutils::essentials::do_Rprof(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "Rprofmem" => unsafe {
+            crate::mainutils::essentials::do_Rprofmem(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "gc" => unsafe {
+            crate::mainutils::essentials::do_gc(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "gcinfo" => unsafe {
+            crate::mainutils::essentials::do_gcinfo(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "memory.size" => unsafe {
+            crate::mainutils::essentials::do_memory_size(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "object.size" => unsafe {
+            crate::mainutils::essentials::do_object_size(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }

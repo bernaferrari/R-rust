@@ -913,21 +913,23 @@ unsafe fn free_dll_info(info: *mut DllInfo) {
 // DeleteDLL — remove a DLL from the table
 // ---------------------------------------------------------------------------
 
-unsafe fn call_dll_unload(dll_info: *mut DllInfo) { unsafe {
-    let name = CStr::from_ptr((*dll_info).name);
-    let name_bytes = name.to_bytes();
-    let buf = format!("R_unload_{}\0", std::str::from_utf8_unchecked(name_bytes));
-    unsafe extern "C" {
-        fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
-    }
-    let sym = dlsym((*dll_info).handle, buf.as_ptr() as *const c_char);
-    if !sym.is_null() {
-        let unload_fn: Option<unsafe extern "C" fn(*mut DllInfo)> = std::mem::transmute(sym);
-        if let Some(f) = unload_fn {
-            f(dll_info);
+unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
+    unsafe {
+        let name = CStr::from_ptr((*dll_info).name);
+        let name_bytes = name.to_bytes();
+        let buf = format!("R_unload_{}\0", std::str::from_utf8_unchecked(name_bytes));
+        unsafe extern "C" {
+            fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
+        }
+        let sym = dlsym((*dll_info).handle, buf.as_ptr() as *const c_char);
+        if !sym.is_null() {
+            let unload_fn: Option<unsafe extern "C" fn(*mut DllInfo)> = std::mem::transmute(sym);
+            if let Some(f) = unload_fn {
+                f(dll_info);
+            }
         }
     }
-}}
+}
 
 unsafe fn delete_dll(path: *const c_char) -> bool {
     unsafe {
