@@ -11698,3 +11698,139 @@ pub unsafe fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     }
     result
 }
+
+
+// ---------------------------------------------------------------------------
+// Critical remaining R functions
+// ---------------------------------------------------------------------------
+
+/// R sample.int(n, size) — sample from 1:n
+pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = real_or_default(CAR(args), 1.0) as i64;
+        let size = real_or_default(CAR(CDR(args)), n as f64) as i64;
+        if n <= 0 || size <= 0 { return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0); }
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, size as R_xlen_t);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        let dst = INTEGER(result);
+        for i in 0..size {
+            let u = crate::rng::unif_rand();
+            *dst.add(i as usize) = (u * n as f64) as c_int + 1;
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R setNames(object, nm)
+pub unsafe fn do_setNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let obj = CAR(args);
+        let nm = CAR(CDR(args));
+        if obj.is_null() || nm.is_null() { return obj; }
+        crate::sexp::attrib_core::setAttrib(obj, Rf_install(CString::new("names").unwrap_or_default().as_ptr()), nm);
+        obj
+    }
+}
+
+/// R toString(x)
+pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return Rf_mkString(CString::new("NULL").unwrap_or_default().as_ptr());
+        }
+        let n = XLENGTH(x).max(1);
+        let mut parts: Vec<String> = Vec::new();
+        for i in 0..n.min(999) { parts.push(elt_to_string(x, i)); }
+        if n > 999 { parts.push("...".to_string()); }
+        Rf_mkString(CString::new(parts.join(", ")).unwrap_or_default().as_ptr())
+    }
+}
+
+/// R normalizePath(path)
+pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        if x.is_null() || x == R_NilValue() { return R_NilValue(); }
+        let path = elt_to_string(x, 0);
+        match std::fs::canonicalize(&path) {
+            Ok(p) => Rf_mkString(CString::new(p.to_string_lossy().as_ref()).unwrap_or_default().as_ptr()),
+            Err(_) => Rf_mkString(CString::new(path).unwrap_or_default().as_ptr()),
+        }
+    }
+}
+
+/// R tempfile()
+pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let tmp = std::env::temp_dir();
+        let path = tmp.join(format!("RtmpXXXXXX{}", std::process::id()));
+        Rf_mkString(CString::new(path.to_string_lossy().as_ref()).unwrap_or_default().as_ptr())
+    }
+}
+
+/// R tempdir()
+pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        Rf_mkString(CString::new(std::env::temp_dir().to_string_lossy().as_ref()).unwrap_or_default().as_ptr())
+    }
+}
+
+/// R proc.time()
+pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, 5);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        for i in 0..5 { *REAL(result).add(i) = 0.0; }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R regexpr(pattern, text)
+pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let pat = elt_to_string(CAR(args), 0);
+        let n = XLENGTH(CAR(CDR(args))).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        for i in 0..n {
+            let txt = elt_to_string(CAR(CDR(args)), i);
+            *INTEGER(result).add(i as usize) = match txt.find(&pat) {
+                Some(pos) => (pos + 1) as c_int,
+                None => -1,
+            };
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R charToRaw(x)
+pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let s = elt_to_string(CAR(args), 0).as_bytes().to_vec();
+        let result = Rf_allocVector3(SEXPTYPE::RAWSXP.0, s.len() as R_xlen_t);
+        if result.is_null() { return R_NilValue(); }
+        let _p = Rf_protect(result);
+        let data = (*result).gengc_next_node as *mut u8;
+        for (i, &b) in s.iter().enumerate() { *data.add(i) = b; }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R rawToChar(x)
+pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let n = XLENGTH(CAR(args));
+        let data = (*CAR(args)).gengc_next_node as *const u8;
+        let s = String::from_utf8_lossy(std::slice::from_raw_parts(data, n as usize));
+        Rf_mkString(CString::new(s.as_ref()).unwrap_or_default().as_ptr())
+    }
+}
+
