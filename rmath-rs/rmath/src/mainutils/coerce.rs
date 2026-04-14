@@ -2548,6 +2548,27 @@ pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEX
     }
 }
 
+/// Check if a single element is NA — matches C's LIST_VEC_NA macro.
+/// Returns 1 if the element is a length-1 vector containing NA, 0 otherwise.
+unsafe fn elem_is_na(s: SEXP) -> c_int {
+    unsafe {
+        if !isVector(s) || xlength(s) != 1 {
+            return 0;
+        }
+        match TYPEOF(s) {
+            t if t == SEXPTYPE::LGLSXP.0 => (LOGICAL_ELT(s, 0) == NA_LOGICAL) as c_int,
+            t if t == SEXPTYPE::INTSXP.0 => (INTEGER_ELT(s, 0) == NA_INTEGER) as c_int,
+            t if t == SEXPTYPE::REALSXP.0 => ISNAN(REAL_ELT(s, 0)) as c_int,
+            t if t == SEXPTYPE::STRSXP.0 => (STRING_ELT(s, 0) == R_NaString()) as c_int,
+            t if t == SEXPTYPE::CPLXSXP.0 => {
+                let v = COMPLEX_ELT(s, 0);
+                (ISNAN(v.r) || ISNAN(v.i)) as c_int
+            }
+            _ => 0,
+        }
+    }
+}
+
 /// R-level `is.*` predicate dispatcher.
 ///
 /// This is the `do_is()` function from coerce.c, implementing is.null,
@@ -2638,9 +2659,24 @@ pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
             t if t == SEXPTYPE::RAWSXP.0 => {
                 for i in 0..n {
-                    *pa.add(i as usize) = 0; // no raw NA
+                    *pa.add(i as usize) = 0;
                 }
             }
+            t if t == SEXPTYPE::LISTSXP.0 => {
+                let mut elt = x;
+                for i in 0..n {
+                    let s = CAR(elt);
+                    *pa.add(i as usize) = elem_is_na(s);
+                    elt = CDR(elt);
+                }
+            }
+            t if t == SEXPTYPE::VECSXP.0 => {
+                for i in 0..n {
+                    let s = VECTOR_ELT(x, i);
+                    *pa.add(i as usize) = elem_is_na(s);
+                }
+            }
+            t if t == SEXPTYPE::NILSXP.0 => {}
             _ => {
                 for i in 0..n {
                     *pa.add(i as usize) = 0;
