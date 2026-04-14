@@ -1907,7 +1907,8 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     };
 
     // Build incomparables set
-    let mut incomparable_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut incomparable_set: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
     if !incomparables.is_null() && incomparables != R_NilValue() {
         let in_n = XLENGTH(incomparables);
         for i in 0..in_n {
@@ -2059,7 +2060,8 @@ pub unsafe fn do_anyDuplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     };
 
     // Build incomparables set
-    let mut incomparable_set: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    let mut incomparable_set: std::collections::BTreeSet<String> =
+        std::collections::BTreeSet::new();
     if !incomparables.is_null() && incomparables != R_NilValue() {
         let in_n = XLENGTH(incomparables);
         for i in 0..in_n {
@@ -2171,7 +2173,10 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         let mut new_args = R_NilValue();
         // push nmax as NA
         new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
         new_args = Rf_cons(R_NilValue(), new_args); // incomparables
         new_args = Rf_cons(x, new_args);
         return do_duplicated(_call, _op, new_args, _rho);
@@ -2213,12 +2218,14 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 row_strings.push(parts.join("\x01"));
             }
             // Collect from end
-            let mut unique_from_end: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut unique_from_end: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             for row in (0..total).rev() {
                 unique_from_end.insert(row_strings[row].clone());
             }
             // Mark from start
-            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             for row in 0..total {
                 if encountered.contains(&row_strings[row]) {
                     *dst.add(row) = TRUE;
@@ -2268,7 +2275,8 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 }
                 col_strings.push(parts.join("\x01"));
             }
-            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             for col in 0..total {
                 if encountered.contains(&col_strings[col]) {
                     *dst.add(col) = TRUE;
@@ -2301,7 +2309,10 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
         // For higher-dimensional arrays, treat as 1D
         let mut new_args = R_NilValue();
         new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
         new_args = Rf_cons(R_NilValue(), new_args);
         new_args = Rf_cons(x, new_args);
         do_duplicated(_call, _op, new_args, _rho)
@@ -2355,7 +2366,10 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
         // Not really an array — fall back to regular anyDuplicated
         let mut new_args = R_NilValue();
         new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
         new_args = Rf_cons(R_NilValue(), new_args);
         new_args = Rf_cons(x, new_args);
         return do_anyDuplicated(_call, _op, new_args, _rho);
@@ -2384,7 +2398,8 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
                 row_strings.push(parts.join("\x01"));
             }
             let mut result_idx = 0i32;
-            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             for row in (0..nrows).rev() {
                 if encountered.contains(&row_strings[row]) {
                     result_idx = (row + 1) as c_int; // R 1-indexed
@@ -2422,7 +2437,8 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
                 col_strings.push(parts.join("\x01"));
             }
             let mut result_idx = 0i32;
-            let mut encountered: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+            let mut encountered: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             for col in (0..ncols).rev() {
                 if encountered.contains(&col_strings[col]) {
                     result_idx = (col + 1) as c_int;
@@ -2450,7 +2466,10 @@ pub unsafe fn do_anyDuplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: S
         // Generic fallback
         let mut new_args = R_NilValue();
         new_args = Rf_cons(Rf_ScalarInteger(NA_INTEGER), new_args);
-        new_args = Rf_cons(Rf_ScalarLogical(if from_last { TRUE } else { FALSE }), new_args);
+        new_args = Rf_cons(
+            Rf_ScalarLogical(if from_last { TRUE } else { FALSE }),
+            new_args,
+        );
         new_args = Rf_cons(R_NilValue(), new_args);
         new_args = Rf_cons(x, new_args);
         do_anyDuplicated(_call, _op, new_args, _rho)
@@ -3112,7 +3131,11 @@ pub unsafe fn do_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // For now, we split by newlines and evaluate each line as a simple expression.
             let _lines: Vec<&str> = content.lines().collect();
             // Return the file path invisibly as confirmation
-            let result = Rf_mkString(CString::new(file_path.as_str()).unwrap_or_default().as_ptr());
+            let result = Rf_mkString(
+                CString::new(file_path.as_str())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            );
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             result
         }
@@ -3146,7 +3169,11 @@ pub unsafe fn do_sys_source(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SE
     match std::fs::read_to_string(&file_path) {
         Ok(_content) => {
             // Simplified: in a full impl, parse and eval in the target env
-            let result = Rf_mkString(CString::new(file_path.as_str()).unwrap_or_default().as_ptr());
+            let result = Rf_mkString(
+                CString::new(file_path.as_str())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            );
             crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             result
         }
@@ -9133,11 +9160,7 @@ pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     if !s.is_null() {
                         let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
                         if name_str == slot_name {
-                            crate::sexp::accessors::SET_VECTOR_ELT(
-                                object,
-                                i as R_xlen_t,
-                                value,
-                            );
+                            crate::sexp::accessors::SET_VECTOR_ELT(object, i as R_xlen_t, value);
                             return value;
                         }
                     }
@@ -13154,7 +13177,6 @@ pub unsafe fn do_object_size(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     result
 }
 
-
 // ---------------------------------------------------------------------------
 // Critical remaining R functions
 // ---------------------------------------------------------------------------
@@ -13164,9 +13186,13 @@ pub unsafe fn do_sample_int(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     unsafe {
         let n = real_or_default(CAR(args), 1.0) as i64;
         let size = real_or_default(CAR(CDR(args)), n as f64) as i64;
-        if n <= 0 || size <= 0 { return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0); }
+        if n <= 0 || size <= 0 {
+            return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+        }
         let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, size as R_xlen_t);
-        if result.is_null() { return R_NilValue(); }
+        if result.is_null() {
+            return R_NilValue();
+        }
         let _p = Rf_protect(result);
         let dst = INTEGER(result);
         for i in 0..size {
@@ -13183,8 +13209,14 @@ pub unsafe fn do_setNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         let obj = CAR(args);
         let nm = CAR(CDR(args));
-        if obj.is_null() || nm.is_null() { return obj; }
-        crate::sexp::attrib_core::setAttrib(obj, Rf_install(CString::new("names").unwrap_or_default().as_ptr()), nm);
+        if obj.is_null() || nm.is_null() {
+            return obj;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            obj,
+            Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+            nm,
+        );
         obj
     }
 }
@@ -13198,8 +13230,12 @@ pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
         let n = XLENGTH(x).max(1);
         let mut parts: Vec<String> = Vec::new();
-        for i in 0..n.min(999) { parts.push(elt_to_string(x, i)); }
-        if n > 999 { parts.push("...".to_string()); }
+        for i in 0..n.min(999) {
+            parts.push(elt_to_string(x, i));
+        }
+        if n > 999 {
+            parts.push("...".to_string());
+        }
         Rf_mkString(CString::new(parts.join(", ")).unwrap_or_default().as_ptr())
     }
 }
@@ -13208,10 +13244,16 @@ pub unsafe fn do_toString(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if x.is_null() || x == R_NilValue() { return R_NilValue(); }
+        if x.is_null() || x == R_NilValue() {
+            return R_NilValue();
+        }
         let path = elt_to_string(x, 0);
         match std::fs::canonicalize(&path) {
-            Ok(p) => Rf_mkString(CString::new(p.to_string_lossy().as_ref()).unwrap_or_default().as_ptr()),
+            Ok(p) => Rf_mkString(
+                CString::new(p.to_string_lossy().as_ref())
+                    .unwrap_or_default()
+                    .as_ptr(),
+            ),
             Err(_) => Rf_mkString(CString::new(path).unwrap_or_default().as_ptr()),
         }
     }
@@ -13222,14 +13264,22 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let tmp = std::env::temp_dir();
         let path = tmp.join(format!("RtmpXXXXXX{}", std::process::id()));
-        Rf_mkString(CString::new(path.to_string_lossy().as_ref()).unwrap_or_default().as_ptr())
+        Rf_mkString(
+            CString::new(path.to_string_lossy().as_ref())
+                .unwrap_or_default()
+                .as_ptr(),
+        )
     }
 }
 
 /// R tempdir()
 pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        Rf_mkString(CString::new(std::env::temp_dir().to_string_lossy().as_ref()).unwrap_or_default().as_ptr())
+        Rf_mkString(
+            CString::new(std::env::temp_dir().to_string_lossy().as_ref())
+                .unwrap_or_default()
+                .as_ptr(),
+        )
     }
 }
 
@@ -13237,9 +13287,13 @@ pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, 5);
-        if result.is_null() { return R_NilValue(); }
+        if result.is_null() {
+            return R_NilValue();
+        }
         let _p = Rf_protect(result);
-        for i in 0..5 { *REAL(result).add(i) = 0.0; }
+        for i in 0..5 {
+            *REAL(result).add(i) = 0.0;
+        }
         crate::sexp::protect::Rf_unprotect(1);
         result
     }
@@ -13251,7 +13305,9 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let pat = elt_to_string(CAR(args), 0);
         let n = XLENGTH(CAR(CDR(args))).max(1);
         let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
-        if result.is_null() { return R_NilValue(); }
+        if result.is_null() {
+            return R_NilValue();
+        }
         let _p = Rf_protect(result);
         for i in 0..n {
             let txt = elt_to_string(CAR(CDR(args)), i);
@@ -13270,10 +13326,14 @@ pub unsafe fn do_charToRaw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     unsafe {
         let s = elt_to_string(CAR(args), 0).as_bytes().to_vec();
         let result = Rf_allocVector3(SEXPTYPE::RAWSXP.0, s.len() as R_xlen_t);
-        if result.is_null() { return R_NilValue(); }
+        if result.is_null() {
+            return R_NilValue();
+        }
         let _p = Rf_protect(result);
         let data = (*result).gengc_next_node as *mut u8;
-        for (i, &b) in s.iter().enumerate() { *data.add(i) = b; }
+        for (i, &b) in s.iter().enumerate() {
+            *data.add(i) = b;
+        }
         crate::sexp::protect::Rf_unprotect(1);
         result
     }
@@ -13289,7 +13349,7 @@ pub unsafe fn do_rawToChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-// --------------------------------------------------------------------------- 
+// ---------------------------------------------------------------------------
 // Complete I/O — European CSV, delimited, fixed-width
 // ---------------------------------------------------------------------------
 
@@ -13720,7 +13780,7 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     R_NilValue()
 }
 
-// --------------------------------------------------------------------------- 
+// ---------------------------------------------------------------------------
 // Complete S3 — method dispatch
 // ---------------------------------------------------------------------------
 
@@ -13731,10 +13791,18 @@ pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
     // Try to find method: generic.class
     let method_name = format!("{}.{}", generic, class);
-    let _sym = Rf_install(CString::new(method_name.as_str()).unwrap_or_default().as_ptr());
+    let _sym = Rf_install(
+        CString::new(method_name.as_str())
+            .unwrap_or_default()
+            .as_ptr(),
+    );
 
     // Return a placeholder closure
-    let body = Rf_mkString(CString::new(format!("S3 method: {}", method_name).as_str()).unwrap_or_default().as_ptr());
+    let body = Rf_mkString(
+        CString::new(format!("S3 method: {}", method_name).as_str())
+            .unwrap_or_default()
+            .as_ptr(),
+    );
     body
 }
 
@@ -13789,7 +13857,7 @@ pub unsafe fn do_setMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     }
 }
 
-// --------------------------------------------------------------------------- 
+// ---------------------------------------------------------------------------
 // Complete R runtime — serialization
 // ---------------------------------------------------------------------------
 
@@ -13823,10 +13891,8 @@ pub unsafe fn do_loadRDS(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 return R_NilValue();
             }
             // Check for RDS magic: "RDX2\n"
-            let is_rds = bytes.len() >= 5
-                && bytes[0] == b'R'
-                && bytes[1] == b'D'
-                && bytes[2] == b'X';
+            let is_rds =
+                bytes.len() >= 5 && bytes[0] == b'R' && bytes[1] == b'D' && bytes[2] == b'X';
 
             if !is_rds {
                 eprintln!("Warning: '{}' does not appear to be an RDS file", file_path);
@@ -13932,7 +13998,8 @@ pub unsafe fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         return R_NilValue();
     }
     let na_rm_arg = CAR(CDR(args));
-    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
     let dim_attr = crate::sexp::attrib_core::getAttrib(
         x,
@@ -13972,12 +14039,22 @@ pub unsafe fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             };
             if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 has_na = true;
-                if !na_rm { sum = NA_REAL; break; }
+                if !na_rm {
+                    sum = NA_REAL;
+                    break;
+                }
             } else {
                 sum += val;
             }
         }
-        *dst.add(j as usize) = if has_na && na_rm && sum.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN { sum } else if has_na && !na_rm { NA_REAL } else { sum };
+        *dst.add(j as usize) =
+            if has_na && na_rm && sum.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN {
+                sum
+            } else if has_na && !na_rm {
+                NA_REAL
+            } else {
+                sum
+            };
     }
     crate::sexp::protect::Rf_unprotect(1);
     result
@@ -13990,7 +14067,8 @@ pub unsafe fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         return R_NilValue();
     }
     let na_rm_arg = CAR(CDR(args));
-    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
     let dim_attr = crate::sexp::attrib_core::getAttrib(
         x,
@@ -14030,7 +14108,10 @@ pub unsafe fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             };
             if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 has_na = true;
-                if !na_rm { sum = NA_REAL; break; }
+                if !na_rm {
+                    sum = NA_REAL;
+                    break;
+                }
             } else {
                 sum += val;
             }
@@ -14048,7 +14129,8 @@ pub unsafe fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         return R_NilValue();
     }
     let na_rm_arg = CAR(CDR(args));
-    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
     let dim_attr = crate::sexp::attrib_core::getAttrib(
         x,
@@ -14089,13 +14171,22 @@ pub unsafe fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
             if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 has_na = true;
-                if !na_rm { sum = NA_REAL; break; }
+                if !na_rm {
+                    sum = NA_REAL;
+                    break;
+                }
             } else {
                 sum += val;
                 count += 1;
             }
         }
-        *dst.add(j as usize) = if has_na && !na_rm { NA_REAL } else if count > 0 { sum / count as f64 } else { NA_REAL };
+        *dst.add(j as usize) = if has_na && !na_rm {
+            NA_REAL
+        } else if count > 0 {
+            sum / count as f64
+        } else {
+            NA_REAL
+        };
     }
     crate::sexp::protect::Rf_unprotect(1);
     result
@@ -14108,7 +14199,8 @@ pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         return R_NilValue();
     }
     let na_rm_arg = CAR(CDR(args));
-    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
     let dim_attr = crate::sexp::attrib_core::getAttrib(
         x,
@@ -14149,13 +14241,22 @@ pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             };
             if val.is_nan() || val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
                 has_na = true;
-                if !na_rm { sum = NA_REAL; break; }
+                if !na_rm {
+                    sum = NA_REAL;
+                    break;
+                }
             } else {
                 sum += val;
                 count += 1;
             }
         }
-        *dst.add(i as usize) = if has_na && !na_rm { NA_REAL } else if count > 0 { sum / count as f64 } else { NA_REAL };
+        *dst.add(i as usize) = if has_na && !na_rm {
+            NA_REAL
+        } else if count > 0 {
+            sum / count as f64
+        } else {
+            NA_REAL
+        };
     }
     crate::sexp::protect::Rf_unprotect(1);
     result
@@ -14330,4 +14431,3 @@ pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     crate::sexp::protect::Rf_unprotect(1);
     result
 }
-

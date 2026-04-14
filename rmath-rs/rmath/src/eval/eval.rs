@@ -3592,6 +3592,157 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Distribution functions — log-normal
+        "dlnorm" => unsafe {
+            crate::mainutils::essentials::do_dlnorm(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "plnorm" => unsafe {
+            crate::mainutils::essentials::do_plnorm(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "qlnorm" => unsafe {
+            crate::mainutils::essentials::do_qlnorm(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Distribution functions — logistic
+        "dlogis" => unsafe {
+            crate::mainutils::essentials::do_dlogis(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "plogis" => unsafe {
+            crate::mainutils::essentials::do_plogis(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "qlogis" => unsafe {
+            crate::mainutils::essentials::do_qlogis(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Distribution functions — Wilcoxon signed rank
+        "dsignrank" => unsafe {
+            crate::mainutils::essentials::do_dsignrank(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "psignrank" => unsafe {
+            crate::mainutils::essentials::do_psignrank(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "qsignrank" => unsafe {
+            crate::mainutils::essentials::do_qsignrank(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Distribution functions — Wilcoxon rank sum
+        "dwilcox" => unsafe {
+            crate::mainutils::essentials::do_dwilcox(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pwilcox" => unsafe {
+            crate::mainutils::essentials::do_pwilcox(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "qwilcox" => unsafe {
+            crate::mainutils::essentials::do_qwilcox(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Distribution functions — hypergeometric
+        "dhyper" => unsafe {
+            crate::mainutils::essentials::do_dhyper(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "phyper" => unsafe {
+            crate::mainutils::essentials::do_phyper(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "qhyper" => unsafe {
+            crate::mainutils::essentials::do_qhyper(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Distribution functions — studentized range
+        "ptukey" => unsafe {
+            crate::mainutils::essentials::do_ptukey(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "qtukey" => unsafe {
+            crate::mainutils::essentials::do_qtukey(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Distribution functions — multinomial
+        "dmultinom" => unsafe {
+            crate::mainutils::essentials::do_dmultinom(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
