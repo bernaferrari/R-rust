@@ -1266,6 +1266,194 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // S3 print/summary dispatch
+        "print.default" => unsafe {
+            crate::mainutils::essentials::do_print_default(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "print.data.frame" => unsafe {
+            crate::mainutils::essentials::do_print_data_frame(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "print.table" => unsafe {
+            crate::mainutils::essentials::do_print_table(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "summary.data.frame" => unsafe {
+            crate::mainutils::essentials::do_summary_data_frame(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "format.data.frame" => unsafe {
+            crate::mainutils::essentials::do_format_data_frame(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Matrix/linear algebra
+        "crossprod" => unsafe {
+            crate::mainutils::essentials::do_crossprod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "tcrossprod" => unsafe {
+            crate::mainutils::essentials::do_tcrossprod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "det" => unsafe {
+            crate::mainutils::essentials::do_det(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "solve" => unsafe {
+            crate::mainutils::essentials::do_solve(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Environment functions
+        "emptyenv" => unsafe {
+            crate::mainutils::essentials::do_emptyenv(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "baseenv" => unsafe {
+            crate::mainutils::essentials::do_baseenv(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "globalenv" => unsafe {
+            crate::mainutils::essentials::do_globalenv(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "new.env" => unsafe {
+            crate::mainutils::essentials::do_new_env(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "environment" => unsafe {
+            crate::mainutils::essentials::do_environment(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "lockBinding" => unsafe {
+            crate::mainutils::essentials::do_lockBinding(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "unlockBinding" => unsafe {
+            crate::mainutils::essentials::do_unlockBinding(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "bindingIsLocked" => unsafe {
+            crate::mainutils::essentials::do_bindingIsLocked(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "makeActiveBinding" => unsafe {
+            crate::mainutils::essentials::do_makeActiveBinding(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // R runtime essentials
+        "version" => unsafe {
+            crate::mainutils::essentials::do_version(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "R.version" => unsafe {
+            crate::mainutils::essentials::do_R_version(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "args" => unsafe {
+            crate::mainutils::essentials::do_args(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "formals" => unsafe {
+            crate::mainutils::essentials::do_formals(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "body" => unsafe {
+            crate::mainutils::essentials::do_body(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
