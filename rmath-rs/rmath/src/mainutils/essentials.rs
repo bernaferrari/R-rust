@@ -2586,6 +2586,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "unlockBinding",
         "bindingIsLocked",
         "makeActiveBinding",
+        "lockEnvironment",
+        "environmentIsLocked",
         // R runtime essentials
         "version",
         "R.version",
@@ -2646,6 +2648,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "isS4",
         "is",
         "S3_class",
+        "setClass",
+        "setValidity",
+        "isVirtualClass",
         // Complete I/O
         "scan",
         "write.table",
@@ -7169,6 +7174,18 @@ pub unsafe fn do_makeActiveBinding(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
     R_NilValue()
 }
 
+/// R's `lockEnvironment(env, bindings)` — lock an environment.
+/// Simplified: no-op that returns NULL.
+pub unsafe fn do_lockEnvironment(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+/// R's `environmentIsLocked(env)` — check if an environment is locked.
+/// Simplified: always returns FALSE.
+pub unsafe fn do_environmentIsLocked(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarLogical(FALSE)
+}
+
 // ---------------------------------------------------------------------------
 // R runtime essentials
 // ---------------------------------------------------------------------------
@@ -7989,6 +8006,24 @@ pub unsafe fn do_is(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             && type_name != "closure"
             && type_name != "environment");
     Rf_ScalarLogical(if is_match { TRUE } else { FALSE })
+}
+
+/// R's `setClass(Class, representation, ...)` — define an S4 class (simplified stub).
+/// In real R, this is from the methods package; here we just return NULL.
+pub unsafe fn do_setClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+/// R's `setValidity(Class, method)` — set a validity method for an S4 class (simplified stub).
+/// Returns NULL silently.
+pub unsafe fn do_setValidity(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+/// R's `isVirtualClass(Class)` — check if an S4 class is virtual (simplified stub).
+/// Always returns FALSE in this simplified implementation.
+pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarLogical(FALSE)
 }
 
 // ---------------------------------------------------------------------------

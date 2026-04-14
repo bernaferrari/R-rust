@@ -1420,6 +1420,22 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "lockEnvironment" => unsafe {
+            crate::mainutils::essentials::do_lockEnvironment(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "environmentIsLocked" => unsafe {
+            crate::mainutils::essentials::do_environmentIsLocked(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         // R runtime essentials
         "version" => unsafe {
             crate::mainutils::essentials::do_version(
@@ -1620,6 +1636,30 @@ fn apply_builtin_safe<'a>(
         },
         "S3_class" => unsafe {
             crate::mainutils::essentials::do_S3_class(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "setClass" => unsafe {
+            crate::mainutils::essentials::do_setClass(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "setValidity" => unsafe {
+            crate::mainutils::essentials::do_setValidity(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isVirtualClass" => unsafe {
+            crate::mainutils::essentials::do_isVirtualClass(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,
