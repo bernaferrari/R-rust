@@ -1290,6 +1290,14 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "print.factor" => unsafe {
+            crate::mainutils::essentials::do_print_factor(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "summary.data.frame" => unsafe {
             crate::mainutils::essentials::do_summary_data_frame(
                 call.as_raw(),
@@ -1635,6 +1643,22 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "readLines" => unsafe {
+            crate::mainutils::essentials::do_readLines(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "writeLines" => unsafe {
+            crate::mainutils::essentials::do_writeLines(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "sink" => unsafe {
             crate::mainutils::essentials::do_sink(
                 call.as_raw(),
@@ -1941,6 +1965,14 @@ fn apply_builtin_safe<'a>(
         },
         "R.version.string" => unsafe {
             crate::mainutils::essentials::do_R_version_string(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "R.Version" => unsafe {
+            crate::mainutils::essentials::do_R_Version(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,

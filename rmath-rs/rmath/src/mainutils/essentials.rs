@@ -2567,6 +2567,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "print.default",
         "print.data.frame",
         "print.table",
+        "print.factor",
         "summary.data.frame",
         "format.data.frame",
         // Matrix/linear algebra
@@ -2644,9 +2645,11 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "isS4",
         "is",
         "S3_class",
-        // I/O
+        // Complete I/O
         "scan",
         "write.table",
+        "readLines",
+        "writeLines",
         "sink",
         // Math/Statistics
         "cov",
@@ -2664,6 +2667,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "is_interactive",
         "getRversion",
         "R.version.string",
+        "R.Version",
         // List operations
         "list.append",
         "list.prepend",
@@ -6399,6 +6403,79 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     x
 }
 
+/// R's `print.factor(x)` — print factor with levels and counts.
+///
+/// Prints the factor values and a levels summary like:
+///   [1] a b c a
+///   Levels: a b c
+pub unsafe fn do_print_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+
+    // Get levels attribute
+    let levels = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("levels").unwrap_or_default().as_ptr()),
+    );
+    let has_levels = !levels.is_null() && TYPEOF(levels) == SEXPTYPE::STRSXP.0;
+
+    // Print the factor values
+    if n == 0 {
+        println!("factor(0)");
+    } else {
+        let t = TYPEOF(x);
+        let mut counts: Vec<i32> = Vec::new();
+        if has_levels {
+            let nl = XLENGTH(levels);
+            counts.resize(nl as usize, 0);
+        }
+
+        for i in 0..n {
+            let val = if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER {
+                    "<NA>".to_string()
+                } else if has_levels && (v as R_xlen_t) <= XLENGTH(levels) && v > 0 {
+                    let idx = (v - 1) as R_xlen_t;
+                    if (idx as usize) < counts.len() {
+                        counts[idx as usize] += 1;
+                    }
+                    elt_to_string(levels, idx)
+                } else {
+                    format!("{}", v)
+                }
+            } else {
+                elt_to_string(x, i)
+            };
+            if i == 0 {
+                print!("[1] {}", val);
+            } else {
+                print!(" {}", val);
+            }
+        }
+        println!();
+
+        // Print levels summary
+        if has_levels {
+            let nl = XLENGTH(levels);
+            print!("Levels:");
+            for i in 0..nl {
+                let lvl = elt_to_string(levels, i);
+                print!(" {}", lvl);
+            }
+            println!();
+        }
+    }
+
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
 /// R's `summary.data.frame(x)` — summary for data.frame (prints column summaries).
 pub unsafe fn do_summary_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
@@ -7123,6 +7200,11 @@ pub unsafe fn do_R_version(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 
     crate::sexp::protect::Rf_unprotect(1);
     result
+}
+
+/// R's `R.Version()` — returns the version info list (alias for R.version).
+pub unsafe fn do_R_Version(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_R_version(_call, _op, args, _rho)
 }
 
 /// R's `args(fn)` — returns the formal arguments of a function as a pairlist.
