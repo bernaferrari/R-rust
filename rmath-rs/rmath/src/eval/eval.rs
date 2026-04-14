@@ -1666,6 +1666,207 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // S4 class system
+        "new" => unsafe {
+            crate::mainutils::essentials::do_new(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "show" => unsafe {
+            crate::mainutils::essentials::do_show(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "slotNames" => unsafe {
+            crate::mainutils::essentials::do_slotNames(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "slot" => unsafe {
+            crate::mainutils::essentials::do_slot(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "set_slot" => unsafe {
+            crate::mainutils::essentials::do_set_slot(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "extends" => unsafe {
+            crate::mainutils::essentials::do_extends(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isSealedClass" => unsafe {
+            crate::mainutils::essentials::do_isSealedClass(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sealClass" => unsafe {
+            crate::mainutils::essentials::do_sealClass(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "representation" => unsafe {
+            crate::mainutils::essentials::do_representation(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "containsClass" => unsafe {
+            crate::mainutils::essentials::do_containsClass(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "possibleExtends" => unsafe {
+            crate::mainutils::essentials::do_possibleExtends(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "setReplaceMethod" => unsafe {
+            crate::mainutils::essentials::do_setReplaceMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "getMethod" => unsafe {
+            crate::mainutils::essentials::do_getMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "removeGeneric" => unsafe {
+            crate::mainutils::essentials::do_removeGeneric(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "removeMethod" => unsafe {
+            crate::mainutils::essentials::do_removeMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isGeneric" => unsafe {
+            crate::mainutils::essentials::do_isGeneric(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isMethod" => unsafe {
+            crate::mainutils::essentials::do_isMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "findMethod" => unsafe {
+            crate::mainutils::essentials::do_findMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "findMethods" => unsafe {
+            crate::mainutils::essentials::do_findMethods(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "showMethods" => unsafe {
+            crate::mainutils::essentials::do_showMethods(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "getGenerics" => unsafe {
+            crate::mainutils::essentials::do_getGenerics(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "getMethods" => unsafe {
+            crate::mainutils::essentials::do_getMethods(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "existsMethod" => unsafe {
+            crate::mainutils::essentials::do_existsMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "hasMethod" => unsafe {
+            crate::mainutils::essentials::do_hasMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "selectMethod" => unsafe {
+            crate::mainutils::essentials::do_selectMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         // I/O
         "scan" => unsafe {
             crate::mainutils::essentials::do_scan(

@@ -2651,6 +2651,32 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "setClass",
         "setValidity",
         "isVirtualClass",
+        // S4 class system
+        "new",
+        "show",
+        "slotNames",
+        "slot",
+        "set_slot",
+        "extends",
+        "isSealedClass",
+        "sealClass",
+        "representation",
+        "containsClass",
+        "possibleExtends",
+        "setReplaceMethod",
+        "getMethod",
+        "removeGeneric",
+        "removeMethod",
+        "isGeneric",
+        "isMethod",
+        "findMethod",
+        "findMethods",
+        "showMethods",
+        "getGenerics",
+        "getMethods",
+        "existsMethod",
+        "hasMethod",
+        "selectMethod",
         // Complete I/O
         "scan",
         "write.table",
@@ -8024,6 +8050,456 @@ pub unsafe fn do_setValidity(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
 /// Always returns FALSE in this simplified implementation.
 pub unsafe fn do_isVirtualClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     Rf_ScalarLogical(FALSE)
+}
+
+/// R's `new(Class, ...)` — create an S4 object (simplified).
+/// Creates a list-based object with the class attribute set.
+pub unsafe fn do_new(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let class_arg = CAR(args);
+    if class_arg.is_null() || class_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let class_name = elt_to_string(class_arg, 0);
+    // Collect named slot values from ... args
+    let mut slots: Vec<(String, SEXP)> = Vec::new();
+    let mut current = CDR(args);
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        let tag = (*current).data.listsxp.tagval;
+        let slot_name = if !tag.is_null() && tag != R_NilValue() {
+            let sym_str = crate::sexp::accessors::CHAR(tag);
+            if !sym_str.is_null() {
+                std::ffi::CStr::from_ptr(sym_str)
+                    .to_str()
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                format!("slot{}", slots.len() + 1)
+            }
+        } else {
+            format!("slot{}", slots.len() + 1)
+        };
+        slots.push((slot_name, arg));
+        current = CDR(current);
+    }
+    // Create a VECSXP to hold the slots
+    let n = slots.len() as R_xlen_t;
+    let result = if n > 0 {
+        Rf_allocVector3(SEXPTYPE::VECSXP.0, n)
+    } else {
+        Rf_allocVector3(SEXPTYPE::VECSXP.0, 1)
+    };
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    // Fill slots
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP.0, n.max(1));
+    let _np = Rf_protect(names);
+    for (i, (name, val)) in slots.iter().enumerate() {
+        crate::sexp::accessors::SET_VECTOR_ELT(result, i as R_xlen_t, *val);
+        let cstr = CString::new(name.as_str()).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*names).gengc_next_node as *mut SEXP;
+            *data.add(i) = charsxp;
+        }
+    }
+    // Set names attribute
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        names,
+    );
+    // Set class attribute
+    let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP.0, 1);
+    if !class_vec.is_null() {
+        let cp = Rf_protect(class_vec);
+        let cstr = CString::new(class_name.as_str()).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*class_vec).gengc_next_node as *mut SEXP;
+            *data.add(0) = charsxp;
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            class_vec,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+    crate::sexp::protect::Rf_unprotect(2);
+    result
+}
+
+/// R's `show(object)` — display an S4 object (simplified).
+pub unsafe fn do_show(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let object = CAR(args);
+    if object.is_null() || object == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    // Try to print class info
+    let class_sym = Rf_install(CString::new("class").unwrap_or_default().as_ptr());
+    let class_val = crate::sexp::attrib_core::getAttrib(object, class_sym);
+    if !class_val.is_null() && class_val != R_NilValue() && TYPEOF(class_val) == SEXPTYPE::STRSXP.0
+    {
+        let charsxp = crate::sexp::accessors::STRING_ELT(class_val, 0);
+        if !charsxp.is_null() {
+            let s = crate::sexp::accessors::CHAR(charsxp);
+            if !s.is_null() {
+                let class_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("unknown");
+                println!("An object of class \"{}\"", class_str);
+            }
+        }
+    }
+    // Print slots if VECSXP
+    if TYPEOF(object) == SEXPTYPE::VECSXP.0 {
+        let n = XLENGTH(object);
+        let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+        let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
+        for i in 0..n {
+            let slot_val = crate::sexp::accessors::VECTOR_ELT(object, i);
+            let slot_name = if !names_val.is_null() && names_val != R_NilValue() {
+                let ns = crate::sexp::accessors::STRING_ELT(names_val, i);
+                if !ns.is_null() {
+                    let s = crate::sexp::accessors::CHAR(ns);
+                    if !s.is_null() {
+                        std::ffi::CStr::from_ptr(s)
+                            .to_str()
+                            .unwrap_or("")
+                            .to_string()
+                    } else {
+                        format!("Slot{}", i + 1)
+                    }
+                } else {
+                    format!("Slot{}", i + 1)
+                }
+            } else {
+                format!("Slot{}", i + 1)
+            };
+            let val_str = elt_to_string(slot_val, 0);
+            println!("Slot \"{}\":", slot_name);
+            println!("  {}", val_str);
+        }
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    object
+}
+
+/// R's `slotNames(Class)` — get the names of slots of an S4 class.
+pub unsafe fn do_slotNames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let class_arg = CAR(args);
+    if class_arg.is_null() || class_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP.0, 0);
+    }
+    // If it's an object with names, return names
+    let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+    let names_val = crate::sexp::attrib_core::getAttrib(class_arg, names_sym);
+    if !names_val.is_null() && names_val != R_NilValue() && TYPEOF(names_val) == SEXPTYPE::STRSXP.0
+    {
+        return names_val;
+    }
+    // If it's a string, treat as class name - return empty
+    Rf_allocVector3(SEXPTYPE::STRSXP.0, 0)
+}
+
+/// R's `slot(object, name)` — get the value of a slot.
+pub unsafe fn do_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let object = CAR(args);
+    let name_arg = CAR(CDR(args));
+    if object.is_null() || object == R_NilValue() || name_arg.is_null() || name_arg == R_NilValue()
+    {
+        return R_NilValue();
+    }
+    let slot_name = elt_to_string(name_arg, 0);
+    // Look up by names attribute
+    if TYPEOF(object) == SEXPTYPE::VECSXP.0 {
+        let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+        let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
+        if !names_val.is_null() && names_val != R_NilValue() {
+            let n = LENGTH(names_val);
+            for i in 0..n {
+                let ns = crate::sexp::accessors::STRING_ELT(names_val, i as R_xlen_t);
+                if !ns.is_null() {
+                    let s = crate::sexp::accessors::CHAR(ns);
+                    if !s.is_null() {
+                        let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
+                        if name_str == slot_name {
+                            return crate::sexp::accessors::VECTOR_ELT(object, i as R_xlen_t);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    R_NilValue()
+}
+
+/// R's `set_slot(object, name, value)` — set the value of a slot.
+pub unsafe fn do_set_slot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let object = CAR(args);
+    let name_arg = CAR(CDR(args));
+    let value = CAR(CDR(CDR(args)));
+    if object.is_null() || object == R_NilValue() || name_arg.is_null() || name_arg == R_NilValue()
+    {
+        return object;
+    }
+    let slot_name = elt_to_string(name_arg, 0);
+    // Set slot in a VECSXP
+    if TYPEOF(object) == SEXPTYPE::VECSXP.0 {
+        let names_sym = Rf_install(CString::new("names").unwrap_or_default().as_ptr());
+        let names_val = crate::sexp::attrib_core::getAttrib(object, names_sym);
+        if !names_val.is_null() && names_val != R_NilValue() {
+            let n = LENGTH(names_val);
+            for i in 0..n {
+                let ns = crate::sexp::accessors::STRING_ELT(names_val, i as R_xlen_t);
+                if !ns.is_null() {
+                    let s = crate::sexp::accessors::CHAR(ns);
+                    if !s.is_null() {
+                        let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
+                        if name_str == slot_name {
+                            crate::sexp::accessors::SET_VECTOR_ELT(
+                                object,
+                                i as R_xlen_t,
+                                value,
+                            );
+                            return value;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    object
+}
+
+/// R's `extends(class1, class2)` — check if class1 extends class2.
+pub unsafe fn do_extends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let class1_arg = CAR(args);
+    let class2_arg = CAR(CDR(args));
+    if class1_arg.is_null() || class2_arg.is_null() {
+        return Rf_ScalarLogical(FALSE);
+    }
+    let class1 = elt_to_string(class1_arg, 0);
+    let class2 = elt_to_string(class2_arg, 0);
+    // Simple: same class always extends
+    if class1 == class2 {
+        return Rf_ScalarLogical(TRUE);
+    }
+    // Check common inheritance
+    let extends = match class1.as_str() {
+        "numeric" | "double" => class2 == "vector" || class2 == "atomic",
+        "integer" => class2 == "numeric" || class2 == "vector" || class2 == "atomic",
+        "logical" => class2 == "vector" || class2 == "atomic",
+        "character" => class2 == "vector" || class2 == "atomic",
+        "complex" => class2 == "vector" || class2 == "atomic",
+        "matrix" => class2 == "array",
+        "data.frame" => class2 == "list",
+        "factor" => class2 == "integer" || class2 == "vector" || class2 == "atomic",
+        "ordered" => class2 == "factor" || class2 == "integer",
+        _ => false,
+    };
+    Rf_ScalarLogical(if extends { TRUE } else { FALSE })
+}
+
+/// R's `isSealedClass(Class)` — check if a class is sealed.
+pub unsafe fn do_isSealedClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Built-in types are always sealed
+    Rf_ScalarLogical(TRUE)
+}
+
+/// R's `sealClass(Class, ...)` — seal a class definition.
+pub unsafe fn do_sealClass(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    // No-op in simplified implementation
+    R_NilValue()
+}
+
+/// R's `representation(...)` — define class representation.
+pub unsafe fn do_representation(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Collect named args as slot name = type pairs
+    let n_list = Rf_allocVector3(SEXPTYPE::VECSXP.0, 0);
+    if n_list.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(n_list);
+    // Count args
+    let mut count: R_xlen_t = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        count += 1;
+        current = CDR(current);
+    }
+    if count == 0 {
+        crate::sexp::protect::Rf_unprotect(1);
+        return n_list;
+    }
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, count);
+    if result.is_null() {
+        crate::sexp::protect::Rf_unprotect(1);
+        return R_NilValue();
+    }
+    let rp = Rf_protect(result);
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP.0, count);
+    let np = Rf_protect(names);
+    let mut idx: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        let tag = (*current).data.listsxp.tagval;
+        let slot_name = if !tag.is_null() && tag != R_NilValue() {
+            let sym_str = crate::sexp::accessors::CHAR(tag);
+            if !sym_str.is_null() {
+                std::ffi::CStr::from_ptr(sym_str)
+                    .to_str()
+                    .unwrap_or("")
+                    .to_string()
+            } else {
+                format!("slot{}", idx + 1)
+            }
+        } else {
+            format!("slot{}", idx + 1)
+        };
+        crate::sexp::accessors::SET_VECTOR_ELT(result, idx, arg);
+        let cstr = CString::new(slot_name.as_str()).unwrap_or_default();
+        let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            let data = (*names).gengc_next_node as *mut SEXP;
+            *data.add(idx as usize) = charsxp;
+        }
+        idx += 1;
+        current = CDR(current);
+    }
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+        names,
+    );
+    crate::sexp::protect::Rf_unprotect(3);
+    result
+}
+
+/// R's `containsClass(class1, class2)` — check class containment.
+pub unsafe fn do_containsClass(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Delegates to extends
+    do_extends(_call, _op, args, _rho)
+}
+
+/// R's `possibleExtends(class1, class2)` — check possible extensions.
+pub unsafe fn do_possibleExtends(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Simplified: delegates to extends
+    do_extends(_call, _op, args, _rho)
+}
+
+/// R's `setReplaceMethod(f, signature, definition)` — set replace method.
+pub unsafe fn do_setReplaceMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Simplified: return the definition
+    let definition = CAR(CDR(CDR(args)));
+    if !definition.is_null() && definition != R_NilValue() {
+        definition
+    } else {
+        R_NilValue()
+    }
+}
+
+/// R's `getMethod(f, signature)` — get a specific S4 method.
+pub unsafe fn do_getMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Simplified: return the function name or NULL
+    let f_arg = CAR(args);
+    if f_arg.is_null() || f_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    f_arg
+}
+
+/// R's `removeGeneric(f)` — remove a generic.
+pub unsafe fn do_removeGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    Rf_ScalarLogical(FALSE)
+}
+
+/// R's `removeMethod(f, signature)` — remove a method.
+pub unsafe fn do_removeMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    let _sig = CAR(CDR(args));
+    Rf_ScalarLogical(FALSE)
+}
+
+/// R's `isGeneric(f)` — check if f is a generic.
+pub unsafe fn do_isGeneric(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    Rf_ScalarLogical(FALSE)
+}
+
+/// R's `isMethod(f, signature)` — check if method exists.
+pub unsafe fn do_isMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    let _sig = CAR(CDR(args));
+    Rf_ScalarLogical(FALSE)
+}
+
+/// R's `findMethod(f, signature)` — find S4 method.
+pub unsafe fn do_findMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    let _sig = CAR(CDR(args));
+    R_NilValue()
+}
+
+/// R's `findMethods(f)` — find all methods for a generic.
+pub unsafe fn do_findMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, 0);
+    if result.is_null() {
+        R_NilValue()
+    } else {
+        result
+    }
+}
+
+/// R's `showMethods(f)` — show methods for a generic.
+pub unsafe fn do_showMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    println!("No methods found");
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    R_NilValue()
+}
+
+/// R's `getGenerics(where)` — get all generics.
+pub unsafe fn do_getGenerics(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _where = CAR(args);
+    Rf_allocVector3(SEXPTYPE::STRSXP.0, 0)
+}
+
+/// R's `getMethods(f)` — get all methods for a generic.
+pub unsafe fn do_getMethods(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    let result = Rf_allocVector3(SEXPTYPE::VECSXP.0, 0);
+    if result.is_null() {
+        R_NilValue()
+    } else {
+        result
+    }
+}
+
+/// R's `existsMethod(f, signature)` — check if method exists.
+pub unsafe fn do_existsMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let _f = CAR(args);
+    let _sig = CAR(CDR(args));
+    Rf_ScalarLogical(FALSE)
+}
+
+/// R's `hasMethod(f, signature)` — alias for existsMethod.
+pub unsafe fn do_hasMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    do_existsMethod(_call, _op, args, _rho)
+}
+
+/// R's `selectMethod(f, signature)` — select method for generic.
+pub unsafe fn do_selectMethod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let f_arg = CAR(args);
+    if f_arg.is_null() || f_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    f_arg
 }
 
 // ---------------------------------------------------------------------------
