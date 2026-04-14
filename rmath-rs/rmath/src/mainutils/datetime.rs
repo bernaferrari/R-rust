@@ -1447,18 +1447,6 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 // do_Sys_time -- Sys.time()
 // ---------------------------------------------------------------------------
 
-/// Return the current system time as a POSIXct scalar (seconds since epoch).
-///
-/// Ported from `Sys.time()` in datetime.c / platform.c.
-pub unsafe fn do_Sys_time(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    unsafe {
-        let t = libc::time(std::ptr::null_mut());
-        let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, 1);
-        *REAL(ans) = t as c_double;
-        ans
-    }
-}
-
 // ---------------------------------------------------------------------------
 // do_difftime -- difftime(time1, time2, units)
 // ---------------------------------------------------------------------------

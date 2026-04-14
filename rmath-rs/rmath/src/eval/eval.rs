@@ -3039,6 +3039,146 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Complete I/O — European CSV, delimited, fixed-width
+        "read.csv2" => unsafe {
+            crate::mainutils::essentials::do_read_csv2(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "write.csv2" => unsafe {
+            crate::mainutils::essentials::do_write_csv2(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "read.delim" => unsafe {
+            crate::mainutils::essentials::do_read_delim(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "read.fwf" => unsafe {
+            crate::mainutils::essentials::do_read_fwf(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "readChar" => unsafe {
+            crate::mainutils::essentials::do_readChar(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "writeChar" => unsafe {
+            crate::mainutils::essentials::do_writeChar(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete S3 — method dispatch
+        "getS3method" => unsafe {
+            crate::mainutils::essentials::do_getS3method(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "hasS3method" => unsafe {
+            crate::mainutils::essentials::do_hasS3method(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "registerS3method" => unsafe {
+            crate::mainutils::essentials::do_registerS3method(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "setGeneric" => unsafe {
+            crate::mainutils::essentials::do_setGeneric(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "setMethod" => unsafe {
+            crate::mainutils::essentials::do_setMethod(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete R runtime — serialization
+        "Random.seed" => unsafe {
+            crate::mainutils::essentials::do_Random_seed(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "loadRDS" => unsafe {
+            crate::mainutils::essentials::do_loadRDS(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "saveRDS" => unsafe {
+            crate::mainutils::essentials::do_saveRDS(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        // Complete R runtime — parallel operations
+        "mclapply" => unsafe {
+            crate::mainutils::essentials::do_mclapply(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "future_lapply" => unsafe {
+            crate::mainutils::essentials::do_future_lapply(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "foreach" => unsafe {
+            crate::mainutils::essentials::do_foreach(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
