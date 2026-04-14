@@ -20,10 +20,14 @@ pub mod bytecode;
 pub mod closure;
 pub mod complex_arith;
 pub mod context;
+pub mod defaults;
 pub mod dispatch;
 #[allow(clippy::module_inception)]
 pub mod eval;
+pub mod jit;
+pub mod missing;
 pub mod parser;
+pub mod profiling;
 pub mod special;
 pub mod symbols;
 

@@ -24,17 +24,16 @@ use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
 
-use crate::main::context as main_context;
-use crate::main::context::{R_Srcref, get_R_InBCInterpreter, get_R_ToplevelContext};
+use crate::eval::attrib_core::getAttrib;
+use crate::eval::context::R_sysframe;
 use crate::sexp::accessors::{
     CADDR, CADR, CAR, CDR, CHAR, INTEGER, LENGTH, PRINTNAME, RAW, REAL, STRING_ELT, TYPEOF,
 };
-use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::context::R_GlobalContext;
 use crate::sexp::context::RCNTXT;
 use crate::sexp::context::ctxt_flags;
-use crate::sexp::envir::findVar;
+use crate::sexp::envir::R_findVar;
 use crate::sexp::ffi::{NA_INTEGER, R_FINITE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -43,6 +42,26 @@ use crate::sexp::symbol::Rf_install;
 use crate::sexp::symbol::{
     R_Bracket2Symbol, R_DollarSymbol, R_DoubleColonSymbol, R_TripleColonSymbol,
 };
+
+// ---------------------------------------------------------------------------
+// Stubs for functions not yet ported
+// ---------------------------------------------------------------------------
+
+thread_local! {
+    static R_SREF: Cell<SEXP> = const { Cell::new(ptr::null_mut()) };
+}
+
+unsafe fn get_R_InBCInterpreter() -> SEXP {
+    R_NilValue()
+}
+
+unsafe fn get_R_ToplevelContext() -> *mut RCNTXT {
+    R_GlobalContext()
+}
+
+unsafe fn R_findBCInterpreterSrcref(_cptr: *mut RCNTXT) -> SEXP {
+    R_NilValue()
+}
 
 // ---------------------------------------------------------------------------
 // BC profiling constants
@@ -433,7 +452,7 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
         }
 
         // Get line number from srcref
-        let line_val = crate::main::coerce::vector::asInteger(srcref);
+        let line_val = crate::mainutils::coerce::asInteger(srcref);
         if line_val == NA_INTEGER {
             return;
         }
@@ -451,7 +470,7 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
 
         // Look up the filename in the srcfile environment
         let fn_sym = Rf_install(b"filename\0".as_ptr() as *const c_char);
-        let filename_sexp = findVar(fn_sym, srcfile);
+        let filename_sexp = R_findVar(fn_sym, srcfile);
         if TYPEOF(filename_sexp) != SEXPTYPE::STRSXP.0 || LENGTH(filename_sexp) == 0 {
             return;
         }
@@ -489,7 +508,7 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
         }
 
         // Find parent context, same algorithm as in `parent.frame()`
-        let parent = main_context::R_findParentContext(cptr, 1);
+        let parent = super::context::R_findParentContext(cptr, 1);
 
         // If we're in a frame called by `eval()`, find the evaluation
         // environment higher up the stack, if any.
@@ -501,7 +520,7 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
                 let eval_internal = crate::sexp::accessors::INTERNAL(eval_sym);
                 if parent_callfun == eval_internal {
                     let sysparent = (*cptr).sysparent;
-                    result = main_context::R_findExecContext((*parent).nextcontext, sysparent);
+                    result = super::context::R_findExecContext((*parent).nextcontext, sysparent);
                 }
             }
         }
@@ -600,12 +619,12 @@ unsafe fn pf_int(num: c_int) {
 /// Ported from R's `R_getCurrentSrcref()` in eval.c.
 unsafe fn R_getCurrentSrcref() -> SEXP {
     unsafe {
-        let srcref = R_Srcref.with(|s| s.get());
+        let srcref = R_SREF.with(|s| s.get());
         let in_bc = get_R_InBCInterpreter();
         if srcref != in_bc {
             srcref
         } else {
-            main_context::R_findBCInterpreterSrcref(ptr::null_mut())
+            R_findBCInterpreterSrcref(ptr::null_mut())
         }
     }
 }
@@ -654,7 +673,9 @@ unsafe fn doprof(_sig: c_int) {
         }
 
         // GC profiling
-        if R_GC_Profiling.with(|v| v.get()) != 0 && crate::main::memory_main::R_gc_running() != 0 {
+        if R_GC_Profiling.with(|v| v.get()) != 0
+            && crate::mainutils::memory_main::R_gc_running() != 0
+        {
             pb_str(&mut pb, b"\"<GC>\" \0".as_ptr() as *const c_char);
         }
 
@@ -742,7 +763,7 @@ unsafe fn doprof(_sig: c_int) {
                     let srcref_val = (*cptr).srcref;
                     let in_bc = get_R_InBCInterpreter();
                     if srcref_val == in_bc {
-                        lineprof(&mut pb, main_context::R_findBCInterpreterSrcref(cptr));
+                        lineprof(&mut pb, R_findBCInterpreterSrcref(cptr));
                     } else {
                         lineprof(&mut pb, srcref_val);
                     }
@@ -1063,28 +1084,28 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
         let filename_sexp = STRING_ELT(filename_arg, 0);
         args = CDR(args);
 
-        let append_mode = crate::main::coerce::vector::asLogical(CAR(args));
+        let append_mode = crate::mainutils::coerce::asLogical(CAR(args));
         args = CDR(args);
 
-        let dinterval = crate::main::coerce::vector::asReal(CAR(args));
+        let dinterval = crate::mainutils::coerce::asReal(CAR(args));
         args = CDR(args);
 
-        let mem_profiling = crate::main::coerce::vector::asLogical(CAR(args));
+        let mem_profiling = crate::mainutils::coerce::asLogical(CAR(args));
         args = CDR(args);
 
-        let gc_profiling = crate::main::coerce::vector::asLogical(CAR(args));
+        let gc_profiling = crate::mainutils::coerce::asLogical(CAR(args));
         args = CDR(args);
 
-        let line_profiling = crate::main::coerce::vector::asLogical(CAR(args));
+        let line_profiling = crate::mainutils::coerce::asLogical(CAR(args));
         args = CDR(args);
 
-        let filter_callframes = crate::main::coerce::vector::asLogical(CAR(args));
+        let filter_callframes = crate::mainutils::coerce::asLogical(CAR(args));
         args = CDR(args);
 
-        let numfiles = crate::main::coerce::vector::asInteger(CAR(args));
+        let numfiles = crate::mainutils::coerce::asInteger(CAR(args));
         args = CDR(args);
 
-        let bufsize = crate::main::coerce::vector::asInteger(CAR(args));
+        let bufsize = crate::mainutils::coerce::asInteger(CAR(args));
         args = CDR(args);
 
         // Get event type argument

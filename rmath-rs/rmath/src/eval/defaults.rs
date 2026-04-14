@@ -61,7 +61,7 @@ pub unsafe fn do_math1(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in relop.c. Implements comparison operators.
 // no_mangle removed (duplicate)
 pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
-    unsafe { crate::main::relop::do_relop_dflt(call, op, lhs, rhs) }
+    unsafe { crate::mainutils::relop::do_relop_dflt(call, op, lhs, rhs) }
 }
 
 /// `do_logic(call, op, args, rho)` - logical operator default.
@@ -69,7 +69,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP 
 /// Defined in complex.c. Implements &, |, ! operators.
 // no_mangle removed (duplicate)
 pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::main::logic::do_logic(call, op, args, rho) }
+    unsafe { crate::mainutils::logic::do_logic(call, op, args, rho) }
 }
 
 /// `do_subset_dflt(call, op, args, rho)` - [ default method.
@@ -77,14 +77,14 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::main::subset::do_subset_dflt(call, op, args, rho) }
+    unsafe { crate::mainutils::subset::do_subset_dflt(call, op, args, rho) }
 }
 
 /// `do_subassign_dflt(call, op, args, rho)` - `[<-` default method.
 ///
 /// Defined in subassign.c.
 pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::main::subassign::do_subassign_dflt(call, op, args, rho) }
+    unsafe { crate::mainutils::subassign::do_subassign_dflt(call, op, args, rho) }
 }
 
 /// `do_c_dflt(call, op, args, rho)` - c() default method.
@@ -92,7 +92,7 @@ pub unsafe fn do_subassign_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
 /// Defined in coerce.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::main::bind::do_c_dflt(call, op, args, rho) }
+    unsafe { crate::mainutils::bind::do_c_dflt(call, op, args, rho) }
 }
 
 /// `do_subset2_dflt(call, op, args, rho)` - `[[` default method.
@@ -100,7 +100,7 @@ pub unsafe fn do_c_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in subset.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::main::subset::do_subset2_dflt(call, op, args, rho) }
+    unsafe { crate::mainutils::subset::do_subset2_dflt(call, op, args, rho) }
 }
 
 /// `do_subassign2_dflt(call, op, args, rho)` - `[[<-` default method.
@@ -108,7 +108,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 /// Defined in subassign.c.
 // no_mangle removed (duplicate)
 pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    unsafe { crate::main::subassign::do_subassign2_dflt(call, op, args, rho) }
+    unsafe { crate::mainutils::subassign::do_subassign2_dflt(call, op, args, rho) }
 }
 
 // ---------------------------------------------------------------------------
@@ -182,8 +182,8 @@ pub unsafe fn cmp_relop(
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0 as c_int);
         Rf_protect(op);
 
-        let is_obj_x = crate::attrib_core::isObject(x) != 0;
-        let is_obj_y = crate::attrib_core::isObject(y) != 0;
+        let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
+        let is_obj_y = crate::eval::attrib_core::isObject(y) != 0;
 
         if is_obj_x || is_obj_y {
             let args = Rf_cons(x, Rf_cons(y, R_NilValue()));
@@ -223,7 +223,7 @@ pub unsafe fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0 as c_int);
         Rf_protect(op);
 
-        if crate::attrib_core::isObject(x) != 0 {
+        if crate::eval::attrib_core::isObject(x) != 0 {
             let args = Rf_cons(x, R_NilValue());
             Rf_protect(args);
             let mut ans: SEXP = R_NilValue();
@@ -265,8 +265,8 @@ pub unsafe fn cmp_arith2(
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0 as c_int);
         Rf_protect(op);
 
-        let is_obj_x = crate::attrib_core::isObject(x) != 0;
-        let is_obj_y = crate::attrib_core::isObject(y) != 0;
+        let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
+        let is_obj_y = crate::eval::attrib_core::isObject(y) != 0;
 
         if is_obj_x || is_obj_y {
             let args = Rf_cons(x, Rf_cons(y, R_NilValue()));
@@ -379,7 +379,7 @@ pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
                         crate::sexp::ffi::NA_INTEGER
                     }
                 }
-                _ => crate::main::coerce::asLogical(s),
+                _ => crate::mainutils::coerce::asLogical(s),
             }
         } else {
             crate::sexp::ffi::NA_INTEGER

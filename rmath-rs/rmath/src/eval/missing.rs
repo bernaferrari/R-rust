@@ -27,7 +27,7 @@ use std::cell::Cell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
+use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, R_SrcFileSymbol, getAttrib};
 use crate::sexp::accessors::{
     BODY, CADDR, CADR, CAR, CDDR, CDR, CHAR, CLOENV, FORMALS, LENGTH, NAMED, PRINTNAME, SET_FRAME,
     SET_NAMED, SETCAR, SETTAG, STRING_ELT, TAG, TYPEOF,
@@ -47,6 +47,21 @@ use super::builtin::PRIMNAME;
 use super::closure::applyClosure;
 use super::dispatch::{DispatchOrEval, evalList, promiseArgs};
 use super::eval::Rf_eval;
+
+// ---------------------------------------------------------------------------
+// Types and stubs not yet in their home modules
+// ---------------------------------------------------------------------------
+
+#[repr(C)]
+pub struct R_varloc_t {
+    pub cell: SEXP,
+}
+
+unsafe fn R_findVarLocInFrame(_rho: SEXP, _symbol: SEXP) -> R_varloc_t {
+    R_varloc_t {
+        cell: ptr::null_mut(),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // VectorToPairListNamed -- convert named vector to pairlist
@@ -97,7 +112,7 @@ pub unsafe fn VectorToPairListNamed(x: SEXP) -> SEXP {
                     let cs = CHAR(elt);
                     if !cs.is_null() && *cs != 0 {
                         SETCAR(xptr, crate::sexp::accessors::VECTOR_ELT(x, i as R_xlen_t));
-                        let tag_name = crate::main::sysutils::installTrChar(elt);
+                        let tag_name = crate::mainutils::subset::installTrChar(elt);
                         SETTAG(xptr, tag_name);
                         xptr = CDR(xptr);
                     }
@@ -135,7 +150,7 @@ pub unsafe fn DispatchAnyOrEval(
 ) -> c_int {
     unsafe {
         // Check if there are S4 methods
-        let has_methods = crate::main::objects::R_has_methods(op);
+        let has_methods = crate::mainutils::objects::R_has_methods(op);
 
         if has_methods != FALSE {
             let mut nprotect: c_int = 0;
@@ -143,7 +158,7 @@ pub unsafe fn DispatchAnyOrEval(
 
             if argsevald == 0 {
                 // Evaluate all arguments
-                argValue = super::dispatch::evalListKeepMissing(args, rho);
+                argValue = super::dispatch::evalList(args, rho, ptr::null_mut(), 0);
                 Rf_protect(argValue);
                 nprotect += 1;
             } else {
@@ -153,9 +168,10 @@ pub unsafe fn DispatchAnyOrEval(
             // Check each argument for S4 objects
             let mut el = argValue;
             while !el.is_null() && el != R_NilValue() {
-                if crate::main::coerce::helpers::IS_S4_OBJECT(CAR(el)) != FALSE {
-                    let value =
-                        crate::main::objects::R_possible_dispatch(call, op, argValue, rho, TRUE);
+                if crate::mainutils::coerce::IS_S4_OBJECT(CAR(el)) != FALSE {
+                    let value = crate::mainutils::objects::R_possible_dispatch(
+                        call, op, argValue, rho, TRUE,
+                    );
                     if !value.is_null() && value != R_NilValue() {
                         if !ans.is_null() {
                             *ans = value;
@@ -256,11 +272,11 @@ unsafe fn tryDispatch(
         }
 
         // Check for S4 methods
-        if crate::main::coerce::helpers::IS_S4_OBJECT(x) != FALSE
-            && crate::main::objects::R_has_methods(generic_sym) != FALSE
+        if crate::mainutils::coerce::IS_S4_OBJECT(x) != FALSE
+            && crate::mainutils::objects::R_has_methods(generic_sym) != FALSE
         {
             let value =
-                crate::main::objects::R_possible_dispatch(call, generic_sym, pargs, rho, TRUE);
+                crate::mainutils::objects::R_possible_dispatch(call, generic_sym, pargs, rho, TRUE);
             if !value.is_null() && value != R_NilValue() {
                 if !pv.is_null() {
                     *pv = value;
@@ -275,7 +291,7 @@ unsafe fn tryDispatch(
 
         let mut dispatched: c_int = FALSE;
         let mut result: SEXP = R_NilValue();
-        let dispatch_result = crate::main::objects::usemethod(
+        let dispatch_result = crate::mainutils::objects::usemethod(
             generic,
             x,
             call,
@@ -315,7 +331,7 @@ unsafe fn tryAssignDispatch(
 ) -> c_int {
     unsafe {
         // Duplicate the call
-        let ncall = Rf_protect(crate::main::duplicate::Rf_duplicate(call));
+        let ncall = Rf_protect(crate::mainutils::duplicate::Rf_duplicate(call));
 
         // Find the last element and wrap RHS in a promise
         let mut last = ncall;
@@ -406,7 +422,7 @@ pub unsafe fn PrintCall(call: SEXP, _rho: SEXP) {
         }
         // Simplified: just print the call using deparse
         // In the full implementation, this uses PrintValueRec
-        crate::main::print::PrintValue(call);
+        crate::mainutils::print::PrintValue(call);
     }
 }
 
@@ -513,11 +529,7 @@ unsafe fn INCREMENT_NAMED(x: SEXP) {
 ///
 /// Returns the pair of (value, R_varloc_t) where R_varloc_t has the
 /// location of the binding for potential future mutations.
-pub unsafe fn EnsureLocal(
-    symbol: SEXP,
-    rho: SEXP,
-    ploc: *mut crate::sexp::envir::R_varloc_t,
-) -> SEXP {
+pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEXP {
     unsafe {
         if symbol.is_null() || rho.is_null() || ploc.is_null() {
             return R_NilValue();
@@ -533,14 +545,14 @@ pub unsafe fn EnsureLocal(
                 // then the wrapper can be discarded at the end of the
                 // assignment process in try_assign_unwrap(). (C lines 2577-2586)
                 Rf_protect(vl);
-                vl = crate::main::duplicate::R_shallow_duplicate_attr(vl);
+                vl = crate::mainutils::duplicate::R_shallow_duplicate_attr(vl);
                 defineVar(symbol, vl, rho);
                 INCREMENT_NAMED(vl);
                 Rf_unprotect(1); // vl
             }
             // Look up the location for future mutation (C lines 2587-2589)
             Rf_protect(vl);
-            *ploc = crate::sexp::envir::R_findVarLocInFrame(rho, symbol);
+            *ploc = R_findVarLocInFrame(rho, symbol);
             Rf_unprotect(1); // vl
             vl
         } else {
@@ -569,9 +581,9 @@ pub unsafe fn EnsureLocal(
             }
             // Create local copy (C lines 2597-2601)
             Rf_protect(vl);
-            vl = crate::main::duplicate::shallow_duplicate(vl);
+            vl = crate::mainutils::duplicate::shallow_duplicate(vl);
             defineVar(symbol, vl, rho);
-            *ploc = crate::sexp::envir::R_findVarLocInFrame(rho, symbol);
+            *ploc = R_findVarLocInFrame(rho, symbol);
             INCREMENT_NAMED(vl);
             Rf_unprotect(1); // vl
             vl
@@ -682,7 +694,7 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
             };
             format!("argument \"{}\" is missing, with no default", name)
         };
-        crate::main::errors::errorcall_cpy(
+        crate::mainutils::errors::errorcall_cpy(
             call,
             std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
         );
@@ -698,7 +710,7 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
 /// Ported from R's `check_stack_balance()` in eval.c.
 pub unsafe fn check_stack_balance(op: SEXP, save: c_int) {
     unsafe {
-        let current = crate::main::main::R_PPStackTop();
+        let current = crate::mainutils::main::R_PPStackTop();
         if save == current {
             return;
         }
@@ -722,7 +734,7 @@ pub unsafe fn check_stack_balance(op: SEXP, save: c_int) {
 pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let n_expr = CADR(call);
-        let n = crate::main::coerce::asInteger(Rf_eval(n_expr, rho));
+        let n = crate::mainutils::coerce::asInteger(Rf_eval(n_expr, rho));
         let e = CDDR(call);
 
         // Build a proper call from the expression
@@ -744,7 +756,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
 
         let result = if TYPEOF(fun) == SEXPTYPE::BUILTINSXP.0 {
             let evaled_args = Rf_protect(evalList(rest, rho, call, 0));
-            let flag = super::builtin::PRIMPRINT(fun);
+            let flag = super::eval::PRIMPRINT(fun);
             set_R_Visible(if flag != 1 { TRUE } else { FALSE });
             if let Some(primfun) = super::eval::get_primfun(fun) {
                 let tmp = primfun(call, fun, evaled_args, rho);
@@ -775,7 +787,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             }
             applyClosure(call, fun, pargs, rho, R_NilValue(), TRUE)
         } else if TYPEOF(fun) == SEXPTYPE::SPECIALSXP.0 {
-            let flag = super::builtin::PRIMPRINT(fun);
+            let flag = super::eval::PRIMPRINT(fun);
             set_R_Visible(if flag != 1 { TRUE } else { FALSE });
             if let Some(primfun) = super::eval::get_primfun(fun) {
                 let tmp = primfun(call, fun, rest, rho);
@@ -824,7 +836,7 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             t if t == SEXPTYPE::LISTSXP.0 => {
                 // Create environment from pairlist
-                let dup = Rf_protect(crate::main::duplicate::Rf_duplicate(env));
+                let dup = Rf_protect(crate::mainutils::duplicate::Rf_duplicate(env));
                 env = Rf_protect(NewEnvironment(R_NilValue(), dup, encl_val));
                 Rf_unprotect(2);
             }
@@ -841,12 +853,12 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0 => {
                 // Numeric environment = sys.frame(n)
-                let frame = crate::main::coerce::asInteger(env);
+                let frame = crate::mainutils::coerce::asInteger(env);
                 if frame == NA_INTEGER {
                     eprintln!("Error: invalid 'envir' argument");
                     return R_NilValue();
                 }
-                env = crate::main::context::R_sysframe(frame, ptr::null_mut());
+                env = super::context::R_sysframe(frame, ptr::null_mut());
             }
             _ => {
                 eprintln!("Error: invalid 'envir' argument");
@@ -929,7 +941,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
         if TYPEOF(expr) == SEXPTYPE::SYMSXP.0 {
             // Simple symbol -- the target variable
             let val = if forcelocal != FALSE {
-                let mut ploc = crate::sexp::envir::R_varloc_t {
+                let mut ploc = R_varloc_t {
                     cell: ptr::null_mut(),
                 };
                 EnsureLocal(expr, rho, &mut ploc)
@@ -960,7 +972,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
             let nval = Rf_eval(new_expr, rho);
 
             // Simplified: always duplicate for safety
-            let dup = crate::main::duplicate::shallow_duplicate(nval);
+            let dup = crate::mainutils::duplicate::shallow_duplicate(nval);
             Rf_unprotect(3);
             let cell = Rf_cons(dup, inner);
             cell

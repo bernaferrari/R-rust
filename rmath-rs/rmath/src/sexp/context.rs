@@ -89,6 +89,7 @@ pub struct RCNTXT {
     pub cend: Option<unsafe extern "C" fn(*mut std::os::raw::c_void)>,
     /// cleanup function data (cenddata in R)
     pub cenddata: *mut std::os::raw::c_void,
+    pub srcref: SEXP,
 }
 
 impl RCNTXT {
@@ -119,6 +120,7 @@ impl RCNTXT {
             conexit: ptr::null_mut(),
             cend: None,
             cenddata: ptr::null_mut(),
+            srcref: ptr::null_mut(),
         }
     }
 }

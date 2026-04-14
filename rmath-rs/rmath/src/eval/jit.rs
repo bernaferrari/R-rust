@@ -17,7 +17,7 @@ use std::cell::{Cell, RefCell};
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
-use crate::attrib_core::{R_SrcRefSymbol, getAttrib};
+use crate::eval::attrib_core::{R_SrcRefSymbol, getAttrib};
 use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF};
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
@@ -364,7 +364,7 @@ pub unsafe fn R_ClosureExpr(p: SEXP) -> SEXP {
 /// The primary definition lives in gram_main.rs; this is a thin wrapper
 /// with #[no_mangle] removed to avoid duplicate symbol errors.
 pub(crate) unsafe fn r_parse_eval_string(str: *const c_char, env: SEXP) -> SEXP {
-    unsafe { crate::main::gram_main::R_ParseEvalString(str, env) }
+    unsafe { crate::mainutils::gram_main::R_ParseEvalString(str, env) }
 }
 
 pub(crate) unsafe fn r_parse_string(str: *const c_char) -> SEXP {
@@ -406,14 +406,14 @@ pub unsafe fn R_init_jit_enabled() {
         // Check _R_COMPILE_PKGS_
         if let Ok(compile) = std::env::var("_R_COMPILE_PKGS_") {
             if let Ok(v) = compile.parse::<c_int>() {
-                R_compile_pkgs.with(|v| v.set(if v > 0 { TRUE } else { FALSE }));
+                R_compile_pkgs.with(|cell| cell.set(if v > 0 { TRUE } else { FALSE }));
             }
         }
 
         // Check R_DISABLE_BYTECODE
         if let Ok(disable) = std::env::var("R_DISABLE_BYTECODE") {
             if let Ok(v) = disable.parse::<c_int>() {
-                R_disable_bytecode.with(|v| v.set(if v > 0 { TRUE } else { FALSE }));
+                R_disable_bytecode.with(|cell| cell.set(if v > 0 { TRUE } else { FALSE }));
             }
         }
     }

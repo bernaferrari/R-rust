@@ -225,7 +225,7 @@ unsafe fn isLogical(x: SEXP) -> bool {
 
 /// Check if an SEXP has the S4 object bit set.
 #[inline]
-unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
+pub unsafe fn IS_S4_OBJECT(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;
