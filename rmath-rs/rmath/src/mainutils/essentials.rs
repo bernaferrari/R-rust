@@ -2,6 +2,8 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
+#![allow(unsafe_op_in_unsafe_fn)]
+
 use std::ffi::CString;
 use std::os::raw::c_int;
 
