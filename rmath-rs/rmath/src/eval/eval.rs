@@ -2780,3 +2780,130 @@ pub unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
     set_R_Visible(oldvis);
     val
 }
+
+// ---------------------------------------------------------------------------
+// do_withVisible -- evaluate and return list(value, visible)
+// ---------------------------------------------------------------------------
+
+/// Evaluate expression and return `list(value = <result>, visible = <flag>)`.
+///
+/// Ported from R's `do_withVisible()` in eval.c.
+/// This is a special `.Internal`.
+pub unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
+    use crate::sexp::accessors::{CAR, SET_STRING_ELT, SET_VECTOR_ELT};
+    use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::R_Visible;
+    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use std::os::raw::c_char;
+
+    unsafe {
+        let x = Rf_eval(CAR(args), rho);
+        Rf_protect(x);
+
+        let ret = Rf_allocVector(SEXPTYPE::VECSXP.0, 2);
+        Rf_protect(ret);
+
+        let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+        Rf_protect(nm);
+
+        SET_STRING_ELT(nm, 0, Rf_mkChar(b"value\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(nm, 1, Rf_mkChar(b"visible\0".as_ptr() as *const c_char));
+
+        SET_VECTOR_ELT(ret, 0, x);
+        SET_VECTOR_ELT(ret, 1, Rf_ScalarLogical(R_Visible()));
+
+        setAttrib(ret, R_NamesSymbol(), nm);
+
+        Rf_unprotect(3);
+        ret
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_recall -- re-invoke the calling generic function
+// ---------------------------------------------------------------------------
+
+/// Implements R's `Recall()` — re-invokes the calling generic.
+///
+/// Ported from R's `do_recall()` in eval.c.
+/// This is a special `.Internal`.
+pub unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::eval::closure::applyClosure;
+    use crate::mainutils::errors::Rf_error;
+    use crate::sexp::accessors::{CAR, TYPEOF};
+    use crate::sexp::context::{R_GlobalContext, ctxt_flags::CTXT_RETURN};
+    use crate::sexp::envir::findFun;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use std::os::raw::c_char;
+
+    unsafe {
+        let mut cptr = R_GlobalContext();
+
+        // Walk context stack to find the closure context for this environment
+        while !cptr.is_null() {
+            let ctx = &*cptr;
+            if ctx.callflag == CTXT_RETURN && ctx.cloenv == rho {
+                break;
+            }
+            cptr = ctx.nextcontext;
+        }
+
+        // Get the args from the context if found
+        let recall_args = if !cptr.is_null() {
+            (*cptr).promiseargs
+        } else {
+            args
+        };
+
+        // Get the sysparent (the env Recall was called from)
+        let s = (*R_GlobalContext()).sysparent;
+
+        // Walk context stack again to find the closure context for sysparent
+        let mut cptr2 = R_GlobalContext();
+        while !cptr2.is_null() {
+            let ctx = &*cptr2;
+            if ctx.callflag == CTXT_RETURN && ctx.cloenv == s {
+                break;
+            }
+            cptr2 = ctx.nextcontext;
+        }
+
+        if cptr2.is_null() {
+            Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
+        }
+
+        // Get the function from callfun, or look it up
+        let fun = {
+            let ctx = &*cptr2;
+            if !ctx.callfun.is_null() && ctx.callfun != R_NilValue() {
+                ctx.callfun
+            } else if TYPEOF(CAR(ctx.call)) == SEXPTYPE::SYMSXP.0 {
+                findFun(CAR(ctx.call), ctx.sysparent)
+            } else {
+                Rf_eval(CAR(ctx.call), ctx.sysparent)
+            }
+        };
+
+        Rf_protect(fun);
+
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP.0 {
+            Rf_unprotect(1);
+            Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
+        }
+
+        let ans = applyClosure(
+            (*cptr2).call,
+            fun,
+            recall_args,
+            (*cptr2).sysparent,
+            R_NilValue(),
+            1,
+        );
+        Rf_unprotect(1);
+        ans
+    }
+}

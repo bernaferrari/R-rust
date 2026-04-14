@@ -444,7 +444,7 @@ unsafe fn PairToVectorList(x: SEXP) -> SEXP {
 }
 
 /// VectorToPairList: convert a vector list to a pairlist.
-unsafe fn VectorToPairList(x: SEXP) -> SEXP {
+pub unsafe fn VectorToPairList(x: SEXP) -> SEXP {
     unsafe {
         let len = Rf_length(x);
         let mut result = R_NilValue();

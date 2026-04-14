@@ -209,7 +209,7 @@ unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
 }
 
 /// isFactor: check if x has class "factor" or is an ordered factor.
-unsafe fn isFactor(x: SEXP) -> c_int {
+pub unsafe fn isFactor(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {
             return 0;

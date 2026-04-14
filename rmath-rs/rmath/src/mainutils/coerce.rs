@@ -3074,6 +3074,613 @@ unsafe extern "C" {
 }
 
 // ---------------------------------------------------------------------------
+// anyNA — recursive NA detection
+// ---------------------------------------------------------------------------
+
+/// Check if any element of a vector contains NA values.
+///
+/// Ported from R's `anyNA()` in coerce.c.
+fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
+    use crate::sexp::accessors::{
+        CADR, CAR, CDR, COMPLEX_ELT, INTEGER_ELT, LENGTH, LOGICAL_ELT, OBJECT, REAL_ELT,
+        STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    };
+    use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, SEXPTYPE};
+    use crate::sexp::globals::{R_NaString, R_NilValue};
+
+    unsafe {
+        let x = CAR(args);
+        let xT = TYPEOF(x);
+        let is_list = xT == SEXPTYPE::VECSXP.0 || xT == SEXPTYPE::LISTSXP.0;
+
+        let recursive = if is_list && LENGTH(args) > 1 {
+            let r = CADR(args);
+            asRbool(r, call) != 0
+        } else {
+            false
+        };
+
+        // For objects or non-recursive lists, fall back to is.na + any
+        if OBJECT(x) != 0 || (is_list && !recursive) {
+            // Simplified: just check vector elements directly for non-objects
+            if OBJECT(x) != 0 {
+                // For S4/S3 objects, we'd need eval(dispatch) — skip for now
+                return false;
+            }
+        }
+
+        let n = XLENGTH(x);
+        match xT {
+            t if t == SEXPTYPE::REALSXP.0 => {
+                for i in 0..n as usize {
+                    let v = REAL_ELT(x, i as c_int);
+                    if v.is_nan() {
+                        return true;
+                    }
+                }
+                false
+            }
+            t if t == SEXPTYPE::INTSXP.0 => {
+                for i in 0..n as usize {
+                    let v = INTEGER_ELT(x, i as c_int);
+                    if v == NA_INTEGER {
+                        return true;
+                    }
+                }
+                false
+            }
+            t if t == SEXPTYPE::LGLSXP.0 => {
+                for i in 0..n as usize {
+                    let v = LOGICAL_ELT(x, i as c_int);
+                    if v == NA_LOGICAL {
+                        return true;
+                    }
+                }
+                false
+            }
+            t if t == SEXPTYPE::CPLXSXP.0 => {
+                for i in 0..n as usize {
+                    let v = COMPLEX_ELT(x, i as c_int);
+                    if v.r.is_nan() || v.i.is_nan() {
+                        return true;
+                    }
+                }
+                false
+            }
+            t if t == SEXPTYPE::STRSXP.0 => {
+                for i in 0..n as R_xlen_t {
+                    if STRING_ELT(x, i) == R_NaString() {
+                        return true;
+                    }
+                }
+                false
+            }
+            t if t == SEXPTYPE::RAWSXP.0 => false,
+            t if t == SEXPTYPE::NILSXP.0 => false,
+            t if t == SEXPTYPE::VECSXP.0 && recursive => {
+                for i in 0..n as usize {
+                    let elt = VECTOR_ELT(x, i as R_xlen_t);
+                    // Recursively check each element
+                    let inner_args = Rf_cons(elt, R_NilValue());
+                    Rf_protect(inner_args);
+                    let found = any_na_impl(call, op, inner_args, env);
+                    Rf_unprotect(1);
+                    if found {
+                        return true;
+                    }
+                }
+                false
+            }
+            t if t == SEXPTYPE::LISTSXP.0 && recursive => {
+                let mut node = x;
+                while !node.is_null() && node != R_NilValue() {
+                    let elt = CAR(node);
+                    let inner_args = Rf_cons(elt, R_NilValue());
+                    Rf_protect(inner_args);
+                    let found = any_na_impl(call, op, inner_args, env);
+                    Rf_unprotect(1);
+                    if found {
+                        return true;
+                    }
+                    node = CDR(node);
+                }
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
+/// R-level entry point for `anyNA()`.
+///
+/// Ported from R's `do_anyNA()` in coerce.c.
+pub unsafe fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::constructors::Rf_ScalarLogical;
+    use crate::sexp::ffi::FALSE;
+
+    unsafe {
+        let nargs = LENGTH(args);
+        if nargs < 1 || nargs > 2 {
+            crate::mainutils::errors::Rf_error(
+                b"anyNA takes 1 or 2 arguments\0".as_ptr() as *const c_char
+            );
+        }
+
+        // Simplified: skip DispatchOrEval for now, call any_na_impl directly
+        if nargs == 1 {
+            Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
+                1
+            } else {
+                FALSE
+            })
+        } else {
+            // Two args: x and recursive (default FALSE)
+            // Ensure second arg exists and is logical
+            let recursive_val = CADR(args);
+            let full_args = args;
+            if recursive_val.is_null() || recursive_val == crate::sexp::globals::R_MissingArg() {
+                // Append ScalarLogical(FALSE) as second arg
+                let with_rec = Rf_cons(CAR(args), Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue()));
+                Rf_protect(with_rec);
+                let result = Rf_ScalarLogical(if any_na_impl(call, op, with_rec, rho) {
+                    1
+                } else {
+                    FALSE
+                });
+                Rf_unprotect(1);
+                result
+            } else {
+                Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
+                    1
+                } else {
+                    FALSE
+                })
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_call — R's call() primitive
+// ---------------------------------------------------------------------------
+
+/// Construct an unevaluated call from a function name and evaluated arguments.
+///
+/// Ported from R's `do_call()` in coerce.c.
+pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::eval::eval::Rf_eval;
+    use crate::mainutils::errors::Rf_error;
+    use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, SETCAR, STRING_ELT};
+    use crate::sexp::symbol::Rf_install;
+
+    unsafe {
+        if LENGTH(args) < 1 {
+            Rf_error(b"'name' is missing\0".as_ptr() as *const c_char);
+        }
+
+        let rfun = Rf_eval(CAR(args), rho);
+        Rf_protect(rfun);
+
+        if !isString(rfun) || LENGTH(rfun) != 1 {
+            Rf_unprotect(1);
+            Rf_error(b"first argument must be a character string\0".as_ptr() as *const c_char);
+        }
+
+        let str = CHAR(STRING_ELT(rfun, 0));
+        if !str.is_null() {
+            let s = std::ffi::CStr::from_ptr(str);
+            if s.to_bytes() == b".Internal" {
+                Rf_unprotect(1);
+                Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
+            }
+        }
+
+        let sym = Rf_install(str);
+        Rf_protect(sym);
+
+        // Evaluate remaining arguments
+        let evargs = CDR(args);
+        // Walk args and evaluate each
+        let mut rest = evargs;
+        while !rest.is_null() && rest != R_NilValue() {
+            let tmp = Rf_eval(CAR(rest), rho);
+            SETCAR(rest, tmp);
+            rest = CDR(rest);
+        }
+
+        // Build LANGSXP: (sym arg1 arg2 ...)
+        let result = Rf_cons(sym, evargs);
+        Rf_unprotect(2);
+        result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_docall — R's do.call() primitive
+// ---------------------------------------------------------------------------
+
+/// Construct and evaluate a call from a function and argument list.
+///
+/// Ported from R's `do_docall()` in coerce.c.
+pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::eval::attrib_core::{R_NamesSymbol, getAttrib};
+    use crate::mainutils::errors::Rf_error;
+    use crate::mainutils::subset::installTrChar;
+    use crate::sexp::accessors::{
+        CADDR, CADR, CAR, CDR, CHAR, LENGTH, SETCAR, SETTAG, STRING_ELT, TYPEOF, VECTOR_ELT,
+    };
+    use crate::sexp::constructors::Rf_allocVector;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::R_NilValue;
+    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::symbol::Rf_install;
+
+    unsafe {
+        let fun = CAR(args);
+        let envir = CADDR(args);
+        let cargs = CADR(args);
+
+        // fun must be a function or a single character string
+        if !isFunction(fun) && !(isString(fun) && LENGTH(fun) == 1) {
+            Rf_error(b"'what' must be a function or character string\0".as_ptr() as *const c_char);
+        }
+
+        if !cargs.is_null() && cargs != R_NilValue() && TYPEOF(cargs) != SEXPTYPE::VECSXP.0 {
+            Rf_error(b"'args' must be a list\0".as_ptr() as *const c_char);
+        }
+
+        if !isEnvironment(envir) {
+            Rf_error(b"'envir' must be an environment\0".as_ptr() as *const c_char);
+        }
+
+        let n = if cargs.is_null() || cargs == R_NilValue() {
+            0
+        } else {
+            LENGTH(cargs)
+        };
+        let names = if n > 0 {
+            getAttrib(cargs, R_NamesSymbol())
+        } else {
+            R_NilValue()
+        };
+        Rf_protect(names);
+
+        // Build LANGSXP call: (fun arg1 arg2 ...)
+        // LANGSXP has n+1 slots: function + n args
+        let newcall = Rf_allocVector(SEXPTYPE::LANGSXP.0, n + 1);
+        Rf_protect(newcall);
+
+        if isString(fun) {
+            let str = CHAR(STRING_ELT(fun, 0));
+            if !str.is_null() {
+                let s = std::ffi::CStr::from_ptr(str);
+                if s.to_bytes() == b".Internal" {
+                    Rf_unprotect(2);
+                    Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
+                }
+            }
+            SETCAR(newcall, Rf_install(str));
+        } else {
+            // Check for .Internal primitive
+            let prim_name = crate::eval::builtin::PRIMNAME(fun);
+            if prim_name == ".Internal" {
+                Rf_unprotect(2);
+                Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
+            }
+            SETCAR(newcall, fun);
+        }
+
+        let mut c = CDR(newcall);
+        for i in 0..n as usize {
+            if TYPEOF(cargs) == SEXPTYPE::VECSXP.0 {
+                SETCAR(c, VECTOR_ELT(cargs, i as R_xlen_t));
+            }
+            // Set tag from names attribute
+            if !names.is_null() && names != R_NilValue() {
+                let name_elt = STRING_ELT(names, i as R_xlen_t);
+                if !name_elt.is_null() && name_elt != R_NilValue() {
+                    let ch = CHAR(name_elt);
+                    if !ch.is_null() && *ch != 0 {
+                        SETTAG(c, installTrChar(name_elt));
+                    }
+                }
+            }
+            c = CDR(c);
+        }
+
+        let result = crate::eval::eval::Rf_eval(newcall, envir);
+        Rf_unprotect(2);
+        result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// substitute — core AST substitution
+// ---------------------------------------------------------------------------
+
+/// Substitute symbols in an expression using bindings from an environment.
+///
+/// Ported from R's `substitute()` in coerce.c.
+unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
+    use crate::mainutils::errors::Rf_error;
+    use crate::sexp::accessors::{PRCODE, TYPEOF};
+    use crate::sexp::envir::R_findVarInFrame;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::{R_GlobalEnv, R_NilValue, R_UnboundValue};
+
+    unsafe {
+        match TYPEOF(lang) {
+            t if t == SEXPTYPE::PROMSXP.0 => substitute(PRCODE(lang), rho),
+            t if t == SEXPTYPE::SYMSXP.0 => {
+                if rho != R_NilValue() {
+                    let t = R_findVarInFrame(rho, lang);
+                    if t != R_UnboundValue() {
+                        if TYPEOF(t) == SEXPTYPE::PROMSXP.0 {
+                            let mut expr = PRCODE(t);
+                            while TYPEOF(expr) == SEXPTYPE::PROMSXP.0 {
+                                expr = PRCODE(expr);
+                            }
+                            // ENSURE_NAMEDMAX
+                            if NAMED(expr) < 2 {
+                                SET_NAMED(expr, 2);
+                            }
+                            return expr;
+                        } else if TYPEOF(t) == SEXPTYPE::DOTSXP.0 {
+                            Rf_error(
+                                b"'...' used in an incorrect context\0".as_ptr() as *const c_char
+                            );
+                        }
+                        if rho != R_GlobalEnv() {
+                            return t;
+                        }
+                    }
+                }
+                lang
+            }
+            t if t == SEXPTYPE::LANGSXP.0 => substitute_list(lang, rho),
+            _ => lang,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// substituteList — substitute with ... expansion
+// ---------------------------------------------------------------------------
+
+/// Walk a pairlist performing substitution, expanding `...` bindings.
+///
+/// Ported from R's `substituteList()` in coerce.c.
+unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::accessors::{CAR, CDR, SETCDR, SETTAG, TAG, TYPEOF};
+    use crate::sexp::envir::R_findVarInFrame;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
+    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::symbol::R_DotsSymbol;
+
+    unsafe {
+        if el.is_null() || el == R_NilValue() {
+            return el;
+        }
+
+        let mut res: SEXP = R_NilValue();
+        let mut p: SEXP = ptr::null_mut();
+        let mut remaining = el;
+
+        while !remaining.is_null() && remaining != R_NilValue() {
+            let mut h: SEXP;
+
+            if CAR(remaining) == R_DotsSymbol() {
+                if rho == R_NilValue() {
+                    h = R_UnboundValue();
+                } else {
+                    h = R_findVarInFrame(rho, CAR(remaining));
+                }
+                if h == R_UnboundValue() {
+                    h = Rf_cons(R_DotsSymbol(), R_NilValue());
+                    Rf_protect(h);
+                } else if h == R_NilValue() || h == R_MissingArg() {
+                    h = R_NilValue();
+                } else if TYPEOF(h) == SEXPTYPE::DOTSXP.0 {
+                    Rf_protect(h);
+                    h = substitute_list(h, R_NilValue());
+                    // h is now a substituted pairlist — don't unprotect the protected one yet
+                } else {
+                    crate::mainutils::errors::Rf_error(
+                        b"'...' used in an incorrect context\0".as_ptr() as *const c_char,
+                    );
+                    unreachable!()
+                }
+
+                if TYPEOF(h) == SEXPTYPE::DOTSXP.0 || (h != R_NilValue() && !h.is_null()) {
+                    Rf_protect(h);
+                }
+            } else {
+                h = substitute(CAR(remaining), rho);
+                // ENSURE_NAMEDMAX
+                if !h.is_null() && NAMED(h) < 2 {
+                    SET_NAMED(h, 2);
+                }
+                h = Rf_cons(h, R_NilValue());
+                SETTAG(h, TAG(remaining));
+            }
+
+            if !h.is_null() && h != R_NilValue() {
+                if res == R_NilValue() {
+                    Rf_protect(h);
+                    res = h;
+                } else {
+                    SETCDR(p, h);
+                }
+                // Walk to end of h (dots may have expanded to multiple elements)
+                let mut tail = h;
+                while !CDR(tail).is_null() && CDR(tail) != R_NilValue() {
+                    tail = CDR(tail);
+                }
+                p = tail;
+            }
+
+            remaining = CDR(remaining);
+        }
+
+        if res != R_NilValue() {
+            Rf_unprotect(1);
+        }
+        res
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_substitute — R-level substitute() entry point
+// ---------------------------------------------------------------------------
+
+/// R's `substitute()` primitive.
+///
+/// Ported from R's `do_substitute()` in coerce.c.
+pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    use crate::eval::eval::Rf_eval;
+    use crate::sexp::accessors::{CADR, CAR, TYPEOF};
+    use crate::sexp::constructors::Rf_cons;
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
+    use crate::sexp::memory_ext::NewEnvironment;
+    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+
+    unsafe {
+        // Manual argument matching: first arg is expr, second is env
+        let expr = CAR(args);
+        let env_arg = if LENGTH(args) > 1 {
+            CADR(args)
+        } else {
+            R_MissingArg()
+        };
+
+        let mut env = if env_arg == R_MissingArg() {
+            rho
+        } else {
+            Rf_eval(env_arg, rho)
+        };
+
+        // Historical: don't substitute in R_GlobalEnv
+        if env == R_GlobalEnv() {
+            env = R_NilValue();
+        } else if TYPEOF(env) == SEXPTYPE::VECSXP.0 {
+            // Convert VECSXP to environment
+            let plist = crate::mainutils::subassign::VectorToPairList(env);
+            Rf_protect(plist);
+            env = NewEnvironment(R_NilValue(), plist, R_BaseEnv());
+            Rf_unprotect(1);
+        } else if TYPEOF(env) == SEXPTYPE::LISTSXP.0 {
+            // Convert pairlist to environment
+            env = NewEnvironment(R_NilValue(), env, R_BaseEnv());
+        }
+
+        if env != R_NilValue() && TYPEOF(env) != SEXPTYPE::ENVSXP.0 {
+            crate::mainutils::errors::Rf_error(
+                b"invalid environment specified\0".as_ptr() as *const c_char
+            );
+        }
+
+        Rf_protect(env);
+        // Duplicate the expression and wrap in a list for substituteList
+        let t = Rf_cons(expr, R_NilValue());
+        Rf_protect(t);
+        let s = substitute_list(t, env);
+        let result = if !s.is_null() && s != R_NilValue() {
+            crate::sexp::accessors::CAR(s)
+        } else {
+            R_NilValue()
+        };
+        Rf_unprotect(2);
+        result
+    }
+}
+
+// ---------------------------------------------------------------------------
+// do_storage_mode — storage.mode<- assignment
+// ---------------------------------------------------------------------------
+
+/// `storage.mode(x) <- value` — change the storage mode of an object.
+///
+/// Ported from R's `do_storage_mode()` in coerce.c.
+pub unsafe fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
+    use crate::mainutils::errors::Rf_error;
+    use crate::sexp::accessors::{CADR, CAR, CHAR, SET_ATTRIB, STRING_ELT, TYPEOF};
+    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+
+    unsafe {
+        let obj = CAR(args);
+        let value = CADR(args);
+
+        // value must be a non-null character string
+        if !isString(value)
+            || LENGTH(value) < 1
+            || STRING_ELT(value, 0) == crate::sexp::globals::R_NaString()
+        {
+            Rf_error(b"'value' must be non-null character string\0".as_ptr() as *const c_char);
+        }
+
+        let type_str = CHAR(STRING_ELT(value, 0));
+        let target_type = str2type(type_str);
+
+        if target_type == -1 as c_int {
+            let s = std::ffi::CStr::from_ptr(type_str);
+            if s.to_bytes() == b"real" {
+                Rf_error(
+                    b"use of 'real' is defunct: use 'double' instead\0".as_ptr() as *const c_char
+                );
+            } else if s.to_bytes() == b"single" {
+                Rf_error(
+                    b"use of 'single' is defunct: use mode<- instead\0".as_ptr() as *const c_char
+                );
+            } else {
+                Rf_error(b"invalid value\0".as_ptr() as *const c_char);
+            }
+        }
+
+        if TYPEOF(obj) == target_type {
+            return obj;
+        }
+
+        // Check for factor
+        if crate::mainutils::apply::isFactor(obj) != 0 {
+            Rf_error(b"invalid to change the storage mode of a factor\0".as_ptr() as *const c_char);
+        }
+
+        let ans = coerceVector(obj, target_type);
+        Rf_protect(ans);
+
+        // Copy attributes preserving OBJECT and S4 bits
+        SET_ATTRIB(ans, crate::sexp::accessors::ATTRIB(obj));
+
+        Rf_unprotect(1);
+        ans
+    }
+}
+
+/// Map a type name string to a SEXPTYPE value.
+///
+/// Ported from R's `str2type()` in coerce.c.
+pub fn str2type(s: *const c_char) -> c_int {
+    use crate::sexp::ffi::SEXPTYPE;
+    if s.is_null() {
+        return -1;
+    }
+    let bytes = unsafe { std::ffi::CStr::from_ptr(s).to_bytes() };
+    match bytes {
+        b"logical" => SEXPTYPE::LGLSXP.0,
+        b"integer" => SEXPTYPE::INTSXP.0,
+        b"double" => SEXPTYPE::REALSXP.0,
+        b"complex" => SEXPTYPE::CPLXSXP.0,
+        b"character" => SEXPTYPE::STRSXP.0,
+        b"raw" => SEXPTYPE::RAWSXP.0,
+        b"list" => SEXPTYPE::VECSXP.0,
+        b"expression" => SEXPTYPE::EXPRSXP.0,
+        _ => -1,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

@@ -21,7 +21,7 @@ use crate::sexp::accessors::{
     TAG, TYPEOF,
 };
 use crate::sexp::constructors::*;
-use crate::sexp::envir::{R_findVar, forcePromise};
+use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
@@ -817,5 +817,95 @@ pub unsafe fn DispatchGroup(
 
         Rf_unprotect(nprotect);
         1
+    }
+}
+
+// ---------------------------------------------------------------------------
+// evalListKeepMissing — evaluate pairlist preserving R_MissingArg
+// ---------------------------------------------------------------------------
+
+/// Evaluate each element of a pairlist, but preserve `R_MissingArg` arguments
+/// rather than erroring on them.
+///
+/// Ported from R's `evalListKeepMissing()` in eval.c.
+/// Iterative (not recursive) to avoid protection stack growth.
+pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
+    use crate::sexp::ffi::SEXPTYPE;
+    use crate::sexp::symbol::R_DotsSymbol;
+
+    unsafe {
+        let mut head: SEXP = R_NilValue();
+        let mut tail: SEXP = ptr::null_mut();
+
+        let mut remaining = el;
+        while !remaining.is_null() && remaining != R_NilValue() {
+            let mut val: SEXP;
+
+            if CAR(remaining) == R_DotsSymbol() {
+                // Handle ... expansion
+                let h = R_findVarInFrame(rho, CAR(remaining));
+                Rf_protect(h);
+                if TYPEOF(h) == SEXPTYPE::DOTSXP.0 || h == R_NilValue() {
+                    let mut dh = h;
+                    while !dh.is_null() && dh != R_NilValue() {
+                        if CAR(dh) == R_MissingArg() {
+                            val = R_MissingArg();
+                        } else {
+                            val = Rf_eval(CAR(dh), rho);
+                        }
+                        let ev = CONS_NR(val, R_NilValue());
+                        if head == R_NilValue() {
+                            Rf_unprotect(1); // h
+                            head = ev;
+                            Rf_protect(head);
+                            Rf_protect(dh); // re-protect h
+                        } else {
+                            SETCDR(tail, ev);
+                        }
+                        // Copy tag from dots element
+                        if TAG(dh) != R_NilValue() {
+                            SETTAG(ev, TAG(dh));
+                        }
+                        tail = ev;
+                        dh = CDR(dh);
+                    }
+                } else if h != R_MissingArg() {
+                    Rf_unprotect(1);
+                    crate::mainutils::errors::Rf_error(
+                        b"'...' used in an incorrect context\0".as_ptr() as *const c_char,
+                    );
+                }
+                Rf_unprotect(1); // h
+            } else {
+                // Regular argument
+                if CAR(remaining) == R_MissingArg()
+                    || (TYPEOF(CAR(remaining)) == SEXPTYPE::SYMSXP.0
+                        && R_isMissing(CAR(remaining), rho) != 0)
+                {
+                    val = R_MissingArg();
+                } else {
+                    val = Rf_eval(CAR(remaining), rho);
+                }
+                let ev = CONS_NR(val, R_NilValue());
+                if head == R_NilValue() {
+                    head = ev;
+                    Rf_protect(head);
+                } else {
+                    SETCDR(tail, ev);
+                }
+                // Copy tag from original element
+                if TAG(remaining) != R_NilValue() {
+                    SETTAG(ev, TAG(remaining));
+                }
+                tail = ev;
+            }
+            remaining = CDR(remaining);
+        }
+
+        if head != R_NilValue() {
+            Rf_unprotect(1);
+        }
+
+        head
     }
 }
