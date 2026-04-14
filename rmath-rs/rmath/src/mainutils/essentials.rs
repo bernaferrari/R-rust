@@ -9,8 +9,8 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT,
-    TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
+    STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -2568,6 +2568,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "print.data.frame",
         "print.table",
         "print.factor",
+        "print.raw",
         "summary.data.frame",
         "format.data.frame",
         // Matrix/linear algebra
@@ -9604,6 +9605,54 @@ pub unsafe fn do_print_pairlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         }
         cur = CDR(cur);
         i += 1;
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `print.raw(x)` — print raw (byte) vector.
+pub unsafe fn do_print_raw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        println!("NULL");
+        return R_NilValue();
+    }
+    let t = TYPEOF(x);
+    if t != SEXPTYPE::RAWSXP.0 {
+        // Not a raw vector, fall back to default print
+        return do_print(_call, _op, args, _rho);
+    }
+    let n = XLENGTH(x);
+    if n == 0 {
+        println!("raw(0)");
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        return x;
+    }
+    let raw_ptr = RAW(x);
+    let mut parts: Vec<String> = Vec::new();
+    let display_n = n.min(999);
+    for i in 0..display_n {
+        let byte = *raw_ptr.add(i as usize);
+        parts.push(format!("{:02x}", byte));
+    }
+    if n > 999 {
+        parts.push("...".to_string());
+    }
+    // Print in R's raw vector style: [1] "00" "ff" "ab" ...
+    let mut line = String::from("[1] ");
+    for (i, p) in parts.iter().enumerate() {
+        if i > 0 {
+            line.push(' ');
+        }
+        line.push_str(&format!("\"{}\"", p));
+        // Wrap lines roughly every 16 entries for readability
+        if (i + 1) % 16 == 0 && i + 1 < parts.len() {
+            println!("{}", line);
+            line = format!("[{}] ", i + 2);
+        }
+    }
+    if !line.is_empty() {
+        println!("{}", line);
     }
     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     x

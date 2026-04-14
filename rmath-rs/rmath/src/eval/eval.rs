@@ -2324,6 +2324,14 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "print.raw" => unsafe {
+            crate::mainutils::essentials::do_print_raw(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         // S3 summary dispatch
         "summary.numeric" => unsafe {
             crate::mainutils::essentials::do_summary_numeric(
