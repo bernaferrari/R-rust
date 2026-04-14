@@ -527,7 +527,7 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
         for i in 0..n {
             let elt = STRING_ELT(t, i as R_xlen_t);
             if !elt.is_null() && elt != R_NilValue() {
-                eprintln!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
+                println!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
             }
         }
         Rf_unprotect(1);
@@ -543,18 +543,18 @@ unsafe fn PrintClosure(s: SEXP, data: &R_PrintData) {
         PrintLanguage(s, data);
 
         if isByteCode(BODY(s)) != 0 {
-            eprintln!("<bytecode: {:?}>", BODY(s));
+            println!("<bytecode: {:?}>", BODY(s));
         }
         let t = CLOENV(s);
         if t != R_GlobalEnv() {
             let env_str = crate::mainutils::printutils::EncodeEnvironment(t);
             if !env_str.is_null() {
-                eprintln!(
+                println!(
                     "{}",
                     CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
                 );
             } else {
-                eprintln!("<environment>");
+                println!("<environment>");
             }
         }
     }
@@ -591,12 +591,12 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
 
             let line = STRING_ELT(t, 0);
             if !line.is_null() && line != R_NilValue() {
-                eprint!("{} ", CStr::from_ptr(CHAR(line)).to_str().unwrap_or(""));
+                print!("{} ", CStr::from_ptr(CHAR(line)).to_str().unwrap_or(""));
             }
-            eprintln!(".Primitive(\"{}\")", nm);
+            println!(".Primitive(\"{}\")", nm);
             Rf_unprotect(1);
         } else {
-            eprintln!(".Primitive(\"{}\")", nm);
+            println!(".Primitive(\"{}\")", nm);
         }
     }
 }
@@ -615,7 +615,7 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
         for i in 0..n {
             let elt = STRING_ELT(u, i as R_xlen_t);
             if !elt.is_null() && elt != R_NilValue() {
-                eprintln!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
+                println!("{}", CStr::from_ptr(CHAR(elt)).to_str().unwrap_or("?"));
             }
         }
         Rf_unprotect(1);
@@ -642,7 +642,7 @@ unsafe fn PrintDispatch(s: SEXP, data: &R_PrintData) {
 
 unsafe fn PrintObjectS3(s: SEXP, data: &R_PrintData) {
     // Simplified: just print a message. Full S3 dispatch requires eval.
-    eprintln!("<S3 object>");
+    println!("<S3 object>");
     let _ = (s, data);
 }
 
@@ -934,7 +934,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                 };
                 for i in 0..n_pr {
                     if i > 0 {
-                        eprintln!();
+                        println!();
                     }
 
                     if names != R_NilValue() && i < XLENGTH(names) {
@@ -1178,7 +1178,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
 
             while TYPEOF(cur) == SEXPTYPE::LISTSXP.0 {
                 if i > 1 {
-                    eprintln!();
+                    println!();
                 }
 
                 let tag = TAG(cur);
@@ -1228,7 +1228,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                         .to_str()
                         .unwrap_or("");
-                    eprintln!("{}", s);
+                    println!("{}", s);
                 });
 
                 PrintDispatch(CAR(cur), data);
@@ -1239,10 +1239,10 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
             }
 
             if cur != R_NilValue() {
-                eprint!("\n. \n\n");
+                print!("\n. \n\n");
                 PrintValueRec_inner(cur, data);
             }
-            eprintln!();
+            println!();
         }
         printAttributes(s, data, false);
     }
@@ -1346,7 +1346,7 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 let s = CStr::from_ptr(b.as_ptr() as *const c_char)
                     .to_str()
                     .unwrap_or("");
-                eprintln!("{}", s);
+                println!("{}", s);
             });
 
             if tag == R_RowNamesSymbol() {
@@ -1390,13 +1390,13 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
         }
 
         if isMethodsDispatchOn() == 0 && (IS_S4_OBJECT(s) != 0 || TYPEOF(s) == SEXPTYPE(25).0) {
-            eprintln!("<S4 object>");
+            println!("<S4 object>");
             return;
         }
 
         match TYPEOF(s) {
             t if t == SEXPTYPE::NILSXP.0 => {
-                eprintln!("NULL");
+                println!("NULL");
             }
             t if t == SEXPTYPE::SYMSXP.0 => {
                 let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
@@ -1404,7 +1404,7 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 R_PRINT.with(|v| *v.borrow_mut() = data.clone());
                 let line = STRING_ELT(t, 0);
                 if !line.is_null() && line != R_NilValue() {
-                    eprintln!("{}", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
+                    println!("{}", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
                 }
                 Rf_unprotect(1);
             }
@@ -1412,7 +1412,7 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 PrintSpecial(s, data);
             }
             t if t == SEXPTYPE::CHARSXP.0 => {
-                eprint!("<CHARSXP: ");
+                print!("<CHARSXP: ");
                 let enc = crate::mainutils::printutils::EncodeString(
                     s,
                     0,
@@ -1420,9 +1420,9 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                     crate::mainutils::printutils::Rprt_adj::none,
                 );
                 if !enc.is_null() {
-                    eprint!("{}", CStr::from_ptr(enc).to_str().unwrap_or(""));
+                    print!("{}", CStr::from_ptr(enc).to_str().unwrap_or(""));
                 }
-                eprintln!(">");
+                println!(">");
                 return; // skip attributes for CHARSXP
             }
             t if t == SEXPTYPE::EXPRSXP.0 => {
@@ -1437,19 +1437,19 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             t if t == SEXPTYPE::ENVSXP.0 => {
                 let env_str = crate::mainutils::printutils::EncodeEnvironment(s);
                 if !env_str.is_null() {
-                    eprintln!(
+                    println!(
                         "{}",
                         CStr::from_ptr(env_str).to_str().unwrap_or("<environment>")
                     );
                 } else {
-                    eprintln!("<environment>");
+                    println!("<environment>");
                 }
             }
             t if t == SEXPTYPE::PROMSXP.0 => {
-                eprintln!("<promise: {:?}>", s);
+                println!("<promise: {:?}>", s);
             }
             t if t == SEXPTYPE::DOTSXP.0 => {
-                eprintln!("<...>");
+                println!("<...>");
             }
             t if t == SEXPTYPE::VECSXP.0 => {
                 PrintGenericVector(s, data);
@@ -1526,24 +1526,24 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 Rf_unprotect(1); // dim
             }
             t if t == SEXPTYPE::EXTPTRSXP.0 => {
-                eprintln!("<pointer: {:?}>", s);
+                println!("<pointer: {:?}>", s);
             }
             t if t == SEXPTYPE::BCODESXP.0 => {
-                eprintln!("<bytecode: {:?}>", s);
+                println!("<bytecode: {:?}>", s);
             }
             t if t == SEXPTYPE::WEAKREFSXP.0 => {
-                eprintln!("<weak reference>");
+                println!("<weak reference>");
             }
             t if t == SEXPTYPE(25).0 => {
                 // OBJSXP
                 if IS_S4_OBJECT(s) != 0 {
-                    eprintln!("<S4 Type Object>");
+                    println!("<S4 Type Object>");
                 } else {
-                    eprintln!("<object>");
+                    println!("<object>");
                 }
             }
             _ => {
-                eprintln!("<unknown type {}>", TYPEOF(s));
+                println!("<unknown type {}>", TYPEOF(s));
             }
         }
 
