@@ -268,15 +268,23 @@ unsafe fn isArray(x: SEXP) -> bool {
     unsafe { !isNull(getAttrib(x, R_DimSymbol())) }
 }
 
+unsafe fn SET_TYPEOF(x: SEXP, v: c_int) {
+    unsafe {
+        if !x.is_null() {
+            (*x).sxpinfo.set_type(SEXPTYPE(v));
+        }
+    }
+}
+
 /// Panic with an R error message.
-unsafe fn error(msg: &str) {
+unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(RError {
         message: msg.to_string(),
     });
 }
 
 /// Panic with an R error message (call-specific).
-unsafe fn errorcall(_call: SEXP, msg: &str) {
+unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
     unsafe {
         error(msg);
     }
@@ -2762,9 +2770,149 @@ pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     }
 }
 
-/// R-level `is.finite()` entry point.
-///
-/// This is the `do_isfinite()` function from coerce.c.
+// ---------------------------------------------------------------------------
+// as.function, str2lang, as.call
+// ---------------------------------------------------------------------------
+
+/// do_asfunction — convert a list to a function (closure).
+/// Matches C's `do_asfunction()` in coerce.c line 1605.
+pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let arglist = CAR(args);
+        if TYPEOF(arglist) != SEXPTYPE::VECSXP.0 {
+            error("list argument expected");
+        }
+        let envir = CADR(args);
+        if isNull(envir) {
+            error("use of NULL environment is defunct");
+        }
+        if !isEnvironment(envir) {
+            error("invalid environment");
+        }
+        let n = LENGTH(arglist);
+        if n < 1 {
+            error("argument must have length at least 1");
+        }
+        let names = Rf_protect(getAttrib(arglist, R_NamesSymbol()));
+        let pargs = Rf_protect(crate::sexp::constructors::Rf_allocList(n - 1));
+        let mut current = pargs;
+        for i in 0..n - 1 {
+            SETCAR(current, VECTOR_ELT(arglist, i as R_xlen_t));
+            if names != R_NilValue() {
+                let name_elt = STRING_ELT(names, i as R_xlen_t);
+                if name_elt != R_NilValue() {
+                    let c = CHAR(name_elt);
+                    if !c.is_null() && unsafe { *c != 0 } {
+                        SETTAG(current, crate::mainutils::subset::installTrChar(name_elt));
+                    }
+                }
+            }
+            current = CDR(current);
+        }
+        let body = Rf_protect(VECTOR_ELT(arglist, (n - 1) as R_xlen_t));
+        let bt = TYPEOF(body);
+        if bt == SEXPTYPE::LISTSXP.0
+            || bt == SEXPTYPE::LANGSXP.0
+            || bt == SEXPTYPE::SYMSXP.0
+            || bt == SEXPTYPE::EXPRSXP.0
+            || bt == SEXPTYPE::VECSXP.0
+            || bt == SEXPTYPE::RAWSXP.0
+            || bt == SEXPTYPE::INTSXP.0
+            || bt == SEXPTYPE::REALSXP.0
+            || bt == SEXPTYPE::STRSXP.0
+            || bt == SEXPTYPE::LGLSXP.0
+        {
+            let result = crate::mainutils::dstruct::mkCLOSXP(pargs, body, envir);
+            Rf_unprotect(3);
+            result
+        } else {
+            Rf_unprotect(3);
+            error("invalid body for function");
+        }
+    }
+}
+
+/// do_str2lang — convert a string to a language/call object.
+/// Matches C's `do_str2lang()` in coerce.c line 1668.
+pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let s = CAR(args);
+        if TYPEOF(s) != SEXPTYPE::STRSXP.0 {
+            error("argument must be character");
+        }
+        if LENGTH(s) != 1 {
+            error("argument must be a single character string");
+        }
+        let mut status: c_int = 0;
+        let srcfile = Rf_protect(Rf_mkString(b"<text>\0".as_ptr() as *const c_char));
+        let parsed = Rf_protect(crate::mainutils::gram_main::R_ParseVector(
+            s,
+            -1,
+            &mut status,
+            srcfile,
+        ));
+        if status != 1 {
+            Rf_unprotect(2);
+            error("parse error in str2lang");
+        }
+        if LENGTH(parsed) != 1 {
+            Rf_unprotect(2);
+            error("parsing result not of length one");
+        }
+        let result = VECTOR_ELT(parsed, 0);
+        Rf_unprotect(2);
+        result
+    }
+}
+
+/// do_ascall — convert an object to a call object.
+/// Matches C's `do_ascall()` in coerce.c line 1732.
+pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let x = CAR(args);
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LANGSXP.0 => x,
+            t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                let n = LENGTH(x);
+                if n == 0 {
+                    error("invalid length 0 argument");
+                }
+                let names = Rf_protect(getAttrib(x, R_NamesSymbol()));
+                let ans = Rf_protect(crate::sexp::constructors::Rf_allocList(n));
+                let mut ap = ans;
+                for i in 0..n {
+                    SETCAR(ap, VECTOR_ELT(x, i as R_xlen_t));
+                    if names != R_NilValue() {
+                        let name_elt = STRING_ELT(names, i as R_xlen_t);
+                        if name_elt != R_NilValue() {
+                            let c = CHAR(name_elt);
+                            if !c.is_null() && unsafe { *c != 0 } {
+                                SETTAG(ap, crate::mainutils::subset::installTrChar(name_elt));
+                            }
+                        }
+                    }
+                    ap = CDR(ap);
+                }
+                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.0);
+                SETTAG(ans, R_NilValue());
+                Rf_unprotect(2);
+                ans
+            }
+            t if t == SEXPTYPE::LISTSXP.0 => {
+                let ans = crate::mainutils::duplicate::Rf_duplicate(x);
+                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.0);
+                SETTAG(ans, R_NilValue());
+                ans
+            }
+            t if t == SEXPTYPE::STRSXP.0 => {
+                error("as.call(<character>) not feasible; consider str2lang()");
+            }
+            _ => {
+                error("invalid argument list");
+            }
+        }
+    }
+}
 pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
