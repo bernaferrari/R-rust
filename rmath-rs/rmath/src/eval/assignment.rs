@@ -100,11 +100,13 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP) -> SEXP {
 // applydefine — handle complex assignment (a[b] <- value)
 // ---------------------------------------------------------------------------
 
-/// Handle complex/subscript assignment (e.g., x[1] <- 5, x$name <- val).
-/// Matches C's `applydefine()` in eval.c line 3367.
+/// Handle complex/subscript assignment (e.g., x[1] <- 5, x$name <- val,
+/// x[i][j] <- val for nested cases).
 ///
-/// Simplified from C: handles single-level complex assignment by calling
-/// the appropriate replacement function ([<-, [[<-, $<-).
+/// Uses `evalseq` from missing.rs to recursively evaluate the LHS chain
+/// for nested assignments, then walks back up applying replacement functions.
+///
+/// Ported from applydefine() in eval.c:3367.
 pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let expr = CAR(args);
@@ -112,67 +114,137 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             error("invalid complex assignment");
         }
 
-        // Evaluate RHS first (assignment is right-associative)
         let rhs = Rf_eval(CADR(args), rho);
         Rf_protect(rhs);
 
-        // Walk LHS to find the final assignment target
         let primval = crate::mainutils::relop::PRIMVAL(op);
+        let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
 
-        // Get the innermost symbol and the accessor chain
-        let lhs = expr;
-        let func_sym = CAR(lhs);
+        // Check if this is a nested assignment: CADR(expr) is LANGSXP
+        if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP.0 as i32 {
+            // Nested assignment: use evalseq to evaluate LHS chain
+            let lhs = crate::eval::missing::evalseq(CADR(expr), rho, forcelocal);
+            Rf_protect(lhs);
 
-        // Determine the replacement function name: `[` -> `[<-`, `$` -> `$<-`, etc.
-        let assign_fn = if TYPEOF(func_sym) == SEXPTYPE::SYMSXP.0 {
-            get_assign_fcn_sym(func_sym)
-        } else {
-            R_NilValue()
-        };
+            // Walk the chain applying replacement functions
+            let mut current_lhs = lhs;
+            let mut current_expr = CADR(expr);
+            let mut current_rhs = rhs;
 
-        if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP.0 {
-            crate::sexp::protect::Rf_unprotect(1);
-            return rhs;
-        }
+            // Process inner levels (nested [i], [j], etc.)
+            while TYPEOF(current_expr) == SEXPTYPE::LANGSXP.0 as i32
+                && TYPEOF(CADR(current_expr)) == SEXPTYPE::LANGSXP.0 as i32
+            {
+                let func_sym = CAR(current_expr);
+                let assign_fn = get_assign_fcn_sym(func_sym);
+                if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP.0 {
+                    break;
+                }
 
-        // Get the variable being assigned to
-        let target_expr = if TYPEOF(CADR(lhs)) == SEXPTYPE::LANGSXP.0 {
-            // Nested: x[i][j] <- val — evaluate inner expression first
-            Rf_eval(CADR(lhs), rho)
-        } else {
-            // Simple: x[i] <- val — evaluate the object
-            Rf_eval(CADR(lhs), rho)
-        };
-        Rf_protect(target_expr);
+                let target_val = CAR(current_lhs);
+                let rest_args = CDDR(current_expr);
 
-        // Build replacement call: (assign_fn target_expr idx... rhs)
-        let call_args = CDDR(lhs);
-        let arg_list = crate::sexp::constructors::Rf_cons(
-            target_expr,
-            crate::sexp::constructors::Rf_cons(rhs, call_args),
-        );
-        Rf_protect(arg_list);
-        let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
-        Rf_protect(repl_call);
+                let arg_list = crate::sexp::constructors::Rf_cons(
+                    target_val,
+                    crate::sexp::constructors::Rf_cons(current_rhs, rest_args),
+                );
+                Rf_protect(arg_list);
+                let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                Rf_protect(repl_call);
 
-        // Evaluate the replacement call
-        let result = Rf_eval(repl_call, rho);
-        Rf_protect(result);
+                current_rhs = Rf_eval(repl_call, rho);
+                Rf_protect(current_rhs);
 
-        // Assign the result back to the original variable
-        let var_sym = CADR(lhs);
-        if TYPEOF(var_sym) == SEXPTYPE::SYMSXP.0 {
-            if primval == 2 {
-                setVar(var_sym, result, ENCLOS(rho));
-            } else {
-                defineVar(var_sym, result, rho);
+                crate::sexp::protect::Rf_unprotect(2);
+                current_lhs = CDR(current_lhs);
+                current_expr = CADR(current_expr);
             }
+
+            // Final (outermost) level
+            let func_sym = CAR(expr);
+            let assign_fn = get_assign_fcn_sym(func_sym);
+            if assign_fn != R_NilValue() && TYPEOF(assign_fn) == SEXPTYPE::SYMSXP.0 as i32 {
+                let target_val = CAR(current_lhs);
+                let rest_args = CDDR(expr);
+
+                let arg_list = crate::sexp::constructors::Rf_cons(
+                    target_val,
+                    crate::sexp::constructors::Rf_cons(current_rhs, rest_args),
+                );
+                Rf_protect(arg_list);
+                let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                Rf_protect(repl_call);
+
+                let result = Rf_eval(repl_call, rho);
+                Rf_protect(result);
+
+                // Assign back to the outermost variable
+                let var_sym = CADR(expr);
+                if TYPEOF(var_sym) == SEXPTYPE::SYMSXP.0 as i32 {
+                    // Use the symbol from the deepest evalseq level
+                    let deep_sym =
+                        if !CDR(current_lhs).is_null() && CDR(current_lhs) != R_NilValue() {
+                            CDR(current_lhs)
+                        } else {
+                            var_sym
+                        };
+                    if primval == 2 {
+                        setVar(deep_sym, result, ENCLOS(rho));
+                    } else {
+                        defineVar(deep_sym, result, rho);
+                    }
+                }
+
+                crate::sexp::protect::Rf_unprotect(3);
+            }
+
+            crate::sexp::protect::Rf_unprotect(2);
+            set_R_Visible(FALSE);
+            rhs
+        } else {
+            // Simple single-level assignment: x[i] <- val
+            let lhs = expr;
+            let func_sym = CAR(lhs);
+
+            let assign_fn = if TYPEOF(func_sym) == SEXPTYPE::SYMSXP.0 as i32 {
+                get_assign_fcn_sym(func_sym)
+            } else {
+                R_NilValue()
+            };
+
+            if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP.0 as i32 {
+                crate::sexp::protect::Rf_unprotect(1);
+                return rhs;
+            }
+
+            let target_expr = Rf_eval(CADR(lhs), rho);
+            Rf_protect(target_expr);
+
+            let call_args = CDDR(lhs);
+            let arg_list = crate::sexp::constructors::Rf_cons(
+                target_expr,
+                crate::sexp::constructors::Rf_cons(rhs, call_args),
+            );
+            Rf_protect(arg_list);
+            let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+            Rf_protect(repl_call);
+
+            let result = Rf_eval(repl_call, rho);
+            Rf_protect(result);
+
+            let var_sym = CADR(lhs);
+            if TYPEOF(var_sym) == SEXPTYPE::SYMSXP.0 as i32 {
+                if primval == 2 {
+                    setVar(var_sym, result, ENCLOS(rho));
+                } else {
+                    defineVar(var_sym, result, rho);
+                }
+            }
+
+            set_R_Visible(FALSE);
+            crate::sexp::protect::Rf_unprotect(5);
+            rhs
         }
-
-        set_R_Visible(FALSE);
-
-        crate::sexp::protect::Rf_unprotect(5);
-        rhs
     }
 }
 

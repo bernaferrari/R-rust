@@ -613,6 +613,170 @@ unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP
 }
 
 // ---------------------------------------------------------------------------
+// patchArgsByActuals -- 3-pass argument matching for NextMethod
+// ---------------------------------------------------------------------------
+
+/// Formal argument matching state for patchArgsByActuals.
+/// Ported from match.c:415-422.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum fstype_t {
+    Unmatched = 0,
+    MatchedPresent = 1,
+    MatchedMissing = 2,
+    MatchedLocal = 3,
+}
+
+/// Patch a single supplied argument into a promise referencing the formal name.
+/// If the supplied value is R_MissingArg, looks up a local variable in cloenv.
+/// Ported from match.c:424-438.
+unsafe fn patch_argument(supplied_slot: SEXP, name: SEXP, farg: *mut fstype_t, cloenv: SEXP) {
+    unsafe {
+        let value = CAR(supplied_slot);
+        if value == R_MissingArg() {
+            let local = crate::sexp::envir::R_findVarInFrame(cloenv, name);
+            if local == R_MissingArg() {
+                if !farg.is_null() {
+                    *farg = fstype_t::MatchedMissing;
+                }
+                return;
+            }
+            if !farg.is_null() {
+                *farg = fstype_t::MatchedLocal;
+            }
+        } else if !farg.is_null() {
+            *farg = fstype_t::MatchedPresent;
+        }
+        SETCAR(
+            supplied_slot,
+            crate::sexp::memory_ext::mkPROMISE(name, cloenv),
+        );
+    }
+}
+
+/// 3-pass argument matching: exact tag, partial tag, positional.
+/// Creates a shallow copy of supplied args and patches them into promises
+/// referencing the closure environment's formals.
+/// Ported from match.c:440-559.
+unsafe fn patchArgsByActuals(formals: SEXP, supplied: SEXP, cloenv: SEXP) -> SEXP {
+    unsafe {
+        let nfarg = length(formals).max(1) as usize;
+        let mut farg = vec![fstype_t::Unmatched; nfarg];
+
+        // Shallow-duplicate supplied arguments
+        let n_supplied = length(supplied);
+        let prsupplied = crate::sexp::memory_ext::allocList(n_supplied);
+        Rf_protect(prsupplied);
+        let mut b = supplied;
+        let mut a = prsupplied;
+        while !b.is_null() && b != R_NilValue() {
+            SETCAR(a, CAR(b));
+            // SET_ARGUSED(a, 0) — clear the argused flag
+            let gp = (*a).sxpinfo.gp();
+            (*a).sxpinfo.set_gp(gp & !2);
+            SETTAG(a, TAG(b));
+            b = CDR(b);
+            a = CDR(a);
+        }
+
+        // Pass 1: exact matches by tag
+        let mut f = formals;
+        let mut farg_i = 0usize;
+        while !f.is_null() && f != R_NilValue() {
+            if TAG(f) != crate::sexp::symbol::R_DotsSymbol() {
+                let mut b2 = prsupplied;
+                while !b2.is_null() && b2 != R_NilValue() {
+                    if !TAG(b2).is_null()
+                        && TAG(b2) != R_NilValue()
+                        && crate::mainutils::match_mod::pmatch(TAG(f), TAG(b2), 1) != 0
+                    {
+                        patch_argument(b2, TAG(f), &mut farg[farg_i], cloenv);
+                        let gp = (*b2).sxpinfo.gp();
+                        (*b2).sxpinfo.set_gp((gp & !2) | 2);
+                        break;
+                    }
+                    b2 = CDR(b2);
+                }
+            }
+            f = CDR(f);
+            farg_i += 1;
+        }
+
+        // Pass 2: partial matches by tag
+        let mut seendots = false;
+        f = formals;
+        farg_i = 0;
+        while !f.is_null() && f != R_NilValue() {
+            if farg[farg_i] == fstype_t::Unmatched {
+                if TAG(f) == crate::sexp::symbol::R_DotsSymbol() && !seendots {
+                    seendots = true;
+                } else {
+                    let mut b2 = prsupplied;
+                    while !b2.is_null() && b2 != R_NilValue() {
+                        // Check ARGUSED == 0
+                        let gp = (*b2).sxpinfo.gp();
+                        let argused = (gp & 2) != 0;
+                        if !argused
+                            && !TAG(b2).is_null()
+                            && TAG(b2) != R_NilValue()
+                            && crate::mainutils::match_mod::pmatch(
+                                TAG(f),
+                                TAG(b2),
+                                if seendots { 1 } else { 0 },
+                            ) != 0
+                        {
+                            patch_argument(b2, TAG(f), &mut farg[farg_i], cloenv);
+                            // SET_ARGUSED(b2, 1)
+                            let gp2 = (*b2).sxpinfo.gp();
+                            (*b2).sxpinfo.set_gp((gp2 & !2) | 2);
+                            break;
+                        }
+                        b2 = CDR(b2);
+                    }
+                }
+            }
+            f = CDR(f);
+            farg_i += 1;
+        }
+
+        // Pass 3: positional matches
+        f = formals;
+        let mut b3 = prsupplied;
+        farg_i = 0;
+        while !f.is_null() && f != R_NilValue() && !b3.is_null() && b3 != R_NilValue() {
+            if TAG(f) == crate::sexp::symbol::R_DotsSymbol() {
+                break;
+            } else if farg[farg_i] == fstype_t::MatchedPresent {
+                f = CDR(f);
+                farg_i += 1;
+            } else {
+                let gp = (*b3).sxpinfo.gp();
+                let argused = (gp & 2) != 0;
+                let has_tag = !TAG(b3).is_null() && TAG(b3) != R_NilValue();
+                if argused || has_tag {
+                    b3 = CDR(b3);
+                } else {
+                    if farg[farg_i] == fstype_t::MatchedLocal {
+                        SETCAR(b3, R_MissingArg());
+                    } else {
+                        patch_argument(b3, TAG(f), ptr::null_mut(), cloenv);
+                    }
+                    // SET_ARGUSED(b3, 1)
+                    let gp2 = (*b3).sxpinfo.gp();
+                    (*b3).sxpinfo.set_gp((gp2 & !2) | 2);
+                    b3 = CDR(b3);
+                    f = CDR(f);
+                    farg_i += 1;
+                }
+            }
+        }
+
+        crate::sexp::protect::Rf_unprotect(1);
+        prsupplied
+    }
+}
+
+// ---------------------------------------------------------------------------
 // newintoold -- destructive argument matching for NextMethod
 // ---------------------------------------------------------------------------
 
