@@ -273,6 +273,63 @@ impl std::fmt::Display for RError {
 impl std::error::Error for RError {}
 
 // ---------------------------------------------------------------------------
+// RSignal — discriminated control flow signals
+// ---------------------------------------------------------------------------
+
+/// Discriminated R evaluation signal.
+///
+/// Replaces the undifferentiated `RError` panic payload for control flow.
+/// Each variant represents a distinct R control flow mechanism.
+#[derive(Debug)]
+pub enum RSignal {
+    Error { message: String },
+    Break,
+    Next,
+    Return(SEXP),
+}
+
+unsafe impl Send for RSignal {}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LoopAction {
+    Break,
+    Continue,
+}
+
+/// Try to handle a loop body panic. Returns LoopAction for break/next,
+/// re-panics for other signals.
+pub fn handle_loop_signal(payload: Box<dyn std::any::Any + Send>) -> LoopAction {
+    match payload.downcast::<RSignal>() {
+        Ok(signal) => match *signal {
+            RSignal::Break => LoopAction::Break,
+            RSignal::Next => LoopAction::Continue,
+            other => std::panic::panic_any(other),
+        },
+        Err(payload) => match payload.downcast::<RError>() {
+            Ok(err) => std::panic::panic_any(RSignal::Error {
+                message: err.message.clone(),
+            }),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
+    }
+}
+
+pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
+    match payload.downcast::<RSignal>() {
+        Ok(signal) => match *signal {
+            RSignal::Return(val) => val,
+            other => std::panic::panic_any(other),
+        },
+        Err(payload) => match payload.downcast::<RError>() {
+            Ok(err) => std::panic::panic_any(RSignal::Error {
+                message: err.message.clone(),
+            }),
+            Err(payload) => std::panic::resume_unwind(payload),
+        },
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

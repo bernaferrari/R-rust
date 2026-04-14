@@ -1,4 +1,10 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(
+    non_snake_case,
+    non_upper_case_globals,
+    dead_code,
+    unused_variables,
+    unsafe_op_in_unsafe_fn
+)]
 
 //! Special form implementations — ports R's special functions from eval.c.
 //!
@@ -136,41 +142,43 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `while` special form.
 unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        // args = (condition, body)
-        let cond = CAR(args);
-        let body = CADR(args);
+    let cond = CAR(args);
+    let body = CADR(args);
 
-        loop {
-            let cond_val = Rf_eval(cond, rho);
+    loop {
+        let cond_val = Rf_eval(cond, rho);
 
-            let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP.0 {
-                let data = crate::sexp::accessors::LOGICAL(cond_val);
-                *data == 1
+        let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP.0 {
+            let data = crate::sexp::accessors::LOGICAL(cond_val);
+            *data == 1
+        } else {
+            let len = crate::sexp::constructors::Rf_length(cond_val);
+            if len > 0 {
+                true
             } else {
-                // Coerce to logical
-                let len = crate::sexp::constructors::Rf_length(cond_val);
-                if len > 0 {
-                    // Try coercion
-                    true // Simplified — full impl would coerce
-                } else {
-                    eprintln!("Error: argument is not interpretable as logical");
-                    std::panic::panic_any(RError {
-                        message: "argument is not interpretable as logical".to_string(),
-                    });
-                }
-            };
-
-            if !should_continue {
-                break;
+                std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                    message: "argument is not interpretable as logical".to_string(),
+                });
             }
+        };
 
-            // Evaluate body — might break/next
-            let _ = Rf_eval(body, rho);
+        if !should_continue {
+            break;
         }
 
-        R_NilValue()
+        let body_result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
+
+        match body_result {
+            Ok(_) => {}
+            Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
+                crate::sexp::context::LoopAction::Break => break,
+                crate::sexp::context::LoopAction::Continue => continue,
+            },
+        }
     }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -179,57 +187,57 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `for` special form.
 unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        // args = (var, seq, body)
-        let var_sym = CAR(args);
-        let seq_expr = CADR(args);
-        let body = CADDR(args);
+    let var_sym = CAR(args);
+    let seq_expr = CADR(args);
+    let body = CADDR(args);
 
-        // Evaluate the sequence
-        let seq_val = Rf_eval(seq_expr, rho);
+    let seq_val = Rf_eval(seq_expr, rho);
 
-        if TYPEOF(seq_val) != SEXPTYPE::VECSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::LISTSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::LANGSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::EXPRSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::LGLSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::INTSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::REALSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::STRSXP.0
-            && TYPEOF(seq_val) != SEXPTYPE::RAWSXP.0
-        {
-            eprintln!("Error: invalid 'for' loop variable sequence");
-            std::panic::panic_any(RError {
-                message: "invalid 'for' loop variable sequence".to_string(),
-            });
-        }
-
-        let n = crate::sexp::constructors::Rf_length(seq_val);
-
-        // Iterate
-        for i in 0..n {
-            // Get the i-th element
-            let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP.0
-                || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP.0
-            {
-                crate::sexp::accessors::VECTOR_ELT(seq_val, i as i64)
-            } else {
-                // For pairlist
-                let mut current = seq_val;
-                for _ in 0..i {
-                    current = CDR(current);
-                }
-                CAR(current)
-            };
-
-            defineVar(var_sym, val, rho);
-
-            let _ = Rf_eval(body, rho);
-        }
-
-        R_NilValue()
+    if TYPEOF(seq_val) != SEXPTYPE::VECSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::LISTSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::LANGSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::EXPRSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::LGLSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::INTSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::REALSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::STRSXP.0
+        && TYPEOF(seq_val) != SEXPTYPE::RAWSXP.0
+    {
+        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+            message: "invalid 'for' loop variable sequence".to_string(),
+        });
     }
+
+    let n = crate::sexp::constructors::Rf_length(seq_val);
+
+    for i in 0..n {
+        let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP.0 || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP.0
+        {
+            crate::sexp::accessors::VECTOR_ELT(seq_val, i as i64)
+        } else {
+            let mut current = seq_val;
+            for _ in 0..i {
+                current = CDR(current);
+            }
+            CAR(current)
+        };
+
+        defineVar(var_sym, val, rho);
+
+        let body_result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
+
+        match body_result {
+            Ok(_) => {}
+            Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
+                crate::sexp::context::LoopAction::Break => break,
+                crate::sexp::context::LoopAction::Continue => continue,
+            },
+        }
+    }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -238,13 +246,22 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `repeat` special form.
 unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let body = CAR(args);
+    let body = CAR(args);
 
-        loop {
-            let _ = Rf_eval(body, rho);
+    loop {
+        let body_result =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
+
+        match body_result {
+            Ok(_) => {}
+            Err(payload) => match crate::sexp::context::handle_loop_signal(payload) {
+                crate::sexp::context::LoopAction::Break => break,
+                crate::sexp::context::LoopAction::Continue => continue,
+            },
         }
     }
+
+    R_NilValue()
 }
 
 // ---------------------------------------------------------------------------
@@ -255,9 +272,7 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// In C, this uses longjmp. In Rust, we panic with a Break signal.
 pub unsafe fn do_break() -> SEXP {
-    std::panic::panic_any(RError {
-        message: "break".to_string(),
-    });
+    std::panic::panic_any(crate::sexp::context::RSignal::Break);
 }
 
 // ---------------------------------------------------------------------------
@@ -268,9 +283,7 @@ pub unsafe fn do_break() -> SEXP {
 ///
 /// In C, this uses longjmp. In Rust, we panic with a Next signal.
 pub unsafe fn do_next() -> SEXP {
-    std::panic::panic_any(RError {
-        message: "next".to_string(),
-    });
+    std::panic::panic_any(crate::sexp::context::RSignal::Next);
 }
 
 // ---------------------------------------------------------------------------
@@ -349,16 +362,10 @@ unsafe fn do_paren(args: SEXP, rho: SEXP) -> SEXP {
 
 /// Implement the `return` special form.
 unsafe fn do_return(args: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let val = if args.is_null() || args == R_NilValue() {
-            R_NilValue()
-        } else {
-            Rf_eval(CAR(args), rho)
-        };
-        // In C, return uses longjmp to exit the function context
-        // In Rust, we panic with the return value
-        std::panic::panic_any(RError {
-            message: "return".to_string(),
-        });
-    }
+    let val = if args.is_null() || args == R_NilValue() {
+        R_NilValue()
+    } else {
+        Rf_eval(CAR(args), rho)
+    };
+    std::panic::panic_any(crate::sexp::context::RSignal::Return(val));
 }

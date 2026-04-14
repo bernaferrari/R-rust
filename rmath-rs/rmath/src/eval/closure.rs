@@ -155,26 +155,49 @@ pub unsafe fn applyClosure(
     suppliedenv: SEXP,
     _R_verbose: c_int,
 ) -> SEXP {
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
-            return R_NilValue();
-        }
+    if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
+        return R_NilValue();
+    }
 
-        match (
-            Sexp::from_raw(op),
-            Sexp::from_raw(arglist),
-            Sexp::from_raw(rho),
-        ) {
-            (Some(closure), Some(args), Some(env)) => {
-                match apply_closure_safe(closure, args, env) {
-                    Ok(result) => result.as_raw(),
-                    Err(_) => R_NilValue(),
-                }
+    let newrho = make_applyClosure_env(op, arglist, rho);
+    if newrho.is_null() || newrho == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let body = BODY(op);
+    if body.is_null() {
+        return R_NilValue();
+    }
+
+    let ctx = crate::sexp::context::Rf_begincontext(
+        crate::sexp::context::ctxt_flags::CTXT_FUNCTION
+            | crate::sexp::context::ctxt_flags::CTXT_RETURN,
+        call,
+        newrho,
+        rho,
+        None,
+        op,
+        ptr::null_mut(),
+    );
+
+    struct CtxGuard(*mut crate::sexp::context::RCNTXT);
+    impl Drop for CtxGuard {
+        fn drop(&mut self) {
+            unsafe {
+                crate::sexp::context::Rf_endcontext(self.0);
             }
-            _ => R_NilValue(),
         }
-    }))
-    .unwrap_or_else(|_| R_NilValue())
+    }
+    let _ctx_guard = CtxGuard(ctx);
+
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::eval::eval::Rf_eval(body, newrho)
+    }));
+
+    match result {
+        Ok(val) => val,
+        Err(payload) => crate::sexp::context::handle_closure_signal(payload),
+    }
 }
 
 // ---------------------------------------------------------------------------
