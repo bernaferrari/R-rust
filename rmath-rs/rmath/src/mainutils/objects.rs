@@ -2011,15 +2011,127 @@ pub unsafe fn do_S4on(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 }
 
 /// dispatchNonGeneric -- dispatch the non-generic definition of a function.
-unsafe fn dispatchNonGeneric(_name: SEXP, _env: SEXP, _fdef: SEXP) -> SEXP {
+///
+/// Used to trap calls to standardGeneric during the loading of the methods package.
+/// Searches the enclosing environments for a non-generic version of the function,
+/// then evaluates a call to it with the same arguments.
+///
+/// Ported from objects.c:1275-1319.
+unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
     unsafe {
-        // Full implementation requires finding a non-generic version
-        // and evaluating it. For now, return nil.
+        let symbol = crate::mainutils::subset::installTrChar(asChar(name));
+
+        // Search enclosing environments for a non-generic version
+        let mut fun = R_UnboundValue();
+        let mut rho = ENCLOS(env);
+        while rho != R_EmptyEnv() && !rho.is_null() {
+            let val = crate::sexp::envir::R_findVarInFrame(rho, symbol);
+            if val == R_UnboundValue() {
+                rho = ENCLOS(rho);
+                continue;
+            }
+            let t = TYPEOF(val);
+            if t == SEXPTYPE::CLOSXP.0 as c_int {
+                let gen_attr = crate::sexp::envir::R_findVarInFrame(CLOENV(val), sym("Generic"));
+                if gen_attr != R_UnboundValue() {
+                    rho = ENCLOS(rho);
+                    continue;
+                }
+                fun = val;
+                break;
+            }
+            rho = ENCLOS(rho);
+            continue;
+        }
+
+        // Fall back to the symbol's global value
+        if fun == R_UnboundValue() {
+            fun = SYMVALUE(symbol);
+        }
+        if fun == R_UnboundValue() {
+            let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP.0 as c_int {
+                let c = CHAR(STRING_ELT(name, 0));
+                if !c.is_null() {
+                    std::ffi::CStr::from_ptr(c).to_str().unwrap_or("<unknown>")
+                } else {
+                    "<unknown>"
+                }
+            } else {
+                "<unknown>"
+            };
+            error(&format!(
+                "unable to find a non-generic version of function \"{}\"",
+                name_str
+            ));
+        }
+
+        // Find the calling context matching env
+        let mut cptr = R_GlobalContext();
+        while !cptr.is_null() {
+            let cf = (*cptr).callflag;
+            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0 && (*cptr).cloenv == env
+            {
+                break;
+            }
+            cptr = (*cptr).nextcontext;
+        }
+
+        if cptr.is_null() {
+            return R_NilValue();
+        }
+
+        // Duplicate the call and replace the function with the non-generic
+        let e = crate::mainutils::duplicate::shallow_duplicate(crate::eval::context::R_syscall(
+            0, cptr,
+        ));
+        Rf_protect(e);
+        SETCAR(e, fun);
+
+        let value = crate::eval::eval::Rf_eval(e, (*cptr).sysparent);
+        crate::sexp::protect::Rf_unprotect(1);
+        value
+    }
+}
+
+// ---------------------------------------------------------------------------
+// get_this_generic -- walk context stack to find the generic function
+// ---------------------------------------------------------------------------
+
+/// Walk the context stack looking for a function with a "generic" attribute
+/// matching the supplied name. If a second argument is provided, return it
+/// directly as the function definition.
+///
+/// Ported from objects.c:1540-1562.
+unsafe fn get_this_generic(args: SEXP) -> SEXP {
+    unsafe {
+        let cdr_args = CDR(args);
+        if !cdr_args.is_null() && cdr_args != R_NilValue() {
+            return CAR(cdr_args);
+        }
+
+        let fname = STRING_ELT(CAR(args), 0);
+
+        let mut cptr = R_GlobalContext();
+        while !cptr.is_null() {
+            let cf = (*cptr).callflag;
+            if (cf & crate::sexp::context::ctxt_flags::CTXT_FUNCTION) != 0
+                && isObject((*cptr).callfun) != FALSE
+            {
+                let generic = getAttrib((*cptr).callfun, sym("generic"));
+                if isValidString(generic) != FALSE && Seql(fname, STRING_ELT(generic, 0)) != FALSE {
+                    return (*cptr).callfun;
+                }
+            }
+            cptr = (*cptr).nextcontext;
+        }
+
         R_NilValue()
     }
 }
 
 /// do_standardGeneric -- standardGeneric() .Internal
+///
+/// Ported from objects.c:1324-1370.
 pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
@@ -2027,23 +2139,14 @@ pub unsafe fn do_standardGeneric(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -
         }
         let arg = CAR(args);
         if isValidString(arg) == FALSE {
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "argument to 'standardGeneric' must be a non-empty character string"
-                    .to_string(),
-            });
+            error("argument to 'standardGeneric' must be a non-empty character string");
         }
 
+        let fdef = get_this_generic(args);
         let ptr = R_get_standardGeneric_ptr();
         match ptr {
-            Some(func) => {
-                // fdef would be found via get_this_generic, but for now
-                // we pass nil as fdef since we don't have full context search
-                func(arg, env, R_NilValue())
-            }
-            None => {
-                // Methods dispatch not enabled
-                R_NilValue()
-            }
+            Some(func) => func(arg, env, fdef),
+            None => R_NilValue(),
         }
     }
 }
@@ -2236,15 +2339,185 @@ pub unsafe fn R_set_quick_method_check(_value: R_stdGen_ptr_t) {
 }
 
 /// R_possible_dispatch -- try to dispatch a formal method for a primitive.
+///
+/// Main entry point for S4 method dispatch on primitive functions.
+/// Ported from objects.c:1610-1696.
 pub unsafe fn R_possible_dispatch(
-    _call: SEXP,
-    _op: SEXP,
-    _args: SEXP,
-    _rho: SEXP,
-    _promisedArgs: c_int,
+    call: SEXP,
+    op: SEXP,
+    args: SEXP,
+    rho: SEXP,
+    promisedArgs: c_int,
 ) -> SEXP {
-    // Full implementation requires get_primitive_methods, applyClosure, etc.
-    ptr::null_mut()
+    unsafe {
+        let offset = PRIMOFFSET(op);
+        let cur_max = CUR_MAX_OFFSET.with(|v| v.get());
+        if offset < 0 || offset > cur_max {
+            error("invalid primitive operation given for dispatch");
+        }
+
+        let prim_methods_ptr = PRIM_METHODS.with(|v| v.get());
+        if prim_methods_ptr.is_null() {
+            return ptr::null_mut();
+        }
+
+        let current = *prim_methods_ptr.add(offset as usize);
+        if current == prim_methods_t::NO_METHODS || current == prim_methods_t::SUPPRESSED {
+            return ptr::null_mut();
+        }
+
+        if current == prim_methods_t::NEEDS_RESET {
+            do_set_prim_method(
+                op,
+                b"suppressed\x00".as_ptr() as *const c_char,
+                R_NilValue(),
+                R_NilValue(),
+            );
+            let mlist = get_primitive_methods_stub(op, rho);
+            Rf_protect(mlist);
+            do_set_prim_method(
+                op,
+                b"set\x00".as_ptr() as *const c_char,
+                R_NilValue(),
+                mlist,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+
+        let prim_mlist_ptr = PRIM_MLIST.with(|v| v.get());
+        let mlist = if prim_mlist_ptr.is_null() {
+            ptr::null_mut()
+        } else {
+            ptr::read(prim_mlist_ptr.add(offset as usize))
+        };
+
+        // Try the quick method check
+        if !mlist.is_null() && isNull(mlist) == FALSE {
+            let qmc = QUICK_METHOD_CHECK_PTR.with(|v| v.get());
+            if let Some(check_fn) = qmc {
+                let value = check_fn(args, mlist, op);
+                if isPrimitive(value) != FALSE {
+                    return ptr::null_mut();
+                }
+                if isFunction(value) != FALSE {
+                    if inherits2(
+                        value,
+                        b"internalDispatchMethod\x00".as_ptr() as *const c_char,
+                    ) != FALSE
+                    {
+                        return ptr::null_mut();
+                    }
+
+                    let prim_name_ptr = crate::mainutils::relop::PRIMNAME(op);
+                    let suppliedvars = crate::sexp::memory_ext::allocList(1);
+                    Rf_protect(suppliedvars);
+                    SETCAR(suppliedvars, Rf_mkString(prim_name_ptr));
+                    SETTAG(
+                        suppliedvars,
+                        Rf_install(b"Generic\x00".as_ptr() as *const c_char),
+                    );
+
+                    if promisedArgs == FALSE {
+                        let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);
+                        Rf_protect(s);
+                        if length(s) != length(args) {
+                            error("dispatch error");
+                        }
+                        let mut a = args;
+                        let mut b = s;
+                        while !a.is_null() && a != R_NilValue() {
+                            if !b.is_null()
+                                && b != R_NilValue()
+                                && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP.0 as c_int
+                            {
+                                SET_PRVALUE(CAR(b), CAR(a));
+                            }
+                            a = CDR(a);
+                            b = CDR(b);
+                        }
+                        let value = crate::eval::closure::applyClosure(
+                            call,
+                            value,
+                            s,
+                            rho,
+                            suppliedvars,
+                            TRUE,
+                        );
+                        crate::sexp::protect::Rf_unprotect(2);
+                        return value;
+                    } else {
+                        let value = crate::eval::closure::applyClosure(
+                            call,
+                            value,
+                            args,
+                            rho,
+                            suppliedvars,
+                            FALSE,
+                        );
+                        crate::sexp::protect::Rf_unprotect(1);
+                        return value;
+                    }
+                }
+            }
+        }
+
+        // Fall back to full generic dispatch via prim_generics
+        let prim_gen_ptr = PRIM_GENERICS.with(|v| v.get());
+        let fundef = if prim_gen_ptr.is_null() {
+            ptr::null_mut()
+        } else {
+            ptr::read(prim_gen_ptr.add(offset as usize))
+        };
+
+        if fundef.is_null() || TYPEOF(fundef) != SEXPTYPE::CLOSXP.0 as c_int {
+            error("primitive function has been set for methods but no generic function supplied");
+        }
+
+        if promisedArgs == FALSE {
+            let s = crate::eval::dispatch::promiseArgs(CDR(call), rho);
+            Rf_protect(s);
+            if length(s) != length(args) {
+                error("dispatch error");
+            }
+            let mut a = args;
+            let mut b = s;
+            while !a.is_null() && a != R_NilValue() {
+                if !b.is_null()
+                    && b != R_NilValue()
+                    && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP.0 as c_int
+                {
+                    SET_PRVALUE(CAR(b), CAR(a));
+                }
+                a = CDR(a);
+                b = CDR(b);
+            }
+            let value =
+                crate::eval::closure::applyClosure(call, fundef, s, rho, R_NilValue(), TRUE);
+            crate::sexp::protect::Rf_unprotect(1);
+            if !prim_methods_ptr.is_null() {
+                *prim_methods_ptr.add(offset as usize) = current;
+            }
+            if value == R_deferred_default_method() {
+                return ptr::null_mut();
+            }
+            return value;
+        } else {
+            let value =
+                crate::eval::closure::applyClosure(call, fundef, args, rho, R_NilValue(), FALSE);
+            if !prim_methods_ptr.is_null() {
+                *prim_methods_ptr.add(offset as usize) = current;
+            }
+            if value == R_deferred_default_method() {
+                return ptr::null_mut();
+            }
+            return value;
+        }
+    }
+}
+
+/// Stub for get_primitive_methods — requires the methods package to be loaded.
+unsafe fn get_primitive_methods_stub(_op: SEXP, _rho: SEXP) -> SEXP {
+    unsafe { R_NilValue() }
 }
 
 // ---------------------------------------------------------------------------
