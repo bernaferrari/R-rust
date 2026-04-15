@@ -3896,6 +3896,127 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        // Complete special functions for libRmath
+        "lgamma" => unsafe {
+            crate::mainutils::essentials::do_lgamma(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "gamma" => unsafe {
+            crate::mainutils::essentials::do_gamma(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "digamma" => unsafe {
+            crate::mainutils::essentials::do_digamma(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "trigamma" => unsafe {
+            crate::mainutils::essentials::do_trigamma(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "psigamma" => unsafe {
+            crate::mainutils::essentials::do_psigamma(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "beta" => unsafe {
+            crate::mainutils::essentials::do_beta(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "lbeta" => unsafe {
+            crate::mainutils::essentials::do_lbeta(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "choose" => unsafe {
+            crate::mainutils::essentials::do_choose(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "lchoose" => unsafe {
+            crate::mainutils::essentials::do_lchoose(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "factorial" => unsafe {
+            crate::mainutils::essentials::do_factorial(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "lfactorial" => unsafe {
+            crate::mainutils::essentials::do_lfactorial(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "besselI" => unsafe {
+            crate::mainutils::essentials::do_besselI(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "besselJ" => unsafe {
+            crate::mainutils::essentials::do_besselJ(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "besselK" => unsafe {
+            crate::mainutils::essentials::do_besselK(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "besselY" => unsafe {
+            crate::mainutils::essentials::do_besselY(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }

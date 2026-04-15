@@ -3737,6 +3737,22 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "is.logical",
         "is.character",
         "is.null",
+        // Complete special functions for libRmath
+        "lgamma",
+        "gamma",
+        "digamma",
+        "trigamma",
+        "psigamma",
+        "beta",
+        "lbeta",
+        "choose",
+        "lchoose",
+        "factorial",
+        "lfactorial",
+        "besselI",
+        "besselJ",
+        "besselK",
+        "besselY",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -15391,6 +15407,364 @@ pub unsafe fn do_sign(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         } else {
             -1.0
         };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Complete special functions for libRmath coverage
+// ---------------------------------------------------------------------------
+
+/// Helper to apply a scalar function to a numeric vector, preserving NA/NaN.
+/// Returns REALSXP.
+unsafe fn apply_unary_scalar_fn(
+    x: SEXP,
+    scalar_fn: impl Fn(f64) -> f64,
+) -> SEXP {
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = scalar_fn(val);
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// Helper to apply a binary scalar function to two numeric vectors with recycling.
+/// Returns REALSXP.
+unsafe fn apply_binary_scalar_fn(
+    x: SEXP,
+    y: SEXP,
+    scalar_fn: impl Fn(f64, f64) -> f64,
+) -> SEXP {
+    if x.is_null() || x == R_NilValue() || y.is_null() || y == R_NilValue() {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x).max(XLENGTH(y));
+    let tx = TYPEOF(x);
+    let ty = TYPEOF(y);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let x_len = XLENGTH(x);
+        let y_len = XLENGTH(y);
+        let xi = if x_len > 0 { i % x_len } else { 0 };
+        let yi = if y_len > 0 { i % y_len } else { 0 };
+        let val_x = if tx == SEXPTYPE::REALSXP {
+            *REAL(x).add(xi as usize)
+        } else if tx == SEXPTYPE::INTSXP || tx == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(xi as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        let val_y = if ty == SEXPTYPE::REALSXP {
+            *REAL(y).add(yi as usize)
+        } else if ty == SEXPTYPE::INTSXP || ty == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(y).add(yi as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            || val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = scalar_fn(val_x, val_y);
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `lgamma(x)` — log of the absolute value of the gamma function.
+pub unsafe fn do_lgamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    apply_unary_scalar_fn(CAR(args), crate::special::gamma::lgammafn)
+}
+
+/// R's `gamma(x)` — gamma function.
+pub unsafe fn do_gamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    apply_unary_scalar_fn(CAR(args), crate::special::gamma::gammafn)
+}
+
+/// R's `digamma(x)` — digamma (psi) function.
+pub unsafe fn do_digamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    apply_unary_scalar_fn(CAR(args), crate::special::polygamma::digamma)
+}
+
+/// R's `trigamma(x)` — trigamma function.
+pub unsafe fn do_trigamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    apply_unary_scalar_fn(CAR(args), crate::special::polygamma::trigamma)
+}
+
+/// R's `psigamma(x, deriv)` — polygamma function (deriv-th derivative of psi).
+pub unsafe fn do_psigamma(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let deriv_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || deriv_arg.is_null() || deriv_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let deriv = real_or_default(deriv_arg, 1.0);
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = crate::special::polygamma::psigamma(val, deriv);
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `beta(a, b)` — beta function.
+pub unsafe fn do_beta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let a = CAR(args);
+    let b = CAR(CDR(args));
+    if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
+        return R_NilValue();
+    }
+    apply_binary_scalar_fn(a, b, |x, y| {
+        crate::special::gamma::gammafn(x) * crate::special::gamma::gammafn(y)
+            / crate::special::gamma::gammafn(x + y)
+    })
+}
+
+/// R's `lbeta(a, b)` — log beta function.
+pub unsafe fn do_lbeta(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let a = CAR(args);
+    let b = CAR(CDR(args));
+    if a.is_null() || a == R_NilValue() || b.is_null() || b == R_NilValue() {
+        return R_NilValue();
+    }
+    apply_binary_scalar_fn(a, b, crate::special::lbeta::lbeta)
+}
+
+/// R's `choose(n, k)` — binomial coefficient.
+pub unsafe fn do_choose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let n_arg = CAR(args);
+    let k_arg = CAR(CDR(args));
+    if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    apply_binary_scalar_fn(n_arg, k_arg, crate::special::choose::choose)
+}
+
+/// R's `lchoose(n, k)` — log of absolute value of binomial coefficient.
+pub unsafe fn do_lchoose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let n_arg = CAR(args);
+    let k_arg = CAR(CDR(args));
+    if n_arg.is_null() || n_arg == R_NilValue() || k_arg.is_null() || k_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    apply_binary_scalar_fn(n_arg, k_arg, crate::special::choose::lchoose)
+}
+
+/// R's `factorial(n)` — factorial n!
+pub unsafe fn do_factorial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    apply_unary_scalar_fn(x, |v| crate::special::gamma::gammafn(v + 1.0))
+}
+
+/// R's `lfactorial(n)` — log factorial.
+pub unsafe fn do_lfactorial(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    apply_unary_scalar_fn(x, |v| crate::special::gamma::lgammafn(v + 1.0))
+}
+
+/// R's `besselI(x, nu)` — modified Bessel function of the first kind.
+pub unsafe fn do_besselI(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let nu_arg = CAR(CDR(args));
+    let expo_arg = CAR(CDR(CDR(args))); // optional: exponential scaling
+    if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let nu = real_or_default(nu_arg, 0.0);
+    let expo = if !expo_arg.is_null() && expo_arg != R_NilValue() {
+        let e = real_or_default(expo_arg, 0.0);
+        e != 0.0
+    } else {
+        false
+    };
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) =
+                crate::special::bessel_i::bessel_i(val, nu, if expo { 2.0 } else { 1.0 });
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `besselJ(x, nu)` — Bessel function of the first kind.
+pub unsafe fn do_besselJ(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let nu_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let nu = real_or_default(nu_arg, 0.0);
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = crate::special::bessel_j::bessel_j(val, nu);
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `besselK(x, nu)` — modified Bessel function of the second kind.
+pub unsafe fn do_besselK(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let nu_arg = CAR(CDR(args));
+    let expo_arg = CAR(CDR(CDR(args))); // optional: exponential scaling
+    if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let nu = real_or_default(nu_arg, 0.0);
+    let expo = if !expo_arg.is_null() && expo_arg != R_NilValue() {
+        let e = real_or_default(expo_arg, 0.0);
+        e != 0.0
+    } else {
+        false
+    };
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) =
+                crate::special::bessel_k::bessel_k(val, nu, if expo { 2.0 } else { 1.0 });
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `besselY(x, nu)` — Bessel function of the second kind.
+pub unsafe fn do_besselY(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let nu_arg = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() || nu_arg.is_null() || nu_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let nu = real_or_default(nu_arg, 0.0);
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = crate::special::bessel_y::bessel_y(val, nu);
+        }
     }
     crate::sexp::protect::Rf_unprotect(1);
     result
