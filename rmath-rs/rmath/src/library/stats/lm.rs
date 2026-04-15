@@ -122,12 +122,12 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
     }
 
     /* These lose attributes, so do after we have extracted dims */
-    if TYPEOF(x) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::REALSXP {
         x = coerceVector(x, SEXPTYPE::REALSXP.0);
         Rf_protect(x);
         nprotect += 1;
     }
-    if TYPEOF(y) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(y) != SEXPTYPE::REALSXP {
         y = coerceVector(y, SEXPTYPE::REALSXP.0);
         Rf_protect(y);
         nprotect += 1;

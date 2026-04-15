@@ -49,7 +49,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut maxlen: R_xlen_t = 0;
         for &v in &varyings {
             let t = TYPEOF(v);
-            let vl = if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::LISTSXP.0 {
+            let vl = if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
                 let mut len: R_xlen_t = 0;
                 let mut p = v;
                 while !p.is_null() && p != R_NilValue() {
@@ -72,7 +72,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         // --- Check for zero-length args alongside longer ones ---
         for &v in &varyings {
             let t = TYPEOF(v);
-            let vl = if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::LISTSXP.0 {
+            let vl = if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
                 let mut len: R_xlen_t = 0;
                 let mut p = v;
                 while !p.is_null() && p != R_NilValue() {
@@ -106,7 +106,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Add varying arguments (recycled)
             for &v in &varyings {
                 let t = TYPEOF(v);
-                let vl = if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::LISTSXP.0 {
+                let vl = if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
                     let mut len: R_xlen_t = 0;
                     let mut p = v;
                     while !p.is_null() && p != R_NilValue() {
@@ -119,7 +119,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 };
                 let idx = i % (vl as usize);
 
-                let elt = if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::LISTSXP.0 {
+                let elt = if t == SEXPTYPE::VECSXP || t == SEXPTYPE::LISTSXP {
                     let mut p = v;
                     for _ in 0..idx {
                         p = CDR(p);

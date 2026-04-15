@@ -230,7 +230,7 @@ unsafe fn isPairList(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        (t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 || t == SEXPTYPE::DOTSXP.0) as c_int
+        (t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP) as c_int
     }
 }
 
@@ -242,7 +242,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        (t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0) as c_int
+        (t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP) as c_int
     }
 }
 
@@ -257,7 +257,7 @@ unsafe fn nrows(x: SEXP) -> c_int {
             return 0;
         }
         // dim should be an integer vector; first element is nrows
-        if TYPEOF(dim) != SEXPTYPE::INTSXP.0 {
+        if TYPEOF(dim) != SEXPTYPE::INTSXP {
             return 0;
         }
         let len = LENGTH(dim);
@@ -278,7 +278,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
         if dim.is_null() || dim == R_NilValue() {
             return 0;
         }
-        if TYPEOF(dim) != SEXPTYPE::INTSXP.0 {
+        if TYPEOF(dim) != SEXPTYPE::INTSXP {
             return 0;
         }
         let len = LENGTH(dim);

@@ -423,7 +423,7 @@ unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
         if item.is_null() {
             return NILVALUE_SXP;
         }
-        if TYPEOF(item) == SEXPTYPE::NILSXP.0 {
+        if TYPEOF(item) == SEXPTYPE::NILSXP {
             return NILVALUE_SXP;
         }
         0
@@ -453,7 +453,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         let stype = TYPEOF(s);
 
         // Handle SYMSXP
-        if stype == SEXPTYPE::SYMSXP.0 {
+        if stype == SEXPTYPE::SYMSXP {
             ref_table.add(s);
             writer.write_i32(SEXPTYPE::SYMSXP.0);
             let pname = PRINTNAME(s);
@@ -462,7 +462,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         }
 
         // Handle LISTSXP
-        if stype == SEXPTYPE::LISTSXP.0 {
+        if stype == SEXPTYPE::LISTSXP {
             let hastag = if TAG(s).is_null() { 0 } else { 1 };
             let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
@@ -479,7 +479,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         }
 
         // Handle LANGSXP
-        if stype == SEXPTYPE::LANGSXP.0 {
+        if stype == SEXPTYPE::LANGSXP {
             let hastag = if TAG(s).is_null() { 0 } else { 1 };
             let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, hastag);
@@ -496,7 +496,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         }
 
         // Handle CLOSXP
-        if stype == SEXPTYPE::CLOSXP.0 {
+        if stype == SEXPTYPE::CLOSXP {
             let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
             let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, 1); // hastag=1 for closures
             writer.write_i32(flags);
@@ -511,7 +511,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         }
 
         // Handle CHARSXP
-        if stype == SEXPTYPE::CHARSXP.0 {
+        if stype == SEXPTYPE::CHARSXP {
             let levs = LEVELS(s);
             let flags = PackFlags(stype, levs, 0, 0, 0);
             writer.write_i32(flags);
@@ -528,7 +528,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         let hasattr = if ATTRIB(s).is_null() { 0 } else { 1 };
         let flags = PackFlags(stype, LEVELS(s), OBJECT(s), hasattr, 0);
 
-        if stype == SEXPTYPE::LGLSXP.0 || stype == SEXPTYPE::INTSXP.0 {
+        if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             writer.write_i32(flags);
             let len = XLENGTH(s);
             writer.write_i32(len as c_int);
@@ -536,7 +536,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
             for i in 0..len as isize {
                 writer.write_i32(*int_data.offset(i));
             }
-        } else if stype == SEXPTYPE::REALSXP.0 {
+        } else if stype == SEXPTYPE::REALSXP {
             writer.write_i32(flags);
             let len = XLENGTH(s);
             writer.write_i32(len as c_int);
@@ -544,7 +544,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
             for i in 0..len as isize {
                 writer.write_f64(*real_data.offset(i));
             }
-        } else if stype == SEXPTYPE::CPLXSXP.0 {
+        } else if stype == SEXPTYPE::CPLXSXP {
             writer.write_i32(flags);
             let len = XLENGTH(s);
             writer.write_i32(len as c_int);
@@ -554,7 +554,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
                 writer.write_f64(c.r);
                 writer.write_f64(c.i);
             }
-        } else if stype == SEXPTYPE::STRSXP.0 {
+        } else if stype == SEXPTYPE::STRSXP {
             writer.write_i32(flags);
             let len = XLENGTH(s);
             writer.write_i32(len as c_int);
@@ -562,7 +562,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
                 let elt = STRING_ELT(s, i as R_xlen_t);
                 WriteItemInternal(elt, ref_table, writer);
             }
-        } else if stype == SEXPTYPE::RAWSXP.0 {
+        } else if stype == SEXPTYPE::RAWSXP {
             writer.write_i32(flags);
             let len = XLENGTH(s);
             writer.write_i32(len as c_int);
@@ -570,7 +570,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
             for i in 0..len as isize {
                 writer.write_byte(*raw_data.offset(i));
             }
-        } else if stype == SEXPTYPE::VECSXP.0 || stype == SEXPTYPE::EXPRSXP.0 {
+        } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
             writer.write_i32(flags);
             let len = XLENGTH(s);
             writer.write_i32(len as c_int);
@@ -619,12 +619,12 @@ unsafe fn ReadItemInternal(
         } else if stype == REFSXP {
             let idx = InRefIndex(flags, reader)?;
             ref_table.get(idx)
-        } else if stype == SEXPTYPE::SYMSXP.0 {
+        } else if stype == SEXPTYPE::SYMSXP {
             let pname = ReadItemInternal(reader, ref_table)?;
             let sym = Rf_install(CHAR(pname));
             ref_table.add(sym);
             Ok(sym)
-        } else if stype == SEXPTYPE::LISTSXP.0 || stype == SEXPTYPE::LANGSXP.0 {
+        } else if stype == SEXPTYPE::LISTSXP || stype == SEXPTYPE::LANGSXP {
             let s = allocSExp(SEXPTYPE(stype));
             Rf_protect(s);
             if hasattr != 0 {
@@ -645,7 +645,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::CLOSXP.0 {
+        } else if stype == SEXPTYPE::CLOSXP {
             let s = allocSExp(SEXPTYPE::CLOSXP);
             Rf_protect(s);
             if hasattr != 0 {
@@ -665,7 +665,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::CHARSXP.0 {
+        } else if stype == SEXPTYPE::CHARSXP {
             let len = reader.read_i32()?;
             if len < 0 {
                 // NA string - create an empty CHARSXP
@@ -679,7 +679,7 @@ unsafe fn ReadItemInternal(
                 let s = Rf_mkCharLen(bytes.as_ptr() as *const c_char, len);
                 Ok(s)
             }
-        } else if stype == SEXPTYPE::LGLSXP.0 || stype == SEXPTYPE::INTSXP.0 {
+        } else if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             Rf_protect(s);
@@ -697,7 +697,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::REALSXP.0 {
+        } else if stype == SEXPTYPE::REALSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             Rf_protect(s);
@@ -715,7 +715,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::CPLXSXP.0 {
+        } else if stype == SEXPTYPE::CPLXSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             Rf_protect(s);
@@ -735,7 +735,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::STRSXP.0 {
+        } else if stype == SEXPTYPE::STRSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(SEXPTYPE::STRSXP.0, len as R_xlen_t);
             Rf_protect(s);
@@ -753,7 +753,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::RAWSXP.0 {
+        } else if stype == SEXPTYPE::RAWSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(SEXPTYPE::RAWSXP.0, len as R_xlen_t);
             Rf_protect(s);
@@ -771,7 +771,7 @@ unsafe fn ReadItemInternal(
             }
             Rf_unprotect(1);
             Ok(s)
-        } else if stype == SEXPTYPE::VECSXP.0 || stype == SEXPTYPE::EXPRSXP.0 {
+        } else if stype == SEXPTYPE::VECSXP || stype == SEXPTYPE::EXPRSXP {
             let len = reader.read_i32()?;
             let s = Rf_allocVector3(stype, len as R_xlen_t);
             Rf_protect(s);
@@ -1095,7 +1095,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 
         // Must be RAWSXP
         let stype = TYPEOF(icon);
-        if stype != SEXPTYPE::RAWSXP.0 {
+        if stype != SEXPTYPE::RAWSXP {
             error("not a proper raw vector");
         }
 
@@ -1171,7 +1171,7 @@ pub unsafe fn do_serialize(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
 
         // Use R_serialize to get a RAWSXP
         let _ascii_flag =
-            if !ascii.is_null() && TYPEOF(ascii) == SEXPTYPE::LGLSXP.0 && LENGTH(ascii) >= 1 {
+            if !ascii.is_null() && TYPEOF(ascii) == SEXPTYPE::LGLSXP && LENGTH(ascii) >= 1 {
                 *LOGICAL(ascii) != 0
             } else {
                 false
@@ -1222,7 +1222,7 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
         // unserializeFromConn(connection, hook)
         let conn = CAR(args);
         // If the first argument is a raw vector, use R_unserialize directly
-        if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::RAWSXP.0 {
+        if !conn.is_null() && TYPEOF(conn) == SEXPTYPE::RAWSXP {
             return R_unserialize(conn, R_NilValue());
         }
 

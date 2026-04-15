@@ -99,7 +99,7 @@ unsafe fn eval_bc_condition(val: SEXP) -> bool {
         if val.is_null() || val == R_NilValue() {
             return false;
         }
-        if TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
+        if TYPEOF(val) == SEXPTYPE::LGLSXP {
             let data = crate::sexp::accessors::LOGICAL(val);
             !data.is_null() && *data != 0
         } else {
@@ -162,7 +162,7 @@ pub unsafe fn BCODE_STACK(x: SEXP) -> c_int {
 /// This is the equivalent of R's `bcEval()` from eval.c.
 pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP.0 {
+        if body.is_null() || TYPEOF(body) != SEXPTYPE::BCODESXP {
             return R_NilValue();
         }
 
@@ -227,7 +227,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                         std::panic::panic_any(crate::sexp::context::RError {
                             message: "object not found".to_string(),
                         });
-                    } else if TYPEOF(val) == SEXPTYPE::PROMSXP.0 {
+                    } else if TYPEOF(val) == SEXPTYPE::PROMSXP {
                         stack.push(forcePromise(val));
                     } else {
                         stack.push(val);
@@ -293,7 +293,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let target = *code_ptr.add(pc as usize);
                     pc += 1;
                     let val = stack.top();
-                    let is_false = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
+                    let is_false = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
                         !data.is_null() && *data == 0
                     } else {
@@ -308,7 +308,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     let target = *code_ptr.add(pc as usize);
                     pc += 1;
                     let val = stack.top();
-                    let is_true = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP.0 {
+                    let is_true = if !val.is_null() && TYPEOF(val) == SEXPTYPE::LGLSXP {
                         let data = LOGICAL(val);
                         !data.is_null() && *data != 0
                     } else {
@@ -471,8 +471,8 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             pc = target;
                         } else {
                             let mut seq_len: c_int = 0;
-                            if TYPEOF(seq_val) == SEXPTYPE::INTSXP.0
-                                || TYPEOF(seq_val) == SEXPTYPE::REALSXP.0
+                            if TYPEOF(seq_val) == SEXPTYPE::INTSXP
+                                || TYPEOF(seq_val) == SEXPTYPE::REALSXP
                             {
                                 seq_len = LENGTH(seq_val);
                             }
@@ -482,12 +482,12 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                             } else {
                                 *INTEGER(ctr_ptr) = ctr + 1;
                                 let idx = (ctr + 1) as usize;
-                                if TYPEOF(seq_val) == SEXPTYPE::INTSXP.0 {
+                                if TYPEOF(seq_val) == SEXPTYPE::INTSXP {
                                     let data = INTEGER(seq_val);
                                     if !data.is_null() {
                                         defineVar(loop_var, Rf_ScalarInteger(*data.add(idx)), rho);
                                     }
-                                } else if TYPEOF(seq_val) == SEXPTYPE::REALSXP.0 {
+                                } else if TYPEOF(seq_val) == SEXPTYPE::REALSXP {
                                     let data = REAL(seq_val);
                                     if !data.is_null() {
                                         defineVar(loop_var, Rf_ScalarReal(*data.add(idx)), rho);
@@ -511,7 +511,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                 opcodes::OP_SETLOOPCTR => {
                     let ctr = stack.pop();
                     if !ctr.is_null() {
-                        if TYPEOF(ctr) == SEXPTYPE::INTSXP.0 {
+                        if TYPEOF(ctr) == SEXPTYPE::INTSXP {
                             let d = INTEGER(ctr);
                             if !d.is_null() {
                                 *d = -1;
@@ -715,7 +715,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     pc += 1;
                     let val = stack.pop();
                     let sym = stack.pop();
-                    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP.0 {
+                    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
                             defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
                         }
@@ -730,7 +730,7 @@ pub unsafe fn bcEval(body: SEXP, rho: SEXP) -> SEXP {
                     pc += 1;
                     let val = stack.pop();
                     let sym = stack.pop();
-                    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP.0 {
+                    if !sym.is_null() && TYPEOF(sym) == SEXPTYPE::SYMSXP {
                         {
                             defineVar(sym, val, crate::sexp::globals::R_BaseEnv());
                         }

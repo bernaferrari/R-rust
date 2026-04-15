@@ -283,8 +283,8 @@ pub unsafe fn R_altrep_realize(x: SEXP) -> SEXP {
 
         let tp = TYPEOF(x);
         match tp {
-            t if t == SEXPTYPE::INTSXP.0 => compact_intseq_expand(x),
-            t if t == SEXPTYPE::REALSXP.0 => compact_realseq_expand(x),
+            t if t == SEXPTYPE::INTSXP => compact_intseq_expand(x),
+            t if t == SEXPTYPE::REALSXP => compact_realseq_expand(x),
             _ => x,
         }
     }
@@ -423,7 +423,7 @@ pub unsafe fn ALTINTEGER_ELT(x: SEXP, i: R_xlen_t) -> c_int {
             let data1 = R_altrep_data1(x);
             if !data1.is_null() {
                 let tp = TYPEOF(data1);
-                if tp == SEXPTYPE::INTSXP.0 {
+                if tp == SEXPTYPE::INTSXP {
                     let data_ptr = (*data1).gengc_next_node as *const c_int;
                     if !data_ptr.is_null() {
                         let n1 = *data_ptr;
@@ -474,7 +474,7 @@ pub unsafe fn ALTREAL_ELT(x: SEXP, i: R_xlen_t) -> f64 {
             let data1 = R_altrep_data1(x);
             if !data1.is_null() {
                 let tp = TYPEOF(data1);
-                if tp == SEXPTYPE::REALSXP.0 {
+                if tp == SEXPTYPE::REALSXP {
                     let data_ptr = (*data1).gengc_next_node as *const f64;
                     if !data_ptr.is_null() {
                         let n1 = *data_ptr;

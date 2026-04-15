@@ -155,7 +155,7 @@ pub unsafe fn applyClosure(
     suppliedenv: SEXP,
     _R_verbose: c_int,
 ) -> SEXP {
-    if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
+    if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
         return R_NilValue();
     }
 

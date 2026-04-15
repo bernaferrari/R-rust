@@ -314,7 +314,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let t = TYPEOF(s);
         let n = XLENGTH(s);
 
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             // Complex path: allocate, copy names, compute ccumsum
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n));
             setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
@@ -327,7 +327,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             ccumsum_complex(src, dst);
             Rf_unprotect(1);
             ans
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, try integer cumsum
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
@@ -406,7 +406,7 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let t = TYPEOF(s);
         let n = XLENGTH(s);
 
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             // Complex path
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n));
             setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
@@ -459,12 +459,12 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let t = TYPEOF(s);
         let n = XLENGTH(s);
 
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             // R errors: "'cummax' not defined for complex numbers"
             let msg = CString::new("'cummax' not defined for complex numbers").unwrap_or_default();
             Rf_error(msg.as_ptr());
             unreachable!()
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, use icummax logic
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
@@ -537,12 +537,12 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let t = TYPEOF(s);
         let n = XLENGTH(s);
 
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             // R errors: "'cummin' not defined for complex numbers"
             let msg = CString::new("'cummin' not defined for complex numbers").unwrap_or_default();
             Rf_error(msg.as_ptr());
             unreachable!()
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, use icummin logic
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,

@@ -314,7 +314,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 {
+        if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
             1
         } else {
             0
@@ -1063,7 +1063,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         args_rest = CDR(args_rest);
 
         // decimal.mark handling
-        if TYPEOF(CAR(args_rest)) != SEXPTYPE::STRSXP.0 || LENGTH(CAR(args_rest)) != 1 {
+        if TYPEOF(CAR(args_rest)) != SEXPTYPE::STRSXP || LENGTH(CAR(args_rest)) != 1 {
             return ptr::null_mut();
         }
         // Use default outdec (a dot)

@@ -100,9 +100,9 @@ pub unsafe fn numeric(x: SEXP, index: c_int) -> c_double {
         return NA_REAL;
     }
     let idx = index as R_xlen_t;
-    if TYPEOF(x) == SEXPTYPE::REALSXP.0 && XLENGTH(x) > idx {
+    if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > idx {
         return *REAL(x).add(index as usize);
-    } else if TYPEOF(x) == SEXPTYPE::INTSXP.0 && XLENGTH(x) > idx {
+    } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > idx {
         return *INTEGER(x).add(index as usize) as c_double;
     }
     NA_REAL
@@ -249,7 +249,7 @@ pub unsafe fn textRect(
     let text_len = XLENGTH(text) as i32;
     let idx = ((i % text_len) + text_len) % text_len; // handle negative modulo
 
-    let is_expr = TYPEOF(text) == SEXPTYPE::EXPRSXP.0;
+    let is_expr = TYPEOF(text) == SEXPTYPE::EXPRSXP;
 
     if is_expr {
         let expr = VECTOR_ELT(text, idx as R_xlen_t);

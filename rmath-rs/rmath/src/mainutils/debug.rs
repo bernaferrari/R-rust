@@ -101,7 +101,7 @@ pub unsafe fn do_debug(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let t = TYPEOF(s);
 
         // Validate that the argument is a function type
-        if t != SEXPTYPE::CLOSXP.0 && t != SEXPTYPE::SPECIALSXP.0 && t != SEXPTYPE::BUILTINSXP.0 {
+        if t != SEXPTYPE::CLOSXP && t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
             Rf_error(
                 c"debug/undebug/isdebugged/debugonce requires a function".as_ptr() as *const _,
             );
@@ -174,7 +174,7 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     unsafe {
         let _ = (call, rho);
         let s = CAR(args);
-        let state: c_int = if TYPEOF(s) == SEXPTYPE::LGLSXP.0 {
+        let state: c_int = if TYPEOF(s) == SEXPTYPE::LGLSXP {
             if !s.is_null() {
                 let data = (*s).gengc_next_node as *mut c_int;
                 if !data.is_null() { *data } else { 0 }

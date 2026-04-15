@@ -129,12 +129,12 @@ unsafe fn isNull(x: SEXP) -> bool {
 }
 
 unsafe fn isNewList(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::VECSXP.0
+    TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 unsafe fn isFunction(x: SEXP) -> bool {
     let t = TYPEOF(x);
-    t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0
+    t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP
 }
 
 unsafe fn isNumeric(x: SEXP) -> bool {
@@ -142,7 +142,7 @@ unsafe fn isNumeric(x: SEXP) -> bool {
 }
 
 unsafe fn isLogical(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::LGLSXP.0
+    TYPEOF(x) == SEXPTYPE::LGLSXP
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
@@ -150,15 +150,15 @@ unsafe fn isReal(x: SEXP) -> bool {
 }
 
 unsafe fn isInteger(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::INTSXP.0
+    TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
 unsafe fn isString(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::STRSXP.0
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 unsafe fn isEnvironment(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::ENVSXP.0
+    TYPEOF(x) == SEXPTYPE::ENVSXP
 }
 
 unsafe fn lang1(fn_: SEXP) -> SEXP {
@@ -506,7 +506,7 @@ pub unsafe fn numeric_deriv(
     }
 
     let mut nprot: c_int = 3;
-    if TYPEOF(dir) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(dir) != SEXPTYPE::REALSXP {
         dir = Rf_protect(coerceVector(dir, SEXPTYPE::REALSXP));
         nprot += 1;
     }

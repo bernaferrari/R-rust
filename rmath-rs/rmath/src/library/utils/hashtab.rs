@@ -56,7 +56,7 @@ unsafe fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
 }
 
 unsafe fn HT_TypeFromString(x: SEXP) -> c_int {
-    if TYPEOF(x) != SEXPTYPE::STRSXP.0 || XLENGTH(x) != 1 {
+    if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
         Rf_error(b"hash table type must be a scalar string\0".as_ptr() as *const i8);
     }
     let s = CHAR(STRING_ELT(x, 0));

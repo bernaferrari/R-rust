@@ -362,7 +362,7 @@ pub unsafe fn Rf_isFunction(x: SEXP) -> c_int {
             return 0;
         }
         let t = (*x).sxpinfo.type_of().0;
-        (t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0)
+        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP)
             as c_int
     }
 }

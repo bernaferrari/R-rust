@@ -22,7 +22,7 @@ use crate::sexp::protect::*;
 // ---------------------------------------------------------------------------
 
 unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
-    if TYPEOF(list) != SEXPTYPE::VECSXP.0 {
+    if TYPEOF(list) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
     let names = getAttrib(list, R_NamesSymbol());
@@ -45,9 +45,9 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 unsafe fn asXlen(x: SEXP) -> R_xlen_t {
     let t = TYPEOF(x);
     if (t >= SEXPTYPE::INTSXP.0 && t <= SEXPTYPE::REALSXP.0) && XLENGTH(x) >= 1 {
-        if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP {
             INTEGER(x).add(0).read() as R_xlen_t
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             REAL(x).add(0).read() as R_xlen_t
         } else {
             NA_INTEGER as R_xlen_t

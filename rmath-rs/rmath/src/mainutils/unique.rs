@@ -315,16 +315,16 @@ unsafe fn hash_table_setup(x: SEXP, nmax_arg: i32) -> HashData {
     unsafe {
         let xtype = TYPEOF(x);
         let (m, k, nmax) = match xtype {
-            t if t == SEXPTYPE::LGLSXP.0 => (4usize, 2u32, XLENGTH(x)),
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => (4usize, 2u32, XLENGTH(x)),
+            t if t == SEXPTYPE::INTSXP => {
                 let n = XLENGTH(x);
                 mk_setup(n, nmax_arg as R_xlen_t)
             }
-            t if t == SEXPTYPE::REALSXP.0 => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
-            t if t == SEXPTYPE::CPLXSXP.0 => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
-            t if t == SEXPTYPE::STRSXP.0 => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
-            t if t == SEXPTYPE::RAWSXP.0 => (256usize, 8u32, XLENGTH(x)),
-            t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
+            t if t == SEXPTYPE::CPLXSXP => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
+            t if t == SEXPTYPE::STRSXP => mk_setup(XLENGTH(x), nmax_arg as R_xlen_t),
+            t if t == SEXPTYPE::RAWSXP => (256usize, 8u32, XLENGTH(x)),
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                 mk_setup(XLENGTH(x), nmax_arg as R_xlen_t)
             }
             _ => {
@@ -358,22 +358,22 @@ unsafe fn is_duplicated(x: SEXP, indx: R_xlen_t, d: &mut HashData) -> i32 {
         let xtype = TYPEOF(x);
 
         let hash_fn: HashFn = match xtype {
-            t if t == SEXPTYPE::LGLSXP.0 => lhash,
-            t if t == SEXPTYPE::INTSXP.0 => ihash,
-            t if t == SEXPTYPE::REALSXP.0 => rhash,
-            t if t == SEXPTYPE::CPLXSXP.0 => chash,
-            t if t == SEXPTYPE::STRSXP.0 => cshash,
-            t if t == SEXPTYPE::RAWSXP.0 => rawhash_fn,
+            t if t == SEXPTYPE::LGLSXP => lhash,
+            t if t == SEXPTYPE::INTSXP => ihash,
+            t if t == SEXPTYPE::REALSXP => rhash,
+            t if t == SEXPTYPE::CPLXSXP => chash,
+            t if t == SEXPTYPE::STRSXP => cshash,
+            t if t == SEXPTYPE::RAWSXP => rawhash_fn,
             _ => ihash, // fallback
         };
 
         let equal_fn: EqualFn = match xtype {
-            t if t == SEXPTYPE::LGLSXP.0 => lequal,
-            t if t == SEXPTYPE::INTSXP.0 => iequal,
-            t if t == SEXPTYPE::REALSXP.0 => requal,
-            t if t == SEXPTYPE::CPLXSXP.0 => cequal,
-            t if t == SEXPTYPE::STRSXP.0 => sequal,
-            t if t == SEXPTYPE::RAWSXP.0 => rawequal,
+            t if t == SEXPTYPE::LGLSXP => lequal,
+            t if t == SEXPTYPE::INTSXP => iequal,
+            t if t == SEXPTYPE::REALSXP => requal,
+            t if t == SEXPTYPE::CPLXSXP => cequal,
+            t if t == SEXPTYPE::STRSXP => sequal,
+            t if t == SEXPTYPE::RAWSXP => rawequal,
             _ => iequal, // fallback
         };
 
@@ -488,7 +488,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
     let mut ki: R_xlen_t = 0;
 
     match xtype {
-        t if t == SEXPTYPE::LGLSXP.0 => {
+        t if t == SEXPTYPE::LGLSXP => {
             let a = unsafe { LOGICAL(ans) };
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
@@ -497,7 +497,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        t if t == SEXPTYPE::INTSXP.0 => {
+        t if t == SEXPTYPE::INTSXP => {
             let a = unsafe { INTEGER(ans) };
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
@@ -506,7 +506,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        t if t == SEXPTYPE::REALSXP.0 => {
+        t if t == SEXPTYPE::REALSXP => {
             let a = unsafe { REAL(ans) };
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
@@ -515,7 +515,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        t if t == SEXPTYPE::CPLXSXP.0 => {
+        t if t == SEXPTYPE::CPLXSXP => {
             let a = unsafe { COMPLEX(ans) };
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
@@ -524,7 +524,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        t if t == SEXPTYPE::STRSXP.0 => {
+        t if t == SEXPTYPE::STRSXP => {
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
                     unsafe { SET_STRING_ELT(ans, ki, STRING_ELT(raw, i)) };
@@ -532,7 +532,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {
                     unsafe { SET_VECTOR_ELT(ans, ki, VECTOR_ELT(raw, i)) };
@@ -540,7 +540,7 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
                 }
             }
         }
-        t if t == SEXPTYPE::RAWSXP.0 => {
+        t if t == SEXPTYPE::RAWSXP => {
             let a = unsafe { RAW(ans) };
             for i in 0..n {
                 if unsafe { *LOGICAL(dup).add(i as usize) } == 0 {

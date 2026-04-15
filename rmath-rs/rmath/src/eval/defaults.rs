@@ -122,7 +122,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 pub unsafe fn seq_int(n1: c_int, n2: c_int) -> SEXP {
     unsafe {
         let n = if n1 <= n2 { n2 - n1 + 1 } else { n1 - n2 + 1 };
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP.0 as c_int, n);
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
         Rf_protect(ans);
         let data = INTEGER(ans);
         if !data.is_null() {
@@ -179,7 +179,7 @@ pub unsafe fn cmp_relop(
 ) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
-        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0 as c_int);
+        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0);
         Rf_protect(op);
 
         let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
@@ -220,7 +220,7 @@ pub unsafe fn cmp_relop(
 pub unsafe fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
-        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0 as c_int);
+        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0);
         Rf_protect(op);
 
         if crate::eval::attrib_core::isObject(x) != 0 {
@@ -262,7 +262,7 @@ pub unsafe fn cmp_arith2(
 ) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
-        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0 as c_int);
+        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0);
         Rf_protect(op);
 
         let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
@@ -315,7 +315,7 @@ pub unsafe fn STACKVAL_TO_SEXP(val: SEXP) -> SEXP {
 pub unsafe fn isNumericOnly(x: SEXP) -> c_int {
     unsafe {
         let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::CPLXSXP.0 || t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP || t == SEXPTYPE::INTSXP {
             TRUE
         } else {
             FALSE
@@ -334,7 +334,7 @@ pub unsafe fn isNumericOnly(x: SEXP) -> c_int {
 pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
     unsafe {
         // Handle common scalar case directly
-        if TYPEOF(s) == SEXPTYPE::LGLSXP.0 && LENGTH(s) == 1 {
+        if TYPEOF(s) == SEXPTYPE::LGLSXP && LENGTH(s) == 1 {
             let data = LOGICAL(s);
             if !data.is_null() {
                 let v = *data;
@@ -342,7 +342,7 @@ pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
                     return if v != 0 { TRUE } else { FALSE };
                 }
             }
-        } else if TYPEOF(s) == SEXPTYPE::INTSXP.0 && LENGTH(s) == 1 {
+        } else if TYPEOF(s) == SEXPTYPE::INTSXP && LENGTH(s) == 1 {
             let data = INTEGER(s);
             if !data.is_null() {
                 let v = *data;
@@ -361,7 +361,7 @@ pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
         }
         if len > 0 {
             match TYPEOF(s) {
-                t if t == SEXPTYPE::LGLSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => {
                     let data = LOGICAL(s);
                     if !data.is_null() {
                         *data
@@ -369,7 +369,7 @@ pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
                         crate::sexp::ffi::NA_INTEGER
                     }
                 }
-                t if t == SEXPTYPE::INTSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => {
                     let data = INTEGER(s);
                     if !data.is_null() {
                         *data

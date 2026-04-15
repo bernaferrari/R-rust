@@ -37,7 +37,7 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let primval = crate::mainutils::relop::PRIMVAL(op);
 
         match TYPEOF(lhs) {
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::STRSXP => {
                 let sym = crate::mainutils::subset::installTrChar(STRING_ELT(lhs, 0));
                 let rhs = Rf_eval(CADR(args), rho);
                 Rf_protect(rhs);
@@ -45,13 +45,13 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 Rf_protect(rhs);
                 rhs
             }
-            t if t == SEXPTYPE::SYMSXP.0 => {
+            t if t == SEXPTYPE::SYMSXP => {
                 let rhs = Rf_eval(CADR(args), rho);
                 Rf_protect(rhs);
                 assign_to_symbol(lhs, rhs, primval, rho);
                 rhs
             }
-            t if t == SEXPTYPE::LANGSXP.0 => {
+            t if t == SEXPTYPE::LANGSXP => {
                 set_R_Visible(FALSE);
                 return applydefine(call, op, args, rho);
             }
@@ -121,7 +121,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
 
         // Check if this is a nested assignment: CADR(expr) is LANGSXP
-        if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP.0 as i32 {
+        if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
             // Nested assignment: use evalseq to evaluate LHS chain
             let lhs = crate::eval::missing::evalseq(CADR(expr), rho, forcelocal);
             Rf_protect(lhs);
@@ -132,12 +132,12 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let mut current_rhs = rhs;
 
             // Process inner levels (nested [i], [j], etc.)
-            while TYPEOF(current_expr) == SEXPTYPE::LANGSXP.0 as i32
-                && TYPEOF(CADR(current_expr)) == SEXPTYPE::LANGSXP.0 as i32
+            while TYPEOF(current_expr) == SEXPTYPE::LANGSXP
+                && TYPEOF(CADR(current_expr)) == SEXPTYPE::LANGSXP
             {
                 let func_sym = CAR(current_expr);
                 let assign_fn = get_assign_fcn_sym(func_sym);
-                if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP.0 {
+                if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
                     break;
                 }
 
@@ -163,7 +163,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Final (outermost) level
             let func_sym = CAR(expr);
             let assign_fn = get_assign_fcn_sym(func_sym);
-            if assign_fn != R_NilValue() && TYPEOF(assign_fn) == SEXPTYPE::SYMSXP.0 as i32 {
+            if assign_fn != R_NilValue() && TYPEOF(assign_fn) == SEXPTYPE::SYMSXP {
                 let target_val = CAR(current_lhs);
                 let rest_args = CDDR(expr);
 
@@ -180,7 +180,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
                 // Assign back to the outermost variable
                 let var_sym = CADR(expr);
-                if TYPEOF(var_sym) == SEXPTYPE::SYMSXP.0 as i32 {
+                if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
                     // Use the symbol from the deepest evalseq level
                     let deep_sym =
                         if !CDR(current_lhs).is_null() && CDR(current_lhs) != R_NilValue() {
@@ -206,13 +206,13 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let lhs = expr;
             let func_sym = CAR(lhs);
 
-            let assign_fn = if TYPEOF(func_sym) == SEXPTYPE::SYMSXP.0 as i32 {
+            let assign_fn = if TYPEOF(func_sym) == SEXPTYPE::SYMSXP {
                 get_assign_fcn_sym(func_sym)
             } else {
                 R_NilValue()
             };
 
-            if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP.0 as i32 {
+            if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
                 crate::sexp::protect::Rf_unprotect(1);
                 return rhs;
             }
@@ -233,7 +233,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             Rf_protect(result);
 
             let var_sym = CADR(lhs);
-            if TYPEOF(var_sym) == SEXPTYPE::SYMSXP.0 as i32 {
+            if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
                 if primval == 2 {
                     setVar(var_sym, result, ENCLOS(rho));
                 } else {

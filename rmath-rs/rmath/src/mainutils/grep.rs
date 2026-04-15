@@ -52,7 +52,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// isString check -- STRSXP type.
 #[inline(always)]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP }
 }
 
 /// isNull check.
@@ -80,13 +80,13 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             let p = LOGICAL(x);
             if p.is_null() {
                 return NA_INTEGER;
             }
             *p
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             let p = INTEGER(x);
             if p.is_null() {
                 return NA_INTEGER;

@@ -664,12 +664,12 @@ unsafe fn handler_for_path(path: *const c_char) -> SEXP {
                 Rf_unprotect(2);
             }
             // Only proceed if .httpd.handlers.env really exists
-            if TYPEOF(CUSTOM_HANDLERS_ENV.with(|v| v.get())) == SEXPTYPE::ENVSXP.0 {
+            if TYPEOF(CUSTOM_HANDLERS_ENV.with(|v| v.get())) == SEXPTYPE::ENVSXP {
                 let cl = findVarInFrame(
                     CUSTOM_HANDLERS_ENV.with(|v| v.get()),
                     install(fn_buf.as_ptr() as *const c_char),
                 );
-                if cl != R_UnboundValue() && TYPEOF(cl) == SEXPTYPE::CLOSXP.0 {
+                if cl != R_UnboundValue() && TYPEOF(cl) == SEXPTYPE::CLOSXP {
                     return cl;
                 }
             }
@@ -739,7 +739,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
 
     // --- Handle the result ---
 
-    if TYPEOF(x) == SEXPTYPE::STRSXP.0 && LENGTH(x) > 0 {
+    if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) > 0 {
         // String means there was an error
         let s = translateCharUTF8(STRING_ELT(x, 0));
         send_http_response(
@@ -756,17 +756,17 @@ unsafe fn process_request_(ptr: *mut c_void) {
         return;
     }
 
-    if TYPEOF(x) == SEXPTYPE::VECSXP.0 && LENGTH(x) > 0 {
+    if TYPEOF(x) == SEXPTYPE::VECSXP && LENGTH(x) > 0 {
         // A list (generic vector) can be a real payload
         let x_names = getAttrib(x, R_NamesSymbol());
         if LENGTH(x) > 1 {
             let s_ct = VECTOR_ELT(x, 1);
-            if TYPEOF(s_ct) == SEXPTYPE::STRSXP.0 && LENGTH(s_ct) > 0 {
+            if TYPEOF(s_ct) == SEXPTYPE::STRSXP && LENGTH(s_ct) > 0 {
                 ct = translateCharUTF8(STRING_ELT(s_ct, 0));
             }
             if LENGTH(x) > 2 {
                 s_headers = VECTOR_ELT(x, 2);
-                if TYPEOF(s_headers) != SEXPTYPE::STRSXP.0 {
+                if TYPEOF(s_headers) != SEXPTYPE::STRSXP {
                     s_headers = R_NilValue();
                 }
                 if LENGTH(x) > 3 {
@@ -776,7 +776,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
         }
         let y = VECTOR_ELT(x, 0);
 
-        if TYPEOF(y) == SEXPTYPE::STRSXP.0 && LENGTH(y) > 0 {
+        if TYPEOF(y) == SEXPTYPE::STRSXP && LENGTH(y) > 0 {
             // Character payload
             let mut buf = [0i8; 64];
             let cs = translateCharUTF8(STRING_ELT(y, 0));
@@ -815,7 +815,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
             }
 
             // Special content - a file: either list(file="") or list(c("*FILE*", ""))
-            if TYPEOF(x_names) == SEXPTYPE::STRSXP.0
+            if TYPEOF(x_names) == SEXPTYPE::STRSXP
                 && LENGTH(x_names) > 0
                 && libc::strcmp(
                     translateChar(STRING_ELT(x_names, 0)),
@@ -893,7 +893,7 @@ unsafe fn process_request_(ptr: *mut c_void) {
             return;
         }
 
-        if TYPEOF(y) == SEXPTYPE::RAWSXP.0 {
+        if TYPEOF(y) == SEXPTYPE::RAWSXP {
             // Raw payload
             let mut buf = [0i8; 64];
             let cs = RAW(y);
@@ -1700,7 +1700,7 @@ pub(crate) unsafe fn R_init_httpd(sIP: SEXP, sPort: SEXP) -> SEXP {
     let mut ip: *const c_char = std::ptr::null_mut();
     let vmax = vmaxget();
 
-    if sIP != R_NilValue() && (TYPEOF(sIP) != SEXPTYPE::STRSXP.0 || LENGTH(sIP) != 1) {
+    if sIP != R_NilValue() && (TYPEOF(sIP) != SEXPTYPE::STRSXP || LENGTH(sIP) != 1) {
         Rf_error(b"invalid bind address specification\0".as_ptr() as *const c_char);
         unreachable!();
     }

@@ -64,7 +64,7 @@ unsafe fn x_d_opx(x: c_double) -> c_double {
 
 pub unsafe fn logit_link(mu: SEXP) -> SEXP {
     let n = LENGTH(mu);
-    if n == 0 || TYPEOF(mu) != SEXPTYPE::REALSXP.0 {
+    if n == 0 || TYPEOF(mu) != SEXPTYPE::REALSXP {
         crate::main::errors::Rf_error(
             b"Argument must be a nonempty numeric vector\0".as_ptr() as *const i8
         );
@@ -84,16 +84,16 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
     let n = LENGTH(eta);
     let mut nprot: c_int = 1;
     if n == 0
-        || !(TYPEOF(eta) == SEXPTYPE::REALSXP.0
-            || TYPEOF(eta) == SEXPTYPE::INTSXP.0
-            || TYPEOF(eta) == SEXPTYPE::LGLSXP.0)
+        || !(TYPEOF(eta) == SEXPTYPE::REALSXP
+            || TYPEOF(eta) == SEXPTYPE::INTSXP
+            || TYPEOF(eta) == SEXPTYPE::LGLSXP)
     {
         crate::main::errors::Rf_error(
             b"Argument must be a nonempty numeric vector\0".as_ptr() as *const i8
         );
     }
     let mut eta = eta;
-    if TYPEOF(eta) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(eta) != SEXPTYPE::REALSXP {
         eta = coerceVector(eta, SEXPTYPE::REALSXP.0);
         Rf_protect(eta);
         nprot += 1;
@@ -121,16 +121,16 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
     let n = LENGTH(eta);
     let mut nprot: c_int = 1;
     if n == 0
-        || !(TYPEOF(eta) == SEXPTYPE::REALSXP.0
-            || TYPEOF(eta) == SEXPTYPE::INTSXP.0
-            || TYPEOF(eta) == SEXPTYPE::LGLSXP.0)
+        || !(TYPEOF(eta) == SEXPTYPE::REALSXP
+            || TYPEOF(eta) == SEXPTYPE::INTSXP
+            || TYPEOF(eta) == SEXPTYPE::LGLSXP)
     {
         crate::main::errors::Rf_error(
             b"Argument must be a nonempty numeric vector\0".as_ptr() as *const i8
         );
     }
     let mut eta = eta;
-    if TYPEOF(eta) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(eta) != SEXPTYPE::REALSXP {
         eta = coerceVector(eta, SEXPTYPE::REALSXP.0);
         Rf_protect(eta);
         nprot += 1;
@@ -169,7 +169,7 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     let mut mu = mu;
     let mut wt = wt;
 
-    if TYPEOF(y) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(y) != SEXPTYPE::REALSXP {
         y = coerceVector(y, SEXPTYPE::REALSXP.0);
         Rf_protect(y);
         nprot += 1;
@@ -178,12 +178,12 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     let ans = Rf_protect(shallow_duplicate(y));
     let rans = REAL(ans);
 
-    if TYPEOF(mu) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(mu) != SEXPTYPE::REALSXP {
         mu = coerceVector(mu, SEXPTYPE::REALSXP.0);
         Rf_protect(mu);
         nprot += 1;
     }
-    if TYPEOF(wt) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(wt) != SEXPTYPE::REALSXP {
         wt = coerceVector(wt, SEXPTYPE::REALSXP.0);
         Rf_protect(wt);
         nprot += 1;

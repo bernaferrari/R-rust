@@ -155,7 +155,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let fold_excludes_sexp = CAR(fold_arg);
 
         // Get the file path from the first argument
-        let filename = if !file_sexp.is_null() && TYPEOF(file_sexp) == SEXPTYPE::STRSXP.0 {
+        let filename = if !file_sexp.is_null() && TYPEOF(file_sexp) == SEXPTYPE::STRSXP {
             let charsxp = STRING_ELT(file_sexp, 0);
             if !charsxp.is_null() {
                 let cptr = CHAR(charsxp);
@@ -185,7 +185,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         let mut dynwhat = false;
         let mut field_names: Vec<String> = Vec::new();
 
-        if !fields_sexp.is_null() && TYPEOF(fields_sexp) == SEXPTYPE::STRSXP.0 {
+        if !fields_sexp.is_null() && TYPEOF(fields_sexp) == SEXPTYPE::STRSXP {
             nwhat = LENGTH(fields_sexp);
             if nwhat == 0 {
                 dynwhat = true;

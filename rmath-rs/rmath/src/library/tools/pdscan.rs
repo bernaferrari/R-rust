@@ -130,7 +130,7 @@ pub unsafe fn package_dependencies_scan(x: SEXP) -> SEXP {
     if x.is_null() {
         return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
     }
-    if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
         Rf_error(b"non-character argument\0".as_ptr() as *const _);
     }
 

@@ -84,7 +84,7 @@ unsafe fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
         h = hash(&len.to_ne_bytes(), h);
 
         match type_val {
-            t if t == SEXPTYPE::LANGSXP.0 || t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => {
                 let mut cur = e;
                 while !cur.is_null() && cur != R_NilValue() {
                     h = hashexpr1(CAR(cur), h);
@@ -92,28 +92,28 @@ unsafe fn hashexpr1(e: SEXP, h: R_exprhash_t) -> R_exprhash_t {
                 }
                 h
             }
-            t if t == SEXPTYPE::LGLSXP.0 && len == 1 => {
+            t if t == SEXPTYPE::LGLSXP && len == 1 => {
                 let data = crate::sexp::accessors::LOGICAL(e);
                 if !data.is_null() {
                     h = hash(&(*data as i32).to_ne_bytes(), h);
                 }
                 h
             }
-            t if t == SEXPTYPE::INTSXP.0 && len == 1 => {
+            t if t == SEXPTYPE::INTSXP && len == 1 => {
                 let data = crate::sexp::accessors::INTEGER(e);
                 if !data.is_null() {
                     h = hash(&(*data).to_ne_bytes(), h);
                 }
                 h
             }
-            t if t == SEXPTYPE::REALSXP.0 && len == 1 => {
+            t if t == SEXPTYPE::REALSXP && len == 1 => {
                 let data = crate::sexp::accessors::REAL(e);
                 if !data.is_null() {
                     h = hash(&(*data).to_ne_bytes(), h);
                 }
                 h
             }
-            t if t == SEXPTYPE::STRSXP.0 && len == 1 => {
+            t if t == SEXPTYPE::STRSXP && len == 1 => {
                 let elt = STRING_ELT(e, 0);
                 if !elt.is_null() {
                     let cs = CHAR(elt);
@@ -154,7 +154,7 @@ unsafe fn hashfun(f: SEXP) -> R_exprhash_t {
 
 unsafe fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
     unsafe {
-        if e.is_null() || TYPEOF(e) != SEXPTYPE::INTSXP.0 || LENGTH(e) < 6 {
+        if e.is_null() || TYPEOF(e) != SEXPTYPE::INTSXP || LENGTH(e) < 6 {
             return h;
         }
         let data = crate::sexp::accessors::INTEGER(e);
@@ -177,7 +177,7 @@ unsafe fn hashsrcref(e: SEXP, mut h: R_exprhash_t) -> R_exprhash_t {
 /// Functions with a score >= MIN_JIT_SCORE are compiled to bytecode.
 pub unsafe fn JIT_score(e: SEXP) -> c_int {
     unsafe {
-        if e.is_null() || TYPEOF(e) != SEXPTYPE::CLOSXP.0 {
+        if e.is_null() || TYPEOF(e) != SEXPTYPE::CLOSXP {
             return 0;
         }
 
@@ -187,7 +187,7 @@ pub unsafe fn JIT_score(e: SEXP) -> c_int {
         }
 
         // If already bytecode, no need to compile
-        if TYPEOF(body) == SEXPTYPE::BCODESXP.0 {
+        if TYPEOF(body) == SEXPTYPE::BCODESXP {
             return 0;
         }
 
@@ -214,10 +214,10 @@ fn count_calls(e: SEXP, depth: c_int) -> c_int {
             return 0;
         }
         match TYPEOF(e) {
-            t if t == SEXPTYPE::LANGSXP.0 || t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => {
                 let mut count = 0;
                 // The CAR of a LANGSXP is the function being called
-                if TYPEOF(e) == SEXPTYPE::LANGSXP.0 {
+                if TYPEOF(e) == SEXPTYPE::LANGSXP {
                     count += 1;
                 }
                 // Recurse into sub-expressions
@@ -244,10 +244,10 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
         }
         let mut count = 0;
         match TYPEOF(e) {
-            t if t == SEXPTYPE::LANGSXP.0 || t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LANGSXP || t == SEXPTYPE::LISTSXP => {
                 // Check if this is a loop call (while, for, repeat)
                 let fun = CAR(e);
-                if TYPEOF(fun) == SEXPTYPE::SYMSXP.0 {
+                if TYPEOF(fun) == SEXPTYPE::SYMSXP {
                     let pname = PRINTNAME(fun);
                     if !pname.is_null() {
                         let s = CHAR(pname);
@@ -282,12 +282,12 @@ fn count_loops(e: SEXP, depth: c_int) -> c_int {
 /// closure to bytecode if it isn't already compiled.
 pub unsafe fn R_cmpfun(fun: SEXP) {
     unsafe {
-        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP.0 {
+        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::CLOSXP {
             return;
         }
 
         let body = BODY(fun);
-        if body.is_null() || TYPEOF(body) == SEXPTYPE::BCODESXP.0 {
+        if body.is_null() || TYPEOF(body) == SEXPTYPE::BCODESXP {
             return; // Already compiled or no body
         }
 
@@ -318,7 +318,7 @@ pub unsafe fn R_compileExpr(_expr: SEXP, _rho: SEXP) -> SEXP {
 /// Otherwise returns the expression as-is.
 pub unsafe fn bytecodeExpr(e: SEXP) -> SEXP {
     unsafe {
-        if !e.is_null() && TYPEOF(e) == SEXPTYPE::BCODESXP.0 {
+        if !e.is_null() && TYPEOF(e) == SEXPTYPE::BCODESXP {
             let consts = super::bc_eval::BCODE_CONSTS(e);
             if !consts.is_null() && LENGTH(consts) > 0 {
                 return crate::sexp::accessors::VECTOR_ELT(consts, 0);
@@ -339,7 +339,7 @@ pub unsafe fn R_BytecodeExpr(e: SEXP) -> SEXP {
 /// Note: no_mangle removed to avoid duplicate symbol with sexp/envir.rs.
 pub(crate) unsafe fn r_PromiseExpr(p: SEXP) -> SEXP {
     unsafe {
-        if p.is_null() || TYPEOF(p) != SEXPTYPE::PROMSXP.0 {
+        if p.is_null() || TYPEOF(p) != SEXPTYPE::PROMSXP {
             return R_NilValue();
         }
         bytecodeExpr(crate::sexp::accessors::PRCODE(p))
@@ -349,7 +349,7 @@ pub(crate) unsafe fn r_PromiseExpr(p: SEXP) -> SEXP {
 /// Get the closure body expression.
 pub unsafe fn R_ClosureExpr(p: SEXP) -> SEXP {
     unsafe {
-        if p.is_null() || TYPEOF(p) != SEXPTYPE::CLOSXP.0 {
+        if p.is_null() || TYPEOF(p) != SEXPTYPE::CLOSXP {
             return R_NilValue();
         }
         bytecodeExpr(BODY(p))
@@ -428,11 +428,11 @@ pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
         if R_jit_enabled.with(|v| v.get()) == 0 || R_disable_bytecode.with(|v| v.get()) != 0 {
             return FALSE;
         }
-        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
+        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
             return FALSE;
         }
         let body = BODY(op);
-        if TYPEOF(body) == SEXPTYPE::BCODESXP.0 {
+        if TYPEOF(body) == SEXPTYPE::BCODESXP {
             return FALSE; // Already compiled
         }
         let score = JIT_score(op);
@@ -490,7 +490,7 @@ pub unsafe fn init_exec_token() {
 /// Check if a value is an exec continuation (for tail call optimization).
 pub unsafe fn is_exec_continuation(val: SEXP) -> c_int {
     unsafe {
-        if val.is_null() || TYPEOF(val) != SEXPTYPE::VECSXP.0 {
+        if val.is_null() || TYPEOF(val) != SEXPTYPE::VECSXP {
             return FALSE;
         }
         let len = crate::sexp::accessors::XLENGTH(val);
@@ -516,7 +516,7 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
             let rho = crate::sexp::accessors::VECTOR_ELT(val, 2);
             let op = crate::sexp::accessors::VECTOR_ELT(val, 3);
 
-            if TYPEOF(op) == SEXPTYPE::CLOSXP.0 {
+            if TYPEOF(op) == SEXPTYPE::CLOSXP {
                 let arglist = super::dispatch::promiseArgs(CDR(call), rho);
                 Rf_protect(arglist);
                 let result =

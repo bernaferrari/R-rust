@@ -842,14 +842,14 @@ unsafe fn ruleout_types(
 /* isna — check if element at index is NA */
 unsafe fn isna(x: SEXP, indx: R_xlen_t) -> bool {
     match TYPEOF(x) {
-        tt if tt == SEXPTYPE::LGLSXP.0 => LOGICAL(x).add(indx as usize).read() == NA_LOGICAL(),
-        tt if tt == SEXPTYPE::INTSXP.0 => INTEGER(x).add(indx as usize).read() == NA_INTEGER(),
-        tt if tt == SEXPTYPE::REALSXP.0 => {
+        tt if tt == SEXPTYPE::LGLSXP => LOGICAL(x).add(indx as usize).read() == NA_LOGICAL(),
+        tt if tt == SEXPTYPE::INTSXP => INTEGER(x).add(indx as usize).read() == NA_INTEGER(),
+        tt if tt == SEXPTYPE::REALSXP => {
             let v = REAL(x).add(indx as usize).read();
             v.is_nan()
         }
-        tt if tt == SEXPTYPE::STRSXP.0 => STRING_ELT(x, indx) == NA_STRING(),
-        tt if tt == SEXPTYPE::CPLXSXP.0 => {
+        tt if tt == SEXPTYPE::STRSXP => STRING_ELT(x, indx) == NA_STRING(),
+        tt if tt == SEXPTYPE::CPLXSXP => {
             let rc = COMPLEX(x).add(indx as usize).read();
             rc.r.is_nan() || rc.i.is_nan()
         }
@@ -873,7 +873,7 @@ unsafe fn CAD4R(x: SEXP) -> SEXP {
 /// isString — check if SEXP is a character vector
 #[inline]
 unsafe fn isString(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::STRSXP.0
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /// isNull — check if SEXP is R_NilValue
@@ -889,7 +889,7 @@ unsafe fn isVectorList(x: SEXP) -> bool {
         return false;
     }
     let t = TYPEOF(x);
-    t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 // VECSXP or EXPRSXP
+    t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP // VECSXP or EXPRSXP
 }
 
 /// isVectorAtomic — check if SEXP is an atomic vector
@@ -899,12 +899,12 @@ unsafe fn isVectorAtomic(x: SEXP) -> bool {
         return false;
     }
     let t = TYPEOF(x);
-    t == SEXPTYPE::LGLSXP.0
-        || t == SEXPTYPE::INTSXP.0
-        || t == SEXPTYPE::REALSXP.0
-        || t == SEXPTYPE::CPLXSXP.0
-        || t == SEXPTYPE::STRSXP.0
-        || t == SEXPTYPE::RAWSXP.0 // RAWSXP
+    t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::RAWSXP // RAWSXP
 }
 
 /// inherits — check if object has a given class
@@ -913,14 +913,14 @@ unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
     let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
     if isNull(klass) {
         // Check for special types by name
-        if TYPEOF(x) == SEXPTYPE::VECSXP.0
+        if TYPEOF(x) == SEXPTYPE::VECSXP
             && CStr::from_ptr(_what).to_str().unwrap_or("") == "data.frame"
         {
             return true;
         }
         return false;
     }
-    if TYPEOF(klass) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(klass) != SEXPTYPE::STRSXP {
         return false;
     }
     let len = LENGTH(klass);
@@ -989,7 +989,7 @@ unsafe fn EncodeElement2(
     buf: &mut [c_char],
     dec: *const c_char,
 ) -> *const c_char {
-    if TYPEOF(x) == SEXPTYPE::STRSXP.0 {
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
         let p0 = translateChar(STRING_ELT(x, indx));
         if !quote {
             return p0;
@@ -1056,7 +1056,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
     let comstr = CAR(args_cdr);
 
     // Validate comment.char
-    if TYPEOF(comstr) != SEXPTYPE::STRSXP.0 || LENGTH(comstr) != 1 {
+    if TYPEOF(comstr) != SEXPTYPE::STRSXP || LENGTH(comstr) != 1 {
         r_error(
             b"invalid '%s' argument\0".as_ptr() as *const c_char,
             b"comment.char\0".as_ptr() as *const c_char,
@@ -1303,7 +1303,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     /* args[2] = na.strings */
     args_rest = CDR(args_rest);
     let na_strings_arg = CAR(args_rest);
-    if TYPEOF(na_strings_arg) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(na_strings_arg) != SEXPTYPE::STRSXP {
         Rf_error(b"invalid 'na.strings' argument\0".as_ptr() as *const c_char);
     }
     data.NAstrings = na_strings_arg;
@@ -1668,7 +1668,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
     }
 
     // Validate comment.char
-    if TYPEOF(comstr) != SEXPTYPE::STRSXP.0 || LENGTH(comstr) != 1 {
+    if TYPEOF(comstr) != SEXPTYPE::STRSXP || LENGTH(comstr) != 1 {
         r_error(
             b"invalid '%s' argument\0".as_ptr() as *const c_char,
             b"comment.char\0".as_ptr() as *const c_char,
@@ -2054,7 +2054,7 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 } else if !isNull(*levels_arr.add(j)) {
                     // Factor column — look up level string
                     let lev = *levels_arr.add(j);
-                    if TYPEOF(xj) == SEXPTYPE::INTSXP.0 {
+                    if TYPEOF(xj) == SEXPTYPE::INTSXP {
                         let idx = (*INTEGER(xj).add(i) - 1) as R_xlen_t;
                         tmp = EncodeElement2(
                             lev,
@@ -2064,7 +2064,7 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                             &mut encode_buf,
                             sdec,
                         );
-                    } else if TYPEOF(xj) == SEXPTYPE::REALSXP.0 {
+                    } else if TYPEOF(xj) == SEXPTYPE::REALSXP {
                         let idx = (*REAL(xj).add(i) - 1.0) as R_xlen_t;
                         tmp = EncodeElement2(
                             lev,

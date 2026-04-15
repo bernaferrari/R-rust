@@ -1091,7 +1091,7 @@ pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: S
 
         let pkg_str = if Rf_length(spackage) == 0 {
             None
-        } else if TYPEOF(spackage) == SEXPTYPE::STRSXP.0 {
+        } else if TYPEOF(spackage) == SEXPTYPE::STRSXP {
             Some(
                 std::ffi::CStr::from_ptr(translateChar(STRING_ELT(spackage, 0)))
                     .to_bytes_with_nul()
@@ -1455,7 +1455,7 @@ pub unsafe fn R_GetCCallable(package: *const c_char, name: *const c_char) -> DL_
                 std::ffi::CStr::from_ptr(package).to_str().unwrap_or("?")
             ));
         }
-        if TYPEOF(val) != SEXPTYPE::EXTPTRSXP.0 {
+        if TYPEOF(val) != SEXPTYPE::EXTPTRSXP {
             error("table entry must be an external pointer");
         }
         let addr = R_ExternalPtrAddr(val);

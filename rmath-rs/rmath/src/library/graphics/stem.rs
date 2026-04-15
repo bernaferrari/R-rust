@@ -227,7 +227,7 @@ unsafe fn stem_leaf(x: *mut c_double, n: c_int, scale: c_double, width: c_int, a
 pub unsafe fn C_StemLeaf(x: SEXP, scale: SEXP, swidth: SEXP, atom: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    if TYPEOF(x) != SEXPTYPE::REALSXP.0 || TYPEOF(scale) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(scale) != SEXPTYPE::REALSXP {
         Rf_error(b"invalid input\0".as_ptr() as *const i8);
     }
     let width = asInteger(swidth);

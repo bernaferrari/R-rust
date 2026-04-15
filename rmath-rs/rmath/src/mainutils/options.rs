@@ -120,11 +120,11 @@ unsafe fn asInteger(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP {
             if LENGTH(x) >= 1 {
                 return *INTEGER(x).add(0);
             }
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             if LENGTH(x) >= 1 {
                 let v = *REAL(x).add(0);
                 if ISNAN(v) {
@@ -135,7 +135,7 @@ unsafe fn asInteger(x: SEXP) -> c_int {
                 }
                 return v as c_int;
             }
-        } else if t == SEXPTYPE::LGLSXP.0 && LENGTH(x) >= 1 {
+        } else if t == SEXPTYPE::LGLSXP && LENGTH(x) >= 1 {
             return *LOGICAL(x).add(0);
         }
         NA_INTEGER
@@ -149,15 +149,15 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             return NA_LOGICAL;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             if LENGTH(x) >= 1 {
                 return *LOGICAL(x).add(0);
             }
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             if LENGTH(x) >= 1 {
                 return *INTEGER(x).add(0);
             }
-        } else if t == SEXPTYPE::REALSXP.0 && LENGTH(x) >= 1 {
+        } else if t == SEXPTYPE::REALSXP && LENGTH(x) >= 1 {
             let v = *REAL(x).add(0);
             if ISNAN(v) {
                 return NA_LOGICAL;
@@ -175,7 +175,7 @@ unsafe fn isNumeric(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        (t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::CPLXSXP.0) as c_int
+        (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::CPLXSXP) as c_int
     }
 }
 
@@ -185,7 +185,7 @@ unsafe fn isPairList(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        (TYPEOF(x) == SEXPTYPE::LISTSXP.0) as c_int
+        (TYPEOF(x) == SEXPTYPE::LISTSXP) as c_int
     }
 }
 
@@ -196,7 +196,7 @@ unsafe fn isVectorList(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        (t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0) as c_int
+        (t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP) as c_int
     }
 }
 
@@ -206,7 +206,7 @@ unsafe fn isLanguage(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        (TYPEOF(x) == SEXPTYPE::LANGSXP.0) as c_int
+        (TYPEOF(x) == SEXPTYPE::LANGSXP) as c_int
     }
 }
 
@@ -216,7 +216,7 @@ unsafe fn isExpression(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        (TYPEOF(x) == SEXPTYPE::EXPRSXP.0) as c_int
+        (TYPEOF(x) == SEXPTYPE::EXPRSXP) as c_int
     }
 }
 
@@ -227,7 +227,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        (t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0)
+        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP)
             as c_int
     }
 }
@@ -239,7 +239,7 @@ unsafe fn length(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 || t == DOTSXP {
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == DOTSXP {
             let mut count = 0i32;
             let mut current = x;
             while !current.is_null() && current != R_NilValue() {
@@ -281,11 +281,11 @@ unsafe fn EnsureString(x: SEXP) -> SEXP {
             return ptr::null_mut();
         }
         // If it's a SYMSXP, return its print name
-        if TYPEOF(x) == SEXPTYPE::SYMSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::SYMSXP {
             return PRINTNAME(x);
         }
         // If it's a CHARSXP, return as-is
-        if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::CHARSXP {
             return x;
         }
         // Otherwise return a null CHARSXP
@@ -303,10 +303,10 @@ unsafe fn asChar(x: SEXP) -> SEXP {
         if x.is_null() {
             return ptr::null_mut();
         }
-        if TYPEOF(x) == SEXPTYPE::STRSXP.0 && LENGTH(x) >= 1 {
+        if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
             return STRING_ELT(x, 0);
         }
-        if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::CHARSXP {
             return x;
         }
         ptr::null_mut()
@@ -412,7 +412,7 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
             r_error("invalid 'scipen'");
         }
         let d;
-        if TYPEOF(scipen) == SEXPTYPE::REALSXP.0 {
+        if TYPEOF(scipen) == SEXPTYPE::REALSXP {
             d = asInteger(scipen);
         } else {
             d = asInteger(scipen);
@@ -834,7 +834,7 @@ pub unsafe fn do_getOption(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     unsafe {
         checkArity(op, args);
         let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::STRSXP.0 || LENGTH(x) != 1 {
+        if TYPEOF(x) != SEXPTYPE::STRSXP || LENGTH(x) != 1 {
             r_error("'x' must be a character string");
         }
         let name_charsxp = STRING_ELT(x, 0);
@@ -908,8 +908,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // Get argnames for VECSXP args
         let mut argnames: SEXP = R_NilValue();
         match TYPEOF(args) {
-            t if t == SEXPTYPE::NILSXP.0 || t == SEXPTYPE::LISTSXP.0 => {}
-            t if t == SEXPTYPE::VECSXP.0 => {
+            t if t == SEXPTYPE::NILSXP || t == SEXPTYPE::LISTSXP => {}
+            t if t == SEXPTYPE::VECSXP => {
                 if n > 0 {
                     argnames = getAttrib(args, R_NamesSymbol());
                     if LENGTH(argnames) != n {
@@ -930,12 +930,12 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let mut namei: SEXP = R_NilValue();
 
             match TYPEOF(args) {
-                t if t == SEXPTYPE::LISTSXP.0 => {
+                t if t == SEXPTYPE::LISTSXP => {
                     argi = CAR(args);
                     namei = EnsureString(TAG(args));
                     args = CDR(args);
                 }
-                t if t == SEXPTYPE::VECSXP.0 => {
+                t if t == SEXPTYPE::VECSXP => {
                     argi = VECTOR_ELT(args, i as R_xlen_t);
                     if !argnames.is_null() && LENGTH(argnames) > i {
                         namei = STRING_ELT(argnames, i as R_xlen_t);
@@ -1064,7 +1064,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("keep.source").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'keep.source'");
                     }
                     let k = asLogical(argi);
@@ -1103,7 +1103,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("contrasts").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::STRSXP.0 || LENGTH(argi) != 2 {
+                    if TYPEOF(argi) != SEXPTYPE::STRSXP || LENGTH(argi) != 2 {
                         r_error("invalid value for 'contrasts'");
                     }
                     let new_val = duplicate_sexp(argi);
@@ -1114,7 +1114,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("check.bounds").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'check.bounds'");
                     }
                     let k = asLogical(argi);
@@ -1218,7 +1218,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1235,7 +1235,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1246,7 +1246,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     SET_VECTOR_ELT(value, i as R_xlen_t, SetOption(tag, new_val));
                     Rf_unprotect(1);
                 } else if streql(name_cstr, CString::new("echo").unwrap_or_default().as_ptr()) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'echo'");
                     }
                     let k = asLogical(argi);
@@ -1258,7 +1258,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("OutDec").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::STRSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::STRSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'OutDec'");
                     }
                     let new_val = duplicate_sexp(argi);
@@ -1285,7 +1285,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1301,7 +1301,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1317,7 +1317,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1331,7 +1331,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("showWarnCalls").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1345,7 +1345,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("showErrorCalls").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1373,7 +1373,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1387,7 +1387,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("CBoundsCheck").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP
                         || LENGTH(argi) != 1
                         || *LOGICAL(argi).add(0) == NA_LOGICAL
                     {
@@ -1401,7 +1401,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("quiet").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'quiet'");
                     }
                     let k = asLogical(argi);
@@ -1413,7 +1413,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("verbose").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'verbose'");
                     }
                     let k = asLogical(argi);
@@ -1437,7 +1437,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     name_cstr,
                     CString::new("PCRE_study").unwrap_or_default().as_ptr(),
                 ) {
-                    if TYPEOF(argi) == SEXPTYPE::LGLSXP.0 {
+                    if TYPEOF(argi) == SEXPTYPE::LGLSXP {
                         let k = asLogical(argi);
                         let v = Rf_ScalarLogical(k);
                         let _p = Rf_protect(v);
@@ -1475,7 +1475,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         .unwrap_or_default()
                         .as_ptr(),
                 ) {
-                    if TYPEOF(argi) != SEXPTYPE::LGLSXP.0 || LENGTH(argi) != 1 {
+                    if TYPEOF(argi) != SEXPTYPE::LGLSXP || LENGTH(argi) != 1 {
                         r_error("invalid value for 'stringsAsFactors'");
                     }
                     let k = asLogical(argi);
@@ -1509,7 +1509,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             } else {
                 // Querying: get the value of the named option
-                if !argi.is_null() && TYPEOF(argi) == SEXPTYPE::STRSXP.0 && LENGTH(argi) > 0 {
+                if !argi.is_null() && TYPEOF(argi) == SEXPTYPE::STRSXP && LENGTH(argi) > 0 {
                     let name_charsxp = STRING_ELT(argi, 0);
                     let name_str = std::ffi::CStr::from_ptr(CHAR(name_charsxp))
                         .to_str()

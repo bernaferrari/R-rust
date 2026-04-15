@@ -1911,7 +1911,7 @@ pub unsafe fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
     use crate::main::coerce::asLogical;
     use crate::sexp::constructors::Rf_ScalarLogical;
     // If name is not a string or length > 1, error
-    if TYPEOF(name) != SEXPTYPE::STRSXP.0 || LENGTH(name) > 1 {
+    if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
         Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
     }
     let fname = CHAR(STRING_ELT(name, 0));
@@ -1925,7 +1925,7 @@ pub unsafe fn Type1FontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
 pub unsafe fn CIDFontInUse(name: SEXP, isPDF: SEXP) -> SEXP {
     use crate::main::coerce::asLogical;
     use crate::sexp::constructors::Rf_ScalarLogical;
-    if TYPEOF(name) != SEXPTYPE::STRSXP.0 || LENGTH(name) > 1 {
+    if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) > 1 {
         Rf_error(b"invalid font name or more than one font name\0".as_ptr() as *const c_char);
     }
     let fname = CHAR(STRING_ELT(name, 0));

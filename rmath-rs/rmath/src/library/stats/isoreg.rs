@@ -76,11 +76,11 @@ unsafe fn xlengthgets(x: SEXP, new_len: R_xlen_t) -> SEXP {
     }
     let old_type = TYPEOF(x);
     let ans = Rf_allocVector(old_type, new_len as c_int);
-    if old_type == SEXPTYPE::REALSXP.0 {
+    if old_type == SEXPTYPE::REALSXP {
         for i in 0..new_len as usize {
             *REAL(ans).add(i) = *REAL(x).add(i);
         }
-    } else if old_type == SEXPTYPE::INTSXP.0 {
+    } else if old_type == SEXPTYPE::INTSXP {
         for i in 0..new_len as usize {
             *INTEGER(ans).add(i) = *INTEGER(x).add(i);
         }

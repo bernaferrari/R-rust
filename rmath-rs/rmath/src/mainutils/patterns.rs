@@ -33,7 +33,7 @@ pub unsafe fn R_GE_isPattern(x: SEXP) -> c_int {
         if Rf_isNull(klass) != 0 {
             return 0;
         }
-        if TYPEOF(klass) == SEXPTYPE::STRSXP.0 {
+        if TYPEOF(klass) == SEXPTYPE::STRSXP {
             let n = LENGTH(klass);
             for i in 0..n {
                 let s = STRING_ELT(klass, i as R_xlen_t);

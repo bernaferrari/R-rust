@@ -54,7 +54,7 @@ unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
 
 #[unsafe(no_mangle)]
 unsafe fn isLogical(x: SEXP) -> bool {
-    !x.is_null() && TYPEOF(x) == SEXPTYPE::LGLSXP.0
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::LGLSXP
 }
 
 // ---------------------------------------------------------------------------

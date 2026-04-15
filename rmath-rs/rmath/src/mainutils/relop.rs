@@ -135,7 +135,7 @@ pub unsafe fn isNumeric(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if (t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0) && isVector(x) != 0 {
+        if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && isVector(x) != 0 {
             1
         } else {
             0
@@ -161,7 +161,7 @@ pub unsafe fn checkArity(op: SEXP, args: SEXP) {
             return;
         }
         let t = TYPEOF(op);
-        if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
+        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
             return;
         }
         let offset = (*op).data.primsxp.offset;
@@ -187,7 +187,7 @@ pub unsafe fn PRIMVAL(op: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(op);
-        if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             (*op).data.primsxp.offset
         } else {
             0
@@ -203,7 +203,7 @@ pub unsafe fn PRIMNAME(op: SEXP) -> *const c_char {
             return EMPTY.as_ptr();
         }
         let t = TYPEOF(op);
-        if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             // The name is stored as the TAG of the builtin/special
             let name_sym = TAG(op);
             if !name_sym.is_null() {
@@ -459,7 +459,7 @@ pub fn is_na_int(x: c_int) -> bool {
 /// Check if an SEXP is a scalar string (STRSXP of length 1).
 #[inline]
 pub unsafe fn is_scalar_string(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP.0 && XLENGTH(x) == 1 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP && XLENGTH(x) == 1 }
 }
 
 /// Perform a scalar relational operation, returning a ScalarLogical SEXP.
@@ -581,10 +581,10 @@ unsafe fn compute_lang_equal(x: SEXP, y: SEXP) -> bool {
         // Handle LANGSXP with attributes by stripping attributes
         let mut x = x;
         let mut y = y;
-        if TYPEOF(x) == SEXPTYPE::LANGSXP.0 && ATTRIB(x) != R_NilValue() {
+        if TYPEOF(x) == SEXPTYPE::LANGSXP && ATTRIB(x) != R_NilValue() {
             x = Rf_cons(CAR(x), CDR(x));
         }
-        if TYPEOF(y) == SEXPTYPE::LANGSXP.0 && ATTRIB(y) != R_NilValue() {
+        if TYPEOF(y) == SEXPTYPE::LANGSXP && ATTRIB(y) != R_NilValue() {
             y = Rf_cons(CAR(y), CDR(y));
         }
 
@@ -691,7 +691,7 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
             }
             // ERROR_CALLS
             5 => {
-                if TYPEOF(x) == SEXPTYPE::LANGSXP.0 || TYPEOF(y) == SEXPTYPE::LANGSXP.0 {
+                if TYPEOF(x) == SEXPTYPE::LANGSXP || TYPEOF(y) == SEXPTYPE::LANGSXP {
                     // errorcall
                 }
                 ptr::null_mut()
@@ -757,8 +757,8 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
         // Fast path: simple REALSXP/INTSXP vector/scalar case
         if ATTRIB(x) == R_NilValue()
             && ATTRIB(y) == R_NilValue()
-            && (typex == SEXPTYPE::REALSXP.0 || typex == SEXPTYPE::INTSXP.0)
-            && (typey == SEXPTYPE::REALSXP.0 || typey == SEXPTYPE::INTSXP.0)
+            && (typex == SEXPTYPE::REALSXP || typex == SEXPTYPE::INTSXP)
+            && (typey == SEXPTYPE::REALSXP || typey == SEXPTYPE::INTSXP)
             && nx > 0
             && ny > 0
             && (nx == 1 || ny == 1)
@@ -768,9 +768,9 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
 
         // Handle the general case
         if isSymbol(x) != 0
-            || TYPEOF(x) == SEXPTYPE::LANGSXP.0
+            || TYPEOF(x) == SEXPTYPE::LANGSXP
             || isSymbol(y) != 0
-            || TYPEOF(y) == SEXPTYPE::LANGSXP.0
+            || TYPEOF(y) == SEXPTYPE::LANGSXP
         {
             let ans = compute_language_relop(call, op, x, y);
             if !ans.is_null() {
@@ -783,7 +783,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
         if {
             iS = isSymbol(x) != 0;
             iS
-        } || TYPEOF(x) == SEXPTYPE::LANGSXP.0
+        } || TYPEOF(x) == SEXPTYPE::LANGSXP
         {
             let tmp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             if !tmp.is_null() {
@@ -800,7 +800,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
         if {
             iS = isSymbol(y) != 0;
             iS
-        } || TYPEOF(y) == SEXPTYPE::LANGSXP.0
+        } || TYPEOF(y) == SEXPTYPE::LANGSXP
         {
             let tmp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             if !tmp.is_null() {
@@ -847,7 +847,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 && (isNumeric(y) != 0 || isLogical(y) != 0)
             {
                 x = numeric_relop(PRIMVAL(op), x, y);
-            } else if TYPEOF(x) == SEXPTYPE::RAWSXP.0 || TYPEOF(y) == SEXPTYPE::RAWSXP.0 {
+            } else if TYPEOF(x) == SEXPTYPE::RAWSXP || TYPEOF(y) == SEXPTYPE::RAWSXP {
                 x = raw_relop(PRIMVAL(op), x, y);
             } else {
                 // errorcall: comparison not implemented
@@ -1246,7 +1246,7 @@ unsafe fn bitwiseNot(a: SEXP) -> SEXP {
         }
 
         match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 let m = XLENGTH(a);
                 let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, m);
                 if ans.is_null() {
@@ -1307,7 +1307,7 @@ unsafe fn bitwise_op<F: Fn(c_int, c_int) -> c_int>(
         }
 
         match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 let m = XLENGTH(a);
                 let n = XLENGTH(b);
                 let mn = if m > 0 && n > 0 {
@@ -1362,7 +1362,7 @@ unsafe fn bitwiseShiftL(a: SEXP, b: SEXP) -> SEXP {
         }
 
         match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 let m = XLENGTH(a);
                 let n = XLENGTH(b);
                 let mn = if m > 0 && n > 0 {
@@ -1417,7 +1417,7 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
         }
 
         match TYPEOF(a) {
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 let m = XLENGTH(a);
                 let n = XLENGTH(b);
                 let mn = if m > 0 && n > 0 {

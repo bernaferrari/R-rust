@@ -91,7 +91,7 @@ struct OptStruct {
 // ---------------------------------------------------------------------------
 
 unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
-    if TYPEOF(list) != SEXPTYPE::VECSXP.0 {
+    if TYPEOF(list) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
     let mut elmt = R_NilValue();
@@ -263,17 +263,17 @@ unsafe fn as_real(x: SEXP) -> c_double {
         return NA_REAL;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         return *REAL(x);
     }
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         let v = *INTEGER(x);
         if v == NA_INTEGER {
             return NA_REAL;
         }
         return v as c_double;
     }
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         let v = *INTEGER(x);
         if v == NA_INTEGER {
             return NA_REAL;
@@ -292,17 +292,17 @@ unsafe fn as_integer(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         let v = *REAL(x);
         if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
             return NA_INTEGER;
         }
         return v as c_int;
     }
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
     NA_INTEGER
@@ -317,7 +317,7 @@ unsafe fn is_function(x: SEXP) -> bool {
         return false;
     }
     let t = TYPEOF(x);
-    t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0
+    t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -328,7 +328,7 @@ unsafe fn is_string(x: SEXP) -> bool {
     if x.is_null() {
         return false;
     }
-    TYPEOF(x) == SEXPTYPE::STRSXP.0
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 // ---------------------------------------------------------------------------

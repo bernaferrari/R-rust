@@ -754,7 +754,7 @@ pub unsafe fn GetRNGstate() {
 
         // Check if PROMSXP
         let ty = TYPEOF(seeds);
-        if ty == SEXPTYPE::PROMSXP.0 {
+        if ty == SEXPTYPE::PROMSXP {
             // Would need eval -- for now just randomize
             RNG.with(|rc| {
                 let mut rng = rc.borrow_mut();
@@ -764,7 +764,7 @@ pub unsafe fn GetRNGstate() {
             return;
         }
 
-        if ty != SEXPTYPE::INTSXP.0 {
+        if ty != SEXPTYPE::INTSXP {
             RNG.with(|rc| {
                 let mut rng = rc.borrow_mut();
                 RNG_Init(&mut rng, RNG_DEFAULT, TimeToSeed() as i64);
@@ -914,7 +914,7 @@ pub unsafe fn PutRNGstate() {
 
         // Check if we can reuse the existing vector
         let can_reuse = !existing.is_null()
-            && TYPEOF(existing) == SEXPTYPE::INTSXP.0
+            && TYPEOF(existing) == SEXPTYPE::INTSXP
             && XLENGTH(existing) as usize == len_seed + 1
             && ATTRIB(existing) == R_NilValue();
 
@@ -1226,20 +1226,20 @@ fn random3_call(
 unsafe fn isVector(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::INTSXP.0
-            || t == SEXPTYPE::REALSXP.0
-            || t == SEXPTYPE::LGLSXP.0
-            || t == SEXPTYPE::CPLXSXP.0
-            || t == SEXPTYPE::STRSXP.0
-            || t == SEXPTYPE::VECSXP.0
-            || t == SEXPTYPE::RAWSXP.0
+        t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::VECSXP
+            || t == SEXPTYPE::RAWSXP
     }
 }
 
 unsafe fn isNumeric(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0
+        t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP
     }
 }
 
@@ -1249,9 +1249,9 @@ unsafe fn asInteger_local(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             *INTEGER(x)
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let v = *REAL(x);
             if !v.is_finite() || v > i32::MAX as f64 || v < i32::MIN as f64 {
                 NA_INTEGER
@@ -1270,9 +1270,9 @@ unsafe fn asReal_local(x: SEXP) -> c_double {
             return f64::NAN;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::REALSXP.0 {
+        if t == SEXPTYPE::REALSXP {
             *REAL(x)
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let v = *INTEGER(x);
             if v == NA_INTEGER { f64::NAN } else { v as f64 }
         } else {
@@ -1288,9 +1288,9 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             *INTEGER(x)
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             *INTEGER(x)
         } else {
             NA_INTEGER

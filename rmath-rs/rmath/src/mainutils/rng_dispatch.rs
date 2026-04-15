@@ -49,7 +49,7 @@ pub unsafe fn do_set_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // Handle seed
         if !seed_arg.is_null() && seed_arg != R_NilValue() {
             let t = TYPEOF(seed_arg);
-            if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                 let s = *INTEGER(seed_arg);
                 if s != crate::sexp::ffi::NA_INTEGER {
                     // Use seed to set RNG state
@@ -58,7 +58,7 @@ pub unsafe fn do_set_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
                     let i2 = (s as u32).wrapping_mul(12345).wrapping_add(67890);
                     crate::rng::set_seed(i1, i2);
                 }
-            } else if t == SEXPTYPE::REALSXP.0 {
+            } else if t == SEXPTYPE::REALSXP {
                 let s = *REAL(seed_arg);
                 if !s.is_nan() {
                     let is = s as i64;
@@ -76,8 +76,8 @@ pub unsafe fn do_set_seed(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         // Handle kind
         if !kind_arg.is_null() && kind_arg != R_NilValue() {
             let t = TYPEOF(kind_arg);
-            if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0 {
-                let k = if t == SEXPTYPE::INTSXP.0 {
+            if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP {
+                let k = if t == SEXPTYPE::INTSXP {
                     *INTEGER(kind_arg)
                 } else {
                     *REAL(kind_arg) as i32
@@ -116,8 +116,8 @@ pub unsafe fn do_RNGkind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
         // Set kind
         let t = TYPEOF(kind_arg);
-        if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0 {
-            let k = if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP {
+            let k = if t == SEXPTYPE::INTSXP {
                 *INTEGER(kind_arg)
             } else {
                 *REAL(kind_arg) as i32
@@ -301,7 +301,7 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         let size = parse_n(size_arg, 1);
         let replace = if replace_arg.is_null() || replace_arg == R_NilValue() {
             false
-        } else if TYPEOF(replace_arg) == SEXPTYPE::LGLSXP.0 {
+        } else if TYPEOF(replace_arg) == SEXPTYPE::LGLSXP {
             *crate::sexp::accessors::LOGICAL(replace_arg) != 0
         } else {
             false
@@ -319,9 +319,9 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let u = crate::rng::unif_rand();
             let idx = (u * x_len as f64) as usize;
             let idx = idx.min(x_len as usize - 1);
-            let val = if TYPEOF(x_arg) == SEXPTYPE::REALSXP.0 {
+            let val = if TYPEOF(x_arg) == SEXPTYPE::REALSXP {
                 *REAL(x_arg).add(idx)
-            } else if TYPEOF(x_arg) == SEXPTYPE::INTSXP.0 {
+            } else if TYPEOF(x_arg) == SEXPTYPE::INTSXP {
                 let v = *INTEGER(x_arg).add(idx);
                 if v == crate::sexp::ffi::NA_INTEGER {
                     NA_REAL
@@ -390,13 +390,13 @@ fn parse_n(arg: SEXP, default: c_int) -> R_xlen_t {
             return default as R_xlen_t;
         }
         let t = TYPEOF(arg);
-        if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let v = *INTEGER(arg);
             if v == crate::sexp::ffi::NA_INTEGER || v < 0 {
                 return default as R_xlen_t;
             }
             v as R_xlen_t
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let v = *REAL(arg);
             if v.is_nan() || v < 0.0 {
                 return default as R_xlen_t;
@@ -415,9 +415,9 @@ fn parse_double_scalar(arg: SEXP, default: f64) -> f64 {
             return default;
         }
         let t = TYPEOF(arg);
-        if t == SEXPTYPE::REALSXP.0 {
+        if t == SEXPTYPE::REALSXP {
             *REAL(arg)
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let v = *INTEGER(arg);
             if v == crate::sexp::ffi::NA_INTEGER {
                 NA_REAL

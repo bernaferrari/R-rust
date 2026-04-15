@@ -528,7 +528,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
     // User agent: use HTTPUserAgent option or default to libcurl version
     let mut default_agent: c_int = 1;
     let sua = GetOption1(install(b"HTTPUserAgent\0".as_ptr() as *const c_char));
-    if TYPEOF(sua) == SEXPTYPE::STRSXP.0 && LENGTH(sua) == 1 {
+    if TYPEOF(sua) == SEXPTYPE::STRSXP && LENGTH(sua) == 1 {
         let p = translateChar(STRING_ELT(sua, 0));
         if !p.is_null()
             && *p != 0
@@ -586,7 +586,7 @@ unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
 
     // netrc file
     let snetrc = GetOption1(install(b"netrc\0".as_ptr() as *const c_char));
-    if TYPEOF(snetrc) == SEXPTYPE::STRSXP.0 && LENGTH(snetrc) == 1 {
+    if TYPEOF(snetrc) == SEXPTYPE::STRSXP && LENGTH(snetrc) == 1 {
         let p = translateCharFP(STRING_ELT(snetrc, 0));
         curl_easy_setopt(hnd, CURLOPT_NETRC, CURL_NETRC_OPTIONAL);
         curl_easy_setopt(hnd, CURLOPT_NETRC_FILE, p);
@@ -959,7 +959,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
 
     // url
     let scmd = CAR(args);
-    if TYPEOF(scmd) != SEXPTYPE::STRSXP.0 || LENGTH(scmd) != 1 {
+    if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) != 1 {
         Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
     }
     let url = translateChar(STRING_ELT(scmd, 0));
@@ -987,7 +987,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
     // TLS (CAD4R)
     let sTLS = unsafe { *(args as *const SEXP).add(4) };
     let mut tls: *const c_char = b"\0".as_ptr() as *const c_char;
-    if TYPEOF(sTLS) == SEXPTYPE::STRSXP.0 && LENGTH(sTLS) == 1 {
+    if TYPEOF(sTLS) == SEXPTYPE::STRSXP && LENGTH(sTLS) == 1 {
         tls = translateChar(STRING_ELT(sTLS, 0));
     } else {
         Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
@@ -1090,7 +1090,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
     let mut args_iter = args;
     let scmd = CAR(args_iter);
     args_iter = CDR(args_iter);
-    if TYPEOF(scmd) != SEXPTYPE::STRSXP.0 || LENGTH(scmd) < 1 {
+    if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) < 1 {
         Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
     }
     let nurls = LENGTH(scmd);
@@ -1100,7 +1100,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
     // destfile
     let sfile = CAR(args_iter);
     args_iter = CDR(args_iter);
-    if TYPEOF(sfile) != SEXPTYPE::STRSXP.0 || LENGTH(sfile) < 1 {
+    if TYPEOF(sfile) != SEXPTYPE::STRSXP || LENGTH(sfile) < 1 {
         Rf_error(b"invalid 'destfile' argument\0".as_ptr() as *const c_char);
     }
     if LENGTH(sfile) != LENGTH(scmd) {
@@ -1117,7 +1117,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
     // mode
     let smode = CAR(args_iter);
     args_iter = CDR(args_iter);
-    if TYPEOF(smode) != SEXPTYPE::STRSXP.0 || LENGTH(smode) != 1 {
+    if TYPEOF(smode) != SEXPTYPE::STRSXP || LENGTH(smode) != 1 {
         Rf_error(b"invalid 'mode' argument\0".as_ptr() as *const c_char);
     }
     let mode = translateChar(STRING_ELT(smode, 0));
@@ -1131,7 +1131,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
 
     // headers
     let sheaders = CAR(args_iter);
-    if Rf_isNull(sheaders) == 0 && TYPEOF(sheaders) != SEXPTYPE::STRSXP.0 {
+    if Rf_isNull(sheaders) == 0 && TYPEOF(sheaders) != SEXPTYPE::STRSXP {
         Rf_error(b"invalid 'headers' argument\0".as_ptr() as *const c_char);
     }
 
@@ -1509,7 +1509,7 @@ unsafe fn CAD4R(args: SEXP) -> SEXP {
 
 /// isString - check if SEXP is a character vector
 unsafe fn isString(x: SEXP) -> c_int {
-    if TYPEOF(x) == SEXPTYPE::STRSXP.0 {
+    if TYPEOF(x) == SEXPTYPE::STRSXP {
         1
     } else {
         0

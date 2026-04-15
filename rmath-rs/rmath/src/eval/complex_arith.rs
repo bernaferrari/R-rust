@@ -43,14 +43,14 @@ unsafe fn elt_complex(x: SEXP, i: R_xlen_t) -> Rcomplex {
 unsafe fn elt_complex_coerce(x: SEXP, i: R_xlen_t) -> Rcomplex {
     unsafe {
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             return elt_complex(x, i);
         }
         let n = XLENGTH(x);
         let idx = if n == 0 { 0 } else { i % n };
-        let r = if t == SEXPTYPE::REALSXP.0 {
+        let r = if t == SEXPTYPE::REALSXP {
             *REAL(x).add(idx as usize)
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let v = *INTEGER(x).add(idx as usize);
             if v == NA_INTEGER {
                 crate::sexp::ffi::NA_REAL
@@ -72,7 +72,7 @@ unsafe fn elt_complex_coerce(x: SEXP, i: R_xlen_t) -> Rcomplex {
 pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
     unsafe {
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             return x;
         }
         let n = XLENGTH(x);
@@ -111,8 +111,8 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 0);
         }
 
-        let a_is_complex = TYPEOF(sa) == SEXPTYPE::CPLXSXP.0;
-        let b_is_complex = TYPEOF(sb) == SEXPTYPE::CPLXSXP.0;
+        let a_is_complex = TYPEOF(sa) == SEXPTYPE::CPLXSXP;
+        let b_is_complex = TYPEOF(sb) == SEXPTYPE::CPLXSXP;
         let result_is_complex = a_is_complex || b_is_complex;
 
         // If both are real, delegate to real_binary
@@ -212,7 +212,7 @@ fn complex_abs(z: Rcomplex) -> f64 {
 /// Complex absolute value (Modulus) — returns REALSXP.
 pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
     unsafe {
-        if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP.0 {
+        if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
             return R_NilValue();
         }
         let n = XLENGTH(sa);
@@ -238,7 +238,7 @@ pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
 /// Apply a unary complex function element-wise.
 pub unsafe fn complex_unary_vec(sa: SEXP, f: fn(Rcomplex) -> Rcomplex) -> SEXP {
     unsafe {
-        if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP.0 {
+        if sa.is_null() || TYPEOF(sa) != SEXPTYPE::CPLXSXP {
             return R_NilValue();
         }
         let n = XLENGTH(sa);
@@ -361,9 +361,9 @@ unsafe fn elt_real_coerce(x: SEXP, i: R_xlen_t) -> f64 {
         let t = TYPEOF(x);
         let n = XLENGTH(x);
         let idx = if n == 0 { 0 } else { i % n };
-        if t == SEXPTYPE::REALSXP.0 {
+        if t == SEXPTYPE::REALSXP {
             *REAL(x).add(idx as usize)
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let v = *INTEGER(x).add(idx as usize);
             if v == NA_INTEGER {
                 crate::sexp::ffi::NA_REAL

@@ -44,7 +44,7 @@ unsafe fn isNumeric(x: SEXP) -> bool {
         return false;
     }
     let t = TYPEOF(x);
-    t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0
+    t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -56,17 +56,17 @@ unsafe fn as_integer(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         let v = *REAL(x);
         if v.is_nan() || v < c_int::MIN as c_double || v > c_int::MAX as c_double {
             return NA_INTEGER;
         }
         return v as c_int;
     }
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
     NA_INTEGER

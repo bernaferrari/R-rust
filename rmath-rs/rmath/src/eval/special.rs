@@ -34,7 +34,7 @@ pub unsafe fn do_special_dispatch(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -
 
         // Match by symbol name
         let fun_sym = CAR(call);
-        if TYPEOF(fun_sym) == SEXPTYPE::SYMSXP.0 {
+        if TYPEOF(fun_sym) == SEXPTYPE::SYMSXP {
             let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
             if !pname.is_null() {
                 let s = crate::sexp::accessors::CHAR(pname);
@@ -99,7 +99,7 @@ unsafe fn do_if(args: SEXP, rho: SEXP) -> SEXP {
         let cond_val = Rf_eval(cond, rho);
 
         // Check condition (logical vector, take first element)
-        let result = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP.0 {
+        let result = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
             let data = crate::sexp::accessors::LOGICAL(cond_val);
             if data.is_null() {
                 eprintln!("Error: missing value where TRUE/FALSE needed");
@@ -148,7 +148,7 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
     loop {
         let cond_val = Rf_eval(cond, rho);
 
-        let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP.0 {
+        let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
             let data = crate::sexp::accessors::LOGICAL(cond_val);
             *data == 1
         } else {
@@ -193,16 +193,16 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
 
     let seq_val = Rf_eval(seq_expr, rho);
 
-    if TYPEOF(seq_val) != SEXPTYPE::VECSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::LISTSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::LANGSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::EXPRSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::LGLSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::INTSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::REALSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::STRSXP.0
-        && TYPEOF(seq_val) != SEXPTYPE::RAWSXP.0
+    if TYPEOF(seq_val) != SEXPTYPE::VECSXP
+        && TYPEOF(seq_val) != SEXPTYPE::LISTSXP
+        && TYPEOF(seq_val) != SEXPTYPE::LANGSXP
+        && TYPEOF(seq_val) != SEXPTYPE::EXPRSXP
+        && TYPEOF(seq_val) != SEXPTYPE::LGLSXP
+        && TYPEOF(seq_val) != SEXPTYPE::INTSXP
+        && TYPEOF(seq_val) != SEXPTYPE::REALSXP
+        && TYPEOF(seq_val) != SEXPTYPE::CPLXSXP
+        && TYPEOF(seq_val) != SEXPTYPE::STRSXP
+        && TYPEOF(seq_val) != SEXPTYPE::RAWSXP
     {
         std::panic::panic_any(crate::sexp::context::RSignal::Error {
             message: "invalid 'for' loop variable sequence".to_string(),
@@ -212,7 +212,7 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
     let n = crate::sexp::constructors::Rf_length(seq_val);
 
     for i in 0..n {
-        let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP.0 || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP.0
+        let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP
         {
             crate::sexp::accessors::VECTOR_ELT(seq_val, i as i64)
         } else {

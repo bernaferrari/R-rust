@@ -68,17 +68,17 @@ unsafe fn as_integer(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         let v = *REAL(x);
         if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
             return NA_INTEGER;
         }
         return v as c_int;
     }
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
     NA_INTEGER
@@ -89,10 +89,10 @@ unsafe fn as_logical(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
     NA_INTEGER
@@ -106,10 +106,10 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
     let mut z = z;
 
     match TYPEOF(z) as c_int {
-        t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::REALSXP.0 => {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
             z = coerceVector(z, SEXPTYPE::CPLXSXP.0);
         }
-        t if t == SEXPTYPE::CPLXSXP.0 => {
+        t if t == SEXPTYPE::CPLXSXP => {
             if MAYBE_REFERENCED(z) != 0 {
                 z = duplicate(z);
             }
@@ -230,10 +230,10 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
 
     let mut z = z;
     match TYPEOF(z) as c_int {
-        t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::REALSXP.0 => {
+        t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
             z = coerceVector(z, SEXPTYPE::CPLXSXP.0);
         }
-        t if t == SEXPTYPE::CPLXSXP.0 => {
+        t if t == SEXPTYPE::CPLXSXP => {
             if MAYBE_REFERENCED(z) != 0 {
                 z = duplicate(z);
             }
@@ -355,13 +355,13 @@ unsafe fn nextn0_64(mut n: u64, f: *const c_int, nf: c_int) -> u64 {
 pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    if TYPEOF(n) == SEXPTYPE::NILSXP.0 {
+    if TYPEOF(n) == SEXPTYPE::NILSXP {
         return Rf_allocVector(SEXPTYPE::INTSXP.0, 0);
     }
 
     let mut nprot: c_int = 0;
     let mut f = f;
-    if TYPEOF(f) != SEXPTYPE::INTSXP.0 {
+    if TYPEOF(f) != SEXPTYPE::INTSXP {
         f = coerceVector(f, SEXPTYPE::INTSXP.0);
         Rf_protect(f);
         nprot += 1;
@@ -382,8 +382,8 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         }
     }
 
-    let mut use_int = TYPEOF(n) == SEXPTYPE::INTSXP.0;
-    if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP.0 {
+    let mut use_int = TYPEOF(n) == SEXPTYPE::INTSXP;
+    if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP {
         Rf_error(b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr() as *const i8);
     }
     let nn = XLENGTH(n);

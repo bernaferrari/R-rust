@@ -147,7 +147,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        if TYPEOF(x) == SEXPTYPE::SYMSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::SYMSXP {
             1
         } else {
             0
@@ -160,7 +160,7 @@ unsafe fn isString(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        if TYPEOF(x) == SEXPTYPE::STRSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
             1
         } else {
             0
@@ -184,7 +184,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             1
         } else {
             0
@@ -198,10 +198,10 @@ unsafe fn isList(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LISTSXP.0 {
+        if t == SEXPTYPE::LISTSXP {
             return 1;
         }
-        if t == SEXPTYPE::VECSXP.0 && getAttrib(x, R_DimSymbol()) == R_NilValue() {
+        if t == SEXPTYPE::VECSXP && getAttrib(x, R_DimSymbol()) == R_NilValue() {
             return 1;
         }
         0
@@ -244,7 +244,7 @@ unsafe fn inherits_cstr(x: SEXP, class_name: *const c_char) -> c_int {
             return 0;
         }
         let klass = getAttrib(x, R_ClassSymbol());
-        if klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP.0 {
+        if klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
             return 0;
         }
         let cn = match CStr::from_ptr(class_name).to_str() {
@@ -327,11 +327,11 @@ unsafe fn asInteger(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP {
             if LENGTH(x) >= 1 {
                 return *INTEGER(x);
             }
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             if LENGTH(x) >= 1 {
                 let v = *REAL(x);
                 if ISNAN(v) {
@@ -339,7 +339,7 @@ unsafe fn asInteger(x: SEXP) -> c_int {
                 }
                 return v as c_int;
             }
-        } else if t == SEXPTYPE::LGLSXP.0 && LENGTH(x) >= 1 {
+        } else if t == SEXPTYPE::LGLSXP && LENGTH(x) >= 1 {
             return *LOGICAL(x);
         }
         NA_INTEGER
@@ -353,11 +353,11 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             return NA_LOGICAL;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             if LENGTH(x) >= 1 {
                 return *LOGICAL(x);
             }
-        } else if t == SEXPTYPE::INTSXP.0 && LENGTH(x) >= 1 {
+        } else if t == SEXPTYPE::INTSXP && LENGTH(x) >= 1 {
             return *INTEGER(x);
         }
         NA_LOGICAL
@@ -687,21 +687,21 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
 
                 if isObject_fn(s_i) != 0 {
                     let snip = match TYPEOF(s_i) {
-                        x if x == SEXPTYPE::NILSXP.0 => "NULL",
-                        x if x == SEXPTYPE::LGLSXP.0 => "logical",
-                        x if x == SEXPTYPE::INTSXP.0 => {
+                        x if x == SEXPTYPE::NILSXP => "NULL",
+                        x if x == SEXPTYPE::LGLSXP => "logical",
+                        x if x == SEXPTYPE::INTSXP => {
                             if inherits_cstr(s_i, b"factor\0".as_ptr() as *const c_char) != 0 {
                                 "factor"
                             } else {
                                 "integer"
                             }
                         }
-                        x if x == SEXPTYPE::REALSXP.0 => "numeric",
-                        x if x == SEXPTYPE::CPLXSXP.0 => "complex",
-                        x if x == SEXPTYPE::STRSXP.0 => "character",
-                        x if x == SEXPTYPE::RAWSXP.0 => "raw",
-                        x if x == SEXPTYPE::LISTSXP.0 || x == SEXPTYPE::VECSXP.0 => "list",
-                        x if x == SEXPTYPE::LANGSXP.0 => "expression",
+                        x if x == SEXPTYPE::REALSXP => "numeric",
+                        x if x == SEXPTYPE::CPLXSXP => "complex",
+                        x if x == SEXPTYPE::STRSXP => "character",
+                        x if x == SEXPTYPE::RAWSXP => "raw",
+                        x if x == SEXPTYPE::LISTSXP || x == SEXPTYPE::VECSXP => "list",
+                        x if x == SEXPTYPE::LANGSXP => "expression",
                         _ => "?",
                     };
                     let full = format!("{},{}", snip, LENGTH(s_i));
@@ -711,11 +711,11 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                     pbuf[copy_len] = 0;
                 } else {
                     match TYPEOF(s_i) {
-                        _t if _t == SEXPTYPE::NILSXP.0 => {
+                        _t if _t == SEXPTYPE::NILSXP => {
                             let src = b"NULL\0";
                             pbuf[..src.len()].copy_from_slice(src);
                         }
-                        _t if _t == SEXPTYPE::LGLSXP.0 => {
+                        _t if _t == SEXPTYPE::LGLSXP => {
                             if LENGTH(s_i) == 1 {
                                 let x = LOGICAL(s_i);
                                 if !x.is_null() {
@@ -738,7 +738,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 pbuf[copy_len] = 0;
                             }
                         }
-                        _t if _t == SEXPTYPE::INTSXP.0 => {
+                        _t if _t == SEXPTYPE::INTSXP => {
                             if inherits_cstr(s_i, b"factor\0".as_ptr() as *const c_char) != 0 {
                                 let full = format!("factor,{}", LENGTH(s_i));
                                 let bytes = full.as_bytes();
@@ -767,7 +767,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 pbuf[copy_len] = 0;
                             }
                         }
-                        _t if _t == SEXPTYPE::REALSXP.0 => {
+                        _t if _t == SEXPTYPE::REALSXP => {
                             if LENGTH(s_i) == 1 {
                                 let x = REAL(s_i);
                                 if !x.is_null() {
@@ -797,7 +797,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 pbuf[copy_len] = 0;
                             }
                         }
-                        _t if _t == SEXPTYPE::CPLXSXP.0 => {
+                        _t if _t == SEXPTYPE::CPLXSXP => {
                             if LENGTH(s_i) == 1 {
                                 let x = COMPLEX(s_i);
                                 if !x.is_null() {
@@ -852,7 +852,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 pbuf[copy_len] = 0;
                             }
                         }
-                        _t if _t == SEXPTYPE::STRSXP.0 => {
+                        _t if _t == SEXPTYPE::STRSXP => {
                             if LENGTH(s_i) == 1 {
                                 let ctmp = translateChar(STRING_ELT(s_i, 0));
                                 if !ctmp.is_null() {
@@ -875,21 +875,21 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                                 pbuf[copy_len] = 0;
                             }
                         }
-                        _t if _t == SEXPTYPE::RAWSXP.0 => {
+                        _t if _t == SEXPTYPE::RAWSXP => {
                             let full = format!("raw,{}", LENGTH(s_i));
                             let bytes = full.as_bytes();
                             let copy_len = bytes.len().min(114);
                             pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                             pbuf[copy_len] = 0;
                         }
-                        _t if _t == SEXPTYPE::LISTSXP.0 || _t == SEXPTYPE::VECSXP.0 => {
+                        _t if _t == SEXPTYPE::LISTSXP || _t == SEXPTYPE::VECSXP => {
                             let full = format!("list,{}", LENGTH(s_i));
                             let bytes = full.as_bytes();
                             let copy_len = bytes.len().min(114);
                             pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                             pbuf[copy_len] = 0;
                         }
-                        _t if _t == SEXPTYPE::LANGSXP.0 => {
+                        _t if _t == SEXPTYPE::LANGSXP => {
                             let src = b"expression\0";
                             pbuf[..src.len()].copy_from_slice(src);
                         }
@@ -1089,56 +1089,56 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
             let mut i: i64 = 0;
             let mut cur = s;
 
-            while cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP.0 {
+            while cur != R_NilValue() && TYPEOF(cur) == SEXPTYPE::LISTSXP {
                 let mut pbuf = [0u8; 101];
                 match TYPEOF(CAR(cur)) {
-                    _t if _t == SEXPTYPE::NILSXP.0 => {
+                    _t if _t == SEXPTYPE::NILSXP => {
                         let src = b"NULL\0";
                         pbuf[..src.len()].copy_from_slice(src);
                     }
-                    _t if _t == SEXPTYPE::LGLSXP.0 => {
+                    _t if _t == SEXPTYPE::LGLSXP => {
                         let full = format!("logical,{}", LENGTH(CAR(cur)));
                         let bytes = full.as_bytes();
                         let copy_len = bytes.len().min(100);
                         pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                         pbuf[copy_len] = 0;
                     }
-                    _t if _t == SEXPTYPE::INTSXP.0 || _t == SEXPTYPE::REALSXP.0 => {
+                    _t if _t == SEXPTYPE::INTSXP || _t == SEXPTYPE::REALSXP => {
                         let full = format!("numeric,{}", LENGTH(CAR(cur)));
                         let bytes = full.as_bytes();
                         let copy_len = bytes.len().min(100);
                         pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                         pbuf[copy_len] = 0;
                     }
-                    _t if _t == SEXPTYPE::CPLXSXP.0 => {
+                    _t if _t == SEXPTYPE::CPLXSXP => {
                         let full = format!("complex,{}", LENGTH(CAR(cur)));
                         let bytes = full.as_bytes();
                         let copy_len = bytes.len().min(100);
                         pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                         pbuf[copy_len] = 0;
                     }
-                    _t if _t == SEXPTYPE::STRSXP.0 => {
+                    _t if _t == SEXPTYPE::STRSXP => {
                         let full = format!("character,{}", LENGTH(CAR(cur)));
                         let bytes = full.as_bytes();
                         let copy_len = bytes.len().min(100);
                         pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                         pbuf[copy_len] = 0;
                     }
-                    _t if _t == SEXPTYPE::RAWSXP.0 => {
+                    _t if _t == SEXPTYPE::RAWSXP => {
                         let full = format!("raw,{}", LENGTH(CAR(cur)));
                         let bytes = full.as_bytes();
                         let copy_len = bytes.len().min(100);
                         pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                         pbuf[copy_len] = 0;
                     }
-                    _t if _t == SEXPTYPE::LISTSXP.0 => {
+                    _t if _t == SEXPTYPE::LISTSXP => {
                         let full = format!("list,{}", LENGTH(CAR(cur)));
                         let bytes = full.as_bytes();
                         let copy_len = bytes.len().min(100);
                         pbuf[..copy_len].copy_from_slice(&bytes[..copy_len]);
                         pbuf[copy_len] = 0;
                     }
-                    _t if _t == SEXPTYPE::LANGSXP.0 => {
+                    _t if _t == SEXPTYPE::LANGSXP => {
                         let src = b"expression\0";
                         pbuf[..src.len()].copy_from_slice(src);
                     }
@@ -1176,7 +1176,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
             let ptag = tagbuf_ptr_at(taglen);
             let sz = TAGBUFLEN0 * 2 - taglen;
 
-            while TYPEOF(cur) == SEXPTYPE::LISTSXP.0 {
+            while TYPEOF(cur) == SEXPTYPE::LISTSXP {
                 if i > 1 {
                     println!();
                 }
@@ -1395,10 +1395,10 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
         }
 
         match TYPEOF(s) {
-            t if t == SEXPTYPE::NILSXP.0 => {
+            t if t == SEXPTYPE::NILSXP => {
                 println!("NULL");
             }
-            t if t == SEXPTYPE::SYMSXP.0 => {
+            t if t == SEXPTYPE::SYMSXP => {
                 let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
                 Rf_protect(t);
                 R_PRINT.with(|v| *v.borrow_mut() = data.clone());
@@ -1408,10 +1408,10 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 }
                 Rf_unprotect(1);
             }
-            t if t == SEXPTYPE::SPECIALSXP.0 || t == SEXPTYPE::BUILTINSXP.0 => {
+            t if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP => {
                 PrintSpecial(s, data);
             }
-            t if t == SEXPTYPE::CHARSXP.0 => {
+            t if t == SEXPTYPE::CHARSXP => {
                 print!("<CHARSXP: ");
                 let enc = crate::mainutils::printutils::EncodeString(
                     s,
@@ -1425,16 +1425,16 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 println!(">");
                 return; // skip attributes for CHARSXP
             }
-            t if t == SEXPTYPE::EXPRSXP.0 => {
+            t if t == SEXPTYPE::EXPRSXP => {
                 PrintExpression(s, data);
             }
-            t if t == SEXPTYPE::LANGSXP.0 => {
+            t if t == SEXPTYPE::LANGSXP => {
                 PrintLanguage(s, data);
             }
-            t if t == SEXPTYPE::CLOSXP.0 => {
+            t if t == SEXPTYPE::CLOSXP => {
                 PrintClosure(s, data);
             }
-            t if t == SEXPTYPE::ENVSXP.0 => {
+            t if t == SEXPTYPE::ENVSXP => {
                 let env_str = crate::mainutils::printutils::EncodeEnvironment(s);
                 if !env_str.is_null() {
                     println!(
@@ -1445,28 +1445,28 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                     println!("<environment>");
                 }
             }
-            t if t == SEXPTYPE::PROMSXP.0 => {
+            t if t == SEXPTYPE::PROMSXP => {
                 println!("<promise: {:?}>", s);
             }
-            t if t == SEXPTYPE::DOTSXP.0 => {
+            t if t == SEXPTYPE::DOTSXP => {
                 println!("<...>");
             }
-            t if t == SEXPTYPE::VECSXP.0 => {
+            t if t == SEXPTYPE::VECSXP => {
                 PrintGenericVector(s, data);
                 return; // handles attributes
             }
-            t if t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LISTSXP => {
                 printList(s, data);
             }
-            t if t == SEXPTYPE::LGLSXP.0
-                || t == SEXPTYPE::INTSXP.0
-                || t == SEXPTYPE::REALSXP.0
-                || t == SEXPTYPE::STRSXP.0
-                || t == SEXPTYPE::CPLXSXP.0
-                || t == SEXPTYPE::RAWSXP.0 =>
+            t if t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::RAWSXP =>
             {
                 let dim = Rf_protect(getAttrib(s, R_DimSymbol()));
-                if TYPEOF(dim) == SEXPTYPE::INTSXP.0 {
+                if TYPEOF(dim) == SEXPTYPE::INTSXP {
                     if LENGTH(dim) == 1 {
                         let dnames = getAttrib(s, R_DimNamesSymbol());
                         if dnames != R_NilValue() && VECTOR_ELT(dnames, 0) != R_NilValue() {
@@ -1525,13 +1525,13 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
                 }
                 Rf_unprotect(1); // dim
             }
-            t if t == SEXPTYPE::EXTPTRSXP.0 => {
+            t if t == SEXPTYPE::EXTPTRSXP => {
                 println!("<pointer: {:?}>", s);
             }
-            t if t == SEXPTYPE::BCODESXP.0 => {
+            t if t == SEXPTYPE::BCODESXP => {
                 println!("<bytecode: {:?}>", s);
             }
-            t if t == SEXPTYPE::WEAKREFSXP.0 => {
+            t if t == SEXPTYPE::WEAKREFSXP => {
                 println!("<weak reference>");
             }
             t if t == SEXPTYPE(25).0 => {
@@ -1882,7 +1882,7 @@ pub unsafe fn isEnvironment(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        if TYPEOF(x) == SEXPTYPE::ENVSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::ENVSXP {
             1
         } else {
             0
@@ -1896,7 +1896,7 @@ pub unsafe fn isEnvironment(x: SEXP) -> c_int {
 
 pub unsafe fn inherits(x: SEXP, class: SEXP, _pkg: SEXP) -> c_int {
     unsafe {
-        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP.0 || LENGTH(class) < 1 {
+        if class.is_null() || TYPEOF(class) != SEXPTYPE::STRSXP || LENGTH(class) < 1 {
             return 0;
         }
         let class_name = CHAR(STRING_ELT(class, 0));

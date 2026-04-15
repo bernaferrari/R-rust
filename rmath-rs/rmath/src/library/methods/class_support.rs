@@ -18,7 +18,7 @@ use crate::sexp::protect::*;
 /// Delegates to getPRIMNAME in main/names.rs.
 pub unsafe fn R_get_primname(object: SEXP) -> SEXP {
     let t = TYPEOF(object);
-    if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
+    if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
         let msg = CString::new("'R_get_primname' called on a non-primitive").unwrap_or_default();
         crate::main::errors::Rf_error(msg.as_ptr());
     }

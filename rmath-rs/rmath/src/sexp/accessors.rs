@@ -204,7 +204,7 @@ pub unsafe fn SET_MARK(x: SEXP, v: c_int) {
 /// Get the type (same as TYPEOF but as a macro name).
 #[unsafe(no_mangle)]
 pub unsafe fn Rf_isNull(x: SEXP) -> c_int {
-    unsafe { (TYPEOF(x) == SEXPTYPE::NILSXP.0) as c_int }
+    unsafe { (TYPEOF(x) == SEXPTYPE::NILSXP) as c_int }
 }
 
 /// Check the type of a SEXP. Alias for TYPEOF.

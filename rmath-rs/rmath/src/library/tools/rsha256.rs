@@ -66,7 +66,7 @@ pub unsafe fn Rsha256(files: SEXP) -> SEXP {
     }
 
     // RAW mode: hash of one buffer instead of files
-    if TYPEOF(files) == SEXPTYPE::RAWSXP.0 {
+    if TYPEOF(files) == SEXPTYPE::RAWSXP {
         let raw_len = XLENGTH(files) as usize;
         let raw_ptr = RAW(files);
         if raw_ptr.is_null() || raw_len == 0 {

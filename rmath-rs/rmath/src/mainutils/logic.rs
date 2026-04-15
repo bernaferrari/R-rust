@@ -223,10 +223,10 @@ unsafe fn is_number(x: SEXP) -> bool {
             return false;
         }
         let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP.0
-            || t == SEXPTYPE::INTSXP.0
-            || t == SEXPTYPE::REALSXP.0
-            || t == SEXPTYPE::CPLXSXP.0
+        t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
     }
 }
 
@@ -237,7 +237,7 @@ unsafe fn is_raw(x: SEXP) -> bool {
         if x.is_null() {
             return false;
         }
-        TYPEOF(x) == SEXPTYPE::RAWSXP.0
+        TYPEOF(x) == SEXPTYPE::RAWSXP
     }
 }
 
@@ -259,13 +259,13 @@ unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
         let t = TYPEOF(x);
 
         match t {
-            tt if tt == SEXPTYPE::LGLSXP.0 => {
+            tt if tt == SEXPTYPE::LGLSXP => {
                 let px = LOGICAL(x);
                 for i in 0..len {
                     *pa.add(i) = *px.add(i);
                 }
             }
-            tt if tt == SEXPTYPE::INTSXP.0 => {
+            tt if tt == SEXPTYPE::INTSXP => {
                 let px = INTEGER(x);
                 for i in 0..len {
                     let v = *px.add(i);
@@ -276,7 +276,7 @@ unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
                     };
                 }
             }
-            tt if tt == SEXPTYPE::REALSXP.0 => {
+            tt if tt == SEXPTYPE::REALSXP => {
                 let px = REAL(x);
                 for i in 0..len {
                     let v = *px.add(i);
@@ -287,7 +287,7 @@ unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
                     };
                 }
             }
-            tt if tt == SEXPTYPE::CPLXSXP.0 => {
+            tt if tt == SEXPTYPE::CPLXSXP => {
                 let px = COMPLEX(x);
                 for i in 0..len {
                     let v = *px.add(i);
@@ -331,7 +331,7 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
         let x = Rf_protect(Rf_allocVector3(out_type, len as R_xlen_t));
 
         match t {
-            tt if tt == SEXPTYPE::LGLSXP.0 => {
+            tt if tt == SEXPTYPE::LGLSXP => {
                 let px = LOGICAL(arg);
                 let pa = LOGICAL(x);
                 for i in 0..len {
@@ -339,7 +339,7 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
                     *pa.add(i) = logical_not(v);
                 }
             }
-            tt if tt == SEXPTYPE::INTSXP.0 => {
+            tt if tt == SEXPTYPE::INTSXP => {
                 let px = INTEGER(arg);
                 let pa = LOGICAL(x);
                 for i in 0..len {
@@ -351,7 +351,7 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
                     };
                 }
             }
-            tt if tt == SEXPTYPE::REALSXP.0 => {
+            tt if tt == SEXPTYPE::REALSXP => {
                 let px = REAL(arg);
                 let pa = LOGICAL(x);
                 for i in 0..len {
@@ -363,7 +363,7 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
                     };
                 }
             }
-            tt if tt == SEXPTYPE::CPLXSXP.0 => {
+            tt if tt == SEXPTYPE::CPLXSXP => {
                 let px = COMPLEX(arg);
                 let pa = LOGICAL(x);
                 for i in 0..len {
@@ -377,7 +377,7 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
                     };
                 }
             }
-            tt if tt == SEXPTYPE::RAWSXP.0 => {
+            tt if tt == SEXPTYPE::RAWSXP => {
                 let px = RAW(arg);
                 let pa = RAW(x);
                 for i in 0..len {
@@ -498,7 +498,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         // Arity check: CDR(args) == R_NilValue() means single argument
         if CDR(args) == R_NilValue() {
             // Fast path for scalar logical
-            if !attr1 && TYPEOF(arg1) == SEXPTYPE::LGLSXP.0 && XLENGTH(arg1) == 1 {
+            if !attr1 && TYPEOF(arg1) == SEXPTYPE::LGLSXP && XLENGTH(arg1) == 1 {
                 let v = *LOGICAL(arg1);
                 let result = logical_not(v);
                 return Rf_ScalarLogical(result);
@@ -654,8 +654,8 @@ unsafe fn coerce_scalar_to_logical(x: SEXP, _call: SEXP) -> c_int {
 
         let t = TYPEOF(x);
         match t {
-            tt if tt == SEXPTYPE::LGLSXP.0 => *LOGICAL(x),
-            tt if tt == SEXPTYPE::INTSXP.0 => {
+            tt if tt == SEXPTYPE::LGLSXP => *LOGICAL(x),
+            tt if tt == SEXPTYPE::INTSXP => {
                 let v = *INTEGER(x);
                 if v == NA_INTEGER {
                     NA_LOGICAL
@@ -663,7 +663,7 @@ unsafe fn coerce_scalar_to_logical(x: SEXP, _call: SEXP) -> c_int {
                     (v != 0) as c_int
                 }
             }
-            tt if tt == SEXPTYPE::REALSXP.0 => {
+            tt if tt == SEXPTYPE::REALSXP => {
                 let v = *REAL(x);
                 if ISNAN(v) {
                     NA_LOGICAL
@@ -671,7 +671,7 @@ unsafe fn coerce_scalar_to_logical(x: SEXP, _call: SEXP) -> c_int {
                     (v != 0.0) as c_int
                 }
             }
-            tt if tt == SEXPTYPE::CPLXSXP.0 => {
+            tt if tt == SEXPTYPE::CPLXSXP => {
                 let v = *COMPLEX(x);
                 if ISNAN(v.r) || ISNAN(v.i) {
                     NA_LOGICAL
@@ -723,7 +723,7 @@ pub unsafe fn do_logic3(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             // Skip empty inputs
             if !t.is_null() && XLENGTH(t) > 0 {
                 // Coerce to logical if needed
-                let t_lgl = if TYPEOF(t) == SEXPTYPE::LGLSXP.0 {
+                let t_lgl = if TYPEOF(t) == SEXPTYPE::LGLSXP {
                     t
                 } else {
                     coerce_to_logical(t)

@@ -212,7 +212,7 @@ unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
         let klass = getAttrib(obj, R_ClassSymbol());
         if !klass.is_null()
             && klass != R_NilValue()
-            && TYPEOF(klass) == SEXPTYPE::STRSXP.0 as c_int
+            && TYPEOF(klass) == SEXPTYPE::STRSXP
             && LENGTH(klass) > 0
         {
             return klass;
@@ -221,18 +221,18 @@ unsafe fn classForGroupDispatch(obj: SEXP) -> SEXP {
         // Fall back to implicit class
         let t = TYPEOF(obj);
         let type_str = match t {
-            x if x == SEXPTYPE::LGLSXP.0 as c_int => "logical",
-            x if x == SEXPTYPE::INTSXP.0 as c_int => "integer",
-            x if x == SEXPTYPE::REALSXP.0 as c_int => "numeric",
-            x if x == SEXPTYPE::CPLXSXP.0 as c_int => "complex",
-            x if x == SEXPTYPE::STRSXP.0 as c_int => "character",
-            x if x == SEXPTYPE::RAWSXP.0 as c_int => "raw",
-            x if x == SEXPTYPE::VECSXP.0 as c_int => "list",
-            x if x == SEXPTYPE::LISTSXP.0 as c_int => "list",
-            x if x == SEXPTYPE::NILSXP.0 as c_int => "NULL",
-            x if x == SEXPTYPE::CLOSXP.0 as c_int => "function",
-            x if x == SEXPTYPE::SPECIALSXP.0 as c_int => "function",
-            x if x == SEXPTYPE::BUILTINSXP.0 as c_int => "function",
+            x if x == SEXPTYPE::LGLSXP => "logical",
+            x if x == SEXPTYPE::INTSXP => "integer",
+            x if x == SEXPTYPE::REALSXP => "numeric",
+            x if x == SEXPTYPE::CPLXSXP => "complex",
+            x if x == SEXPTYPE::STRSXP => "character",
+            x if x == SEXPTYPE::RAWSXP => "raw",
+            x if x == SEXPTYPE::VECSXP => "list",
+            x if x == SEXPTYPE::LISTSXP => "list",
+            x if x == SEXPTYPE::NILSXP => "NULL",
+            x if x == SEXPTYPE::CLOSXP => "function",
+            x if x == SEXPTYPE::SPECIALSXP => "function",
+            x if x == SEXPTYPE::BUILTINSXP => "function",
             _ => "unknown",
         };
         Rf_ScalarString(crate::sexp::symbol::Rf_install(
@@ -266,7 +266,7 @@ unsafe fn tryDispatch(
         // Set the first promise value to x
         if !pargs.is_null() && pargs != R_NilValue() {
             let first_promise = CAR(pargs);
-            if TYPEOF(first_promise) == SEXPTYPE::PROMSXP.0 as c_int {
+            if TYPEOF(first_promise) == SEXPTYPE::PROMSXP {
                 crate::sexp::accessors::SET_PRVALUE(first_promise, x);
             }
         }
@@ -366,22 +366,22 @@ pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
         }
 
         let mut sref = srcref;
-        if TYPEOF(srcref) == SEXPTYPE::VECSXP.0 {
+        if TYPEOF(srcref) == SEXPTYPE::VECSXP {
             sref = crate::sexp::accessors::VECTOR_ELT(srcref, 0);
         }
 
         let srcfile = getAttrib(sref, R_SrcFileSymbol());
-        if !srcfile.is_null() && TYPEOF(srcfile) == SEXPTYPE::ENVSXP.0 {
+        if !srcfile.is_null() && TYPEOF(srcfile) == SEXPTYPE::ENVSXP {
             let filename_sym = Rf_install(b"filename\x00".as_ptr() as *const c_char);
             let filename = R_findVarInFrame(srcfile, filename_sym);
-            if TYPEOF(filename) == SEXPTYPE::STRSXP.0 as c_int && LENGTH(filename) > 0 {
+            if TYPEOF(filename) == SEXPTYPE::STRSXP && LENGTH(filename) > 0 {
                 let fname_elt = STRING_ELT(filename, 0);
                 let fname_cs = if !fname_elt.is_null() {
                     CHAR(fname_elt)
                 } else {
                     ptr::null()
                 };
-                let line_num = if TYPEOF(sref) == SEXPTYPE::INTSXP.0 && LENGTH(sref) > 0 {
+                let line_num = if TYPEOF(sref) == SEXPTYPE::INTSXP && LENGTH(sref) > 0 {
                     let d = crate::sexp::accessors::INTEGER(sref);
                     if !d.is_null() { *d } else { 0 }
                 } else {
@@ -437,7 +437,7 @@ pub unsafe fn PrintCall(call: SEXP, _rho: SEXP) {
 /// the method body.
 pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP.0 {
+        if op.is_null() || TYPEOF(op) != SEXPTYPE::CLOSXP {
             return R_NilValue();
         }
 
@@ -652,7 +652,7 @@ pub unsafe fn unpromiseArgs(pargs: SEXP) {
         let mut current = pargs;
         while !current.is_null() && current != R_NilValue() {
             let v = CAR(current);
-            if TYPEOF(v) == SEXPTYPE::PROMSXP.0 as c_int {
+            if TYPEOF(v) == SEXPTYPE::PROMSXP {
                 // Clear the promise to allow GC
                 crate::sexp::accessors::SET_PRVALUE(v, R_UnboundValue());
                 crate::sexp::accessors::SET_PRENV(v, R_NilValue());
@@ -742,7 +742,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
         let rest = CDR(e);
 
         // Find the function
-        let fun = if TYPEOF(fun_expr) == SEXPTYPE::SYMSXP.0 {
+        let fun = if TYPEOF(fun_expr) == SEXPTYPE::SYMSXP {
             crate::sexp::envir::findFun(fun_expr, rho)
         } else {
             Rf_eval(fun_expr, rho)
@@ -754,7 +754,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
 
         Rf_protect(fun);
 
-        let result = if TYPEOF(fun) == SEXPTYPE::BUILTINSXP.0 {
+        let result = if TYPEOF(fun) == SEXPTYPE::BUILTINSXP {
             let evaled_args = Rf_protect(evalList(rest, rho, call, 0));
             let flag = super::eval::PRIMPRINT(fun);
             set_R_Visible(if flag != 1 { TRUE } else { FALSE });
@@ -767,14 +767,14 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             } else {
                 R_NilValue()
             }
-        } else if TYPEOF(fun) == SEXPTYPE::CLOSXP.0 {
+        } else if TYPEOF(fun) == SEXPTYPE::CLOSXP {
             let pargs = Rf_protect(promiseArgs(rest, rho));
             // Force the first n promises
             let mut a = pargs;
             let mut count: c_int = 0;
             while !a.is_null() && a != R_NilValue() && count < n {
                 let p = CAR(a);
-                if TYPEOF(p) == SEXPTYPE::PROMSXP.0 {
+                if TYPEOF(p) == SEXPTYPE::PROMSXP {
                     let _ = Rf_eval(p, rho);
                 } else if p == R_MissingArg() {
                     eprintln!("Error: argument {} is empty", count + 1);
@@ -786,7 +786,7 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
                 a = CDR(a);
             }
             applyClosure(call, fun, pargs, rho, R_NilValue(), TRUE)
-        } else if TYPEOF(fun) == SEXPTYPE::SPECIALSXP.0 {
+        } else if TYPEOF(fun) == SEXPTYPE::SPECIALSXP {
             let flag = super::eval::PRIMPRINT(fun);
             set_R_Visible(if flag != 1 { TRUE } else { FALSE });
             if let Some(primfun) = super::eval::get_primfun(fun) {
@@ -828,19 +828,19 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Handle different environment types
         match TYPEOF(env) {
-            t if t == SEXPTYPE::NILSXP.0 => {
+            t if t == SEXPTYPE::NILSXP => {
                 env = encl_val;
             }
-            t if t == SEXPTYPE::ENVSXP.0 => {
+            t if t == SEXPTYPE::ENVSXP => {
                 // OK
             }
-            t if t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LISTSXP => {
                 // Create environment from pairlist
                 let dup = Rf_protect(crate::mainutils::duplicate::Rf_duplicate(env));
                 env = Rf_protect(NewEnvironment(R_NilValue(), dup, encl_val));
                 Rf_unprotect(2);
             }
-            t if t == SEXPTYPE::VECSXP.0 => {
+            t if t == SEXPTYPE::VECSXP => {
                 let x = Rf_protect(VectorToPairListNamed(env));
                 // Ensure NAMEDMAX on values
                 let mut xptr = x;
@@ -851,7 +851,7 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 env = Rf_protect(NewEnvironment(R_NilValue(), x, encl_val));
                 Rf_unprotect(2);
             }
-            t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
                 // Numeric environment = sys.frame(n)
                 let frame = crate::mainutils::coerce::asInteger(env);
                 if frame == NA_INTEGER {
@@ -938,7 +938,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
             });
         }
 
-        if TYPEOF(expr) == SEXPTYPE::SYMSXP.0 {
+        if TYPEOF(expr) == SEXPTYPE::SYMSXP {
             // Simple symbol -- the target variable
             let val = if forcelocal != FALSE {
                 let mut ploc = R_varloc_t {
@@ -955,7 +955,7 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
                 SETTAG(cell, expr);
             }
             cell
-        } else if TYPEOF(expr) == SEXPTYPE::LANGSXP.0 {
+        } else if TYPEOF(expr) == SEXPTYPE::LANGSXP {
             // Complex LHS -- recurse
             let inner = Rf_protect(evalseq(CADR(expr), rho, forcelocal));
             let target_val = CAR(inner);
@@ -1102,7 +1102,7 @@ pub unsafe fn R_findBCInterpreterExpression() -> SEXP {
 pub unsafe fn do_missing(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let sym = CAR(args);
-        if TYPEOF(sym) != SEXPTYPE::SYMSXP.0 {
+        if TYPEOF(sym) != SEXPTYPE::SYMSXP {
             // Evaluate and check
             let val = Rf_eval(sym, rho);
             if val == R_MissingArg() {

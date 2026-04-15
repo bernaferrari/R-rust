@@ -667,21 +667,21 @@ pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
             };
 
             let t = TYPEOF(x);
-            if t == SEXPTYPE::LGLSXP.0 {
+            if t == SEXPTYPE::LGLSXP {
                 printLogicalVectorS(x, n_pr, indx);
-            } else if t == SEXPTYPE::INTSXP.0 {
+            } else if t == SEXPTYPE::INTSXP {
                 printIntegerVectorS(x, n_pr, indx);
-            } else if t == SEXPTYPE::REALSXP.0 {
+            } else if t == SEXPTYPE::REALSXP {
                 printRealVectorS(x, n_pr, indx);
-            } else if t == SEXPTYPE::STRSXP.0 {
+            } else if t == SEXPTYPE::STRSXP {
                 if quote != 0 {
                     printStringVectorS(x, n_pr, '"' as c_int, indx);
                 } else {
                     printStringVectorS(x, n_pr, 0, indx);
                 }
-            } else if t == SEXPTYPE::CPLXSXP.0 {
+            } else if t == SEXPTYPE::CPLXSXP {
                 printComplexVectorS(x, n_pr, indx);
-            } else if t == SEXPTYPE::RAWSXP.0 {
+            } else if t == SEXPTYPE::RAWSXP {
                 printRawVectorS(x, n_pr, indx);
             }
 
@@ -1102,18 +1102,18 @@ pub unsafe fn printNamedVector(x: SEXP, names: SEXP, quote: c_int, title: *const
             };
 
             let t = TYPEOF(x);
-            if t == SEXPTYPE::LGLSXP.0 {
+            if t == SEXPTYPE::LGLSXP {
                 printNamedLogicalVectorS(x, n_pr, names);
-            } else if t == SEXPTYPE::INTSXP.0 {
+            } else if t == SEXPTYPE::INTSXP {
                 printNamedIntegerVectorS(x, n_pr, names);
-            } else if t == SEXPTYPE::REALSXP.0 {
+            } else if t == SEXPTYPE::REALSXP {
                 printNamedRealVectorS(x, n_pr, names);
-            } else if t == SEXPTYPE::CPLXSXP.0 {
+            } else if t == SEXPTYPE::CPLXSXP {
                 printNamedComplexVectorS(x, n_pr, names);
-            } else if t == SEXPTYPE::STRSXP.0 {
+            } else if t == SEXPTYPE::STRSXP {
                 let q = if quote != 0 { '"' as c_int } else { 0 };
                 printNamedStringVectorS(x, n_pr, q, names);
-            } else if t == SEXPTYPE::RAWSXP.0 {
+            } else if t == SEXPTYPE::RAWSXP {
                 printNamedRawVectorS(x, n_pr, names);
             }
 

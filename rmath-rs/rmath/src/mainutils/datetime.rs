@@ -762,7 +762,7 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
     unsafe {
         // x = CAR(args) should be a REALSXP (POSIXct)
         let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::REALSXP.0 && TYPEOF(x) != SEXPTYPE::INTSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::REALSXP && TYPEOF(x) != SEXPTYPE::INTSXP {
             // Try to coerce
             std::panic::panic_any(RError {
                 message: "invalid 'x' value: not numeric".to_string(),
@@ -838,7 +838,7 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         let x = Rf_protect(CAR(args));
 
         // x must be a VECSXP (list) with at least 9 components
-        if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
             });
@@ -916,7 +916,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         let x = Rf_protect(CAR(args));
 
         // x must be VECSXP with at least 9 components
-        if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "invalid 'x' argument".to_string(),
             });
@@ -924,7 +924,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 
         // Get format string (CADR(args))
         let sformat = CADR(args);
-        if TYPEOF(sformat) != SEXPTYPE::STRSXP.0 || XLENGTH(sformat) == 0 {
+        if TYPEOF(sformat) != SEXPTYPE::STRSXP || XLENGTH(sformat) == 0 {
             std::panic::panic_any(RError {
                 message: "invalid 'format' argument".to_string(),
             });
@@ -1061,14 +1061,14 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
 pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::STRSXP {
             std::panic::panic_any(RError {
                 message: "invalid 'x' argument: not character".to_string(),
             });
         }
 
         let sformat = CADR(args);
-        if TYPEOF(sformat) != SEXPTYPE::STRSXP.0 || XLENGTH(sformat) == 0 {
+        if TYPEOF(sformat) != SEXPTYPE::STRSXP || XLENGTH(sformat) == 0 {
             std::panic::panic_any(RError {
                 message: "invalid 'format' argument".to_string(),
             });
@@ -1211,7 +1211,7 @@ pub unsafe fn do_strptime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));
-        if TYPEOF(x) != SEXPTYPE::REALSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::REALSXP {
             std::panic::panic_any(RError {
                 message: "invalid 'x' value: not numeric".to_string(),
             });
@@ -1259,7 +1259,7 @@ pub unsafe fn do_D2POSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = Rf_protect(CAR(args));
-        if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
             });
@@ -1331,7 +1331,7 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
 pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if TYPEOF(x) != SEXPTYPE::VECSXP.0 {
+        if TYPEOF(x) != SEXPTYPE::VECSXP {
             std::panic::panic_any(RError {
                 message: "a valid \"POSIXlt\" object is a list of at least 9 elements".to_string(),
             });
@@ -1462,17 +1462,17 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let units = CADDDR(args); // fourth arg
 
         // Get numeric values
-        let d1 = if TYPEOF(time1) == SEXPTYPE::REALSXP.0 {
+        let d1 = if TYPEOF(time1) == SEXPTYPE::REALSXP {
             *REAL(time1)
-        } else if TYPEOF(time1) == SEXPTYPE::INTSXP.0 {
+        } else if TYPEOF(time1) == SEXPTYPE::INTSXP {
             *INTEGER(time1) as c_double
         } else {
             NA_REAL
         };
 
-        let d2 = if TYPEOF(time2) == SEXPTYPE::REALSXP.0 {
+        let d2 = if TYPEOF(time2) == SEXPTYPE::REALSXP {
             *REAL(time2)
-        } else if TYPEOF(time2) == SEXPTYPE::INTSXP.0 {
+        } else if TYPEOF(time2) == SEXPTYPE::INTSXP {
             *INTEGER(time2) as c_double
         } else {
             NA_REAL
@@ -1482,7 +1482,7 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
         // Get units string
         let units_str =
-            if !units.is_null() && TYPEOF(units) == SEXPTYPE::STRSXP.0 && XLENGTH(units) > 0 {
+            if !units.is_null() && TYPEOF(units) == SEXPTYPE::STRSXP && XLENGTH(units) > 0 {
                 let charsxp = STRING_ELT(units, 0);
                 if !charsxp.is_null() {
                     let ptr = CHAR(charsxp);

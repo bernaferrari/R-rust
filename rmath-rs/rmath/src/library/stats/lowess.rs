@@ -298,7 +298,7 @@ unsafe fn clowess(
 }
 
 pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> SEXP {
-    if TYPEOF(x) != SEXPTYPE::REALSXP.0 || TYPEOF(y) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::REALSXP || TYPEOF(y) != SEXPTYPE::REALSXP {
         Rf_error(b"invalid input\0".as_ptr() as *const _);
     }
     let nx = LENGTH(x);

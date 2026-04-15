@@ -41,14 +41,14 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
     let mut is_vec = false;
     let t = TYPEOF(s);
 
-    if t == SEXPTYPE::NILSXP.0 {
+    if t == SEXPTYPE::NILSXP {
         return 0;
     }
-    if t == SEXPTYPE::SYMSXP.0 {
-    } else if t == SEXPTYPE::LISTSXP.0
-        || t == SEXPTYPE::LANGSXP.0
-        || t == SEXPTYPE::BCODESXP.0
-        || t == SEXPTYPE::DOTSXP.0
+    if t == SEXPTYPE::SYMSXP {
+    } else if t == SEXPTYPE::LISTSXP
+        || t == SEXPTYPE::LANGSXP
+        || t == SEXPTYPE::BCODESXP
+        || t == SEXPTYPE::DOTSXP
     {
         let mut current = s;
         loop {
@@ -58,46 +58,46 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
             cnt += objectsize(ATTRIB(current));
             current = CDR(current);
             let ct = TYPEOF(current);
-            if ct == SEXPTYPE::LISTSXP.0
-                || ct == SEXPTYPE::LANGSXP.0
-                || ct == SEXPTYPE::BCODESXP.0
-                || ct == SEXPTYPE::DOTSXP.0
+            if ct == SEXPTYPE::LISTSXP
+                || ct == SEXPTYPE::LANGSXP
+                || ct == SEXPTYPE::BCODESXP
+                || ct == SEXPTYPE::DOTSXP
             {
                 // continue
-            } else if ct == SEXPTYPE::NILSXP.0 {
+            } else if ct == SEXPTYPE::NILSXP {
                 return cnt;
             } else {
                 break;
             }
         }
         cnt += objectsize(current);
-    } else if t == SEXPTYPE::CLOSXP.0 {
+    } else if t == SEXPTYPE::CLOSXP {
         /* CLOSXP */
         cnt += objectsize(FORMALS(s));
         cnt += objectsize(BODY(s));
-    } else if t == SEXPTYPE::ENVSXP.0
-        || t == SEXPTYPE::PROMSXP.0
-        || t == SEXPTYPE::SPECIALSXP.0
-        || t == SEXPTYPE::BUILTINSXP.0
+    } else if t == SEXPTYPE::ENVSXP
+        || t == SEXPTYPE::PROMSXP
+        || t == SEXPTYPE::SPECIALSXP
+        || t == SEXPTYPE::BUILTINSXP
     {
         // nothing
-    } else if t == SEXPTYPE::CHARSXP.0 {
+    } else if t == SEXPTYPE::CHARSXP {
         /* CHARSXP */
         vcnt = (LENGTH(s) as usize + 1 + 7) / 8;
         is_vec = true;
-    } else if t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::INTSXP.0 {
+    } else if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
         /* LGLSXP, INTSXP */
         vcnt = XLENGTH(s) as usize;
         is_vec = true;
-    } else if t == SEXPTYPE::REALSXP.0 {
+    } else if t == SEXPTYPE::REALSXP {
         /* REALSXP */
         vcnt = XLENGTH(s) as usize;
         is_vec = true;
-    } else if t == SEXPTYPE::CPLXSXP.0 {
+    } else if t == SEXPTYPE::CPLXSXP {
         /* CPLXSXP */
         vcnt = XLENGTH(s) as usize * 2;
         is_vec = true;
-    } else if t == SEXPTYPE::STRSXP.0 {
+    } else if t == SEXPTYPE::STRSXP {
         /* STRSXP */
         vcnt = XLENGTH(s) as usize;
         for i in 0..(XLENGTH(s) as usize) {
@@ -107,19 +107,19 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
             }
         }
         is_vec = true;
-    } else if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 || t == SEXPTYPE::WEAKREFSXP.0 {
+    } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP || t == SEXPTYPE::WEAKREFSXP {
         /* VECSXP, EXPRSXP, WEAKREFSXP */
         vcnt = XLENGTH(s) as usize;
         for i in 0..(XLENGTH(s) as usize) {
             cnt += objectsize(VECTOR_ELT(s, i as R_xlen_t));
         }
         is_vec = true;
-    } else if t == SEXPTYPE::EXTPTRSXP.0 {
+    } else if t == SEXPTYPE::EXTPTRSXP {
         /* EXTPTRSXP */
         cnt += std::mem::size_of::<*mut std::ffi::c_void>();
         cnt += objectsize(crate::main::memory_main::R_ExternalPtrTag(s));
         cnt += objectsize(crate::main::memory_main::R_ExternalPtrProtected(s));
-    } else if t == SEXPTYPE::RAWSXP.0 {
+    } else if t == SEXPTYPE::RAWSXP {
         /* RAWSXP */
         vcnt = (XLENGTH(s) as usize + 7) / 8;
         is_vec = true;
@@ -150,7 +150,7 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
         cnt += std::mem::size_of::<*mut std::ffi::c_void>();
     }
 
-    if TYPEOF(s) != SEXPTYPE::CHARSXP.0 {
+    if TYPEOF(s) != SEXPTYPE::CHARSXP {
         /* not CHARSXP */
         cnt += objectsize(ATTRIB(s));
     }

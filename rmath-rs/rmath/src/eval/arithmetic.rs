@@ -33,11 +33,11 @@ fn real_val(x: SEXP) -> Option<f64> {
             return None;
         }
         match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 let data = REAL(x);
                 if data.is_null() { None } else { Some(*data) }
             }
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 let data = INTEGER(x);
                 if data.is_null() {
                     None
@@ -45,7 +45,7 @@ fn real_val(x: SEXP) -> Option<f64> {
                     Some(*data as f64)
                 }
             }
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 let data = LOGICAL(x);
                 if data.is_null() {
                     None
@@ -65,11 +65,11 @@ fn int_val(x: SEXP) -> Option<i32> {
             return None;
         }
         match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 let data = INTEGER(x);
                 if data.is_null() { None } else { Some(*data) }
             }
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 let data = LOGICAL(x);
                 if data.is_null() { None } else { Some(*data) }
             }
@@ -81,8 +81,8 @@ fn int_val(x: SEXP) -> Option<i32> {
 /// Check if both operands are integer/logical (result should prefer integer).
 fn is_int_op(a: SEXP, b: SEXP) -> bool {
     unsafe {
-        (TYPEOF(a) == SEXPTYPE::INTSXP.0 || TYPEOF(a) == SEXPTYPE::LGLSXP.0)
-            && (TYPEOF(b) == SEXPTYPE::INTSXP.0 || TYPEOF(b) == SEXPTYPE::LGLSXP.0)
+        (TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(a) == SEXPTYPE::LGLSXP)
+            && (TYPEOF(b) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::LGLSXP)
     }
 }
 
@@ -97,12 +97,12 @@ unsafe fn elt_real(x: SEXP, i: R_xlen_t) -> f64 {
         let n = XLENGTH(x);
         let idx = if n == 0 { 0 } else { i % n };
         match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP.0 => *REAL(x).add(idx as usize),
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => *REAL(x).add(idx as usize),
+            t if t == SEXPTYPE::INTSXP => {
                 let v = *INTEGER(x).add(idx as usize);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             }
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 let v = *LOGICAL(x).add(idx as usize);
                 if v == NA_INTEGER { NA_REAL } else { v as f64 }
             }
@@ -118,8 +118,8 @@ unsafe fn elt_int(x: SEXP, i: R_xlen_t) -> i32 {
         let n = XLENGTH(x);
         let idx = if n == 0 { 0 } else { i % n };
         match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP.0 => *INTEGER(x).add(idx as usize),
-            t if t == SEXPTYPE::LGLSXP.0 => *LOGICAL(x).add(idx as usize),
+            t if t == SEXPTYPE::INTSXP => *INTEGER(x).add(idx as usize),
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(idx as usize),
             _ => NA_INTEGER,
         }
     }
@@ -166,7 +166,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         if n == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
         }
-        let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP.0 || TYPEOF(sb) == SEXPTYPE::REALSXP.0;
+        let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP || TYPEOF(sb) == SEXPTYPE::REALSXP;
         let result = if use_real {
             Rf_allocVector3(SEXPTYPE::REALSXP.0, n)
         } else {
@@ -281,7 +281,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         }
         let _p = Rf_protect(result);
 
-        let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP.0 || TYPEOF(sb) == SEXPTYPE::REALSXP.0;
+        let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP || TYPEOF(sb) == SEXPTYPE::REALSXP;
         let dst = LOGICAL(result);
 
         for i in 0..n {
@@ -342,7 +342,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             return R_NilValue();
         }
         let t = TYPEOF(sa);
-        if t != SEXPTYPE::REALSXP.0 && t != SEXPTYPE::INTSXP.0 && t != SEXPTYPE::LGLSXP.0 {
+        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
             return R_NilValue();
         }
         let n = XLENGTH(sa);
@@ -432,7 +432,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         let t = TYPEOF(x);
         let n = XLENGTH(x);
 
-        if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
             if result.is_null() {
                 return R_NilValue();
@@ -446,7 +446,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             }
             crate::sexp::protect::Rf_unprotect(1);
             result
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
             if result.is_null() {
                 return R_NilValue();
@@ -506,7 +506,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // For integer-friendly operations, try to return INTSXP
         let prefer_int =
             op_name == "ceiling" || op_name == "floor" || op_name == "trunc" || op_name == "round";
-        let input_is_int = TYPEOF(x) == SEXPTYPE::INTSXP.0 || TYPEOF(x) == SEXPTYPE::LGLSXP.0;
+        let input_is_int = TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP;
 
         if prefer_int || input_is_int {
             let n = XLENGTH(result);
@@ -570,7 +570,7 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
                 let t = TYPEOF(arg);
-                if t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
                     let n = XLENGTH(arg);
                     for i in 0..n {
                         let v = elt_real(arg, i);
@@ -656,11 +656,11 @@ pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
         let t = TYPEOF(x);
         let result = match op_name {
-            "is.numeric" => t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0,
-            "is.integer" => t == SEXPTYPE::INTSXP.0,
-            "is.double" => t == SEXPTYPE::REALSXP.0,
-            "is.logical" => t == SEXPTYPE::LGLSXP.0,
-            "is.character" => t == SEXPTYPE::STRSXP.0,
+            "is.numeric" => t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP,
+            "is.integer" => t == SEXPTYPE::INTSXP,
+            "is.double" => t == SEXPTYPE::REALSXP,
+            "is.logical" => t == SEXPTYPE::LGLSXP,
+            "is.character" => t == SEXPTYPE::STRSXP,
             "is.null" => false,
             _ => false,
         };
@@ -678,7 +678,7 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
             return "";
         }
         let fun_sym = CAR(call);
-        if TYPEOF(fun_sym) != SEXPTYPE::SYMSXP.0 {
+        if TYPEOF(fun_sym) != SEXPTYPE::SYMSXP {
             return "";
         }
         let pname = crate::sexp::accessors::PRINTNAME(fun_sym);

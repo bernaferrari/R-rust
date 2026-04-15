@@ -260,9 +260,9 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
         let t = TYPEOF(x);
 
         // Use integer constants for match since SEXPTYPE::X.0 is not a pattern
-        if t == SEXPTYPE::NILSXP.0 {
+        if t == SEXPTYPE::NILSXP {
             return 1;
-        } else if t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::LGLSXP {
             // LGLSXP: compare logical arrays via memcmp
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -286,7 +286,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             } else {
                 0
             };
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             // INTSXP: compare integer arrays via memcmp
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -310,7 +310,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             } else {
                 0
             };
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             // REALSXP: compare doubles element-by-element using neWithNaN
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -332,7 +332,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 }
             }
             return 1;
-        } else if t == SEXPTYPE::CPLXSXP.0 {
+        } else if t == SEXPTYPE::CPLXSXP {
             // CPLXSXP: compare complex numbers element-by-element
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -359,7 +359,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 }
             }
             return 1;
-        } else if t == SEXPTYPE::STRSXP.0 {
+        } else if t == SEXPTYPE::STRSXP {
             // STRSXP: compare CHARSXP pointers element by element
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -381,7 +381,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 return 0;
             }
             return 1;
-        } else if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 {
+        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP {
             // VECSXP / EXPRSXP: recursive comparison of elements
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -394,7 +394,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 }
             }
             return 1;
-        } else if t == SEXPTYPE::LISTSXP.0 {
+        } else if t == SEXPTYPE::LISTSXP {
             // LISTSXP: recursive on CAR, CDR, TAG
             let mut lx = x;
             let mut ly = y;
@@ -416,7 +416,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 lx = nx;
                 ly = ny;
             }
-        } else if t == SEXPTYPE::LANGSXP.0 {
+        } else if t == SEXPTYPE::LANGSXP {
             // LANGSXP: recursive on CAR, CDR, TAG
             let mut lx = x;
             let mut ly = y;
@@ -438,7 +438,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 lx = nx;
                 ly = ny;
             }
-        } else if t == SEXPTYPE::CLOSXP.0 {
+        } else if t == SEXPTYPE::CLOSXP {
             // CLOSXP: compare formals, body, environment
             if R_compute_identical(FORMALS(x), FORMALS(y), flags) == 0 {
                 return 0;
@@ -452,10 +452,10 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
                 return 0;
             }
             return 1;
-        } else if t == SEXPTYPE::ENVSXP.0 || t == SEXPTYPE::SYMSXP.0 {
+        } else if t == SEXPTYPE::ENVSXP || t == SEXPTYPE::SYMSXP {
             // ENVSXP/SYMSXP: pointer equality only (already checked x != y)
             return 0;
-        } else if t == SEXPTYPE::PROMSXP.0 {
+        } else if t == SEXPTYPE::PROMSXP {
             // PROMSXP: compare value, expression, environment
             let px = (*x).data.promsxp.value;
             let py = (*y).data.promsxp.value;
@@ -468,7 +468,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             } else {
                 0
             };
-        } else if t == SEXPTYPE::RAWSXP.0 {
+        } else if t == SEXPTYPE::RAWSXP {
             // RAWSXP: memcmp on raw bytes
             let nx = LENGTH(x);
             let ny = LENGTH(y);
@@ -492,7 +492,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
             } else {
                 0
             };
-        } else if t == SEXPTYPE::SPECIALSXP.0 || t == SEXPTYPE::BUILTINSXP.0 {
+        } else if t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP {
             // SPECIALSXP / BUILTINSXP: compare PRIMOFFSET
             return if PRIMOFFSET(x) == PRIMOFFSET(y) { 1 } else { 0 };
         }
@@ -542,7 +542,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // num.eq: default TRUE. If num.eq=FALSE, set IDENT_NUM_AS_BITS
         {
             let v = CAR(num_eq);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv == 0 {
                     flags |= IDENT_NUM_AS_BITS;
@@ -553,7 +553,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // single.NA: default TRUE. If single.NA=FALSE, set IDENT_NA_AS_BITS
         {
             let v = CAR(single_na);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv == 0 {
                     flags |= IDENT_NA_AS_BITS;
@@ -564,7 +564,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // attrib.as.set: default TRUE. If FALSE, set IDENT_ATTR_BY_ORDER
         {
             let v = CAR(attrib_as_set);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv == 0 {
                     flags |= IDENT_ATTR_BY_ORDER;
@@ -579,7 +579,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // ignore.bytecode: default TRUE
         if !opt.is_null() {
             let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv != 0 {
                     flags |= IDENT_USE_BYTECODE;
@@ -591,7 +591,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // ignore.environment: default FALSE
         if !opt.is_null() {
             let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv != 0 {
                     flags |= IDENT_USE_CLOENV;
@@ -603,7 +603,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // ignore.srcref: default TRUE
         if !opt.is_null() {
             let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv != 0 {
                     flags |= IDENT_USE_SRCREF;
@@ -615,7 +615,7 @@ pub unsafe fn do_identical(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
         // extptr.as.ref: default FALSE
         if !opt.is_null() {
             let v = CAR(opt);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = LOGICAL(v);
                 if !lv.is_null() && *lv != 0 {
                     flags |= IDENT_EXTPTR_AS_REF;

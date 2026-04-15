@@ -317,17 +317,17 @@ unsafe fn primval(op: SEXP) -> c_int {
 unsafe fn is_numeric(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::INTSXP.0
-            || t == SEXPTYPE::REALSXP.0
-            || t == SEXPTYPE::CPLXSXP.0
-            || t == SEXPTYPE::LGLSXP.0
+        t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::LGLSXP
     }
 }
 
 /// Helper: check if SEXP is complex.
 #[inline]
 unsafe fn is_complex(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::CPLXSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::CPLXSXP }
 }
 
 /// Helper: check if SEXP is integer or logical.
@@ -335,7 +335,7 @@ unsafe fn is_complex(x: SEXP) -> bool {
 unsafe fn is_integer_or_logical(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0
+        t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
     }
 }
 
@@ -449,9 +449,9 @@ unsafe fn math1_ari_impl(sa: SEXP, f: fn(f64) -> f64, arg: f64, res: f64) -> SEX
 /// Coerce a numeric SEXP to REALSXP (no-op if already REALSXP).
 unsafe fn coerce_to_real(x: SEXP) -> SEXP {
     unsafe {
-        if TYPEOF(x) == SEXPTYPE::REALSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::REALSXP {
             x
-        } else if TYPEOF(x) == SEXPTYPE::INTSXP.0 || TYPEOF(x) == SEXPTYPE::LGLSXP.0 {
+        } else if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
             let n = XLENGTH(x);
             let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
             let src = INTEGER(x);
@@ -817,8 +817,8 @@ unsafe fn real_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let _p = Rf_protect(ans);
 
         let da = REAL(ans);
-        let is_real1 = TYPEOF(s1) == SEXPTYPE::REALSXP.0;
-        let is_real2 = TYPEOF(s2) == SEXPTYPE::REALSXP.0;
+        let is_real1 = TYPEOF(s1) == SEXPTYPE::REALSXP;
+        let is_real2 = TYPEOF(s2) == SEXPTYPE::REALSXP;
 
         match code {
             OP_PLUS => {
@@ -1039,13 +1039,13 @@ unsafe fn complex_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
     unsafe {
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CPLXSXP.0 {
+        if t == SEXPTYPE::CPLXSXP {
             return x;
         }
         let n = XLENGTH(x);
         let y = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
         let dst = COMPLEX(y);
-        if t == SEXPTYPE::REALSXP.0 {
+        if t == SEXPTYPE::REALSXP {
             let src = REAL(x);
             for i in 0..(n as usize) {
                 *dst.add(i) = Rcomplex {
@@ -1053,7 +1053,7 @@ unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
                     i: 0.0,
                 };
             }
-        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             let src = INTEGER(x);
             for i in 0..(n as usize) {
                 let v = *src.add(i);
@@ -1072,7 +1072,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
     unsafe {
         let n = XLENGTH(s1);
         match TYPEOF(s1) {
-            t if t == SEXPTYPE::REALSXP.0 => match code {
+            t if t == SEXPTYPE::REALSXP => match code {
                 OP_PLUS => s1,
                 OP_MINUS => {
                     let ans = if no_references(s1) {
@@ -1091,7 +1091,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                 }
                 _ => std::ptr::null_mut(),
             },
-            t if t == SEXPTYPE::INTSXP.0 => match code {
+            t if t == SEXPTYPE::INTSXP => match code {
                 OP_PLUS => s1,
                 OP_MINUS => {
                     let ans = if no_references(s1) {
@@ -1111,7 +1111,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                 }
                 _ => std::ptr::null_mut(),
             },
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 // Coerce to INTSXP for unary minus on logicals
                 match code {
                     OP_PLUS => {
@@ -1139,7 +1139,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     _ => std::ptr::null_mut(),
                 }
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => match code {
+            t if t == SEXPTYPE::CPLXSXP => match code {
                 OP_PLUS => s1,
                 OP_MINUS => {
                     let ans = if no_references(s1) {
@@ -1268,12 +1268,12 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let t2 = TYPEOF(arg2);
 
             // Coerce logicals to integer
-            let arg1 = if t1 == SEXPTYPE::LGLSXP.0 {
+            let arg1 = if t1 == SEXPTYPE::LGLSXP {
                 coerce_logical_to_int(arg1)
             } else {
                 arg1
             };
-            let arg2 = if t2 == SEXPTYPE::LGLSXP.0 {
+            let arg2 = if t2 == SEXPTYPE::LGLSXP {
                 coerce_logical_to_int(arg2)
             } else {
                 arg2
@@ -1282,16 +1282,16 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let t1 = TYPEOF(arg1);
             let t2 = TYPEOF(arg2);
 
-            if t1 == SEXPTYPE::CPLXSXP.0 || t2 == SEXPTYPE::CPLXSXP.0 {
+            if t1 == SEXPTYPE::CPLXSXP || t2 == SEXPTYPE::CPLXSXP {
                 complex_binary_arith(code, arg1, arg2)
-            } else if t1 == SEXPTYPE::REALSXP.0 || t2 == SEXPTYPE::REALSXP.0 {
+            } else if t1 == SEXPTYPE::REALSXP || t2 == SEXPTYPE::REALSXP {
                 // Ensure both are at least INTSXP or REALSXP for real_binary_arith
-                let s1 = if t1 != SEXPTYPE::INTSXP.0 {
+                let s1 = if t1 != SEXPTYPE::INTSXP {
                     coerce_to_real(arg1)
                 } else {
                     arg1
                 };
-                let s2 = if t2 != SEXPTYPE::INTSXP.0 {
+                let s2 = if t2 != SEXPTYPE::INTSXP {
                     coerce_to_real(arg2)
                 } else {
                     arg2
@@ -1301,7 +1301,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 let result = real_binary_arith(code, s1, s2);
                 crate::sexp::protect::Rf_unprotect(2);
                 result
-            } else if t1 == SEXPTYPE::INTSXP.0 && t2 == SEXPTYPE::INTSXP.0 {
+            } else if t1 == SEXPTYPE::INTSXP && t2 == SEXPTYPE::INTSXP {
                 integer_binary_arith(code, arg1, arg2)
             } else {
                 std::ptr::null_mut()
@@ -1319,7 +1319,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// to change the type if there are no references.
 unsafe fn coerce_logical_to_int(x: SEXP) -> SEXP {
     unsafe {
-        if TYPEOF(x) == SEXPTYPE::LGLSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::LGLSXP {
             if no_references(x) {
                 (*x).sxpinfo.set_type(SEXPTYPE::INTSXP);
                 x

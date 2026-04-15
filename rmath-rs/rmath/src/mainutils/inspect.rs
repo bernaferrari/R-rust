@@ -47,7 +47,7 @@ unsafe fn isFactor(s: SEXP) -> c_int {
             return 0;
         }
         let klass = getAttrib(s, R_ClassSymbol());
-        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP.0 || LENGTH(klass) < 2 {
+        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP || LENGTH(klass) < 2 {
             return 0;
         }
         let c1 = CHAR(STRING_ELT(klass, 0));
@@ -61,29 +61,29 @@ unsafe fn isFactor(s: SEXP) -> c_int {
 /// Get the type name for a SEXPTYPE (by raw i32 value).
 fn sexptype2char(s: i32) -> &'static str {
     match s {
-        x if x == SEXPTYPE::NILSXP.0 => "NULL",
-        x if x == SEXPTYPE::SYMSXP.0 => "symbol",
-        x if x == SEXPTYPE::LISTSXP.0 => "pairlist",
-        x if x == SEXPTYPE::CLOSXP.0 => "closure",
-        x if x == SEXPTYPE::ENVSXP.0 => "environment",
-        x if x == SEXPTYPE::PROMSXP.0 => "promise",
-        x if x == SEXPTYPE::LANGSXP.0 => "language",
-        x if x == SEXPTYPE::SPECIALSXP.0 => "special",
-        x if x == SEXPTYPE::BUILTINSXP.0 => "builtin",
-        x if x == SEXPTYPE::CHARSXP.0 => "character",
-        x if x == SEXPTYPE::LGLSXP.0 => "logical",
-        x if x == SEXPTYPE::INTSXP.0 => "integer",
-        x if x == SEXPTYPE::REALSXP.0 => "double",
-        x if x == SEXPTYPE::CPLXSXP.0 => "complex",
-        x if x == SEXPTYPE::STRSXP.0 => "character",
-        x if x == SEXPTYPE::DOTSXP.0 => "...",
-        x if x == SEXPTYPE::ANYSXP.0 => "any",
-        x if x == SEXPTYPE::VECSXP.0 => "list",
-        x if x == SEXPTYPE::EXPRSXP.0 => "expression",
-        x if x == SEXPTYPE::EXTPTRSXP.0 => "externalptr",
-        x if x == SEXPTYPE::WEAKREFSXP.0 => "weakref",
-        x if x == SEXPTYPE::RAWSXP.0 => "raw",
-        x if x == SEXPTYPE::OBJSXP.0 => "S4",
+        x if x == SEXPTYPE::NILSXP => "NULL",
+        x if x == SEXPTYPE::SYMSXP => "symbol",
+        x if x == SEXPTYPE::LISTSXP => "pairlist",
+        x if x == SEXPTYPE::CLOSXP => "closure",
+        x if x == SEXPTYPE::ENVSXP => "environment",
+        x if x == SEXPTYPE::PROMSXP => "promise",
+        x if x == SEXPTYPE::LANGSXP => "language",
+        x if x == SEXPTYPE::SPECIALSXP => "special",
+        x if x == SEXPTYPE::BUILTINSXP => "builtin",
+        x if x == SEXPTYPE::CHARSXP => "character",
+        x if x == SEXPTYPE::LGLSXP => "logical",
+        x if x == SEXPTYPE::INTSXP => "integer",
+        x if x == SEXPTYPE::REALSXP => "double",
+        x if x == SEXPTYPE::CPLXSXP => "complex",
+        x if x == SEXPTYPE::STRSXP => "character",
+        x if x == SEXPTYPE::DOTSXP => "...",
+        x if x == SEXPTYPE::ANYSXP => "any",
+        x if x == SEXPTYPE::VECSXP => "list",
+        x if x == SEXPTYPE::EXPRSXP => "expression",
+        x if x == SEXPTYPE::EXTPTRSXP => "externalptr",
+        x if x == SEXPTYPE::WEAKREFSXP => "weakref",
+        x if x == SEXPTYPE::RAWSXP => "raw",
+        x if x == SEXPTYPE::OBJSXP => "S4",
         _ => "unknown",
     }
 }
@@ -102,23 +102,23 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let s = CAR(args);
 
         // Dotted pair list (non-language)
-        if TYPEOF(s) == SEXPTYPE::LISTSXP.0 {
+        if TYPEOF(s) == SEXPTYPE::LISTSXP {
             return Rf_mkString(b"pairlist\0".as_ptr() as *const _);
         }
 
         let t = TYPEOF(s);
 
         // Special handling for S4 objects
-        if t == SEXPTYPE::OBJSXP.0 {
+        if t == SEXPTYPE::OBJSXP {
             return Rf_mkString(b"S4\0".as_ptr() as *const _);
         }
 
         // Handle factors, ordered factors
-        if (t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::STRSXP.0)
+        if (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP || t == SEXPTYPE::STRSXP)
             && isFactor(s) != 0
         {
             let klass = getAttrib(s, R_ClassSymbol());
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP.0 && LENGTH(klass) >= 2 {
+            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 2 {
                 let c1 = CHAR(STRING_ELT(klass, 0));
                 let c1_str = std::ffi::CStr::from_ptr(c1).to_str().unwrap_or("");
                 if c1_str == "ordered" {
@@ -129,11 +129,11 @@ pub unsafe fn do_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         // Handle POSIXct and POSIXlt
-        if (t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::VECSXP.0)
+        if (t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::VECSXP)
             && isFactor(s) == 0
         {
             let klass = getAttrib(s, R_ClassSymbol());
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP.0 && LENGTH(klass) >= 1 {
+            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
                 let c1 = CHAR(STRING_ELT(klass, 0));
                 let c1_str = std::ffi::CStr::from_ptr(c1).to_str().unwrap_or("");
                 if c1_str == "POSIXct" {
@@ -189,7 +189,7 @@ pub unsafe fn do_isnull(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
     unsafe {
         checkArity(_op, args);
         let s = CAR(args);
-        Rf_ScalarLogical(if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP.0 {
+        Rf_ScalarLogical(if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP {
             TRUE
         } else {
             FALSE
@@ -211,15 +211,15 @@ pub unsafe fn do_length(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         checkArity(_op, args);
         let mut s = CAR(args);
 
-        let len = if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP.0 {
+        let len = if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 {
+            if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
                 // Pairlist: count cons cells
                 let mut count: c_int = 0;
                 while !s.is_null()
-                    && (TYPEOF(s) == SEXPTYPE::LISTSXP.0 || TYPEOF(s) == SEXPTYPE::LANGSXP.0)
+                    && (TYPEOF(s) == SEXPTYPE::LISTSXP || TYPEOF(s) == SEXPTYPE::LANGSXP)
                 {
                     count += 1;
                     s = CDR(s);
@@ -252,10 +252,10 @@ pub unsafe fn do_formals(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         }
 
         let t = TYPEOF(s);
-        if t == SEXPTYPE::CLOSXP.0 {
+        if t == SEXPTYPE::CLOSXP {
             // Closure: formals are in CLOENV -> CDR
             let formals = FORMALS(s);
-            if formals.is_null() || TYPEOF(formals) != SEXPTYPE::LISTSXP.0 {
+            if formals.is_null() || TYPEOF(formals) != SEXPTYPE::LISTSXP {
                 return R_NilValue();
             }
             formals
@@ -279,9 +279,9 @@ pub unsafe fn do_body(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         }
 
         let t = TYPEOF(s);
-        if t == SEXPTYPE::CLOSXP.0 {
+        if t == SEXPTYPE::CLOSXP {
             BODY(s)
-        } else if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+        } else if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             // Builtins/specials don't have a body in the usual sense
             R_NilValue()
         } else {
@@ -305,14 +305,14 @@ pub unsafe fn do_args(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         // args() with no argument: return the promise objects from the
         // current function's call.
         let s = CAR(args);
-        if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP.0 {
+        if s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP {
             // Return sys.call() arguments as promise objects
             // Returning nil
             return R_NilValue();
         }
 
         // args(x) where x is a function: return the formals
-        if TYPEOF(s) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(s) == SEXPTYPE::CLOSXP {
             FORMALS(s)
         } else {
             R_NilValue()
@@ -338,9 +338,9 @@ pub unsafe fn do_environment(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
         }
 
         let t = TYPEOF(s);
-        if t == SEXPTYPE::CLOSXP.0 {
+        if t == SEXPTYPE::CLOSXP {
             CLOENV(s)
-        } else if t == SEXPTYPE::ENVSXP.0 {
+        } else if t == SEXPTYPE::ENVSXP {
             s
         } else {
             R_GlobalEnv()
@@ -361,7 +361,7 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             // str(NULL) returns " NULL"
             let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
             SET_STRING_ELT(ans, 0, Rf_mkChar(b" NULL\0".as_ptr() as *const _));
@@ -370,12 +370,12 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         let t = TYPEOF(x);
-        let len = if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 {
+        let len = if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
             // pairlist length
             let mut s = x;
             let mut count: c_int = 0;
             while !s.is_null()
-                && (TYPEOF(s) == SEXPTYPE::LISTSXP.0 || TYPEOF(s) == SEXPTYPE::LANGSXP.0)
+                && (TYPEOF(s) == SEXPTYPE::LISTSXP || TYPEOF(s) == SEXPTYPE::LANGSXP)
             {
                 count += 1;
                 s = CDR(s);
@@ -412,7 +412,7 @@ pub unsafe fn do_names(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
 
@@ -437,7 +437,7 @@ pub unsafe fn do_dim(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
 
@@ -462,7 +462,7 @@ pub unsafe fn do_dimnames(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
 
@@ -483,7 +483,7 @@ pub unsafe fn do_attributes(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SE
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
 
@@ -504,7 +504,7 @@ pub unsafe fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
 
@@ -544,7 +544,7 @@ pub unsafe fn do_levels(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             return R_NilValue();
         }
 
@@ -565,7 +565,7 @@ pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         checkArity(op, args);
         let x = CAR(args);
 
-        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 {
+        if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             // str(NULL)
             let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
             SET_STRING_ELT(ans, 0, Rf_mkChar(b" NULL\0".as_ptr() as *const _));

@@ -29,7 +29,7 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 unsafe fn getListElement(list: SEXP, str: &str) -> SEXP {
-    if TYPEOF(list) != SEXPTYPE::VECSXP.0 {
+    if TYPEOF(list) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
     let names = getAttrib(list, R_NamesSymbol());
@@ -81,13 +81,13 @@ pub unsafe fn KalmanLike(
     let sh = getListElement(mod_, "h");
     let sPn = getListElement(mod_, "Pn");
 
-    if TYPEOF(sy) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sZ) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sa) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sP) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sPn) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sT) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sV) != SEXPTYPE::REALSXP.0
+    if TYPEOF(sy) != SEXPTYPE::REALSXP
+        || TYPEOF(sZ) != SEXPTYPE::REALSXP
+        || TYPEOF(sa) != SEXPTYPE::REALSXP
+        || TYPEOF(sP) != SEXPTYPE::REALSXP
+        || TYPEOF(sPn) != SEXPTYPE::REALSXP
+        || TYPEOF(sT) != SEXPTYPE::REALSXP
+        || TYPEOF(sV) != SEXPTYPE::REALSXP
     {
         Rf_error(b"invalid argument type\0".as_ptr() as *const _);
         return R_NilValue();
@@ -252,12 +252,12 @@ pub unsafe fn KalmanSmooth(sy: SEXP, mod_: SEXP, sUP: SEXP) -> SEXP {
     let sh = getListElement(mod_, "h");
     let sPn = getListElement(mod_, "Pn");
 
-    if TYPEOF(sy) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sZ) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sa) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sP) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sT) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sV) != SEXPTYPE::REALSXP.0
+    if TYPEOF(sy) != SEXPTYPE::REALSXP
+        || TYPEOF(sZ) != SEXPTYPE::REALSXP
+        || TYPEOF(sa) != SEXPTYPE::REALSXP
+        || TYPEOF(sP) != SEXPTYPE::REALSXP
+        || TYPEOF(sT) != SEXPTYPE::REALSXP
+        || TYPEOF(sV) != SEXPTYPE::REALSXP
     {
         Rf_error(b"invalid argument type\0".as_ptr() as *const _);
         return R_NilValue();
@@ -507,11 +507,11 @@ pub unsafe fn KalmanFore(nahead: SEXP, mod_: SEXP, update: SEXP) -> SEXP {
     let sV = getListElement(mod_, "V");
     let sh = getListElement(mod_, "h");
 
-    if TYPEOF(sZ) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sa) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sP) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sT) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sV) != SEXPTYPE::REALSXP.0
+    if TYPEOF(sZ) != SEXPTYPE::REALSXP
+        || TYPEOF(sa) != SEXPTYPE::REALSXP
+        || TYPEOF(sP) != SEXPTYPE::REALSXP
+        || TYPEOF(sT) != SEXPTYPE::REALSXP
+        || TYPEOF(sV) != SEXPTYPE::REALSXP
     {
         Rf_error(b"invalid argument type\0".as_ptr() as *const _);
         return R_NilValue();
@@ -900,12 +900,12 @@ pub unsafe fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: SEXP) -> SE
     let sP = getListElement(mod_, "P");
     let sPn = getListElement(mod_, "Pn");
 
-    if TYPEOF(sPhi) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sTheta) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sDelta) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sa) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sP) != SEXPTYPE::REALSXP.0
-        || TYPEOF(sPn) != SEXPTYPE::REALSXP.0
+    if TYPEOF(sPhi) != SEXPTYPE::REALSXP
+        || TYPEOF(sTheta) != SEXPTYPE::REALSXP
+        || TYPEOF(sDelta) != SEXPTYPE::REALSXP
+        || TYPEOF(sa) != SEXPTYPE::REALSXP
+        || TYPEOF(sP) != SEXPTYPE::REALSXP
+        || TYPEOF(sPn) != SEXPTYPE::REALSXP
     {
         Rf_error(b"invalid argument type\0".as_ptr() as *const _);
         return R_NilValue();

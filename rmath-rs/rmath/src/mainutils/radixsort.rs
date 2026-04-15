@@ -1081,13 +1081,13 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         // Dispatch on first arg type
         let xtype = TYPEOF(x);
         match xtype {
-            t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                 tmp = isorted(xd as *const c_int, n);
             }
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 tmp = dsorted(xd, n);
             }
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::STRSXP => {
                 tmp = csorted(xd, n);
             }
             _ => {
@@ -1121,13 +1121,13 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             isSorted = false;
             let xtype = TYPEOF(x);
             match xtype {
-                t if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 => {
+                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
                     isort(xd as *mut c_int, o, n);
                 }
-                t if t == SEXPTYPE::REALSXP.0 => {
+                t if t == SEXPTYPE::REALSXP => {
                     dsort(xd, o, n);
                 }
-                t if t == SEXPTYPE::STRSXP.0 => {
+                t if t == SEXPTYPE::STRSXP => {
                     csort(xd, o, n);
                 }
                 _ => {
@@ -1182,7 +1182,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
 
             let xtype = TYPEOF(x);
             // Only handle INTSXP/LGLSXP for multi-column
-            if xtype != SEXPTYPE::INTSXP.0 && xtype != SEXPTYPE::LGLSXP.0 {
+            if xtype != SEXPTYPE::INTSXP && xtype != SEXPTYPE::LGLSXP {
                 eprintln!("Arg {} is type '{}', not yet supported", col, xtype);
                 break;
             }
@@ -1198,7 +1198,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                     if NALAST.with(|v| v.get()) == 0 {
                         if *o.add(idx as usize) == 0 {
                             isSorted = false;
-                        } else if (xtype == SEXPTYPE::INTSXP.0 || xtype == SEXPTYPE::LGLSXP.0)
+                        } else if (xtype == SEXPTYPE::INTSXP || xtype == SEXPTYPE::LGLSXP)
                             && *INTEGER(x).add(*o.add(idx as usize) as usize - 1) == NA_INTEGER
                         {
                             isSorted = false;
@@ -1383,9 +1383,9 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
             return NA_LOGICAL;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             LOGICAL_ELT(x, 0)
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             let v = INTEGER_ELT(x, 0);
             if v == NA_INTEGER {
                 NA_LOGICAL
@@ -1394,7 +1394,7 @@ unsafe fn asLogical_local(x: SEXP) -> c_int {
             } else {
                 0
             }
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let v = REAL_ELT(x, 0);
             if v.is_nan() {
                 NA_LOGICAL

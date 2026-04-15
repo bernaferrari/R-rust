@@ -899,7 +899,7 @@ unsafe fn nrows(x: SEXP) -> c_int {
     if dim.is_null() || dim == R_NilValue() {
         return 0;
     }
-    if TYPEOF(dim) != SEXPTYPE::INTSXP.0 {
+    if TYPEOF(dim) != SEXPTYPE::INTSXP {
         return 0;
     }
     let len = LENGTH(dim);
@@ -919,7 +919,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
     if dim.is_null() || dim == R_NilValue() {
         return 0;
     }
-    if TYPEOF(dim) != SEXPTYPE::INTSXP.0 {
+    if TYPEOF(dim) != SEXPTYPE::INTSXP {
         return 0;
     }
     let len = LENGTH(dim);

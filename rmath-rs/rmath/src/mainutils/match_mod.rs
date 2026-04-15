@@ -106,7 +106,7 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// isString check — STRSXP type.
 #[inline(always)]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP }
 }
 
 /// isVector check.
@@ -121,7 +121,7 @@ unsafe fn isVector(x: SEXP) -> bool {
 /// isNull check.
 #[inline(always)]
 unsafe fn isNull(x: SEXP) -> bool {
-    unsafe { x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP.0 }
+    unsafe { x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP }
 }
 
 /// IS_BYTES check — delegates to sexp::accessors.
@@ -171,19 +171,19 @@ unsafe fn asInteger(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP {
             let p = INTEGER(x);
             if p.is_null() {
                 return NA_INTEGER;
             }
             *p
-        } else if t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::LGLSXP {
             let p = LOGICAL(x);
             if p.is_null() {
                 return NA_INTEGER;
             }
             *p
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let p = REAL(x);
             if p.is_null() {
                 return NA_INTEGER;
@@ -207,13 +207,13 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             let p = LOGICAL(x);
             if p.is_null() {
                 return NA_INTEGER;
             }
             *p
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             let p = INTEGER(x);
             if p.is_null() {
                 return NA_INTEGER;
@@ -245,10 +245,10 @@ unsafe fn length(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::NILSXP.0 {
+        if t == SEXPTYPE::NILSXP {
             return 0;
         }
-        if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 || t == SEXPTYPE::DOTSXP.0 {
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP || t == SEXPTYPE::DOTSXP {
             let mut n: c_int = 0;
             let mut y = x;
             while !y.is_null() {
@@ -471,11 +471,11 @@ pub unsafe fn NonNullStringMatch(s: SEXP, t: SEXP) -> c_int {
 unsafe fn charFromSexp(s: SEXP) -> SEXP {
     unsafe {
         let t = TYPEOF(s);
-        if t == SEXPTYPE::SYMSXP.0 {
+        if t == SEXPTYPE::SYMSXP {
             PRINTNAME(s)
-        } else if t == SEXPTYPE::CHARSXP.0 {
+        } else if t == SEXPTYPE::CHARSXP {
             s
-        } else if t == SEXPTYPE::STRSXP.0 {
+        } else if t == SEXPTYPE::STRSXP {
             if LENGTH(s) == 1 {
                 STRING_ELT(s, 0)
             } else {

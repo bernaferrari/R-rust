@@ -35,27 +35,27 @@ unsafe fn isMatrix(x: SEXP) -> bool {
 
 unsafe fn isVector(x: SEXP) -> bool {
     let t = TYPEOF(x);
-    t == SEXPTYPE::LGLSXP.0
-        || t == SEXPTYPE::INTSXP.0
-        || t == SEXPTYPE::REALSXP.0
-        || t == SEXPTYPE::CPLXSXP.0
-        || t == SEXPTYPE::STRSXP.0
-        || t == SEXPTYPE::RAWSXP.0
-        || t == SEXPTYPE::VECSXP.0
-        || t == SEXPTYPE::EXPRSXP.0
+    t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::RAWSXP
+        || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
 }
 
 #[unsafe(no_mangle)]
 unsafe fn isNewList(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::VECSXP.0
+    TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 unsafe fn length_sexp(x: SEXP) -> c_int {
     let t = TYPEOF(x);
-    if t == SEXPTYPE::NILSXP.0 {
+    if t == SEXPTYPE::NILSXP {
         return 0;
     }
-    if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 {
+    if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
         let mut count = 0i32;
         let mut cur = x;
         while !cur.is_null() {
@@ -74,23 +74,23 @@ unsafe fn check_vector_na(u: SEXP, rval: SEXP, len: c_int) {
     let mut i: c_int = 0;
     while i < n {
         match t {
-            x if x == SEXPTYPE::INTSXP.0 || x == SEXPTYPE::LGLSXP.0 => {
+            x if x == SEXPTYPE::INTSXP || x == SEXPTYPE::LGLSXP => {
                 if *INTEGER(u).add(i as usize) == NA_INTEGER {
                     *rval_int.add((i % len) as usize) = 0;
                 }
             }
-            x if x == SEXPTYPE::REALSXP.0 => {
+            x if x == SEXPTYPE::REALSXP => {
                 if (*REAL(u).add(i as usize)).is_nan() {
                     *rval_int.add((i % len) as usize) = 0;
                 }
             }
-            x if x == SEXPTYPE::CPLXSXP.0 => {
+            x if x == SEXPTYPE::CPLXSXP => {
                 let c = *COMPLEX(u).add(i as usize);
                 if c.r.is_nan() || c.i.is_nan() {
                     *rval_int.add((i % len) as usize) = 0;
                 }
             }
-            x if x == SEXPTYPE::STRSXP.0 => {
+            x if x == SEXPTYPE::STRSXP => {
                 if STRING_ELT(u, i as i64) == NA_STRING() {
                     *rval_int.add((i % len) as usize) = 0;
                 }

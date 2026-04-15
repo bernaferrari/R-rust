@@ -67,7 +67,7 @@ pub unsafe fn PRIMFUN(op: SEXP) -> Option<unsafe extern "C" fn(SEXP, SEXP, SEXP,
             return None;
         }
         let t = TYPEOF(op);
-        if t != SEXPTYPE::SPECIALSXP.0 && t != SEXPTYPE::BUILTINSXP.0 {
+        if t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
             return None;
         }
         let offset = PRIMOFFSET(op);
@@ -88,7 +88,7 @@ pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
             return "unknown";
         }
         let t = TYPEOF(op);
-        if t != SEXPTYPE::SPECIALSXP.0 && t != SEXPTYPE::BUILTINSXP.0 {
+        if t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
             return "unknown";
         }
         let offset = PRIMOFFSET(op);

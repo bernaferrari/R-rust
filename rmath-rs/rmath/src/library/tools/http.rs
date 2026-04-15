@@ -179,7 +179,7 @@ pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
     if x.is_null() {
         return R_NilValue();
     }
-    if TYPEOF(x) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
         Rf_error(b"non-character argument\0".as_ptr() as *const _);
     }
     let n = XLENGTH(x);
@@ -231,17 +231,17 @@ unsafe fn coerce_to_int(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         let p = INTEGER(x);
         if !p.is_null() {
             return *p;
         }
-    } else if t == SEXPTYPE::LGLSXP.0 {
+    } else if t == SEXPTYPE::LGLSXP {
         let p = crate::sexp::accessors::LOGICAL(x);
         if !p.is_null() {
             return *p;
         }
-    } else if t == SEXPTYPE::REALSXP.0 {
+    } else if t == SEXPTYPE::REALSXP {
         let p = crate::sexp::accessors::REAL(x);
         if !p.is_null() {
             let v = *p;

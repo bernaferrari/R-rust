@@ -141,7 +141,7 @@ unsafe fn isNull(x: SEXP) -> bool {
 unsafe fn isPairList(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0
+        t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
     }
 }
 
@@ -150,7 +150,7 @@ unsafe fn isPairList(x: SEXP) -> bool {
 unsafe fn isPairListOrNil(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::NILSXP.0 || t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0
+        t == SEXPTYPE::NILSXP || t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP
     }
 }
 
@@ -159,26 +159,26 @@ unsafe fn isPairListOrNil(x: SEXP) -> bool {
 unsafe fn isVectorList(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0
+        t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
     }
 }
 
 /// Check if x is an expression (EXPRSXP).
 #[inline]
 unsafe fn isExpression(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::EXPRSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::EXPRSXP }
 }
 
 /// Check if x is a language object (LANGSXP).
 #[inline]
 unsafe fn isLanguage(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
 }
 
 /// Check if x is an environment.
 #[inline]
 unsafe fn isEnvironment(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::ENVSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::ENVSXP }
 }
 
 /// Check if x is a vector type (any atomic or generic vector).
@@ -202,19 +202,19 @@ unsafe fn isVectorAtomic(x: SEXP) -> bool {
 /// Check if x is a symbol.
 #[inline]
 unsafe fn isSymbol(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::SYMSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::SYMSXP }
 }
 
 /// Check if x is a string vector.
 #[inline]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::STRSXP }
 }
 
 /// Check if x is a promise.
 #[inline]
 unsafe fn isPromise(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::PROMSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::PROMSXP }
 }
 
 /// Check if x has the OBJECT bit set.
@@ -376,16 +376,16 @@ unsafe fn asLogical(x: SEXP) -> c_int {
             return NA_LOGICAL;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             LOGICAL_ELT(x, 0)
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             let v = INTEGER_ELT(x, 0);
             if v == NA_INTEGER {
                 NA_LOGICAL
             } else {
                 if v != 0 { TRUE } else { FALSE }
             }
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let v = REAL_ELT(x, 0);
             if v.is_nan() {
                 NA_LOGICAL
@@ -479,19 +479,19 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
         let new_x = Rf_protect(Rf_allocVector3(TYPEOF(x), new_len));
         // Copy data
         let xtype = TYPEOF(x);
-        if xtype == SEXPTYPE::INTSXP.0 || xtype == SEXPTYPE::LGLSXP.0 {
+        if xtype == SEXPTYPE::INTSXP || xtype == SEXPTYPE::LGLSXP {
             for i in 0..new_len {
                 *INTEGER(new_x).add(i as usize) = *INTEGER(x).add(i as usize);
             }
-        } else if xtype == SEXPTYPE::REALSXP.0 {
+        } else if xtype == SEXPTYPE::REALSXP {
             for i in 0..new_len {
                 *REAL(new_x).add(i as usize) = *REAL(x).add(i as usize);
             }
-        } else if xtype == SEXPTYPE::STRSXP.0 {
+        } else if xtype == SEXPTYPE::STRSXP {
             for i in 0..new_len {
                 SET_STRING_ELT(new_x, i, STRING_ELT(x, i));
             }
-        } else if xtype == SEXPTYPE::VECSXP.0 || xtype == SEXPTYPE::EXPRSXP.0 {
+        } else if xtype == SEXPTYPE::VECSXP || xtype == SEXPTYPE::EXPRSXP {
             for i in 0..new_len {
                 SET_VECTOR_ELT(new_x, i, VECTOR_ELT(x, i));
             }
@@ -545,7 +545,7 @@ unsafe fn GetRowNames(dimnames: SEXP) -> SEXP {
         if isNull(dimnames) {
             return R_NilValue();
         }
-        if TYPEOF(dimnames) == SEXPTYPE::VECSXP.0 {
+        if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
             VECTOR_ELT(dimnames, 0)
         } else {
             CAR(dimnames)
@@ -630,8 +630,8 @@ unsafe fn pstrmatch(target: SEXP, input: SEXP, slen: usize) -> pmatch {
         }
 
         let st: *const c_char = match TYPEOF(target) {
-            t if t == SEXPTYPE::SYMSXP.0 => CHAR(PRINTNAME(target)),
-            t if t == SEXPTYPE::CHARSXP.0 => translateChar(target),
+            t if t == SEXPTYPE::SYMSXP => CHAR(PRINTNAME(target)),
+            t if t == SEXPTYPE::CHARSXP => translateChar(target),
             _ => return pmatch::NO_MATCH,
         };
 
@@ -703,33 +703,33 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
         /* protect allocation in case _ELT operations need to allocate */
         result = Rf_protect(Rf_allocVector3(mode, n));
 
-        if TYPEOF(indx) == SEXPTYPE::INTSXP.0 {
+        if TYPEOF(indx) == SEXPTYPE::INTSXP {
             let pindx = INTEGER(indx);
             for i in 0..n {
                 let ii = *pindx.add(i as usize);
                 if ii > 0 && (ii as R_xlen_t) <= nx {
                     let ii_0 = (ii - 1) as usize;
                     match mode {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, (ii - 1) as c_int);
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(result).add(i as usize) = INTEGER_ELT(x, (ii - 1) as c_int);
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(result).add(i as usize) = REAL_ELT(x, (ii - 1) as c_int);
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             let c = COMPLEX_ELT(x, (ii - 1) as c_int);
                             *COMPLEX(result).add(i as usize) = c;
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, i, STRING_ELT(x, (ii - 1) as R_xlen_t));
                         }
-                        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii_0 as R_xlen_t));
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(result).add(i as usize) = RAW_ELT(x, (ii - 1) as c_int);
                         }
                         _ => {
@@ -740,28 +740,28 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                 } else {
                     // Out of bounds or NA
                     match mode {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(result).add(i as usize) = NA_LOGICAL;
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(result).add(i as usize) = NA_INTEGER;
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(result).add(i as usize) = NA_REAL;
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(result).add(i as usize) = super::super::sexp::ffi::Rcomplex {
                                 r: NA_REAL,
                                 i: NA_REAL,
                             };
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, i, R_NilValue());
                         }
-                        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, i, R_NilValue());
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(result).add(i as usize) = 0;
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
@@ -776,26 +776,26 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                 let ii = (di - 1.0) as R_xlen_t;
                 if R_FINITE(di) && ii >= 0 && ii < nx {
                     match mode {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, ii as c_int);
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(result).add(i as usize) = INTEGER_ELT(x, ii as c_int);
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(result).add(i as usize) = REAL_ELT(x, ii as c_int);
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             let c = COMPLEX_ELT(x, ii as c_int);
                             *COMPLEX(result).add(i as usize) = c;
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
                         }
-                        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(result).add(i as usize) = RAW_ELT(x, ii as c_int);
                         }
                         _ => {
@@ -805,28 +805,28 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
                 } else {
                     // Out of bounds or NA
                     match mode {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(result).add(i as usize) = NA_LOGICAL;
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(result).add(i as usize) = NA_INTEGER;
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(result).add(i as usize) = NA_REAL;
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(result).add(i as usize) = super::super::sexp::ffi::Rcomplex {
                                 r: NA_REAL,
                                 i: NA_REAL,
                             };
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, i, R_NilValue());
                         }
-                        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, i, R_NilValue());
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(result).add(i as usize) = 0;
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
@@ -848,7 +848,7 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
 /// when the index has the same number of columns as the dimension of x.
 unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
     unsafe {
-        if s == R_NilValue() || TYPEOF(s) == SEXPTYPE::SYMSXP.0 {
+        if s == R_NilValue() || TYPEOF(s) == SEXPTYPE::SYMSXP {
             // Missing arg check
             let missing_sym = Rf_install(std::ffi::CString::new("").unwrap_or_default().as_ptr());
             if s == R_NilValue() {
@@ -889,7 +889,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
         /* Allocate the result. */
         let mode = TYPEOF(x);
         let result = Rf_protect(ExtractSubset(x, indx, call));
-        if mode == SEXPTYPE::VECSXP.0 || mode == SEXPTYPE::EXPRSXP.0 {
+        if mode == SEXPTYPE::VECSXP || mode == SEXPTYPE::EXPRSXP {
             /* we do not duplicate the values when extracting the subset,
             so to be conservative mark the result as NAMED = NAMEDMAX */
             ENSURE_NAMEDMAX(result);
@@ -918,7 +918,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
 
             /* Handle srcref attribute */
             let srcref = getAttrib(x, sym_Srcref());
-            if !isNull(srcref) && TYPEOF(srcref) == SEXPTYPE::VECSXP.0 {
+            if !isNull(srcref) && TYPEOF(srcref) == SEXPTYPE::VECSXP {
                 let nattrib = Rf_protect(ExtractSubset(srcref, indx, call));
                 setAttrib(result, sym_Srcref(), nattrib);
                 Rf_unprotect(1);
@@ -990,28 +990,28 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                 if ii == NA_INTEGER as R_xlen_t || jj == NA_INTEGER as R_xlen_t {
                     /* NA code */
                     match TYPEOF(x) {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(result).add(ij as usize) = NA_LOGICAL;
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(result).add(ij as usize) = NA_INTEGER;
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(result).add(ij as usize) = NA_REAL;
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(result).add(ij as usize) = super::super::sexp::ffi::Rcomplex {
                                 r: NA_REAL,
                                 i: NA_REAL,
                             };
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, ij, R_NilValue());
                         }
-                        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, ij, R_NilValue());
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(result).add(ij as usize) = 0;
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
@@ -1020,25 +1020,25 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                     iijj = ii + jj * (nr as R_xlen_t);
                     /* Standard code */
                     match TYPEOF(x) {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(result).add(ij as usize) = LOGICAL_ELT(x, iijj as c_int);
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(result).add(ij as usize) = INTEGER_ELT(x, iijj as c_int);
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(result).add(ij as usize) = REAL_ELT(x, iijj as c_int);
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(result).add(ij as usize) = COMPLEX_ELT(x, iijj as c_int);
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(result, ij, STRING_ELT(x, iijj as R_xlen_t));
                         }
-                        t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                             SET_VECTOR_ELT(result, ij, VECTOR_ELT_FIX_NAMED(x, iijj));
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(result).add(ij as usize) = RAW_ELT(x, iijj as c_int);
                         }
                         _ => {
@@ -1067,7 +1067,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             let dimnamesnames = Rf_protect(getAttrib(dimnames, sym_Names()));
             if !isNull(dimnames) {
                 let newdimnames = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 2));
-                if TYPEOF(dimnames) == SEXPTYPE::VECSXP.0 {
+                if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
                     SET_VECTOR_ELT(
                         newdimnames,
                         0,
@@ -1190,25 +1190,25 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 
             if ii != NA_INTEGER as R_xlen_t {
                 match mode {
-                    t if t == SEXPTYPE::LGLSXP.0 => {
+                    t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(result).add(i as usize) = LOGICAL_ELT(x, ii as c_int);
                     }
-                    t if t == SEXPTYPE::INTSXP.0 => {
+                    t if t == SEXPTYPE::INTSXP => {
                         *INTEGER(result).add(i as usize) = INTEGER_ELT(x, ii as c_int);
                     }
-                    t if t == SEXPTYPE::REALSXP.0 => {
+                    t if t == SEXPTYPE::REALSXP => {
                         *REAL(result).add(i as usize) = REAL_ELT(x, ii as c_int);
                     }
-                    t if t == SEXPTYPE::CPLXSXP.0 => {
+                    t if t == SEXPTYPE::CPLXSXP => {
                         *COMPLEX(result).add(i as usize) = COMPLEX_ELT(x, ii as c_int);
                     }
-                    t if t == SEXPTYPE::STRSXP.0 => {
+                    t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(result, i, STRING_ELT(x, ii as R_xlen_t));
                     }
-                    t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                         SET_VECTOR_ELT(result, i, VECTOR_ELT_FIX_NAMED(x, ii));
                     }
-                    t if t == SEXPTYPE::RAWSXP.0 => {
+                    t if t == SEXPTYPE::RAWSXP => {
                         *RAW(result).add(i as usize) = RAW_ELT(x, ii as c_int);
                     }
                     _ => {
@@ -1217,28 +1217,28 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
                 }
             } else {
                 match mode {
-                    t if t == SEXPTYPE::LGLSXP.0 => {
+                    t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(result).add(i as usize) = NA_LOGICAL;
                     }
-                    t if t == SEXPTYPE::INTSXP.0 => {
+                    t if t == SEXPTYPE::INTSXP => {
                         *INTEGER(result).add(i as usize) = NA_INTEGER;
                     }
-                    t if t == SEXPTYPE::REALSXP.0 => {
+                    t if t == SEXPTYPE::REALSXP => {
                         *REAL(result).add(i as usize) = NA_REAL;
                     }
-                    t if t == SEXPTYPE::CPLXSXP.0 => {
+                    t if t == SEXPTYPE::CPLXSXP => {
                         *COMPLEX(result).add(i as usize) = super::super::sexp::ffi::Rcomplex {
                             r: NA_REAL,
                             i: NA_REAL,
                         };
                     }
-                    t if t == SEXPTYPE::STRSXP.0 => {
+                    t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(result, i, R_NilValue());
                     }
-                    t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                    t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                         SET_VECTOR_ELT(result, i, R_NilValue());
                     }
-                    t if t == SEXPTYPE::RAWSXP.0 => {
+                    t if t == SEXPTYPE::RAWSXP => {
                         *RAW(result).add(i as usize) = 0;
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for NA fill in subset
@@ -1280,7 +1280,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         if !isNull(dimnames) {
             let new_xdims = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, k as R_xlen_t));
             let mut jj = 0;
-            if TYPEOF(dimnames) == SEXPTYPE::VECSXP.0 {
+            if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
                 let mut rr = s;
                 for i in 0..(k as usize) {
                     if bound[i] > 0 {
@@ -1336,14 +1336,14 @@ unsafe fn scalarIndex(s: SEXP) -> R_xlen_t {
         }
 
         let t = TYPEOF(s);
-        if t == SEXPTYPE::INTSXP.0 && IS_SCALAR(s, SEXPTYPE::INTSXP.0) != 0 {
+        if t == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.0) != 0 {
             let ival = SCALAR_IVAL(s);
             if ival != NA_INTEGER {
                 ival as R_xlen_t
             } else {
                 -1
             }
-        } else if t == SEXPTYPE::REALSXP.0 && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
+        } else if t == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
             let rval = SCALAR_DVAL(s);
             if R_FINITE(rval) { rval as R_xlen_t } else { -1 }
         } else {
@@ -1580,7 +1580,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         }
 
         /* Convert back to LANGSXP if original was a language object */
-        if xtype == SEXPTYPE::LANGSXP.0 {
+        if xtype == SEXPTYPE::LANGSXP {
             ax = ans;
             ans = Rf_protect(allocLang(length_int(ax)));
             if length_int(ax) > 0 {
@@ -1759,22 +1759,22 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     /* atomic: return single-element vector */
                     let ans = Rf_protect(Rf_allocVector3(TYPEOF(x), 1));
                     match TYPEOF(x) {
-                        t if t == SEXPTYPE::LGLSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
                         }
-                        t if t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::INTSXP => {
                             *INTEGER(ans).add(0) = INTEGER_ELT(x, offset as c_int);
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(ans).add(0) = REAL_ELT(x, offset as c_int);
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(ans).add(0) = COMPLEX_ELT(x, offset as c_int);
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
@@ -1815,22 +1815,22 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 /* Atomic vector: return scalar */
                 let ans = Rf_protect(Rf_allocVector3(TYPEOF(x), 1));
                 match TYPEOF(x) {
-                    t if t == SEXPTYPE::LGLSXP.0 => {
+                    t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::INTSXP.0 => {
+                    t if t == SEXPTYPE::INTSXP => {
                         *INTEGER(ans).add(0) = INTEGER_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::REALSXP.0 => {
+                    t if t == SEXPTYPE::REALSXP => {
                         *REAL(ans).add(0) = REAL_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::CPLXSXP.0 => {
+                    t if t == SEXPTYPE::CPLXSXP => {
                         *COMPLEX(ans).add(0) = COMPLEX_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::STRSXP.0 => {
+                    t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
                     }
-                    t if t == SEXPTYPE::RAWSXP.0 => {
+                    t if t == SEXPTYPE::RAWSXP => {
                         *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
@@ -1887,22 +1887,22 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             } else {
                 ans = Rf_protect(Rf_allocVector3(TYPEOF(x), 1));
                 match TYPEOF(x) {
-                    t if t == SEXPTYPE::LGLSXP.0 => {
+                    t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::INTSXP.0 => {
+                    t if t == SEXPTYPE::INTSXP => {
                         *INTEGER(ans).add(0) = INTEGER_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::REALSXP.0 => {
+                    t if t == SEXPTYPE::REALSXP => {
                         *REAL(ans).add(0) = REAL_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::CPLXSXP.0 => {
+                    t if t == SEXPTYPE::CPLXSXP => {
                         *COMPLEX(ans).add(0) = COMPLEX_ELT(x, offset as c_int);
                     }
-                    t if t == SEXPTYPE::STRSXP.0 => {
+                    t if t == SEXPTYPE::STRSXP => {
                         SET_STRING_ELT(ans, 0, STRING_ELT(x, offset));
                     }
-                    t if t == SEXPTYPE::RAWSXP.0 => {
+                    t if t == SEXPTYPE::RAWSXP => {
                         *RAW(ans).add(0) = RAW_ELT(x, offset as c_int);
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset

@@ -279,7 +279,7 @@ pub unsafe fn R_length_gets(x: SEXP) -> c_int {
                 .as_ptr(),
         );
         let val = getAttrib(x, len_sym);
-        if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP.0 {
+        if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP {
             let data = super::accessors::INTEGER(val);
             if !data.is_null() {
                 return *data;

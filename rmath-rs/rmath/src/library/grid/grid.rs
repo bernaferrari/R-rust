@@ -1685,7 +1685,7 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
         let mut ascent: f64 = 0.0;
         let mut descent: f64 = 0.0;
         let mut width: f64 = 0.0;
-        if TYPEOF(label) == SEXPTYPE::EXPRSXP.0 {
+        if TYPEOF(label) == SEXPTYPE::EXPRSXP {
             GEExpressionMetric(
                 VECTOR_ELT(label, i),
                 gc.as_ptr(),

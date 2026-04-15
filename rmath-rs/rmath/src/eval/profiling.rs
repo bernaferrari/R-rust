@@ -464,14 +464,14 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
         if srcfile.is_null() || srcfile == R_NilValue() {
             return;
         }
-        if TYPEOF(srcfile) != SEXPTYPE::ENVSXP.0 {
+        if TYPEOF(srcfile) != SEXPTYPE::ENVSXP {
             return;
         }
 
         // Look up the filename in the srcfile environment
         let fn_sym = Rf_install(b"filename\0".as_ptr() as *const c_char);
         let filename_sexp = R_findVar(fn_sym, srcfile);
-        if TYPEOF(filename_sexp) != SEXPTYPE::STRSXP.0 || LENGTH(filename_sexp) == 0 {
+        if TYPEOF(filename_sexp) != SEXPTYPE::STRSXP || LENGTH(filename_sexp) == 0 {
             return;
         }
         let filename = CHAR(STRING_ELT(filename_sexp, 0));
@@ -697,23 +697,23 @@ unsafe fn doprof(_sig: c_int) {
 
             if (callflag & (ctxt_flags::CTXT_FUNCTION | ctxt_flags::CTXT_BUILTIN)) != 0
                 && !call.is_null()
-                && TYPEOF(call) == SEXPTYPE::LANGSXP.0
+                && TYPEOF(call) == SEXPTYPE::LANGSXP
             {
                 let fun = CAR(call);
                 pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
 
-                if TYPEOF(fun) == SEXPTYPE::SYMSXP.0 {
+                if TYPEOF(fun) == SEXPTYPE::SYMSXP {
                     // Simple symbol: just print its name
                     pb_str(&mut pb, CHAR(PRINTNAME(fun)));
-                } else if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::LANGSXP.0 {
+                } else if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::LANGSXP {
                     let fun_head = CAR(fun);
                     if (fun_head == R_DoubleColonSymbol()
                         || fun_head == R_TripleColonSymbol()
                         || fun_head == R_DollarSymbol())
                         && !CADR(fun).is_null()
-                        && TYPEOF(CADR(fun)) == SEXPTYPE::SYMSXP.0
+                        && TYPEOF(CADR(fun)) == SEXPTYPE::SYMSXP
                         && !CADDR(fun).is_null()
-                        && TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP.0
+                        && TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
                     {
                         // Function accessed via ::, :::, or $
                         pb_str(&mut pb, CHAR(PRINTNAME(CADR(fun))));
@@ -721,12 +721,12 @@ unsafe fn doprof(_sig: c_int) {
                         pb_str(&mut pb, CHAR(PRINTNAME(CADDR(fun))));
                     } else if fun_head == R_Bracket2Symbol()
                         && !CADR(fun).is_null()
-                        && TYPEOF(CADR(fun)) == SEXPTYPE::SYMSXP.0
+                        && TYPEOF(CADR(fun)) == SEXPTYPE::SYMSXP
                         && !CADDR(fun).is_null()
-                        && (TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP.0
-                            || TYPEOF(CADDR(fun)) == SEXPTYPE::STRSXP.0
-                            || TYPEOF(CADDR(fun)) == SEXPTYPE::INTSXP.0
-                            || TYPEOF(CADDR(fun)) == SEXPTYPE::REALSXP.0)
+                        && (TYPEOF(CADDR(fun)) == SEXPTYPE::SYMSXP
+                            || TYPEOF(CADDR(fun)) == SEXPTYPE::STRSXP
+                            || TYPEOF(CADDR(fun)) == SEXPTYPE::INTSXP
+                            || TYPEOF(CADDR(fun)) == SEXPTYPE::REALSXP)
                         && LENGTH(CADDR(fun)) > 0
                     {
                         // Function accessed via [[
@@ -736,15 +736,15 @@ unsafe fn doprof(_sig: c_int) {
                         pb_str(&mut pb, CHAR(PRINTNAME(arg1)));
                         pb_str(&mut pb, b"[[\0".as_ptr() as *const c_char);
 
-                        if TYPEOF(arg2) == SEXPTYPE::SYMSXP.0 {
+                        if TYPEOF(arg2) == SEXPTYPE::SYMSXP {
                             pb_str(&mut pb, CHAR(PRINTNAME(arg2)));
-                        } else if TYPEOF(arg2) == SEXPTYPE::STRSXP.0 {
+                        } else if TYPEOF(arg2) == SEXPTYPE::STRSXP {
                             pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
                             pb_str(&mut pb, CHAR(STRING_ELT(arg2, 0)));
                             pb_str(&mut pb, b"\"\0".as_ptr() as *const c_char);
-                        } else if TYPEOF(arg2) == SEXPTYPE::INTSXP.0 {
+                        } else if TYPEOF(arg2) == SEXPTYPE::INTSXP {
                             pb_int(&mut pb, *INTEGER(arg2) as i64);
-                        } else if TYPEOF(arg2) == SEXPTYPE::REALSXP.0 {
+                        } else if TYPEOF(arg2) == SEXPTYPE::REALSXP {
                             pb_dbl(&mut pb, *REAL(arg2)); // %0.f
                         }
 
@@ -1074,7 +1074,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
         }
 
         // Get filename string
-        if TYPEOF(filename_arg) != SEXPTYPE::STRSXP.0 || LENGTH(filename_arg) != 1 {
+        if TYPEOF(filename_arg) != SEXPTYPE::STRSXP || LENGTH(filename_arg) != 1 {
             return R_NilValue();
         }
 
@@ -1108,7 +1108,7 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
         // Get event type argument
         let event_arg_sexp = CAR(args);
         let event = if !event_arg_sexp.is_null()
-            && TYPEOF(event_arg_sexp) == SEXPTYPE::STRSXP.0
+            && TYPEOF(event_arg_sexp) == SEXPTYPE::STRSXP
             && LENGTH(event_arg_sexp) == 1
         {
             let event_str = CHAR(STRING_ELT(event_arg_sexp, 0));

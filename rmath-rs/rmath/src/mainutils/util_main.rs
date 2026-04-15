@@ -1293,11 +1293,11 @@ pub unsafe fn asChar(x: *const c_void) -> *const c_void {
             return ptr::null();
         }
         let t = TYPEOF(s);
-        if t == SEXPTYPE::SYMSXP.0 {
+        if t == SEXPTYPE::SYMSXP {
             CHAR(PRINTNAME(s)) as *const c_void
-        } else if t == SEXPTYPE::CHARSXP.0 {
+        } else if t == SEXPTYPE::CHARSXP {
             CHAR(s) as *const c_void
-        } else if t == SEXPTYPE::STRSXP.0 {
+        } else if t == SEXPTYPE::STRSXP {
             let elt = STRING_ELT(s, 0);
             if elt.is_null() || elt == R_NilValue() {
                 ptr::null()
@@ -1386,7 +1386,7 @@ pub unsafe fn R_isTRUE(x: *const c_void) -> Rboolean {
         if s.is_null() || s == R_NilValue() {
             return FALSE;
         }
-        if TYPEOF(s) != SEXPTYPE::LGLSXP.0 {
+        if TYPEOF(s) != SEXPTYPE::LGLSXP {
             return FALSE;
         }
         if LENGTH(s) != 1 {

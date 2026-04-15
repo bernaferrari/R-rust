@@ -135,7 +135,7 @@ unsafe fn isString(x: SEXP) -> c_int {
         if x.is_null() {
             return FALSE;
         }
-        if TYPEOF(x) == SEXPTYPE::STRSXP.0 as c_int {
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
             TRUE
         } else {
             FALSE
@@ -149,7 +149,7 @@ unsafe fn isEnvironment(x: SEXP) -> c_int {
         if x.is_null() {
             return FALSE;
         }
-        if TYPEOF(x) == SEXPTYPE::ENVSXP.0 as c_int {
+        if TYPEOF(x) == SEXPTYPE::ENVSXP {
             TRUE
         } else {
             FALSE
@@ -163,7 +163,7 @@ unsafe fn isLogical(x: SEXP) -> c_int {
         if x.is_null() {
             return FALSE;
         }
-        if TYPEOF(x) == SEXPTYPE::LGLSXP.0 as c_int {
+        if TYPEOF(x) == SEXPTYPE::LGLSXP {
             TRUE
         } else {
             FALSE
@@ -178,9 +178,9 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return FALSE;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CLOSXP.0 as c_int
-            || t == SEXPTYPE::BUILTINSXP.0 as c_int
-            || t == SEXPTYPE::SPECIALSXP.0 as c_int
+        if t == SEXPTYPE::CLOSXP
+            || t == SEXPTYPE::BUILTINSXP
+            || t == SEXPTYPE::SPECIALSXP
         {
             TRUE
         } else {
@@ -196,7 +196,7 @@ unsafe fn isPrimitive(x: SEXP) -> c_int {
             return FALSE;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::BUILTINSXP.0 as c_int || t == SEXPTYPE::SPECIALSXP.0 as c_int {
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             TRUE
         } else {
             FALSE
@@ -210,7 +210,7 @@ unsafe fn isClosure(x: SEXP) -> c_int {
         if x.is_null() {
             return FALSE;
         }
-        if TYPEOF(x) == SEXPTYPE::CLOSXP.0 as c_int {
+        if TYPEOF(x) == SEXPTYPE::CLOSXP {
             TRUE
         } else {
             FALSE
@@ -221,7 +221,7 @@ unsafe fn isClosure(x: SEXP) -> c_int {
 /// Check if a string is valid and non-empty.
 unsafe fn isValidString(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP.0 as c_int || LENGTH(x) != 1 {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::STRSXP || LENGTH(x) != 1 {
             return FALSE;
         }
         let s = STRING_ELT(x, 0);
@@ -262,7 +262,7 @@ pub(crate) unsafe fn asChar(x: SEXP) -> SEXP {
         if isString(x) != FALSE {
             return STRING_ELT(x, 0);
         }
-        if TYPEOF(x) == SEXPTYPE::SYMSXP.0 as c_int {
+        if TYPEOF(x) == SEXPTYPE::SYMSXP {
             return PRINTNAME(x);
         }
         R_NilValue()
@@ -282,7 +282,7 @@ unsafe fn length(x: SEXP) -> c_int {
 /// Check whether x is a promise that has been evaluated.
 unsafe fn PROMISE_IS_EVALUATED(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP.0 as c_int {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
             return FALSE;
         }
         let val = (*x).data.promsxp.value;
@@ -297,7 +297,7 @@ unsafe fn PROMISE_IS_EVALUATED(x: SEXP) -> c_int {
 /// Get the promise value (PRVALUE).
 unsafe fn PRVALUE(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP.0 as c_int {
+        if x.is_null() || TYPEOF(x) != SEXPTYPE::PROMSXP {
             return R_NilValue();
         }
         (*x).data.promsxp.value
@@ -367,7 +367,7 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
             return R_NilValue();
         }
         let len = n - pos;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, len);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, len);
         Rf_protect(ans);
         for i in 0..len {
             let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
@@ -477,7 +477,7 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
         }
 
         let b = (*cptr).closure; // callfun
-        if TYPEOF(b) != SEXPTYPE::CLOSXP.0 as c_int {
+        if TYPEOF(b) != SEXPTYPE::CLOSXP {
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "generic 'function' is not a function".to_string(),
             });
@@ -568,7 +568,7 @@ unsafe fn GetObject(cptr: *mut RCNTXT) -> SEXP {
             }
         }
 
-        if TYPEOF(s) == SEXPTYPE::PROMSXP.0 as c_int {
+        if TYPEOF(s) == SEXPTYPE::PROMSXP {
             if PROMISE_IS_EVALUATED(s) == FALSE {
                 s = Rf_eval(s, R_BaseEnv());
             } else {
@@ -593,18 +593,18 @@ unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP
         }
 
         let t = TYPEOF(op);
-        if t == SEXPTYPE::SPECIALSXP.0 as c_int {
+        if t == SEXPTYPE::SPECIALSXP {
             let primfun = crate::eval::builtin::PRIMFUN(op);
             if let Some(fn_ptr) = primfun {
                 return fn_ptr(call, op, args, rho);
             }
-        } else if t == SEXPTYPE::BUILTINSXP.0 as c_int {
+        } else if t == SEXPTYPE::BUILTINSXP {
             let evald_args = crate::eval::dispatch::evalList(args, rho, call, 0);
             let primfun = crate::eval::builtin::PRIMFUN(op);
             if let Some(fn_ptr) = primfun {
                 return fn_ptr(call, op, evald_args, rho);
             }
-        } else if t == SEXPTYPE::CLOSXP.0 as c_int {
+        } else if t == SEXPTYPE::CLOSXP {
             return crate::eval::closure::applyClosure(call, op, args, newvars, rho, 0);
         }
 
@@ -865,13 +865,13 @@ unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
         while !current_rho.is_null() && current_rho != R_EmptyEnv() {
             let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
             if vl != R_UnboundValue() {
-                if TYPEOF(vl) == SEXPTYPE::PROMSXP.0 as c_int {
+                if TYPEOF(vl) == SEXPTYPE::PROMSXP {
                     // Would need to eval -- for now skip promise forcing
                 }
                 let t = TYPEOF(vl);
-                if t == SEXPTYPE::CLOSXP.0 as c_int
-                    || t == SEXPTYPE::BUILTINSXP.0 as c_int
-                    || t == SEXPTYPE::SPECIALSXP.0 as c_int
+                if t == SEXPTYPE::CLOSXP
+                    || t == SEXPTYPE::BUILTINSXP
+                    || t == SEXPTYPE::SPECIALSXP
                 {
                     return vl;
                 }
@@ -893,9 +893,9 @@ unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
             let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
             if vl != R_UnboundValue() {
                 let t = TYPEOF(vl);
-                if t == SEXPTYPE::CLOSXP.0 as c_int
-                    || t == SEXPTYPE::BUILTINSXP.0 as c_int
-                    || t == SEXPTYPE::SPECIALSXP.0 as c_int
+                if t == SEXPTYPE::CLOSXP
+                    || t == SEXPTYPE::BUILTINSXP
+                    || t == SEXPTYPE::SPECIALSXP
                 {
                     return vl;
                 }
@@ -1099,7 +1099,7 @@ unsafe fn getPrimitive(symbol: SEXP) -> SEXP {
             return R_NilValue();
         }
         let t = TYPEOF(value);
-        if t == SEXPTYPE::BUILTINSXP.0 as c_int || t == SEXPTYPE::SPECIALSXP.0 as c_int {
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             return value;
         }
         R_NilValue()
@@ -1119,7 +1119,7 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         }
 
         // Validate callrho
-        if !callrho.is_null() && TYPEOF(callrho) != SEXPTYPE::ENVSXP.0 as c_int {
+        if !callrho.is_null() && TYPEOF(callrho) != SEXPTYPE::ENVSXP {
             if callrho == R_NilValue() {
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "use of NULL environment is defunct".to_string(),
@@ -1150,14 +1150,14 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
         if !effective_defrho.is_null() && effective_defrho != R_NilValue() {
             let s3_table_sym = S3MethodsTable_symbol();
             let table = crate::sexp::envir::R_findVarInFrame(effective_defrho, s3_table_sym);
-            if table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP.0 as c_int {
+            if table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
                 Rf_protect(table);
                 let val2 = crate::sexp::envir::R_findVarInFrame(table, method);
                 if val2 != R_UnboundValue() {
                     let t = TYPEOF(val2);
-                    if t == SEXPTYPE::CLOSXP.0 as c_int
-                        || t == SEXPTYPE::BUILTINSXP.0 as c_int
-                        || t == SEXPTYPE::SPECIALSXP.0 as c_int
+                    if t == SEXPTYPE::CLOSXP
+                        || t == SEXPTYPE::BUILTINSXP
+                        || t == SEXPTYPE::SPECIALSXP
                     {
                         Rf_unprotect(2);
                         return val2;
@@ -1297,7 +1297,7 @@ pub unsafe fn do_usemethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
 
         // generic should be a character string -- in full impl we would eval it
         // Assuming it's already evaluated (promise or string)
-        let generic_sexp = if TYPEOF(generic_arg) == SEXPTYPE::PROMSXP.0 as c_int {
+        let generic_sexp = if TYPEOF(generic_arg) == SEXPTYPE::PROMSXP {
             // Force the promise
             generic_arg // simplified: would need eval
         } else {
@@ -1496,7 +1496,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         Rf_protect(newcall);
 
         // Check that the call's first element is a symbol
-        if TYPEOF(CAR(newcall)) != SEXPTYPE::SYMSXP.0 as c_int {
+        if TYPEOF(CAR(newcall)) != SEXPTYPE::SYMSXP {
             Rf_unprotect(1);
             std::panic::panic_any(crate::sexp::context::RError {
                 message: "'NextMethod' called from an anonymous function".to_string(),
@@ -1522,19 +1522,19 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         );
 
         // Resolve promise environments (C: eval promise if PROMSXP)
-        if TYPEOF(callenv) == SEXPTYPE::PROMSXP.0 as c_int {
+        if TYPEOF(callenv) == SEXPTYPE::PROMSXP {
             callenv = Rf_eval(callenv, R_BaseEnv());
         } else if callenv == R_UnboundValue() {
             callenv = env;
         }
-        if TYPEOF(defenv) == SEXPTYPE::PROMSXP.0 as c_int {
+        if TYPEOF(defenv) == SEXPTYPE::PROMSXP {
             defenv = Rf_eval(defenv, R_BaseEnv());
         } else if defenv == R_UnboundValue() {
             defenv = R_GlobalEnv();
         }
 
         let s_callfun = (*found_cptr).callfun;
-        if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP.0 as c_int {
+        if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP {
             if s_callfun == R_UnboundValue() {
                 Rf_unprotect(1);
                 std::panic::panic_any(crate::sexp::context::RError {
@@ -1730,7 +1730,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             if isFunction(nextfun) == FALSE {
                 let t = Rf_install(sg);
                 nextfun = crate::sexp::envir::R_findVar(t, env);
-                if TYPEOF(nextfun) == SEXPTYPE::PROMSXP.0 as c_int {
+                if TYPEOF(nextfun) == SEXPTYPE::PROMSXP {
                     Rf_protect(nextfun);
                     nextfun = Rf_eval(nextfun, env);
                     Rf_unprotect(1);
@@ -1742,7 +1742,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                         message: "no method to invoke".to_string(),
                     });
                 }
-                if TYPEOF(nextfun) == SEXPTYPE::CLOSXP.0 as c_int {
+                if TYPEOF(nextfun) == SEXPTYPE::CLOSXP {
                     let internal_val = crate::sexp::accessors::INTERNAL(t);
                     if internal_val != R_NilValue() {
                         nextfun = internal_val;
@@ -1818,12 +1818,12 @@ unsafe fn objects_do_unclass(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
 
         if isObject(x) != FALSE {
             let t = TYPEOF(x);
-            if t == SEXPTYPE::ENVSXP.0 as c_int {
+            if t == SEXPTYPE::ENVSXP {
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "cannot unclass an environment".to_string(),
                 });
             }
-            if t == SEXPTYPE::EXTPTRSXP.0 as c_int {
+            if t == SEXPTYPE::EXTPTRSXP {
                 std::panic::panic_any(crate::sexp::context::RError {
                     message: "cannot unclass an external pointer".to_string(),
                 });
@@ -1908,7 +1908,7 @@ unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 
         let rval: SEXP;
         if isvec {
-            rval = Rf_allocVector(SEXPTYPE::INTSXP.0 as c_int, nwhat);
+            rval = Rf_allocVector(SEXPTYPE::INTSXP.0, nwhat);
             Rf_protect(rval);
         } else {
             rval = R_NilValue();
@@ -1972,7 +1972,7 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP
         };
 
         // If 'what' is an object (not a character vector), try nameOfClass
-        if OBJECT(what) != FALSE && TYPEOF(what) != SEXPTYPE::STRSXP.0 as c_int {
+        if OBJECT(what) != FALSE && TYPEOF(what) != SEXPTYPE::STRSXP {
             let name = nameOfClass(what, env);
             if name != R_NilValue() && !name.is_null() {
                 Rf_protect(name);
@@ -2265,7 +2265,7 @@ unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
                 continue;
             }
             let t = TYPEOF(val);
-            if t == SEXPTYPE::CLOSXP.0 as c_int {
+            if t == SEXPTYPE::CLOSXP {
                 let gen_attr = crate::sexp::envir::R_findVarInFrame(CLOENV(val), sym("Generic"));
                 if gen_attr != R_UnboundValue() {
                     rho = ENCLOS(rho);
@@ -2283,7 +2283,7 @@ unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
             fun = SYMVALUE(symbol);
         }
         if fun == R_UnboundValue() {
-            let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP.0 as c_int {
+            let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP {
                 let c = CHAR(STRING_ELT(name, 0));
                 if !c.is_null() {
                     std::ffi::CStr::from_ptr(c).to_str().unwrap_or("<unknown>")
@@ -2423,8 +2423,8 @@ pub unsafe fn do_set_prim_method(
         };
 
         let offset = if !op.is_null()
-            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP.0 as c_int
-                || TYPEOF(op) == SEXPTYPE::SPECIALSXP.0 as c_int)
+            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP
+                || TYPEOF(op) == SEXPTYPE::SPECIALSXP)
         {
             // PRIMOFFSET: for now we use the function index if available
             0 // simplified
@@ -2543,7 +2543,7 @@ pub unsafe fn R_has_methods(_op: SEXP) -> c_int {
         if ptr.is_none() {
             return FALSE;
         }
-        if _op.is_null() || TYPEOF(_op) == SEXPTYPE::CLOSXP.0 as c_int {
+        if _op.is_null() || TYPEOF(_op) == SEXPTYPE::CLOSXP {
             return TRUE;
         }
         if ALLOW_PRIMITIVE_METHODS.with(|v| v.get()) == FALSE {
@@ -2662,7 +2662,7 @@ pub unsafe fn R_possible_dispatch(
                         while !a.is_null() && a != R_NilValue() {
                             if !b.is_null()
                                 && b != R_NilValue()
-                                && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP.0 as c_int
+                                && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP
                             {
                                 SET_PRVALUE(CAR(b), CAR(a));
                             }
@@ -2703,7 +2703,7 @@ pub unsafe fn R_possible_dispatch(
             ptr::read(prim_gen_ptr.add(offset as usize))
         };
 
-        if fundef.is_null() || TYPEOF(fundef) != SEXPTYPE::CLOSXP.0 as c_int {
+        if fundef.is_null() || TYPEOF(fundef) != SEXPTYPE::CLOSXP {
             error("primitive function has been set for methods but no generic function supplied");
         }
 
@@ -2718,7 +2718,7 @@ pub unsafe fn R_possible_dispatch(
             while !a.is_null() && a != R_NilValue() {
                 if !b.is_null()
                     && b != R_NilValue()
-                    && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP.0 as c_int
+                    && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP
                 {
                     SET_PRVALUE(CAR(b), CAR(a));
                 }
@@ -3338,7 +3338,7 @@ mod tests {
         unsafe {
             assert_eq!(length(ptr::null_mut()), 0);
             assert_eq!(length(R_NilValue()), 0);
-            let v = Rf_allocVector(SEXPTYPE::INTSXP.0 as c_int, 5);
+            let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 5);
             assert_eq!(length(v), 5);
         }
     }
@@ -3383,7 +3383,7 @@ mod tests {
     fn test_inherits2_with_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -3534,7 +3534,7 @@ mod tests {
     fn test_R_check_class_and_super_with_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -3712,7 +3712,7 @@ mod tests {
     #[test]
     fn test_stringPositionTr() {
         unsafe {
-            let klass = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 3);
+            let klass = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
             Rf_protect(klass);
             SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
@@ -3745,7 +3745,7 @@ mod tests {
     #[test]
     fn test_stringSuffix() {
         unsafe {
-            let klass = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 3);
+            let klass = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
             Rf_protect(klass);
             SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
@@ -4062,7 +4062,7 @@ mod tests {
     fn test_objects_do_unclass_with_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -4100,14 +4100,14 @@ mod tests {
     fn test_inherits3_which_true() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let what = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 2);
+            let what = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
             Rf_protect(what);
             SET_STRING_ELT(what, 0, Rf_mkChar(b"numeric\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 1, Rf_mkChar(b"integer\0".as_ptr() as *const c_char));
             let which = Rf_ScalarLogical(TRUE);
             let result = inherits3(v, what, which);
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0 as c_int);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 2);
             Rf_unprotect(1);
         }
@@ -4117,13 +4117,13 @@ mod tests {
     fn test_inherits3_with_explicit_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 2);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
             Rf_protect(class_vec);
             SET_STRING_ELT(class_vec, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(class_vec, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
             setAttrib(v, R_ClassSymbol(), class_vec);
 
-            let what = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 3);
+            let what = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
             Rf_protect(what);
             SET_STRING_ELT(what, 0, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
@@ -4190,7 +4190,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -4213,7 +4213,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,

@@ -283,7 +283,7 @@ unsafe fn check_string_arg(arg: SEXP, name: &str) -> String {
             r_error(&format!("invalid '{}' argument", name));
         }
         let t = TYPEOF(arg);
-        if t != SEXPTYPE::STRSXP.0 {
+        if t != SEXPTYPE::STRSXP {
             r_error(&format!("invalid '{}' argument", name));
         }
         let len = LENGTH(arg);
@@ -301,19 +301,19 @@ unsafe fn as_integer(arg: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(arg);
-        if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP {
             let data = INTEGER(arg);
             if data.is_null() {
                 return NA_INTEGER;
             }
             *data
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let data = REAL(arg);
             if data.is_null() {
                 return NA_INTEGER;
             }
             *data as c_int
-        } else if t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::LGLSXP {
             let data = LOGICAL(arg);
             if data.is_null() {
                 return NA_INTEGER;
@@ -332,13 +332,13 @@ unsafe fn as_real(arg: SEXP) -> c_double {
             return NA_REAL;
         }
         let t = TYPEOF(arg);
-        if t == SEXPTYPE::REALSXP.0 {
+        if t == SEXPTYPE::REALSXP {
             let data = REAL(arg);
             if data.is_null() {
                 return NA_REAL;
             }
             *data
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             let v = as_integer(arg);
             if v == NA_INTEGER {
                 NA_REAL
@@ -358,7 +358,7 @@ unsafe fn as_logical(arg: SEXP) -> c_int {
             return NA_INTEGER;
         }
         let t = TYPEOF(arg);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             let data = LOGICAL(arg);
             if data.is_null() {
                 return NA_INTEGER;
@@ -397,7 +397,7 @@ unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
         }
         // If it's an integer scalar, we check the class attribute
         let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 && LENGTH(x) == 1 {
+        if t == SEXPTYPE::INTSXP && LENGTH(x) == 1 {
             // Fast path for this port: many call sites pass a plain connection index
             // (INTSXP scalar) without reliable class metadata attached.
             if class_name == "connection" {
@@ -419,7 +419,7 @@ unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
             if !class_attr.is_null() {
                 // Walk the class attribute pairlist
                 let mut p = class_attr;
-                while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP.0 {
+                while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP {
                     let tag = TAG(p);
                     if !tag.is_null() {
                         let pname = PRINTNAME(tag);
@@ -427,7 +427,7 @@ unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
                             let name = charsxp_to_string(pname);
                             if name == "class" {
                                 let val = CAR(p);
-                                if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP.0 {
+                                if !val.is_null() && TYPEOF(val) == SEXPTYPE::STRSXP {
                                     let len = LENGTH(val);
                                     for i in 0..len as R_xlen_t {
                                         let s = string_elt(val, i);
@@ -1346,7 +1346,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         args = CDR(args);
         let _useBytes = check_logical_arg(CAR(args), "useBytes");
 
-        if text.is_null() || TYPEOF(text) != SEXPTYPE::STRSXP.0 {
+        if text.is_null() || TYPEOF(text) != SEXPTYPE::STRSXP {
             r_error("invalid 'text' argument");
         }
         if !inherits_class(scon, "connection") {
@@ -1581,7 +1581,7 @@ pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEX
 
         // Copy raw data from SEXP
         let mut raw_data = Vec::new();
-        if !sraw.is_null() && TYPEOF(sraw) == SEXPTYPE::RAWSXP.0 {
+        if !sraw.is_null() && TYPEOF(sraw) == SEXPTYPE::RAWSXP {
             let len = LENGTH(sraw) as usize;
             let data_ptr = RAW(sraw);
             if !data_ptr.is_null() && len > 0 {
@@ -1655,7 +1655,7 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
 
         if open_mode.starts_with('r') {
             // Input text connection: copy text from SEXP
-            if !stext.is_null() && TYPEOF(stext) == SEXPTYPE::STRSXP.0 {
+            if !stext.is_null() && TYPEOF(stext) == SEXPTYPE::STRSXP {
                 let len = LENGTH(stext) as R_xlen_t;
                 let mut text = String::new();
                 for j in 0..len {
@@ -1929,7 +1929,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
         let _swap = check_logical_arg(CAR(args), "swap");
 
         // Check if reading from raw vector
-        let is_raw = !scon.is_null() && TYPEOF(scon) == SEXPTYPE::RAWSXP.0;
+        let is_raw = !scon.is_null() && TYPEOF(scon) == SEXPTYPE::RAWSXP;
 
         let what = check_string_arg(swhat, "what");
         let n = if n_val < 0 { 1024 } else { n_val as usize };
@@ -2253,20 +2253,20 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         }
 
         let bytes_to_write: &[u8] = match obj_type {
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 std::slice::from_raw_parts(INTEGER(object) as *const u8, obj_len * 4)
             }
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 std::slice::from_raw_parts(REAL(object) as *const u8, obj_len * 8)
             }
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 std::slice::from_raw_parts(LOGICAL(object) as *const u8, obj_len * 4)
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 std::slice::from_raw_parts(COMPLEX(object) as *const u8, obj_len * 16)
             }
-            t if t == SEXPTYPE::RAWSXP.0 => std::slice::from_raw_parts(RAW(object), obj_len),
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::RAWSXP => std::slice::from_raw_parts(RAW(object), obj_len),
+            t if t == SEXPTYPE::STRSXP => {
                 // For strings, concatenate null-terminated
                 let mut buf = Vec::new();
                 for j in 0..obj_len as R_xlen_t {

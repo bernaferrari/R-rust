@@ -148,7 +148,7 @@ unsafe fn isVector(x: SEXP) -> bool {
 unsafe fn isVectorList(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0
+        t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP
     }
 }
 
@@ -191,7 +191,7 @@ unsafe fn isList(x: SEXP) -> bool {
 /// Check if an SEXP is a language object.
 #[inline]
 unsafe fn isLanguage(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::LANGSXP }
 }
 
 /// Check if an SEXP is "vectorizable" (atomic vector types).
@@ -199,12 +199,12 @@ unsafe fn isLanguage(x: SEXP) -> bool {
 unsafe fn isVectorizable(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP.0
-            || t == SEXPTYPE::INTSXP.0
-            || t == SEXPTYPE::REALSXP.0
-            || t == SEXPTYPE::CPLXSXP.0
-            || t == SEXPTYPE::STRSXP.0
-            || t == SEXPTYPE::RAWSXP.0
+        t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
     }
 }
 
@@ -213,14 +213,14 @@ unsafe fn isVectorizable(x: SEXP) -> bool {
 unsafe fn isNumeric(x: SEXP) -> bool {
     unsafe {
         let t = TYPEOF(x);
-        (t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::REALSXP.0) && isVector(x)
+        (t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP) && isVector(x)
     }
 }
 
 /// Check if a SEXP is logical.
 #[inline]
 unsafe fn isLogical(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::LGLSXP.0 && isVector(x) }
+    unsafe { TYPEOF(x) == SEXPTYPE::LGLSXP && isVector(x) }
 }
 
 /// Check if an SEXP has the S4 object bit set.
@@ -244,13 +244,13 @@ unsafe fn isObject(x: SEXP) -> bool {
 /// Check if an SEXP is a new list (generic vector).
 #[inline]
 unsafe fn isNewList(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::VECSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::VECSXP }
 }
 
 /// Check if a SEXP is an expression.
 #[inline]
 unsafe fn isExpression(x: SEXP) -> bool {
-    unsafe { TYPEOF(x) == SEXPTYPE::EXPRSXP.0 }
+    unsafe { TYPEOF(x) == SEXPTYPE::EXPRSXP }
 }
 
 /// Check if a SEXP is a matrix (has non-null dim attribute of length 2).
@@ -991,11 +991,11 @@ unsafe fn coerceToLogical(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             *pa.add(i as usize) = match vtype {
-                t if t == SEXPTYPE::INTSXP.0 => LogicalFromInteger(INTEGER_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::REALSXP.0 => LogicalFromReal(REAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::CPLXSXP.0 => LogicalFromComplex(COMPLEX_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => LogicalFromString(STRING_ELT(v, i), &mut warn),
-                t if t == SEXPTYPE::RAWSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => LogicalFromInteger(INTEGER_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::REALSXP => LogicalFromReal(REAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::CPLXSXP => LogicalFromComplex(COMPLEX_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::STRSXP => LogicalFromString(STRING_ELT(v, i), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => {
                     LogicalFromInteger(RAW_ELT(v, ii) as c_int, &mut warn)
                 }
                 _ => NA_LOGICAL,
@@ -1023,11 +1023,11 @@ unsafe fn coerceToInteger(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             *pa.add(i as usize) = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => IntegerFromLogical(LOGICAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::REALSXP.0 => IntegerFromReal(REAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::CPLXSXP.0 => IntegerFromComplex(COMPLEX_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => IntegerFromString(STRING_ELT(v, i), &mut warn),
-                t if t == SEXPTYPE::RAWSXP.0 => RAW_ELT(v, ii) as c_int,
+                t if t == SEXPTYPE::LGLSXP => IntegerFromLogical(LOGICAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::REALSXP => IntegerFromReal(REAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::CPLXSXP => IntegerFromComplex(COMPLEX_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::STRSXP => IntegerFromString(STRING_ELT(v, i), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => RAW_ELT(v, ii) as c_int,
                 _ => NA_INTEGER,
             };
         }
@@ -1053,11 +1053,11 @@ unsafe fn coerceToReal(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             *pa.add(i as usize) = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => RealFromLogical(LOGICAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::INTSXP.0 => RealFromInteger(INTEGER_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::CPLXSXP.0 => RealFromComplex(COMPLEX_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => RealFromString(STRING_ELT(v, i), &mut warn),
-                t if t == SEXPTYPE::RAWSXP.0 => RealFromInteger(RAW_ELT(v, ii) as c_int, &mut warn),
+                t if t == SEXPTYPE::LGLSXP => RealFromLogical(LOGICAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::INTSXP => RealFromInteger(INTEGER_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::CPLXSXP => RealFromComplex(COMPLEX_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::STRSXP => RealFromString(STRING_ELT(v, i), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => RealFromInteger(RAW_ELT(v, ii) as c_int, &mut warn),
                 _ => NA_REAL,
             };
         }
@@ -1083,11 +1083,11 @@ unsafe fn coerceToComplex(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             *pa.add(i as usize) = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => ComplexFromLogical(LOGICAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::INTSXP.0 => ComplexFromInteger(INTEGER_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::REALSXP.0 => ComplexFromReal(REAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => ComplexFromString(STRING_ELT(v, i), &mut warn),
-                t if t == SEXPTYPE::RAWSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => ComplexFromLogical(LOGICAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::INTSXP => ComplexFromInteger(INTEGER_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::REALSXP => ComplexFromReal(REAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::STRSXP => ComplexFromString(STRING_ELT(v, i), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => {
                     ComplexFromInteger(RAW_ELT(v, ii) as c_int, &mut warn)
                 }
                 _ => Rcomplex {
@@ -1118,7 +1118,7 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             let tmp: c_int = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => {
                     let val = IntegerFromLogical(LOGICAL_ELT(v, ii), &mut warn);
                     if val == NA_INTEGER {
                         warn |= WARN_RAW;
@@ -1127,7 +1127,7 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::INTSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => {
                     let val = INTEGER_ELT(v, ii);
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
@@ -1136,7 +1136,7 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::REALSXP.0 => {
+                t if t == SEXPTYPE::REALSXP => {
                     let val = IntegerFromReal(REAL_ELT(v, ii), &mut warn);
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
@@ -1145,7 +1145,7 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::CPLXSXP.0 => {
+                t if t == SEXPTYPE::CPLXSXP => {
                     let val = IntegerFromComplex(COMPLEX_ELT(v, ii), &mut warn);
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
@@ -1154,7 +1154,7 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
                         val
                     }
                 }
-                t if t == SEXPTYPE::STRSXP.0 => {
+                t if t == SEXPTYPE::STRSXP => {
                     let val = IntegerFromString(STRING_ELT(v, i), &mut warn);
                     if val == NA_INTEGER || val < 0 || val > 255 {
                         warn |= WARN_RAW;
@@ -1188,11 +1188,11 @@ unsafe fn coerceToString(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             let s = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => StringFromLogical(LOGICAL_ELT(v, ii)),
-                t if t == SEXPTYPE::INTSXP.0 => StringFromInteger(INTEGER_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::REALSXP.0 => StringFromReal_impl(REAL_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::CPLXSXP.0 => StringFromComplex(COMPLEX_ELT(v, ii), &mut warn),
-                t if t == SEXPTYPE::RAWSXP.0 => StringFromRaw(RAW_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, ii)),
+                t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::REALSXP => StringFromReal_impl(REAL_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, ii), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, ii), &mut warn),
                 _ => R_NaString(),
             };
             SET_STRING_ELT(ans, i, s);
@@ -1223,12 +1223,12 @@ unsafe fn coerceToExpression(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             let elt = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => Rf_ScalarLogical(LOGICAL_ELT(v, ii)),
-                t if t == SEXPTYPE::INTSXP.0 => Rf_ScalarInteger(INTEGER_ELT(v, ii)),
-                t if t == SEXPTYPE::REALSXP.0 => Rf_ScalarReal(REAL_ELT(v, ii)),
-                t if t == SEXPTYPE::CPLXSXP.0 => Rf_ScalarComplex(COMPLEX_ELT(v, ii)),
-                t if t == SEXPTYPE::STRSXP.0 => Rf_ScalarString(STRING_ELT(v, i)),
-                t if t == SEXPTYPE::RAWSXP.0 => Rf_ScalarRaw(RAW_ELT(v, ii)),
+                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(v, ii)),
+                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(v, ii)),
+                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(v, ii)),
+                t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(v, ii)),
+                t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(v, i)),
+                t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(v, ii)),
                 _ => R_NilValue(),
             };
             SET_VECTOR_ELT(ans, i, elt);
@@ -1249,13 +1249,13 @@ unsafe fn coerceToVectorList(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             let elt = match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => Rf_ScalarLogical(LOGICAL_ELT(v, ii)),
-                t if t == SEXPTYPE::INTSXP.0 => Rf_ScalarInteger(INTEGER_ELT(v, ii)),
-                t if t == SEXPTYPE::REALSXP.0 => Rf_ScalarReal(REAL_ELT(v, ii)),
-                t if t == SEXPTYPE::CPLXSXP.0 => Rf_ScalarComplex(COMPLEX_ELT(v, ii)),
-                t if t == SEXPTYPE::STRSXP.0 => Rf_ScalarString(STRING_ELT(v, i)),
-                t if t == SEXPTYPE::RAWSXP.0 => Rf_ScalarRaw(RAW_ELT(v, ii)),
-                t if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 => CAR(v.add(i as usize)),
+                t if t == SEXPTYPE::LGLSXP => Rf_ScalarLogical(LOGICAL_ELT(v, ii)),
+                t if t == SEXPTYPE::INTSXP => Rf_ScalarInteger(INTEGER_ELT(v, ii)),
+                t if t == SEXPTYPE::REALSXP => Rf_ScalarReal(REAL_ELT(v, ii)),
+                t if t == SEXPTYPE::CPLXSXP => Rf_ScalarComplex(COMPLEX_ELT(v, ii)),
+                t if t == SEXPTYPE::STRSXP => Rf_ScalarString(STRING_ELT(v, i)),
+                t if t == SEXPTYPE::RAWSXP => Rf_ScalarRaw(RAW_ELT(v, ii)),
+                t if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP => CAR(v.add(i as usize)),
                 _ => R_NilValue(),
             };
             SET_VECTOR_ELT(ans, i, elt);
@@ -1283,35 +1283,35 @@ unsafe fn coerceToPairList(v: SEXP) -> SEXP {
         for i in 0..n {
             let ii = i as c_int;
             match vtype {
-                t if t == SEXPTYPE::LGLSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => {
                     let elt = Rf_allocVector3(SEXPTYPE::LGLSXP.0, 1);
                     *LOGICAL(elt) = LOGICAL_ELT(v, ii);
                     SETCAR(ansp, elt);
                 }
-                t if t == SEXPTYPE::INTSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => {
                     let elt = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
                     *INTEGER(elt) = INTEGER_ELT(v, ii);
                     SETCAR(ansp, elt);
                 }
-                t if t == SEXPTYPE::REALSXP.0 => {
+                t if t == SEXPTYPE::REALSXP => {
                     let elt = Rf_allocVector3(SEXPTYPE::REALSXP.0, 1);
                     *REAL(elt) = REAL_ELT(v, ii);
                     SETCAR(ansp, elt);
                 }
-                t if t == SEXPTYPE::CPLXSXP.0 => {
+                t if t == SEXPTYPE::CPLXSXP => {
                     let elt = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 1);
                     *COMPLEX(elt) = COMPLEX_ELT(v, ii);
                     SETCAR(ansp, elt);
                 }
-                t if t == SEXPTYPE::STRSXP.0 => {
+                t if t == SEXPTYPE::STRSXP => {
                     SETCAR(ansp, Rf_ScalarString(STRING_ELT(v, i as R_xlen_t)));
                 }
-                t if t == SEXPTYPE::RAWSXP.0 => {
+                t if t == SEXPTYPE::RAWSXP => {
                     let elt = Rf_allocVector3(SEXPTYPE::RAWSXP.0, 1);
                     *RAW(elt) = RAW_ELT(v, ii);
                     SETCAR(ansp, elt);
                 }
-                t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+                t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                     SETCAR(ansp, VECTOR_ELT(v, i as R_xlen_t));
                 }
                 _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
@@ -1382,19 +1382,19 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             let mut vp = v;
             for i in 0..n {
                 match type_.0 {
-                    t if t == SEXPTYPE::LGLSXP.0 => {
+                    t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(rval).add(i as usize) = asLogical(CAR(vp));
                     }
-                    t if t == SEXPTYPE::INTSXP.0 => {
+                    t if t == SEXPTYPE::INTSXP => {
                         *INTEGER(rval).add(i as usize) = asInteger(CAR(vp));
                     }
-                    t if t == SEXPTYPE::REALSXP.0 => {
+                    t if t == SEXPTYPE::REALSXP => {
                         *REAL(rval).add(i as usize) = asReal(CAR(vp));
                     }
-                    t if t == SEXPTYPE::CPLXSXP.0 => {
+                    t if t == SEXPTYPE::CPLXSXP => {
                         *COMPLEX(rval).add(i as usize) = asComplex(CAR(vp));
                     }
-                    t if t == SEXPTYPE::RAWSXP.0 => {
+                    t if t == SEXPTYPE::RAWSXP => {
                         *RAW(rval).add(i as usize) = asInteger(CAR(vp)) as Rbyte;
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for coercion
@@ -1415,7 +1415,7 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         let mut warn: c_int = 0;
 
         // expression -> list: just change the type tag
-        if type_ == SEXPTYPE::VECSXP && TYPEOF(v) == SEXPTYPE::EXPRSXP.0 {
+        if type_ == SEXPTYPE::VECSXP && TYPEOF(v) == SEXPTYPE::EXPRSXP {
             let rval = Rf_allocVector3(SEXPTYPE::VECSXP.0, xlength(v));
             // Copy the data pointers
             let src = DATAPTR(v);
@@ -1427,7 +1427,7 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         }
 
         // list -> expression: just change the type tag
-        if type_ == SEXPTYPE::EXPRSXP && TYPEOF(v) == SEXPTYPE::VECSXP.0 {
+        if type_ == SEXPTYPE::EXPRSXP && TYPEOF(v) == SEXPTYPE::VECSXP {
             let rval = Rf_allocVector3(SEXPTYPE::EXPRSXP.0, xlength(v));
             let src = DATAPTR(v);
             let dst = DATAPTR(rval);
@@ -1486,27 +1486,27 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             let n = xlength(v);
             let rval = Rf_protect(Rf_allocVector3(type_.0, n));
             match type_.0 {
-                t if t == SEXPTYPE::LGLSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => {
                     for i in 0..n {
                         *LOGICAL(rval).add(i as usize) = asLogical(VECTOR_ELT(v, i));
                     }
                 }
-                t if t == SEXPTYPE::INTSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => {
                     for i in 0..n {
                         *INTEGER(rval).add(i as usize) = asInteger(VECTOR_ELT(v, i));
                     }
                 }
-                t if t == SEXPTYPE::REALSXP.0 => {
+                t if t == SEXPTYPE::REALSXP => {
                     for i in 0..n {
                         *REAL(rval).add(i as usize) = asReal(VECTOR_ELT(v, i));
                     }
                 }
-                t if t == SEXPTYPE::CPLXSXP.0 => {
+                t if t == SEXPTYPE::CPLXSXP => {
                     for i in 0..n {
                         *COMPLEX(rval).add(i as usize) = asComplex(VECTOR_ELT(v, i));
                     }
                 }
-                t if t == SEXPTYPE::RAWSXP.0 => {
+                t if t == SEXPTYPE::RAWSXP => {
                     for i in 0..n {
                         let tmp = asInteger(VECTOR_ELT(v, i));
                         if tmp < 0 || tmp > 255 {
@@ -1545,12 +1545,12 @@ unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
         }
 
         let ans = Rf_protect(match TYPEOF(v) {
-            t if t == SEXPTYPE::LGLSXP.0 => StringFromLogical(LOGICAL_ELT(v, 0)),
-            t if t == SEXPTYPE::INTSXP.0 => StringFromInteger(INTEGER_ELT(v, 0), &mut warn),
-            t if t == SEXPTYPE::REALSXP.0 => StringFromReal_impl(REAL_ELT(v, 0), &mut warn),
-            t if t == SEXPTYPE::CPLXSXP.0 => StringFromComplex(COMPLEX_ELT(v, 0), &mut warn),
-            t if t == SEXPTYPE::STRSXP.0 => STRING_ELT(v, 0),
-            t if t == SEXPTYPE::RAWSXP.0 => StringFromRaw(RAW_ELT(v, 0), &mut warn),
+            t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, 0)),
+            t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, 0), &mut warn),
+            t if t == SEXPTYPE::REALSXP => StringFromReal_impl(REAL_ELT(v, 0), &mut warn),
+            t if t == SEXPTYPE::CPLXSXP => StringFromComplex(COMPLEX_ELT(v, 0), &mut warn),
+            t if t == SEXPTYPE::STRSXP => STRING_ELT(v, 0),
+            t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, 0), &mut warn),
             _ => R_NilValue(),
         });
 
@@ -1637,7 +1637,7 @@ unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
             || isLanguage(u)
             || (isSymbol(u) && target_type == SEXPTYPE::EXPRSXP)
         {
-            let v = if type_ != SEXPTYPE::ANYSXP.0 && TYPEOF(u) != type_ {
+            let v = if type_ != SEXPTYPE::ANYSXP && TYPEOF(u) != type_ {
                 coerceVector(u, type_)
             } else {
                 u
@@ -1645,10 +1645,10 @@ unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
 
             // Drop attributes for certain types (as.pairlist behavior)
             if target_type == SEXPTYPE::LISTSXP
-                && TYPEOF(u) != SEXPTYPE::LANGSXP.0
-                && TYPEOF(u) != SEXPTYPE::LISTSXP.0
-                && TYPEOF(u) != SEXPTYPE::EXPRSXP.0
-                && TYPEOF(u) != SEXPTYPE::VECSXP.0
+                && TYPEOF(u) != SEXPTYPE::LANGSXP
+                && TYPEOF(u) != SEXPTYPE::LISTSXP
+                && TYPEOF(u) != SEXPTYPE::EXPRSXP
+                && TYPEOF(u) != SEXPTYPE::VECSXP
             {
                 // Clear attributes
                 let attr = ATTRIB(v);
@@ -1699,16 +1699,16 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
         let _v = Rf_protect(v);
 
         let ans = match TYPEOF(v) {
-            t if t == SEXPTYPE::SYMSXP.0 => coerceSymbol(v, target),
-            t if t == SEXPTYPE::NILSXP.0 || t == SEXPTYPE::LISTSXP.0 => {
-                if type_ == SEXPTYPE::LISTSXP.0 {
+            t if t == SEXPTYPE::SYMSXP => coerceSymbol(v, target),
+            t if t == SEXPTYPE::NILSXP || t == SEXPTYPE::LISTSXP => {
+                if type_ == SEXPTYPE::LISTSXP {
                     v // already pairlist
                 } else {
                     coercePairList(v, target)
                 }
             }
-            t if t == SEXPTYPE::LANGSXP.0 => {
-                if type_ != SEXPTYPE::STRSXP.0 {
+            t if t == SEXPTYPE::LANGSXP => {
+                if type_ != SEXPTYPE::STRSXP {
                     coercePairList(v, target)
                 } else {
                     // LANGSXP -> STRSXP: special handling for operator names
@@ -1729,29 +1729,29 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
                     ans
                 }
             }
-            t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => coerceVectorList(v, target),
-            t if t == SEXPTYPE::ENVSXP.0 => {
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => coerceVectorList(v, target),
+            t if t == SEXPTYPE::ENVSXP => {
                 error("environments cannot be coerced to other types");
             }
             // Atomic vector types
-            t if t == SEXPTYPE::LGLSXP.0
-                || t == SEXPTYPE::INTSXP.0
-                || t == SEXPTYPE::REALSXP.0
-                || t == SEXPTYPE::CPLXSXP.0
-                || t == SEXPTYPE::STRSXP.0
-                || t == SEXPTYPE::RAWSXP.0 =>
+            t if t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP
+                || t == SEXPTYPE::REALSXP
+                || t == SEXPTYPE::CPLXSXP
+                || t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP =>
             {
                 match type_ {
-                    t if t == SEXPTYPE::SYMSXP.0 => coerceToSymbol(v),
-                    t if t == SEXPTYPE::LGLSXP.0 => coerceToLogical(v),
-                    t if t == SEXPTYPE::INTSXP.0 => coerceToInteger(v),
-                    t if t == SEXPTYPE::REALSXP.0 => coerceToReal(v),
-                    t if t == SEXPTYPE::CPLXSXP.0 => coerceToComplex(v),
-                    t if t == SEXPTYPE::RAWSXP.0 => coerceToRaw(v),
-                    t if t == SEXPTYPE::STRSXP.0 => coerceToString(v),
-                    t if t == SEXPTYPE::EXPRSXP.0 => coerceToExpression(v),
-                    t if t == SEXPTYPE::VECSXP.0 => coerceToVectorList(v),
-                    t if t == SEXPTYPE::LISTSXP.0 => coerceToPairList(v),
+                    t if t == SEXPTYPE::SYMSXP => coerceToSymbol(v),
+                    t if t == SEXPTYPE::LGLSXP => coerceToLogical(v),
+                    t if t == SEXPTYPE::INTSXP => coerceToInteger(v),
+                    t if t == SEXPTYPE::REALSXP => coerceToReal(v),
+                    t if t == SEXPTYPE::CPLXSXP => coerceToComplex(v),
+                    t if t == SEXPTYPE::RAWSXP => coerceToRaw(v),
+                    t if t == SEXPTYPE::STRSXP => coerceToString(v),
+                    t if t == SEXPTYPE::EXPRSXP => coerceToExpression(v),
+                    t if t == SEXPTYPE::VECSXP => coerceToVectorList(v),
+                    t if t == SEXPTYPE::LISTSXP => coerceToPairList(v),
                     _ => {
                         error("cannot coerce type to vector of type");
                     }
@@ -1794,17 +1794,17 @@ pub unsafe fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
                 // In R this calls errorcall; we just proceed
             }
             match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP.0 => LOGICAL_ELT(x, 0),
-                t if t == SEXPTYPE::INTSXP.0 => LogicalFromInteger(INTEGER_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::REALSXP.0 => LogicalFromReal(REAL_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::CPLXSXP.0 => LogicalFromComplex(COMPLEX_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => LogicalFromString(STRING_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::RAWSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => LOGICAL_ELT(x, 0),
+                t if t == SEXPTYPE::INTSXP => LogicalFromInteger(INTEGER_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::REALSXP => LogicalFromReal(REAL_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::CPLXSXP => LogicalFromComplex(COMPLEX_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::STRSXP => LogicalFromString(STRING_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => {
                     LogicalFromInteger(RAW_ELT(x, 0) as c_int, &mut warn)
                 }
                 _ => NA_LOGICAL,
             }
-        } else if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+        } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
             LogicalFromString(x, &mut warn)
         } else {
             NA_LOGICAL
@@ -1825,19 +1825,19 @@ pub unsafe fn asInteger(x: SEXP) -> c_int {
 
         if isVectorAtomic(x) && xlength(x) >= 1 {
             let res = match TYPEOF(x) {
-                t if t == SEXPTYPE::RAWSXP.0 => RAW_ELT(x, 0) as c_int,
-                t if t == SEXPTYPE::LGLSXP.0 => IntegerFromLogical(LOGICAL_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::INTSXP.0 => INTEGER_ELT(x, 0),
-                t if t == SEXPTYPE::REALSXP.0 => IntegerFromReal(REAL_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::CPLXSXP.0 => IntegerFromComplex(COMPLEX_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => IntegerFromString(STRING_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::RAWSXP => RAW_ELT(x, 0) as c_int,
+                t if t == SEXPTYPE::LGLSXP => IntegerFromLogical(LOGICAL_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::INTSXP => INTEGER_ELT(x, 0),
+                t if t == SEXPTYPE::REALSXP => IntegerFromReal(REAL_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::CPLXSXP => IntegerFromComplex(COMPLEX_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::STRSXP => IntegerFromString(STRING_ELT(x, 0), &mut warn),
                 _ => NA_INTEGER,
             };
             if warn != 0 {
                 CoercionWarning(warn);
             }
             return res;
-        } else if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+        } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
             let res = IntegerFromString(x, &mut warn);
             if warn != 0 {
                 CoercionWarning(warn);
@@ -1862,18 +1862,18 @@ pub unsafe fn asReal(x: SEXP) -> c_double {
 
         if isVectorAtomic(x) && xlength(x) >= 1 {
             let res = match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP.0 => RealFromLogical(LOGICAL_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::INTSXP.0 => RealFromInteger(INTEGER_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::REALSXP.0 => REAL_ELT(x, 0),
-                t if t == SEXPTYPE::CPLXSXP.0 => RealFromComplex(COMPLEX_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::STRSXP.0 => RealFromString(STRING_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::LGLSXP => RealFromLogical(LOGICAL_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::INTSXP => RealFromInteger(INTEGER_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::REALSXP => REAL_ELT(x, 0),
+                t if t == SEXPTYPE::CPLXSXP => RealFromComplex(COMPLEX_ELT(x, 0), &mut warn),
+                t if t == SEXPTYPE::STRSXP => RealFromString(STRING_ELT(x, 0), &mut warn),
                 _ => NA_REAL,
             };
             if warn != 0 {
                 CoercionWarning(warn);
             }
             return res;
-        } else if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+        } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
             let res = RealFromString(x, &mut warn);
             if warn != 0 {
                 CoercionWarning(warn);
@@ -1902,19 +1902,19 @@ pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
 
         if isVectorAtomic(x) && xlength(x) >= 1 {
             match TYPEOF(x) {
-                t if t == SEXPTYPE::LGLSXP.0 => {
+                t if t == SEXPTYPE::LGLSXP => {
                     z = ComplexFromLogical(LOGICAL_ELT(x, 0), &mut warn);
                 }
-                t if t == SEXPTYPE::INTSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => {
                     z = ComplexFromInteger(INTEGER_ELT(x, 0), &mut warn);
                 }
-                t if t == SEXPTYPE::REALSXP.0 => {
+                t if t == SEXPTYPE::REALSXP => {
                     z = ComplexFromReal(REAL_ELT(x, 0), &mut warn);
                 }
-                t if t == SEXPTYPE::CPLXSXP.0 => {
+                t if t == SEXPTYPE::CPLXSXP => {
                     z = COMPLEX_ELT(x, 0);
                 }
-                t if t == SEXPTYPE::STRSXP.0 => {
+                t if t == SEXPTYPE::STRSXP => {
                     z = ComplexFromString(STRING_ELT(x, 0), &mut warn);
                 }
                 _ => {} // intentionally unhandled: unsupported SEXPTYPE for complex coercion
@@ -1923,7 +1923,7 @@ pub unsafe fn asComplex(x: SEXP) -> Rcomplex {
                 CoercionWarning(warn);
             }
             return z;
-        } else if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+        } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
             z = ComplexFromString(x, &mut warn);
             if warn != 0 {
                 CoercionWarning(warn);
@@ -1996,7 +1996,7 @@ pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
     unsafe {
         let n = xlength(x);
         let labels = getAttrib(x, R_LevelsSymbol());
-        if TYPEOF(labels) != SEXPTYPE::STRSXP.0 {
+        if TYPEOF(labels) != SEXPTYPE::STRSXP {
             error("malformed factor");
         }
         let nl = LENGTH(labels);
@@ -2286,24 +2286,24 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
         1 => {
             let x_raw = x.as_raw();
             unsafe {
-                if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP.0 {
+                if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data =
                         crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::SYMSXP.0);
-                    (TYPEOF(dot_x_data) == SEXPTYPE::SYMSXP.0) as c_int
+                    (TYPEOF(dot_x_data) == SEXPTYPE::SYMSXP) as c_int
                 } else {
-                    (TYPEOF(x_raw) == SEXPTYPE::SYMSXP.0) as c_int
+                    (TYPEOF(x_raw) == SEXPTYPE::SYMSXP) as c_int
                 }
             }
         }
         4 => {
             let x_raw = x.as_raw();
             unsafe {
-                if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP.0 {
+                if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data =
                         crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::ENVSXP.0);
-                    (TYPEOF(dot_x_data) == SEXPTYPE::ENVSXP.0) as c_int
+                    (TYPEOF(dot_x_data) == SEXPTYPE::ENVSXP) as c_int
                 } else {
-                    (TYPEOF(x_raw) == SEXPTYPE::ENVSXP.0) as c_int
+                    (TYPEOF(x_raw) == SEXPTYPE::ENVSXP) as c_int
                 }
             }
         }
@@ -2515,7 +2515,7 @@ pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 pub(crate) unsafe fn coerce_typeof(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::OBJSXP.0 && IS_S4_OBJECT(x) == 0 {
+        if TYPEOF(x) == SEXPTYPE::OBJSXP && IS_S4_OBJECT(x) == 0 {
             return Rf_mkString(c"object".as_ptr());
         }
         let type_name = match SEXPTYPE(TYPEOF(x)) {
@@ -2558,11 +2558,11 @@ unsafe fn elem_is_na(s: SEXP) -> c_int {
             return 0;
         }
         match TYPEOF(s) {
-            t if t == SEXPTYPE::LGLSXP.0 => (LOGICAL_ELT(s, 0) == NA_LOGICAL) as c_int,
-            t if t == SEXPTYPE::INTSXP.0 => (INTEGER_ELT(s, 0) == NA_INTEGER) as c_int,
-            t if t == SEXPTYPE::REALSXP.0 => ISNAN(REAL_ELT(s, 0)) as c_int,
-            t if t == SEXPTYPE::STRSXP.0 => (STRING_ELT(s, 0) == R_NaString()) as c_int,
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => (LOGICAL_ELT(s, 0) == NA_LOGICAL) as c_int,
+            t if t == SEXPTYPE::INTSXP => (INTEGER_ELT(s, 0) == NA_INTEGER) as c_int,
+            t if t == SEXPTYPE::REALSXP => ISNAN(REAL_ELT(s, 0)) as c_int,
+            t if t == SEXPTYPE::STRSXP => (STRING_ELT(s, 0) == R_NaString()) as c_int,
+            t if t == SEXPTYPE::CPLXSXP => {
                 let v = COMPLEX_ELT(s, 0);
                 (ISNAN(v.r) || ISNAN(v.i)) as c_int
             }
@@ -2633,38 +2633,38 @@ pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = (LOGICAL_ELT(x, i as c_int) == NA_LOGICAL) as c_int;
                 }
             }
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = (INTEGER_ELT(x, i as c_int) == NA_INTEGER) as c_int;
                 }
             }
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = ISNAN(REAL_ELT(x, i as c_int)) as c_int;
                 }
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 for i in 0..n {
                     let v = COMPLEX_ELT(x, i as c_int);
                     *pa.add(i as usize) = (ISNAN(v.r) || ISNAN(v.i)) as c_int;
                 }
             }
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::STRSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = (STRING_ELT(x, i) == R_NaString()) as c_int;
                 }
             }
-            t if t == SEXPTYPE::RAWSXP.0 => {
+            t if t == SEXPTYPE::RAWSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = 0;
                 }
             }
-            t if t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LISTSXP => {
                 let mut elt = x;
                 for i in 0..n {
                     let s = CAR(elt);
@@ -2672,13 +2672,13 @@ pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     elt = CDR(elt);
                 }
             }
-            t if t == SEXPTYPE::VECSXP.0 => {
+            t if t == SEXPTYPE::VECSXP => {
                 for i in 0..n {
                     let s = VECTOR_ELT(x, i);
                     *pa.add(i as usize) = elem_is_na(s);
                 }
             }
-            t if t == SEXPTYPE::NILSXP.0 => {}
+            t if t == SEXPTYPE::NILSXP => {}
             _ => {
                 for i in 0..n {
                     *pa.add(i as usize) = 0;
@@ -2722,12 +2722,12 @@ pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = R_IsNaN(REAL_ELT(x, i as c_int)) as c_int;
                 }
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 for i in 0..n {
                     let v = COMPLEX_ELT(x, i as c_int);
                     *pa.add(i as usize) = (R_IsNaN(v.r) || R_IsNaN(v.i)) as c_int;
@@ -2773,7 +2773,7 @@ pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let arglist = CAR(args);
-        if TYPEOF(arglist) != SEXPTYPE::VECSXP.0 {
+        if TYPEOF(arglist) != SEXPTYPE::VECSXP {
             error("list argument expected");
         }
         let envir = CADR(args);
@@ -2805,16 +2805,16 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         }
         let body = Rf_protect(VECTOR_ELT(arglist, (n - 1) as R_xlen_t));
         let bt = TYPEOF(body);
-        if bt == SEXPTYPE::LISTSXP.0
-            || bt == SEXPTYPE::LANGSXP.0
-            || bt == SEXPTYPE::SYMSXP.0
-            || bt == SEXPTYPE::EXPRSXP.0
-            || bt == SEXPTYPE::VECSXP.0
-            || bt == SEXPTYPE::RAWSXP.0
-            || bt == SEXPTYPE::INTSXP.0
-            || bt == SEXPTYPE::REALSXP.0
-            || bt == SEXPTYPE::STRSXP.0
-            || bt == SEXPTYPE::LGLSXP.0
+        if bt == SEXPTYPE::LISTSXP
+            || bt == SEXPTYPE::LANGSXP
+            || bt == SEXPTYPE::SYMSXP
+            || bt == SEXPTYPE::EXPRSXP
+            || bt == SEXPTYPE::VECSXP
+            || bt == SEXPTYPE::RAWSXP
+            || bt == SEXPTYPE::INTSXP
+            || bt == SEXPTYPE::REALSXP
+            || bt == SEXPTYPE::STRSXP
+            || bt == SEXPTYPE::LGLSXP
         {
             let result = crate::mainutils::dstruct::mkCLOSXP(pargs, body, envir);
             Rf_unprotect(3);
@@ -2831,7 +2831,7 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let s = CAR(args);
-        if TYPEOF(s) != SEXPTYPE::STRSXP.0 {
+        if TYPEOF(s) != SEXPTYPE::STRSXP {
             error("argument must be character");
         }
         if LENGTH(s) != 1 {
@@ -2865,8 +2865,8 @@ pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let x = CAR(args);
         match TYPEOF(x) {
-            t if t == SEXPTYPE::LANGSXP.0 => x,
-            t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+            t if t == SEXPTYPE::LANGSXP => x,
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                 let n = LENGTH(x);
                 if n == 0 {
                     error("invalid length 0 argument");
@@ -2892,13 +2892,13 @@ pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 Rf_unprotect(2);
                 ans
             }
-            t if t == SEXPTYPE::LISTSXP.0 => {
+            t if t == SEXPTYPE::LISTSXP => {
                 let ans = crate::mainutils::duplicate::Rf_duplicate(x);
                 SET_TYPEOF(ans, SEXPTYPE::LANGSXP.0);
                 SETTAG(ans, R_NilValue());
                 ans
             }
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::STRSXP => {
                 error("as.call(<character>) not feasible; consider str2lang()");
             }
             _ => {
@@ -2915,22 +2915,22 @@ pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
-            t if t == SEXPTYPE::STRSXP.0 || t == SEXPTYPE::RAWSXP.0 || t == SEXPTYPE::NILSXP.0 => {
+            t if t == SEXPTYPE::STRSXP || t == SEXPTYPE::RAWSXP || t == SEXPTYPE::NILSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = 0;
                 }
             }
-            t if t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = (INTEGER_ELT(x, i as c_int) != NA_INTEGER) as c_int;
                 }
             }
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 for i in 0..n {
                     *pa.add(i as usize) = R_FINITE(REAL_ELT(x, i as c_int)) as c_int;
                 }
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 for i in 0..n {
                     let v = COMPLEX_ELT(x, i as c_int);
                     *pa.add(i as usize) = (R_FINITE(v.r) && R_FINITE(v.i)) as c_int;
@@ -2976,23 +2976,23 @@ pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
-            t if t == SEXPTYPE::STRSXP.0
-                || t == SEXPTYPE::RAWSXP.0
-                || t == SEXPTYPE::NILSXP.0
-                || t == SEXPTYPE::LGLSXP.0
-                || t == SEXPTYPE::INTSXP.0 =>
+            t if t == SEXPTYPE::STRSXP
+                || t == SEXPTYPE::RAWSXP
+                || t == SEXPTYPE::NILSXP
+                || t == SEXPTYPE::LGLSXP
+                || t == SEXPTYPE::INTSXP =>
             {
                 for i in 0..n {
                     *pa.add(i as usize) = 0;
                 }
             }
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 for i in 0..n {
                     let xr = REAL_ELT(x, i as c_int);
                     *pa.add(i as usize) = if ISNAN(xr) || R_FINITE(xr) { 0 } else { 1 };
                 }
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 for i in 0..n {
                     let v = COMPLEX_ELT(x, i as c_int);
                     *pa.add(i as usize) =
@@ -3091,7 +3091,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
     unsafe {
         let x = CAR(args);
         let xT = TYPEOF(x);
-        let is_list = xT == SEXPTYPE::VECSXP.0 || xT == SEXPTYPE::LISTSXP.0;
+        let is_list = xT == SEXPTYPE::VECSXP || xT == SEXPTYPE::LISTSXP;
 
         let recursive = if is_list && LENGTH(args) > 1 {
             let r = CADR(args);
@@ -3111,7 +3111,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
 
         let n = XLENGTH(x);
         match xT {
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 for i in 0..n as usize {
                     let v = REAL_ELT(x, i as c_int);
                     if v.is_nan() {
@@ -3120,7 +3120,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 }
                 false
             }
-            t if t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::INTSXP => {
                 for i in 0..n as usize {
                     let v = INTEGER_ELT(x, i as c_int);
                     if v == NA_INTEGER {
@@ -3129,7 +3129,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 }
                 false
             }
-            t if t == SEXPTYPE::LGLSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP => {
                 for i in 0..n as usize {
                     let v = LOGICAL_ELT(x, i as c_int);
                     if v == NA_LOGICAL {
@@ -3138,7 +3138,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 }
                 false
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 for i in 0..n as usize {
                     let v = COMPLEX_ELT(x, i as c_int);
                     if v.r.is_nan() || v.i.is_nan() {
@@ -3147,7 +3147,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 }
                 false
             }
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::STRSXP => {
                 for i in 0..n as R_xlen_t {
                     if STRING_ELT(x, i) == R_NaString() {
                         return true;
@@ -3155,9 +3155,9 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 }
                 false
             }
-            t if t == SEXPTYPE::RAWSXP.0 => false,
-            t if t == SEXPTYPE::NILSXP.0 => false,
-            t if t == SEXPTYPE::VECSXP.0 && recursive => {
+            t if t == SEXPTYPE::RAWSXP => false,
+            t if t == SEXPTYPE::NILSXP => false,
+            t if t == SEXPTYPE::VECSXP && recursive => {
                 for i in 0..n as usize {
                     let elt = VECTOR_ELT(x, i as R_xlen_t);
                     // Recursively check each element
@@ -3171,7 +3171,7 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 }
                 false
             }
-            t if t == SEXPTYPE::LISTSXP.0 && recursive => {
+            t if t == SEXPTYPE::LISTSXP && recursive => {
                 let mut node = x;
                 while !node.is_null() && node != R_NilValue() {
                     let elt = CAR(node);
@@ -3325,7 +3325,7 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             Rf_error(b"'what' must be a function or character string\0".as_ptr() as *const c_char);
         }
 
-        if !cargs.is_null() && cargs != R_NilValue() && TYPEOF(cargs) != SEXPTYPE::VECSXP.0 {
+        if !cargs.is_null() && cargs != R_NilValue() && TYPEOF(cargs) != SEXPTYPE::VECSXP {
             Rf_error(b"'args' must be a list\0".as_ptr() as *const c_char);
         }
 
@@ -3372,7 +3372,7 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let mut c = CDR(newcall);
         for i in 0..n as usize {
-            if TYPEOF(cargs) == SEXPTYPE::VECSXP.0 {
+            if TYPEOF(cargs) == SEXPTYPE::VECSXP {
                 SETCAR(c, VECTOR_ELT(cargs, i as R_xlen_t));
             }
             // Set tag from names attribute
@@ -3410,14 +3410,14 @@ unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
 
     unsafe {
         match TYPEOF(lang) {
-            t if t == SEXPTYPE::PROMSXP.0 => substitute(PRCODE(lang), rho),
-            t if t == SEXPTYPE::SYMSXP.0 => {
+            t if t == SEXPTYPE::PROMSXP => substitute(PRCODE(lang), rho),
+            t if t == SEXPTYPE::SYMSXP => {
                 if rho != R_NilValue() {
                     let t = R_findVarInFrame(rho, lang);
                     if t != R_UnboundValue() {
-                        if TYPEOF(t) == SEXPTYPE::PROMSXP.0 {
+                        if TYPEOF(t) == SEXPTYPE::PROMSXP {
                             let mut expr = PRCODE(t);
-                            while TYPEOF(expr) == SEXPTYPE::PROMSXP.0 {
+                            while TYPEOF(expr) == SEXPTYPE::PROMSXP {
                                 expr = PRCODE(expr);
                             }
                             // ENSURE_NAMEDMAX
@@ -3425,7 +3425,7 @@ unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                                 SET_NAMED(expr, 2);
                             }
                             return expr;
-                        } else if TYPEOF(t) == SEXPTYPE::DOTSXP.0 {
+                        } else if TYPEOF(t) == SEXPTYPE::DOTSXP {
                             Rf_error(
                                 b"'...' used in an incorrect context\0".as_ptr() as *const c_char
                             );
@@ -3437,7 +3437,7 @@ unsafe fn substitute(lang: SEXP, rho: SEXP) -> SEXP {
                 }
                 lang
             }
-            t if t == SEXPTYPE::LANGSXP.0 => substitute_list(lang, rho),
+            t if t == SEXPTYPE::LANGSXP => substitute_list(lang, rho),
             _ => lang,
         }
     }
@@ -3481,7 +3481,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
                     Rf_protect(h);
                 } else if h == R_NilValue() || h == R_MissingArg() {
                     h = R_NilValue();
-                } else if TYPEOF(h) == SEXPTYPE::DOTSXP.0 {
+                } else if TYPEOF(h) == SEXPTYPE::DOTSXP {
                     Rf_protect(h);
                     h = substitute_list(h, R_NilValue());
                     // h is now a substituted pairlist — don't unprotect the protected one yet
@@ -3492,7 +3492,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
                     unreachable!()
                 }
 
-                if TYPEOF(h) == SEXPTYPE::DOTSXP.0 || (h != R_NilValue() && !h.is_null()) {
+                if TYPEOF(h) == SEXPTYPE::DOTSXP || (h != R_NilValue() && !h.is_null()) {
                     Rf_protect(h);
                 }
             } else {
@@ -3564,18 +3564,18 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         // Historical: don't substitute in R_GlobalEnv
         if env == R_GlobalEnv() {
             env = R_NilValue();
-        } else if TYPEOF(env) == SEXPTYPE::VECSXP.0 {
+        } else if TYPEOF(env) == SEXPTYPE::VECSXP {
             // Convert VECSXP to environment
             let plist = crate::mainutils::subassign::VectorToPairList(env);
             Rf_protect(plist);
             env = NewEnvironment(R_NilValue(), plist, R_BaseEnv());
             Rf_unprotect(1);
-        } else if TYPEOF(env) == SEXPTYPE::LISTSXP.0 {
+        } else if TYPEOF(env) == SEXPTYPE::LISTSXP {
             // Convert pairlist to environment
             env = NewEnvironment(R_NilValue(), env, R_BaseEnv());
         }
 
-        if env != R_NilValue() && TYPEOF(env) != SEXPTYPE::ENVSXP.0 {
+        if env != R_NilValue() && TYPEOF(env) != SEXPTYPE::ENVSXP {
             crate::mainutils::errors::Rf_error(
                 b"invalid environment specified\0".as_ptr() as *const c_char
             );

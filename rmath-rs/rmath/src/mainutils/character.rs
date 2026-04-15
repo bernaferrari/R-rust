@@ -354,19 +354,19 @@ unsafe fn as_logical(x: SEXP) -> c_int {
             return crate::sexp::ffi::NA_LOGICAL;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0 {
+        if t == SEXPTYPE::LGLSXP {
             let p = LOGICAL(x);
             if p.is_null() {
                 return crate::sexp::ffi::NA_LOGICAL;
             }
             *p
-        } else if t == SEXPTYPE::INTSXP.0 {
+        } else if t == SEXPTYPE::INTSXP {
             let p = INTEGER(x);
             if p.is_null() {
                 return crate::sexp::ffi::NA_LOGICAL;
             }
             *p
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let p = REAL(x);
             if p.is_null() {
                 return crate::sexp::ffi::NA_LOGICAL;
@@ -389,19 +389,19 @@ unsafe fn as_integer(x: SEXP) -> c_int {
             return crate::sexp::ffi::NA_INTEGER;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::INTSXP.0 {
+        if t == SEXPTYPE::INTSXP {
             let p = INTEGER(x);
             if p.is_null() {
                 return crate::sexp::ffi::NA_INTEGER;
             }
             *p
-        } else if t == SEXPTYPE::LGLSXP.0 {
+        } else if t == SEXPTYPE::LGLSXP {
             let p = LOGICAL(x);
             if p.is_null() {
                 return crate::sexp::ffi::NA_INTEGER;
             }
             *p
-        } else if t == SEXPTYPE::REALSXP.0 {
+        } else if t == SEXPTYPE::REALSXP {
             let p = REAL(x);
             if p.is_null() {
                 return crate::sexp::ffi::NA_INTEGER;

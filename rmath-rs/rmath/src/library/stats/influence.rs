@@ -57,7 +57,7 @@ unsafe fn mkChar(s: &str) -> SEXP {
 }
 
 unsafe fn getListElement(list: SEXP, str: &str) -> SEXP {
-    if TYPEOF(list) != SEXPTYPE::VECSXP.0 {
+    if TYPEOF(list) != SEXPTYPE::VECSXP {
         return R_NilValue();
     }
     let names = getAttrib(list, R_NamesSymbol());

@@ -254,7 +254,7 @@ unsafe fn CSingSymbol() -> SEXP {
 
 /// Check that `s` is a length-1 character string that is not NA.
 unsafe fn isValidString(s: SEXP) -> bool {
-    unsafe { TYPEOF(s) == SEXPTYPE::STRSXP.0 && LENGTH(s) > 0 }
+    unsafe { TYPEOF(s) == SEXPTYPE::STRSXP && LENGTH(s) > 0 }
 }
 
 unsafe fn isValidStringF(s: SEXP) -> bool {
@@ -264,7 +264,7 @@ unsafe fn isValidStringF(s: SEXP) -> bool {
         }
         let elt = STRING_ELT(s, 0);
         // Check it's not NA_STRING (NA_STRING has type == CHARSXP and is marked)
-        !elt.is_null() && TYPEOF(elt) == SEXPTYPE::CHARSXP.0
+        !elt.is_null() && TYPEOF(elt) == SEXPTYPE::CHARSXP
     }
 }
 
@@ -275,9 +275,9 @@ unsafe fn isValidStringF(s: SEXP) -> bool {
 /// Structural check that replaces inherits(op, "NativeSymbolInfo").
 unsafe fn isNativeSymbolInfo(op: SEXP) -> bool {
     unsafe {
-        TYPEOF(op) == SEXPTYPE::VECSXP.0
+        TYPEOF(op) == SEXPTYPE::VECSXP
             && LENGTH(op) >= 2
-            && TYPEOF(VECTOR_ELT(op, 1)) == SEXPTYPE::EXTPTRSXP.0
+            && TYPEOF(VECTOR_ELT(op, 1)) == SEXPTYPE::EXTPTRSXP
     }
 }
 
@@ -316,7 +316,7 @@ unsafe fn checkValidSymbolId(
             return;
         }
 
-        if TYPEOF(op) == SEXPTYPE::EXTPTRSXP.0 {
+        if TYPEOF(op) == SEXPTYPE::EXTPTRSXP {
             static NATIVE_SYMBOL: AtomicUsize = AtomicUsize::new(0);
             static REGISTERED_NATIVE_SYMBOL: AtomicUsize = AtomicUsize::new(0);
 
@@ -407,7 +407,7 @@ unsafe fn naokfind(args: SEXP, len: *mut c_int, naok: *mut c_int, dll: &mut DllR
             } else if tag == pkg_sym {
                 let car = CAR(s);
                 dll.obj = car;
-                if TYPEOF(car) == SEXPTYPE::STRSXP.0 {
+                if TYPEOF(car) == SEXPTYPE::STRSXP {
                     let p = translateChar(STRING_ELT(car, 0));
                     let p_str = std::ffi::CStr::from_ptr(p).to_bytes();
                     if p_str.len() >= R_PATH_MAX - 1 {
@@ -421,10 +421,10 @@ unsafe fn naokfind(args: SEXP, len: *mut c_int, naok: *mut c_int, dll: &mut DllR
                     if pkg_used > 1 {
                         warning("'PACKAGE' used more than once");
                     }
-                } else if TYPEOF(car) == SEXPTYPE::EXTPTRSXP.0 {
+                } else if TYPEOF(car) == SEXPTYPE::EXTPTRSXP {
                     dll.dll = R_ExternalPtrAddr(car);
                     dll.ref_type = DLL_HANDLE;
-                } else if TYPEOF(car) == SEXPTYPE::VECSXP.0 {
+                } else if TYPEOF(car) == SEXPTYPE::VECSXP {
                     dll.ref_type = R_OBJECT;
                     dll.obj = s;
                     let name = translateChar(STRING_ELT(VECTOR_ELT(car, 1), 0));
@@ -467,7 +467,7 @@ unsafe fn naokfind(args: SEXP, len: *mut c_int, naok: *mut c_int, dll: &mut DllR
 unsafe fn setDLLname(s: SEXP, dll_name: &mut [u8; R_PATH_MAX]) {
     unsafe {
         let ss = CAR(s);
-        if TYPEOF(ss) != SEXPTYPE::STRSXP.0 || LENGTH(ss) != 1 {
+        if TYPEOF(ss) != SEXPTYPE::STRSXP || LENGTH(ss) != 1 {
             error("PACKAGE argument must be a single character string");
         }
         let name = translateChar(STRING_ELT(ss, 0));
@@ -549,8 +549,8 @@ unsafe fn enctrim(args: SEXP) -> SEXP {
 
 unsafe fn checkNativeType(target_type: c_int, actual_type: c_int) -> bool {
     if target_type > 0 {
-        if target_type == SEXPTYPE::INTSXP.0 || target_type == SEXPTYPE::LGLSXP.0 {
-            return actual_type == SEXPTYPE::INTSXP.0 || actual_type == SEXPTYPE::LGLSXP.0;
+        if target_type == SEXPTYPE::INTSXP || target_type == SEXPTYPE::LGLSXP {
+            return actual_type == SEXPTYPE::INTSXP || actual_type == SEXPTYPE::LGLSXP;
         }
         return target_type == actual_type;
     }

@@ -143,7 +143,7 @@ unsafe fn isString(x: SEXP) -> bool {
         if x.is_null() || x == R_NilValue() {
             return false;
         }
-        TYPEOF(x) == SEXPTYPE::STRSXP.0
+        TYPEOF(x) == SEXPTYPE::STRSXP
     }
 }
 

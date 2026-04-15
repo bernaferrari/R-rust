@@ -252,7 +252,7 @@ pub unsafe fn runmed(
     let mut nprot: c_int = 1;
 
     let mut sx = sx;
-    if TYPEOF(sx) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(sx) != SEXPTYPE::REALSXP {
         sx = Rf_protect(coerceVector(sx, SEXPTYPE::REALSXP.0));
         nprot += 1;
     }

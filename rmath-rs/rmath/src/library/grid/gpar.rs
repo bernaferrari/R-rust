@@ -115,9 +115,9 @@ pub unsafe fn gpLineType(gp: SEXP, i: c_int) -> c_int {
     let linetype = gpLineTypeSXP(gp);
     // STUB: GE_LTYpar not yet available
     let len = LENGTH(linetype);
-    if TYPEOF(linetype) == SEXPTYPE::REALSXP.0 {
+    if TYPEOF(linetype) == SEXPTYPE::REALSXP {
         *REAL(linetype).add((i % len) as usize) as c_int
-    } else if TYPEOF(linetype) == SEXPTYPE::INTSXP.0 {
+    } else if TYPEOF(linetype) == SEXPTYPE::INTSXP {
         *INTEGER(linetype).add((i % len) as usize)
     } else {
         1
@@ -182,7 +182,7 @@ pub unsafe fn gpLineEnd(gp: SEXP, i: c_int) -> c_int {
     // STUB: GE_LENDpar not yet available
     let lineend = gpLineEndSXP(gp);
     let len = LENGTH(lineend);
-    if TYPEOF(lineend) == SEXPTYPE::INTSXP.0 {
+    if TYPEOF(lineend) == SEXPTYPE::INTSXP {
         *INTEGER(lineend).add((i % len) as usize)
     } else {
         1 // GE_LINE_CAP_ROUND
@@ -197,7 +197,7 @@ pub unsafe fn gpLineJoin(gp: SEXP, i: c_int) -> c_int {
     // STUB: GE_LJOINpar not yet available
     let linejoin = gpLineJoinSXP(gp);
     let len = LENGTH(linejoin);
-    if TYPEOF(linejoin) == SEXPTYPE::INTSXP.0 {
+    if TYPEOF(linejoin) == SEXPTYPE::INTSXP {
         *INTEGER(linejoin).add((i % len) as usize)
     } else {
         1 // GE_LINE_JOIN_ROUND

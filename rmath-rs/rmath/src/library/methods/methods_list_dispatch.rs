@@ -54,7 +54,7 @@ pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
     Rf_protect(res);
     let ip = LOGICAL(res);
 
-    if TYPEOF(symbol) != SEXPTYPE::SYMSXP.0 {
+    if TYPEOF(symbol) != SEXPTYPE::SYMSXP {
         // Invalid: not a symbol
         *ip.add(0) = 0; // FALSE
     } else {
@@ -104,7 +104,7 @@ thread_local! { static TABLE_DISPATCH_ON: Cell<c_int> = Cell::new(0); }
 
 pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
     let prev = TABLE_DISPATCH_ON.with(|v| v.get());
-    let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP.0 && LENGTH(onOff) >= 1 {
+    let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP && LENGTH(onOff) >= 1 {
         LOGICAL_ELT(onOff, 0)
     } else {
         0 // NA_LOGICAL treated as "return previous"
@@ -122,19 +122,19 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
 pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> SEXP {
     // Extract strings
     let prefix_str =
-        if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP.0 && LENGTH(prefix) >= 1 {
+        if !prefix.is_null() && TYPEOF(prefix) == SEXPTYPE::STRSXP && LENGTH(prefix) >= 1 {
             let s = STRING_ELT(prefix, 0);
             if !s.is_null() { CHAR(s) } else { ptr::null() }
         } else {
             ptr::null()
         };
-    let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) >= 1 {
+    let name_str = if !name.is_null() && TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) >= 1 {
         let s = STRING_ELT(name, 0);
         if !s.is_null() { CHAR(s) } else { ptr::null() }
     } else {
         ptr::null()
     };
-    let pkg_str = if !pkg.is_null() && TYPEOF(pkg) == SEXPTYPE::STRSXP.0 && LENGTH(pkg) >= 1 {
+    let pkg_str = if !pkg.is_null() && TYPEOF(pkg) == SEXPTYPE::STRSXP && LENGTH(pkg) >= 1 {
         let s = STRING_ELT(pkg, 0);
         if !s.is_null() { CHAR(s) } else { ptr::null() }
     } else {
@@ -171,8 +171,8 @@ pub unsafe fn R_methodsPackageMetaName(prefix: SEXP, name: SEXP, pkg: SEXP) -> S
 /// R_identC - test if two single-string objects are identical at the C level.
 /// Ported from R's R_identC() in methods_list_dispatch.c.
 pub unsafe fn R_identC(e1: SEXP, e2: SEXP) -> SEXP {
-    if TYPEOF(e1) == SEXPTYPE::STRSXP.0
-        && TYPEOF(e2) == SEXPTYPE::STRSXP.0
+    if TYPEOF(e1) == SEXPTYPE::STRSXP
+        && TYPEOF(e2) == SEXPTYPE::STRSXP
         && LENGTH(e1) == 1
         && LENGTH(e2) == 1
     {
@@ -192,11 +192,11 @@ pub unsafe fn R_getClassFromCache(_class: SEXP, _table: SEXP) -> SEXP {
 
 /// asChar - local helper to coerce to a single CHARSXP.
 unsafe fn asChar(x: SEXP) -> SEXP {
-    if TYPEOF(x) == SEXPTYPE::STRSXP.0 && LENGTH(x) >= 1 {
+    if TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1 {
         STRING_ELT(x, 0)
-    } else if TYPEOF(x) == SEXPTYPE::SYMSXP.0 {
+    } else if TYPEOF(x) == SEXPTYPE::SYMSXP {
         PRINTNAME(x)
-    } else if TYPEOF(x) == SEXPTYPE::CHARSXP.0 {
+    } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
         x
     } else {
         R_NilValue()

@@ -60,17 +60,17 @@ unsafe fn as_integer(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         let v = *REAL(x);
         if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
             return NA_INTEGER;
         }
         return v as c_int;
     }
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
     NA_INTEGER
@@ -81,10 +81,10 @@ unsafe fn as_logical(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
     NA_INTEGER
@@ -116,7 +116,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
 pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    if TYPEOF(sx) != SEXPTYPE::REALSXP.0 || TYPEOF(sfilter) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(sx) != SEXPTYPE::REALSXP || TYPEOF(sfilter) != SEXPTYPE::REALSXP {
         Rf_error(b"invalid input\0".as_ptr() as *const i8);
     }
 
@@ -212,9 +212,9 @@ pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) ->
 pub unsafe fn rfilter(x: SEXP, filter: SEXP, out: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    if TYPEOF(x) != SEXPTYPE::REALSXP.0
-        || TYPEOF(filter) != SEXPTYPE::REALSXP.0
-        || TYPEOF(out) != SEXPTYPE::REALSXP.0
+    if TYPEOF(x) != SEXPTYPE::REALSXP
+        || TYPEOF(filter) != SEXPTYPE::REALSXP
+        || TYPEOF(out) != SEXPTYPE::REALSXP
     {
         Rf_error(b"invalid input\0".as_ptr() as *const i8);
     }

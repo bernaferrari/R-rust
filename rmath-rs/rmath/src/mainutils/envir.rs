@@ -75,10 +75,10 @@ unsafe fn isValidStringF(x: SEXP) -> bool {
             return false;
         }
         let t = TYPEOF(x);
-        if t != SEXPTYPE::CHARSXP.0 && t != SEXPTYPE::STRSXP.0 && t != SEXPTYPE::SYMSXP.0 {
+        if t != SEXPTYPE::CHARSXP && t != SEXPTYPE::STRSXP && t != SEXPTYPE::SYMSXP {
             return false;
         }
-        if t == SEXPTYPE::STRSXP.0 {
+        if t == SEXPTYPE::STRSXP {
             if LENGTH(x) < 1 {
                 return false;
             }
@@ -108,17 +108,17 @@ unsafe fn installTrChar(x: SEXP) -> SEXP {
 
 /// Check if x is a string (STRSXP).
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP }
 }
 
 /// Check if x is an environment (ENVSXP).
 unsafe fn isEnvironment(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::ENVSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::ENVSXP }
 }
 
 /// Check if x is a list/vector (VECSXP).
 unsafe fn isNewList(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::VECSXP }
 }
 
 /// Check if x is NULL (R_NilValue).
@@ -325,9 +325,9 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // First arg: the object name (SYMSXP or string)
         let raw = CAR(args);
-        let t1 = if TYPEOF(raw) == SEXPTYPE::SYMSXP.0 {
+        let t1 = if TYPEOF(raw) == SEXPTYPE::SYMSXP {
             raw
-        } else if isValidStringF(raw) && TYPEOF(raw) == SEXPTYPE::STRSXP.0 {
+        } else if isValidStringF(raw) && TYPEOF(raw) == SEXPTYPE::STRSXP {
             let s = STRING_ELT(raw, 0);
             if s.is_null() || s == R_NilValue() {
                 return R_UnboundValue();
@@ -352,7 +352,7 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             1
         } else {
             let v = CAR(rest4);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = *LOGICAL(v);
                 if lv == FALSE { 0 } else { 1 }
             } else {
@@ -382,21 +382,21 @@ pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                         match cs.to_str() {
                             Ok("any") => true,
                             Ok("function") => {
-                                vt == SEXPTYPE::CLOSXP.0
-                                    || vt == SEXPTYPE::BUILTINSXP.0
-                                    || vt == SEXPTYPE::SPECIALSXP.0
+                                vt == SEXPTYPE::CLOSXP
+                                    || vt == SEXPTYPE::BUILTINSXP
+                                    || vt == SEXPTYPE::SPECIALSXP
                             }
                             Ok("numeric") | Ok("double") => {
-                                vt == SEXPTYPE::REALSXP.0 || vt == SEXPTYPE::INTSXP.0
+                                vt == SEXPTYPE::REALSXP || vt == SEXPTYPE::INTSXP
                             }
-                            Ok("integer") => vt == SEXPTYPE::INTSXP.0,
-                            Ok("complex") => vt == SEXPTYPE::CPLXSXP.0,
-                            Ok("logical") => vt == SEXPTYPE::LGLSXP.0,
-                            Ok("list") => vt == SEXPTYPE::VECSXP.0 || vt == SEXPTYPE::LISTSXP.0,
+                            Ok("integer") => vt == SEXPTYPE::INTSXP,
+                            Ok("complex") => vt == SEXPTYPE::CPLXSXP,
+                            Ok("logical") => vt == SEXPTYPE::LGLSXP,
+                            Ok("list") => vt == SEXPTYPE::VECSXP || vt == SEXPTYPE::LISTSXP,
                             Ok("character") | Ok("string") => {
-                                vt == SEXPTYPE::STRSXP.0 || vt == SEXPTYPE::CHARSXP.0
+                                vt == SEXPTYPE::STRSXP || vt == SEXPTYPE::CHARSXP
                             }
-                            Ok("environment") => vt == SEXPTYPE::ENVSXP.0,
+                            Ok("environment") => vt == SEXPTYPE::ENVSXP,
                             _ => true,
                         }
                     }
@@ -443,7 +443,7 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 error("invalid first argument");
             }
             Rf_install(CHAR(s))
-        } else if TYPEOF(name_arg) == SEXPTYPE::SYMSXP.0 {
+        } else if TYPEOF(name_arg) == SEXPTYPE::SYMSXP {
             name_arg
         } else {
             error("invalid first argument");
@@ -466,7 +466,7 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             1
         } else {
             let v = CAR(rest4);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = *LOGICAL(v);
                 if lv == FALSE { 0 } else { 1 }
             } else {
@@ -525,7 +525,7 @@ pub unsafe fn do_remove(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             1
         } else {
             let v = CAR(rest);
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = *LOGICAL(v);
                 if lv == FALSE { 0 } else { 1 }
             } else {
@@ -589,12 +589,12 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         // pos argument
         let pos_arg = CADR(args);
         let pos = if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::INTSXP.0
+            && TYPEOF(pos_arg) == SEXPTYPE::INTSXP
             && LENGTH(pos_arg) >= 1
         {
             *INTEGER(pos_arg)
         } else if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::REALSXP.0
+            && TYPEOF(pos_arg) == SEXPTYPE::REALSXP
             && LENGTH(pos_arg) >= 1
         {
             let r = *crate::sexp::accessors::REAL(pos_arg);
@@ -651,7 +651,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         // Set the name attribute on the new environment
         if isValidStringF(name_arg) {
-            let name_str = if TYPEOF(name_arg) == SEXPTYPE::STRSXP.0 {
+            let name_str = if TYPEOF(name_arg) == SEXPTYPE::STRSXP {
                 STRING_ELT(name_arg, 0)
             } else {
                 name_arg
@@ -701,12 +701,12 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         let pos_arg = CAR(args);
         let pos = if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::INTSXP.0
+            && TYPEOF(pos_arg) == SEXPTYPE::INTSXP
             && LENGTH(pos_arg) >= 1
         {
             *INTEGER(pos_arg)
         } else if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::REALSXP.0
+            && TYPEOF(pos_arg) == SEXPTYPE::REALSXP
             && LENGTH(pos_arg) >= 1
         {
             let r = *crate::sexp::accessors::REAL(pos_arg);
@@ -882,7 +882,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             TRUE as c_int
         } else {
             let v = CAR(CDR(rest));
-            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP.0 {
+            if !v.is_null() && TYPEOF(v) == SEXPTYPE::LGLSXP {
                 let lv = *LOGICAL(v);
                 if lv == FALSE { 0 } else { 1 }
             } else {
@@ -891,7 +891,7 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         };
 
         // Get variable name
-        let sym = if TYPEOF(x) == SEXPTYPE::SYMSXP.0 {
+        let sym = if TYPEOF(x) == SEXPTYPE::SYMSXP {
             x
         } else {
             let s = CAR(x);
@@ -930,18 +930,18 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                         let vt = TYPEOF(val);
                         match ms {
                             "function" => {
-                                vt == SEXPTYPE::CLOSXP.0
-                                    || vt == SEXPTYPE::BUILTINSXP.0
-                                    || vt == SEXPTYPE::SPECIALSXP.0
+                                vt == SEXPTYPE::CLOSXP
+                                    || vt == SEXPTYPE::BUILTINSXP
+                                    || vt == SEXPTYPE::SPECIALSXP
                             }
                             "numeric" | "double" => {
-                                vt == SEXPTYPE::REALSXP.0 || vt == SEXPTYPE::INTSXP.0
+                                vt == SEXPTYPE::REALSXP || vt == SEXPTYPE::INTSXP
                             }
-                            "integer" => vt == SEXPTYPE::INTSXP.0,
-                            "complex" => vt == SEXPTYPE::CPLXSXP.0,
-                            "logical" => vt == SEXPTYPE::LGLSXP.0,
-                            "list" => vt == SEXPTYPE::VECSXP.0 || vt == SEXPTYPE::LISTSXP.0,
-                            "environment" => vt == SEXPTYPE::ENVSXP.0,
+                            "integer" => vt == SEXPTYPE::INTSXP,
+                            "complex" => vt == SEXPTYPE::CPLXSXP,
+                            "logical" => vt == SEXPTYPE::LGLSXP,
+                            "list" => vt == SEXPTYPE::VECSXP || vt == SEXPTYPE::LISTSXP,
+                            "environment" => vt == SEXPTYPE::ENVSXP,
                             _ => true,
                         }
                     }

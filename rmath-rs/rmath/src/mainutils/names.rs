@@ -4529,7 +4529,7 @@ pub unsafe fn do_primitive(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
     unsafe {
         let name = CAR(args);
         // Check that name is a single string
-        if TYPEOF(name) != SEXPTYPE::STRSXP.0 || LENGTH(name) != 1 {
+        if TYPEOF(name) != SEXPTYPE::STRSXP || LENGTH(name) != 1 {
             panic_any(RError {
                 message: "string argument required".to_string(),
             });
@@ -4824,14 +4824,14 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
     unsafe {
         let s = CAR(args);
         // s must be a pairlist
-        if s.is_null() || TYPEOF(s) != SEXPTYPE::LISTSXP.0 {
+        if s.is_null() || TYPEOF(s) != SEXPTYPE::LISTSXP {
             panic_any(RError {
                 message: "invalid .Internal() argument".to_string(),
             });
         }
         let fun = CAR(s);
         // fun must be a symbol
-        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::SYMSXP.0 {
+        if fun.is_null() || TYPEOF(fun) != SEXPTYPE::SYMSXP {
             panic_any(RError {
                 message: "invalid .Internal() argument".to_string(),
             });
@@ -4861,7 +4861,7 @@ pub unsafe fn do_internal(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         let actual_args = CDR(s);
 
         // For BUILTINSXP, evaluate the argument list; for SPECIALSXP, pass as-is
-        let evaluated_args = if TYPEOF(internal_val) == SEXPTYPE::BUILTINSXP.0 {
+        let evaluated_args = if TYPEOF(internal_val) == SEXPTYPE::BUILTINSXP {
             crate::eval::dispatch::evalList(actual_args, env, call, 0)
         } else {
             actual_args
@@ -4935,7 +4935,7 @@ pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
             return ptr::null();
         }
         let t = TYPEOF(object);
-        if t != SEXPTYPE::SPECIALSXP.0 && t != SEXPTYPE::BUILTINSXP.0 {
+        if t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
             return ptr::null();
         }
         let offset = PRIMOFFSET(object) as usize;

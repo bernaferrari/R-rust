@@ -461,7 +461,7 @@ pub unsafe fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
 
     let mut sig: c_int = -1;
     let kill_type = TYPEOF(sKill);
-    if kill_type == SEXPTYPE::LGLSXP.0 {
+    if kill_type == SEXPTYPE::LGLSXP {
         let lkill = asLogical(sKill);
         if lkill == 1 {
             sig = libc::SIGTERM;
@@ -701,7 +701,7 @@ pub unsafe fn mc_close_stderr(toNULL: SEXP) -> SEXP {
 /// Close file descriptors.
 #[cfg(unix)]
 pub unsafe fn mc_close_fds(sFDS: SEXP) -> SEXP {
-    if TYPEOF(sFDS) != SEXPTYPE::INTSXP.0 {
+    if TYPEOF(sFDS) != SEXPTYPE::INTSXP {
         crate::main::errors::Rf_error(b"descriptors must be integers\0".as_ptr() as *const c_char);
     }
     let fds = LENGTH(sFDS);
@@ -727,7 +727,7 @@ pub unsafe fn mc_send_master(what: SEXP) -> SEXP {
             b"there is no pipe to the master process\0".as_ptr() as *const c_char
         );
     }
-    if TYPEOF(what) != SEXPTYPE::RAWSXP.0 {
+    if TYPEOF(what) != SEXPTYPE::RAWSXP {
         crate::main::errors::Rf_error(
             b"content to send must be RAW, use serialize() if needed\0".as_ptr() as *const c_char,
         );
@@ -785,7 +785,7 @@ pub unsafe fn mc_send_child_stdin(sPid: SEXP, what: SEXP) -> SEXP {
             b"only the master process can send data to a child process\0".as_ptr() as *const c_char,
         );
     }
-    if TYPEOF(what) != SEXPTYPE::RAWSXP.0 {
+    if TYPEOF(what) != SEXPTYPE::RAWSXP {
         crate::main::errors::Rf_error(b"what must be a raw vector\0".as_ptr() as *const c_char);
     }
 
@@ -835,11 +835,11 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
     let mut timeout: c_double = 0.0;
     let ppid = libc::getpid();
 
-    if TYPEOF(sTimeout) == SEXPTYPE::REALSXP.0 && LENGTH(sTimeout) == 1 {
+    if TYPEOF(sTimeout) == SEXPTYPE::REALSXP && LENGTH(sTimeout) == 1 {
         timeout = asReal(sTimeout);
     }
 
-    if TYPEOF(sWhich) == SEXPTYPE::INTSXP.0 && LENGTH(sWhich) > 0 {
+    if TYPEOF(sWhich) == SEXPTYPE::INTSXP && LENGTH(sWhich) > 0 {
         which = INTEGER(sWhich);
         wlen = LENGTH(sWhich) as c_uint;
     }
@@ -1067,7 +1067,7 @@ pub unsafe fn mc_read_children(sTimeout: SEXP) -> SEXP {
     tv.tv_usec = 0;
     let mut tvp: *mut timeval = &mut tv;
 
-    if TYPEOF(sTimeout) == SEXPTYPE::REALSXP.0 && LENGTH(sTimeout) == 1 {
+    if TYPEOF(sTimeout) == SEXPTYPE::REALSXP && LENGTH(sTimeout) == 1 {
         let tov = asReal(sTimeout);
         if tov < 0.0 {
             tvp = ptr::null_mut();

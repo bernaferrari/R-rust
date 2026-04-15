@@ -46,7 +46,7 @@ unsafe fn isFactor(s: SEXP) -> c_int {
             return 0;
         }
         let klass = getAttrib(s, R_ClassSymbol());
-        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP.0 || LENGTH(klass) < 2 {
+        if klass.is_null() || TYPEOF(klass) != SEXPTYPE::STRSXP || LENGTH(klass) < 2 {
             return 0;
         }
         let c1 = CHAR(STRING_ELT(klass, 0));
@@ -72,13 +72,13 @@ unsafe fn isVector(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LGLSXP.0
-            || t == SEXPTYPE::INTSXP.0
-            || t == SEXPTYPE::REALSXP.0
-            || t == SEXPTYPE::CPLXSXP.0
-            || t == SEXPTYPE::STRSXP.0
-            || t == SEXPTYPE::VECSXP.0
-            || t == SEXPTYPE::RAWSXP.0
+        if t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::VECSXP
+            || t == SEXPTYPE::RAWSXP
         {
             1
         } else {
@@ -191,22 +191,22 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     let sub = VECTOR_ELT(vec, (j - 1) as R_xlen_t);
 
                     match xtype {
-                        t if t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
                             *INTEGER(sub).add(k as usize) = *INTEGER(x).add(i as usize);
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(sub).add(k as usize) = *REAL(x).add(i as usize);
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(sub).add(k as usize) = *COMPLEX(x).add(i as usize);
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(sub, k, STRING_ELT(x, i));
                         }
-                        t if t == SEXPTYPE::VECSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP => {
                             SET_VECTOR_ELT(sub, k, VECTOR_ELT(x, i));
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(sub).add(k as usize) = *RAW(x).add(i as usize);
                         }
                         _ => {
@@ -286,22 +286,22 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     let sub = VECTOR_ELT(vec, (j - 1) as R_xlen_t);
 
                     match xtype {
-                        t if t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::INTSXP.0 => {
+                        t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
                             *INTEGER(sub).add(k as usize) = *INTEGER(x).add(i as usize);
                         }
-                        t if t == SEXPTYPE::REALSXP.0 => {
+                        t if t == SEXPTYPE::REALSXP => {
                             *REAL(sub).add(k as usize) = *REAL(x).add(i as usize);
                         }
-                        t if t == SEXPTYPE::CPLXSXP.0 => {
+                        t if t == SEXPTYPE::CPLXSXP => {
                             *COMPLEX(sub).add(k as usize) = *COMPLEX(x).add(i as usize);
                         }
-                        t if t == SEXPTYPE::STRSXP.0 => {
+                        t if t == SEXPTYPE::STRSXP => {
                             SET_STRING_ELT(sub, k, STRING_ELT(x, i));
                         }
-                        t if t == SEXPTYPE::VECSXP.0 => {
+                        t if t == SEXPTYPE::VECSXP => {
                             SET_VECTOR_ELT(sub, k, VECTOR_ELT(x, i));
                         }
-                        t if t == SEXPTYPE::RAWSXP.0 => {
+                        t if t == SEXPTYPE::RAWSXP => {
                             *RAW(sub).add(k as usize) = *RAW(x).add(i as usize);
                         }
                         _ => {

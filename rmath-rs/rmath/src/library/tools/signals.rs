@@ -266,17 +266,17 @@ unsafe fn coerce_to_int(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         let p = INTEGER(x);
         if !p.is_null() {
             return *p;
         }
-    } else if t == SEXPTYPE::LGLSXP.0 {
+    } else if t == SEXPTYPE::LGLSXP {
         let p = LOGICAL(x);
         if !p.is_null() {
             return *p;
         }
-    } else if t == SEXPTYPE::REALSXP.0 {
+    } else if t == SEXPTYPE::REALSXP {
         let p = crate::sexp::accessors::REAL(x);
         if !p.is_null() {
             let v = *p;
@@ -295,7 +295,7 @@ unsafe fn Rf_coerceVector(x: SEXP, _type: c_int) -> SEXP {
         return std::ptr::null_mut();
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 && _type == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP && _type == SEXPTYPE::INTSXP {
         return x;
     }
     let n = LENGTH(x);
@@ -303,7 +303,7 @@ unsafe fn Rf_coerceVector(x: SEXP, _type: c_int) -> SEXP {
     if ans.is_null() {
         return std::ptr::null_mut();
     }
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         let src = INTEGER(x);
         let dst = INTEGER(ans);
         for i in 0..n as usize {
@@ -311,7 +311,7 @@ unsafe fn Rf_coerceVector(x: SEXP, _type: c_int) -> SEXP {
                 *dst.add(i) = *src.add(i);
             }
         }
-    } else if t == SEXPTYPE::REALSXP.0 {
+    } else if t == SEXPTYPE::REALSXP {
         let src = crate::sexp::accessors::REAL(x);
         let dst = INTEGER(ans);
         for i in 0..n as usize {
@@ -324,7 +324,7 @@ unsafe fn Rf_coerceVector(x: SEXP, _type: c_int) -> SEXP {
                 }
             }
         }
-    } else if t == SEXPTYPE::LGLSXP.0 {
+    } else if t == SEXPTYPE::LGLSXP {
         let src = LOGICAL(x);
         let dst = INTEGER(ans);
         for i in 0..n as usize {

@@ -263,22 +263,22 @@ unsafe fn isNull(x: SEXP) -> bool {
 
 #[inline]
 unsafe fn isSymbol(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::SYMSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::SYMSXP }
 }
 
 #[inline]
 unsafe fn isLanguage(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::LANGSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::LANGSXP }
 }
 
 #[inline]
 unsafe fn isList(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::LISTSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::LISTSXP }
 }
 
 #[inline]
 unsafe fn isString(x: SEXP) -> bool {
-    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP.0 }
+    unsafe { !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP }
 }
 
 #[inline]
@@ -288,12 +288,12 @@ unsafe fn isVectorAtomic(x: SEXP) -> bool {
             return false;
         }
         let t = TYPEOF(x);
-        t == SEXPTYPE::LGLSXP.0
-            || t == SEXPTYPE::INTSXP.0
-            || t == SEXPTYPE::REALSXP.0
-            || t == SEXPTYPE::CPLXSXP.0
-            || t == SEXPTYPE::STRSXP.0
-            || t == SEXPTYPE::RAWSXP.0
+        t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
     }
 }
 
@@ -360,7 +360,7 @@ unsafe fn isValidString(x: SEXP) -> bool {
 unsafe fn getPPinfo(symval: SEXP) -> PPinfo {
     unsafe {
         let t = TYPEOF(symval);
-        if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+        if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             // Try to find the primitive in R_FunTab by PRIMOFFSET
             let offset = PRIMOFFSET(symval);
             if offset >= 0 {
@@ -378,7 +378,7 @@ unsafe fn getPPinfo(symval: SEXP) -> PPinfo {
 /// Get PPinfo for an argument to needsparens (takes kind/prec/rightassoc directly).
 unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
     unsafe {
-        if TYPEOF(arg) != SEXPTYPE::LANGSXP.0 {
+        if TYPEOF(arg) != SEXPTYPE::LANGSXP {
             return None;
         }
         let op = CAR(arg);
@@ -387,7 +387,7 @@ unsafe fn get_arg_ppinfo(arg: SEXP) -> Option<PPinfo> {
         }
         let symval = SYMVALUE(op);
         let t = TYPEOF(symval);
-        if t != SEXPTYPE::BUILTINSXP.0 && t != SEXPTYPE::SPECIALSXP.0 {
+        if t != SEXPTYPE::BUILTINSXP && t != SEXPTYPE::SPECIALSXP {
             return None;
         }
         Some(getPPinfo(symval))
@@ -845,7 +845,7 @@ unsafe fn quotify(name: SEXP, quote: c_int) -> *const c_char {
 /// For example: `(f+g)(z)` needs parens, but `x$f(z)` does not.
 unsafe fn parenthesizeCaller(s: SEXP) -> bool {
     unsafe {
-        if TYPEOF(s) != SEXPTYPE::LANGSXP.0 {
+        if TYPEOF(s) != SEXPTYPE::LANGSXP {
             return false;
         }
         let op = CAR(s);
@@ -855,7 +855,7 @@ unsafe fn parenthesizeCaller(s: SEXP) -> bool {
             } // %foo%
             let sym = SYMVALUE(op);
             let t = TYPEOF(sym);
-            if t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0 {
+            if t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
                 let pp = getPPinfo(sym);
                 return !(pp.prec >= PREC_SUBSET
                     || pp.kind == PP_FUNCALL
@@ -863,7 +863,7 @@ unsafe fn parenthesizeCaller(s: SEXP) -> bool {
                     || pp.kind == PP_CURLY);
             }
             return false; // regular function call
-        } else if TYPEOF(op) == SEXPTYPE::CLOSXP.0 {
+        } else if TYPEOF(op) == SEXPTYPE::CLOSXP {
             return true;
         } else {
             return true; // something strange, like (1)(x)
@@ -889,7 +889,7 @@ unsafe fn src2buff1(_srcref: SEXP, _d: *mut LocalParseData) {
 /// Deparse source element k to buffer if possible. Returns false on failure.
 unsafe fn src2buff(sv: SEXP, k: c_int, d: *mut LocalParseData) -> bool {
     unsafe {
-        if !sv.is_null() && TYPEOF(sv) == SEXPTYPE::VECSXP.0 && LENGTH(sv) > k {
+        if !sv.is_null() && TYPEOF(sv) == SEXPTYPE::VECSXP && LENGTH(sv) > k {
             let t = VECTOR_ELT(sv, k as R_xlen_t);
             if !isNull(t) {
                 src2buff1(t, d);
@@ -1150,7 +1150,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
         let d = &mut *d;
         let d_opts_in = d.opts;
         let tlen = LENGTH(vector);
-        let quote = if TYPEOF(vector) == SEXPTYPE::STRSXP.0 {
+        let quote = if TYPEOF(vector) == SEXPTYPE::STRSXP {
             b'"' as c_int
         } else {
             0
@@ -1159,7 +1159,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
 
         // Check for integer sequences (m:n)
         let mut int_seq = false;
-        if TYPEOF(vector) == SEXPTYPE::INTSXP.0 && tlen > 1 {
+        if TYPEOF(vector) == SEXPTYPE::INTSXP && tlen > 1 {
             let vec = INTEGER(vector);
             if !vec.is_null() {
                 let v0 = *vec;
@@ -1222,7 +1222,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                 24 => print2buff(b"raw(0)\0".as_ptr() as *const c_char, d),     // RAWSXP
                 _ => {} // intentionally unhandled: unsupported type for empty vector display
             }
-        } else if TYPEOF(vector) == SEXPTYPE::INTSXP.0 {
+        } else if TYPEOF(vector) == SEXPTYPE::INTSXP {
             if int_seq {
                 let vec = INTEGER(vector);
                 if !vec.is_null() {
@@ -1289,7 +1289,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
             let mut all_na = d.opts & KEEPNA != 0;
 
             // Handle NA-heavy types
-            if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::REALSXP.0 {
+            if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::REALSXP {
                 let vec = REAL(vector);
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
@@ -1303,7 +1303,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     print2buff(b"as.double(\0".as_ptr() as *const c_char, d);
                     surround = true;
                 }
-            } else if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::CPLXSXP.0 {
+            } else if (d.opts & KEEPNA != 0) && TYPEOF(vector) == SEXPTYPE::CPLXSXP {
                 let vec = COMPLEX(vector);
                 if !vec.is_null() {
                     for i in 0..tlen as usize {
@@ -1318,7 +1318,7 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                     print2buff(b"as.complex(\0".as_ptr() as *const c_char, d);
                     surround = true;
                 }
-            } else if TYPEOF(vector) == SEXPTYPE::RAWSXP.0 {
+            } else if TYPEOF(vector) == SEXPTYPE::RAWSXP {
                 print2buff(b"as.raw(\0".as_ptr() as *const c_char, d);
                 surround = true;
             }
@@ -1523,7 +1523,7 @@ unsafe fn vec2buff(v: SEXP, d: *mut LocalParseData, do_names: bool) {
         let mut sv = R_NilValue();
         if (d.opts & USESOURCE) != 0 {
             sv = getAttrib(v, srcref_sym);
-            if TYPEOF(sv) != SEXPTYPE::VECSXP.0 {
+            if TYPEOF(sv) != SEXPTYPE::VECSXP {
                 sv = R_NilValue();
             }
         }
@@ -1562,7 +1562,7 @@ unsafe fn args2buff(arglist: SEXP, _lineb: c_int, formals: c_int, d: *mut LocalP
         let mut cur = arglist;
 
         while !isNull(cur) {
-            if TYPEOF(cur) != SEXPTYPE::LISTSXP.0 && TYPEOF(cur) != SEXPTYPE::LANGSXP.0 {
+            if TYPEOF(cur) != SEXPTYPE::LISTSXP && TYPEOF(cur) != SEXPTYPE::LANGSXP {
                 break;
             }
             if !isNull(TAG(cur)) {
@@ -1651,9 +1651,9 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
         // non-S4 cases:
         let sexp_type = TYPEOF(s);
 
-        if sexp_type == SEXPTYPE::NILSXP.0 {
+        if sexp_type == SEXPTYPE::NILSXP {
             print2buff(b"NULL\0".as_ptr() as *const c_char, d);
-        } else if sexp_type == SEXPTYPE::SYMSXP.0 {
+        } else if sexp_type == SEXPTYPE::SYMSXP {
             let doquote = (d_opts_in & QUOTEEXPRESSIONS != 0) && {
                 let pn = CHAR(PRINTNAME(s));
                 !pn.is_null() && *pn != 0
@@ -1704,17 +1704,17 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     }
                 }
             }
-        } else if sexp_type == SEXPTYPE::CHARSXP.0 {
+        } else if sexp_type == SEXPTYPE::CHARSXP {
             let name = CHAR(s);
             if !name.is_null() {
                 print2buff(name, d);
             }
-        } else if sexp_type == SEXPTYPE::SPECIALSXP.0 || sexp_type == SEXPTYPE::BUILTINSXP.0 {
+        } else if sexp_type == SEXPTYPE::SPECIALSXP || sexp_type == SEXPTYPE::BUILTINSXP {
             print2buff(b".Primitive(\"\0".as_ptr() as *const c_char, d);
             let pname = primname_c(s);
             print2buff(pname, d);
             print2buff(b"\")\0".as_ptr() as *const c_char, d);
-        } else if sexp_type == SEXPTYPE::PROMSXP.0 {
+        } else if sexp_type == SEXPTYPE::PROMSXP {
             if (d.opts & DELAYPROMISES) != 0 {
                 d.sourceable = 0;
                 print2buff(b"<promise: \0".as_ptr() as *const c_char, d);
@@ -1724,7 +1724,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             } else {
                 print2buff(b"<promise>\0".as_ptr() as *const c_char, d);
             }
-        } else if sexp_type == SEXPTYPE::CLOSXP.0 {
+        } else if sexp_type == SEXPTYPE::CLOSXP {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 attr1(s, d)
             } else {
@@ -1746,10 +1746,10 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             if attr >= ATTR_STRUC_ATTR {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
             }
-        } else if sexp_type == SEXPTYPE::ENVSXP.0 {
+        } else if sexp_type == SEXPTYPE::ENVSXP {
             d.sourceable = 0;
             print2buff(b"<environment>\0".as_ptr() as *const c_char, d);
-        } else if sexp_type == SEXPTYPE::VECSXP.0 {
+        } else if sexp_type == SEXPTYPE::VECSXP {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 attr1(s, d)
             } else {
@@ -1764,7 +1764,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
             }
             d.opts = d_opts_in;
-        } else if sexp_type == SEXPTYPE::EXPRSXP.0 {
+        } else if sexp_type == SEXPTYPE::EXPRSXP {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 attr1(s, d)
             } else {
@@ -1784,7 +1784,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
             }
             d.opts = d_opts_in;
-        } else if sexp_type == SEXPTYPE::LISTSXP.0 {
+        } else if sexp_type == SEXPTYPE::LISTSXP {
             let attr = if (d_opts_in & SHOW_ATTR_OR_NMS) != 0 {
                 attr1(s, d)
             } else {
@@ -1834,7 +1834,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
             if attr >= ATTR_STRUC_ATTR {
                 attr2(s, d, attr == ATTR_STRUC_ATTR);
             }
-        } else if sexp_type == SEXPTYPE::LANGSXP.0 {
+        } else if sexp_type == SEXPTYPE::LANGSXP {
             if !isNull(ATTRIB(s)) {
                 d.sourceable = 0;
             }
@@ -1861,7 +1861,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                 let symval = SYMVALUE(op);
                 let symval_type = TYPEOF(symval);
                 let is_builtin =
-                    symval_type == SEXPTYPE::BUILTINSXP.0 || symval_type == SEXPTYPE::SPECIALSXP.0;
+                    symval_type == SEXPTYPE::BUILTINSXP || symval_type == SEXPTYPE::SPECIALSXP;
                 if is_builtin {
                     userbinop = 0;
                 } else if isUserBinop(op) {
@@ -2341,7 +2341,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     };
 
                     if isSymbol(op)
-                        && TYPEOF(val) == SEXPTYPE::CLOSXP.0
+                        && TYPEOF(val) == SEXPTYPE::CLOSXP
                         && !op_name.is_null()
                         && streql(op_name, b"::\0".as_ptr() as *const c_char)
                     {
@@ -2349,7 +2349,7 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                         print2buff(b"::\0".as_ptr() as *const c_char, d);
                         deparse2buff(CADDR(s), d);
                     } else if isSymbol(op)
-                        && TYPEOF(val) == SEXPTYPE::CLOSXP.0
+                        && TYPEOF(val) == SEXPTYPE::CLOSXP
                         && !op_name.is_null()
                         && streql(op_name, b":::\0".as_ptr() as *const c_char)
                     {
@@ -2377,9 +2377,9 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                         print2buff(b")\0".as_ptr() as *const c_char, d);
                     }
                 }
-            } else if TYPEOF(op) == SEXPTYPE::CLOSXP.0
-                || TYPEOF(op) == SEXPTYPE::SPECIALSXP.0
-                || TYPEOF(op) == SEXPTYPE::BUILTINSXP.0
+            } else if TYPEOF(op) == SEXPTYPE::CLOSXP
+                || TYPEOF(op) == SEXPTYPE::SPECIALSXP
+                || TYPEOF(op) == SEXPTYPE::BUILTINSXP
             {
                 if parenthesizeCaller(op) {
                     print2buff(b"(\0".as_ptr() as *const c_char, d);
@@ -2410,23 +2410,23 @@ unsafe fn deparse2buff(s: SEXP, d: *mut LocalParseData) {
                     print2buff(b")\0".as_ptr() as *const c_char, d);
                 }
             }
-        } else if sexp_type == SEXPTYPE::LGLSXP.0
-            || sexp_type == SEXPTYPE::INTSXP.0
-            || sexp_type == SEXPTYPE::REALSXP.0
-            || sexp_type == SEXPTYPE::CPLXSXP.0
-            || sexp_type == SEXPTYPE::STRSXP.0
-            || sexp_type == SEXPTYPE::RAWSXP.0
+        } else if sexp_type == SEXPTYPE::LGLSXP
+            || sexp_type == SEXPTYPE::INTSXP
+            || sexp_type == SEXPTYPE::REALSXP
+            || sexp_type == SEXPTYPE::CPLXSXP
+            || sexp_type == SEXPTYPE::STRSXP
+            || sexp_type == SEXPTYPE::RAWSXP
         {
             vector2buff(s, d);
-        } else if sexp_type == SEXPTYPE::EXTPTRSXP.0 {
+        } else if sexp_type == SEXPTYPE::EXTPTRSXP {
             print2buff(b"<pointer: 0x0>\0".as_ptr() as *const c_char, d);
-        } else if sexp_type == SEXPTYPE::BCODESXP.0 {
+        } else if sexp_type == SEXPTYPE::BCODESXP {
             d.sourceable = 0;
             print2buff(b"<bytecode>\0".as_ptr() as *const c_char, d);
-        } else if sexp_type == SEXPTYPE::WEAKREFSXP.0 {
+        } else if sexp_type == SEXPTYPE::WEAKREFSXP {
             d.sourceable = 0;
             print2buff(b"<weak reference>\0".as_ptr() as *const c_char, d);
-        } else if sexp_type == SEXPTYPE::OBJSXP.0 {
+        } else if sexp_type == SEXPTYPE::OBJSXP {
             d.sourceable = 0;
             print2buff(b"<object>\0".as_ptr() as *const c_char, d);
         } else {

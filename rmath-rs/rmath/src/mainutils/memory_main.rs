@@ -343,7 +343,7 @@ pub(crate) unsafe fn Rf_isSymbol_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::SYMSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::SYMSXP { 1 } else { 0 }
         }
     }
 }
@@ -355,7 +355,7 @@ pub(crate) unsafe fn Rf_isLogical_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::LGLSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::LGLSXP { 1 } else { 0 }
         }
     }
 }
@@ -367,7 +367,7 @@ pub(crate) unsafe fn Rf_isReal_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::REALSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::REALSXP { 1 } else { 0 }
         }
     }
 }
@@ -379,7 +379,7 @@ pub(crate) unsafe fn Rf_isComplex_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::CPLXSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::CPLXSXP { 1 } else { 0 }
         }
     }
 }
@@ -391,7 +391,7 @@ pub(crate) unsafe fn Rf_isExpression_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::EXPRSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::EXPRSXP { 1 } else { 0 }
         }
     }
 }
@@ -403,7 +403,7 @@ pub(crate) unsafe fn Rf_isEnvironment_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::ENVSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::ENVSXP { 1 } else { 0 }
         }
     }
 }
@@ -415,7 +415,7 @@ pub(crate) unsafe fn Rf_isString_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::STRSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::STRSXP { 1 } else { 0 }
         }
     }
 }
@@ -427,7 +427,7 @@ pub(crate) unsafe fn Rf_isObject_memory(s: SEXP) -> c_int {
             0
         } else {
             let t = TYPEOF(s);
-            if t == SEXPTYPE::OBJSXP.0 { 1 } else { 0 }
+            if t == SEXPTYPE::OBJSXP { 1 } else { 0 }
         }
     }
 }
@@ -1161,10 +1161,10 @@ pub unsafe fn do_regFinaliz(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         let fun = CADR(args);
         let onexit = crate::mainutils::coerce::asLogical(CADDR(args));
         let t = TYPEOF(obj);
-        if t != SEXPTYPE::ENVSXP.0 && t != SEXPTYPE::EXTPTRSXP.0 {
+        if t != SEXPTYPE::ENVSXP && t != SEXPTYPE::EXTPTRSXP {
             error("first argument must be environment or external pointer");
         }
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             error("second argument must be a function");
         }
         if onexit == crate::sexp::ffi::NA_LOGICAL {

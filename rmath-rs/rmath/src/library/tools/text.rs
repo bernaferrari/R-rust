@@ -207,7 +207,7 @@ pub unsafe fn check_nonASCII(text: SEXP, ignore_quotes: SEXP) -> SEXP {
     if text.is_null() {
         return Rf_ScalarLogical(FALSE);
     }
-    if TYPEOF(text) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(text) != SEXPTYPE::STRSXP {
         Rf_error(b"invalid input\0".as_ptr() as *const _);
     }
     let ign = coerce_to_logical(ignore_quotes);
@@ -267,7 +267,7 @@ pub unsafe fn check_nonASCII2(text: SEXP) -> SEXP {
     if text.is_null() {
         return R_NilValue();
     }
-    if TYPEOF(text) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(text) != SEXPTYPE::STRSXP {
         Rf_error(b"invalid input\0".as_ptr() as *const _);
     }
 
@@ -483,7 +483,7 @@ pub unsafe fn nonASCII(text: SEXP) -> SEXP {
     if text.is_null() {
         return R_NilValue();
     }
-    if TYPEOF(text) != SEXPTYPE::STRSXP.0 {
+    if TYPEOF(text) != SEXPTYPE::STRSXP {
         Rf_error(b"invalid input\0".as_ptr() as *const _);
     }
     let len = XLENGTH(text);
@@ -533,12 +533,12 @@ unsafe fn coerce_to_logical(x: SEXP) -> c_int {
         return NA_LOGICAL;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         let p = LOGICAL(x);
         if !p.is_null() {
             return *p;
         }
-    } else if t == SEXPTYPE::INTSXP.0 {
+    } else if t == SEXPTYPE::INTSXP {
         let p = INTEGER(x);
         if !p.is_null() {
             return *p;

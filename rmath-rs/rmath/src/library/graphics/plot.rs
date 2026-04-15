@@ -829,10 +829,10 @@ unsafe fn GetTextArg(
     let mut font: c_int = NA_INTEGER;
 
     match stype {
-        tt if tt == SEXPTYPE::LANGSXP.0 || tt == SEXPTYPE::SYMSXP.0 => {
+        tt if tt == SEXPTYPE::LANGSXP || tt == SEXPTYPE::SYMSXP => {
             txt = coerceVector(spec, SEXPTYPE::EXPRSXP.0);
         }
-        tt if tt == SEXPTYPE::VECSXP.0 => {
+        tt if tt == SEXPTYPE::VECSXP => {
             if length(spec) == 0 {
                 *ptxt = R_NilValue();
                 return;
@@ -841,7 +841,7 @@ unsafe fn GetTextArg(
             if nms == R_NilValue() {
                 txt = VECTOR_ELT(spec, 0);
                 let ttype = TYPEOF(txt);
-                if ttype == SEXPTYPE::LANGSXP.0 || ttype == SEXPTYPE::SYMSXP.0 {
+                if ttype == SEXPTYPE::LANGSXP || ttype == SEXPTYPE::SYMSXP {
                     txt = coerceVector(txt, SEXPTYPE::EXPRSXP.0);
                 } else if isExpression(txt) == 0 {
                     txt = coerceVector(txt, SEXPTYPE::STRSXP.0);
@@ -863,7 +863,7 @@ unsafe fn GetTextArg(
                     } else if strcmp(nm_str, b"\0".as_ptr() as *const c_char) == 0 {
                         txt = VECTOR_ELT(spec, i as R_xlen_t);
                         let ttype = TYPEOF(txt);
-                        if ttype == SEXPTYPE::LANGSXP.0 || ttype == SEXPTYPE::SYMSXP.0 {
+                        if ttype == SEXPTYPE::LANGSXP || ttype == SEXPTYPE::SYMSXP {
                             txt = coerceVector(txt, SEXPTYPE::EXPRSXP.0);
                         } else if isExpression(txt) == 0 {
                             txt = coerceVector(txt, SEXPTYPE::STRSXP.0);
@@ -874,7 +874,7 @@ unsafe fn GetTextArg(
                 }
             }
         }
-        tt if tt == SEXPTYPE::STRSXP.0 || tt == SEXPTYPE::EXPRSXP.0 => {
+        tt if tt == SEXPTYPE::STRSXP || tt == SEXPTYPE::EXPRSXP => {
             txt = spec;
         }
         _ => {
@@ -1372,7 +1372,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
     let mut ans: SEXP = R_NilValue();
     let stype = TYPEOF(labels);
     match stype {
-        tt if tt == SEXPTYPE::LGLSXP.0 => {
+        tt if tt == SEXPTYPE::LGLSXP => {
             ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
             for i in 0..n as usize {
                 let strp = EncodeLogical(LOGICAL(labels).add(i).read(), 0);
@@ -1380,7 +1380,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             }
             Rf_unprotect(1);
         }
-        tt if tt == SEXPTYPE::INTSXP.0 => {
+        tt if tt == SEXPTYPE::INTSXP => {
             ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
             for i in 0..n as usize {
                 let strp = EncodeInteger(INTEGER(labels).add(i).read(), 0);
@@ -1388,7 +1388,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             }
             Rf_unprotect(1);
         }
-        tt if tt == SEXPTYPE::REALSXP.0 => {
+        tt if tt == SEXPTYPE::REALSXP => {
             let mut w: c_int = 0;
             let mut d: c_int = 0;
             let mut e: c_int = 0;
@@ -1406,7 +1406,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             }
             Rf_unprotect(1);
         }
-        tt if tt == SEXPTYPE::CPLXSXP.0 => {
+        tt if tt == SEXPTYPE::CPLXSXP => {
             let mut w: c_int = 0;
             let mut d: c_int = 0;
             let mut e: c_int = 0;
@@ -1432,7 +1432,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             }
             Rf_unprotect(1);
         }
-        tt if tt == SEXPTYPE::STRSXP.0 => {
+        tt if tt == SEXPTYPE::STRSXP => {
             ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
             for i in 0..n as usize {
                 SET_STRING_ELT(ans, i as R_xlen_t, STRING_ELT(labels, i as R_xlen_t));
@@ -1674,7 +1674,7 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
     args = CDR(args);
 
     /* merge */
-    if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP.0 || length(CAR(args)) != 2 * n {
+    if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP || length(CAR(args)) != 2 * n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     dnd_lptr.with(|v| v.set(&mut *INTEGER(CAR(args)).add(0)));
@@ -1682,7 +1682,7 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
     args = CDR(args);
 
     /* height */
-    if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP.0 || length(CAR(args)) != n {
+    if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP || length(CAR(args)) != n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     dnd_hght.with(|v| v.set(&mut *REAL(CAR(args)).add(0)));
@@ -1711,7 +1711,7 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
     args = CDR(args);
 
     /* labels */
-    if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP.0 || length(CAR(args)) != n + 1 {
+    if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || length(CAR(args)) != n + 1 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     dnd_llabels = CAR(args);
@@ -1775,12 +1775,12 @@ pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     args = CDR(args);
-    if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP.0 || length(CAR(args)) != 2 * n {
+    if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP || length(CAR(args)) != 2 * n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     merge = CAR(args);
     args = CDR(args);
-    if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP.0 || length(CAR(args)) != n {
+    if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP || length(CAR(args)) != n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     height = CAR(args);
@@ -1790,7 +1790,7 @@ pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     args = CDR(args);
-    if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP.0 || length(CAR(args)) != n + 1 {
+    if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || length(CAR(args)) != n + 1 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     llabels = CAR(args);
@@ -1909,7 +1909,7 @@ pub unsafe fn C_erase(args: SEXP) -> SEXP {
 pub unsafe fn C_convertX(args: SEXP) -> SEXP {
     let mut args = CDR(args);
     let x = CAR(args);
-    if TYPEOF(x) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::REALSXP {
         Rf_error(b"invalid 'x' argument\0".as_ptr() as *const c_char);
     }
     let n = length(x);
@@ -1940,7 +1940,7 @@ pub unsafe fn C_convertX(args: SEXP) -> SEXP {
 pub unsafe fn C_convertY(args: SEXP) -> SEXP {
     let mut args = CDR(args);
     let x = CAR(args);
-    if TYPEOF(x) != SEXPTYPE::REALSXP.0 {
+    if TYPEOF(x) != SEXPTYPE::REALSXP {
         Rf_error(b"invalid 'x' argument\0".as_ptr() as *const c_char);
     }
     let n = length(x);

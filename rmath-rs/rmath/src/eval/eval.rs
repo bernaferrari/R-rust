@@ -4180,7 +4180,7 @@ pub unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let ctx = &*cptr2;
             if !ctx.callfun.is_null() && ctx.callfun != R_NilValue() {
                 ctx.callfun
-            } else if TYPEOF(CAR(ctx.call)) == SEXPTYPE::SYMSXP.0 {
+            } else if TYPEOF(CAR(ctx.call)) == SEXPTYPE::SYMSXP {
                 findFun(CAR(ctx.call), ctx.sysparent)
             } else {
                 Rf_eval(CAR(ctx.call), ctx.sysparent)
@@ -4189,7 +4189,7 @@ pub unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         Rf_protect(fun);
 
-        if TYPEOF(fun) != SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(fun) != SEXPTYPE::CLOSXP {
             Rf_unprotect(1);
             Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
         }

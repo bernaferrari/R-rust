@@ -3248,25 +3248,25 @@ pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
     let t = TYPEOF(x);
     let indx: c_int;
     match t {
-        tt if tt == SEXPTYPE::STRSXP.0 => {
+        tt if tt == SEXPTYPE::STRSXP => {
             // STRSXP
             return str2col(CHAR(STRING_ELT(x, i as R_xlen_t)), bg);
         }
-        tt if tt == SEXPTYPE::LGLSXP.0 => {
+        tt if tt == SEXPTYPE::LGLSXP => {
             // LGLSXP
             indx = *LOGICAL(x).add(i as usize);
             if indx == NA_LOGICAL {
                 return R_TRANWHITE;
             }
         }
-        tt if tt == SEXPTYPE::INTSXP.0 => {
+        tt if tt == SEXPTYPE::INTSXP => {
             // INTSXP
             indx = *INTEGER(x).add(i as usize);
             if indx == NA_INTEGER {
                 return R_TRANWHITE;
             }
         }
-        tt if tt == SEXPTYPE::REALSXP.0 => {
+        tt if tt == SEXPTYPE::REALSXP => {
             // REALSXP
             if !R_FINITE(*REAL(x).add(i as usize)) {
                 return R_TRANWHITE;
@@ -3800,8 +3800,8 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
 
     let t = TYPEOF(colors);
     let colors = match t {
-        tt if tt == SEXPTYPE::INTSXP.0 || tt == SEXPTYPE::STRSXP.0 => colors, // INTSXP or STRSXP
-        tt if tt == SEXPTYPE::REALSXP.0 => Rf_protect(coerceVector(colors, SEXPTYPE::INTSXP.0)),
+        tt if tt == SEXPTYPE::INTSXP || tt == SEXPTYPE::STRSXP => colors, // INTSXP or STRSXP
+        tt if tt == SEXPTYPE::REALSXP => Rf_protect(coerceVector(colors, SEXPTYPE::INTSXP.0)),
         _ => Rf_protect(coerceVector(colors, SEXPTYPE::STRSXP.0)),
     };
     Rf_protect(colors);
@@ -3918,7 +3918,7 @@ pub unsafe fn do_palette2(val: SEXP) -> SEXP {
 
     let n = LENGTH(val) as usize;
     if n > 0 {
-        if TYPEOF(val) != SEXPTYPE::INTSXP.0 {
+        if TYPEOF(val) != SEXPTYPE::INTSXP {
             Rf_error(b"requires INTSXP argument\0".as_ptr() as *const c_char);
         }
         if n > MAX_PALETTE_SIZE {

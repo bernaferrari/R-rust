@@ -188,7 +188,7 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
         );
         SET_VECTOR_ELT(new_unit, 1 as R_xlen_t, R_NilValue());
         let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
-        let unit_val = if TYPEOF(unit_attr) == SEXPTYPE::INTSXP.0 && LENGTH(unit_attr) > 0 {
+        let unit_val = if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
             *INTEGER(unit_attr).add(0)
         } else {
             0
@@ -225,7 +225,7 @@ pub unsafe fn unitValue(unit: SEXP, index: c_int) -> c_double {
 pub unsafe fn unitUnit(unit: SEXP, index: c_int) -> c_int {
     if isSimpleUnit(unit) {
         let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
-        if TYPEOF(unit_attr) == SEXPTYPE::INTSXP.0 && LENGTH(unit_attr) > 0 {
+        if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
             return *INTEGER(unit_attr).add(0);
         }
         return 0;

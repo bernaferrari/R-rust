@@ -89,14 +89,14 @@ pub unsafe fn asVecSize(x: SEXP) -> R_xlen_t {
     unsafe {
         if Rf_isVectorAtomic(x) != 0 && LENGTH(x) >= 1 {
             match TYPEOF(x) {
-                t if t == SEXPTYPE::INTSXP.0 => {
+                t if t == SEXPTYPE::INTSXP => {
                     let res = *INTEGER(x);
                     if res == NA_INTEGER {
                         error("vector size cannot be NA");
                     }
                     return res as R_xlen_t;
                 }
-                t if t == SEXPTYPE::REALSXP.0 => {
+                t if t == SEXPTYPE::REALSXP => {
                     let d = *REAL(x);
                     if ISNAN(d) {
                         error("vector size cannot be NA/NaN");
@@ -106,7 +106,7 @@ pub unsafe fn asVecSize(x: SEXP) -> R_xlen_t {
                     }
                     return d as R_xlen_t;
                 }
-                t if t == SEXPTYPE::STRSXP.0 => {
+                t if t == SEXPTYPE::STRSXP => {
                     let d = asReal(x);
                     if ISNAN(d) {
                         error("vector size cannot be NA/NaN");
@@ -264,24 +264,24 @@ pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let mut input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::STRSXP.0 && LENGTH(input) == 1 {
+        if TYPEOF(input) == SEXPTYPE::STRSXP && LENGTH(input) == 1 {
             let s = installTrChar(STRING_ELT(input, 0));
             input = findFun(s, rho);
         }
-        if TYPEOF(input) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(input) == SEXPTYPE::CLOSXP {
             let s = allocSExp(SEXPTYPE::CLOSXP);
             SET_FORMALS(s, FORMALS(input));
             SET_BODY(s, R_NilValue());
             SET_CLOENV(s, R_GlobalEnv());
             return s;
         }
-        if TYPEOF(input) == SEXPTYPE::BUILTINSXP.0 || TYPEOF(input) == SEXPTYPE::SPECIALSXP.0 {
+        if TYPEOF(input) == SEXPTYPE::BUILTINSXP || TYPEOF(input) == SEXPTYPE::SPECIALSXP {
             let nm = PRIMNAME(input);
             let args_env = R_findVarInFrame(
                 R_BaseEnv(),
                 Rf_install(b".ArgsEnv\0".as_ptr() as *const c_char),
             );
-            let env = if TYPEOF(args_env) == SEXPTYPE::PROMSXP.0 {
+            let env = if TYPEOF(args_env) == SEXPTYPE::PROMSXP {
                 crate::eval::eval::Rf_eval(args_env, R_BaseEnv())
             } else {
                 args_env
@@ -298,7 +298,7 @@ pub unsafe fn do_args(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 R_BaseEnv(),
                 Rf_install(b".GenericArgsEnv\0".as_ptr() as *const c_char),
             );
-            let env2 = if TYPEOF(generic_env) == SEXPTYPE::PROMSXP.0 {
+            let env2 = if TYPEOF(generic_env) == SEXPTYPE::PROMSXP {
                 crate::eval::eval::Rf_eval(generic_env, R_BaseEnv())
             } else {
                 generic_env
@@ -324,12 +324,12 @@ pub unsafe fn do_formals(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(input) == SEXPTYPE::CLOSXP {
             let f = FORMALS(input);
             RAISE_NAMED(f, crate::sexp::accessors::NAMED(input));
             f
         } else {
-            if TYPEOF(input) != SEXPTYPE::BUILTINSXP.0 && TYPEOF(input) != SEXPTYPE::SPECIALSXP.0 {
+            if TYPEOF(input) != SEXPTYPE::BUILTINSXP && TYPEOF(input) != SEXPTYPE::SPECIALSXP {
                 warningcall(call, "argument is not a function");
             }
             R_NilValue()
@@ -341,12 +341,12 @@ pub unsafe fn do_body(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(input) == SEXPTYPE::CLOSXP {
             let b = BODY(input);
             RAISE_NAMED(b, crate::sexp::accessors::NAMED(input));
             b
         } else {
-            if TYPEOF(input) != SEXPTYPE::BUILTINSXP.0 && TYPEOF(input) != SEXPTYPE::SPECIALSXP.0 {
+            if TYPEOF(input) != SEXPTYPE::BUILTINSXP && TYPEOF(input) != SEXPTYPE::SPECIALSXP {
                 warningcall(call, "argument is not a function");
             }
             R_NilValue()
@@ -358,7 +358,7 @@ pub unsafe fn do_bodyCode(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         checkArity(op, args);
         let input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(input) == SEXPTYPE::CLOSXP {
             let bc = BODY(input);
             RAISE_NAMED(bc, crate::sexp::accessors::NAMED(input));
             bc
@@ -376,7 +376,7 @@ pub unsafe fn do_envir(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
         let input = CAR(args);
-        if TYPEOF(input) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(input) == SEXPTYPE::CLOSXP {
             CLOENV(input)
         } else if isNull(input) {
             let ctxt = R_GlobalContext();
@@ -405,7 +405,7 @@ pub unsafe fn do_envirgets(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         checkArity(op, args);
         let x = CADR(args);
         let val = CAR(args);
-        if TYPEOF(x) == SEXPTYPE::CLOSXP.0 {
+        if TYPEOF(x) == SEXPTYPE::CLOSXP {
             if Rf_isEnvironment(val) == 0 {
                 errorcall(call, "invalid replacement for 'environment'");
             }
@@ -629,12 +629,12 @@ pub unsafe fn do_makevector(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
         };
         let s = Rf_allocVector(stype, len as c_int);
-        if stype == SEXPTYPE::REALSXP.0 {
+        if stype == SEXPTYPE::REALSXP {
             let p = REAL(s);
             for i in 0..len as usize {
                 *p.add(i) = 0.0;
             }
-        } else if stype == SEXPTYPE::INTSXP.0 || stype == SEXPTYPE::LGLSXP.0 {
+        } else if stype == SEXPTYPE::INTSXP || stype == SEXPTYPE::LGLSXP {
             let p = INTEGER(s);
             for i in 0..len as usize {
                 *p.add(i) = 0;
@@ -654,7 +654,7 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
             return x;
         }
         let xtype = TYPEOF(x);
-        if xtype == SEXPTYPE::NILSXP.0 {
+        if xtype == SEXPTYPE::NILSXP {
             error("cannot set length of NULL");
         }
         let r = Rf_allocVector(xtype, len as c_int);
@@ -662,7 +662,7 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
         let copy_len = (if len < old_len { len } else { old_len }) as usize;
 
         match xtype {
-            t if t == SEXPTYPE::LGLSXP.0 || t == SEXPTYPE::INTSXP.0 => {
+            t if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP => {
                 let px = INTEGER(x);
                 let pr = INTEGER(r);
                 for i in 0..copy_len {
@@ -672,7 +672,7 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
                     *pr.add(i) = NA_INTEGER;
                 }
             }
-            t if t == SEXPTYPE::REALSXP.0 => {
+            t if t == SEXPTYPE::REALSXP => {
                 let px = REAL(x);
                 let pr = REAL(r);
                 for i in 0..copy_len {
@@ -682,26 +682,26 @@ pub unsafe fn xlengthgets(x: SEXP, len: R_xlen_t) -> SEXP {
                     *pr.add(i) = NA_REAL;
                 }
             }
-            t if t == SEXPTYPE::CPLXSXP.0 => {
+            t if t == SEXPTYPE::CPLXSXP => {
                 let px = COMPLEX(x);
                 let pr = COMPLEX(r);
                 for i in 0..copy_len {
                     *pr.add(i) = *px.add(i);
                 }
             }
-            t if t == SEXPTYPE::STRSXP.0 => {
+            t if t == SEXPTYPE::STRSXP => {
                 for i in 0..copy_len as R_xlen_t {
                     SET_STRING_ELT(r, i, STRING_ELT(x, i));
                 }
             }
-            t if t == SEXPTYPE::RAWSXP.0 => {
+            t if t == SEXPTYPE::RAWSXP => {
                 let px = RAW(x);
                 let pr = RAW(r);
                 for i in 0..copy_len {
                     *pr.add(i) = *px.add(i);
                 }
             }
-            t if t == SEXPTYPE::VECSXP.0 || t == SEXPTYPE::EXPRSXP.0 => {
+            t if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP => {
                 for i in 0..copy_len as R_xlen_t {
                     SET_VECTOR_ELT(r, i, VECTOR_ELT(x, i));
                 }
@@ -744,7 +744,7 @@ pub unsafe fn do_switch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let arg = crate::eval::eval::Rf_eval(CAR(CDR(args)), rho);
         let body = CDR(CDR(args));
 
-        if TYPEOF(arg) == SEXPTYPE::STRSXP.0 {
+        if TYPEOF(arg) == SEXPTYPE::STRSXP {
             let target_str = CHAR(STRING_ELT(arg, 0));
             let target = std::ffi::CStr::from_ptr(target_str).to_bytes();
             let mut dflt: SEXP = R_NilValue();

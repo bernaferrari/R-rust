@@ -71,7 +71,7 @@ pub unsafe fn edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 // Helper: check if SEXP is a string (STRSXP)
 // ---------------------------------------------------------------------------
 unsafe fn isString(x: SEXP) -> bool {
-    !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP.0
+    !x.is_null() && TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 // ---------------------------------------------------------------------------

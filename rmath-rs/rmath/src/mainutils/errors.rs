@@ -310,39 +310,39 @@ unsafe fn GetOption1(sym: SEXP) -> SEXP {
 unsafe fn isFunction(s: SEXP) -> c_int {
     unsafe {
         let t = TYPEOF(s);
-        (t == SEXPTYPE::CLOSXP.0 || t == SEXPTYPE::BUILTINSXP.0 || t == SEXPTYPE::SPECIALSXP.0)
+        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP)
             as c_int
     }
 }
 
 /// Check if an SEXP is a language object.
 unsafe fn isLanguage(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::LANGSXP.0) as c_int }
+    unsafe { (TYPEOF(s) == SEXPTYPE::LANGSXP) as c_int }
 }
 
 /// Check if an SEXP is an expression.
 unsafe fn isExpression(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::EXPRSXP.0) as c_int }
+    unsafe { (TYPEOF(s) == SEXPTYPE::EXPRSXP) as c_int }
 }
 
 /// Check if an SEXP is a string vector.
 unsafe fn isString(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::STRSXP.0) as c_int }
+    unsafe { (TYPEOF(s) == SEXPTYPE::STRSXP) as c_int }
 }
 
 /// Check if an SEXP is a logical vector.
 unsafe fn isLogical(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::LGLSXP.0) as c_int }
+    unsafe { (TYPEOF(s) == SEXPTYPE::LGLSXP) as c_int }
 }
 
 /// Check if an SEXP is an integer vector.
 unsafe fn isInteger(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::INTSXP.0) as c_int }
+    unsafe { (TYPEOF(s) == SEXPTYPE::INTSXP) as c_int }
 }
 
 /// Check if an SEXP is a real vector.
 unsafe fn isReal(s: SEXP) -> c_int {
-    unsafe { (TYPEOF(s) == SEXPTYPE::REALSXP.0) as c_int }
+    unsafe { (TYPEOF(s) == SEXPTYPE::REALSXP) as c_int }
 }
 
 /// Convert SEXP to logical (simplified).
@@ -362,7 +362,7 @@ unsafe fn asLogical(s: SEXP) -> c_int {
 
 /// Check if an SEXP is NULL.
 unsafe fn isNull(s: SEXP) -> c_int {
-    unsafe { (s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP.0) as c_int }
+    unsafe { (s.is_null() || TYPEOF(s) == SEXPTYPE::NILSXP) as c_int }
 }
 
 /// Check if a string SEXP is valid (non-NA).
@@ -382,7 +382,7 @@ unsafe fn isValidString(s: SEXP) -> c_int {
 /// Get C string from CHARSXP (simplified).
 unsafe fn CHAR_local(s: SEXP) -> *const c_char {
     unsafe {
-        if s.is_null() || TYPEOF(s) != SEXPTYPE::CHARSXP.0 {
+        if s.is_null() || TYPEOF(s) != SEXPTYPE::CHARSXP {
             return b"\0" as *const u8 as *const c_char;
         }
         crate::sexp::accessors::CHAR(s)
@@ -440,7 +440,7 @@ unsafe fn length(x: SEXP) -> c_int {
     unsafe {
         let mut count: c_int = 0;
         let mut p = x;
-        while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP.0 {
+        while !p.is_null() && TYPEOF(p) == SEXPTYPE::LISTSXP {
             count += 1;
             p = CDR(p);
         }
@@ -1018,10 +1018,10 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             if cw < nw {
                 // Store the warning
                 let warnings_ptr = R_WARNINGS.load(Ordering::Relaxed);
-                if !warnings_ptr.is_null() && TYPEOF(warnings_ptr) == SEXPTYPE::VECSXP.0 {
+                if !warnings_ptr.is_null() && TYPEOF(warnings_ptr) == SEXPTYPE::VECSXP {
                     SET_VECTOR_ELT(warnings_ptr, cw as R_xlen_t, call);
                     let names = CAR(ATTRIB(warnings_ptr));
-                    if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP.0 {
+                    if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP {
                         // Append traceback if requested
                         #[allow(clippy::implicit_clone)]
                         let mut msg_to_store = fmt_str.to_string();
@@ -1246,7 +1246,7 @@ pub unsafe fn PrintWarnings() {
         IN_PRINT_WARNINGS.store(1, Ordering::Relaxed);
 
         let warnings_ptr = R_WARNINGS.load(Ordering::Relaxed);
-        if warnings_ptr.is_null() || TYPEOF(warnings_ptr) != SEXPTYPE::VECSXP.0 {
+        if warnings_ptr.is_null() || TYPEOF(warnings_ptr) != SEXPTYPE::VECSXP {
             IN_PRINT_WARNINGS.store(0, Ordering::Relaxed);
             return;
         }
@@ -1383,8 +1383,8 @@ pub unsafe fn jump_to_top_ex(
             let err_opt = GetOption1(Rf_install(b"error\0".as_ptr() as *const c_char));
             have_handler = !err_opt.is_null() && err_opt != globals::R_NilValue();
             if have_handler {
-                let is_lang = TYPEOF(err_opt) == SEXPTYPE::LANGSXP.0;
-                let is_expr = TYPEOF(err_opt) == SEXPTYPE::EXPRSXP.0;
+                let is_lang = TYPEOF(err_opt) == SEXPTYPE::LANGSXP;
+                let is_expr = TYPEOF(err_opt) == SEXPTYPE::EXPRSXP;
                 if !is_lang && !is_expr {
                     eprintln!("invalid option \"error\"");
                 } else {
@@ -1434,9 +1434,9 @@ unsafe fn try_jump_to_restart() {
         let mut list = R_RESTART_STACK.with(|s| *s.borrow());
         while !list.is_null() && list != globals::R_NilValue() {
             let restart = CAR(list);
-            if TYPEOF(restart) == SEXPTYPE::VECSXP.0 && LENGTH(restart) > 1 {
+            if TYPEOF(restart) == SEXPTYPE::VECSXP && LENGTH(restart) > 1 {
                 let name = crate::sexp::accessors::VECTOR_ELT(restart, 0);
-                if TYPEOF(name) == SEXPTYPE::STRSXP.0 && LENGTH(name) == 1 {
+                if TYPEOF(name) == SEXPTYPE::STRSXP && LENGTH(name) == 1 {
                     let cname = CHAR(STRING_ELT(name, 0));
                     if !cname.is_null() {
                         let bytes = CStr::from_ptr(cname).to_bytes();
@@ -1705,7 +1705,7 @@ pub unsafe fn R_ConciseTraceback(call: SEXP, skip: c_int) -> String {
                     } else {
                         ptr::null_mut()
                     };
-                    let this = if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::SYMSXP.0 {
+                    let this = if !fun.is_null() && TYPEOF(fun) == SEXPTYPE::SYMSXP {
                         let name = CHAR_local(PRINTNAME(fun));
                         CStr::from_ptr(name).to_str().unwrap_or("<Anonymous>")
                     } else {
@@ -2051,7 +2051,7 @@ pub unsafe fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     unsafe {
         checkArity(op, args);
         let r = CAR(args);
-        if TYPEOF(r) != SEXPTYPE::VECSXP.0 || LENGTH(r) < 2 {
+        if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
             errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
         }
         R_RESTART_STACK.with(|stack| {
@@ -2067,7 +2067,7 @@ pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
     unsafe {
         checkArity(op, args);
         let r = CAR(args);
-        if TYPEOF(r) != SEXPTYPE::VECSXP.0 || LENGTH(r) < 2 {
+        if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
             errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
         }
         // invokeRestart would jump to the restart; for now just panic
@@ -2103,7 +2103,7 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
         let h = GetOption1(Rf_install(
             b"browser.error.handler\0".as_ptr() as *const c_char
         ));
-        let h = if !h.is_null() && TYPEOF(h) == SEXPTYPE::CLOSXP.0 {
+        let h = if !h.is_null() && TYPEOF(h) == SEXPTYPE::CLOSXP {
             h
         } else {
             globals::R_RestartToken()
@@ -2162,7 +2162,7 @@ unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *co
 unsafe fn findConditionHandler(cond: SEXP) -> SEXP {
     unsafe {
         let classes = getAttrib(cond, R_ClassSymbol());
-        if TYPEOF(classes) != SEXPTYPE::STRSXP.0 {
+        if TYPEOF(classes) != SEXPTYPE::STRSXP {
             return globals::R_NilValue();
         }
         let n_classes = LENGTH(classes);
@@ -2214,7 +2214,7 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             if IS_CALLING_ENTRY(entry) != 0 {
                 let h = ENTRY_HANDLER(entry);
                 if h == globals::R_RestartToken() {
-                    let msgstr = if TYPEOF(msg) == SEXPTYPE::STRSXP.0 && LENGTH(msg) > 0 {
+                    let msgstr = if TYPEOF(msg) == SEXPTYPE::STRSXP && LENGTH(msg) > 0 {
                         let c = translateChar(STRING_ELT(msg, 0));
                         CStr::from_ptr(c).to_str().unwrap_or("error")
                     } else {
@@ -2246,7 +2246,7 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP.0 || LENGTH(CAR(args)) != 1 {
+        if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
             errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
@@ -2260,7 +2260,7 @@ pub unsafe fn do_dfltWarn(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 pub unsafe fn do_dfltStop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         checkArity(op, args);
-        if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP.0 || LENGTH(CAR(args)) != 1 {
+        if TYPEOF(CAR(args)) != SEXPTYPE::STRSXP || LENGTH(CAR(args)) != 1 {
             errorcall(call, b"bad error message\x00".as_ptr() as *const c_char);
         }
         let msg = translateChar(STRING_ELT(CAR(args), 0));
@@ -2349,7 +2349,7 @@ pub unsafe fn R_makeErrorCondition(
 pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
     unsafe {
         // Extract message from condition and call errorcall_dflt
-        if TYPEOF(cond) != SEXPTYPE::VECSXP.0 || LENGTH(cond) == 0 {
+        if TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) == 0 {
             errorcall(
                 call,
                 b"condition object must be a VECSXP of length at least one\x00".as_ptr()
@@ -2357,7 +2357,7 @@ pub unsafe fn R_signalErrorCondition(cond: SEXP, call: SEXP) {
             );
         }
         let elt = VECTOR_ELT(cond, 0);
-        if TYPEOF(elt) != SEXPTYPE::STRSXP.0 || LENGTH(elt) != 1 {
+        if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
             errorcall(
                 call,
                 b"first element of condition object must be a scalar string\x00".as_ptr()
@@ -2379,7 +2379,7 @@ pub unsafe fn R_signalErrorConditionEx(cond: SEXP, call: SEXP, exitOnly: c_int) 
 /// R_setConditionField — set a field in a condition object.
 pub unsafe fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char, val: SEXP) {
     unsafe {
-        if TYPEOF(cond) != SEXPTYPE::VECSXP.0 {
+        if TYPEOF(cond) != SEXPTYPE::VECSXP {
             return;
         }
         let len = XLENGTH(cond);
@@ -2388,7 +2388,7 @@ pub unsafe fn R_setConditionField(cond: SEXP, idx: R_xlen_t, name: *const c_char
         }
         SET_VECTOR_ELT(cond, idx, val);
         let names = getAttrib_wrap(cond, R_NamesSymbol());
-        if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP.0 && XLENGTH(names) == len {
+        if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && XLENGTH(names) == len {
             SET_STRING_ELT(names, idx, Rf_mkChar(name));
         }
     }
@@ -2666,7 +2666,7 @@ pub unsafe fn R_MissingArgError_c(arg: *const c_char, call: SEXP, subclass: *con
 /// Matches C's `void R_MissingArgError(SEXP symbol, SEXP call, const char* subclass)`
 pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_char) {
     unsafe {
-        let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP.0 {
+        let arg = if symbol.is_null() || TYPEOF(symbol) != SEXPTYPE::SYMSXP {
             b"\0".as_ptr() as *const c_char
         } else {
             let name = CHAR_local(PRINTNAME(symbol));
@@ -2684,11 +2684,11 @@ pub unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP, subclass: *const c_cha
 /// Matches C's `void R_signalWarningCondition(SEXP cond)`.
 pub unsafe fn R_signalWarningCondition(cond: SEXP) {
     unsafe {
-        if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP.0 || LENGTH(cond) < 1 {
+        if cond.is_null() || TYPEOF(cond) != SEXPTYPE::VECSXP || LENGTH(cond) < 1 {
             return;
         }
         let elt = VECTOR_ELT(cond, 0);
-        if TYPEOF(elt) != SEXPTYPE::STRSXP.0 || LENGTH(elt) != 1 {
+        if TYPEOF(elt) != SEXPTYPE::STRSXP || LENGTH(elt) != 1 {
             return;
         }
         let msg = translateChar(STRING_ELT(elt, 0));
@@ -2764,12 +2764,12 @@ pub unsafe fn R_makeWarningCondition(
 /// Matches C's `SEXP R_makePartialMatchWarningCondition(SEXP call, SEXP argument, SEXP formal)`
 pub unsafe fn R_makePartialMatchWarningCondition(call: SEXP, argument: SEXP, formal: SEXP) -> SEXP {
     unsafe {
-        let arg_name = if !argument.is_null() && TYPEOF(argument) == SEXPTYPE::SYMSXP.0 {
+        let arg_name = if !argument.is_null() && TYPEOF(argument) == SEXPTYPE::SYMSXP {
             CHAR_local(PRINTNAME(argument))
         } else {
             b"?\0".as_ptr() as *const c_char
         };
-        let formal_name = if !formal.is_null() && TYPEOF(formal) == SEXPTYPE::SYMSXP.0 {
+        let formal_name = if !formal.is_null() && TYPEOF(formal) == SEXPTYPE::SYMSXP {
             CHAR_local(PRINTNAME(formal))
         } else {
             b"?\0".as_ptr() as *const c_char
@@ -2798,7 +2798,7 @@ pub unsafe fn R_makeNotSubsettableError(x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let class_str = if !x.is_null() {
             let klass = getAttrib_wrap(x, R_ClassSymbol());
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP.0 && LENGTH(klass) >= 1 {
+            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
                 let s = CHAR_local(STRING_ELT(klass, 0));
                 CStr::from_ptr(s).to_str().unwrap_or("object")
             } else {
@@ -2826,7 +2826,7 @@ pub unsafe fn R_makeMissingSubscriptError(x: SEXP, call: SEXP) -> SEXP {
     unsafe {
         let class_str = if !x.is_null() {
             let klass = getAttrib_wrap(x, R_ClassSymbol());
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP.0 && LENGTH(klass) >= 1 {
+            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP && LENGTH(klass) >= 1 {
                 let s = CHAR_local(STRING_ELT(klass, 0));
                 CStr::from_ptr(s).to_str().unwrap_or("object")
             } else {
@@ -2869,9 +2869,9 @@ pub unsafe fn R_makeMissingSubscriptError1(call: SEXP) -> SEXP {
 /// Matches C's `SEXP R_makeOutOfBoundsError(SEXP x, int subscript, SEXP sindex, SEXP call)`
 pub unsafe fn R_makeOutOfBoundsError(x: SEXP, subscript: c_int, sindex: SEXP, call: SEXP) -> SEXP {
     unsafe {
-        let idx_str = if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::REALSXP.0 {
+        let idx_str = if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::REALSXP {
             format!("{}", *REAL(sindex))
-        } else if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::INTSXP.0 {
+        } else if !sindex.is_null() && TYPEOF(sindex) == SEXPTYPE::INTSXP {
             format!("{}", *INTEGER(sindex))
         } else {
             format!("{}", subscript)
@@ -3286,7 +3286,7 @@ mod tests {
             let klass = getAttrib_wrap(cond, R_ClassSymbol());
             // klass may have length 4 if attribute system is fully working,
             // or length 0 if setAttrib didn't fully work in this test context
-            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP.0 {
+            if !klass.is_null() && TYPEOF(klass) == SEXPTYPE::STRSXP {
                 assert!(LENGTH(klass) >= 3);
             }
         }
@@ -3319,7 +3319,7 @@ mod tests {
             setup_warnings();
             assert!(
                 R_WARNINGS.load(Ordering::Relaxed).is_null()
-                    || TYPEOF(R_WARNINGS.load(Ordering::Relaxed)) == SEXPTYPE::VECSXP.0
+                    || TYPEOF(R_WARNINGS.load(Ordering::Relaxed)) == SEXPTYPE::VECSXP
             );
 
             // Reset
@@ -3588,7 +3588,7 @@ mod tests {
         unsafe {
             let result = R_GetCurrentSrcref(0);
             // Returns R_NilValue since srcref not implemented
-            assert!(result.is_null() || TYPEOF(result) == SEXPTYPE::NILSXP.0);
+            assert!(result.is_null() || TYPEOF(result) == SEXPTYPE::NILSXP);
         }
     }
 
@@ -3639,7 +3639,7 @@ mod tests {
             // After clearing, these should be R_NilValue
             assert!(
                 ENTRY_TARGET_ENVIR(entry).is_null()
-                    || TYPEOF(ENTRY_TARGET_ENVIR(entry)) == SEXPTYPE::NILSXP.0
+                    || TYPEOF(ENTRY_TARGET_ENVIR(entry)) == SEXPTYPE::NILSXP
             );
         }
     }

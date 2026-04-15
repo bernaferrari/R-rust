@@ -99,13 +99,13 @@ unsafe fn isNull(x: SEXP) -> bool {
 #[inline]
 unsafe fn isVector(x: SEXP) -> bool {
     let t = TYPEOF(x);
-    t == SEXPTYPE::LGLSXP.0
-        || t == SEXPTYPE::INTSXP.0
-        || t == SEXPTYPE::REALSXP.0
-        || t == SEXPTYPE::CPLXSXP.0
-        || t == SEXPTYPE::STRSXP.0
-        || t == SEXPTYPE::VECSXP.0
-        || t == SEXPTYPE::EXPRSXP.0
+    t == SEXPTYPE::LGLSXP
+        || t == SEXPTYPE::INTSXP
+        || t == SEXPTYPE::REALSXP
+        || t == SEXPTYPE::CPLXSXP
+        || t == SEXPTYPE::STRSXP
+        || t == SEXPTYPE::VECSXP
+        || t == SEXPTYPE::EXPRSXP
 }
 
 /* ==================== Helper: isString ==================== */
@@ -113,7 +113,7 @@ unsafe fn isVector(x: SEXP) -> bool {
 #[inline]
 #[unsafe(no_mangle)]
 unsafe fn isString(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::STRSXP.0
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /* ==================== Helper: findVar ==================== */

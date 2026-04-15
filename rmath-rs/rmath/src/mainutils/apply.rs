@@ -303,7 +303,7 @@ unsafe fn length(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::LISTSXP.0 || t == SEXPTYPE::LANGSXP.0 {
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
             // Count pairlist elements
             let mut count: c_int = 0;
             let mut cur = x;
@@ -324,7 +324,7 @@ unsafe fn length(x: SEXP) -> c_int {
 /// argument list, then evaluates the function call.
 unsafe fn force_and_call(e: SEXP, n: c_int, rho: SEXP) -> SEXP {
     unsafe {
-        if e.is_null() || TYPEOF(e) != SEXPTYPE::LANGSXP.0 {
+        if e.is_null() || TYPEOF(e) != SEXPTYPE::LANGSXP {
             return Rf_eval(e, rho);
         }
 
@@ -333,7 +333,7 @@ unsafe fn force_and_call(e: SEXP, n: c_int, rho: SEXP) -> SEXP {
         let mut current = CDR(e);
         while !current.is_null() && current != R_NilValue() && count < n {
             let val = CAR(current);
-            if TYPEOF(val) == SEXPTYPE::PROMSXP.0 {
+            if TYPEOF(val) == SEXPTYPE::PROMSXP {
                 let forced_val = forcePromise(val);
                 SETCAR(current, forced_val);
             }

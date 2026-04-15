@@ -34,13 +34,13 @@ const NA_LOGICAL: c_int = -2147483648; // NA_INTEGER value
 // Helper: check if SEXP is a string vector with at least 1 element
 #[inline]
 unsafe fn is_single_string(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::STRSXP.0 && LENGTH(x) >= 1
+    TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) >= 1
 }
 
 // Helper: check if SEXP is a string vector of exactly length 1
 #[inline]
 unsafe fn is_string_len1(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::STRSXP.0 && LENGTH(x) == 1
+    TYPEOF(x) == SEXPTYPE::STRSXP && LENGTH(x) == 1
 }
 
 // Helper: convert a logical SEXP to c_int (Rboolean-like)
@@ -51,7 +51,7 @@ unsafe fn asRbool(x: SEXP) -> c_int {
         return NA_LOGICAL;
     }
     let t = TYPEOF(x);
-    if t != SEXPTYPE::LGLSXP.0 {
+    if t != SEXPTYPE::LGLSXP {
         return NA_LOGICAL;
     }
     let v = INTEGER(x);
@@ -533,7 +533,7 @@ unsafe fn http_download(
 
     // Build headers string from SEXP if provided
     let headers_cstr: Option<CString> = if headers != R_NilValue()
-        && TYPEOF(headers) == SEXPTYPE::STRSXP.0
+        && TYPEOF(headers) == SEXPTYPE::STRSXP
         && LENGTH(headers) > 0
     {
         let h = CHAR(STRING_ELT(headers, 0));

@@ -43,17 +43,17 @@ unsafe fn as_integer(x: SEXP) -> c_int {
         return NA_INTEGER;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         return *INTEGER(x);
     }
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         let v = *REAL(x);
         if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
             return NA_INTEGER;
         }
         return v as c_int;
     }
-    if t == SEXPTYPE::LGLSXP.0 {
+    if t == SEXPTYPE::LGLSXP {
         return *INTEGER(x);
     }
     NA_INTEGER
@@ -64,10 +64,10 @@ unsafe fn as_real(x: SEXP) -> c_double {
         return NA_REAL;
     }
     let t = TYPEOF(x);
-    if t == SEXPTYPE::REALSXP.0 {
+    if t == SEXPTYPE::REALSXP {
         return *REAL(x);
     }
-    if t == SEXPTYPE::INTSXP.0 {
+    if t == SEXPTYPE::INTSXP {
         let v = *INTEGER(x);
         if v == NA_INTEGER {
             return NA_REAL;

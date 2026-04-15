@@ -646,7 +646,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let xtype = TYPEOF(x);
         let n = XLENGTH(x);
 
-        if xtype == SEXPTYPE::CPLXSXP.0 {
+        if xtype == SEXPTYPE::CPLXSXP {
             // Complex input
             let px = COMPLEX(x);
             let primval = crate::mainutils::relop::PRIMVAL(op);
@@ -729,9 +729,9 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                     return y;
                 }
             }
-        } else if xtype == SEXPTYPE::REALSXP.0
-            || xtype == SEXPTYPE::INTSXP.0
-            || xtype == SEXPTYPE::LGLSXP.0
+        } else if xtype == SEXPTYPE::REALSXP
+            || xtype == SEXPTYPE::INTSXP
+            || xtype == SEXPTYPE::LGLSXP
         {
             // Numeric (non-complex) input
             let px = REAL(x);
@@ -961,7 +961,7 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         // First arg: length (should be integer)
         let length_arg = CAR(args);
         let mut na: R_xlen_t = 0;
-        if !length_arg.is_null() && TYPEOF(length_arg) == SEXPTYPE::INTSXP.0 {
+        if !length_arg.is_null() && TYPEOF(length_arg) == SEXPTYPE::INTSXP {
             let pv = INTEGER(length_arg);
             if !pv.is_null() {
                 na = *pv as R_xlen_t;
@@ -990,7 +990,7 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let mut ni: R_xlen_t = 0;
 
         // Get real part pointer
-        let pre = if !re_arg.is_null() && TYPEOF(re_arg) == SEXPTYPE::REALSXP.0 {
+        let pre = if !re_arg.is_null() && TYPEOF(re_arg) == SEXPTYPE::REALSXP {
             nr = XLENGTH(re_arg);
             REAL(re_arg)
         } else {
@@ -998,7 +998,7 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         };
 
         // Get imaginary part pointer
-        let pim = if !im_arg.is_null() && TYPEOF(im_arg) == SEXPTYPE::REALSXP.0 {
+        let pim = if !im_arg.is_null() && TYPEOF(im_arg) == SEXPTYPE::REALSXP {
             ni = XLENGTH(im_arg);
             REAL(im_arg)
         } else {

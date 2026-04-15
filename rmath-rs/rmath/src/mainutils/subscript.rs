@@ -136,9 +136,9 @@ pub unsafe fn OneIndex(
         }
 
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::LGLSXP.0 || stype == SEXPTYPE::INTSXP.0 {
+        if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             _indx = integerOneIndex(INTEGER_ELT(s, _pos), nx, call);
-        } else if stype == SEXPTYPE::REALSXP.0 {
+        } else if stype == SEXPTYPE::REALSXP {
             let dblind = REAL_ELT(s, _pos);
             if !dblind.is_nan() {
                 if dblind >= 1.0 {
@@ -151,7 +151,7 @@ pub unsafe fn OneIndex(
                     error("attempt to select more than one element in OneIndex");
                 }
             }
-        } else if stype == SEXPTYPE::STRSXP.0 {
+        } else if stype == SEXPTYPE::STRSXP {
             // String subscript: match against names of x
             let _vmax = crate::sexp::memory_ext::vmaxget();
             let names =
@@ -199,7 +199,7 @@ pub unsafe fn OneIndex(
                 *newname = STRING_ELT(s, _pos as R_xlen_t);
             }
             crate::sexp::memory_ext::vmaxset(_vmax);
-        } else if stype == SEXPTYPE::SYMSXP.0 {
+        } else if stype == SEXPTYPE::SYMSXP {
             // Symbol subscript: match against names of x
             let _vmax = crate::sexp::memory_ext::vmaxget();
             let names =
@@ -283,12 +283,12 @@ pub unsafe fn get1index(
         let mut indx: R_xlen_t = -1;
 
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::LGLSXP.0 || stype == SEXPTYPE::INTSXP.0 {
+        if stype == SEXPTYPE::LGLSXP || stype == SEXPTYPE::INTSXP {
             let i = INTEGER_ELT(s, _pos);
             if i != NA_INTEGER {
                 indx = integerOneIndex(i, len, call);
             }
-        } else if stype == SEXPTYPE::REALSXP.0 {
+        } else if stype == SEXPTYPE::REALSXP {
             let dblind = REAL_ELT(s, _pos);
             if !dblind.is_nan() {
                 if dblind >= 1.0 {
@@ -303,7 +303,7 @@ pub unsafe fn get1index(
                     error("attempt to select more than one element in get1index");
                 }
             }
-        } else if stype == SEXPTYPE::STRSXP.0 {
+        } else if stype == SEXPTYPE::STRSXP {
             // NA matches nothing
             let elt = STRING_ELT(s, _pos as R_xlen_t);
             if elt.is_null() || elt == R_NilValue() { /* NA -> no match */
@@ -353,7 +353,7 @@ pub unsafe fn get1index(
                     crate::sexp::memory_ext::vmaxset(_vmax);
                 }
             }
-        } else if stype == SEXPTYPE::SYMSXP.0 {
+        } else if stype == SEXPTYPE::SYMSXP {
             // Symbol subscript: match against names
             let _vmax = crate::sexp::memory_ext::vmaxget();
             let sname = CHAR(PRINTNAME(s));
@@ -428,12 +428,12 @@ pub unsafe fn vectorIndex(
                 error("no such index at level 1");
             }
             if Rf_isVector(y) != 0 {
-                if TYPEOF(y) == SEXPTYPE::VECSXP.0 || TYPEOF(y) == SEXPTYPE::EXPRSXP.0 {
+                if TYPEOF(y) == SEXPTYPE::VECSXP || TYPEOF(y) == SEXPTYPE::EXPRSXP {
                     y = VECTOR_ELT(y, indx);
                 } else {
                     error("recursive indexing failed at level 1");
                 }
-            } else if TYPEOF(y) == SEXPTYPE::LISTSXP.0 {
+            } else if TYPEOF(y) == SEXPTYPE::LISTSXP {
                 let mut p = y;
                 for _ in 0..indx {
                     p = CDR(p);
@@ -495,7 +495,7 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
 
             for d in 0..ndim as usize {
                 let mut sub_val: R_xlen_t = 0;
-                if s_type == SEXPTYPE::STRSXP.0 {
+                if s_type == SEXPTYPE::STRSXP {
                     // Character subscript — match against dimnames
                     let elt = STRING_ELT(s, (i * ndim as usize + d) as R_xlen_t);
                     if elt.is_null() || elt == R_NilValue() {
@@ -1014,7 +1014,7 @@ unsafe fn stringSubscript(
             // Linear search through names
             let mut found = false;
             if !names.is_null()
-                && TYPEOF(names) == SEXPTYPE::STRSXP.0
+                && TYPEOF(names) == SEXPTYPE::STRSXP
                 && LENGTH(names) >= nx as c_int
             {
                 for j in 0..nx as usize {
@@ -1071,15 +1071,15 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
         let nd = INTEGER_ELT(dims, dim);
 
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::NILSXP.0 {
+        if stype == SEXPTYPE::NILSXP {
             Rf_allocVector3(SEXPTYPE::INTSXP.0, 0)
-        } else if stype == SEXPTYPE::LGLSXP.0 {
+        } else if stype == SEXPTYPE::LGLSXP {
             logicalSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call)
-        } else if stype == SEXPTYPE::INTSXP.0 {
+        } else if stype == SEXPTYPE::INTSXP {
             integerSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, x)
-        } else if stype == SEXPTYPE::REALSXP.0 {
+        } else if stype == SEXPTYPE::REALSXP {
             realSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call, x)
-        } else if stype == SEXPTYPE::STRSXP.0 {
+        } else if stype == SEXPTYPE::STRSXP {
             let dnames = crate::eval::attrib_core::getAttrib(
                 x,
                 crate::eval::attrib_core::R_DimNamesSymbol(),
@@ -1102,7 +1102,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
                 x,
                 dim,
             )
-        } else if stype == SEXPTYPE::SYMSXP.0 {
+        } else if stype == SEXPTYPE::SYMSXP {
             nullSubscript(nd as R_xlen_t)
         } else {
             error("invalid subscript type 'unknown'");
@@ -1156,7 +1156,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
 
         // Special case for simple scalar indices — does not duplicate
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::INTSXP.0 && IS_SCALAR(s, SEXPTYPE::INTSXP.0) != 0 {
+        if stype == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.0) != 0 {
             let i = SCALAR_IVAL(s);
             if i > 0 && (i as R_xlen_t) <= nx {
                 if !stretch.is_null() {
@@ -1164,7 +1164,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
                 }
                 return s;
             }
-        } else if stype == SEXPTYPE::REALSXP.0 && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
+        } else if stype == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
             let di = SCALAR_DVAL(s);
             if di >= 1.0 && (di as R_xlen_t) <= nx {
                 if !stretch.is_null() {
@@ -1178,22 +1178,22 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
         let mut _stretch_val: R_xlen_t = 0;
 
         let stype2 = TYPEOF(s);
-        if stype2 == SEXPTYPE::NILSXP.0 {
+        if stype2 == SEXPTYPE::NILSXP {
             if !stretch.is_null() {
                 *stretch = 0;
             }
             Rf_allocVector3(SEXPTYPE::INTSXP.0, 0)
-        } else if stype2 == SEXPTYPE::LGLSXP.0 {
+        } else if stype2 == SEXPTYPE::LGLSXP {
             logicalSubscript(s, ns, nx, stretch, call)
-        } else if stype2 == SEXPTYPE::INTSXP.0 {
+        } else if stype2 == SEXPTYPE::INTSXP {
             integerSubscript(s, ns, nx, stretch, call, x)
-        } else if stype2 == SEXPTYPE::REALSXP.0 {
+        } else if stype2 == SEXPTYPE::REALSXP {
             realSubscript(s, ns, nx, stretch, call, x)
-        } else if stype2 == SEXPTYPE::STRSXP.0 {
+        } else if stype2 == SEXPTYPE::STRSXP {
             let names =
                 crate::eval::attrib_core::getAttrib(x, crate::eval::attrib_core::R_NamesSymbol());
             stringSubscript(s, ns, nx, names, stretch, call, x, -1)
-        } else if stype2 == SEXPTYPE::SYMSXP.0 {
+        } else if stype2 == SEXPTYPE::SYMSXP {
             if !stretch.is_null() {
                 *stretch = 0;
             }

@@ -187,9 +187,9 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return FALSE;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CLOSXP.0 as c_int
-            || t == SEXPTYPE::BUILTINSXP.0 as c_int
-            || t == SEXPTYPE::SPECIALSXP.0 as c_int
+        if t == SEXPTYPE::CLOSXP
+            || t == SEXPTYPE::BUILTINSXP
+            || t == SEXPTYPE::SPECIALSXP
         {
             TRUE
         } else {
@@ -208,7 +208,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
         if x.is_null() || x == R_NilValue() {
             return FALSE;
         }
-        if TYPEOF(x) == SEXPTYPE::SYMSXP.0 as c_int {
+        if TYPEOF(x) == SEXPTYPE::SYMSXP {
             TRUE
         } else {
             FALSE
@@ -295,7 +295,7 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
             return R_NilValue();
         }
         let len = n - pos;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, len);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, len);
         Rf_protect(ans);
         for i in 0..len {
             let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
@@ -342,7 +342,7 @@ unsafe fn R_data_class(obj: SEXP) -> SEXP {
         let klass = getAttrib(obj, R_ClassSymbol());
         if !klass.is_null()
             && klass != R_NilValue()
-            && TYPEOF(klass) == SEXPTYPE::STRSXP.0 as c_int
+            && TYPEOF(klass) == SEXPTYPE::STRSXP
             && LENGTH(klass) > 0
         {
             return klass;
@@ -350,18 +350,18 @@ unsafe fn R_data_class(obj: SEXP) -> SEXP {
         // Fall back to implicit class based on TYPEOF
         let t = TYPEOF(obj);
         let type_str = match t {
-            x if x == SEXPTYPE::LGLSXP.0 as c_int => "logical",
-            x if x == SEXPTYPE::INTSXP.0 as c_int => "integer",
-            x if x == SEXPTYPE::REALSXP.0 as c_int => "numeric",
-            x if x == SEXPTYPE::CPLXSXP.0 as c_int => "complex",
-            x if x == SEXPTYPE::STRSXP.0 as c_int => "character",
-            x if x == SEXPTYPE::RAWSXP.0 as c_int => "raw",
-            x if x == SEXPTYPE::VECSXP.0 as c_int => "list",
-            x if x == SEXPTYPE::LISTSXP.0 as c_int => "list",
-            x if x == SEXPTYPE::NILSXP.0 as c_int => "NULL",
-            x if x == SEXPTYPE::CLOSXP.0 as c_int => "function",
-            x if x == SEXPTYPE::SPECIALSXP.0 as c_int => "function",
-            x if x == SEXPTYPE::BUILTINSXP.0 as c_int => "function",
+            x if x == SEXPTYPE::LGLSXP => "logical",
+            x if x == SEXPTYPE::INTSXP => "integer",
+            x if x == SEXPTYPE::REALSXP => "numeric",
+            x if x == SEXPTYPE::CPLXSXP => "complex",
+            x if x == SEXPTYPE::STRSXP => "character",
+            x if x == SEXPTYPE::RAWSXP => "raw",
+            x if x == SEXPTYPE::VECSXP => "list",
+            x if x == SEXPTYPE::LISTSXP => "list",
+            x if x == SEXPTYPE::NILSXP => "NULL",
+            x if x == SEXPTYPE::CLOSXP => "function",
+            x if x == SEXPTYPE::SPECIALSXP => "function",
+            x if x == SEXPTYPE::BUILTINSXP => "function",
             _ => "unknown",
         };
         R_mkString(type_str.as_ptr() as *const c_char)
@@ -393,7 +393,7 @@ pub unsafe fn R_forceAndCall(e: SEXP, op: SEXP, args: SEXP, rho: SEXP, n: c_int)
         let mut current = args;
         while !current.is_null() && current != R_NilValue() && count < n {
             let val = CAR(current);
-            if TYPEOF(val) == SEXPTYPE::PROMSXP.0 {
+            if TYPEOF(val) == SEXPTYPE::PROMSXP {
                 let forced_val = forcePromise(val);
                 SETCAR(current, forced_val);
             }
@@ -402,14 +402,14 @@ pub unsafe fn R_forceAndCall(e: SEXP, op: SEXP, args: SEXP, rho: SEXP, n: c_int)
         }
 
         // Call the function
-        if TYPEOF(op) == SEXPTYPE::BUILTINSXP.0 {
+        if TYPEOF(op) == SEXPTYPE::BUILTINSXP {
             // Builtin: pass already-evaluated args
             if let Some(primfun) = super::eval::get_primfun(op) {
                 primfun(e, op, args, rho)
             } else {
                 R_NilValue()
             }
-        } else if TYPEOF(op) == SEXPTYPE::CLOSXP.0 {
+        } else if TYPEOF(op) == SEXPTYPE::CLOSXP {
             super::closure::applyClosure(e, op, args, rho, R_NilValue(), TRUE)
         } else {
             R_NilValue()
@@ -459,7 +459,7 @@ pub unsafe fn DispatchOrEval(
             while !args_iter.is_null() && args_iter != R_NilValue() {
                 if CAR(args_iter) == R_DotsSymbol() {
                     let h = R_findVar(R_DotsSymbol(), rho);
-                    if TYPEOF(h) == SEXPTYPE::DOTSXP.0 as c_int {
+                    if TYPEOF(h) == SEXPTYPE::DOTSXP {
                         dots = TRUE;
                         x = Rf_eval(CAR(h), rho);
                         break;
@@ -509,7 +509,7 @@ pub unsafe fn DispatchOrEval(
                 // (IF_PROMSXP_SET_PRVALUE)
                 if !pargs.is_null()
                     && pargs != R_NilValue()
-                    && TYPEOF(CAR(pargs)) == SEXPTYPE::PROMSXP.0 as c_int
+                    && TYPEOF(CAR(pargs)) == SEXPTYPE::PROMSXP
                 {
                     // Force the first promise to be x
                     SETCAR(pargs, x);
@@ -754,14 +754,14 @@ pub unsafe fn DispatchGroup(
         let dispatch_class_name = translateChar(STRING_ELT(lclass, lwhich as R_xlen_t));
         let _vmax = vmaxget();
 
-        let m = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 as c_int, nargs));
+        let m = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, nargs));
         nprotect += 1;
 
         let mut s = args;
         for i in 0..nargs {
             let t = R_data_class(CAR(s));
             if !t.is_null()
-                && TYPEOF(t) == SEXPTYPE::STRSXP.0 as c_int
+                && TYPEOF(t) == SEXPTYPE::STRSXP
                 && stringPositionTr(t, dispatch_class_name) >= 0
             {
                 SET_STRING_ELT(m, i as R_xlen_t, PRINTNAME(lmeth));
@@ -802,7 +802,7 @@ pub unsafe fn DispatchGroup(
         let mut pi = pargs;
         let mut ai = args;
         while !pi.is_null() && pi != R_NilValue() && !ai.is_null() && ai != R_NilValue() {
-            if TYPEOF(CAR(pi)) == SEXPTYPE::PROMSXP.0 as c_int {
+            if TYPEOF(CAR(pi)) == SEXPTYPE::PROMSXP {
                 SETCAR(pi, CAR(ai));
             }
             if is_ops {
@@ -845,7 +845,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                 // Handle ... expansion
                 let h = R_findVarInFrame(rho, CAR(remaining));
                 Rf_protect(h);
-                if TYPEOF(h) == SEXPTYPE::DOTSXP.0 || h == R_NilValue() {
+                if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
                     let mut dh = h;
                     while !dh.is_null() && dh != R_NilValue() {
                         if CAR(dh) == R_MissingArg() {
@@ -879,7 +879,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
             } else {
                 // Regular argument
                 if CAR(remaining) == R_MissingArg()
-                    || (TYPEOF(CAR(remaining)) == SEXPTYPE::SYMSXP.0
+                    || (TYPEOF(CAR(remaining)) == SEXPTYPE::SYMSXP
                         && R_isMissing(CAR(remaining), rho) != 0)
                 {
                     val = R_MissingArg();

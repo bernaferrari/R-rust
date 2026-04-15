@@ -70,25 +70,25 @@ unsafe fn nlevels(x: SEXP) -> isize {
 // ---------------------------------------------------------------------------
 
 unsafe fn isFactor(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::INTSXP.0
+    TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
 unsafe fn isOrdered_int(x: SEXP) -> bool {
     // Simplified: check for "ordered" class
-    TYPEOF(x) == SEXPTYPE::INTSXP.0
+    TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
 unsafe fn isUnordered_int(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::INTSXP.0
+    TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
 unsafe fn isLogical(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::LGLSXP.0
+    TYPEOF(x) == SEXPTYPE::LGLSXP
 }
 
 unsafe fn isNumeric(x: SEXP) -> bool {
     let t = TYPEOF(x);
-    t == SEXPTYPE::REALSXP.0 || t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0
+    t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP
 }
 
 unsafe fn isComplex(x: SEXP) -> bool {
@@ -100,7 +100,7 @@ unsafe fn isComplex(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn isString(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::STRSXP.0
+    TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -108,7 +108,7 @@ unsafe fn isString(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn isNewList(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::VECSXP.0
+    TYPEOF(x) == SEXPTYPE::VECSXP
 }
 
 // ---------------------------------------------------------------------------
@@ -116,7 +116,7 @@ unsafe fn isNewList(x: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe fn isDataFrame(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::VECSXP.0
+    TYPEOF(x) == SEXPTYPE::VECSXP
     // In a full implementation we'd check inherits(x, "data.frame")
 }
 
@@ -126,11 +126,11 @@ unsafe fn isDataFrame(x: SEXP) -> bool {
 
 #[unsafe(no_mangle)]
 unsafe fn isLanguage(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::LANGSXP.0
+    TYPEOF(x) == SEXPTYPE::LANGSXP
 }
 
 unsafe fn isSymbol(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::SYMSXP.0
+    TYPEOF(x) == SEXPTYPE::SYMSXP
 }
 
 unsafe fn isMatrix(x: SEXP) -> bool {
@@ -306,12 +306,12 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         for i in 0..nc {
             let ans = VECTOR_ELT(data, i as R_xlen_t);
             let t = TYPEOF(ans);
-            if t != SEXPTYPE::LGLSXP.0
-                && t != SEXPTYPE::INTSXP.0
-                && t != SEXPTYPE::REALSXP.0
-                && t != SEXPTYPE::CPLXSXP.0
-                && t != SEXPTYPE::STRSXP.0
-                && t != SEXPTYPE::RAWSXP.0
+            if t != SEXPTYPE::LGLSXP
+                && t != SEXPTYPE::INTSXP
+                && t != SEXPTYPE::REALSXP
+                && t != SEXPTYPE::CPLXSXP
+                && t != SEXPTYPE::STRSXP
+                && t != SEXPTYPE::RAWSXP
             {
                 Rf_error(b"invalid type for variable\0".as_ptr() as *const _);
                 return R_NilValue();
@@ -497,7 +497,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     if Rf_length(factors) == 0 {
         nVar = 1;
         nterms = 0;
-    } else if TYPEOF(factors) == SEXPTYPE::INTSXP.0 && isMatrix(factors) {
+    } else if TYPEOF(factors) == SEXPTYPE::INTSXP && isMatrix(factors) {
         nVar = nrows(factors);
         nterms = ncols(factors);
     } else {
@@ -844,8 +844,8 @@ pub unsafe fn updateform(old: SEXP, new_: SEXP) -> SEXP {
 
     let _new = Rf_protect(crate::sexp::memory_ext::duplicate(new_));
 
-    if TYPEOF(old) != SEXPTYPE::LANGSXP.0
-        || (TYPEOF(_new) != SEXPTYPE::LANGSXP.0 && CAR(old) != tildeSymbol)
+    if TYPEOF(old) != SEXPTYPE::LANGSXP
+        || (TYPEOF(_new) != SEXPTYPE::LANGSXP && CAR(old) != tildeSymbol)
         || CAR(_new) != tildeSymbol
     {
         Rf_error(b"formula expected\0".as_ptr() as *const _);
@@ -899,7 +899,7 @@ unsafe fn ExpandDots(object: SEXP, value: SEXP) -> SEXP {
     }
 
     if isLanguage(object) {
-        let op = if TYPEOF(value) == SEXPTYPE::LANGSXP.0 {
+        let op = if TYPEOF(value) == SEXPTYPE::LANGSXP {
             CAR(value)
         } else {
             R_NilValue()
@@ -1432,7 +1432,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     a = CDR(a);
 
     let framenames_val: SEXP;
-    if isNull(data) || TYPEOF(data) == SEXPTYPE::ENVSXP.0 {
+    if isNull(data) || TYPEOF(data) == SEXPTYPE::ENVSXP {
         FRAMENAMES.set(ptr::null_mut());
         framenames_val = R_NilValue();
     } else if isDataFrame(data) {

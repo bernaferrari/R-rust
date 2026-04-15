@@ -44,7 +44,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 #[unsafe(no_mangle)]
 unsafe fn isInteger(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::INTSXP.0
+    TYPEOF(x) == SEXPTYPE::INTSXP
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
