@@ -4017,6 +4017,27 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "simplify2array" => unsafe {
+            crate::mainutils::essentials::do_simplify2array(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "match.arg" => unsafe {
+            crate::mainutils::essentials::do_match_arg(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "char.expand" => unsafe {
+            crate::mainutils::essentials::do_char_expand(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "type.convert" => unsafe {
+            crate::mainutils::essentials::do_type_convert(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "as.environment" => unsafe {
+            crate::mainutils::essentials::do_as_environment(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "sort.list" => unsafe {
+            crate::mainutils::essentials::do_sort_list(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "match.fun" => unsafe {
+            crate::mainutils::essentials::do_match_fun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
         _ => {
             if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
