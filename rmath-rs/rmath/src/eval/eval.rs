@@ -26,15 +26,19 @@
 //!   raw `SEXP` pointers to `Sexp<'a>`, delegate to the safe layer, and
 //!   convert back.
 
+use std::ffi::CString;
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{PRIMOFFSET, TYPEOF};
+use crate::sexp::accessors::{CAR, CDR, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT, TYPEOF};
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_EvalDepth, R_NilValue, set_R_Visible};
+use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_EvalDepth, R_NilValue, set_R_Visible};
+use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::safe::{PairlistIter, Sexp};
 use crate::sexp::symbol::R_DotsSymbol;
+
+use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
 
 // ---------------------------------------------------------------------------
 // SEXPTYPE constants for pattern matching
@@ -4307,8 +4311,18 @@ fn apply_builtin_safe<'a>(
         "qgeom" => unsafe {
             crate::mainutils::essentials::do_qgeom(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
+        // S3/S4 dispatch — try to dispatch if first argument is an object
         _ => {
-            if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
+            // Try S3 dispatch first: if first arg has a class attribute, look for generic.class
+            if let Some(s3_result) = try_s3_dispatch(
+                op_name.as_str(), fun, call, args, rho, evaled_args
+            ) {
+                s3_result
+            } else if let Some(s4_result) = try_s4_dispatch(
+                op_name.as_str(), fun, call, args, rho, evaled_args
+            ) {
+                s4_result
+            } else if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
                 unsafe { primfun(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw()) }
             } else {
                 eprintln!("Warning: builtin function '{}' not implemented", op_name);
@@ -4322,6 +4336,258 @@ fn apply_builtin_safe<'a>(
     }
 
     Ok(unsafe { Sexp::from_raw_unchecked(tmp) })
+}
+
+// ---------------------------------------------------------------------------
+// S3 Dispatch — method dispatch based on class attribute
+// ---------------------------------------------------------------------------
+
+/// Try to dispatch to an S3 method for a generic function.
+///
+/// If the first argument has a class attribute, look for `generic.class` method.
+/// For example, if calling `print(x)` where `class(x) == "data.frame"`,
+/// look for `print.data.frame` function.
+fn try_s3_dispatch<'a>(
+    op_name: &str,
+    fun: Sexp<'a>,
+    call: Sexp<'a>,
+    args: Sexp<'a>,
+    rho: Sexp<'a>,
+    evaled_args: SEXP,
+) -> Option<SEXP> {
+    unsafe {
+        // Skip S3 dispatch for operators and special forms
+        if op_name.starts_with(|c: char| !c.is_alphanumeric()) {
+            return None;
+        }
+        // Skip if already a method call (contains a dot like "print.default")
+        if op_name.contains('.') {
+            return None;
+        }
+
+        // Get the first argument from evaled_args
+        if evaled_args.is_null() || evaled_args == R_NilValue() {
+            return None;
+        }
+        let first_arg = CAR(evaled_args);
+        if first_arg.is_null() || first_arg == R_NilValue() {
+            return None;
+        }
+
+        // Check if the object has a class attribute
+        if isObject(first_arg) == FALSE {
+            return None;
+        }
+
+        let klass = getAttrib(first_arg, R_ClassSymbol());
+        if klass.is_null() || klass == R_NilValue() || TYPEOF(klass) != SEXPTYPE::STRSXP {
+            return None;
+        }
+
+        let n_classes = LENGTH(klass);
+        if n_classes == 0 {
+            return None;
+        }
+
+        // Try each class in the class vector
+        for i in 0..n_classes {
+            let class_name = STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t);
+            if class_name.is_null() {
+                continue;
+            }
+            let class_str = crate::sexp::accessors::CHAR(class_name);
+            if class_str.is_null() {
+                continue;
+            }
+            let class_str = std::ffi::CStr::from_ptr(class_str)
+                .to_str()
+                .unwrap_or("");
+            if class_str.is_empty() {
+                continue;
+            }
+
+            // Build method name: "generic.class" (e.g., "print.data.frame")
+            let method_name = format!("{}.{}", op_name, class_str);
+            let method_cstr = CString::new(method_name.as_str()).ok()?;
+
+            // Look up the method symbol
+            let method_sym = crate::sexp::symbol::Rf_install(method_cstr.as_ptr());
+            if method_sym.is_null() {
+                continue;
+            }
+
+            // Try to find the method in the environment chain
+            let method_val = crate::sexp::envir::R_findVar(method_sym, rho.as_raw());
+            if method_val.is_null() || method_val == R_NilValue() {
+                // Try base environment
+                let method_val = crate::sexp::envir::R_findVar(method_sym, R_BaseEnv());
+                if method_val.is_null() || method_val == R_NilValue() || TYPEOF(method_val) == SEXPTYPE::CLOSXP || TYPEOF(method_val) == SEXPTYPE::BUILTINSXP || TYPEOF(method_val) == SEXPTYPE::SPECIALSXP {
+                    // Found in base - continue to try dispatching
+                } else {
+                    continue;
+                }
+            }
+
+            // Check if it's a function
+            let method_type = TYPEOF(method_val);
+            if method_type != SEXPTYPE::CLOSXP
+                && method_type != SEXPTYPE::BUILTINSXP
+                && method_type != SEXPTYPE::SPECIALSXP
+            {
+                continue;
+            }
+
+            // Found a valid S3 method — call it
+            if method_type == SEXPTYPE::CLOSXP {
+                // For closures, use applyClosure
+                let result = super::closure::applyClosure(
+                    call.as_raw(),
+                    method_val,
+                    evaled_args,
+                    rho.as_raw(),
+                    R_NilValue(),
+                    TRUE,
+                );
+                return Some(result);
+            } else if method_type == SEXPTYPE::BUILTINSXP {
+                // For builtins, call directly
+                if let Some(primfun) = get_primfun(method_val) {
+                    return Some(primfun(call.as_raw(), method_val, evaled_args, rho.as_raw()));
+                }
+            }
+        }
+
+        None
+    }
+}
+
+// ---------------------------------------------------------------------------
+// S4 Dispatch — method dispatch for S4 formal classes
+// ---------------------------------------------------------------------------
+
+/// Try to dispatch to an S4 method.
+///
+/// S4 dispatch checks for formal class definitions and uses method dispatch.
+/// This is a simplified implementation that falls back to S3 semantics.
+fn try_s4_dispatch<'a>(
+    _op_name: &str,
+    _fun: Sexp<'a>,
+    _call: Sexp<'a>,
+    _args: Sexp<'a>,
+    _rho: Sexp<'a>,
+    _evaled_args: SEXP,
+) -> Option<SEXP> {
+    // S4 dispatch requires the methods package and formal class definitions.
+    // For now, return None to fall through to the default behavior.
+    // A full S4 implementation would:
+    // 1. Check if the object has an S4 class (inherits from a formal class)
+    // 2. Look up the method in the methods namespace
+    // 3. Dispatch to the appropriate method
+    None
+}
+
+// ---------------------------------------------------------------------------
+// Real parent.frame() implementation
+// ---------------------------------------------------------------------------
+
+/// Walk up the call stack to find the parent frame environment.
+///
+/// In R, parent.frame(n) returns the environment n frames up the call stack.
+/// This implementation uses the RCNTXT context stack.
+fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
+    unsafe {
+        if n <= 0 {
+            return rho;
+        }
+
+        // Walk up the context stack to find the parent environment
+        let ctx = crate::sexp::context::R_GlobalContext();
+        if ctx.is_null() {
+            return R_GlobalEnv();
+        }
+
+        // Use the R_findParentContext helper
+        let parent_ctx = super::context::R_findParentContext(ctx, n);
+        if !parent_ctx.is_null() && !(*parent_ctx).cloenv.is_null() {
+            return (*parent_ctx).cloenv;
+        }
+
+        // Fallback: walk environment chain using Sexp enclos()
+        let env = Sexp::from_raw_unchecked(rho);
+        let mut current = env;
+        for _ in 0..n {
+            match current.enclos() {
+                Some(enclos) => current = enclos,
+                None => return R_GlobalEnv(),
+            }
+        }
+        current.as_raw()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Real source() implementation — parse and evaluate R source files
+// ---------------------------------------------------------------------------
+
+/// Parse and evaluate an R source file.
+///
+/// This reads the file, parses it using the R parser, and evaluates
+/// each expression in the given environment.
+fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
+    unsafe {
+        // Read the file
+        let content = std::fs::read_to_string(file_path)
+            .map_err(|e| format!("cannot open file '{}': {}", file_path, e))?;
+
+        // Parse the file contents
+        let mut arena = RArena::new();
+        let parsed = super::parser::parse(&content, &mut arena)
+            .map_err(|e| format!("parse error in '{}': {}", file_path, e))?;
+
+        // Evaluate each expression in the parsed program
+        // The parser returns a pairlist of expressions (or a single expression)
+        let env = Sexp::from_raw_unchecked(rho);
+
+        // If it's a pairlist (LANGSXP with CDR), evaluate each element
+        if !parsed.is_null() && TYPEOF(parsed) == SEXPTYPE::LANGSXP {
+            // Check if this is a "{" block - evaluate each element
+            let head = CAR(parsed);
+            if !head.is_null() && TYPEOF(head) == SEXPTYPE::SYMSXP {
+                let sym_name = PRINTNAME(head);
+                if !sym_name.is_null() {
+                    let name_str = crate::sexp::accessors::CHAR(sym_name);
+                    if !name_str.is_null() {
+                        let name = std::ffi::CStr::from_ptr(name_str)
+                            .to_str()
+                            .unwrap_or("");
+                        if name == "{" {
+                            // It's a block — evaluate each sub-expression
+                            let mut current = CDR(parsed);
+                            let mut last_result = R_NilValue();
+                            while !current.is_null() && current != R_NilValue() {
+                                let expr = CAR(current);
+                                if !expr.is_null() {
+                                    let sexp_expr = Sexp::from_raw_unchecked(expr);
+                                    last_result = eval_safe(sexp_expr, env)
+                                        .map_err(|e| format!("error in '{}': {}", file_path, e))?
+                                        .as_raw();
+                                }
+                                current = CDR(current);
+                            }
+                            return Ok(last_result);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Single expression or non-block
+        let sexp_expr = Sexp::from_raw_unchecked(parsed);
+        let result = eval_safe(sexp_expr, env)
+            .map_err(|e| format!("error in '{}': {}", file_path, e))?;
+
+        Ok(result.as_raw())
+    }
 }
 
 // ---------------------------------------------------------------------------
