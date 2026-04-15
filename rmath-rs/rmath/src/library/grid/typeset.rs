@@ -21,7 +21,7 @@
 //!
 //! Glyph rendering for text typesetting in grid.
 
-use std::os::raw::c_int;
+use std::os::raw::{c_char, c_int};
 
 use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, REAL, SET_VECTOR_ELT, STRING_ELT, VECTOR_ELT};
 use crate::sexp::constructors::Rf_allocVector;
@@ -106,8 +106,8 @@ unsafe fn R_GE_glyphColour(_glyphs: SEXP) -> SEXP {
 }
 
 /// R_GE_str2col — convert colour string to integer
-unsafe fn R_GE_str2col(_colstr: *const std::os::raw::c_char) -> c_int {
-    0
+unsafe fn R_GE_str2col(colstr: *const c_char) -> c_int {
+    crate::mainutils::colors::R_GE_str2col(colstr) as c_int
 }
 
 /// GEGlyph — render glyphs on device

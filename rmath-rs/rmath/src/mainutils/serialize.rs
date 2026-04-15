@@ -1149,7 +1149,7 @@ pub unsafe fn R_unserialize(icon: SEXP, fun: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn R_serializeb(object: SEXP, icon: SEXP, xdr: SEXP, Sversion: SEXP, fun: SEXP) -> SEXP {
-    unsafe { error("read error") }
+    unsafe { R_serialize(object, icon, xdr, Sversion, fun) }
 }
 
 // ---------------------------------------------------------------------------
