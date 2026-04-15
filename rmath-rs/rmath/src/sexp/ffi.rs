@@ -72,6 +72,27 @@ pub struct Rcomplex {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct SEXPTYPE(pub c_int);
 
+impl PartialEq<c_int> for SEXPTYPE {
+    #[inline]
+    fn eq(&self, other: &c_int) -> bool {
+        self.0 == *other
+    }
+}
+
+impl PartialEq<SEXPTYPE> for c_int {
+    #[inline]
+    fn eq(&self, other: &SEXPTYPE) -> bool {
+        *self == other.0
+    }
+}
+
+impl From<SEXPTYPE> for c_int {
+    #[inline]
+    fn from(t: SEXPTYPE) -> c_int {
+        t.0
+    }
+}
+
 impl SEXPTYPE {
     pub const NILSXP: SEXPTYPE = SEXPTYPE(0);
     pub const SYMSXP: SEXPTYPE = SEXPTYPE(1);
