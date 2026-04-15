@@ -84,6 +84,8 @@ impl<'a> Sexp<'a> {
     pub fn from_raw(ptr: SEXP) -> Option<Self> {
         if ptr.is_null() {
             None
+        } else if (ptr as usize) % std::mem::align_of::<SexprecCore>() != 0 {
+            None
         } else {
             Some(Sexp {
                 ptr,
@@ -1051,6 +1053,11 @@ mod tests {
     #[test]
     fn test_sexp_from_raw_null() {
         assert!(Sexp::from_raw(ptr::null_mut()).is_none());
+    }
+
+    #[test]
+    fn test_sexp_from_raw_misaligned_pointer() {
+        assert!(Sexp::from_raw(0x1 as SEXP).is_none());
     }
 
     #[test]

@@ -8616,7 +8616,7 @@ pub unsafe fn do_strtrim(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 // R's math2 builtins (2-arg math): log2, round, signif, trunc
 // ---------------------------------------------------------------------------
 
-/// R's `log(x, base)` — log with arbitrary base.
+/// R's `log2(x)` — log base 2 with optional explicit base override.
 pub unsafe fn do_log2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x_arg = CAR(args);
     let base_arg = CAR(CDR(args));
@@ -8624,7 +8624,7 @@ pub unsafe fn do_log2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return R_NilValue();
     }
     let base = if base_arg.is_null() || base_arg == R_NilValue() {
-        std::f64::consts::E
+        2.0
     } else {
         real_or_default(base_arg, std::f64::consts::E)
     };
@@ -16136,5 +16136,55 @@ pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             }
         }
         x
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_do_log2_default_base_two() {
+        unsafe {
+            crate::sexp::init::initialize_r();
+
+            let args = Rf_cons(Rf_ScalarReal(8.0), R_NilValue());
+            let result = do_log2(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+
+            assert!(!result.is_null());
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            assert!(((*REAL(result)).to_owned() - 3.0).abs() < 1e-10);
+        }
+    }
+
+    #[test]
+    fn test_do_log2_explicit_base_is_preserved() {
+        unsafe {
+            crate::sexp::init::initialize_r();
+
+            let args = Rf_cons(
+                Rf_ScalarReal(8.0),
+                Rf_cons(Rf_ScalarReal(8.0), R_NilValue()),
+            );
+            let result = do_log2(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                args,
+                std::ptr::null_mut(),
+            );
+
+            assert!(!result.is_null());
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            assert!(((*REAL(result)).to_owned() - 1.0).abs() < 1e-10);
+        }
     }
 }

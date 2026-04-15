@@ -832,8 +832,8 @@ mod tests {
     #[test]
     fn test_type_to_char() {
         unsafe {
-            R_typeToChar(SEXPTYPE::INTSXP);
-            R_typeToChar(SEXPTYPE::REALSXP);
+            R_typeToChar(SEXPTYPE::INTSXP.into());
+            R_typeToChar(SEXPTYPE::REALSXP.into());
             R_typeToChar(999);
         }
     }

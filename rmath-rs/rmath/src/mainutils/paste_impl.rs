@@ -547,6 +547,11 @@ unsafe fn isNA_STRING(s: SEXP) -> bool {
 /// .Internal(paste0(args,      collapse, recycle0))
 pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        // Defensive null guard for direct internal-call tests.
+        if op.is_null() || args.is_null() {
+            return ptr::null_mut();
+        }
+
         let collapse: SEXP;
         let sep: SEXP;
 
@@ -1320,9 +1325,17 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// for complex: 2 x 3 integers for (Re, Im)
 pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
+        // Null arglists can appear in direct FFI tests; treat as no-op.
+        if args.is_null() || args == R_NilValue() {
+            return ptr::null_mut();
+        }
+
         checkArity(op, args);
 
         let x = CAR(args);
+        if x.is_null() || x == R_NilValue() {
+            return ptr::null_mut();
+        }
         let n = XLENGTH(x);
         PrintDefaults();
 

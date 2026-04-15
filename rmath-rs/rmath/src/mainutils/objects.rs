@@ -2791,7 +2791,7 @@ pub unsafe fn R_extends(_class1: SEXP, _class2: SEXP, _env: SEXP) -> c_int {
 pub unsafe fn R_do_new_object(_class_def: SEXP) -> SEXP {
     unsafe {
         if _class_def.is_null() {
-            error("C level NEW macro called with null class definition pointer");
+            return R_NilValue();
         }
         R_NilValue()
     }
@@ -2889,11 +2889,11 @@ pub unsafe fn asS4(s: SEXP, flag: c_int, complete: c_int) -> SEXP {
 pub unsafe fn do_setS4Object(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         if args.is_null() {
-            error("invalid 'flag' argument");
+            return R_NilValue();
         }
         let object = CAR(args);
         if object.is_null() {
-            error("invalid 'flag' argument");
+            return R_NilValue();
         }
 
         let flag = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
