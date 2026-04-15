@@ -1064,29 +1064,29 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             0 => {
                 // sum
                 if complex_a {
-                    ans_type = SEXPTYPE::CPLXSXP.0;
+                    ans_type = SEXPTYPE::CPLXSXP.into();
                 } else if real_a {
-                    ans_type = SEXPTYPE::REALSXP.0;
+                    ans_type = SEXPTYPE::REALSXP.into();
                 } else {
-                    ans_type = SEXPTYPE::INTSXP.0;
+                    ans_type = SEXPTYPE::INTSXP.into();
                     iLcum = 0;
                 }
             }
             2 => {
                 // min
-                ans_type = SEXPTYPE::INTSXP.0;
+                ans_type = SEXPTYPE::INTSXP.into();
                 zcum.r = R_PosInf;
                 icum = c_int::MAX;
             }
             3 => {
                 // max
-                ans_type = SEXPTYPE::INTSXP.0;
+                ans_type = SEXPTYPE::INTSXP.into();
                 zcum.r = R_NegInf;
                 icum = 1 + c_int::MIN; // R_INT_MIN
             }
             4 => {
                 // prod
-                ans_type = SEXPTYPE::REALSXP.0;
+                ans_type = SEXPTYPE::REALSXP.into();
                 zcum.r = 1.0;
                 zcum.i = 0.0;
             }
@@ -1153,7 +1153,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                             t if t == SEXPTYPE::REALSXP => {
                                 real_a_local = true;
                                 if ans_type == SEXPTYPE::INTSXP && !empty {
-                                    ans_type = SEXPTYPE::REALSXP.0;
+                                    ans_type = SEXPTYPE::REALSXP.into();
                                     zcum.r = Int2Real(icum);
                                 }
                                 let (tmp, upd) = if iop == 2 {
@@ -1219,7 +1219,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                     // Impending integer overflow — switch to real
                                     use_isum = false;
                                     if ans_type == SEXPTYPE::INTSXP {
-                                        ans_type = SEXPTYPE::REALSXP.0;
+                                        ans_type = SEXPTYPE::REALSXP.into();
                                     }
                                     let (tmp, _upd) = risum_sexp(a, narm);
                                     zcum.r = iLcum as f64 + tmp;
@@ -1227,7 +1227,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                     if ans_type == SEXPTYPE::INTSXP {
                                         let s = iLcum as f64 + iLtmp as f64;
                                         if s > c_int::MAX as f64 || s < (1 + c_int::MIN) as f64 {
-                                            ans_type = SEXPTYPE::REALSXP.0;
+                                            ans_type = SEXPTYPE::REALSXP.into();
                                             zcum.r = s;
                                         } else {
                                             iLcum += iLtmp;
@@ -1239,7 +1239,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                             }
                             t if t == SEXPTYPE::REALSXP => {
                                 if ans_type == SEXPTYPE::INTSXP {
-                                    ans_type = SEXPTYPE::REALSXP.0;
+                                    ans_type = SEXPTYPE::REALSXP.into();
                                     if !empty {
                                         zcum.r = Int2Real(icum as c_int);
                                     }
@@ -1252,12 +1252,12 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                             }
                             t if t == SEXPTYPE::CPLXSXP => {
                                 if ans_type == SEXPTYPE::INTSXP {
-                                    ans_type = SEXPTYPE::CPLXSXP.0;
+                                    ans_type = SEXPTYPE::CPLXSXP.into();
                                     if !empty {
                                         zcum.r = Int2Real(icum as c_int);
                                     }
                                 } else if ans_type == SEXPTYPE::REALSXP {
-                                    ans_type = SEXPTYPE::CPLXSXP.0;
+                                    ans_type = SEXPTYPE::CPLXSXP.into();
                                 }
                                 let (ztmp, upd) = csum_sexp(a, narm);
                                 updated = if upd { 1 } else { 0 };
@@ -1295,7 +1295,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 }
                             }
                             t if t == SEXPTYPE::CPLXSXP => {
-                                ans_type = SEXPTYPE::CPLXSXP.0;
+                                ans_type = SEXPTYPE::CPLXSXP.into();
                                 let (ztmp, upd) = cprod_sexp(a, narm);
                                 updated = if upd { 1 } else { 0 };
                                 if updated != 0 {
@@ -1357,7 +1357,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         // Handle empty min/max
         if empty && (iop == 2 || iop == 3) {
-            ans_type = SEXPTYPE::REALSXP.0;
+            ans_type = SEXPTYPE::REALSXP.into();
         }
 
         let ans = Rf_allocVector3(ans_type, 1);

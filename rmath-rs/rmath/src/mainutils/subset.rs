@@ -1336,14 +1336,14 @@ unsafe fn scalarIndex(s: SEXP) -> R_xlen_t {
         }
 
         let t = TYPEOF(s);
-        if t == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.0) != 0 {
+        if t == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.into()) != 0 {
             let ival = SCALAR_IVAL(s);
             if ival != NA_INTEGER {
                 ival as R_xlen_t
             } else {
                 -1
             }
-        } else if t == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
+        } else if t == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.into()) != 0 {
             let rval = SCALAR_DVAL(s);
             if R_FINITE(rval) { rval as R_xlen_t } else { -1 }
         } else {
