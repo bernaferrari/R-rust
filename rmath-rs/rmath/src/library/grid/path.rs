@@ -40,7 +40,7 @@ use super::types::*;
 
 /// ScalarLogical — create a single-element logical vector
 unsafe fn ScalarLogical(x: c_int) -> SEXP {
-    let s = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::LGLSXP.0, 1);
+    let s = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::LGLSXP.into(), 1);
     *crate::sexp::accessors::LOGICAL(s) = x;
     s
 }
@@ -87,7 +87,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
     use std::ffi::CStr;
-    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP.0 {
+    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP.into() {
         return 0;
     }
     let cn = match CStr::from_ptr(what).to_str() {

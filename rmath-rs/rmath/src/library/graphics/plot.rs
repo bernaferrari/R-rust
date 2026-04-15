@@ -628,7 +628,7 @@ pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
     if n == 0 {
         ans = ScalarReal(dflt);
     } else {
-        let lwd = Rf_protect(coerceVector(lwd, SEXPTYPE::REALSXP.0));
+        let lwd = Rf_protect(coerceVector(lwd, SEXPTYPE::REALSXP.into()));
         let n = length(lwd);
         let ans_p = Rf_allocVector(SEXPTYPE::REALSXP, n);
         for i in 0..n as usize {
@@ -770,7 +770,7 @@ pub unsafe fn FixupVFont(vfont: SEXP) -> SEXP {
     if Rf_isNull(vfont) != 0 {
         return R_NilValue();
     }
-    let vf = Rf_protect(coerceVector(vfont, SEXPTYPE::INTSXP.0));
+    let vf = Rf_protect(coerceVector(vfont, SEXPTYPE::INTSXP.into()));
     if length(vf) != 2 {
         Rf_error(b"invalid 'vfont' value\0".as_ptr() as *const c_char);
     }
@@ -830,7 +830,7 @@ unsafe fn GetTextArg(
 
     match stype {
         tt if tt == SEXPTYPE::LANGSXP || tt == SEXPTYPE::SYMSXP => {
-            txt = coerceVector(spec, SEXPTYPE::EXPRSXP.0);
+            txt = coerceVector(spec, SEXPTYPE::EXPRSXP.into());
         }
         tt if tt == SEXPTYPE::VECSXP => {
             if length(spec) == 0 {
@@ -842,9 +842,9 @@ unsafe fn GetTextArg(
                 txt = VECTOR_ELT(spec, 0);
                 let ttype = TYPEOF(txt);
                 if ttype == SEXPTYPE::LANGSXP || ttype == SEXPTYPE::SYMSXP {
-                    txt = coerceVector(txt, SEXPTYPE::EXPRSXP.0);
+                    txt = coerceVector(txt, SEXPTYPE::EXPRSXP.into());
                 } else if isExpression(txt) == 0 {
-                    txt = coerceVector(txt, SEXPTYPE::STRSXP.0);
+                    txt = coerceVector(txt, SEXPTYPE::STRSXP.into());
                 }
             } else {
                 let n = length(nms);
@@ -864,9 +864,9 @@ unsafe fn GetTextArg(
                         txt = VECTOR_ELT(spec, i as R_xlen_t);
                         let ttype = TYPEOF(txt);
                         if ttype == SEXPTYPE::LANGSXP || ttype == SEXPTYPE::SYMSXP {
-                            txt = coerceVector(txt, SEXPTYPE::EXPRSXP.0);
+                            txt = coerceVector(txt, SEXPTYPE::EXPRSXP.into());
                         } else if isExpression(txt) == 0 {
-                            txt = coerceVector(txt, SEXPTYPE::STRSXP.0);
+                            txt = coerceVector(txt, SEXPTYPE::STRSXP.into());
                         }
                     } else {
                         Rf_error(b"invalid graphics parameter\0".as_ptr() as *const c_char);
@@ -878,7 +878,7 @@ unsafe fn GetTextArg(
             txt = spec;
         }
         _ => {
-            txt = coerceVector(spec, SEXPTYPE::STRSXP.0);
+            txt = coerceVector(spec, SEXPTYPE::STRSXP.into());
         }
     }
     if txt != R_NilValue() {
@@ -1155,7 +1155,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
     if isNumeric(CAR(args)) == 0 {
         Rf_error(b"invalid first argument\0".as_ptr() as *const c_char);
     }
-    SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
+    SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
     k = length(CAR(args));
     *n = k;
     kmin = k;
@@ -1165,7 +1165,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         Rf_error(b"invalid second argument\0".as_ptr() as *const c_char);
     }
     k = length(CAR(args2));
-    SETCAR(args2, coerceVector(CAR(args2), SEXPTYPE::REALSXP.0));
+    SETCAR(args2, coerceVector(CAR(args2), SEXPTYPE::REALSXP.into()));
     if k > *n {
         *n = k;
     }
@@ -1178,7 +1178,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         Rf_error(b"invalid third argument\0".as_ptr() as *const c_char);
     }
     k = length(CAR(args3));
-    SETCAR(args3, coerceVector(CAR(args3), SEXPTYPE::REALSXP.0));
+    SETCAR(args3, coerceVector(CAR(args3), SEXPTYPE::REALSXP.into()));
     if k > *n {
         *n = k;
     }
@@ -1191,7 +1191,7 @@ unsafe fn xypoints(args: SEXP, n: *mut c_int) {
         Rf_error(b"invalid fourth argument\0".as_ptr() as *const c_char);
     }
     k = length(CAR(args4));
-    SETCAR(args4, coerceVector(CAR(args4), SEXPTYPE::REALSXP.0));
+    SETCAR(args4, coerceVector(CAR(args4), SEXPTYPE::REALSXP.into()));
     if k > *n {
         *n = k;
     }
@@ -1486,10 +1486,10 @@ pub unsafe fn C_path(args: SEXP) -> SEXP {
         Rf_error(b"too few arguments\0".as_ptr() as *const c_char);
     }
 
-    SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
+    SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
     let sx = CAR(args);
     args = CDR(args);
-    SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
+    SETCAR(args, coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
     let sy = CAR(args);
     args = CDR(args);
     let nx = length(sx);
@@ -1692,7 +1692,7 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
     if length(CAR(args)) != n + 1 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    let xpos = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.0));
+    let xpos = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
     dnd_xpos.with(|v| v.set(&mut *REAL(xpos).add(0)));
     args = CDR(args);
 

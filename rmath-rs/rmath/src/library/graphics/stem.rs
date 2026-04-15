@@ -300,9 +300,9 @@ unsafe fn C_bincount(
 pub unsafe fn C_BinCount(x: SEXP, breaks: SEXP, right: SEXP, lowest: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
-    let x = coerceVector(x, SEXPTYPE::REALSXP.0);
+    let x = coerceVector(x, SEXPTYPE::REALSXP.into());
     Rf_protect(x);
-    let breaks = coerceVector(breaks, SEXPTYPE::REALSXP.0);
+    let breaks = coerceVector(breaks, SEXPTYPE::REALSXP.into());
     Rf_protect(breaks);
 
     let n = XLENGTH(x);

@@ -939,11 +939,11 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
         return R_NilValue();
     }
 
-    let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let _nx = LENGTH(sx);
     _args = CDR(_args);
 
-    let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let _ny = LENGTH(sy);
     _args = CDR(_args);
 
@@ -959,10 +959,10 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
         Rf_unprotect(2);
         return R_NilValue();
     }
-    let _sz = Rf_protect(coerceVector(sz, SEXPTYPE::REALSXP.0));
+    let _sz = Rf_protect(coerceVector(sz, SEXPTYPE::REALSXP.into()));
     _args = CDR(_args);
 
-    let _sc = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let _sc = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let _nc = LENGTH(_sc);
     _args = CDR(_args);
 
@@ -1029,15 +1029,15 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
 
     let mut _args = CDR(args);
 
-    let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let _nx = LENGTH(sx);
     _args = CDR(_args);
 
-    let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let _ny = LENGTH(sy);
     _args = CDR(_args);
 
-    let _sz = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::INTSXP.0));
+    let _sz = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::INTSXP.into()));
     _args = CDR(_args);
 
     let _sc = Rf_protect(FixupCol(CAR(_args), R_TRANWHITE));
@@ -1077,42 +1077,42 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
         return R_NilValue();
     }
 
-    let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     if LENGTH(x) < 2 {
         Rf_unprotect(1);
         return R_NilValue();
     }
     _args = CDR(_args);
 
-    let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     if LENGTH(y) < 2 {
         Rf_unprotect(2);
         return R_NilValue();
     }
     _args = CDR(_args);
 
-    let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     if !isMatrix(z) || nrows(z) != LENGTH(x) || ncols(z) != LENGTH(y) {
         Rf_unprotect(3);
         return R_NilValue();
     }
     _args = CDR(_args);
 
-    let xlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let xlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     if LENGTH(xlim) != 2 {
         Rf_unprotect(4);
         return R_NilValue();
     }
     _args = CDR(_args);
 
-    let ylim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let ylim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     if LENGTH(ylim) != 2 {
         Rf_unprotect(5);
         return R_NilValue();
     }
     _args = CDR(_args);
 
-    let zlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let zlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     if LENGTH(zlim) != 2 {
         Rf_unprotect(6);
         return R_NilValue();
@@ -1305,19 +1305,19 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
         return R_NilValue();
     }
 
-    let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let nx = LENGTH(x);
     _args = CDR(_args);
 
-    let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let ny = LENGTH(y);
     _args = CDR(_args);
 
-    let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     _args = CDR(_args);
 
     /* levels */
-    let c = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.0));
+    let c = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
     let nc = LENGTH(c);
     _args = CDR(_args);
 
