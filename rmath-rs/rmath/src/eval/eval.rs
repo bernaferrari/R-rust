@@ -1213,6 +1213,110 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "gzfile" => unsafe {
+            crate::mainutils::essentials::do_gzfile(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pipe" => unsafe {
+            crate::mainutils::essentials::do_pipe(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "fifo" => unsafe {
+            crate::mainutils::essentials::do_fifo(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "socketConnection" => unsafe {
+            crate::mainutils::essentials::do_socketConnection(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isOpen" => unsafe {
+            crate::mainutils::essentials::do_isOpen(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isIncomplete" => unsafe {
+            crate::mainutils::essentials::do_isIncomplete(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "isSeekable" => unsafe {
+            crate::mainutils::essentials::do_isSeekable(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "seek" => unsafe {
+            crate::mainutils::essentials::do_seek(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pushBack" => unsafe {
+            crate::mainutils::essentials::do_pushBack(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pushBackClear" => unsafe {
+            crate::mainutils::essentials::do_pushBackClear(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pushBackLength" => unsafe {
+            crate::mainutils::essentials::do_pushBackLength(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "readBin" => unsafe {
+            crate::mainutils::essentials::do_readBin(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "writeBin" => unsafe {
+            crate::mainutils::essentials::do_writeBin(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "print.matrix" => unsafe {
             crate::mainutils::essentials::do_print_matrix(
                 call.as_raw(),
