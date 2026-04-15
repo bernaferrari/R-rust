@@ -1,0 +1,10 @@
+[package]
+name = "r-host-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Desktop CLI/REPL host for the R interpreter"
+
+[dependencies]
+r-embed = { path = "../r-embed" }
+anyhow = { workspace = true }
