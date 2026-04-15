@@ -9,7 +9,7 @@
 //! matrix-based indexing with proper NA handling, bounds checking, and
 //! negative/positive subscript rules.
 //!
-//! Ported public functions (stubs — full implementations depend on eval/error):
+//! Ported public functions:
 //!   OneIndex()        — single index for [[<- (subassign.c)
 //!   get1index()       — single index for [[ (subset.c, subassign.c)
 //!   vectorIndex()     — recursive indexing for [[ and [[<- with vector args
@@ -50,23 +50,79 @@ const NA_REAL: c_double = crate::sexp::ffi::NA_REAL;
 const NINTERRUPT: R_xlen_t = 10_000_000;
 
 // ---------------------------------------------------------------------------
-// Error helper stubs
+// Error helpers
 // ---------------------------------------------------------------------------
 
-/// report an out-of-bounds error. In full R this would call
-/// R_makeOutOfBoundsError / R_signalErrorCondition.
-pub unsafe fn ECALL_OutOfBounds(_x: SEXP, _subscript: c_int, _index: R_xlen_t, _call: SEXP) {
-    // Full implementation requires R's condition/error infrastructure.
+fn sexptype_name(x: SEXP) -> String {
+    unsafe {
+        if x.is_null() {
+            "NULL".to_string()
+        } else {
+            std::ffi::CStr::from_ptr(crate::mainutils::util_main::type2char(TYPEOF(x)))
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
 }
 
-/// report a missing subscript error.
+fn subscript_index_name(sindex: SEXP) -> String {
+    unsafe {
+        if sindex.is_null() || sindex == R_NilValue() {
+            return "<missing>".to_string();
+        }
+
+        match TYPEOF(sindex) {
+            t if t == SEXPTYPE::STRSXP => {
+                let elt = STRING_ELT(sindex, 0);
+                if elt.is_null() || elt == R_NilValue() {
+                    "<NA>".to_string()
+                } else {
+                    let ptr = CHAR(elt);
+                    if ptr.is_null() {
+                        "<invalid string>".to_string()
+                    } else {
+                        std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
+                    }
+                }
+            }
+            t if t == SEXPTYPE::SYMSXP => {
+                let ptr = CHAR(PRINTNAME(sindex));
+                if ptr.is_null() {
+                    "<invalid symbol>".to_string()
+                } else {
+                    std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
+                }
+            }
+            _ => format!("<{}>", sexptype_name(sindex)),
+        }
+    }
+}
+
+/// Report an out-of-bounds error.
+pub unsafe fn ECALL_OutOfBounds(x: SEXP, subscript: c_int, index: R_xlen_t, _call: SEXP) {
+    let msg = format!(
+        "subscript out of bounds: type '{}' subscript {} index {}",
+        sexptype_name(x),
+        subscript,
+        index
+    );
+    unsafe { error(&msg) };
+}
+
+/// Report a missing subscript error.
 pub unsafe fn ECALL_MissingSubs(_call: SEXP) {
-    // Full implementation requires R's condition/error infrastructure.
+    unsafe { error("subscript is missing") };
 }
 
-/// report an out-of-bounds error for character subscripts.
-pub unsafe fn ECALL_OutOfBoundsCHAR(_x: SEXP, _subscript: c_int, _sindex: SEXP, _call: SEXP) {
-    // Full implementation requires R's condition/error infrastructure.
+/// Report an out-of-bounds error for character subscripts.
+pub unsafe fn ECALL_OutOfBoundsCHAR(x: SEXP, subscript: c_int, sindex: SEXP, _call: SEXP) {
+    let msg = format!(
+        "subscript out of bounds: type '{}' subscript {} index {}",
+        sexptype_name(x),
+        subscript,
+        subscript_index_name(sindex)
+    );
+    unsafe { error(&msg) };
 }
 
 // ---------------------------------------------------------------------------
@@ -459,19 +515,18 @@ pub unsafe fn vectorIndex(
 /// Negative indices are not allowed. Zero/NA propagates to the result.
 pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
     unsafe {
-        let nrs = LENGTH(s);
-        let ndim = LENGTH(dims);
-
-        if nrs != ndim {
-            error("incorrect number of columns in matrix subscript");
-        }
-
-        // Get the number of rows (subscripts) from the dim attribute of s
+        // Get the matrix shape from the dim attribute of s.
         let s_dim = crate::eval::attrib_core::getAttrib(s, crate::eval::attrib_core::R_DimSymbol());
         if s_dim.is_null() || LENGTH(s_dim) < 2 {
             error("subscript is not a matrix");
         }
         let nr = INTEGER_ELT(s_dim, 0) as R_xlen_t;
+        let nc = INTEGER_ELT(s_dim, 1) as c_int;
+        let ndim = LENGTH(dims);
+
+        if nc != ndim {
+            error("incorrect number of columns in matrix subscript");
+        }
 
         // Get dimension strides
         let mut strides: Vec<R_xlen_t> = Vec::with_capacity(ndim as usize);
@@ -495,9 +550,10 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
 
             for d in 0..ndim as usize {
                 let mut sub_val: R_xlen_t = 0;
+                let elt_index = (i as R_xlen_t + (d as R_xlen_t) * nr) as R_xlen_t;
                 if s_type == SEXPTYPE::STRSXP {
                     // Character subscript — match against dimnames
-                    let elt = STRING_ELT(s, (i * ndim as usize + d) as R_xlen_t);
+                    let elt = STRING_ELT(s, elt_index);
                     if elt.is_null() || elt == R_NilValue() {
                         has_na = true;
                         break;
@@ -537,24 +593,28 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
                         }
                     }
                     if !found {
-                        has_na = true;
+                        ECALL_OutOfBoundsCHAR(_x, (d + 1) as c_int, elt, _call);
                         break;
                     }
                 } else {
                     // Integer/real subscript
-                    let val = INTEGER_ELT(s, (i * ndim as usize + d) as c_int);
+                    let val = INTEGER_ELT(s, elt_index as c_int);
                     if val == NA_INTEGER {
                         has_na = true;
                         break;
                     }
                     sub_val = val as R_xlen_t;
                     if sub_val < 0 {
-                        // Negative indices not allowed in matrix subscripts
-                        has_na = true;
-                        break;
+                        error("negative subscripts are not allowed in matrix indexing");
                     }
                     if sub_val == 0 {
                         has_zero = true;
+                        continue;
+                    }
+                    let dim_len = INTEGER_ELT(dims, d as c_int) as R_xlen_t;
+                    if sub_val > dim_len {
+                        ECALL_OutOfBounds(_x, (d + 1) as c_int, sub_val, _call);
+                        break;
                     }
                 }
                 idx += (sub_val - 1) * strides[ndim as usize - 1 - d];
@@ -563,9 +623,9 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
             if has_na {
                 *ap.add(i) = NA_INTEGER;
             } else if has_zero {
-                *ap.add(i) = 0; // Zero subscripts produce 0 (selects nothing)
+                *ap.add(i) = 0;
             } else {
-                *ap.add(i) = (idx + 1) as c_int; // Convert to 1-based
+                *ap.add(i) = (idx + 1) as c_int;
             }
         }
 
@@ -601,7 +661,7 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
 
         for i in 0..nr as usize {
             for j in 0..nc as usize {
-                let col_idx = i * nc as usize + j;
+                let col_idx = i + j * nr as usize;
                 let elt = STRING_ELT(s, col_idx as R_xlen_t);
 
                 if elt.is_null() || elt == R_NilValue() {
@@ -645,7 +705,11 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
                     }
                 }
 
-                *INTEGER(ans).add(col_idx) = found;
+                if found == NA_INTEGER {
+                    ECALL_OutOfBoundsCHAR(x, (j + 1) as c_int, elt, _call);
+                } else {
+                    *INTEGER(ans).add(col_idx) = found;
+                }
             }
         }
 
@@ -1128,7 +1192,7 @@ pub unsafe fn arraySubscript(
 ) -> SEXP {
     unsafe {
         // Note: dng and strg are function pointer parameters in C
-        // (AttrGetter and StringEltGetter typedefs), here stubbed as usize.
+        // (AttrGetter and StringEltGetter typedefs), ignored in this port.
         int_arraySubscript(dim, s, dims, x, R_NilValue())
     }
 }
@@ -1211,8 +1275,72 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
 #[cfg(test)]
 mod tests {
     use crate::sexp::ffi::{FALSE, NA_INTEGER, TRUE};
+    use std::os::raw::{c_char, c_double, c_int};
+    use std::panic::{self, AssertUnwindSafe};
 
     use super::*;
+
+    unsafe fn make_int_vector(values: &[c_int]) -> SEXP {
+        let x = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
+        for (i, v) in values.iter().enumerate() {
+            *INTEGER(x).add(i) = *v;
+        }
+        x
+    }
+
+    unsafe fn make_real_vector(values: &[c_double]) -> SEXP {
+        let x = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+        for (i, v) in values.iter().enumerate() {
+            *REAL(x).add(i) = *v;
+        }
+        x
+    }
+
+    unsafe fn make_string_vector(values: &[&[u8]]) -> SEXP {
+        let x = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+        for (i, v) in values.iter().enumerate() {
+            SET_STRING_ELT(x, i as R_xlen_t, Rf_mkChar(v.as_ptr() as *const c_char));
+        }
+        x
+    }
+
+    unsafe fn make_dim_matrix(values: &[c_int], nrow: c_int, ncol: c_int) -> SEXP {
+        let x = make_int_vector(values);
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        *INTEGER(dim) = nrow;
+        *INTEGER(dim).add(1) = ncol;
+        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), dim);
+        x
+    }
+
+    unsafe fn make_dimnames_list(first: &[&[u8]], second: &[&[u8]]) -> SEXP {
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        let first = make_string_vector(first);
+        let second = make_string_vector(second);
+        SET_VECTOR_ELT(dimnames, 0, first);
+        SET_VECTOR_ELT(dimnames, 1, second);
+        dimnames
+    }
+
+    fn panic_message<F>(f: F) -> String
+    where
+        F: FnOnce(),
+    {
+        match panic::catch_unwind(AssertUnwindSafe(f)) {
+            Ok(_) => panic!("expected panic"),
+            Err(payload) => {
+                if let Some(err) = payload.downcast_ref::<crate::sexp::context::RError>() {
+                    err.message.clone()
+                } else if let Some(s) = payload.downcast_ref::<String>() {
+                    s.clone()
+                } else if let Some(s) = payload.downcast_ref::<&'static str>() {
+                    (*s).to_string()
+                } else {
+                    panic!("unexpected panic payload type")
+                }
+            }
+        }
+    }
 
     #[test]
     fn test_integer_one_index_positive() {
@@ -1291,7 +1419,7 @@ mod tests {
     }
 
     #[test]
-    fn test_vector_index_stub() {
+    fn test_vector_index_null_input_returns_nil() {
         unsafe {
             let result = vectorIndex(
                 ptr::null_mut(),
@@ -1307,28 +1435,75 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_mat2indsub_stub() {
+    fn test_mat2indsub_converts_matrix_subscripts() {
         unsafe {
-            mat2indsub(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
+            let dims = make_int_vector(&[2, 3]);
+            let s = make_dim_matrix(&[1, 2, 1, 3], 2, 2);
+            let result = mat2indsub(dims, s, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(result), 2);
+            assert_eq!(INTEGER_ELT(result, 0), 1);
+            assert_eq!(INTEGER_ELT(result, 1), 6);
         }
     }
 
     #[test]
-    #[should_panic]
-    fn test_strmat2intmat_stub() {
+    fn test_strmat2intmat_converts_matrix_names() {
         unsafe {
-            strmat2intmat(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
+            let dimnames = make_dimnames_list(&[b"a\0", b"b\0"], &[b"c\0", b"d\0"]);
+            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
+            crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol(), dimnames);
+
+            let s = make_string_vector(&[b"a\0", b"b\0", b"c\0", b"d\0"]);
+            let sdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            *INTEGER(sdim) = 2;
+            *INTEGER(sdim).add(1) = 2;
+            crate::eval::attrib_core::setAttrib(s, crate::eval::attrib_core::R_DimSymbol(), sdim);
+
+            let result = strmat2intmat(s, dimnames, ptr::null_mut(), x);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(result), 4);
+            assert_eq!(INTEGER_ELT(result, 0), 1);
+            assert_eq!(INTEGER_ELT(result, 1), 2);
+            assert_eq!(INTEGER_ELT(result, 2), 1);
+            assert_eq!(INTEGER_ELT(result, 3), 2);
+        }
+    }
+
+    #[test]
+    fn test_ecall_out_of_bounds_reports_context() {
+        unsafe {
+            let x = make_int_vector(&[1, 2, 3]);
+            let msg = panic_message(|| {
+                ECALL_OutOfBounds(x, 2, 7, ptr::null_mut());
+            });
+            assert!(msg.contains("subscript out of bounds"));
+            assert!(msg.contains("integer"));
+            assert!(msg.contains("subscript 2"));
+            assert!(msg.contains("index 7"));
+        }
+    }
+
+    #[test]
+    fn test_ecall_missing_subs_reports_context() {
+        let msg = panic_message(|| {
+            unsafe { ECALL_MissingSubs(ptr::null_mut()) };
+        });
+        assert_eq!(msg, "subscript is missing");
+    }
+
+    #[test]
+    fn test_ecall_out_of_bounds_char_reports_context() {
+        unsafe {
+            let x = make_real_vector(&[1.0]);
+            let sindex = Rf_mkString(b"foo\0".as_ptr() as *const c_char);
+            let msg = panic_message(|| {
+                ECALL_OutOfBoundsCHAR(x, 1, sindex, ptr::null_mut());
+            });
+            assert!(msg.contains("subscript out of bounds"));
+            assert!(msg.contains("double"));
+            assert!(msg.contains("subscript 1"));
+            assert!(msg.contains("foo"));
         }
     }
 
@@ -1348,16 +1523,26 @@ mod tests {
     #[test]
     fn test_make_subscript_scalar_int_in_range() {
         unsafe {
-            // For null s, TYPEOF returns 0 (NILSXP), returns empty INTSXP
+            let x = make_int_vector(&[10, 20, 30]);
+            let s = Rf_ScalarInteger(2);
+            SET_SCALAR(s, 1);
             let mut stretch: R_xlen_t = 1;
-            let result = makeSubscript(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                &mut stretch,
-                ptr::null_mut(),
-            );
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
-            assert_eq!(LENGTH(result), 0);
+            let result = makeSubscript(x, s, &mut stretch, ptr::null_mut());
+            assert_eq!(result, s);
+            assert_eq!(stretch, 0);
+        }
+    }
+
+    #[test]
+    fn test_make_subscript_scalar_real_in_range() {
+        unsafe {
+            let x = make_int_vector(&[10, 20, 30]);
+            let s = Rf_ScalarReal(2.0);
+            SET_SCALAR(s, 1);
+            let mut stretch: R_xlen_t = 1;
+            let result = makeSubscript(x, s, &mut stretch, ptr::null_mut());
+            assert_eq!(result, s);
+            assert_eq!(stretch, 0);
         }
     }
 
