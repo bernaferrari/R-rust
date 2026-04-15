@@ -1469,7 +1469,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         let cptr_tmp = R_GlobalContext();
         if !cptr_tmp.is_null() {
             unsafe {
-                (*cptr_tmp).callflag = crate::sexp::context::CTXT_GENERIC;
+                (*cptr_tmp).callflag = 64; // CTXT_GENERIC
             }
         }
 
