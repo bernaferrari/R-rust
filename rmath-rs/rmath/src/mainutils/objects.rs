@@ -1461,17 +1461,11 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             });
         }
 
-        // CTXT_GENERIC flag on entry
-        // Get the environment NextMethod was called from
-        let sysp = env; // simplified: sysparent would be the enclosing env
+        // Mark this context as generic (C: cptr->callflag = CTXT_GENERIC)
+        (*cptr).callflag = crate::sexp::context::ctxt_flags::CTXT_GENERIC;
 
-        // Mark this context as generic for the purposes of lookups
-        let cptr_tmp = R_GlobalContext();
-        if !cptr_tmp.is_null() {
-            unsafe {
-                (*cptr_tmp).callflag = 64; // CTXT_GENERIC
-            }
-        }
+        // Get the env NextMethod was called from (C: sysp = R_GlobalContext->sysparent)
+        let sysp = (*cptr).sysparent;
 
         // Walk the context stack to find the function context matching sysp
         let mut found_cptr: *mut RCNTXT = ptr::null_mut();
@@ -1527,25 +1521,35 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             &mut defenv,
         );
 
-        // Resolve promise environments
+        // Resolve promise environments (C: eval promise if PROMSXP)
         if TYPEOF(callenv) == SEXPTYPE::PROMSXP.0 as c_int {
-            callenv = env; // simplified: would eval the promise
+            callenv = Rf_eval(callenv, R_BaseEnv());
         } else if callenv == R_UnboundValue() {
             callenv = env;
         }
         if TYPEOF(defenv) == SEXPTYPE::PROMSXP.0 as c_int {
-            defenv = R_GlobalEnv();
+            defenv = Rf_eval(defenv, R_BaseEnv());
         } else if defenv == R_UnboundValue() {
             defenv = R_GlobalEnv();
         }
 
-        // Get formals and matched args
-        let s_callfun = (*found_cptr).closure;
-        if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP.0 as c_int && s_callfun == R_UnboundValue() {
-            Rf_unprotect(1);
-            std::panic::panic_any(crate::sexp::context::RError {
-                message: "no calling generic was found: was a method called directly?".to_string(),
-            });
+        let s_callfun = (*found_cptr).callfun;
+        if TYPEOF(s_callfun) != SEXPTYPE::CLOSXP.0 as c_int {
+            if s_callfun == R_UnboundValue() {
+                Rf_unprotect(1);
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: "no calling generic was found: was a method called directly?"
+                        .to_string(),
+                });
+            } else {
+                Rf_unprotect(1);
+                std::panic::panic_any(crate::sexp::context::RError {
+                    message: format!(
+                        "'function' is not a function, but of type {}",
+                        TYPEOF(s_callfun)
+                    ),
+                });
+            }
         }
 
         let formals = FORMALS(s_callfun);
@@ -1554,23 +1558,24 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             patchArgsByActuals(formals, (*found_cptr).promiseargs, (*found_cptr).cloenv);
         Rf_protect(matchedarg);
 
-        // Handle ... arguments
-        let dots = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
-            CDR(args)
-        } else {
-            R_NilValue()
-        };
-
-        // Merge additional arguments if present (support ...)
-        if !dots.is_null() && dots != R_NilValue() {
-            let dots_val = crate::sexp::envir::R_findVarInFrame(env, sym("..."));
-            if !dots_val.is_null() && dots_val != R_NilValue() && dots_val != R_MissingArg() {
-                matchedarg = matchmethargs(matchedarg, dots_val);
+        // Handle ... arguments (C: s = CADDR(args), check R_DotsSymbol)
+        let dotarg = CADDR(args);
+        if dotarg == R_DotsSymbol_fn() {
+            let t = crate::sexp::envir::R_findVarInFrame(env, dotarg);
+            if !t.is_null() && t != R_NilValue() && t != R_MissingArg() {
+                (*t).sxpinfo.set_type(SEXPTYPE::LISTSXP);
+                let s = matchmethargs(matchedarg, t);
+                Rf_unprotect(1);
+                matchedarg = s;
+                Rf_protect(matchedarg);
                 newcall = fixcall(newcall, matchedarg);
             }
+        } else {
+            Rf_unprotect(2);
+            std::panic::panic_any(crate::sexp::context::RError {
+                message: "wrong argument ...".to_string(),
+            });
         }
-
-        // If klass is unbound, fetch from object
 
         // Get klass if unbound
         if klass == R_UnboundValue() {
@@ -1586,7 +1591,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         // Validate generic
         if generic == R_UnboundValue() {
-            generic = CAR(args);
+            generic = Rf_eval(CAR(args), env);
         }
         if generic == R_NilValue() || generic.is_null() {
             Rf_unprotect(2);
@@ -1634,10 +1639,9 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         // Find current method in .Class
         let mut nextfun: SEXP = R_NilValue();
         let mut nextfunSignature: SEXP = R_NilValue();
-        let start_j: c_int = 0;
 
-        // Find the method currently being invoked
         let mut b: *const c_char = ptr::null();
+        let mut method_idx: c_int = 0;
         if method != R_UnboundValue() {
             if isString(method) == FALSE {
                 Rf_unprotect(4);
@@ -1647,9 +1651,18 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             }
             for ii in 0..LENGTH(method) {
                 let bb = translateChar(STRING_ELT(method, ii as R_xlen_t));
-                if !bb.is_null() && *bb != 0 {
+                if !bb.is_null() && *bb != 0 && libc::strlen(bb) > 0 {
                     b = bb;
+                    method_idx = ii;
                     break;
+                }
+            }
+            for jj in method_idx..LENGTH(method) {
+                let bb = translateChar(STRING_ELT(method, jj as R_xlen_t));
+                if !bb.is_null() && libc::strlen(bb) > 0 && libc::strcmp(b, bb) != 0 {
+                    crate::mainutils::errors::Rf_warning(
+                        b"Incompatible methods ignored\0".as_ptr() as *const c_char,
+                    );
                 }
             }
         } else {
@@ -1657,6 +1670,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
 
         // Find matching signature in .Class
+        let _vmax = crate::sexp::memory_ext::vmaxget();
         let sb = translateChar(STRING_ELT(basename, 0));
         let mut found_sig: c_int = FALSE;
         let nclass = length(klass);
@@ -1707,15 +1721,42 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             // Try default method
             nextfunSignature = crate::mainutils::names::installS3Signature(
                 sg,
-                b"default\x00".as_ptr() as *const c_char,
+                b"default\0".as_ptr() as *const c_char,
             );
             nextfun = R_LookupMethod(nextfunSignature, env, callenv, defenv);
 
+            // If there is no default method, try the generic itself,
+            // provided it is primitive or a wrapper for a .Internal function
             if isFunction(nextfun) == FALSE {
-                Rf_unprotect(4);
-                std::panic::panic_any(crate::sexp::context::RError {
-                    message: "no method to invoke".to_string(),
-                });
+                let t = Rf_install(sg);
+                nextfun = crate::sexp::envir::R_findVar(t, env);
+                if TYPEOF(nextfun) == SEXPTYPE::PROMSXP.0 as c_int {
+                    Rf_protect(nextfun);
+                    nextfun = Rf_eval(nextfun, env);
+                    Rf_unprotect(1);
+                }
+                if isFunction(nextfun) == FALSE {
+                    Rf_unprotect(4);
+                    crate::sexp::memory_ext::vmaxset(_vmax);
+                    std::panic::panic_any(crate::sexp::context::RError {
+                        message: "no method to invoke".to_string(),
+                    });
+                }
+                if TYPEOF(nextfun) == SEXPTYPE::CLOSXP.0 as c_int {
+                    let internal_val = crate::sexp::accessors::INTERNAL(t);
+                    if internal_val != R_NilValue() {
+                        nextfun = internal_val;
+                    } else {
+                        nextfun = getPrimitive(t);
+                        if nextfun == R_NilValue() {
+                            Rf_unprotect(4);
+                            crate::sexp::memory_ext::vmaxset(_vmax);
+                            std::panic::panic_any(crate::sexp::context::RError {
+                                message: "no method to invoke".to_string(),
+                            });
+                        }
+                    }
+                }
             }
         }
 
@@ -1724,12 +1765,21 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         Rf_protect(s);
         setAttrib(s, sym("previous"), klass);
 
-        // Set up method name
-        let mut method_name: SEXP = PRINTNAME(nextfunSignature);
+        // Set up method name (C: duplicate(method) and update elements)
+        let method_name: SEXP;
         if method != R_UnboundValue() {
-            method_name = method; // use the existing method vector
+            method_name = crate::mainutils::duplicate::duplicate(method);
+            Rf_protect(method_name);
+            for jj in 0..LENGTH(method_name) {
+                let mc = CHAR(STRING_ELT(method_name, jj as R_xlen_t));
+                if !mc.is_null() && *mc != 0 && libc::strlen(mc) > 0 {
+                    SET_STRING_ELT(method_name, jj as R_xlen_t, PRINTNAME(nextfunSignature));
+                }
+            }
+        } else {
+            method_name = PRINTNAME(nextfunSignature);
+            Rf_protect(method_name);
         }
-        Rf_protect(method_name);
 
         // Create S3 vars
         let newvars = createS3Vars(generic, group_val, s, method_name, callenv, defenv);
@@ -1737,9 +1787,16 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         SETCAR(newcall, nextfunSignature);
 
+        // Fixup sysparent (C: PR#15267 fix)
+        let global_ctx = R_GlobalContext();
+        if !global_ctx.is_null() {
+            (*global_ctx).sysparent = callenv;
+        }
+
         let ans = applyMethod(newcall, nextfun, matchedarg, env, newvars);
 
-        Rf_unprotect(8);
+        crate::sexp::memory_ext::vmaxset(_vmax);
+        Rf_unprotect(9);
         ans
     }
 }
