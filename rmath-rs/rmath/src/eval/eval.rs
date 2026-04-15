@@ -405,7 +405,23 @@ fn apply_builtin_safe<'a>(
         "<" | ">" | "<=" | ">=" | "==" | "!=" => unsafe {
             super::arithmetic::do_relop(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
-        "abs" | "sqrt" | "log" | "log10" | "exp" | "ceiling" | "floor" | "sign" => unsafe {
+        "abs" => unsafe {
+            crate::mainutils::essentials::do_abs(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sign" => unsafe {
+            crate::mainutils::essentials::do_sign(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sqrt" | "log" | "log10" | "exp" | "ceiling" | "floor" => unsafe {
             super::arithmetic::do_math1(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
         "length" => unsafe {

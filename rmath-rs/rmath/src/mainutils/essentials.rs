@@ -15269,3 +15269,95 @@ pub unsafe fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     crate::sexp::protect::Rf_unprotect(1);
     result
 }
+
+// ---------------------------------------------------------------------------
+// do_abs — absolute value
+// ---------------------------------------------------------------------------
+
+/// R's `abs(x)` — absolute value of numeric vector.
+///
+/// Returns REALSXP. Preserves NA and NaN.
+pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x_arg = CAR(args);
+    if x_arg.is_null() || x_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(x_arg);
+    if t != SEXPTYPE::REALSXP.0 && t != SEXPTYPE::INTSXP.0 && t != SEXPTYPE::LGLSXP.0 {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x_arg).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let v = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x_arg).add(i as usize)
+        } else {
+            let iv = *INTEGER(x_arg).add(i as usize);
+            if iv == NA_INTEGER {
+                NA_REAL
+            } else {
+                iv as f64
+            }
+        };
+        *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            v
+        } else {
+            v.abs()
+        };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// do_sign — sign of values
+// ---------------------------------------------------------------------------
+
+/// R's `sign(x)` — sign of numeric vector (-1, 0, or 1).
+///
+/// Returns REALSXP. Preserves NA and NaN.
+pub unsafe fn do_sign(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x_arg = CAR(args);
+    if x_arg.is_null() || x_arg == R_NilValue() {
+        return R_NilValue();
+    }
+    let t = TYPEOF(x_arg);
+    if t != SEXPTYPE::REALSXP.0 && t != SEXPTYPE::INTSXP.0 && t != SEXPTYPE::LGLSXP.0 {
+        return R_NilValue();
+    }
+    let n = XLENGTH(x_arg).max(1);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+    for i in 0..n {
+        let v = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x_arg).add(i as usize)
+        } else {
+            let iv = *INTEGER(x_arg).add(i as usize);
+            if iv == NA_INTEGER {
+                NA_REAL
+            } else {
+                iv as f64
+            }
+        };
+        *dst.add(i as usize) = if v.is_nan() {
+            v // preserve NaN/NA
+        } else if v == 0.0 {
+            0.0
+        } else if v > 0.0 {
+            1.0
+        } else {
+            -1.0
+        };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
