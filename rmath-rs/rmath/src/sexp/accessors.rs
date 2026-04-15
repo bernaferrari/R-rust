@@ -12,6 +12,15 @@ use super::ffi::{
     NA_INTEGER, NA_REAL, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData,
 };
 
+#[inline]
+fn is_valid_sexp_ptr(x: SEXP) -> bool {
+    let addr = x as usize;
+    if addr < 0x1000 {
+        return false;
+    }
+    (addr & (std::mem::align_of::<SexprecCore>() - 1)) == 0
+}
+
 // ---------------------------------------------------------------------------
 // Header accessors
 // ---------------------------------------------------------------------------
@@ -19,7 +28,7 @@ use super::ffi::{
 /// Get the SEXPTYPE tag of an SEXP.
 pub unsafe fn TYPEOF(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0; // NILSXP
         }
         (*x).sxpinfo.type_of().0
@@ -29,7 +38,7 @@ pub unsafe fn TYPEOF(x: SEXP) -> c_int {
 /// Get the length of a vector SEXP.
 pub unsafe fn LENGTH(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).vecsxp_length() as c_int
@@ -39,7 +48,7 @@ pub unsafe fn LENGTH(x: SEXP) -> c_int {
 /// Get the extended length of a vector SEXP (64-bit).
 pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).vecsxp_length()
@@ -49,7 +58,7 @@ pub unsafe fn XLENGTH(x: SEXP) -> R_xlen_t {
 /// Get the true length (allocated capacity) of a vector SEXP.
 pub unsafe fn TRUELENGTH(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).vecsxp_truelength() as c_int
@@ -59,7 +68,7 @@ pub unsafe fn TRUELENGTH(x: SEXP) -> c_int {
 /// Set the true length of a vector SEXP.
 pub unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).set_vecsxp_truelength(v as R_xlen_t);
         }
     }
@@ -68,7 +77,7 @@ pub unsafe fn SET_TRUELENGTH(x: SEXP, v: c_int) {
 /// Get the attributes of an SEXP.
 pub unsafe fn ATTRIB(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).attrib
@@ -79,7 +88,7 @@ pub unsafe fn ATTRIB(x: SEXP) -> SEXP {
 /// Set the attributes of an SEXP.
 pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::attrib_write_barrier(x, v);
             (*x).attrib = v;
         }
@@ -89,7 +98,7 @@ pub unsafe fn SET_ATTRIB(x: SEXP, v: SEXP) {
 /// Check if an SEXP has the OBJECT flag set.
 pub unsafe fn OBJECT(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).sxpinfo.obj() as c_int
@@ -99,7 +108,7 @@ pub unsafe fn OBJECT(x: SEXP) -> c_int {
 /// Set the OBJECT flag on an SEXP.
 pub unsafe fn SET_OBJECT(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).sxpinfo.set_obj(v != 0);
         }
     }
@@ -108,7 +117,7 @@ pub unsafe fn SET_OBJECT(x: SEXP, v: c_int) {
 /// Get the namedness level (0, 1, or 2).
 pub unsafe fn NAMED(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).sxpinfo.named() as c_int
@@ -118,7 +127,7 @@ pub unsafe fn NAMED(x: SEXP) -> c_int {
 /// Set the namedness level.
 pub unsafe fn SET_NAMED(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).sxpinfo.set_named(v as u8);
         }
     }
@@ -127,7 +136,7 @@ pub unsafe fn SET_NAMED(x: SEXP, v: c_int) {
 /// Get the LEVELS (gp[0..1]) field.
 pub unsafe fn LEVELS(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         ((*x).sxpinfo.gp() & 0x03) as c_int
@@ -137,7 +146,7 @@ pub unsafe fn LEVELS(x: SEXP) -> c_int {
 /// Set the LEVELS field.
 pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             let gp = ((*x).sxpinfo.gp() & !0x03) | ((v as u16) & 0x03);
             (*x).sxpinfo.set_gp(gp);
         }
@@ -147,7 +156,7 @@ pub unsafe fn SETLEVELS(x: SEXP, v: c_int) {
 /// Get the scalar flag.
 pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).sxpinfo.scalar() as c_int
@@ -157,7 +166,7 @@ pub unsafe fn IS_SCALAR(x: SEXP, _type: c_int) -> c_int {
 /// Set the scalar flag.
 pub unsafe fn SET_SCALAR(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).sxpinfo.set_scalar(v != 0);
         }
     }
@@ -166,7 +175,7 @@ pub unsafe fn SET_SCALAR(x: SEXP, v: c_int) {
 /// Check the ALT flag.
 pub unsafe fn ALTREP(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).sxpinfo.alt() as c_int
@@ -176,7 +185,7 @@ pub unsafe fn ALTREP(x: SEXP) -> c_int {
 /// Set the ALT flag.
 pub unsafe fn SET_ALTREP(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).sxpinfo.set_alt(v != 0);
         }
     }
@@ -185,7 +194,7 @@ pub unsafe fn SET_ALTREP(x: SEXP, v: c_int) {
 /// Get the mark bit (for GC).
 pub unsafe fn MARK(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).sxpinfo.mark() as c_int
@@ -195,7 +204,7 @@ pub unsafe fn MARK(x: SEXP) -> c_int {
 /// Set the mark bit.
 pub unsafe fn SET_MARK(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).sxpinfo.set_mark(v != 0);
         }
     }
@@ -219,7 +228,7 @@ pub unsafe fn TYPEOF_CHECK(x: SEXP) -> c_int {
 /// Get the CAR of a cons cell.
 pub unsafe fn CAR(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.listsxp.carval
@@ -230,7 +239,7 @@ pub unsafe fn CAR(x: SEXP) -> SEXP {
 /// Get the CDR of a cons cell.
 pub unsafe fn CDR(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.listsxp.cdrval
@@ -241,7 +250,7 @@ pub unsafe fn CDR(x: SEXP) -> SEXP {
 /// Get the TAG of a cons cell.
 pub unsafe fn TAG(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.listsxp.tagval
@@ -252,7 +261,7 @@ pub unsafe fn TAG(x: SEXP) -> SEXP {
 /// Set the CAR of a cons cell.
 pub unsafe fn SETCAR(x: SEXP, y: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 0, y);
             (*x).data.listsxp.carval = y;
         }
@@ -262,7 +271,7 @@ pub unsafe fn SETCAR(x: SEXP, y: SEXP) {
 /// Set the CDR of a cons cell.
 pub unsafe fn SETCDR(x: SEXP, y: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 1, y);
             (*x).data.listsxp.cdrval = y;
         }
@@ -272,7 +281,7 @@ pub unsafe fn SETCDR(x: SEXP, y: SEXP) {
 /// Set the TAG of a cons cell.
 pub unsafe fn SETTAG(x: SEXP, y: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 2, y);
             (*x).data.listsxp.tagval = y;
         }
@@ -326,7 +335,7 @@ pub unsafe fn CAD5R(x: SEXP) -> SEXP {
 /// Get the print name (CHARSXP) of a symbol.
 pub unsafe fn PRINTNAME(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.symsxp.pname
@@ -337,7 +346,7 @@ pub unsafe fn PRINTNAME(x: SEXP) -> SEXP {
 /// Get the value of a symbol.
 pub unsafe fn SYMVALUE(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.symsxp.value
@@ -348,7 +357,7 @@ pub unsafe fn SYMVALUE(x: SEXP) -> SEXP {
 /// Get the internal value of a symbol.
 pub unsafe fn INTERNAL(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.symsxp.internal
@@ -359,7 +368,7 @@ pub unsafe fn INTERNAL(x: SEXP) -> SEXP {
 /// Set the print name of a symbol.
 pub unsafe fn SET_PRINTNAME(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.symsxp.pname = v;
         }
     }
@@ -368,7 +377,7 @@ pub unsafe fn SET_PRINTNAME(x: SEXP, v: SEXP) {
 /// Set the value of a symbol.
 pub unsafe fn SET_SYMVALUE(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.symsxp.value = v;
         }
     }
@@ -377,7 +386,7 @@ pub unsafe fn SET_SYMVALUE(x: SEXP, v: SEXP) {
 /// Set the internal value of a symbol.
 pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.symsxp.internal = v;
         }
     }
@@ -390,7 +399,7 @@ pub unsafe fn SET_INTERNAL(x: SEXP, v: SEXP) {
 /// Get the formals of a closure.
 pub unsafe fn FORMALS(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.closxp.formals
@@ -401,7 +410,7 @@ pub unsafe fn FORMALS(x: SEXP) -> SEXP {
 /// Get the body of a closure.
 pub unsafe fn BODY(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.closxp.body
@@ -412,7 +421,7 @@ pub unsafe fn BODY(x: SEXP) -> SEXP {
 /// Get the environment of a closure.
 pub unsafe fn CLOENV(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.closxp.env
@@ -423,7 +432,7 @@ pub unsafe fn CLOENV(x: SEXP) -> SEXP {
 /// Set the formals of a closure.
 pub unsafe fn SET_FORMALS(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.closxp.formals = v;
         }
     }
@@ -432,7 +441,7 @@ pub unsafe fn SET_FORMALS(x: SEXP, v: SEXP) {
 /// Set the body of a closure.
 pub unsafe fn SET_BODY(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.closxp.body = v;
         }
     }
@@ -441,7 +450,7 @@ pub unsafe fn SET_BODY(x: SEXP, v: SEXP) {
 /// Set the environment of a closure.
 pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.closxp.env = v;
         }
     }
@@ -454,7 +463,7 @@ pub unsafe fn SET_CLOENV(x: SEXP, v: SEXP) {
 /// Get the frame of an environment.
 pub unsafe fn FRAME(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.envsxp.frame
@@ -465,7 +474,7 @@ pub unsafe fn FRAME(x: SEXP) -> SEXP {
 /// Get the enclosing environment.
 pub unsafe fn ENCLOS(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.envsxp.enclos
@@ -476,7 +485,7 @@ pub unsafe fn ENCLOS(x: SEXP) -> SEXP {
 /// Get the hash table of an environment.
 pub unsafe fn HASHTAB(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.envsxp.hashtab
@@ -487,7 +496,7 @@ pub unsafe fn HASHTAB(x: SEXP) -> SEXP {
 /// Set the frame of an environment.
 pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 0, v);
             (*x).data.envsxp.frame = v;
         }
@@ -497,7 +506,7 @@ pub unsafe fn SET_FRAME(x: SEXP, v: SEXP) {
 /// Set the enclosing environment.
 pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 1, v);
             (*x).data.envsxp.enclos = v;
         }
@@ -507,7 +516,7 @@ pub unsafe fn SET_ENCLOS(x: SEXP, v: SEXP) {
 /// Set the hash table of an environment.
 pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 2, v);
             (*x).data.envsxp.hashtab = v;
         }
@@ -521,7 +530,7 @@ pub unsafe fn SET_HASHTAB(x: SEXP, v: SEXP) {
 /// Get the value of a promise.
 pub unsafe fn PRVALUE(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.promsxp.value
@@ -532,7 +541,7 @@ pub unsafe fn PRVALUE(x: SEXP) -> SEXP {
 /// Get the expression of a promise.
 pub unsafe fn PRCODE(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.promsxp.expr
@@ -543,7 +552,7 @@ pub unsafe fn PRCODE(x: SEXP) -> SEXP {
 /// Get the environment of a promise.
 pub unsafe fn PRENV(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             ptr::null_mut()
         } else {
             (*x).data.promsxp.env
@@ -554,7 +563,7 @@ pub unsafe fn PRENV(x: SEXP) -> SEXP {
 /// Set the value of a promise.
 pub unsafe fn SET_PRVALUE(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::list_write_barrier(x, 0, v);
             (*x).data.promsxp.value = v;
         }
@@ -564,7 +573,7 @@ pub unsafe fn SET_PRVALUE(x: SEXP, v: SEXP) {
 /// Set the expression of a promise.
 pub unsafe fn SET_PRCODE(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.promsxp.expr = v;
         }
     }
@@ -573,7 +582,7 @@ pub unsafe fn SET_PRCODE(x: SEXP, v: SEXP) {
 /// Set the environment of a promise.
 pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.promsxp.env = v;
         }
     }
@@ -586,7 +595,7 @@ pub unsafe fn SET_PRENV(x: SEXP, v: SEXP) {
 /// Get the offset of a primitive function.
 pub unsafe fn PRIMOFFSET(x: SEXP) -> c_int {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return 0;
         }
         (*x).data.primsxp.offset
@@ -596,7 +605,7 @@ pub unsafe fn PRIMOFFSET(x: SEXP) -> c_int {
 /// Set the offset of a primitive function.
 pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).data.primsxp.offset = v;
         }
     }
@@ -613,7 +622,7 @@ pub unsafe fn SET_PRIMOFFSET(x: SEXP, v: c_int) {
 /// the gengc_next_node field for vector types.
 pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
         // For vector types, data pointer is stored in gengc_next_node
@@ -629,7 +638,7 @@ pub unsafe fn DATAPTR(x: SEXP) -> *mut c_void {
 /// Set the data pointer for a vector SEXP.
 pub unsafe fn SET_DATAPTR(x: SEXP, v: *mut c_void) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             (*x).gengc_next_node = v as SEXP;
         }
     }
@@ -683,7 +692,7 @@ pub unsafe fn CHAR_RW(x: SEXP) -> *mut c_char {
 /// Get the i-th element of a STRSXP (a CHARSXP).
 pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
         let ptrs = DATAPTR(x) as *mut SEXP;
@@ -694,7 +703,7 @@ pub unsafe fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
 /// Set the i-th element of a STRSXP.
 pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             let ptrs = DATAPTR(x) as *mut SEXP;
             *ptrs.add(i as usize) = val;
         }
@@ -705,7 +714,7 @@ pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 #[unsafe(no_mangle)]
 pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return ptr::null_mut();
         }
         let ptrs = DATAPTR(x) as *mut SEXP;
@@ -716,7 +725,7 @@ pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
 /// Set the i-th element of a VECSXP/EXPRSXP.
 pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     unsafe {
-        if !x.is_null() {
+        if is_valid_sexp_ptr(x) {
             super::gengc::vector_write_barrier(x, i as usize, val);
             let ptrs = DATAPTR(x) as *mut SEXP;
             *ptrs.add(i as usize) = val;
@@ -731,7 +740,7 @@ pub unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 /// Get the i-th logical value.
 pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
-        if x.is_null() || LOGICAL(x).is_null() {
+        if !is_valid_sexp_ptr(x) || LOGICAL(x).is_null() {
             return NA_INTEGER;
         }
         *LOGICAL(x).add(i as usize)
@@ -741,7 +750,7 @@ pub unsafe fn LOGICAL_ELT(x: SEXP, i: c_int) -> c_int {
 /// Set the i-th logical value.
 pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
     unsafe {
-        if !x.is_null() && !LOGICAL(x).is_null() {
+        if is_valid_sexp_ptr(x) && !LOGICAL(x).is_null() {
             *LOGICAL(x).add(i as usize) = v;
         }
     }
@@ -750,7 +759,7 @@ pub unsafe fn SET_LOGICAL_ELT(x: SEXP, i: c_int, v: c_int) {
 /// Get the i-th integer value.
 pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
     unsafe {
-        if x.is_null() || INTEGER(x).is_null() {
+        if !is_valid_sexp_ptr(x) || INTEGER(x).is_null() {
             return NA_INTEGER;
         }
         *INTEGER(x).add(i as usize)
@@ -760,7 +769,7 @@ pub unsafe fn INTEGER_ELT(x: SEXP, i: c_int) -> c_int {
 /// Set the i-th integer value.
 pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
     unsafe {
-        if !x.is_null() && !INTEGER(x).is_null() {
+        if is_valid_sexp_ptr(x) && !INTEGER(x).is_null() {
             *INTEGER(x).add(i as usize) = v;
         }
     }
@@ -769,7 +778,7 @@ pub unsafe fn SET_INTEGER_ELT(x: SEXP, i: c_int, v: c_int) {
 /// Get the i-th real value.
 pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
     unsafe {
-        if x.is_null() || REAL(x).is_null() {
+        if !is_valid_sexp_ptr(x) || REAL(x).is_null() {
             return NA_REAL;
         }
         *REAL(x).add(i as usize)
@@ -779,7 +788,7 @@ pub unsafe fn REAL_ELT(x: SEXP, i: c_int) -> c_double {
 /// Set the i-th real value.
 pub unsafe fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
     unsafe {
-        if !x.is_null() && !REAL(x).is_null() {
+        if is_valid_sexp_ptr(x) && !REAL(x).is_null() {
             *REAL(x).add(i as usize) = v;
         }
     }
@@ -788,7 +797,7 @@ pub unsafe fn SET_REAL_ELT(x: SEXP, i: c_int, v: c_double) {
 /// Get the i-th complex value.
 pub unsafe fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
     unsafe {
-        if x.is_null() || COMPLEX(x).is_null() {
+        if !is_valid_sexp_ptr(x) || COMPLEX(x).is_null() {
             return Rcomplex {
                 r: NA_REAL,
                 i: NA_REAL,
@@ -801,7 +810,7 @@ pub unsafe fn COMPLEX_ELT(x: SEXP, i: c_int) -> Rcomplex {
 /// Set the i-th complex value.
 pub unsafe fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
     unsafe {
-        if !x.is_null() && !COMPLEX(x).is_null() {
+        if is_valid_sexp_ptr(x) && !COMPLEX(x).is_null() {
             *COMPLEX(x).add(i as usize) = v;
         }
     }
@@ -810,7 +819,7 @@ pub unsafe fn SET_COMPLEX_ELT(x: SEXP, i: c_int, v: Rcomplex) {
 /// Get the i-th raw byte value.
 pub unsafe fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
     unsafe {
-        if x.is_null() || RAW(x).is_null() {
+        if !is_valid_sexp_ptr(x) || RAW(x).is_null() {
             return 0;
         }
         *RAW(x).add(i as usize)
@@ -820,7 +829,7 @@ pub unsafe fn RAW_ELT(x: SEXP, i: c_int) -> super::ffi::Rbyte {
 /// Set the i-th raw byte value.
 pub unsafe fn SET_RAW_ELT(x: SEXP, i: c_int, v: super::ffi::Rbyte) {
     unsafe {
-        if !x.is_null() && !RAW(x).is_null() {
+        if is_valid_sexp_ptr(x) && !RAW(x).is_null() {
             *RAW(x).add(i as usize) = v;
         }
     }
@@ -1004,6 +1013,20 @@ mod tests {
             assert!(DATAPTR(ptr::null_mut()).is_null());
         }
     }
+
+    #[test]
+    fn test_invalid_pointer_guards() {
+        unsafe {
+            let bad = 0x1 as SEXP;
+            assert_eq!(TYPEOF(bad), 0);
+            assert_eq!(LENGTH(bad), 0);
+            assert_eq!(XLENGTH(bad), 0);
+            assert_eq!(TRUELENGTH(bad), 0);
+            assert!(CAR(bad).is_null());
+            assert!(CDR(bad).is_null());
+            assert!(DATAPTR(bad).is_null());
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1017,7 +1040,7 @@ const IS_ASCII_MASK: u16 = 1 << 6; // 0x40
 
 /// IS_ASCII: check if CHARSXP has ASCII encoding marker.
 pub unsafe fn IS_ASCII(x: SEXP) -> c_int {
-    if x.is_null() {
+    if !is_valid_sexp_ptr(x) {
         return 0;
     }
     let gp = unsafe { (*x).sxpinfo.gp() };
@@ -1026,7 +1049,7 @@ pub unsafe fn IS_ASCII(x: SEXP) -> c_int {
 
 /// IS_UTF8: check if CHARSXP has UTF-8 encoding marker.
 pub unsafe fn IS_UTF8(x: SEXP) -> c_int {
-    if x.is_null() {
+    if !is_valid_sexp_ptr(x) {
         return 0;
     }
     let gp = unsafe { (*x).sxpinfo.gp() };
@@ -1035,7 +1058,7 @@ pub unsafe fn IS_UTF8(x: SEXP) -> c_int {
 
 /// IS_BYTES: check if CHARSXP has bytes encoding marker.
 pub unsafe fn IS_BYTES(x: SEXP) -> c_int {
-    if x.is_null() {
+    if !is_valid_sexp_ptr(x) {
         return 0;
     }
     let gp = unsafe { (*x).sxpinfo.gp() };
@@ -1044,7 +1067,7 @@ pub unsafe fn IS_BYTES(x: SEXP) -> c_int {
 
 /// IS_LATIN1: check if CHARSXP has Latin-1 encoding marker.
 pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
-    if x.is_null() {
+    if !is_valid_sexp_ptr(x) {
         return 0;
     }
     let gp = unsafe { (*x).sxpinfo.gp() };
@@ -1054,7 +1077,7 @@ pub unsafe fn IS_LATIN1(x: SEXP) -> c_int {
 /// ENC_KNOWN: check if CHARSXP has a known encoding.
 /// Returns the OR of LATIN1_MASK, UTF8_MASK, and BYTES_MASK bits.
 pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
-    if x.is_null() {
+    if !is_valid_sexp_ptr(x) {
         return 0;
     }
     let gp = unsafe { (*x).sxpinfo.gp() };
@@ -1067,7 +1090,7 @@ pub unsafe fn ENC_KNOWN(x: SEXP) -> c_int {
 /// and fall back to CHAR(s) for other encodings (best-effort).
 pub unsafe fn translateChar(x: SEXP) -> *const c_char {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return std::ptr::null();
         }
         CHAR(x)
@@ -1078,7 +1101,7 @@ pub unsafe fn translateChar(x: SEXP) -> *const c_char {
 /// For UTF-8 or ASCII strings, return directly. For others, return as-is (best-effort).
 pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
     unsafe {
-        if x.is_null() {
+        if !is_valid_sexp_ptr(x) {
             return std::ptr::null();
         }
         CHAR(x)
@@ -1088,7 +1111,7 @@ pub unsafe fn translateCharUTF8(x: SEXP) -> *const c_char {
 /// getCharCE: return the character encoding of a CHARSXP.
 /// Returns CE_NATIVE (0) for native, CE_UTF8 (2) for UTF-8, etc.
 pub unsafe fn getCharCE(x: SEXP) -> c_int {
-    if x.is_null() {
+    if !is_valid_sexp_ptr(x) {
         return 0;
     }
     let gp = unsafe { (*x).sxpinfo.gp() };
