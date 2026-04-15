@@ -1061,7 +1061,7 @@ pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho:
     curl_easy_cleanup(hnd);
 
     let ans = Rf_protect(Rf_allocVector(
-        SEXPTYPE::STRSXP.0,
+        SEXPTYPE::STRSXP,
         headers_used.with(|v| v.get()),
     ));
     for i in 0..headers_used.with(|v| v.get()) {

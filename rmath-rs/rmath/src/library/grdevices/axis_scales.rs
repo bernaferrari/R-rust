@@ -44,8 +44,8 @@ pub unsafe fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -
     let nint_v = asInteger(nint);
     let logflag = asLogical(is_log);
 
-    let axp = Rf_protect(coerceVector(axp, SEXPTYPE::REALSXP.0));
-    let usr = Rf_protect(coerceVector(usr, SEXPTYPE::REALSXP.0));
+    let axp = Rf_protect(coerceVector(axp, SEXPTYPE::REALSXP.into()));
+    let usr = Rf_protect(coerceVector(usr, SEXPTYPE::REALSXP.into()));
     if LENGTH(axp) != 3 {
         Rf_error(b"'axp' must be numeric of length 3\0".as_ptr() as *const c_char);
     }
@@ -60,7 +60,7 @@ pub unsafe fn R_CreateAtVector(axp: SEXP, usr: SEXP, nint: SEXP, is_log: SEXP) -
 
 /// R_GAxisPars - compute axis parameters (axp, n) from user range.
 pub unsafe fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
-    let usr = coerceVector(usr, SEXPTYPE::REALSXP.0);
+    let usr = coerceVector(usr, SEXPTYPE::REALSXP.into());
     if LENGTH(usr) != 2 {
         Rf_error(b"'usr' must be numeric of length 2\0".as_ptr() as *const c_char);
     }

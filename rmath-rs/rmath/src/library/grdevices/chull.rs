@@ -476,7 +476,7 @@ pub unsafe fn chull(x: SEXP) -> SEXP {
     let mut ib_vec: Vec<c_int> = vec![0; (4 * n) as usize];
     let mut il_vec: Vec<c_int> = vec![0; (4 * n) as usize];
 
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.into()));
     let x_data = REAL(x) as *mut c_double;
 
     let mut n_mut = n;

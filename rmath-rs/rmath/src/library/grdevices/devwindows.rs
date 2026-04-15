@@ -502,8 +502,8 @@ pub unsafe fn devga(args: SEXP) -> SEXP {
 /// Returns a named character vector of version strings.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn bmVersion() -> SEXP {
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
-    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
     use crate::attrib_core::setAttrib;
     setAttrib(ans, R_NamesSymbol(), nms);
     SET_STRING_ELT(nms, 0, Rf_mkChar(b"libpng\0".as_ptr() as *const c_char));
@@ -554,8 +554,8 @@ pub unsafe fn cairoFT() -> SEXP {
 /// Returns a named character vector of version strings.
 #[cfg(target_os = "windows")]
 pub unsafe fn bmVersion() -> SEXP {
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
-    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0 /* STRSXP */, 3));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
+    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
     use crate::attrib_core::setAttrib;
     use crate::sexp::globals::R_NamesSymbol;
     setAttrib(ans, R_NamesSymbol(), nms);

@@ -3346,13 +3346,13 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
     let mut g: c_double = 0.0;
     let mut b: c_double = 0.0;
 
-    let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.0));
-    let s = Rf_protect(coerceVector(s, SEXPTYPE::REALSXP.0));
-    let v = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.0));
+    let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.into()));
+    let s = Rf_protect(coerceVector(s, SEXPTYPE::REALSXP.into()));
+    let v = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.into()));
     let a = if Rf_isNull(a) != 0 {
         a
     } else {
-        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0))
+        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
     };
 
     let nh = XLENGTH(h) as usize;
@@ -3436,13 +3436,13 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
 
 pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
     let fixup = asLogical(sfixup);
-    let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.0));
-    let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.0));
-    let l = Rf_protect(coerceVector(l, SEXPTYPE::REALSXP.0));
+    let h = Rf_protect(coerceVector(h, SEXPTYPE::REALSXP.into()));
+    let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.into()));
+    let l = Rf_protect(coerceVector(l, SEXPTYPE::REALSXP.into()));
     let a = if Rf_isNull(a) != 0 {
         a
     } else {
-        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0))
+        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
     };
 
     let nh = XLENGTH(h) as usize;
@@ -3555,24 +3555,24 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
 
     let (r, g, b, a) = if mV == 255.0 {
         (
-            Rf_protect(coerceVector(r, SEXPTYPE::INTSXP.0)),
-            Rf_protect(coerceVector(g, SEXPTYPE::INTSXP.0)),
-            Rf_protect(coerceVector(b, SEXPTYPE::INTSXP.0)),
+            Rf_protect(coerceVector(r, SEXPTYPE::INTSXP.into())),
+            Rf_protect(coerceVector(g, SEXPTYPE::INTSXP.into())),
+            Rf_protect(coerceVector(b, SEXPTYPE::INTSXP.into())),
             if Rf_isNull(a) != 0 {
                 a
             } else {
-                Rf_protect(coerceVector(a, SEXPTYPE::INTSXP.0))
+                Rf_protect(coerceVector(a, SEXPTYPE::INTSXP.into()))
             },
         )
     } else {
         (
-            Rf_protect(coerceVector(r, SEXPTYPE::REALSXP.0)),
-            Rf_protect(coerceVector(g, SEXPTYPE::REALSXP.0)),
-            Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.0)),
+            Rf_protect(coerceVector(r, SEXPTYPE::REALSXP.into())),
+            Rf_protect(coerceVector(g, SEXPTYPE::REALSXP.into())),
+            Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.into())),
             if Rf_isNull(a) != 0 {
                 a
             } else {
-                Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0))
+                Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
             },
         )
     };
@@ -3602,7 +3602,7 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
         l_max = na;
     }
 
-    let nam = Rf_protect(coerceVector(nam, SEXPTYPE::STRSXP.0));
+    let nam = Rf_protect(coerceVector(nam, SEXPTYPE::STRSXP.into()));
     if LENGTH(nam) != 0 && LENGTH(nam) != l_max as c_int {
         Rf_error(b"invalid 'names' vector\0".as_ptr() as *const c_char);
     }
@@ -3681,7 +3681,7 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
 }
 
 pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
-    let lev = Rf_protect(coerceVector(lev, SEXPTYPE::REALSXP.0));
+    let lev = Rf_protect(coerceVector(lev, SEXPTYPE::REALSXP.into()));
     let nlev = LENGTH(lev) as usize;
     let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlev as c_int);
     if nlev == 0 {
@@ -3692,7 +3692,7 @@ pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
     let a = if Rf_isNull(a) != 0 {
         a
     } else {
-        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0))
+        Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.into()))
     };
 
     if Rf_isNull(a) != 0 {
@@ -3742,7 +3742,7 @@ pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
 pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
     use crate::main::array::allocMatrix;
 
-    let rgb = Rf_protect(coerceVector(rgb, SEXPTYPE::REALSXP.0));
+    let rgb = Rf_protect(coerceVector(rgb, SEXPTYPE::REALSXP.into()));
     if !isMatrix(rgb) {
         Rf_error(b"rgb is not a matrix (internally)\0".as_ptr() as *const c_char);
     }
@@ -3801,8 +3801,8 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
     let t = TYPEOF(colors);
     let colors = match t {
         tt if tt == SEXPTYPE::INTSXP || tt == SEXPTYPE::STRSXP => colors, // INTSXP or STRSXP
-        tt if tt == SEXPTYPE::REALSXP => Rf_protect(coerceVector(colors, SEXPTYPE::INTSXP.0)),
-        _ => Rf_protect(coerceVector(colors, SEXPTYPE::STRSXP.0)),
+        tt if tt == SEXPTYPE::REALSXP => Rf_protect(coerceVector(colors, SEXPTYPE::INTSXP.into())),
+        _ => Rf_protect(coerceVector(colors, SEXPTYPE::STRSXP.into())),
     };
     Rf_protect(colors);
 

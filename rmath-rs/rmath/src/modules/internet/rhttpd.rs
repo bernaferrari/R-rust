@@ -273,10 +273,10 @@ unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
         len += (*buf).length as c_int;
         buf = (*buf).prev;
     }
-    let res = Rf_protect(Rf_allocVector(
-        SEXPTYPE::RAWSXP.0,
-        len + (*buf).length as c_int,
-    ));
+        let res = Rf_protect(Rf_allocVector(
+            SEXPTYPE::RAWSXP,
+            len + (*buf).length as c_int,
+        ));
     let dst = RAW(res) as *mut c_char;
     let mut pos: isize = 0;
     while !buf.is_null() {
@@ -589,7 +589,7 @@ unsafe fn parse_request_body(c: *mut HttpdConn) -> SEXP {
     } else {
         // Something else - pass as raw vector
         let res = Rf_protect(Rf_allocVector(
-            SEXPTYPE::RAWSXP.0,
+            SEXPTYPE::RAWSXP,
             (*c).content_length as c_int,
         ));
         if (*c).content_length > 0 {
