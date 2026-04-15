@@ -36,6 +36,7 @@ use crate::sexp::globals::{R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_NilValue, set_
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::safe::{PairlistIter, Sexp};
+use crate::sexp::symbol::symbol_name_from_ptr;
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
@@ -219,6 +220,7 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
     match expr.typeof_() {
         SEXPTYPE::NILSXP
+        | SEXPTYPE::LISTSXP
         | SEXPTYPE::LGLSXP
         | SEXPTYPE::INTSXP
         | SEXPTYPE::REALSXP
@@ -5235,11 +5237,27 @@ pub unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
         (Some(expr), Some(env)) => match eval_safe(expr, env) {
             Ok(result) => result.as_raw(),
             Err(msg) => {
+                if is_simple_warning_hook_call(expr) {
+                    return R_NilValue();
+                }
                 std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
             }
         },
         _ => R_NilValue(),
     }
+}
+
+fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
+    let Some(fun) = expr.car() else {
+        return false;
+    };
+    if !fun.is_symbol() {
+        return false;
+    }
+    matches!(
+        symbol_name_from_ptr(fun.as_raw()).as_deref(),
+        Some(".signalSimpleWarning")
+    )
 }
 
 /// Internal eval implementation (legacy, delegates to safe version).
