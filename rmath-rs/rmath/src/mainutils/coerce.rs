@@ -2052,17 +2052,17 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
     };
 
     let type_: c_int = match s.as_str() {
-        "logical" => SEXPTYPE::LGLSXP.0,
-        "integer" => SEXPTYPE::INTSXP.0,
-        "double" | "numeric" => SEXPTYPE::REALSXP.0,
-        "complex" => SEXPTYPE::CPLXSXP.0,
-        "character" => SEXPTYPE::STRSXP.0,
-        "raw" => SEXPTYPE::RAWSXP.0,
-        "list" => SEXPTYPE::VECSXP.0,
-        "expression" => SEXPTYPE::EXPRSXP.0,
-        "pairlist" => SEXPTYPE::LISTSXP.0,
+        "logical" => SEXPTYPE::LGLSXP.into(),
+        "integer" => SEXPTYPE::INTSXP.into(),
+        "double" | "numeric" => SEXPTYPE::REALSXP.into(),
+        "complex" => SEXPTYPE::CPLXSXP.into(),
+        "character" => SEXPTYPE::STRSXP.into(),
+        "raw" => SEXPTYPE::RAWSXP.into(),
+        "list" => SEXPTYPE::VECSXP.into(),
+        "expression" => SEXPTYPE::EXPRSXP.into(),
+        "pairlist" => SEXPTYPE::LISTSXP.into(),
         "any" => return Ok(x.as_raw()),
-        "symbol" | "name" => SEXPTYPE::SYMSXP.0,
+        "symbol" | "name" => SEXPTYPE::SYMSXP.into(),
         _ => return Err("invalid 'mode' argument".to_string()),
     };
 
@@ -2127,13 +2127,13 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
 /// 3=complex, 4=logical, 5=raw).
 pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
     let type_: c_int = match op {
-        0 => SEXPTYPE::STRSXP.0,
-        1 => SEXPTYPE::INTSXP.0,
-        2 => SEXPTYPE::REALSXP.0,
-        3 => SEXPTYPE::CPLXSXP.0,
-        4 => SEXPTYPE::LGLSXP.0,
-        5 => SEXPTYPE::RAWSXP.0,
-        _ => SEXPTYPE::STRSXP.0,
+        0 => SEXPTYPE::STRSXP.into(),
+        1 => SEXPTYPE::INTSXP.into(),
+        2 => SEXPTYPE::REALSXP.into(),
+        3 => SEXPTYPE::CPLXSXP.into(),
+        4 => SEXPTYPE::LGLSXP.into(),
+        5 => SEXPTYPE::RAWSXP.into(),
+        _ => SEXPTYPE::STRSXP.into(),
     };
 
     let x_raw = x.as_raw();
@@ -2185,17 +2185,17 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
     };
 
     let type_: c_int = match s.as_str() {
-        "logical" => SEXPTYPE::LGLSXP.0,
-        "integer" => SEXPTYPE::INTSXP.0,
-        "double" | "numeric" => SEXPTYPE::REALSXP.0,
-        "complex" => SEXPTYPE::CPLXSXP.0,
-        "character" => SEXPTYPE::STRSXP.0,
-        "raw" => SEXPTYPE::RAWSXP.0,
-        "list" => SEXPTYPE::VECSXP.0,
-        "expression" => SEXPTYPE::EXPRSXP.0,
-        "pairlist" => SEXPTYPE::LISTSXP.0,
-        "symbol" | "name" => SEXPTYPE::SYMSXP.0,
-        "function" => SEXPTYPE::CLOSXP.0,
+        "logical" => SEXPTYPE::LGLSXP.into(),
+        "integer" => SEXPTYPE::INTSXP.into(),
+        "double" | "numeric" => SEXPTYPE::REALSXP.into(),
+        "complex" => SEXPTYPE::CPLXSXP.into(),
+        "character" => SEXPTYPE::STRSXP.into(),
+        "raw" => SEXPTYPE::RAWSXP.into(),
+        "list" => SEXPTYPE::VECSXP.into(),
+        "expression" => SEXPTYPE::EXPRSXP.into(),
+        "pairlist" => SEXPTYPE::LISTSXP.into(),
+        "symbol" | "name" => SEXPTYPE::SYMSXP.into(),
+        "function" => SEXPTYPE::CLOSXP.into(),
         "any" => return Ok(x.as_raw()),
         _ => return Err("invalid 'mode' argument".to_string()),
     };
@@ -2288,7 +2288,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             unsafe {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data =
-                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::SYMSXP.0);
+                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::SYMSXP.into());
                     (TYPEOF(dot_x_data) == SEXPTYPE::SYMSXP) as c_int
                 } else {
                     (TYPEOF(x_raw) == SEXPTYPE::SYMSXP) as c_int
@@ -2300,7 +2300,7 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             unsafe {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
                     let dot_x_data =
-                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::ENVSXP.0);
+                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::ENVSXP.into());
                     (TYPEOF(dot_x_data) == SEXPTYPE::ENVSXP) as c_int
                 } else {
                     (TYPEOF(x_raw) == SEXPTYPE::ENVSXP) as c_int
@@ -2887,14 +2887,14 @@ pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     }
                     ap = CDR(ap);
                 }
-                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.0);
+                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
                 SETTAG(ans, R_NilValue());
                 Rf_unprotect(2);
                 ans
             }
             t if t == SEXPTYPE::LISTSXP => {
                 let ans = crate::mainutils::duplicate::Rf_duplicate(x);
-                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.0);
+                SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
                 SETTAG(ans, R_NilValue());
                 ans
             }
@@ -3668,14 +3668,14 @@ pub fn str2type(s: *const c_char) -> c_int {
     }
     let bytes = unsafe { std::ffi::CStr::from_ptr(s).to_bytes() };
     match bytes {
-        b"logical" => SEXPTYPE::LGLSXP.0,
-        b"integer" => SEXPTYPE::INTSXP.0,
-        b"double" => SEXPTYPE::REALSXP.0,
-        b"complex" => SEXPTYPE::CPLXSXP.0,
-        b"character" => SEXPTYPE::STRSXP.0,
-        b"raw" => SEXPTYPE::RAWSXP.0,
-        b"list" => SEXPTYPE::VECSXP.0,
-        b"expression" => SEXPTYPE::EXPRSXP.0,
+        b"logical" => SEXPTYPE::LGLSXP.into(),
+        b"integer" => SEXPTYPE::INTSXP.into(),
+        b"double" => SEXPTYPE::REALSXP.into(),
+        b"complex" => SEXPTYPE::CPLXSXP.into(),
+        b"character" => SEXPTYPE::STRSXP.into(),
+        b"raw" => SEXPTYPE::RAWSXP.into(),
+        b"list" => SEXPTYPE::VECSXP.into(),
+        b"expression" => SEXPTYPE::EXPRSXP.into(),
         _ => -1,
     }
 }
@@ -3999,7 +3999,7 @@ mod tests {
         // coerceVector should return the same pointer if types match
         // We can't easily create real SEXP objects in tests without init,
         // but we can test the null case
-        let result = unsafe { coerceVector(std::ptr::null_mut(), SEXPTYPE::LGLSXP.0) };
+        let result = unsafe { coerceVector(std::ptr::null_mut(), SEXPTYPE::LGLSXP.into()) };
         assert!(result.is_null());
     }
 }
