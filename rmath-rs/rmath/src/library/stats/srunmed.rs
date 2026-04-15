@@ -342,7 +342,7 @@ pub unsafe fn runmed(
         xx = x;
     }
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
 
     if type_ == 1 {
         // Trunmed takes &[f64] and &mut [f64]

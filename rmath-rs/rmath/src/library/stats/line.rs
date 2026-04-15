@@ -163,8 +163,8 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
         Rf_error(b"insufficient observations\0".as_ptr() as *const i8);
     }
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 4));
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, 4);
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
     setAttrib(ans, R_NamesSymbol(), nm);
     SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const i8));
     SET_STRING_ELT(nm, 1, Rf_mkChar(b"coefficients\0".as_ptr() as *const i8));
@@ -172,11 +172,11 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
     SET_STRING_ELT(nm, 3, Rf_mkChar(b"fitted.values\0".as_ptr() as *const i8));
     SET_VECTOR_ELT(ans, 0, call);
 
-    let coef = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
+    let coef = Rf_allocVector(SEXPTYPE::REALSXP, 2);
     SET_VECTOR_ELT(ans, 1, coef);
-    let res = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+    let res = Rf_allocVector(SEXPTYPE::REALSXP, n);
     SET_VECTOR_ELT(ans, 2, res);
-    let fit = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+    let fit = Rf_allocVector(SEXPTYPE::REALSXP, n);
     SET_VECTOR_ELT(ans, 3, fit);
 
     line(

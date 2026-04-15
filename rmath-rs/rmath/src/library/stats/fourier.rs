@@ -356,7 +356,7 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     use crate::main::errors::Rf_error;
 
     if TYPEOF(n) == SEXPTYPE::NILSXP {
-        return Rf_allocVector(SEXPTYPE::INTSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::INTSXP, 0);
     }
 
     let mut nprot: c_int = 0;

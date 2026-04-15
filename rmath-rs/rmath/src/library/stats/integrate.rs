@@ -42,7 +42,7 @@ struct IntStruct {
 unsafe fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
     let is = &*(ex as *const IntStruct);
 
-    let args = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+    let args = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
     for i in 0..n {
         *REAL(args).add(i as usize) = *x.add(i as usize);
     }
@@ -180,11 +180,11 @@ unsafe fn build_integrate_result(
     last: c_int,
     ier: c_int,
 ) -> SEXP {
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 4));
-    let ansnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 4));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
+    let ansnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 4));
 
     SET_STRING_ELT(ansnames, 0, Rf_mkChar(b"value\0".as_ptr() as *const c_char));
-    SET_VECTOR_ELT(ans, 0, Rf_allocVector(SEXPTYPE::REALSXP.0, 1));
+    SET_VECTOR_ELT(ans, 0, Rf_allocVector(SEXPTYPE::REALSXP, 1));
     *REAL(VECTOR_ELT(ans, 0)).add(0) = result;
 
     SET_STRING_ELT(
@@ -192,7 +192,7 @@ unsafe fn build_integrate_result(
         1,
         Rf_mkChar(b"abs.error\0".as_ptr() as *const c_char),
     );
-    SET_VECTOR_ELT(ans, 1, Rf_allocVector(SEXPTYPE::REALSXP.0, 1));
+    SET_VECTOR_ELT(ans, 1, Rf_allocVector(SEXPTYPE::REALSXP, 1));
     *REAL(VECTOR_ELT(ans, 1)).add(0) = abserr;
 
     SET_STRING_ELT(
@@ -200,11 +200,11 @@ unsafe fn build_integrate_result(
         2,
         Rf_mkChar(b"subdivisions\0".as_ptr() as *const c_char),
     );
-    SET_VECTOR_ELT(ans, 2, Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    SET_VECTOR_ELT(ans, 2, Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(VECTOR_ELT(ans, 2)).add(0) = last;
 
     SET_STRING_ELT(ansnames, 3, Rf_mkChar(b"ierr\0".as_ptr() as *const c_char));
-    SET_VECTOR_ELT(ans, 3, Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    SET_VECTOR_ELT(ans, 3, Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(VECTOR_ELT(ans, 3)).add(0) = ier;
 
     setAttrib(ans, R_NamesSymbol(), ansnames);

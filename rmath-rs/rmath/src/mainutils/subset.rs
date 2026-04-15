@@ -464,7 +464,7 @@ unsafe fn DropDims(x: SEXP) -> SEXP {
             return x;
         }
         // Build new dim
-        let new_dim = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, keep_count as R_xlen_t));
+        let new_dim = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, keep_count as R_xlen_t));
         let mut new_len: R_xlen_t = 1;
         let mut j = 0;
         for i in 0..ndim {
@@ -1051,7 +1051,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 
         /* Set dim attribute */
         if nrs >= 0 && ncs >= 0 {
-            let attr = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 2));
+            let attr = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
             *INTEGER(attr).add(0) = nrs;
             *INTEGER(attr).add(1) = ncs;
             if !isNull(getAttrib(dim, sym_Names())) {
@@ -1066,7 +1066,7 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             let dimnames = getAttrib(x, sym_DimNames());
             let dimnamesnames = Rf_protect(getAttrib(dimnames, sym_Names()));
             if !isNull(dimnames) {
-                let newdimnames = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 2));
+                let newdimnames = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 2));
                 if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
                     SET_VECTOR_ELT(
                         newdimnames,
@@ -1264,7 +1264,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         }
 
         /* Set dim attribute */
-        let new_dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, k));
+        let new_dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, k));
         for i in 0..(k as usize) {
             *INTEGER(new_dim).add(i) = bound[i];
         }
@@ -1278,7 +1278,7 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let dimnames = getAttrib(x, sym_DimNames());
         let dimnamesnames = Rf_protect(getAttrib(dimnames, sym_Names()));
         if !isNull(dimnames) {
-            let new_xdims = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, k as R_xlen_t));
+            let new_xdims = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, k as R_xlen_t));
             let mut jj = 0;
             if TYPEOF(dimnames) == SEXPTYPE::VECSXP {
                 let mut rr = s;
@@ -1518,11 +1518,11 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             let dim = getAttrib(x, sym_Dim());
             let ndim = length_int(dim);
             if ndim > 1 {
-                ax = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, xlength(x)));
+                ax = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x)));
                 setAttrib(ax, sym_DimNames(), getAttrib(x, sym_DimNames()));
                 setAttrib(ax, sym_Names(), getAttrib(x, sym_DimNames()));
             } else {
-                ax = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, xlength(x)));
+                ax = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x)));
                 setAttrib(ax, sym_Names(), getAttrib(x, sym_Names()));
             }
             let mut px = x;
@@ -1844,7 +1844,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let dimnames = getAttrib(x, sym_DimNames());
             let ndn = length_int(dimnames);
 
-            let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, nsubs));
+            let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nsubs));
             let pindx = INTEGER(indx);
 
             let mut cur_subs = subs;
@@ -1947,7 +1947,7 @@ pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> S
 /// (a symbol or string) into a single-element character vector.
 pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEXP) -> SEXP {
     unsafe {
-        let input = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+        let input = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
         let mut nlist = CADR(args);
 
         /* Evaluate if promise */
@@ -2342,7 +2342,7 @@ mod tests {
     fn test_vector_subset_missing_arg() {
         unsafe {
             /* When x is a simple integer vector and s is missing, should duplicate */
-            let x = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+            let x = Rf_allocVector(SEXPTYPE::INTSXP, 3);
             if !x.is_null() {
                 for i in 0..3 {
                     *INTEGER(x).add(i) = ((i + 1) * 10) as c_int;

@@ -1399,7 +1399,7 @@ mod tests {
     fn test_integer_literal() {
         unsafe {
             let result = must(parse_str("42"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
         }
     }
 
@@ -1407,7 +1407,7 @@ mod tests {
     fn test_real_literal() {
         unsafe {
             let result = must(parse_str("3.14"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
         }
     }
 
@@ -1415,7 +1415,7 @@ mod tests {
     fn test_int_suffix() {
         unsafe {
             let result = must(parse_str("42L"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
         }
     }
 
@@ -1423,7 +1423,7 @@ mod tests {
     fn test_string_literal() {
         unsafe {
             let result = must(parse_str("\"hello\""));
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
         }
     }
 
@@ -1431,10 +1431,10 @@ mod tests {
     fn test_true_false_null() {
         unsafe {
             let t = must(parse_str("TRUE"));
-            assert_eq!(TYPEOF(t), SEXPTYPE::LGLSXP.0);
+            assert_eq!(TYPEOF(t), SEXPTYPE::LGLSXP);
 
             let f = must(parse_str("FALSE"));
-            assert_eq!(TYPEOF(f), SEXPTYPE::LGLSXP.0);
+            assert_eq!(TYPEOF(f), SEXPTYPE::LGLSXP);
 
             let n = must(parse_str("NULL"));
             assert_eq!(n, R_NilValue());
@@ -1445,7 +1445,7 @@ mod tests {
     fn test_identifier() {
         unsafe {
             let result = must(parse_str("x"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP);
         }
     }
 
@@ -1453,13 +1453,13 @@ mod tests {
     fn test_na_inf_nan() {
         unsafe {
             let na = must(parse_str("NA"));
-            assert_eq!(TYPEOF(na), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(na), SEXPTYPE::INTSXP);
 
             let inf = must(parse_str("Inf"));
-            assert_eq!(TYPEOF(inf), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(inf), SEXPTYPE::REALSXP);
 
             let nan = must(parse_str("NaN"));
-            assert_eq!(TYPEOF(nan), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(nan), SEXPTYPE::REALSXP);
         }
     }
 
@@ -1467,7 +1467,7 @@ mod tests {
     fn test_na_character() {
         unsafe {
             let na_chr = must(parse_str("NA_character_"));
-            assert_eq!(TYPEOF(na_chr), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(na_chr), SEXPTYPE::STRSXP);
             assert_eq!(crate::sexp::accessors::LENGTH(na_chr), 1);
             let elt = crate::sexp::accessors::STRING_ELT(na_chr, 0);
             assert!(!elt.is_null());
@@ -1482,9 +1482,9 @@ mod tests {
     fn test_addition() {
         unsafe {
             let result = must(parse_str("1 + 2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
             let op = CAR(result);
-            assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP.0);
+            assert_eq!(TYPEOF(op), SEXPTYPE::SYMSXP);
         }
     }
 
@@ -1492,7 +1492,7 @@ mod tests {
     fn test_chained_addition() {
         unsafe {
             let result = must(parse_str("1 + 2 + 3"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1500,7 +1500,7 @@ mod tests {
     fn test_operator_precedence() {
         unsafe {
             let result = must(parse_str("2 + 3 * 4"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1508,7 +1508,7 @@ mod tests {
     fn test_power() {
         unsafe {
             let result = must(parse_str("2^3"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1516,7 +1516,7 @@ mod tests {
     fn test_integer_div() {
         unsafe {
             let result = must(parse_str("5 %/% 2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1524,7 +1524,7 @@ mod tests {
     fn test_modulus() {
         unsafe {
             let result = must(parse_str("5 %% 2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1534,7 +1534,7 @@ mod tests {
     fn test_unary_minus() {
         unsafe {
             let result = must(parse_str("-5"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1544,7 +1544,7 @@ mod tests {
     fn test_assignment() {
         unsafe {
             let result = must(parse_str("x <- 42"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1552,7 +1552,7 @@ mod tests {
     fn test_equals_assign() {
         unsafe {
             let result = must(parse_str("x = 42"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1560,7 +1560,7 @@ mod tests {
     fn test_right_assign() {
         unsafe {
             let result = must(parse_str("42 -> x"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1570,9 +1570,9 @@ mod tests {
     fn test_function_call() {
         unsafe {
             let result = must(parse_str("f(x, y)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
             let fun = CAR(result);
-            assert_eq!(TYPEOF(fun), SEXPTYPE::SYMSXP.0);
+            assert_eq!(TYPEOF(fun), SEXPTYPE::SYMSXP);
         }
     }
 
@@ -1580,7 +1580,7 @@ mod tests {
     fn test_named_arg() {
         unsafe {
             let result = must(parse_str("f(x = 1)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1588,7 +1588,7 @@ mod tests {
     fn test_parenthesized() {
         unsafe {
             let result = must(parse_str("(1 + 2)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1598,7 +1598,7 @@ mod tests {
     fn test_comparison() {
         unsafe {
             let result = must(parse_str("x < 10"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1606,13 +1606,13 @@ mod tests {
     fn test_logical_ops() {
         unsafe {
             let and = must(parse_str("x && y"));
-            assert_eq!(TYPEOF(and), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(and), SEXPTYPE::LANGSXP);
 
             let or = must(parse_str("x || y"));
-            assert_eq!(TYPEOF(or), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(or), SEXPTYPE::LANGSXP);
 
             let not = must(parse_str("!x"));
-            assert_eq!(TYPEOF(not), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(not), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1622,7 +1622,7 @@ mod tests {
     fn test_multi_expr() {
         unsafe {
             let result = must(parse_str("x <- 1; y <- 2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1638,7 +1638,7 @@ mod tests {
     fn test_complex_expr() {
         unsafe {
             let result = must(parse_str("sqrt(x^2 + y^2)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1653,7 +1653,7 @@ mod tests {
     fn test_if() {
         unsafe {
             let result = must(parse_str("if (x > 0) x"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1661,7 +1661,7 @@ mod tests {
     fn test_if_else() {
         unsafe {
             let result = must(parse_str("if (x > 0) x else -x"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1669,7 +1669,7 @@ mod tests {
     fn test_for_loop() {
         unsafe {
             let result = must(parse_str("for (i in 1:10) print(i)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1677,7 +1677,7 @@ mod tests {
     fn test_while_loop() {
         unsafe {
             let result = must(parse_str("while (x > 0) x <- x - 1"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1685,7 +1685,7 @@ mod tests {
     fn test_repeat_loop() {
         unsafe {
             let result = must(parse_str("repeat { x <- x + 1 }"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1693,10 +1693,10 @@ mod tests {
     fn test_break_next() {
         unsafe {
             let brk = must(parse_str("break"));
-            assert_eq!(TYPEOF(brk), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(brk), SEXPTYPE::LANGSXP);
 
             let nxt = must(parse_str("next"));
-            assert_eq!(TYPEOF(nxt), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(nxt), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1706,7 +1706,7 @@ mod tests {
     fn test_block() {
         unsafe {
             let result = must(parse_str("{ a <- 1; b <- 2; a + b }"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1714,7 +1714,7 @@ mod tests {
     fn test_empty_block() {
         unsafe {
             let result = must(parse_str("{}"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1724,7 +1724,7 @@ mod tests {
     fn test_function_def() {
         unsafe {
             let result = must(parse_str("function(x) x^2"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1732,7 +1732,7 @@ mod tests {
     fn test_function_multi_args() {
         unsafe {
             let result = must(parse_str("function(x, y = 1) x + y"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1740,7 +1740,7 @@ mod tests {
     fn test_function_no_args() {
         unsafe {
             let result = must(parse_str("function() 42"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1750,7 +1750,7 @@ mod tests {
     fn test_subscript() {
         unsafe {
             let result = must(parse_str("x[1]"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1758,7 +1758,7 @@ mod tests {
     fn test_subscript_multi() {
         unsafe {
             let result = must(parse_str("x[i, j]"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1766,7 +1766,7 @@ mod tests {
     fn test_double_subscript() {
         unsafe {
             let result = must(parse_str("x[[1]]"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1776,7 +1776,7 @@ mod tests {
     fn test_dollar_access() {
         unsafe {
             let result = must(parse_str("df$col"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1784,7 +1784,7 @@ mod tests {
     fn test_at_access() {
         unsafe {
             let result = must(parse_str("obj@slot"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1794,7 +1794,7 @@ mod tests {
     fn test_custom_infix() {
         unsafe {
             let result = must(parse_str("x %in% y"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1802,7 +1802,7 @@ mod tests {
     fn test_matrix_multiply() {
         unsafe {
             let result = must(parse_str("A %*% B"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1812,7 +1812,7 @@ mod tests {
     fn test_backtick_name() {
         unsafe {
             let result = must(parse_str("`weird name`"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::SYMSXP);
         }
     }
 
@@ -1822,7 +1822,7 @@ mod tests {
     fn test_formula() {
         unsafe {
             let result = must(parse_str("y ~ x + z"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1832,7 +1832,7 @@ mod tests {
     fn test_varargs() {
         unsafe {
             let result = must(parse_str("f(...)"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1842,7 +1842,7 @@ mod tests {
     fn test_chained_dollar_subscript() {
         unsafe {
             let result = must(parse_str("df$col[1]"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 
@@ -1850,7 +1850,7 @@ mod tests {
     fn test_function_in_block() {
         unsafe {
             let result = must(parse_str("{ f <- function(x) x^2; f(3) }"));
-            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
 }

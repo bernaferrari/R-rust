@@ -454,7 +454,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
         let sx = STRING_ELT(x, 0);
         let c_ptr = CHAR(sx);
         if c_ptr.is_null() {
-            ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, 0);
+            ans = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
             nprotect += 1;
         } else {
             let s = CStr::from_ptr(c_ptr).to_bytes();
@@ -462,7 +462,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
             let wide: Vec<u32> = s.iter().map(|&b| b as u32).collect();
             let n = wide.len();
 
-            ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, n as c_int);
+            ans = Rf_allocVector(SEXPTYPE::LGLSXP, n as c_int);
             nprotect += 1;
             let pans = LOGICAL(ans);
 
@@ -479,7 +479,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
         let n = XLENGTH(x_coerced) as usize;
         let px = INTEGER(x_coerced);
 
-        ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, n as c_int);
+        ans = Rf_allocVector(SEXPTYPE::LGLSXP, n as c_int);
         nprotect += 1;
         let pans = LOGICAL(ans);
 
@@ -643,7 +643,7 @@ pub unsafe fn nsl(hostname: SEXP) -> SEXP {
 pub unsafe fn octsize(size: SEXP) -> SEXP {
     let s_val = crate::main::coerce::asReal(size);
 
-    let ans = Rf_allocVector(SEXPTYPE::RAWSXP.0, 11);
+    let ans = Rf_allocVector(SEXPTYPE::RAWSXP, 11);
     let ra = RAW(ans);
 
     if !s_val.is_finite() || s_val < 0.0 {

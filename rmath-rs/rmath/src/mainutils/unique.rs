@@ -334,7 +334,7 @@ unsafe fn hash_table_setup(x: SEXP, nmax_arg: i32) -> HashData {
         };
 
         // Allocate integer hash table filled with NIL
-        let hash_table = Rf_allocVector3(SEXPTYPE::INTSXP.0, m as R_xlen_t);
+        let hash_table = Rf_allocVector3(SEXPTYPE::INTSXP, m as R_xlen_t);
         let htable = INTEGER(hash_table);
         for i in 0..m {
             *htable.add(i) = NIL;
@@ -401,7 +401,7 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
     unsafe {
         let n = XLENGTH(x);
         if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         if n == 1 {
             return Rf_ScalarLogical(0); // FALSE
@@ -410,7 +410,7 @@ unsafe fn duplicated_impl(x: SEXP, from_last: bool, nmax_arg: i32) -> SEXP {
         let mut data = hash_table_setup(x, nmax_arg);
         Rf_protect(data.hash_table);
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         Rf_protect(ans);
 
         let v = LOGICAL(ans);
@@ -448,7 +448,7 @@ fn duplicated_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, 
     }
     let n = x.len();
     if n == 0 {
-        return Ok(unsafe { Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0) });
+        return Ok(unsafe { Rf_allocVector3(SEXPTYPE::LGLSXP, 0) });
     }
     if n == 1 {
         return Ok(unsafe { Rf_ScalarLogical(0) });
@@ -1054,7 +1054,7 @@ mod tests {
 
     /// Helper to create an integer vector with values.
     unsafe fn make_int_vector(values: &[c_int]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::INTSXP.0, values.len() as R_xlen_t);
+        let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
         for (i, &val) in values.iter().enumerate() {
             *INTEGER(v).add(i) = val;
         }
@@ -1063,7 +1063,7 @@ mod tests {
 
     /// Helper to create a logical vector with values.
     unsafe fn make_logical_vector(values: &[c_int]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::LGLSXP.0, values.len() as R_xlen_t);
+        let v = Rf_allocVector3(SEXPTYPE::LGLSXP, values.len() as R_xlen_t);
         for (i, &val) in values.iter().enumerate() {
             *LOGICAL(v).add(i) = val;
         }
@@ -1072,7 +1072,7 @@ mod tests {
 
     /// Helper to create a real vector with values.
     unsafe fn make_real_vector(values: &[f64]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::REALSXP.0, values.len() as R_xlen_t);
+        let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
         for (i, &val) in values.iter().enumerate() {
             *REAL(v).add(i) = val;
         }
@@ -1122,7 +1122,7 @@ mod tests {
     #[test]
     fn test_duplicated_int_empty() {
         unsafe {
-            let x = Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let dup = duplicated_impl(x, false, NA_INTEGER);
             assert_eq!(XLENGTH(dup), 0);
         }
@@ -1253,7 +1253,7 @@ mod tests {
     #[test]
     fn test_do_unique_int_empty() {
         unsafe {
-            let x = Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(4);
             crate::sexp::accessors::SETCAR(args, x);
             crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
@@ -1322,7 +1322,7 @@ mod tests {
     #[test]
     fn test_do_duplicated_empty() {
         unsafe {
-            let x = Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(4);
             crate::sexp::accessors::SETCAR(args, x);
             crate::sexp::accessors::SETCAR(CDR(args), Rf_ScalarLogical(0));
@@ -1558,7 +1558,7 @@ mod tests {
     #[test]
     fn test_duplicated_complex_basic() {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 3);
+            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 3);
             let cx = COMPLEX(v);
             // {1+2i, 3+4i, 1+2i}
             *cx.add(0) = Rcomplex { r: 1.0, i: 2.0 };
@@ -1576,7 +1576,7 @@ mod tests {
     #[test]
     fn test_duplicated_complex_na() {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 3);
+            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 3);
             let cx = COMPLEX(v);
             let na = f64::from_bits(R_NA_BIT_PATTERN);
             // {1+NA, 3+4i, 5+NA}  -- all NA-containing are equal
@@ -1620,7 +1620,7 @@ mod tests {
     #[test]
     fn test_hash_table_setup_raw() {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::RAWSXP.0, 5);
+            let v = Rf_allocVector3(SEXPTYPE::RAWSXP, 5);
             let raw_ptr = RAW(v);
             for i in 0..5 {
                 *raw_ptr.add(i) = i as u8;

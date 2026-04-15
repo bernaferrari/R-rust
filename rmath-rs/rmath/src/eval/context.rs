@@ -355,7 +355,7 @@ pub unsafe fn do_sys(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             8 => {
                 // sys.parents
                 let nframe = framedepth(cptr);
-                let rval = Rf_allocVector(SEXPTYPE::INTSXP.0, nframe);
+                let rval = Rf_allocVector(SEXPTYPE::INTSXP, nframe);
                 for i in 0..nframe {
                     *INTEGER(rval).add(i as usize) = R_sysparent(nframe - i, cptr);
                 }

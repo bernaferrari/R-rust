@@ -42,7 +42,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if varyings.is_empty() {
-            return Rf_allocVector3(SEXPTYPE::LISTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LISTSXP, 0);
         }
 
         // --- Compute max length ---
@@ -66,7 +66,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         if maxlen == 0 {
-            return Rf_allocVector3(SEXPTYPE::LISTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LISTSXP, 0);
         }
 
         // --- Check for zero-length args alongside longer ones ---
@@ -84,7 +84,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 XLENGTH(v)
             };
             if vl == 0 {
-                return Rf_allocVector3(SEXPTYPE::LISTSXP.0, 0);
+                return Rf_allocVector3(SEXPTYPE::LISTSXP, 0);
             }
         }
 
@@ -96,7 +96,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         };
 
         // --- Build and evaluate calls ---
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LISTSXP.0, maxlen));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LISTSXP, maxlen));
 
         for i in 0..maxlen as usize {
             // Build the call: FUN(varying[0][[i]], varying[1][[i]], ..., MoreArgs[[j]])
@@ -196,7 +196,7 @@ mod tests {
     #[test]
     fn test_do_mapply_null_args_returns_empty() {
         unsafe {
-            let empty_list = Rf_allocVector3(SEXPTYPE::LISTSXP.0, 0);
+            let empty_list = Rf_allocVector3(SEXPTYPE::LISTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(3);
             crate::sexp::accessors::SETCAR(args, R_NilValue());
             crate::sexp::accessors::SETCAR(CDR(args), empty_list);

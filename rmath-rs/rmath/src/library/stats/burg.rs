@@ -99,11 +99,11 @@ pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
     let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
     let n = LENGTH(x);
     let pmax = asInteger(order);
-    let coefs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, pmax * pmax));
-    let var1 = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, pmax + 1));
-    let var2 = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, pmax + 1));
+    let coefs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax));
+    let var1 = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1));
+    let var2 = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax + 1));
     burg(n, REAL(x), pmax, REAL(coefs), REAL(var1), REAL(var2));
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
     SET_VECTOR_ELT(ans, 0, coefs);
     SET_VECTOR_ELT(ans, 1, var1);
     SET_VECTOR_ELT(ans, 2, var2);

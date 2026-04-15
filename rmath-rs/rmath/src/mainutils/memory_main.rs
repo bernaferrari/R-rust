@@ -838,7 +838,7 @@ pub unsafe fn R_FreeStringBufferL(buf: *mut R_StringBuffer) {
 /// `store` is a VECSXP or R_NilValue. `npreserved` is an INTSXP of length 1.
 pub unsafe fn R_NewPreciousMSet(initialSize: c_int) -> SEXP {
     unsafe {
-        let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
+        let npreserved = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
         if npreserved.is_null() {
             error("could not allocate precious mset");
         }
@@ -883,7 +883,7 @@ pub unsafe fn R_PreserveInMSet(x: SEXP, mset: SEXP) {
             if newsize == 0 {
                 newsize = 4;
             }
-            store = Rf_allocVector3(SEXPTYPE::VECSXP.0, newsize);
+            store = Rf_allocVector3(SEXPTYPE::VECSXP, newsize);
             crate::sexp::accessors::SETCAR(mset, store);
         }
 
@@ -893,7 +893,7 @@ pub unsafe fn R_PreserveInMSet(x: SEXP, mset: SEXP) {
             if newsize >= i32::MAX as R_xlen_t || newsize < size {
                 return;
             }
-            let newstore = Rf_allocVector3(SEXPTYPE::VECSXP.0, newsize);
+            let newstore = Rf_allocVector3(SEXPTYPE::VECSXP, newsize);
             for i in 0..size {
                 crate::sexp::accessors::SET_VECTOR_ELT(
                     newstore,
@@ -1097,7 +1097,7 @@ pub unsafe fn do_memoryprofile(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) 
 pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         R_gc();
-        Rf_allocVector3(SEXPTYPE::REALSXP.0, 14)
+        Rf_allocVector3(SEXPTYPE::REALSXP, 14)
     }
 }
 

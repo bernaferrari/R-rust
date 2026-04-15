@@ -1266,7 +1266,7 @@ mod tests {
             let cdr = Rf_ScalarInteger(2);
             let cell = LCONS(car, cdr);
             assert!(!cell.is_null());
-            assert_eq!(TYPEOF(cell), SEXPTYPE::LANGSXP.0);
+            assert_eq!(TYPEOF(cell), SEXPTYPE::LANGSXP);
             assert_eq!(CAR(cell), car);
             assert_eq!(CDR(cell), cdr);
         }

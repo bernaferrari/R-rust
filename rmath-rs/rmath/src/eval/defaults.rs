@@ -122,7 +122,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 pub unsafe fn seq_int(n1: c_int, n2: c_int) -> SEXP {
     unsafe {
         let n = if n1 <= n2 { n2 - n1 + 1 } else { n1 - n2 + 1 };
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
         Rf_protect(ans);
         let data = INTEGER(ans);
         if !data.is_null() {

@@ -3366,7 +3366,7 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
 
     if nh == 0 || ns == 0 || nv == 0 || na == 0 {
         Rf_unprotect(4);
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
 
     let mut max = nh;
@@ -3379,7 +3379,7 @@ pub unsafe fn do_hsv(h: SEXP, s: SEXP, v: SEXP, a: SEXP) -> SEXP {
     if max < na {
         max = na;
     }
-    let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, max as c_int));
+    let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, max as c_int));
 
     if Rf_isNull(a) != 0 {
         let mut i = 0usize;
@@ -3456,7 +3456,7 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
 
     if nh == 0 || nc == 0 || nl == 0 || na == 0 {
         Rf_unprotect(4);
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
 
     let mut max = nh;
@@ -3469,7 +3469,7 @@ pub unsafe fn do_hcl(h: SEXP, c: SEXP, l: SEXP, a: SEXP, sfixup: SEXP) -> SEXP {
     if max < na {
         max = na;
     }
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, max as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, max as c_int));
 
     if Rf_isNull(a) != 0 {
         let mut i = 0usize;
@@ -3588,7 +3588,7 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
 
     if nr == 0 || ng == 0 || nb == 0 || na == 0 {
         Rf_unprotect(4);
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
 
     let mut l_max = nr;
@@ -3606,7 +3606,7 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
     if LENGTH(nam) != 0 && LENGTH(nam) != l_max as c_int {
         Rf_error(b"invalid 'names' vector\0".as_ptr() as *const c_char);
     }
-    let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, l_max as c_int));
+    let c = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, l_max as c_int));
 
     if mV == 255.0 {
         if Rf_isNull(a) != 0 {
@@ -3683,7 +3683,7 @@ pub unsafe fn do_rgb(r: SEXP, g: SEXP, b: SEXP, a: SEXP, mcv: SEXP, nam: SEXP) -
 pub unsafe fn do_gray(lev: SEXP, a: SEXP) -> SEXP {
     let lev = Rf_protect(coerceVector(lev, SEXPTYPE::REALSXP.0));
     let nlev = LENGTH(lev) as usize;
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlev as c_int);
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlev as c_int);
     if nlev == 0 {
         Rf_unprotect(1);
         return ans;
@@ -3752,9 +3752,9 @@ pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
     }
     let n = *INTEGER(dd).add(1) as usize;
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.0, 3, n as c_int));
-    let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 3));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, 3, n as c_int));
+    let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
     SET_STRING_ELT(names, 0, Rf_mkChar(b"h\0".as_ptr() as *const c_char));
     SET_STRING_ELT(names, 1, Rf_mkChar(b"s\0".as_ptr() as *const c_char));
     SET_STRING_ELT(names, 2, Rf_mkChar(b"v\0".as_ptr() as *const c_char));
@@ -3807,9 +3807,9 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
     Rf_protect(colors);
 
     let n = LENGTH(colors) as usize;
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.0, 3 + alph, n as c_int));
-    let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 3 + alph));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP, 3 + alph, n as c_int));
+    let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph));
     SET_STRING_ELT(names, 0, Rf_mkChar(b"red\0".as_ptr() as *const c_char));
     SET_STRING_ELT(names, 1, Rf_mkChar(b"green\0".as_ptr() as *const c_char));
     SET_STRING_ELT(names, 2, Rf_mkChar(b"blue\0".as_ptr() as *const c_char));
@@ -3851,7 +3851,7 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
 
     // Record current palette
     let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, ps as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, ps as c_int));
     let mut i = 0usize;
     while i < ps {
         SET_STRING_ELT(ans, i as R_xlen_t, Rf_mkChar(incol2name(PALETTE.with(|v| v.get()[i]))));
@@ -3908,7 +3908,7 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
 
 pub unsafe fn do_palette2(val: SEXP) -> SEXP {
     let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, ps as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, ps as c_int));
     let ians = INTEGER(ans);
     let mut i = 0usize;
     while i < ps {
@@ -3948,7 +3948,7 @@ pub unsafe fn do_colors() -> SEXP {
         }
         n += 1;
     }
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as c_int));
     let mut i = 0usize;
     for entry in COLOR_DATA_BASE.iter() {
         if entry.name.is_empty() {

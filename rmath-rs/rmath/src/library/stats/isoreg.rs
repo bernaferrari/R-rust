@@ -58,7 +58,7 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     let len = names.len() as c_int;
     let ans = Rf_allocVector(sexptype, len);
     Rf_protect(ans);
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, len);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, len);
     for i in 0..names.len() {
         let c_str = std::ffi::CString::new(names[i]).unwrap_or_default();
         SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(c_str.as_ptr()));
@@ -101,11 +101,11 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
     let n = XLENGTH(y);
 
     let anms: [&str; 5] = ["y", "yc", "yf", "iKnots", ""];
-    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP.0, &anms));
+    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP, &anms));
 
-    let yc = Rf_allocVector(SEXPTYPE::REALSXP.0, (n + 1) as c_int);
-    let yf = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
-    let iKnots = Rf_allocVector(SEXPTYPE::INTSXP.0, n as c_int);
+    let yc = Rf_allocVector(SEXPTYPE::REALSXP, (n + 1) as c_int);
+    let yf = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
+    let iKnots = Rf_allocVector(SEXPTYPE::INTSXP, n as c_int);
 
     SET_VECTOR_ELT(ans, 0, y);
     SET_VECTOR_ELT(ans, 1, yc);

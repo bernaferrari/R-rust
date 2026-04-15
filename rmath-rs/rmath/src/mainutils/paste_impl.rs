@@ -615,7 +615,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             if do_collapse {
                 Rf_mkString(b"\0".as_ptr() as *const c_char)
             } else {
-                Rf_allocVector(SEXPTYPE::STRSXP.0, 0)
+                Rf_allocVector(SEXPTYPE::STRSXP, 0)
             }
         };
 
@@ -663,7 +663,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             return zero_return(do_collapse);
         }
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, maxlen as c_int);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, maxlen as c_int);
 
         let mut cbuff = get_cbuff();
 
@@ -847,7 +847,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     CE_NATIVE
                 };
 
-                let ans2 = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+                let ans2 = Rf_allocVector(SEXPTYPE::STRSXP, 1);
                 let ch = mkCharCE(cbuf, ienc);
                 SET_STRING_ELT(ans2, 0, ch);
                 return ans2;
@@ -874,7 +874,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
         let nx = Rf_length(x) as R_xlen_t;
         if nx == 0 {
-            return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
 
         let mut sep = CADR(args);
@@ -919,7 +919,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         if nzero || maxlen == 0 {
-            return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
 
         // Check for bytes encoding (not allowed in file paths)
@@ -933,7 +933,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
         }
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, maxlen as c_int);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, maxlen as c_int);
         let mut cbuff = get_cbuff();
 
         for i in 0..maxlen {
@@ -1074,7 +1074,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut result_y: SEXP = ptr::null_mut();
 
         if n <= 0 {
-            result_y = Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            result_y = Rf_allocVector(SEXPTYPE::STRSXP, 0);
         } else {
             let mut w: c_int = 0;
             let d: c_int = 0;
@@ -1083,7 +1083,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
             match TYPEOF(x) {
                 LGLSXP => {
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
                     let mut fmt_w: c_int = 0;
                     if trim != 0 {
                         fmt_w = 0;
@@ -1104,7 +1104,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
 
                 INTSXP => {
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
                     let mut fmt_w: c_int = 0;
                     if trim != 0 {
                         fmt_w = 0;
@@ -1133,7 +1133,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         fmt_w = 0;
                     }
                     w = imax2_int(fmt_w, wd);
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
                     for i in 0..n {
                         let val = if REAL(x).is_null() {
                             NA_REAL
@@ -1158,7 +1158,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     }
                     w = imax2_int(w, wd);
                     wi = imax2_int(wi, wd);
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
                     for i in 0..n {
                         let val = if COMPLEX(x).is_null() {
                             crate::sexp::ffi::Rcomplex {
@@ -1226,7 +1226,7 @@ pub unsafe fn do_format(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     }
 
                     let mut buff = vec![0u8; (cnt + 1) as usize];
-                    result_y = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+                    result_y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
 
                     for i in 0..n {
                         if na == 0 && isNA_STRING(STRING_ELT(xx, i)) {
@@ -1400,7 +1400,7 @@ pub unsafe fn do_formatinfo(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP
             }
         }
 
-        let result = Rf_allocVector(SEXPTYPE::INTSXP.0, no);
+        let result = Rf_allocVector(SEXPTYPE::INTSXP, no);
         if INTEGER(result).is_null() {
             return ptr::null_mut();
         }

@@ -737,7 +737,7 @@ unsafe fn ReadItemInternal(
             Ok(s)
         } else if stype == SEXPTYPE::STRSXP {
             let len = reader.read_i32()?;
-            let s = Rf_allocVector3(SEXPTYPE::STRSXP.0, len as R_xlen_t);
+            let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
             Rf_protect(s);
             for i in 0..len {
                 let elt = ReadItemInternal(reader, ref_table)?;
@@ -755,7 +755,7 @@ unsafe fn ReadItemInternal(
             Ok(s)
         } else if stype == SEXPTYPE::RAWSXP {
             let len = reader.read_i32()?;
-            let s = Rf_allocVector3(SEXPTYPE::RAWSXP.0, len as R_xlen_t);
+            let s = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
             Rf_protect(s);
             let raw_data = RAW(s);
             for i in 0..len as isize {
@@ -1077,7 +1077,7 @@ pub unsafe fn R_serialize(
 
         // Create RAWSXP from the serialized bytes
         let data = writer.into_vec();
-        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP.0, data.len() as R_xlen_t);
+        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, data.len() as R_xlen_t);
         if !raw.is_null() && !data.is_empty() {
             let raw_ptr = RAW(raw);
             ptr::copy_nonoverlapping(data.as_ptr(), raw_ptr, data.len());
@@ -1411,7 +1411,7 @@ unsafe fn InFormat(stream: R_inpstream_t) {
 
 unsafe fn MakeHashTable() -> SEXP {
     unsafe {
-        let vec = Rf_allocVector3(SEXPTYPE::VECSXP.0, HASHSIZE as R_xlen_t);
+        let vec = Rf_allocVector3(SEXPTYPE::VECSXP, HASHSIZE as R_xlen_t);
         Rf_cons(R_NilValue(), vec)
     }
 }
@@ -1556,7 +1556,7 @@ unsafe fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs:
 
 unsafe fn MakeReadRefTable() -> SEXP {
     unsafe {
-        let data = Rf_allocVector3(SEXPTYPE::VECSXP.0, INITIAL_REFREAD_TABLE_SIZE as R_xlen_t);
+        let data = Rf_allocVector3(SEXPTYPE::VECSXP, INITIAL_REFREAD_TABLE_SIZE as R_xlen_t);
         Rf_cons(data, R_NilValue())
     }
 }
@@ -1743,7 +1743,7 @@ unsafe fn CloseMemOutPStream(stream: R_outpstream_t) -> SEXP {
             error("cannot allocate buffer");
         }
         let count = (*mb).count;
-        let val = Rf_allocVector3(SEXPTYPE::RAWSXP.0, count as R_xlen_t);
+        let val = Rf_allocVector3(SEXPTYPE::RAWSXP, count as R_xlen_t);
         if !val.is_null() && count > 0 && !(*mb).buf.is_null() {
             ptr::copy_nonoverlapping((*mb).buf, RAW(val), count);
         }
@@ -2157,7 +2157,7 @@ mod tests {
     #[should_panic]
     fn test_r_unserialize_returns_nil_for_empty_raw() {
         unsafe {
-            let raw = Rf_allocVector3(SEXPTYPE::RAWSXP.0, 0);
+            let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
             let result = R_unserialize(raw, R_NilValue());
             assert_eq!(result, R_NilValue());
         }
@@ -2167,7 +2167,7 @@ mod tests {
     #[should_panic]
     fn test_r_unserialize_returns_nil_for_non_raw() {
         unsafe {
-            let s = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
+            let s = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
             let result = R_unserialize(s, R_NilValue());
             assert_eq!(result, R_NilValue());
         }
@@ -2318,7 +2318,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 1);
             assert_eq!(*INTEGER(result), 42);
         }
@@ -2333,7 +2333,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(result), 1);
             assert!((*REAL(result) - 3.14159).abs() < 1e-10);
         }
@@ -2348,7 +2348,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
             assert_eq!(LENGTH(result), 1);
             assert_eq!(*LOGICAL(result), 1);
         }
@@ -2357,7 +2357,7 @@ mod tests {
     #[test]
     fn test_roundtrip_integer_vector() {
         unsafe {
-            let s = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let s = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             let data = INTEGER(s);
             *data = 10;
             *data.add(1) = 20;
@@ -2368,7 +2368,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 3);
             let rdata = INTEGER(result);
             assert_eq!(*rdata, 10);
@@ -2380,7 +2380,7 @@ mod tests {
     #[test]
     fn test_roundtrip_real_vector() {
         unsafe {
-            let s = Rf_allocVector3(SEXPTYPE::REALSXP.0, 2);
+            let s = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
             let data = REAL(s);
             *data = 1.5;
             *data.add(1) = 2.5;
@@ -2390,7 +2390,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(result), 2);
             let rdata = REAL(result);
             assert!((*rdata - 1.5).abs() < 1e-10);
@@ -2407,7 +2407,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::CPLXSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::CPLXSXP);
             assert_eq!(LENGTH(result), 1);
             let c = *COMPLEX(result);
             assert!((c.r - 1.0).abs() < 1e-10);
@@ -2424,7 +2424,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(result), 1);
             let elt = STRING_ELT(result, 0);
             assert!(!elt.is_null());
@@ -2437,7 +2437,7 @@ mod tests {
     #[test]
     fn test_roundtrip_string_vector() {
         unsafe {
-            let s = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+            let s = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let c1 = Rf_mkChar(c"foo".as_ptr());
             let c2 = Rf_mkChar(c"bar".as_ptr());
             SET_STRING_ELT(s, 0, c1);
@@ -2448,7 +2448,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(result), 2);
             let e1 = STRING_ELT(result, 0);
             let e2 = STRING_ELT(result, 1);
@@ -2462,7 +2462,7 @@ mod tests {
     #[test]
     fn test_roundtrip_raw_vector() {
         unsafe {
-            let s = Rf_allocVector3(SEXPTYPE::RAWSXP.0, 3);
+            let s = Rf_allocVector3(SEXPTYPE::RAWSXP, 3);
             let data = RAW(s);
             *data = 0xDE;
             *data.add(1) = 0xAD;
@@ -2473,7 +2473,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::RAWSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::RAWSXP);
             assert_eq!(LENGTH(result), 3);
             let rdata = RAW(result);
             assert_eq!(*rdata, 0xDE);
@@ -2485,13 +2485,13 @@ mod tests {
     #[test]
     fn test_roundtrip_empty_vector() {
         unsafe {
-            let s = Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            let s = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
             assert_ne!(raw, R_NilValue());
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
         }
     }
@@ -2512,15 +2512,15 @@ mod tests {
     fn test_roundtrip_generic_list() {
         unsafe {
             // Create a list(c(1, 2), c(3.0, 4.0))
-            let vec1 = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+            let vec1 = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             *INTEGER(vec1) = 1;
             *INTEGER(vec1).add(1) = 2;
 
-            let vec2 = Rf_allocVector3(SEXPTYPE::REALSXP.0, 2);
+            let vec2 = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
             *REAL(vec2) = 3.0;
             *REAL(vec2).add(1) = 4.0;
 
-            let list = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+            let list = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
             SET_VECTOR_ELT(list, 0, vec1);
             SET_VECTOR_ELT(list, 1, vec2);
 
@@ -2529,19 +2529,19 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(result), 2);
 
             // Check first element (integer vector)
             let r1 = VECTOR_ELT(result, 0);
-            assert_eq!(TYPEOF(r1), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(r1), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(r1), 2);
             assert_eq!(*INTEGER(r1), 1);
             assert_eq!(*INTEGER(r1).add(1), 2);
 
             // Check second element (real vector)
             let r2 = VECTOR_ELT(result, 1);
-            assert_eq!(TYPEOF(r2), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(r2), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(r2), 2);
             assert!((*REAL(r2) - 3.0).abs() < 1e-10);
             assert!((*REAL(r2).add(1) - 4.0).abs() < 1e-10);
@@ -2552,8 +2552,8 @@ mod tests {
     fn test_roundtrip_nested_list() {
         unsafe {
             // Create list(list(1, 2), list(3, 4))
-            let inner1 = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
-            let inner2 = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+            let inner1 = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let inner2 = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
 
             let v1 = Rf_ScalarInteger(1);
             let v2 = Rf_ScalarInteger(2);
@@ -2565,7 +2565,7 @@ mod tests {
             SET_VECTOR_ELT(inner2, 0, v3);
             SET_VECTOR_ELT(inner2, 1, v4);
 
-            let outer = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+            let outer = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
             SET_VECTOR_ELT(outer, 0, inner1);
             SET_VECTOR_ELT(outer, 1, inner2);
 
@@ -2580,27 +2580,27 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(result), 2);
 
             let r_inner1 = VECTOR_ELT(result, 0);
-            assert_eq!(TYPEOF(r_inner1), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(r_inner1), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(r_inner1), 2);
             let rv1 = VECTOR_ELT(r_inner1, 0);
             let rv2 = VECTOR_ELT(r_inner1, 1);
-            assert_eq!(TYPEOF(rv1), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(rv1), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(rv1), 1);
-            assert_eq!(TYPEOF(rv2), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(rv2), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(rv2), 2);
 
             let r_inner2 = VECTOR_ELT(result, 1);
-            assert_eq!(TYPEOF(r_inner2), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(r_inner2), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(r_inner2), 2);
             let rv3 = VECTOR_ELT(r_inner2, 0);
             let rv4 = VECTOR_ELT(r_inner2, 1);
-            assert_eq!(TYPEOF(rv3), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(rv3), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(rv3), 3);
-            assert_eq!(TYPEOF(rv4), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(rv4), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(rv4), 4);
         }
     }
@@ -2628,7 +2628,7 @@ mod tests {
     fn test_roundtrip_large_integer_vector() {
         unsafe {
             let n: i32 = 100;
-            let s = Rf_allocVector3(SEXPTYPE::INTSXP.0, n as R_xlen_t);
+            let s = Rf_allocVector3(SEXPTYPE::INTSXP, n as R_xlen_t);
             let data = INTEGER(s);
             for i in 0..n as isize {
                 *data.offset(i) = (i * i) as c_int;
@@ -2639,7 +2639,7 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_ne!(result, R_NilValue());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), n);
             let rdata = INTEGER(result);
             for i in 0..n as isize {

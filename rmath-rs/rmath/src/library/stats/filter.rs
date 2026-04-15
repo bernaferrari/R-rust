@@ -128,7 +128,7 @@ pub unsafe fn cfilter(sx: SEXP, sfilter: SEXP, ssides: SEXP, scircular: SEXP) ->
         Rf_error(b"invalid input\0".as_ptr() as *const i8);
     }
 
-    let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, nx as c_int);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, nx as c_int);
     let x = REAL(sx);
     let filter = REAL(sfilter);
     let out = REAL(ans);
@@ -324,10 +324,10 @@ pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
     Rf_protect(x);
 
     let ans_size = (lagmax as isize + 1) * ns as isize * ns as isize;
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ans_size as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ans_size as c_int));
     acf0(REAL(x), nx, ns, lagmax, cor, REAL(ans));
 
-    let d = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 3));
+    let d = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
     *INTEGER(d) = lagmax + 1;
     *INTEGER(d.add(1)) = ns;
     *INTEGER(d.add(2)) = ns;

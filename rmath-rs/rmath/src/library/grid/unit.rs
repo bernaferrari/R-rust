@@ -137,13 +137,13 @@ thread_local! { pub static L_nullLayoutMode_ptr: Cell<c_int> = Cell::new(0); }
  * ============================== */
 
 pub unsafe fn unit(value: c_double, unit_id: c_int) -> SEXP {
-    let units = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 1));
-    SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+    let units = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+    SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP, 3));
     let u = VECTOR_ELT(units, 0);
     SET_VECTOR_ELT(u, 0 as R_xlen_t, Rf_ScalarReal(value));
     SET_VECTOR_ELT(u, 1 as R_xlen_t, R_NilValue());
     SET_VECTOR_ELT(u, 2 as R_xlen_t, Rf_ScalarInteger(unit_id));
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
     SET_STRING_ELT(cl, 0 as R_xlen_t, Rf_mkChar(c"unit".as_ptr()));
     SET_STRING_ELT(cl, 1 as R_xlen_t, Rf_mkChar(c"unit_v2".as_ptr()));
     R_classgets(units, cl);
@@ -180,7 +180,7 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
     }
     let i = index % l;
     if isSimpleUnit(unit) {
-        let new_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+        let new_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
         SET_VECTOR_ELT(
             new_unit,
             0 as R_xlen_t,
@@ -746,9 +746,9 @@ pub unsafe fn validUnits(units: SEXP) -> SEXP {
 /// Construct a unit_v2 object from parallel `amount`, `data`, and `unit_type` vectors.
 pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP {
     let n = LENGTH(amount);
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
     for i in 0..n as R_xlen_t {
-        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
         SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(*REAL(amount).add(i as usize)));
         SET_VECTOR_ELT(this_unit, 1, VECTOR_ELT(data, i));
         SET_VECTOR_ELT(
@@ -759,7 +759,7 @@ pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP 
         SET_VECTOR_ELT(answer, i, this_unit);
         Rf_unprotect(1);
     }
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
     SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
     SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
     R_classgets(answer, cl);
@@ -801,11 +801,11 @@ pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
     if nmax == 0 {
         return R_NilValue();
     }
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, nmax as usize));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nmax as usize));
     for i in 0..nmax as R_xlen_t {
-        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
         SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
-        let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+        let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
         SET_VECTOR_ELT(data, 0, unitScalar(u1, (i as c_int) % n1));
         SET_VECTOR_ELT(data, 1, unitScalar(u2, (i as c_int) % n2));
         SET_VECTOR_ELT(this_unit, 1, data);
@@ -813,7 +813,7 @@ pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
         SET_VECTOR_ELT(answer, i, this_unit);
         Rf_unprotect(2);
     }
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
     SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
     SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
     R_classgets(answer, cl);
@@ -880,13 +880,13 @@ pub unsafe fn absoluteUnits(_units: SEXP) -> SEXP {
 /// `op_type` should be L_SUM, L_MIN, or L_MAX.
 pub unsafe fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
     let op = *INTEGER(op_type);
-    let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+    let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
     SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
     SET_VECTOR_ELT(this_unit, 1, units);
     SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(op));
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 1));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
     SET_VECTOR_ELT(answer, 0, this_unit);
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
     SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
     SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
     R_classgets(answer, cl);

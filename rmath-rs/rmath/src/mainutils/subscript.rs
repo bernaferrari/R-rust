@@ -482,7 +482,7 @@ pub unsafe fn mat2indsub(dims: SEXP, s: SEXP, _call: SEXP, _x: SEXP) -> SEXP {
         }
 
         // Allocate result vector
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nr));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nr));
         let ap = INTEGER(ans);
 
         // Get dim attribute names for character matrix support
@@ -594,7 +594,7 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
         let nc = INTEGER_ELT(s_dim, 1) as c_int;
 
         // Allocate integer result matrix
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nr * nc as R_xlen_t));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nr * nc as R_xlen_t));
 
         // Copy dim attribute to result
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_DimSymbol(), s_dim);
@@ -664,9 +664,9 @@ pub unsafe fn strmat2intmat(s: SEXP, dnamelist: SEXP, _call: SEXP, x: SEXP) -> S
 unsafe fn nullSubscript(n: R_xlen_t) -> SEXP {
     unsafe {
         if n <= 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n);
         let ap = INTEGER(ans);
         for i in 0..n as usize {
             *ap.add(i) = (i + 1) as c_int;
@@ -693,7 +693,7 @@ unsafe fn logicalSubscript(
     unsafe {
         let _ = call;
         if nx == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
 
         // Count TRUE values (determine result length)
@@ -707,7 +707,7 @@ unsafe fn logicalSubscript(
         }
 
         // Allocate result
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, count);
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, count);
         let ap = INTEGER(ans);
 
         // Fill in indices
@@ -741,11 +741,11 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
     unsafe {
         let _ = call;
         if nx <= 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
 
         // Create a logical mask: TRUE for selected, FALSE for excluded
-        let mask = Rf_allocVector3(SEXPTYPE::LGLSXP.0, nx);
+        let mask = Rf_allocVector3(SEXPTYPE::LGLSXP, nx);
         let mp = LOGICAL(mask);
         for i in 0..nx as usize {
             *mp.add(i) = 1; // TRUE = include
@@ -782,7 +782,7 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
 unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t) -> SEXP {
     unsafe {
         if nx == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
 
         // Count non-zero values
@@ -795,7 +795,7 @@ unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t) -> SEXP {
             }
         }
 
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, count);
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, count);
         let ap = INTEGER(ans);
 
         let mut j: R_xlen_t = 0;
@@ -839,7 +839,7 @@ unsafe fn integerSubscript(
             let v = INTEGER_ELT(s, i as c_int);
             if v == NA_INTEGER {
                 // NA in integer subscript: return all-NA result
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, ns);
+                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
                 let ap = INTEGER(ans);
                 for i in 0..ns as usize {
                     *ap.add(i) = NA_INTEGER;
@@ -904,7 +904,7 @@ unsafe fn realSubscript(
 
         if has_na {
             // NA in real subscript: return all-NA result
-            let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, ns);
+            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
             let ap = INTEGER(ans);
             for i in 0..ns as usize {
                 *ap.add(i) = NA_INTEGER;
@@ -916,7 +916,7 @@ unsafe fn realSubscript(
         }
 
         // Convert to integer vector
-        let int_s = Rf_allocVector3(SEXPTYPE::INTSXP.0, ns);
+        let int_s = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
         let ip = INTEGER(int_s);
         for i in 0..ns as usize {
             let v = REAL_ELT(s, i as c_int);
@@ -977,7 +977,7 @@ unsafe fn stringSubscript(
     unsafe {
         let _ = (call, dim);
         if nx == 0 {
-            return Rf_allocVector3(SEXPTYPE::INTSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
 
         let slen = if ns > nx { nx } else { ns };
@@ -990,7 +990,7 @@ unsafe fn stringSubscript(
             let elt = STRING_ELT(s, i);
             if elt.is_null() || elt == R_NilValue() {
                 // NA in string subscript: return all-NA
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, ns);
+                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
                 let ap = INTEGER(ans);
                 for j in 0..ns as usize {
                     *ap.add(j) = NA_INTEGER;
@@ -1043,7 +1043,7 @@ unsafe fn stringSubscript(
         }
 
         // Create result
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, ns);
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
         let ap = INTEGER(ans);
         for i in 0..ns as usize {
             *ap.add(i) = indices[i];
@@ -1072,7 +1072,7 @@ pub unsafe fn int_arraySubscript(dim: c_int, s: SEXP, dims: SEXP, x: SEXP, call:
 
         let stype = TYPEOF(s);
         if stype == SEXPTYPE::NILSXP {
-            Rf_allocVector3(SEXPTYPE::INTSXP.0, 0)
+            Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype == SEXPTYPE::LGLSXP {
             logicalSubscript(s, ns as R_xlen_t, nd as R_xlen_t, &mut stretch, call)
         } else if stype == SEXPTYPE::INTSXP {
@@ -1182,7 +1182,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
             if !stretch.is_null() {
                 *stretch = 0;
             }
-            Rf_allocVector3(SEXPTYPE::INTSXP.0, 0)
+            Rf_allocVector3(SEXPTYPE::INTSXP, 0)
         } else if stype2 == SEXPTYPE::LGLSXP {
             logicalSubscript(s, ns, nx, stretch, call)
         } else if stype2 == SEXPTYPE::INTSXP {
@@ -1340,7 +1340,7 @@ mod tests {
                 makeSubscript(ptr::null_mut(), R_NilValue(), &mut stretch, ptr::null_mut());
             // NILSXP case -> stretch = 0, returns empty INTSXP
             assert_eq!(stretch, 0);
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
         }
     }
@@ -1356,7 +1356,7 @@ mod tests {
                 &mut stretch,
                 ptr::null_mut(),
             );
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
         }
     }
@@ -1372,7 +1372,7 @@ mod tests {
                 ptr::null_mut(),
             );
             // Returns empty INTSXP for NILSXP subscript
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
         }
     }
@@ -1382,7 +1382,7 @@ mod tests {
         unsafe {
             let result = arraySubscript(0, R_NilValue(), ptr::null_mut(), 0, 0, ptr::null_mut());
             // arraySubscript delegates to int_arraySubscript which returns empty INTSXP
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 0);
         }
     }

@@ -102,7 +102,7 @@ pub unsafe fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
     let t = coerceVector(t, SEXPTYPE::REALSXP.0);
     let t = Rf_protect(t);
 
-    let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, rn as i32);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, rn as i32);
     let ans = Rf_protect(ans);
 
     int_d2x2xk(K, REAL(m), REAL(n), REAL(t), REAL(ans));

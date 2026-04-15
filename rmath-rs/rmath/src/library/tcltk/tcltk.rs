@@ -152,7 +152,7 @@ pub unsafe fn RTcl_StringFromObj(_args: SEXP) -> SEXP {
 /// The real implementation calls Tcl_ListObjGetElements() and
 /// converts each element via Tcl_UtfToExternalDString().
 pub unsafe fn RTcl_ObjAsCharVector(_args: SEXP) -> SEXP {
-    Rf_allocVector(SEXPTYPE::STRSXP.0, 0) // STRSXP
+    Rf_allocVector(SEXPTYPE::STRSXP, 0) // STRSXP
 }
 
 // ---------------------------------------------------------------------------

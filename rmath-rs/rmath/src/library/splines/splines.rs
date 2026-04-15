@@ -198,7 +198,7 @@ pub unsafe fn spline_value(knots: SEXP, coeff: SEXP, order: SEXP, x: SEXP, deriv
     let xx = REAL(x);
     let coeff_ptr = REAL(coeff);
 
-    let val = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+    let val = Rf_allocVector(SEXPTYPE::REALSXP, n);
     Rf_protect(val);
     let rval = REAL(val);
 
@@ -262,11 +262,11 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
     let rdel = R_alloc(std::mem::size_of::<c_double>(), ordm1 as usize) as *mut c_double;
     let a = R_alloc(std::mem::size_of::<c_double>(), ord as usize) as *mut c_double;
 
-    let val = allocMatrix(SEXPTYPE::REALSXP.0, ord, nx);
+    let val = allocMatrix(SEXPTYPE::REALSXP, ord, nx);
     Rf_protect(val);
     let valM = REAL(val);
 
-    let offsets = Rf_allocVector(SEXPTYPE::INTSXP.0, nx);
+    let offsets = Rf_allocVector(SEXPTYPE::INTSXP, nx);
     Rf_protect(offsets);
     let ioff = INTEGER(offsets);
 

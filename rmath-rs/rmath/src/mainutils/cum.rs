@@ -316,7 +316,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP {
             // Complex path: allocate, copy names, compute ccumsum
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP, n));
             setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
             if n == 0 {
                 Rf_unprotect(1);
@@ -334,7 +334,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SEXPTYPE::INTSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             if n2 == 0 {
                 Rf_unprotect(2);
@@ -373,7 +373,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SEXPTYPE::REALSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             Rf_unprotect(2);
             if n2 == 0 {
@@ -408,7 +408,7 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
         if t == SEXPTYPE::CPLXSXP {
             // Complex path
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP, n));
             setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
             if n == 0 {
                 Rf_unprotect(1);
@@ -427,7 +427,7 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
                 SEXPTYPE::REALSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             Rf_unprotect(2);
             if n2 == 0 {
@@ -471,7 +471,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SEXPTYPE::INTSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             if n2 == 0 {
                 Rf_unprotect(2);
@@ -505,7 +505,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SEXPTYPE::REALSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             Rf_unprotect(2);
             if n2 == 0 {
@@ -549,7 +549,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SEXPTYPE::INTSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             if n2 == 0 {
                 Rf_unprotect(2);
@@ -581,7 +581,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 SEXPTYPE::REALSXP.0,
             ));
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n2));
+            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             Rf_unprotect(2);
             if n2 == 0 {

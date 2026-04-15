@@ -1249,8 +1249,8 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     /* Compute depth order (real algorithm) */
     let nr = nrows(z);
     let nc = ncols(z);
-    let depth = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, (nr - 1) * (nc - 1)));
-    let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, (nr - 1) * (nc - 1)));
+    let depth = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, (nr - 1) * (nc - 1)));
+    let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, (nr - 1) * (nc - 1)));
 
     DepthOrder(
         REAL(z),
@@ -1263,8 +1263,8 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     );
 
     /* Build the result: 4x4 viewing transformation matrix */
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 16));
-    let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 2));
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 16));
+    let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
     for i in 0..4 {
         for j in 0..4 {
             *REAL(result).add(i + j * 4) = VT.with(|v| v.get())[i][j];

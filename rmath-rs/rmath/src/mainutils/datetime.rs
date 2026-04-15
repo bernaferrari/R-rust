@@ -729,7 +729,7 @@ fn makelt(tm: &stm, ans: SEXP, i: R_xlen_t, valid: bool, frac_secs: c_double) {
 unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
     unsafe {
         let nans: c_int = 11;
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, nans as R_xlen_t));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t));
         for i in 0..9 {
             let sexp = if i > 0 {
                 SEXPTYPE::INTSXP.0
@@ -738,10 +738,10 @@ unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
             };
             SET_VECTOR_ELT(ans, i as R_xlen_t, Rf_allocVector3(sexp, n));
         }
-        SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP.0, n)); // zone
-        SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP.0, n)); // gmtoff
+        SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP, n)); // zone
+        SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP, n)); // gmtoff
 
-        let ansnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, nans as R_xlen_t));
+        let ansnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nans as R_xlen_t));
         for i in 0..nans {
             let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
             SET_STRING_ELT(ansnames, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
@@ -768,7 +768,7 @@ pub unsafe fn do_asPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
                 message: "invalid 'x' value: not numeric".to_string(),
             });
         }
-        let x = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, XLENGTH(x)));
+        let x = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, XLENGTH(x)));
         // Copy values (simplified: assumes input is already REALSXP)
         std::ptr::copy_nonoverlapping(REAL(CAR(args)), REAL(x), XLENGTH(x) as usize);
 
@@ -860,7 +860,7 @@ pub unsafe fn do_asPOSIXct(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             n = len8;
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n));
 
         for i in 0..n {
             let iu = i as usize;
@@ -945,7 +945,7 @@ pub unsafe fn do_formatPOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         let m = XLENGTH(sformat);
         let N = if n > 0 { std::cmp::max(m, n) } else { 0 };
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, N));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, N));
 
         for i in 0..N {
             let iu = i as usize;
@@ -1280,7 +1280,7 @@ pub unsafe fn do_POSIXlt2D(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SE
             n = len8;
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n));
 
         for i in 0..n {
             let iu = i as usize;
@@ -1355,7 +1355,7 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             }
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, nn as R_xlen_t));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nn as R_xlen_t));
         for i in 0..9 {
             let sexp = if i > 0 {
                 SEXPTYPE::INTSXP.0
@@ -1365,13 +1365,13 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
             SET_VECTOR_ELT(ans, i as R_xlen_t, Rf_allocVector3(sexp, n));
         }
         if nn >= 10 {
-            SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP.0, n));
+            SET_VECTOR_ELT(ans, 9, Rf_allocVector3(SEXPTYPE::STRSXP, n));
         }
         if nn >= 11 {
-            SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP.0, n));
+            SET_VECTOR_ELT(ans, 10, Rf_allocVector3(SEXPTYPE::INTSXP, n));
         }
 
-        let ansnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, nn as R_xlen_t));
+        let ansnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nn as R_xlen_t));
         for i in 0..nn {
             let cstr = CString::new(ltnames[i as usize]).unwrap_or_default();
             SET_STRING_ELT(ansnames, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
@@ -1508,7 +1508,7 @@ pub unsafe fn do_difftime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             _ => { /* unknown unit, return as-is */ }
         }
 
-        let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, 1);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
         *REAL(ans) = diff;
         ans
     }
@@ -1544,7 +1544,7 @@ pub unsafe fn do_ISOdatetime(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
             }
         }
 
-        let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
 
         for i in 0..n {
             let iu = i as usize;

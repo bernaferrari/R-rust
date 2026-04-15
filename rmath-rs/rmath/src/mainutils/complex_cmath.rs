@@ -491,7 +491,7 @@ pub unsafe fn complex_unary(code: c_int, s1: SEXP, _call: SEXP) -> SEXP {
                 // MINUSOP
                 // NO_REFERENCES(x) -> always return new copy in our stub
                 let n = XLENGTH(s1);
-                let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+                let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
                 if ans.is_null() || s1.is_null() {
                     return R_NilValue();
                 }
@@ -519,11 +519,11 @@ pub unsafe fn complex_binary(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 
         // S4-compatibility: if n1 or n2 is 0, result is length 0
         if n1 == 0 || n2 == 0 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         }
 
         let n = if n1 > n2 { n1 } else { n2 };
-        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if ans.is_null() || s1.is_null() || s2.is_null() {
             return R_NilValue();
         }
@@ -654,7 +654,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
             match primval {
                 1 => {
                     // Re
-                    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+                    let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                     if y.is_null() {
                         return R_NilValue();
                     }
@@ -666,7 +666,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 }
                 2 => {
                     // Im
-                    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+                    let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                     if y.is_null() {
                         return R_NilValue();
                     }
@@ -678,7 +678,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 }
                 3 | 6 => {
                     // Mod / abs
-                    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+                    let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                     if y.is_null() {
                         return R_NilValue();
                     }
@@ -691,7 +691,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 }
                 4 => {
                     // Arg
-                    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+                    let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                     if y.is_null() {
                         return R_NilValue();
                     }
@@ -704,7 +704,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 }
                 5 => {
                     // Conj
-                    let y = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+                    let y = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
                     if y.is_null() {
                         return R_NilValue();
                     }
@@ -718,7 +718,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
                 }
                 _ => {
                     // Default: treat as Re
-                    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+                    let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
                     if y.is_null() {
                         return R_NilValue();
                     }
@@ -735,7 +735,7 @@ pub unsafe fn do_cmathfuns(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         {
             // Numeric (non-complex) input
             let px = REAL(x);
-            let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+            let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if y.is_null() || px.is_null() {
                 return R_NilValue();
             }
@@ -801,7 +801,7 @@ pub unsafe fn complex_math1(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
         }
 
         let n = XLENGTH(x);
-        let y = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let y = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if y.is_null() || x.is_null() {
             return R_NilValue();
         }
@@ -872,11 +872,11 @@ pub unsafe fn complex_math2(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
         let nb = XLENGTH(sb);
 
         if na == 0 || nb == 0 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         }
 
         let n = if na < nb { nb } else { na };
-        let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if sy.is_null() {
             return R_NilValue();
         }
@@ -1013,7 +1013,7 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             na = ni;
         }
 
-        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, na);
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, na);
         if ans.is_null() {
             return R_NilValue();
         }

@@ -1052,8 +1052,8 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
 unsafe fn setup_warnings() {
     unsafe {
         let nw = R_NWARNINGS.load(Ordering::Relaxed);
-        let w = Rf_allocVector(SEXPTYPE::VECSXP.0, nw);
-        let names = Rf_allocVector(SEXPTYPE::STRSXP.0, nw);
+        let w = Rf_allocVector(SEXPTYPE::VECSXP, nw);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, nw);
         setAttrib_wrap(w, R_NamesSymbol(), names);
         R_WARNINGS.store(w, Ordering::Relaxed);
         R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
@@ -1891,7 +1891,7 @@ pub fn mkHandlerEntry(
     calling: c_int,
 ) -> SEXP {
     unsafe {
-        let entry = Rf_allocVector(SEXPTYPE::VECSXP.0, 5);
+        let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
         if !entry.is_null() {
             SET_VECTOR_ELT(entry, 0, klass);
             SET_VECTOR_ELT(entry, 1, parentenv);
@@ -1977,7 +1977,7 @@ pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         R_HANDLER_STACK.with(|stack| {
             let oldstack = *stack.borrow();
 
-            let result = Rf_allocVector(SEXPTYPE::VECSXP.0, RESULT_SIZE as c_int);
+            let result = Rf_allocVector(SEXPTYPE::VECSXP, RESULT_SIZE as c_int);
             let mut newstack = oldstack;
 
             for i in (0..n).rev() {
@@ -2030,7 +2030,7 @@ pub unsafe fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             } else if i == 1 {
                 // Return abort restart
                 let name = Rf_mkString(b"abort\x00".as_ptr() as *const c_char);
-                let entry = Rf_allocVector(SEXPTYPE::VECSXP.0, 2);
+                let entry = Rf_allocVector(SEXPTYPE::VECSXP, 2);
                 SET_VECTOR_ELT(entry, 0, name);
                 SET_VECTOR_ELT(entry, 1, globals::R_NilValue());
                 setAttrib_wrap(
@@ -2132,7 +2132,7 @@ unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *co
                 .as_ptr(),
         );
         crate::sexp::protect::Rf_protect(name);
-        let entry = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+        let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         crate::sexp::protect::Rf_protect(entry);
         crate::sexp::accessors::SET_VECTOR_ELT(entry, 0, name);
         let ext_ptr = crate::mainutils::memory_main::R_MakeExternalPtr(
@@ -2300,7 +2300,7 @@ pub unsafe fn R_makeErrorCondition(
         };
 
         let nelem = nextra + 2;
-        let cond = Rf_allocVector(SEXPTYPE::VECSXP.0, nelem);
+        let cond = Rf_allocVector(SEXPTYPE::VECSXP, nelem);
 
         // Element 0: message
         SET_VECTOR_ELT(cond, 0, Rf_mkString(fmt.as_ptr() as *const c_char));
@@ -2308,7 +2308,7 @@ pub unsafe fn R_makeErrorCondition(
         SET_VECTOR_ELT(cond, 1, call);
 
         // Names attribute
-        let names = Rf_allocVector(SEXPTYPE::STRSXP.0, nelem);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, nelem);
         setAttrib_wrap(cond, R_NamesSymbol(), names);
         SET_STRING_ELT(
             names,
@@ -2319,7 +2319,7 @@ pub unsafe fn R_makeErrorCondition(
 
         // Class attribute
         let nclass = if sub.is_empty() { 3 } else { 4 };
-        let klass = Rf_allocVector(SEXPTYPE::STRSXP.0, nclass);
+        let klass = Rf_allocVector(SEXPTYPE::STRSXP, nclass);
         setAttrib_wrap(cond, R_ClassSymbol(), klass);
 
         if sub.is_empty() {
@@ -2487,7 +2487,7 @@ pub unsafe fn R_tryCatchError(
                         }
                     }
                 } else if handler.is_some() {
-                    let cond = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+                    let cond = crate::sexp::constructors::Rf_allocVector(SEXPTYPE::STRSXP, 1);
                     if !cond.is_null() {
                         let msg = Rf_mkString(b"error\0".as_ptr() as *const c_char);
                         crate::sexp::accessors::SET_STRING_ELT(cond, 0, msg);
@@ -2724,7 +2724,7 @@ pub unsafe fn R_makeWarningCondition(
         };
 
         let nelem = nextra + 2;
-        let cond = Rf_allocVector(SEXPTYPE::VECSXP.0, nelem);
+        let cond = Rf_allocVector(SEXPTYPE::VECSXP, nelem);
 
         // Element 0: message
         SET_VECTOR_ELT(cond, 0, Rf_mkString(fmt.as_ptr() as *const c_char));
@@ -2740,13 +2740,13 @@ pub unsafe fn R_makeWarningCondition(
         );
 
         // Names attribute
-        let names = Rf_allocVector(SEXPTYPE::STRSXP.0, nelem);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, nelem);
         setAttrib_wrap(cond, R_NamesSymbol(), names);
         SET_STRING_ELT(names, 0, Rf_mkChar(b"message\0".as_ptr() as *const c_char));
         SET_STRING_ELT(names, 1, Rf_mkChar(b"call\0".as_ptr() as *const c_char));
 
         // Class attribute: "simpleWarning", "warning", "condition"
-        let klass = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
+        let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
         setAttrib_wrap(cond, R_ClassSymbol(), klass);
         SET_STRING_ELT(klass, 0, Rf_mkChar(class.as_ptr() as *const c_char));
         SET_STRING_ELT(klass, 1, Rf_mkChar(b"warning\0".as_ptr() as *const c_char));
@@ -3248,7 +3248,7 @@ mod tests {
                 1,
             );
             assert!(!entry.is_null());
-            assert_eq!(TYPEOF(entry), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(entry), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(entry), 5);
             assert_eq!(IS_CALLING_ENTRY(entry), 1);
         }
@@ -3265,7 +3265,7 @@ mod tests {
                 b"test error message\x00".as_ptr() as *const c_char,
             );
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(cond), 2);
         }
     }
@@ -3335,7 +3335,7 @@ mod tests {
         });
 
         unsafe {
-            let entry = Rf_allocVector(SEXPTYPE::VECSXP.0, 5);
+            let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
             R_HANDLER_STACK.with(|stack| {
                 *stack.borrow_mut() = Rf_cons(entry, ptr::null_mut());
                 assert!(!(*stack.borrow()).is_null());
@@ -3355,7 +3355,7 @@ mod tests {
         });
 
         unsafe {
-            let entry = Rf_allocVector(SEXPTYPE::VECSXP.0, 2);
+            let entry = Rf_allocVector(SEXPTYPE::VECSXP, 2);
             R_RESTART_STACK.with(|stack| {
                 *stack.borrow_mut() = Rf_cons(entry, ptr::null_mut());
                 assert!(!(*stack.borrow()).is_null());
@@ -3444,7 +3444,7 @@ mod tests {
                 b"test warning message\0".as_ptr() as *const c_char,
             );
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(cond), 2);
         }
     }
@@ -3454,7 +3454,7 @@ mod tests {
         unsafe {
             let cond = R_makeCStackOverflowError(ptr::null_mut(), 42);
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(cond), 2);
         }
     }
@@ -3463,20 +3463,20 @@ mod tests {
     fn test_r_make_not_subsettable_error() {
         unsafe {
             // Create a simple vector to act as the "object"
-            let x = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+            let x = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             let cond = R_makeNotSubsettableError(x, ptr::null_mut());
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         }
     }
 
     #[test]
     fn test_r_make_missing_subscript_error() {
         unsafe {
-            let x = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
+            let x = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             let cond = R_makeMissingSubscriptError(x, ptr::null_mut());
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         }
     }
 
@@ -3485,19 +3485,19 @@ mod tests {
         unsafe {
             let cond = R_makeMissingSubscriptError1(ptr::null_mut());
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         }
     }
 
     #[test]
     fn test_r_make_out_of_bounds_error() {
         unsafe {
-            let x = Rf_allocVector(SEXPTYPE::INTSXP.0, 5);
-            let idx = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+            let x = Rf_allocVector(SEXPTYPE::INTSXP, 5);
+            let idx = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             *REAL(idx) = 10.0;
             let cond = R_makeOutOfBoundsError(x, 10, idx, ptr::null_mut());
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         }
     }
 
@@ -3508,7 +3508,7 @@ mod tests {
             let formal = Rf_install(b"abcdef\0".as_ptr() as *const c_char);
             let cond = R_makePartialMatchWarningCondition(ptr::null_mut(), arg, formal);
             assert!(!cond.is_null());
-            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(cond), SEXPTYPE::VECSXP);
         }
     }
 
@@ -3597,7 +3597,7 @@ mod tests {
         unsafe {
             let result = R_GetSrcFilename(ptr::null_mut());
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
         }
     }
 
@@ -3618,7 +3618,7 @@ mod tests {
     #[test]
     fn test_entry_macros() {
         unsafe {
-            let entry = Rf_allocVector(SEXPTYPE::VECSXP.0, 5);
+            let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
             // Set up some values
             let v0 = Rf_mkString(b"class\0".as_ptr() as *const c_char);
             let v2 = Rf_mkString(b"handler\0".as_ptr() as *const c_char);

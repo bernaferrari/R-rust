@@ -87,7 +87,7 @@ pub unsafe fn nextStream(x: SEXP) -> SEXP {
         nseed[i + 3] = tmp;
     }
 
-    let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, 7);
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
     *INTEGER(ans).add(0) = *INTEGER(x).add(0);
     for i in 0..6 {
         *INTEGER(ans).add(i + 1) = nseed[i] as c_int;
@@ -121,7 +121,7 @@ pub unsafe fn nextSubStream(x: SEXP) -> SEXP {
         nseed[i + 3] = tmp;
     }
 
-    let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, 7);
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
     *INTEGER(ans).add(0) = *INTEGER(x).add(0);
     for i in 0..6 {
         *INTEGER(ans).add(i + 1) = nseed[i] as c_int;

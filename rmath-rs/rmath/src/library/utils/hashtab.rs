@@ -119,7 +119,7 @@ pub unsafe fn hashtab_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 2);
     let _type = HT_TypeFromString(CAR(args));
     let _k = asInteger(CADR(args));
-    let val = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 1));
+    let val = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
     SET_VECTOR_ELT(val, 0, R_HashtabSEXP(R_mkhashtab(_type, _k)));
     setAttrib(
         val,

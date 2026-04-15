@@ -173,7 +173,7 @@ mod tests {
         unsafe {
             let p = mkPRIMSXP(0, 1);
             assert!(!p.is_null());
-            assert_eq!(TYPEOF(p), SEXPTYPE::BUILTINSXP.0);
+            assert_eq!(TYPEOF(p), SEXPTYPE::BUILTINSXP);
             assert_eq!(PRIMOFFSET(p), 0);
         }
     }
@@ -183,7 +183,7 @@ mod tests {
         unsafe {
             let p = mkPRIMSXP(5, 0);
             assert!(!p.is_null());
-            assert_eq!(TYPEOF(p), SEXPTYPE::SPECIALSXP.0);
+            assert_eq!(TYPEOF(p), SEXPTYPE::SPECIALSXP);
             assert_eq!(PRIMOFFSET(p), 5);
         }
     }
@@ -198,7 +198,7 @@ mod tests {
 
             let c = mkCLOSXP(formals, body, env);
             assert!(!c.is_null());
-            assert_eq!(TYPEOF(c), SEXPTYPE::CLOSXP.0);
+            assert_eq!(TYPEOF(c), SEXPTYPE::CLOSXP);
             assert_eq!(FORMALS(c), formals);
             assert_eq!(BODY(c), body);
             assert_eq!(CLOENV(c), env);
@@ -228,7 +228,7 @@ mod tests {
 
             let c = R_mkClosure(formals, body, env);
             assert!(!c.is_null());
-            assert_eq!(TYPEOF(c), SEXPTYPE::CLOSXP.0);
+            assert_eq!(TYPEOF(c), SEXPTYPE::CLOSXP);
         }
     }
 
@@ -270,7 +270,7 @@ mod tests {
 
             let sym = mkSYMSXP(name, value);
             assert!(!sym.is_null());
-            assert_eq!(TYPEOF(sym), SEXPTYPE::SYMSXP.0);
+            assert_eq!(TYPEOF(sym), SEXPTYPE::SYMSXP);
             assert_eq!(PRINTNAME(sym), name);
             assert_eq!(SYMVALUE(sym), value);
         }

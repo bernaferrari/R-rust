@@ -53,7 +53,7 @@ pub unsafe fn getfmts(format: SEXP) -> SEXP {
         Rf_error(b"'fmt' must be length 1\0".as_ptr() as *const _);
     }
 
-    let res = Rf_allocVector(SEXPTYPE::STRSXP.0, MAXNARGS as c_int);
+    let res = Rf_allocVector(SEXPTYPE::STRSXP, MAXNARGS as c_int);
     Rf_protect(res);
 
     let format_elt = STRING_ELT(format, 0);

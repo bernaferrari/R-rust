@@ -1006,7 +1006,7 @@ unsafe fn R_InitProfiling(
             let len2 = bufsize as usize;
             let total = (len1 + len2) as c_int;
 
-            let buf = Rf_allocVector(SEXPTYPE::RAWSXP.0, total);
+            let buf = Rf_allocVector(SEXPTYPE::RAWSXP, total);
             R_Srcfiles_buffer.with(|v| v.set(buf));
             R_PreserveObject(buf);
 
@@ -1302,7 +1302,7 @@ pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 /// Ported from R's `do_bcprofcounts()` in eval.c.
 pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        let val = Rf_allocVector(SEXPTYPE::INTSXP.0, OPCOUNT as c_int);
+        let val = Rf_allocVector(SEXPTYPE::INTSXP, OPCOUNT as c_int);
         if val.is_null() {
             return R_NilValue();
         }

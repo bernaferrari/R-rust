@@ -295,7 +295,7 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
             return R_NilValue();
         }
         let len = n - pos;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, len);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
         Rf_protect(ans);
         for i in 0..len {
             let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
@@ -754,7 +754,7 @@ pub unsafe fn DispatchGroup(
         let dispatch_class_name = translateChar(STRING_ELT(lclass, lwhich as R_xlen_t));
         let _vmax = vmaxget();
 
-        let m = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, nargs));
+        let m = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nargs));
         nprotect += 1;
 
         let mut s = args;

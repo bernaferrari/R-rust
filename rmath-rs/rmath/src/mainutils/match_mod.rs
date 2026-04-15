@@ -998,12 +998,12 @@ pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let n = XLENGTH(x);
         if n == 0 {
-            return Rf_allocVector(SEXPTYPE::INTSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::INTSXP, 0);
         }
 
         let ntable = LENGTH(table);
         if ntable == 0 {
-            let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n as c_int);
+            let ans = Rf_allocVector(SEXPTYPE::INTSXP, n as c_int);
             let pa = INTEGER(ans);
             for i in 0..n as i64 {
                 *pa.add(i as usize) = nomatch_val;
@@ -1023,7 +1023,7 @@ pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             SEXPTYPE(xtype)
         };
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, n as c_int));
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n as c_int));
         let ians = INTEGER(ans);
 
         // Initialize all to nomatch
@@ -1174,7 +1174,7 @@ pub unsafe fn do_pmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             tar_strs.push(cs);
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, n_input as c_int));
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n_input as c_int));
         let ians = INTEGER(ans);
 
         // Initialize
@@ -1300,7 +1300,7 @@ pub unsafe fn do_charmatch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
             }
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, n_input));
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n_input));
         let ians = INTEGER(ans);
 
         for i in 0..n_input as usize {

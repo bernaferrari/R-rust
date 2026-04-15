@@ -894,7 +894,7 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
     let _ = (call, op, args, rho);
     checkArity(op, args);
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
     let d = curl_version_info(CURLVERSION_NOW);
 
     if !d.is_null() && !(*d).version.is_null() {
@@ -937,7 +937,7 @@ pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SE
             n += 1;
             p = p.add(1);
         }
-        let protocols = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+        let protocols = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
         p = (*d).protocols;
         for i in 0..n {
             SET_STRING_ELT(protocols, i as R_xlen_t, Rf_mkChar(*p));
@@ -1379,7 +1379,7 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
     if nurls > 1 {
         let _ans = Rf_protect(ans);
         let sretvals = install(b"retvals\0".as_ptr() as *const c_char);
-        let retval = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, nurls));
+        let retval = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nurls));
         for i in 0..nurls {
             *INTEGER(retval).add(i as usize) = if errs_arr[i as usize] != 0 { 1 } else { 0 };
         }

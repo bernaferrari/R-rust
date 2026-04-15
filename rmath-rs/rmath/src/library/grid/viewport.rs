@@ -76,7 +76,7 @@ unsafe fn asBool(x: SEXP) -> bool {
 
 #[unsafe(no_mangle)]
 unsafe fn ScalarReal(x: f64) -> SEXP {
-    let s = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+    let s = Rf_allocVector(SEXPTYPE::REALSXP, 1);
     *REAL(s) = x;
     s
 }
@@ -86,7 +86,7 @@ unsafe fn ScalarReal(x: f64) -> SEXP {
 // ---------------------------------------------------------------------------
 
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    let dims = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let dims = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     *INTEGER(dims) = nrow;
     *INTEGER(dims).add(1) = ncol;
     let result = Rf_allocVector(sexptype, nrow * ncol);

@@ -80,9 +80,9 @@ pub unsafe fn delim_match(x: SEXP, delims: SEXP) -> SEXP {
     let equal_start_and_end_delims = ds == de;
 
     let n = LENGTH(x);
-    let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
     Rf_protect(ans);
-    let matchlen = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+    let matchlen = Rf_allocVector(SEXPTYPE::INTSXP, n);
     Rf_protect(matchlen);
 
     let ans_ptr = INTEGER(ans);
@@ -299,7 +299,7 @@ pub unsafe fn check_nonASCII2(text: SEXP) -> SEXP {
     }
 
     if m > 0 {
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, m as c_int);
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, m as c_int);
         if !ans.is_null() {
             let ians = INTEGER(ans);
             for i in 0..m {
@@ -322,7 +322,7 @@ pub unsafe fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
         return R_NilValue();
     }
     let n = LENGTH(strings);
-    let result = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
+    let result = Rf_allocVector(SEXPTYPE::STRSXP, n);
     Rf_protect(result);
 
     for i in 0..n as usize {
@@ -428,7 +428,7 @@ pub unsafe fn splitString(string: SEXP, delims: SEXP) -> SEXP {
     let nc = in_bytes.len();
 
     // Over-allocate wildly (same as C code)
-    let out = Rf_allocVector(SEXPTYPE::STRSXP.0, nc as c_int);
+    let out = Rf_allocVector(SEXPTYPE::STRSXP, nc as c_int);
     Rf_protect(out);
 
     if nc > 0 {
@@ -487,7 +487,7 @@ pub unsafe fn nonASCII(text: SEXP) -> SEXP {
         Rf_error(b"invalid input\0".as_ptr() as *const _);
     }
     let len = XLENGTH(text);
-    let ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, len as c_int);
+    let ans = Rf_allocVector(SEXPTYPE::LGLSXP, len as c_int);
     if ans.is_null() {
         return R_NilValue();
     }

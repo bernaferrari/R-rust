@@ -1069,7 +1069,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
         GSMAXALLOC.with(|v| v.set(n));
 
         // Allocate result vector
-        let mut ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nl));
+        let mut ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nl));
         let o: *mut c_int = INTEGER(ans);
         if n > 0 {
             *o = -1;
@@ -1278,7 +1278,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             let flip = FLIP.with(|v| v.get()) as usize;
             ngrp = GSNGRP.with(|v| v.borrow()[flip]);
             let s_ends = Rf_install(std::ffi::CString::new("ends").unwrap_or_default().as_ptr());
-            let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP.0, ngrp as R_xlen_t);
+            let x_ends = Rf_allocVector3(SEXPTYPE::INTSXP, ngrp as R_xlen_t);
             Rf_protect(x_ends);
             setAttrib(ans, s_ends, x_ends);
             if ngrp > 0 {
@@ -1300,7 +1300,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
             Rf_protect(scalar_maxgrpn);
             setAttrib(ans, s_maxgrpn, scalar_maxgrpn);
             // Set class c("grouping", "integer")
-            let nms = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+            let nms = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             Rf_protect(nms);
             SET_STRING_ELT(
                 nms,
@@ -1337,7 +1337,7 @@ pub unsafe fn do_radixsort(_call: SEXP, _op: SEXP, mut args: SEXP, _rho: SEXP) -
                 }
             }
             if zeros > 0 {
-                let new_ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, (n - zeros) as R_xlen_t);
+                let new_ans = Rf_allocVector3(SEXPTYPE::INTSXP, (n - zeros) as R_xlen_t);
                 Rf_protect(new_ans);
                 let o2 = INTEGER(new_ans);
                 let mut i2: c_int = 0;

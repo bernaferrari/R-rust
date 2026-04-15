@@ -105,7 +105,7 @@ pub unsafe fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
 
     let val = if isInteger(m) {
         // Coerce integer to real
-        let coerced = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+        let coerced = Rf_allocVector(SEXPTYPE::REALSXP, n);
         Rf_protect(coerced);
         for i in 0..n as usize {
             let iv = *INTEGER(m).add(i);

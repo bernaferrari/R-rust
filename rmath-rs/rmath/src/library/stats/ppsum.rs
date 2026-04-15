@@ -50,7 +50,7 @@ pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
     let xi = Rf_protect(coerceVector(xi, SEXPTYPE::REALSXP.0));
     let n = LENGTH(x);
     let lag = asInteger(slag);
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n + lag));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n + lag));
     let rx = REAL(x);
     let y = REAL(ans);
 

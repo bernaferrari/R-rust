@@ -119,12 +119,12 @@ pub unsafe fn KalmanLike(
     let resid: SEXP;
     let states: SEXP;
     if lop != 0 {
-        ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 3));
-        let r = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
-        let st = Rf_allocVector3(SEXPTYPE::REALSXP.0, (n * p) as R_xlen_t);
+        ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 3));
+        let r = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
+        let st = Rf_allocVector3(SEXPTYPE::REALSXP, (n * p) as R_xlen_t);
         SET_VECTOR_ELT(ans, 1, r);
         SET_VECTOR_ELT(ans, 2, st);
-        let nm = Rf_allocVector3(SEXPTYPE::STRSXP.0, 3);
+        let nm = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
         SET_STRING_ELT(nm, 0, Rf_mkChar("values"));
         SET_STRING_ELT(nm, 1, Rf_mkChar("resid"));
         SET_STRING_ELT(nm, 2, Rf_mkChar("states"));
@@ -219,7 +219,7 @@ pub unsafe fn KalmanLike(
         }
     }
 
-    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, 2));
+    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, 2));
     REAL(res)[0] = ssq / nu as f64;
     REAL(res)[1] = sumlog / nu as f64;
 
@@ -278,18 +278,18 @@ pub unsafe fn KalmanSmooth(sy: SEXP, mod_: SEXP, sUP: SEXP) -> SEXP {
     let ssPn = Rf_protect(duplicate(sPn));
     let Pnew = REAL(ssPn);
 
-    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 2));
-    let nm = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 2));
+    let nm = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
     SET_STRING_ELT(nm, 0, Rf_mkChar("smooth"));
     SET_STRING_ELT(nm, 1, Rf_mkChar("var"));
     setAttrib(res, R_NamesSymbol(), nm);
     Rf_unprotect(1);
 
-    let states = Rf_allocVector3(SEXPTYPE::REALSXP.0, (n * p) as R_xlen_t);
+    let states = Rf_allocVector3(SEXPTYPE::REALSXP, (n * p) as R_xlen_t);
     SET_VECTOR_ELT(res, 0, states);
     let at = REAL(states);
 
-    let sN = Rf_allocVector3(SEXPTYPE::REALSXP.0, (n * p * p) as R_xlen_t);
+    let sN = Rf_allocVector3(SEXPTYPE::REALSXP, (n * p * p) as R_xlen_t);
     SET_VECTOR_ELT(res, 1, sN);
     let Nt = REAL(sN);
 
@@ -535,12 +535,12 @@ pub unsafe fn KalmanFore(nahead: SEXP, mod_: SEXP, update: SEXP) -> SEXP {
         mm.set_len(p * p);
     }
 
-    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 2));
-    let forecasts = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
-    let se = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 2));
+    let forecasts = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
+    let se = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
     SET_VECTOR_ELT(res, 0, forecasts);
     SET_VECTOR_ELT(res, 1, se);
-    let nm = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+    let nm = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
     SET_STRING_ELT(nm, 0, Rf_mkChar("pred"));
     SET_STRING_ELT(nm, 1, Rf_mkChar("var"));
     setAttrib(res, R_NamesSymbol(), nm);
@@ -661,7 +661,7 @@ pub unsafe fn ARIMA_undoPars(sin: SEXP, sarma: SEXP) -> SEXP {
     let n = Rf_length(sin) as isize;
     let in_ = REAL(sin);
 
-    let res = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+    let res = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
     let params = REAL(res);
 
     for i in 0..n {
@@ -709,9 +709,9 @@ pub unsafe fn ARIMA_transPars(sin: SEXP, sarma: SEXP, strans: SEXP) -> SEXP {
     let q = mq + ns * msq;
     let in_ = REAL(sin);
 
-    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 2));
-    let sPhi = Rf_allocVector3(SEXPTYPE::REALSXP.0, p as R_xlen_t);
-    let sTheta = Rf_allocVector3(SEXPTYPE::REALSXP.0, q as R_xlen_t);
+    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 2));
+    let sPhi = Rf_allocVector3(SEXPTYPE::REALSXP, p as R_xlen_t);
+    let sTheta = Rf_allocVector3(SEXPTYPE::REALSXP, q as R_xlen_t);
     SET_VECTOR_ELT(res, 0, sPhi);
     SET_VECTOR_ELT(res, 1, sTheta);
     let phi = REAL(sPhi);
@@ -797,7 +797,7 @@ pub unsafe fn ARIMA_Invtrans(in_: SEXP, sarma: SEXP) -> SEXP {
     let n = Rf_length(in_) as isize;
     let raw = REAL(in_);
 
-    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+    let y = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
     let new_ = REAL(y);
 
     for i in 0..n {
@@ -843,7 +843,7 @@ pub unsafe fn ARIMA_Gradtrans(in_: SEXP, sarma: SEXP) -> SEXP {
     let n = Rf_length(in_) as isize;
     let raw = REAL(in_);
 
-    let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, (n * n) as R_xlen_t);
+    let y = Rf_allocVector3(SEXPTYPE::REALSXP, (n * n) as R_xlen_t);
     let A = REAL(y);
 
     for i in 0..n {
@@ -944,7 +944,7 @@ pub unsafe fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: SEXP) -> SE
     let sResid: SEXP;
     let rs_resid: *mut f64;
     if use_resid {
-        sResid = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t));
+        sResid = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t));
         rs_resid = REAL(sResid);
     } else {
         sResid = ptr::null_mut();
@@ -1110,8 +1110,8 @@ pub unsafe fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: SEXP) -> SE
     }
 
     if use_resid {
-        let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 3));
-        let nres = Rf_allocVector3(SEXPTYPE::REALSXP.0, 3);
+        let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 3));
+        let nres = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         REAL(nres)[0] = ssq;
         REAL(nres)[1] = sumlog;
         REAL(nres)[2] = nu as f64;
@@ -1120,7 +1120,7 @@ pub unsafe fn ARIMA_Like(sy: SEXP, mod_: SEXP, sUP: SEXP, giveResid: SEXP) -> SE
         Rf_unprotect(2);
         res
     } else {
-        let nres = Rf_allocVector3(SEXPTYPE::REALSXP.0, 3);
+        let nres = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
         REAL(nres)[0] = ssq;
         REAL(nres)[1] = sumlog;
         REAL(nres)[2] = nu as f64;
@@ -1166,7 +1166,7 @@ pub unsafe fn ARIMA_CSS(
         }
     }
 
-    let sResid = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t));
+    let sResid = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t));
     let resid = REAL(sResid);
     if use_resid {
         for l in 0..ncond {
@@ -1194,7 +1194,7 @@ pub unsafe fn ARIMA_CSS(
     }
 
     if use_resid {
-        let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 2));
+        let res = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 2));
         let val = Rf_ScalarReal(ssq / nu as f64);
         SET_VECTOR_ELT(res, 0, val);
         SET_VECTOR_ELT(res, 1, sResid);
@@ -1217,7 +1217,7 @@ pub unsafe fn TSconv(a: SEXP, b: SEXP) -> SEXP {
     let nb = Rf_length(b) as isize;
     let nab = na + nb - 1;
 
-    let ab = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, nab as R_xlen_t));
+    let ab = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, nab as R_xlen_t));
     let ra = REAL(a);
     let rb = REAL(b);
     let rab = REAL(ab);
@@ -1292,7 +1292,7 @@ pub unsafe fn getQ0bis(sPhi: SEXP, sTheta: SEXP, _sTol: SEXP) -> SEXP {
 
     let r = if p > q + 1 { p } else { q + 1 };
 
-    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, (r * r) as R_xlen_t));
+    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, (r * r) as R_xlen_t));
     let P = REAL(res);
 
     // Clean P
@@ -1341,7 +1341,7 @@ pub unsafe fn getQ0bis(sPhi: SEXP, sTheta: SEXP, _sTol: SEXP) -> SEXP {
         }
 
         // rU = solve(Gam, g)
-        let sgam = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, (r2 * r2) as R_xlen_t));
+        let sgam = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, (r2 * r2) as R_xlen_t));
         for i in 0..(r2 * r2) {
             REAL(sgam)[i] = gam[i];
         }
@@ -1352,7 +1352,7 @@ pub unsafe fn getQ0bis(sPhi: SEXP, sTheta: SEXP, _sTol: SEXP) -> SEXP {
             Rf_lang3(Rf_install("c"), Rf_ScalarInteger(r2), Rf_ScalarInteger(r2)),
         );
 
-        let sg = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, r2 as R_xlen_t));
+        let sg = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, r2 as R_xlen_t));
         for i in 0..r2 {
             REAL(sg)[i] = g[i];
         }
@@ -1493,7 +1493,7 @@ pub unsafe fn getQ0(sPhi: SEXP, sTheta: SEXP) -> SEXP {
         }
     }
 
-    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP.0, (r * r) as R_xlen_t));
+    let res = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, (r * r) as R_xlen_t));
     let P = REAL(res);
 
     if r == 1 {

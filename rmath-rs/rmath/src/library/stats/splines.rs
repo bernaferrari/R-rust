@@ -443,9 +443,9 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
         Rf_error(b"inputs of different lengths\0".as_ptr() as *const c_char);
     }
 
-    let b = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
-    let c = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
-    let d = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
+    let b = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+    let c = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
+    let d = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
 
     for i in 0..n {
         *REAL(b).add(i) = 0.0;
@@ -463,7 +463,7 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
         REAL(d) as *mut c_double,
     );
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 7));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 7));
     SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(m));
     if n > std::i32::MAX as usize {
         SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(n as c_double));
@@ -476,7 +476,7 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
     SET_VECTOR_ELT(ans, 5, c);
     SET_VECTOR_ELT(ans, 6, d);
 
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, 7);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 7);
     SET_STRING_ELT(nm, 0, Rf_mkChar(b"method\0".as_ptr() as *const c_char));
     SET_STRING_ELT(nm, 1, Rf_mkChar(b"n\0".as_ptr() as *const c_char));
     SET_STRING_ELT(nm, 2, Rf_mkChar(b"x\0".as_ptr() as *const c_char));
@@ -495,7 +495,7 @@ pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
     let nu = XLENGTH(xout) as usize;
     let z_n = getListElement(z, b"n\0".as_ptr() as *const c_char);
     let nx = asXlen(z_n) as usize;
-    let yout = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, nu as c_int));
+    let yout = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nu as c_int));
 
     let method = asInteger(getListElement(z, b"method\0".as_ptr() as *const c_char));
     let x = getListElement(z, b"x\0".as_ptr() as *const c_char);

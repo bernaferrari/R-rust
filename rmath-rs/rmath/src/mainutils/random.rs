@@ -924,7 +924,7 @@ pub unsafe fn PutRNGstate() {
                 *p.add(j) = seeds_vec[j];
             }
         } else {
-            let seeds = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, (len_seed + 1) as c_int));
+            let seeds = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, (len_seed + 1) as c_int));
             let p = INTEGER(seeds);
             for j in 0..=len_seed {
                 *p.add(j) = seeds_vec[j];
@@ -1335,7 +1335,7 @@ pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             n = XLENGTH(CAR(args));
         }
 
-        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
+        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
         if n == 0 {
             Rf_unprotect(1);
             return x;
@@ -1410,7 +1410,7 @@ pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             n = XLENGTH(CAR(args));
         }
 
-        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
+        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
         if n == 0 {
             Rf_unprotect(1);
             return x;
@@ -1621,7 +1621,7 @@ pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             n = XLENGTH(CAR(args));
         }
 
-        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int));
+        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
         if n == 0 {
             Rf_unprotect(1);
             return x;
@@ -1694,7 +1694,7 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             )
         });
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 3));
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
         *INTEGER(ans).add(0) = rng_kind;
         *INTEGER(ans).add(1) = n01_kind;
         *INTEGER(ans).add(2) = sample_kind;
@@ -1876,7 +1876,7 @@ pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 error("cannot take a sample larger than the population when 'replace = FALSE'");
             }
 
-            let y = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, k));
+            let y = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, k));
             for i in 0..k as usize {
                 *INTEGER(y).add(i) = 0;
             }
@@ -1907,7 +1907,7 @@ pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         if dn > i32::MAX as f64 || k > i32::MAX as R_xlen_t {
             // Long vector support
-            let y = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, k as c_int));
+            let y = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, k as c_int));
             let ry = REAL(y);
             if replace != 0 {
                 for i in 0..k as usize {
@@ -1921,7 +1921,7 @@ pub unsafe fn do_sample(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         let n = dn as i32;
         let kk = k as i32;
-        let y = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, kk));
+        let y = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, kk));
         let iy = INTEGER(y);
 
         if replace != 0 || kk < 2 {

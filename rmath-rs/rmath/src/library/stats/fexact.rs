@@ -2046,7 +2046,7 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     Rf_unprotect(1);
 
     // ScalarReal: allocate a 1-element REALSXP
-    let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
     *REAL(ans).add(0) = p;
     ans
 }

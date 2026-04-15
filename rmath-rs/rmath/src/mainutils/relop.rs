@@ -785,7 +785,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             iS
         } || TYPEOF(x) == SEXPTYPE::LANGSXP
         {
-            let tmp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             if !tmp.is_null() {
                 if iS {
                     SET_STRING_ELT(tmp, 0, PRINTNAME(x));
@@ -802,7 +802,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
             iS
         } || TYPEOF(y) == SEXPTYPE::LANGSXP
         {
-            let tmp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             if !tmp.is_null() {
                 if iS {
                     SET_STRING_ELT(tmp, 0, PRINTNAME(y));
@@ -816,10 +816,10 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
 
         // Replace NULL with empty integer vectors
         if isNull(x) != 0 {
-            x = Rf_allocVector(SEXPTYPE::INTSXP.0, 0);
+            x = Rf_allocVector(SEXPTYPE::INTSXP, 0);
         }
         if isNull(y) != 0 {
-            y = Rf_allocVector(SEXPTYPE::INTSXP.0, 0);
+            y = Rf_allocVector(SEXPTYPE::INTSXP, 0);
         }
         if isVector(x) == 0 || isVector(y) == 0 {
             // errorcall
@@ -854,7 +854,7 @@ pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> S
                 return ptr::null_mut();
             }
         } else {
-            x = Rf_allocVector(SEXPTYPE::LGLSXP.0, 0);
+            x = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
         }
 
         x
@@ -872,7 +872,7 @@ unsafe fn numeric_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n2 = XLENGTH(s2);
         let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if ans.is_null() {
             return ptr::null_mut();
         }
@@ -1001,7 +1001,7 @@ unsafe fn complex_relop(code: c_int, s1: SEXP, s2: SEXP, _call: SEXP) -> SEXP {
         let n2 = XLENGTH(s2);
         let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if ans.is_null() {
             return ptr::null_mut();
         }
@@ -1040,7 +1040,7 @@ unsafe fn string_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n2 = XLENGTH(s2);
         let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if ans.is_null() {
             return ptr::null_mut();
         }
@@ -1161,7 +1161,7 @@ unsafe fn raw_relop(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n2 = XLENGTH(s2);
         let n = if n1 > n2 { n1 } else { n2 };
 
-        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if ans.is_null() {
             return ptr::null_mut();
         }
@@ -1248,7 +1248,7 @@ unsafe fn bitwiseNot(a: SEXP) -> SEXP {
         match TYPEOF(a) {
             t if t == SEXPTYPE::INTSXP => {
                 let m = XLENGTH(a);
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, m);
+                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, m);
                 if ans.is_null() {
                     return ptr::null_mut();
                 }
@@ -1315,7 +1315,7 @@ unsafe fn bitwise_op<F: Fn(c_int, c_int) -> c_int>(
                 } else {
                     0
                 };
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, mn);
+                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, mn);
                 if ans.is_null() {
                     return ptr::null_mut();
                 }
@@ -1370,7 +1370,7 @@ unsafe fn bitwiseShiftL(a: SEXP, b: SEXP) -> SEXP {
                 } else {
                     0
                 };
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, mn);
+                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, mn);
                 if ans.is_null() {
                     return ptr::null_mut();
                 }
@@ -1425,7 +1425,7 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
                 } else {
                     0
                 };
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, mn);
+                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, mn);
                 if ans.is_null() {
                     return ptr::null_mut();
                 }
@@ -1513,7 +1513,7 @@ mod tests {
     #[test]
     fn test_is_scalar_string_non_string() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
+            let v = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             assert!(!is_scalar_string(v));
         }
     }
@@ -1521,7 +1521,7 @@ mod tests {
     #[test]
     fn test_is_scalar_string_correct() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let v = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             assert!(is_scalar_string(v));
         }
     }
@@ -1529,7 +1529,7 @@ mod tests {
     #[test]
     fn test_is_scalar_string_wrong_length() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
+            let v = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             assert!(!is_scalar_string(v));
         }
     }
@@ -1574,8 +1574,8 @@ mod tests {
     fn test_numeric_relop_int_vectors() {
         unsafe {
             // Create two integer vectors
-            let s1 = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
-            let s2 = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+            let s1 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+            let s2 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
 
             // Set values
             *INTEGER(s1).add(0) = 1;
@@ -1601,8 +1601,8 @@ mod tests {
     #[test]
     fn test_numeric_relop_na_handling() {
         unsafe {
-            let s1 = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
-            let s2 = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+            let s1 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+            let s2 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
 
             *INTEGER(s1).add(0) = 1;
             *INTEGER(s1).add(1) = NA_INTEGER;
@@ -1621,8 +1621,8 @@ mod tests {
     #[test]
     fn test_numeric_relop_recycling() {
         unsafe {
-            let s1 = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
-            let s2 = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+            let s1 = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            let s2 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
 
             *INTEGER(s1).add(0) = 5;
             *INTEGER(s2).add(0) = 3;
@@ -1639,8 +1639,8 @@ mod tests {
     #[test]
     fn test_numeric_relop_real_vectors() {
         unsafe {
-            let s1 = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
-            let s2 = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
+            let s1 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+            let s2 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
 
             *REAL(s1).add(0) = 1.5;
             *REAL(s1).add(1) = 2.5;
@@ -1656,8 +1656,8 @@ mod tests {
     #[test]
     fn test_numeric_relop_nan_handling() {
         unsafe {
-            let s1 = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
-            let s2 = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
+            let s1 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+            let s2 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
 
             *REAL(s1).add(0) = f64::NAN;
             *REAL(s1).add(1) = 1.0;
@@ -1673,8 +1673,8 @@ mod tests {
     #[test]
     fn test_raw_relop_vectors() {
         unsafe {
-            let s1 = Rf_allocVector(SEXPTYPE::RAWSXP.0, 3);
-            let s2 = Rf_allocVector(SEXPTYPE::RAWSXP.0, 3);
+            let s1 = Rf_allocVector(SEXPTYPE::RAWSXP, 3);
+            let s2 = Rf_allocVector(SEXPTYPE::RAWSXP, 3);
 
             *RAW(s1).add(0) = 10;
             *RAW(s1).add(1) = 20;

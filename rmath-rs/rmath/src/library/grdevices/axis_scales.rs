@@ -72,8 +72,8 @@ pub unsafe fn R_GAxisPars(usr: SEXP, is_log: SEXP, nintLog: SEXP) -> SEXP {
     GAxisPars(&mut min, &mut max, &mut n, logflag, 0);
 
     // Build named list: list(axp = c(min, max), n = n)
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let axp = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let axp = Rf_allocVector(SEXPTYPE::REALSXP, 2);
     *REAL(axp).add(0) = min;
     *REAL(axp).add(1) = max;
     SET_VECTOR_ELT(ans, 0, axp);

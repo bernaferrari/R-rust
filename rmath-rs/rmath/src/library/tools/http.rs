@@ -183,7 +183,7 @@ pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
         Rf_error(b"non-character argument\0".as_ptr() as *const _);
     }
     let n = XLENGTH(x);
-    let y = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+    let y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
     Rf_protect(y);
 
     for i in 0..n as usize {

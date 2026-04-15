@@ -82,7 +82,7 @@ pub unsafe fn Rmd5(files: SEXP) -> SEXP {
     }
 
     let nfiles = LENGTH(files);
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nfiles);
+    let ans = Rf_allocVector(SEXPTYPE::STRSXP, nfiles);
     Rf_protect(ans);
 
     for i in 0..nfiles as usize {

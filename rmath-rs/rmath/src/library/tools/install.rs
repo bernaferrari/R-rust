@@ -143,7 +143,7 @@ const APPENDBUFSIZE: usize = if cfg!(target_os = "windows") {
 /// Append code from f2 files to f1 file.
 pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
     if f1.is_null() || f2.is_null() {
-        return Rf_allocVector(SEXPTYPE::LGLSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
     }
     let n1 = if Rf_isString(f1) != 0 { LENGTH(f1) } else { 0 };
     if Rf_isString(f1) == 0 || n1 != 1 {
@@ -151,15 +151,15 @@ pub unsafe fn codeFilesAppend(f1: SEXP, f2: SEXP) -> SEXP {
     }
     if Rf_isString(f2) == 0 {
         Rf_error(b"invalid 'file2' argument\0".as_ptr() as *const _);
-        return Rf_allocVector(SEXPTYPE::LGLSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
     }
     let n2 = LENGTH(f2);
     if n2 < 1 {
-        return Rf_allocVector(SEXPTYPE::LGLSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::LGLSXP, 0);
     }
     let n = if n1 > n2 { n1 } else { n2 };
 
-    let ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, n);
+    let ans = Rf_allocVector(SEXPTYPE::LGLSXP, n);
     Rf_protect(ans);
     for i in 0..n as usize {
         *LOGICAL(ans).add(i) = FALSE;

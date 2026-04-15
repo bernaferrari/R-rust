@@ -160,7 +160,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
 
             // Allocate result list
-            let vec = Rf_allocVector3(SEXPTYPE::VECSXP.0, nlevs as R_xlen_t);
+            let vec = Rf_allocVector3(SEXPTYPE::VECSXP, nlevs as R_xlen_t);
             Rf_protect(vec);
 
             for i in 0..nlevs as R_xlen_t {
@@ -172,7 +172,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     setAttrib(
                         sub,
                         R_NamesSymbol(),
-                        Rf_allocVector3(SEXPTYPE::STRSXP.0, count),
+                        Rf_allocVector3(SEXPTYPE::STRSXP, count),
                     );
                 }
             }
@@ -255,7 +255,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
 
             // Allocate result list
-            let vec = Rf_allocVector3(SEXPTYPE::VECSXP.0, nlevs as R_xlen_t);
+            let vec = Rf_allocVector3(SEXPTYPE::VECSXP, nlevs as R_xlen_t);
             Rf_protect(vec);
 
             for i in 0..nlevs as R_xlen_t {
@@ -267,7 +267,7 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     setAttrib(
                         sub,
                         R_NamesSymbol(),
-                        Rf_allocVector3(SEXPTYPE::STRSXP.0, count),
+                        Rf_allocVector3(SEXPTYPE::STRSXP, count),
                     );
                 }
             }

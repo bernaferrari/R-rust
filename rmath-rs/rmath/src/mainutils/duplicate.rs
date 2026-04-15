@@ -788,7 +788,7 @@ pub unsafe fn copyListMatrix(s: SEXP, t: SEXP, byrow: c_int) {
         let mut pt = t;
         if byrow != 0 {
             let nR = nr as R_xlen_t;
-            let tmp = Rf_allocVector3(SEXPTYPE::VECSXP.0, ns);
+            let tmp = Rf_allocVector3(SEXPTYPE::VECSXP, ns);
             for i in 0..nr {
                 for j in 0..nc {
                     let idx = (i as R_xlen_t) + (j as R_xlen_t) * nR;
@@ -1301,7 +1301,7 @@ mod tests {
 
     /// Helper to create an integer vector with values.
     unsafe fn make_int_vector(values: &[c_int]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::INTSXP.0, values.len() as R_xlen_t);
+        let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
         for (i, &val) in values.iter().enumerate() {
             *INTEGER(v).add(i) = val;
         }
@@ -1310,7 +1310,7 @@ mod tests {
 
     /// Helper to create a real vector with values.
     unsafe fn make_real_vector(values: &[c_double]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::REALSXP.0, values.len() as R_xlen_t);
+        let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
         for (i, &val) in values.iter().enumerate() {
             *REAL(v).add(i) = val;
         }
@@ -1331,7 +1331,7 @@ mod tests {
             let v = make_int_vector(&[1, 2, 3]);
             let d = duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(d), 3);
             assert_ne!(d, v); // Should be a new allocation
             assert_eq!(*INTEGER(d).add(0), 1);
@@ -1346,7 +1346,7 @@ mod tests {
             let v = make_real_vector(&[1.5, 2.5, 3.5]);
             let d = duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(d), 3);
             assert_ne!(d, v);
             assert!((*REAL(d).add(0) - 1.5).abs() < 1e-10);
@@ -1361,7 +1361,7 @@ mod tests {
             let v = make_int_vector(&[10, 20]);
             let d = shallow_duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(d).add(0), 10);
             assert_eq!(*INTEGER(d).add(1), 20);
         }
@@ -1386,11 +1386,11 @@ mod tests {
 
             let d = duplicate(list);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::LISTSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::LISTSXP);
             assert_ne!(d, list); // New allocation
             // CAR should be a duplicate of the original scalar
             let d_car = CAR(d);
-            assert_eq!(TYPEOF(d_car), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(d_car), SEXPTYPE::INTSXP);
             // CDR should be nil
             assert_eq!(CDR(d), R_NilValue());
         }
@@ -1408,7 +1408,7 @@ mod tests {
             let c = crate::mainutils::dstruct::mkCLOSXP(formals, body, env);
             let d = duplicate(c);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::CLOSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::CLOSXP);
             assert_ne!(d, c);
             // Formals, body, env are shared (not deep-copied)
             assert_eq!(FORMALS(d), formals);
@@ -1456,7 +1456,7 @@ mod tests {
     #[test]
     fn test_copy_vector_int() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let dst = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             let src = make_int_vector(&[10, 20, 30]);
             copyVector(dst, src);
             assert_eq!(*INTEGER(dst).add(0), 10);
@@ -1468,7 +1468,7 @@ mod tests {
     #[test]
     fn test_copy_vector_real() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::REALSXP.0, 3);
+            let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
             let src = make_real_vector(&[1.0, 2.0, 3.0]);
             copyVector(dst, src);
             assert!((*REAL(dst).add(0) - 1.0).abs() < 1e-10);
@@ -1480,7 +1480,7 @@ mod tests {
     #[test]
     fn test_copy_vector_with_recycle() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::INTSXP.0, 6);
+            let dst = Rf_allocVector3(SEXPTYPE::INTSXP, 6);
             let src = make_int_vector(&[1, 2]);
             copyVector(dst, src);
             assert_eq!(*INTEGER(dst).add(0), 1);
@@ -1495,7 +1495,7 @@ mod tests {
     #[test]
     fn test_xcopy_real_no_recycle() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::REALSXP.0, 3);
+            let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
             let src = make_real_vector(&[1.0, 2.0, 3.0]);
             xcopyRealWithRecycle(REAL(dst), REAL(src), 0, 3, 3);
             assert!((*REAL(dst).add(0) - 1.0).abs() < 1e-10);
@@ -1507,7 +1507,7 @@ mod tests {
     #[test]
     fn test_xcopy_real_with_recycle() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::REALSXP.0, 5);
+            let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
             let src = make_real_vector(&[10.0, 20.0]);
             xcopyRealWithRecycle(REAL(dst), REAL(src), 0, 5, 2);
             assert!((*REAL(dst).add(0) - 10.0).abs() < 1e-10);
@@ -1521,7 +1521,7 @@ mod tests {
     #[test]
     fn test_xcopy_real_scalar_recycle() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::REALSXP.0, 4);
+            let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
             let src = make_real_vector(&[42.0]);
             xcopyRealWithRecycle(REAL(dst), REAL(src), 0, 4, 1);
             for i in 0..4 {
@@ -1533,7 +1533,7 @@ mod tests {
     #[test]
     fn test_xcopy_int_with_recycle() {
         unsafe {
-            let dst = Rf_allocVector3(SEXPTYPE::INTSXP.0, 5);
+            let dst = Rf_allocVector3(SEXPTYPE::INTSXP, 5);
             let src = make_int_vector(&[7, 8, 9]);
             xcopyIntegerWithRecycle(INTEGER(dst), INTEGER(src), 0, 5, 3);
             assert_eq!(*INTEGER(dst).add(0), 7);
@@ -1574,14 +1574,14 @@ mod tests {
     #[test]
     fn test_duplicate_raw_vector() {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::RAWSXP.0, 4);
+            let v = Rf_allocVector3(SEXPTYPE::RAWSXP, 4);
             *RAW(v).add(0) = 0xAA;
             *RAW(v).add(1) = 0xBB;
             *RAW(v).add(2) = 0xCC;
             *RAW(v).add(3) = 0xDD;
             let d = duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::RAWSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::RAWSXP);
             assert_eq!(LENGTH(d), 4);
             assert_eq!(*RAW(d).add(0), 0xAA);
             assert_eq!(*RAW(d).add(1), 0xBB);
@@ -1593,7 +1593,7 @@ mod tests {
     #[test]
     fn test_duplicate_logical_vector() {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::LGLSXP.0, 2);
+            let v = Rf_allocVector3(SEXPTYPE::LGLSXP, 2);
             *LOGICAL(v).add(0) = 1;
             *LOGICAL(v).add(1) = 0;
             let d = duplicate(v);
@@ -1605,12 +1605,12 @@ mod tests {
     #[test]
     fn test_duplicate_complex_vector() {
         unsafe {
-            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 2);
+            let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 2);
             *COMPLEX(v).add(0) = Rcomplex { r: 1.0, i: 2.0 };
             *COMPLEX(v).add(1) = Rcomplex { r: 3.0, i: 4.0 };
             let d = duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::CPLXSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::CPLXSXP);
             assert!(((*COMPLEX(d).add(0)).r - 1.0).abs() < 1e-10);
             assert!(((*COMPLEX(d).add(0)).i - 2.0).abs() < 1e-10);
             assert!(((*COMPLEX(d).add(1)).r - 3.0).abs() < 1e-10);
@@ -1621,14 +1621,14 @@ mod tests {
     #[test]
     fn test_duplicate_string_vector() {
         unsafe {
-            let s1 = Rf_allocVector3(SEXPTYPE::CHARSXP.0, 0); // placeholder CHARSXP
-            let s2 = Rf_allocVector3(SEXPTYPE::CHARSXP.0, 0);
-            let v = Rf_allocVector3(SEXPTYPE::STRSXP.0, 2);
+            let s1 = Rf_allocVector3(SEXPTYPE::CHARSXP, 0); // placeholder CHARSXP
+            let s2 = Rf_allocVector3(SEXPTYPE::CHARSXP, 0);
+            let v = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             SET_STRING_ELT(v, 0, s1);
             SET_STRING_ELT(v, 1, s2);
             let d = duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(d), 2);
             assert_eq!(STRING_ELT(d, 0), s1); // CHARSXP is shared, not copied
             assert_eq!(STRING_ELT(d, 1), s2);
@@ -1640,12 +1640,12 @@ mod tests {
         unsafe {
             let elem1 = Rf_ScalarInteger(10);
             let elem2 = Rf_ScalarInteger(20);
-            let v = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+            let v = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
             SET_VECTOR_ELT(v, 0, elem1);
             SET_VECTOR_ELT(v, 1, elem2);
             let d = duplicate(v);
             assert!(!d.is_null());
-            assert_eq!(TYPEOF(d), SEXPTYPE::VECSXP.0);
+            assert_eq!(TYPEOF(d), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(d), 2);
         }
     }

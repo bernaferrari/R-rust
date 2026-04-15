@@ -2500,7 +2500,7 @@ unsafe fn deparse1WithCutoff(
             }
         }
 
-        svec = Rf_allocVector(SEXPTYPE::STRSXP.0, local_data.linenumber);
+        svec = Rf_allocVector(SEXPTYPE::STRSXP, local_data.linenumber);
         Rf_protect(svec);
 
         deparse2(call, svec, &mut local_data);
@@ -2626,7 +2626,7 @@ pub unsafe fn do_dput(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let lines_sexp = tval;
             // Build a STRSXP with newlines appended for writeLines
             let n = LENGTH(lines_sexp);
-            let text = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
+            let text = Rf_allocVector(SEXPTYPE::STRSXP, n);
             Rf_protect(text);
             for i in 0..n as R_xlen_t {
                 SET_STRING_ELT(text, i, STRING_ELT(lines_sexp, i));
@@ -2719,7 +2719,7 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             Rf_unprotect(1);
         }
 
-        let outnames = Rf_allocVector(SEXPTYPE::STRSXP.0, nobjs);
+        let outnames = Rf_allocVector(SEXPTYPE::STRSXP, nobjs);
         for i in 0..nobjs as R_xlen_t {
             SET_STRING_ELT(outnames, i, STRING_ELT(names, i));
         }

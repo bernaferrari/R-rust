@@ -45,7 +45,7 @@ use libc::{_SC_NPROCESSORS_CONF, _SC_NPROCESSORS_ONLN, c_long, sysconf};
 ///   [1] = number of logical processors (including hyperthreading)
 
 pub unsafe fn ncpus(_virtual: SEXP) -> SEXP {
-    let res = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let res = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     Rf_protect(res);
     let ians = INTEGER(res);
 

@@ -236,7 +236,7 @@ unsafe fn R_lsInternal3(env: SEXP, all: c_int, sorted: c_int) -> SEXP {
 
         if env.is_null() || !isEnvironment(env) {
             // Return empty vector for non-environments
-            return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
 
         // Step 1: Count names
@@ -251,7 +251,7 @@ unsafe fn R_lsInternal3(env: SEXP, all: c_int, sorted: c_int) -> SEXP {
         }
 
         // Step 2: Allocate and fill
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, count);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, count);
         let mut idx: c_int = 0;
         f = frame;
         while !f.is_null() && f != R_NilValue() {
@@ -286,7 +286,7 @@ pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         use crate::sexp::constructors::Rf_allocVector;
 
         if args.is_null() || args == R_NilValue() {
-            return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
 
         let env = CAR(args);
@@ -783,7 +783,7 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
         let base_env = R_BaseEnv();
 
         if global_env.is_null() || base_env.is_null() {
-            return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::STRSXP, 0);
         }
 
         // Count environments in search path
@@ -794,7 +794,7 @@ pub unsafe fn do_search(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP
             t = ENCLOS(t);
         }
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, n);
         if ans.is_null() {
             error("could not allocate search result");
         }

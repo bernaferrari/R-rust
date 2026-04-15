@@ -251,10 +251,10 @@ unsafe fn is_raw(x: SEXP) -> bool {
 unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
     unsafe {
         if x.is_null() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
         let len = XLENGTH(x) as usize;
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP.0, len as R_xlen_t));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, len as R_xlen_t));
         let pa = LOGICAL(ans);
         let t = TYPEOF(x);
 
@@ -315,7 +315,7 @@ unsafe fn coerce_to_logical(x: SEXP) -> SEXP {
 unsafe fn lunary(arg: SEXP) -> SEXP {
     unsafe {
         if arg.is_null() {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
 
         let len = XLENGTH(arg) as usize;
@@ -405,10 +405,10 @@ unsafe fn binary_logic(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n = if n1 > n2 { n1 } else { n2 };
 
         if n1 == 0 || n2 == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP.0, n as R_xlen_t));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n as R_xlen_t));
         let px1 = LOGICAL(s1);
         let px2 = LOGICAL(s2);
         let pa = LOGICAL(ans);
@@ -442,10 +442,10 @@ unsafe fn binary_logic_raw(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n = if n1 > n2 { n1 } else { n2 };
 
         if n1 == 0 || n2 == 0 {
-            return Rf_allocVector3(SEXPTYPE::RAWSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
         }
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::RAWSXP.0, n as R_xlen_t));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::RAWSXP, n as R_xlen_t));
         let px1 = RAW(s1);
         let px2 = RAW(s2);
         let pa = RAW(ans);
@@ -529,7 +529,7 @@ pub unsafe fn do_logic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Zero-length case
         if nx == 0 || ny == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
 
         // Coerce both to logical and apply binary logic

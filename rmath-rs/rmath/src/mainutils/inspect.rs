@@ -363,7 +363,7 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             // str(NULL) returns " NULL"
-            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             SET_STRING_ELT(ans, 0, Rf_mkChar(b" NULL\0".as_ptr() as *const _));
             Rf_unprotect(1);
             return ans;
@@ -388,7 +388,7 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let type_name = sexptype2char(t);
         let desc = format!(" {} [1:{}] \"{}\"", type_name, len, type_name);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
         SET_STRING_ELT(
             ans,
             0,
@@ -513,7 +513,7 @@ pub unsafe fn do_classname(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
             // Return implicit class
             let t = TYPEOF(x);
             let type_name = sexptype2char(t);
-            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             SET_STRING_ELT(
                 ans,
                 0,
@@ -567,7 +567,7 @@ pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
 
         if x.is_null() || TYPEOF(x) == SEXPTYPE::NILSXP {
             // str(NULL)
-            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+            let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             SET_STRING_ELT(ans, 0, Rf_mkChar(b" NULL\0".as_ptr() as *const _));
             Rf_unprotect(1);
             return ans;
@@ -579,7 +579,7 @@ pub unsafe fn do_structure(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEX
         let len = LENGTH(x);
         let desc = format!("List of {}\n $ : chr \"{}\"", len, type_name);
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 1));
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
         SET_STRING_ELT(
             ans,
             0,
@@ -639,7 +639,7 @@ mod tests {
                 ptr::null_mut(),
             );
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             let s = CHAR(STRING_ELT(result, 0));
             let type_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
             assert_eq!(type_str, "integer");
@@ -712,7 +712,7 @@ mod tests {
     #[test]
     fn test_length_integer() {
         unsafe {
-            let x = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 5));
+            let x = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
             let result = do_length(
                 ptr::null_mut(),
                 ptr::null_mut(),

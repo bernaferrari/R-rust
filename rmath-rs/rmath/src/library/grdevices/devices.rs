@@ -204,7 +204,7 @@ pub unsafe fn devoff(args: SEXP) -> SEXP {
 pub unsafe fn devsize(args: SEXP) -> SEXP {
     // Stub: GEcurrentDevice returns null, so we cannot call dd->size().
     // Return c(0, 0) as placeholder.
-    let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, 2);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
     *REAL(ans).add(0) = 0.0;
     *REAL(ans).add(1) = 0.0;
     ans
@@ -247,7 +247,7 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     args = CDR(args);
     capabilities = CAR(args);
 
-    trans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    trans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(trans).add(0) = 0; // no transparency
     SET_VECTOR_ELT(
         capabilities,
@@ -256,7 +256,7 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     );
     Rf_unprotect(1);
 
-    transbg = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    transbg = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(transbg).add(0) = 0; // no transparent bg
     SET_VECTOR_ELT(
         capabilities,
@@ -265,7 +265,7 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     );
     Rf_unprotect(1);
 
-    raster = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    raster = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(raster).add(0) = 1; // conservative default
     SET_VECTOR_ELT(
         capabilities,
@@ -274,17 +274,17 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     );
     Rf_unprotect(1);
 
-    capture = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    capture = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(capture).add(0) = 1; // conservative default
     SET_VECTOR_ELT(capabilities, R_GE_capability_capture as R_xlen_t, capture);
     Rf_unprotect(1);
 
-    locator = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    locator = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(locator).add(0) = 1; // conservative default
     SET_VECTOR_ELT(capabilities, R_GE_capability_locator as R_xlen_t, locator);
     Rf_unprotect(1);
 
-    events = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 5));
+    events = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
     *INTEGER(events).add(0) = 0; // canGenMouseDown
     *INTEGER(events).add(1) = 0; // canGenMouseMove
     *INTEGER(events).add(2) = 0; // canGenMouseUp
@@ -293,12 +293,12 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     SET_VECTOR_ELT(capabilities, R_GE_capability_events as R_xlen_t, events);
     Rf_unprotect(1);
 
-    patterns = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    patterns = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(patterns).add(0) = NA_INTEGER;
     SET_VECTOR_ELT(capabilities, R_GE_capability_patterns as R_xlen_t, patterns);
     Rf_unprotect(1);
 
-    clippaths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    clippaths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(clippaths).add(0) = NA_INTEGER;
     SET_VECTOR_ELT(
         capabilities,
@@ -307,15 +307,15 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     );
     Rf_unprotect(1);
 
-    masks = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    masks = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(masks).add(0) = NA_INTEGER;
     SET_VECTOR_ELT(capabilities, R_GE_capability_masks as R_xlen_t, masks);
     Rf_unprotect(1);
 
     // deviceVersion < R_GE_group (stub), so all 0
-    compositing = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
-    transforms = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
-    paths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    compositing = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+    transforms = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+    paths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(compositing).add(0) = 0;
     *INTEGER(transforms).add(0) = 0;
     *INTEGER(paths).add(0) = 0;
@@ -332,13 +332,13 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     SET_VECTOR_ELT(capabilities, R_GE_capability_paths as R_xlen_t, paths);
     Rf_unprotect(3);
 
-    glyphs = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    glyphs = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     // deviceVersion < R_GE_glyphs (stub), so 0
     *INTEGER(glyphs).add(0) = 0;
     SET_VECTOR_ELT(capabilities, R_GE_capability_glyphs as R_xlen_t, glyphs);
     Rf_unprotect(1);
 
-    variableFonts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    variableFonts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     // deviceVersion < R_GE_fontVar (stub), so 0
     *INTEGER(variableFonts).add(0) = 0;
     SET_VECTOR_ELT(
@@ -388,7 +388,7 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
     let nrow = *INTEGER(dim_attr).add(0);
     let ncol = *INTEGER(dim_attr).add(1);
 
-    let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, size as c_int));
+    let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, size as c_int));
     let rint = INTEGER(raster);
     let mut i: c_int = 0;
     while i < size {
@@ -400,7 +400,7 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
         i += 1;
     }
 
-    let idim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 2));
+    let idim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
     *INTEGER(idim).add(0) = nrow;
     *INTEGER(idim).add(1) = ncol;
     setAttrib(image, R_DimSymbol(), idim);

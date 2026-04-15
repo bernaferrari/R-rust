@@ -102,7 +102,7 @@ unsafe fn ncols(x: SEXP) -> c_int {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let ans = Rf_allocVector(sexptype, nrow * ncol);
     Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     Rf_protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim.add(1)) = ncol;
@@ -144,8 +144,8 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
     let q = ncols(e);
     let tol = asReal(stol);
 
-    let hat = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
-    let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.0, n, q));
+    let hat = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+    let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, n, q));
 
     lminfl_(
         REAL(qr),
@@ -167,8 +167,8 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
         }
     }
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
     setAttrib(ans, R_NamesSymbol(), nm);
 
     let mut m: c_int = 0;

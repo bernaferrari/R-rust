@@ -34,7 +34,7 @@ pub unsafe fn R_ParseVector(_text: SEXP, _n: c_int, _status: *mut c_int, _srcfil
         if !_status.is_null() {
             *_status = PARSE_OK;
         }
-        Rf_allocVector(SEXPTYPE::EXPRSXP.0, 0)
+        Rf_allocVector(SEXPTYPE::EXPRSXP, 0)
     }
 }
 
@@ -112,7 +112,7 @@ pub unsafe fn R_ParseVectorBuffer(
         if !_status.is_null() {
             *_status = PARSE_OK;
         }
-        Rf_allocVector(SEXPTYPE::EXPRSXP.0, 0)
+        Rf_allocVector(SEXPTYPE::EXPRSXP, 0)
     }
 }
 

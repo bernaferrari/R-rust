@@ -303,10 +303,10 @@ pub unsafe fn Rsm(x: SEXP, stype: SEXP, send: SEXP) -> SEXP {
     let type_ = asInteger(stype);
     let n = XLENGTH(x);
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n as c_int));
-    let y = Rf_allocVector(SEXPTYPE::REALSXP.0, n as c_int);
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n as c_int));
+    let y = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);
     SET_VECTOR_ELT(ans, 0, y);
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
     setAttrib(ans, R_NamesSymbol(), nm);
     SET_STRING_ELT(nm, 0, Rf_mkChar(b"y\0".as_ptr() as *const _));
 

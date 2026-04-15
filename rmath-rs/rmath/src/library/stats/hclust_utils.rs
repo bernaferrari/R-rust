@@ -36,7 +36,7 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     let mut m_nr = vec![0i32; (n + 1) as usize];
     let mut z = vec![0i32; (n + 1) as usize];
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.0, n, LENGTH(which)));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP, n, LENGTH(which)));
     let i_ans = INTEGER(ans);
 
     let mut k: c_int = 1;

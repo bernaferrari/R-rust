@@ -183,7 +183,7 @@ pub unsafe fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let q = coerceVector(q, SEXPTYPE::REALSXP.0);
     Rf_protect(q);
     let len = LENGTH(q);
-    let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, len as c_int));
+    let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len as c_int));
     pansari(len as c_int, REAL(q), REAL(p), m, n);
     Rf_unprotect(2);
     p
@@ -195,7 +195,7 @@ pub unsafe fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let p = coerceVector(p, SEXPTYPE::REALSXP.0);
     Rf_protect(p);
     let len = LENGTH(p);
-    let q = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, len as c_int));
+    let q = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len as c_int));
     qansari(len as c_int, REAL(p), REAL(q), m, n);
     Rf_unprotect(2);
     q

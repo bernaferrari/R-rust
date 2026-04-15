@@ -76,7 +76,7 @@ unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let ans = Rf_allocVector(sexptype, nrow * ncol);
     Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     Rf_protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim.add(1)) = ncol;
@@ -1256,7 +1256,7 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
         error(VAR_FACTOR_MSG);
     }
 
-    x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP));
+    x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
     if isMatrix(x) {
         n = nrows(x);
         ncx = ncols(x);
@@ -1272,7 +1272,7 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
         if isFactor(y) {
             error(VAR_FACTOR_MSG);
         }
-        y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP));
+        y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.0));
         nprotect += 1;
         if isMatrix(y) {
             if nrows(y) != n {
@@ -1335,17 +1335,17 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
 
     ansmat = isMatrix(x);
     if ansmat {
-        ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.0, ncx, ncy));
+        ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, ncx, ncy));
     } else {
-        ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncx * ncy));
+        ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncx * ncy));
     }
 
     sd_0 = false;
 
     if Rf_isNull(y) != 0 {
         if everything {
-            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncx));
-            ind = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP.0, ncx));
+            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncx));
+            ind = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, ncx));
             find_na_1(n, ncx, REAL(x), LOGICAL(ind));
             cov_na_1(
                 n,
@@ -1361,8 +1361,8 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
             Rf_unprotect(2);
         } else if !pair {
             // all | complete "var"
-            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncx));
-            ind = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, n));
+            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncx));
+            ind = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n));
             complete1(n, ncx, REAL(x), INTEGER(ind), na_fail);
             cov_complete1(
                 n,
@@ -1395,10 +1395,10 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
     } else {
         // Co[vr](x, y)
         if everything {
-            let has_na_y = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP.0, ncy));
-            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncx));
-            ym = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncy));
-            ind = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP.0, ncx));
+            let has_na_y = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, ncy));
+            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncx));
+            ym = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncy));
+            ind = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, ncx));
 
             find_na_2(
                 n,
@@ -1426,9 +1426,9 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
             );
             Rf_unprotect(4);
         } else if !pair {
-            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncx));
-            ym = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, ncy));
-            ind = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, n));
+            xm = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncx));
+            ym = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncy));
+            ind = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n));
             complete2(n, ncx, ncy, REAL(x), REAL(y), INTEGER(ind), na_fail);
             cov_complete2(
                 n,
@@ -1477,7 +1477,7 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
         if Rf_isNull(y) != 0 {
             let x_dn = getAttrib(x, R_DimNamesSymbol());
             if !x_dn.is_null() && Rf_isNull(VECTOR_ELT(x_dn, 1)) == 0 {
-                ind = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+                ind = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
                 SET_VECTOR_ELT(ind, 0, duplicate(VECTOR_ELT(x_dn, 1)));
                 SET_VECTOR_ELT(ind, 1, duplicate(VECTOR_ELT(x_dn, 1)));
                 setAttrib(ans, R_DimNamesSymbol(), ind);
@@ -1489,7 +1489,7 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
             if (length(x_dn) >= 2 && Rf_isNull(VECTOR_ELT(x_dn, 1)) == 0)
                 || (length(y_dn) >= 2 && Rf_isNull(VECTOR_ELT(y_dn, 1)) == 0)
             {
-                ind = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+                ind = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
                 if length(x_dn) >= 2 && Rf_isNull(VECTOR_ELT(x_dn, 1)) == 0 {
                     SET_VECTOR_ELT(ind, 0, duplicate(VECTOR_ELT(x_dn, 1)));
                 }

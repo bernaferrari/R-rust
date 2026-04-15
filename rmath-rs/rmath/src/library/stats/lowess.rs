@@ -318,7 +318,7 @@ pub unsafe fn lowess(x: SEXP, y: SEXP, sf: SEXP, siter: SEXP, sdelta: SEXP) -> S
         Rf_error(b"'delta' must be finite and > 0\0".as_ptr() as *const _);
     }
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, nx));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nx));
     let mut rw = vec![0.0f64; nx as usize];
     let mut res = vec![0.0f64; nx as usize];
     clowess(

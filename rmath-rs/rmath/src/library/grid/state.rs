@@ -137,7 +137,7 @@ unsafe fn lang1(_sym: SEXP) -> SEXP {
 /// Create the grid system state (VECSXP of length 18).
 /// One element per GSS_* constant.
 pub unsafe fn createGridSystemState() -> SEXP {
-    Rf_allocVector(SEXPTYPE::VECSXP.0 as i32, 18)
+    Rf_allocVector(SEXPTYPE::VECSXP, 18)
 }
 
 /// Initialize the display list for a device.
@@ -146,9 +146,9 @@ pub unsafe fn createGridSystemState() -> SEXP {
 /// index to 0, and marks the display list as active.
 #[unsafe(no_mangle)]
 pub unsafe fn initDL(dd: pGEDevDesc) {
-    let dl = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 100));
+    let dl = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 100));
     setGridStateElement(dd, GSS_DL, dl);
-    setGridStateElement(dd, GSS_DLINDEX, Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    setGridStateElement(dd, GSS_DLINDEX, Rf_allocVector(SEXPTYPE::INTSXP, 1));
     setGridStateElement(dd, GSS_DLON, crate::sexp::constructors::Rf_ScalarLogical(1));
     Rf_unprotect(1);
 }
@@ -168,19 +168,19 @@ pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
     Rf_protect(state);
 
     // GSS_DEVSIZE: current size of device
-    let devsize = Rf_allocVector(SEXPTYPE::REALSXP.0 as i32, 2);
+    let devsize = Rf_allocVector(SEXPTYPE::REALSXP, 2);
     *REAL(devsize).add(0) = 0.0;
     *REAL(devsize).add(1) = 0.0;
     SET_VECTOR_ELT(state, GSS_DEVSIZE as R_xlen_t, devsize);
 
     // GSS_CURRLOC: current location of grid "pen"
-    let currloc = Rf_allocVector(SEXPTYPE::REALSXP.0 as i32, 2);
+    let currloc = Rf_allocVector(SEXPTYPE::REALSXP, 2);
     *REAL(currloc).add(0) = NA_REAL;
     *REAL(currloc).add(1) = NA_REAL;
     SET_VECTOR_ELT(state, GSS_CURRLOC as R_xlen_t, currloc);
 
     // GSS_PREVLOC: previous location of grid "pen"
-    let prevloc = Rf_allocVector(SEXPTYPE::REALSXP.0 as i32, 2);
+    let prevloc = Rf_allocVector(SEXPTYPE::REALSXP, 2);
     *REAL(prevloc).add(0) = NA_REAL;
     *REAL(prevloc).add(1) = NA_REAL;
     SET_VECTOR_ELT(state, GSS_PREVLOC as R_xlen_t, prevloc);
@@ -280,7 +280,7 @@ unsafe fn globaliseState(state: SEXP) {
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
     let globalstate = findVar(sym, R_gridEvalEnv);
     Rf_protect(globalstate);
-    let indexsxp = Rf_allocVector(SEXPTYPE::INTSXP.0 as i32, 1);
+    let indexsxp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
     Rf_protect(indexsxp);
     *INTEGER(indexsxp).add(0) = index;
     SET_VECTOR_ELT(state, GSS_GLOBALINDEX as R_xlen_t, indexsxp);
@@ -322,12 +322,12 @@ pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
             // Stub: copy display list between devices
         }
         GE_CheckPlot => {
-            let valid = Rf_allocVector(SEXPTYPE::LGLSXP.0 as i32, 1);
+            let valid = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
             *LOGICAL(valid).add(0) = 1;
             result = valid;
         }
         GE_SaveSnapshotState => {
-            result = Rf_allocVector(SEXPTYPE::VECSXP.0 as i32, 2);
+            result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
             Rf_protect(result);
             SET_VECTOR_ELT(result, 0, R_NilValue());
             SET_VECTOR_ELT(result, 1, R_NilValue());
@@ -346,7 +346,7 @@ pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
         }
         GE_ScalePS => {
             // data is a numeric scale factor
-            let scale = Rf_allocVector(SEXPTYPE::REALSXP.0 as i32, 1);
+            let scale = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             *REAL(scale).add(0) = 1.0; // stub
             let _ = dd;
             let _ = data;

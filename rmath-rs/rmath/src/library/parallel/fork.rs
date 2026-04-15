@@ -552,7 +552,7 @@ pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
     let mut sipfd: [c_int; 2] = [-1, -1];
     let mut pid: pid_t = 0;
     let estranged = asInteger(sEstranged) > 0;
-    let res = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+    let res = Rf_allocVector(SEXPTYPE::INTSXP, 3);
     let res_i = INTEGER(res);
 
     if !estranged {
@@ -975,7 +975,7 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
     }
 
     ci = children.with(|v| v.get());
-    let res = Rf_allocVector(SEXPTYPE::INTSXP.0, sr as c_int);
+    let res = Rf_allocVector(SEXPTYPE::INTSXP, sr as c_int);
     let mut res_i = INTEGER(res);
     while !ci.is_null() {
         if (*ci).detached == 0 && (*ci).ppid == ppid && FD_ISSET((*ci).pfd, &fs) {
@@ -1008,7 +1008,7 @@ unsafe fn read_child_ci(ci: *mut child_info_t) -> SEXP {
         terminate_and_detach_child_ci(ci);
         return Rf_ScalarInteger(pid as c_int);
     } else {
-        let rv = Rf_allocVector(SEXPTYPE::RAWSXP.0, len as c_int);
+        let rv = Rf_allocVector(SEXPTYPE::RAWSXP, len as c_int);
         let rvb = RAW(rv);
         let mut i: R_xlen_t = 0;
         while i < len {
@@ -1153,7 +1153,7 @@ pub unsafe fn mc_children() -> SEXP {
         ci = (*ci).next;
     }
 
-    let res = Rf_allocVector(SEXPTYPE::INTSXP.0, count as c_int);
+    let res = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
     if count > 0 {
         let mut pids = INTEGER(res);
         ci = children.with(|v| v.get());
@@ -1184,7 +1184,7 @@ pub unsafe fn mc_fds(sFdi: SEXP) -> SEXP {
         ci = (*ci).next;
     }
 
-    let res = Rf_allocVector(SEXPTYPE::INTSXP.0, count as c_int);
+    let res = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
     if count > 0 {
         let mut fds = INTEGER(res);
         ci = children.with(|v| v.get());
@@ -1367,12 +1367,12 @@ pub unsafe fn mc_rm_child(_sPid: SEXP) -> SEXP {
 
 #[cfg(not(unix))]
 pub unsafe fn mc_children() -> SEXP {
-    Rf_allocVector(SEXPTYPE::INTSXP.0, 0)
+    Rf_allocVector(SEXPTYPE::INTSXP, 0)
 }
 
 #[cfg(not(unix))]
 pub unsafe fn mc_fds(_sFdi: SEXP) -> SEXP {
-    Rf_allocVector(SEXPTYPE::INTSXP.0, 0)
+    Rf_allocVector(SEXPTYPE::INTSXP, 0)
 }
 
 #[cfg(not(unix))]

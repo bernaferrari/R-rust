@@ -264,7 +264,7 @@ unsafe fn alloc_buffer(size: c_int, parent: *mut Buffer) -> *mut Buffer {
 /// Convert doubly-linked buffers into one big raw vector
 unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
     if buf.is_null() {
-        return Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
     }
     let mut buf = buf;
     let mut len: c_int = 0;
@@ -516,8 +516,8 @@ unsafe fn parse_query(query: *mut c_char) -> SEXP {
     }
     parts += 1;
 
-    let res = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, parts));
-    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, parts));
+    let res = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, parts));
+    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, parts));
 
     let mut s = query;
     let mut key: *mut c_char = std::ptr::null_mut();

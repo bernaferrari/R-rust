@@ -129,7 +129,7 @@ pub unsafe fn do_commandArgs(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEX
 
         let n = NumCommandLineArgs.with(|v| v.get()) as R_xlen_t;
         let num_args = NumCommandLineArgs.with(|v| v.get());
-        let vals = Rf_allocVector(SEXPTYPE::STRSXP.0, num_args);
+        let vals = Rf_allocVector(SEXPTYPE::STRSXP, num_args);
 
         if vals.is_null() {
             return ptr::null_mut();

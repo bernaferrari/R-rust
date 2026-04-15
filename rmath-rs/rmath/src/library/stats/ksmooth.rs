@@ -181,15 +181,15 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
 
     let nx = XLENGTH(x);
     let np = XLENGTH(xp);
-    let yp = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, np as c_int));
+    let yp = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, np as c_int));
 
     BDRksmooth(REAL(x), REAL(y), nx, REAL(xp), REAL(yp), np, krn, bw);
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
     SET_VECTOR_ELT(ans, 0, xp);
     SET_VECTOR_ELT(ans, 1, yp);
 
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
     setAttrib(ans, R_NamesSymbol(), nm);
     SET_STRING_ELT(nm, 0, mkChar("x"));
     SET_STRING_ELT(nm, 1, mkChar("y"));

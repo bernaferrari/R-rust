@@ -103,7 +103,7 @@ pub unsafe fn dpermdist2(x: SEXP, m: SEXP) -> SEXP {
         }
     }
 
-    let ret = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, sum_b));
+    let ret = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, sum_b));
     let dret = REAL(ret);
     let row_start = (sum_a as usize) * sum_bp1 + 1;
     let mut msum = 0.0;
@@ -138,7 +138,7 @@ pub unsafe fn dpermdist1(x: SEXP) -> SEXP {
         sum_a += *iscores.add(i);
     }
 
-    let ret = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, sum_a + 1));
+    let ret = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, sum_a + 1));
     let dH = REAL(ret);
     for i in 0..=(sum_a as usize) {
         *dH.add(i) = 0.0;

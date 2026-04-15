@@ -454,7 +454,7 @@ unsafe fn set_connection_class(ans: SEXP, specific_class: &str) {
         if class_sym.is_null() {
             return;
         }
-        let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+        let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
         if class_vec.is_null() {
             return;
         }
@@ -1318,7 +1318,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
 
         // Build result STRSXP
         let nlines = lines.len() as c_int;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlines);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
                 let c_line = CString::new(line.as_str())
@@ -1711,7 +1711,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
 
         let lines = conn.text_lines.borrow();
         let nlines = lines.len() as c_int;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nlines);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, nlines);
         if !ans.is_null() {
             for (idx, line) in lines.iter().enumerate() {
                 let c_line = CString::new(line.as_str())
@@ -1795,7 +1795,7 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
             }
         }
 
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, count as c_int);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, count as c_int);
         if !ans.is_null() {
             let mut idx = 0usize;
             for i in 0..table.len() {
@@ -1939,13 +1939,13 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
             let raw_data = RAW(scon);
             let raw_len = LENGTH(scon) as usize;
             if raw_data.is_null() || raw_len == 0 {
-                return Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
+                return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
             }
             let bytes = std::slice::from_raw_parts(raw_data, raw_len);
 
             if what == "raw" {
                 let count = n.min(raw_len);
-                let ans = Rf_allocVector(SEXPTYPE::RAWSXP.0, count as c_int);
+                let ans = Rf_allocVector(SEXPTYPE::RAWSXP, count as c_int);
                 if !ans.is_null() && count > 0 {
                     let dest = RAW(ans);
                     ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count);
@@ -2000,7 +2000,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                     }
                 }
                 let nstr = strings.len() as c_int;
-                let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nstr);
+                let ans = Rf_allocVector(SEXPTYPE::STRSXP, nstr);
                 if !ans.is_null() {
                     for (idx, s) in strings.iter().enumerate() {
                         let c_s = CString::new(s.as_str())
@@ -2012,7 +2012,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                 return ans;
             } else if what == "logical" {
                 let count = (n * 4).min(raw_len) / 4;
-                let ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, count as c_int);
+                let ans = Rf_allocVector(SEXPTYPE::LGLSXP, count as c_int);
                 if !ans.is_null() && count > 0 {
                     let dest = LOGICAL(ans) as *mut u8;
                     ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count * 4);
@@ -2020,14 +2020,14 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                 return ans;
             } else if what == "complex" {
                 let count = (n * 16).min(raw_len) / 16;
-                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP.0, count as c_int);
+                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
                 if !ans.is_null() && count > 0 {
                     let dest = COMPLEX(ans) as *mut u8;
                     ptr::copy_nonoverlapping(bytes.as_ptr(), dest, count * 16);
                 }
                 return ans;
             }
-            return Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
         }
 
         // Reading from a connection
@@ -2057,7 +2057,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                         match file.read(&mut buf) {
                             Ok(bytes_read) => {
                                 buf.truncate(bytes_read);
-                                let ans = Rf_allocVector(SEXPTYPE::RAWSXP.0, bytes_read as c_int);
+                                let ans = Rf_allocVector(SEXPTYPE::RAWSXP, bytes_read as c_int);
                                 if !ans.is_null() && bytes_read > 0 {
                                     let dest = RAW(ans);
                                     ptr::copy_nonoverlapping(buf.as_ptr(), dest, bytes_read);
@@ -2073,7 +2073,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                         match file.read(&mut buf) {
                             Ok(bytes_read) => {
                                 let count = bytes_read / 4;
-                                let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, count as c_int);
+                                let ans = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
                                 if !ans.is_null() && count > 0 {
                                     let dest = INTEGER(ans) as *mut u8;
                                     ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 4);
@@ -2089,7 +2089,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                         match file.read(&mut buf) {
                             Ok(bytes_read) => {
                                 let count = bytes_read / 8;
-                                let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, count as c_int);
+                                let ans = Rf_allocVector(SEXPTYPE::REALSXP, count as c_int);
                                 if !ans.is_null() && count > 0 {
                                     let dest = REAL(ans) as *mut u8;
                                     ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 8);
@@ -2122,7 +2122,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                                     }
                                 }
                                 let nstr = strings.len() as c_int;
-                                let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, nstr);
+                                let ans = Rf_allocVector(SEXPTYPE::STRSXP, nstr);
                                 if !ans.is_null() {
                                     for (idx, s) in strings.iter().enumerate() {
                                         let c_s = CString::new(s.as_str()).unwrap_or_else(|_| {
@@ -2143,7 +2143,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                         match file.read(&mut buf) {
                             Ok(bytes_read) => {
                                 let count = bytes_read / 4;
-                                let ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, count as c_int);
+                                let ans = Rf_allocVector(SEXPTYPE::LGLSXP, count as c_int);
                                 if !ans.is_null() && count > 0 {
                                     let dest = LOGICAL(ans) as *mut u8;
                                     ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 4);
@@ -2159,7 +2159,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                         match file.read(&mut buf) {
                             Ok(bytes_read) => {
                                 let count = bytes_read / 16;
-                                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP.0, count as c_int);
+                                let ans = Rf_allocVector(SEXPTYPE::CPLXSXP, count as c_int);
                                 if !ans.is_null() && count > 0 {
                                     let dest = COMPLEX(ans) as *mut u8;
                                     ptr::copy_nonoverlapping(buf.as_ptr(), dest, count * 16);
@@ -2177,7 +2177,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                 let remaining = &conn.raw_data[conn.raw_pos..];
                 if what == "raw" {
                     let count = n.min(remaining.len());
-                    let ans = Rf_allocVector(SEXPTYPE::RAWSXP.0, count as c_int);
+                    let ans = Rf_allocVector(SEXPTYPE::RAWSXP, count as c_int);
                     if !ans.is_null() && count > 0 {
                         let dest = RAW(ans);
                         ptr::copy_nonoverlapping(remaining.as_ptr(), dest, count);
@@ -2186,7 +2186,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                     return ans;
                 } else if what == "integer" || what == "int" {
                     let count = (n * 4).min(remaining.len()) / 4;
-                    let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, count as c_int);
+                    let ans = Rf_allocVector(SEXPTYPE::INTSXP, count as c_int);
                     if !ans.is_null() && count > 0 {
                         let dest = INTEGER(ans) as *mut u8;
                         ptr::copy_nonoverlapping(remaining.as_ptr(), dest, count * 4);
@@ -2195,7 +2195,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
                     return ans;
                 } else if what == "numeric" || what == "double" {
                     let count = (n * 8).min(remaining.len()) / 8;
-                    let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, count as c_int);
+                    let ans = Rf_allocVector(SEXPTYPE::REALSXP, count as c_int);
                     if !ans.is_null() && count > 0 {
                         let dest = REAL(ans) as *mut u8;
                         ptr::copy_nonoverlapping(remaining.as_ptr(), dest, count * 8);
@@ -2209,7 +2209,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
             }
         }
 
-        Rf_allocVector(SEXPTYPE::RAWSXP.0, 0)
+        Rf_allocVector(SEXPTYPE::RAWSXP, 0)
     }
 }
 
@@ -2236,7 +2236,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         let obj_type = TYPEOF(object);
         let obj_len = LENGTH(object) as usize;
         if obj_len == 0 {
-            return Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
+            return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
         }
 
         let i = as_integer(scon) as usize;
@@ -2292,7 +2292,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
                     }
                     _ => {} // intentionally unhandled: unknown connection kind for write
                 }
-                return Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
+                return Rf_allocVector(SEXPTYPE::RAWSXP, 0);
             }
             _ => {
                 r_error("'object' is not an atomic vector type");
@@ -2466,7 +2466,7 @@ mod tests {
         let _lock = reset_connections();
         unsafe {
             // Create a raw vector
-            let raw = Rf_allocVector(SEXPTYPE::RAWSXP.0, 5);
+            let raw = Rf_allocVector(SEXPTYPE::RAWSXP, 5);
             Rf_protect(raw);
             let raw_data = RAW(raw);
             *raw_data.add(0) = 1;
@@ -2506,7 +2506,7 @@ mod tests {
         let _lock = reset_connections();
         unsafe {
             // Create a text vector
-            let text = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+            let text = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(text);
             let c1 = Rf_mkChar(test_ok(CString::new("line1")).as_ptr());
             let c2 = Rf_mkChar(test_ok(CString::new("line2")).as_ptr());
@@ -2631,7 +2631,7 @@ mod tests {
         let _lock = reset_connections();
         unsafe {
             // Create a raw vector with some bytes
-            let raw = Rf_allocVector(SEXPTYPE::RAWSXP.0, 8);
+            let raw = Rf_allocVector(SEXPTYPE::RAWSXP, 8);
             Rf_protect(raw);
             let raw_data = RAW(raw);
             // Write 2 integers (4 bytes each): 42 and 100
@@ -2679,7 +2679,7 @@ mod tests {
             // Create a raw output connection
             let desc_sxp = Rf_mkString(test_ok(CString::new("test_write_raw")).as_ptr());
             Rf_protect(desc_sxp);
-            let raw_sxp = Rf_allocVector(SEXPTYPE::RAWSXP.0, 0);
+            let raw_sxp = Rf_allocVector(SEXPTYPE::RAWSXP, 0);
             Rf_protect(raw_sxp);
             let open_sxp = Rf_mkString(test_ok(CString::new("wb")).as_ptr());
             Rf_protect(open_sxp);
@@ -2701,7 +2701,7 @@ mod tests {
             let conn_idx = as_integer(conn_result);
 
             // Create an integer vector to write
-            let obj = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+            let obj = Rf_allocVector(SEXPTYPE::INTSXP, 3);
             Rf_protect(obj);
             *INTEGER(obj) = 10;
             *INTEGER(obj).add(1) = 20;
@@ -2918,7 +2918,7 @@ mod tests {
             Rf_protect(conn_result);
 
             // Create text to write
-            let text = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+            let text = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(text);
             let c1 = Rf_mkChar(test_ok(CString::new("hello")).as_ptr());
             let c2 = Rf_mkChar(test_ok(CString::new("world")).as_ptr());

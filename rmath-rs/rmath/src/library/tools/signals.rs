@@ -37,7 +37,7 @@ pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
     let sspid = unsafe { Rf_coerceVector(spid, SEXPTYPE::INTSXP.0) };
     Rf_protect(sspid);
     let ns = unsafe { LENGTH(sspid) as u32 };
-    let sres = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP.0, ns as c_int) };
+    let sres = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, ns as c_int) };
     Rf_protect(sres);
     let pid = unsafe { INTEGER(sspid) };
     let res = unsafe { LOGICAL(sres) };
@@ -86,7 +86,7 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
     let sspid = unsafe { Rf_coerceVector(spid, SEXPTYPE::INTSXP.0) };
     Rf_protect(sspid);
     let ns = unsafe { LENGTH(sspid) as u32 };
-    let sres = unsafe { Rf_allocVector(SEXPTYPE::INTSXP.0, ns as c_int) };
+    let sres = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, ns as c_int) };
     Rf_protect(sres);
     let pid = unsafe { INTEGER(sspid) };
     let res = unsafe { INTEGER(sres) };

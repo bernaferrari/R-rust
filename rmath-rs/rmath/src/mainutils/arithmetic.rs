@@ -374,7 +374,7 @@ unsafe fn math1_impl(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         let sy = if no_references(sa) {
             sa
         } else {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+            let v = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             Rf_protect(v);
             v
         };
@@ -415,7 +415,7 @@ unsafe fn math1_ari_impl(sa: SEXP, f: fn(f64) -> f64, arg: f64, res: f64) -> SEX
         let sy = if no_references(sa) {
             sa
         } else {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+            let v = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             Rf_protect(v);
             v
         };
@@ -453,7 +453,7 @@ unsafe fn coerce_to_real(x: SEXP) -> SEXP {
             x
         } else if TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP {
             let n = XLENGTH(x);
-            let y = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+            let y = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             let src = INTEGER(x);
             let dst = REAL(y);
             for i in 0..(n as usize) {
@@ -463,7 +463,7 @@ unsafe fn coerce_to_real(x: SEXP) -> SEXP {
             y
         } else {
             // CPLXSXP or other -- for now just return a zero-length REALSXP
-            Rf_allocVector3(SEXPTYPE::REALSXP.0, 0)
+            Rf_allocVector3(SEXPTYPE::REALSXP, 0)
         }
     }
 }
@@ -503,7 +503,7 @@ fn r_sign(x: f64) -> f64 {
 unsafe fn complex_math1_impl(sa: SEXP, f_real: fn(f64) -> f64, f_imag: fn(f64) -> f64) -> SEXP {
     unsafe {
         let n = XLENGTH(sa);
-        let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         let _p1 = Rf_protect(sy);
         let src = COMPLEX(sa);
         let dst = COMPLEX(sy);
@@ -600,7 +600,7 @@ unsafe fn math2_impl(sa: SEXP, sb: SEXP, f: fn(f64, f64) -> f64) -> SEXP {
 
         // Zero-length handling
         if na == 0 || nb == 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
 
         let n = if na > nb { na } else { nb };
@@ -611,7 +611,7 @@ unsafe fn math2_impl(sa: SEXP, sb: SEXP, f: fn(f64, f64) -> f64) -> SEXP {
         let sb = coerce_to_real(sb);
         let _p2 = Rf_protect(sb);
 
-        let sy = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+        let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _p3 = Rf_protect(sy);
 
         let a = REAL(sa);
@@ -695,9 +695,9 @@ unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 
         // DIV and POW produce REALSXP
         let ans = if code == OP_DIV || code == OP_POW {
-            Rf_allocVector3(SEXPTYPE::REALSXP.0, n)
+            Rf_allocVector3(SEXPTYPE::REALSXP, n)
         } else {
-            Rf_allocVector3(SEXPTYPE::INTSXP.0, n)
+            Rf_allocVector3(SEXPTYPE::INTSXP, n)
         };
         let _p = Rf_protect(ans);
 
@@ -809,11 +809,11 @@ unsafe fn real_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         let n2 = XLENGTH(s2);
 
         if n1 == 0 || n2 == 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
 
         let n = if n1 > n2 { n1 } else { n2 };
-        let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         let _p = Rf_protect(ans);
 
         let da = REAL(ans);
@@ -959,7 +959,7 @@ unsafe fn complex_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             if n1 > n2 { n1 } else { n2 }
         };
 
-        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         let _p = Rf_protect(ans);
 
         // Coerce both to complex
@@ -1043,7 +1043,7 @@ unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
             return x;
         }
         let n = XLENGTH(x);
-        let y = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let y = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         let dst = COMPLEX(y);
         if t == SEXPTYPE::REALSXP {
             let src = REAL(x);
@@ -1078,7 +1078,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     let ans = if no_references(s1) {
                         s1
                     } else {
-                        Rf_allocVector3(SEXPTYPE::REALSXP.0, n)
+                        Rf_allocVector3(SEXPTYPE::REALSXP, n)
                     };
                     let _p = Rf_protect(ans);
                     let pa = REAL(ans);
@@ -1097,7 +1097,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     let ans = if no_references(s1) {
                         s1
                     } else {
-                        Rf_allocVector3(SEXPTYPE::INTSXP.0, n)
+                        Rf_allocVector3(SEXPTYPE::INTSXP, n)
                     };
                     let _p = Rf_protect(ans);
                     let pa = INTEGER(ans);
@@ -1119,7 +1119,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                         s1
                     }
                     OP_MINUS => {
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n);
                         let _p = Rf_protect(ans);
                         let pa = INTEGER(ans);
                         let px = LOGICAL(s1);
@@ -1145,7 +1145,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     let ans = if no_references(s1) {
                         s1
                     } else {
-                        Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n)
+                        Rf_allocVector3(SEXPTYPE::CPLXSXP, n)
                     };
                     let _p = Rf_protect(ans);
                     let pa = COMPLEX(ans);
@@ -1203,7 +1203,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             if is_scalar(arg1, SEXPTYPE::REALSXP.0) && is_scalar(arg2, SEXPTYPE::REALSXP.0) {
                 let x1 = *REAL(arg1);
                 let x2 = *REAL(arg2);
-                let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, 1);
+                let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
                 let _p = Rf_protect(ans);
                 let val = match code {
                     OP_PLUS => x1 + x2,
@@ -1227,7 +1227,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     OP_PLUS => {
                         let mut naflag = false;
                         let result = R_integer_plus(i1, i2, &mut naflag);
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
+                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
                         let _p = Rf_protect(ans);
                         *INTEGER(ans) = result;
                         crate::sexp::protect::Rf_unprotect(1);
@@ -1236,7 +1236,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     OP_MINUS => {
                         let mut naflag = false;
                         let result = R_integer_minus(i1, i2, &mut naflag);
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
+                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
                         let _p = Rf_protect(ans);
                         *INTEGER(ans) = result;
                         crate::sexp::protect::Rf_unprotect(1);
@@ -1245,7 +1245,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     OP_TIMES => {
                         let mut naflag = false;
                         let result = R_integer_times(i1, i2, &mut naflag);
-                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP.0, 1);
+                        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
                         let _p = Rf_protect(ans);
                         *INTEGER(ans) = result;
                         crate::sexp::protect::Rf_unprotect(1);
@@ -1253,7 +1253,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     }
                     OP_DIV => {
                         let result = R_integer_divide(i1, i2);
-                        let ans = Rf_allocVector3(SEXPTYPE::REALSXP.0, 1);
+                        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
                         let _p = Rf_protect(ans);
                         *REAL(ans) = result;
                         crate::sexp::protect::Rf_unprotect(1);
@@ -1325,7 +1325,7 @@ unsafe fn coerce_logical_to_int(x: SEXP) -> SEXP {
                 x
             } else {
                 let n = XLENGTH(x);
-                let y = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+                let y = Rf_allocVector3(SEXPTYPE::INTSXP, n);
                 let src = LOGICAL(x);
                 let dst = INTEGER(y);
                 for i in 0..(n as usize) {

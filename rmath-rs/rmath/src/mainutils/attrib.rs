@@ -308,8 +308,8 @@ pub unsafe fn R_getAttributes(x: SEXP) -> SEXP {
         }
 
         // Build result list
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP.0, nattrs);
-        let names = Rf_allocVector(SEXPTYPE::STRSXP.0, nattrs);
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, nattrs);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, nattrs);
         if ans.is_null() || names.is_null() {
             return R_NilValue();
         }

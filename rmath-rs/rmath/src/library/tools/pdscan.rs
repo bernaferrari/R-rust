@@ -41,12 +41,12 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 unsafe fn package_dependencies_scan_one(this: SEXP) -> SEXP {
     if this.is_null() {
         // NA_STRING case: return empty character vector
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
 
     let p = CHAR(this);
     if p.is_null() {
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
     let s_bytes = CStr::from_ptr(p).to_bytes();
 
@@ -99,7 +99,7 @@ unsafe fn package_dependencies_scan_one(this: SEXP) -> SEXP {
         }
     }
 
-    let y = Rf_allocVector(SEXPTYPE::STRSXP.0, nb as c_int);
+    let y = Rf_allocVector(SEXPTYPE::STRSXP, nb as c_int);
     Rf_protect(y);
 
     let mut v: c_int = -1;
@@ -128,7 +128,7 @@ unsafe fn package_dependencies_scan_one(this: SEXP) -> SEXP {
 /// package names found across all elements.
 pub unsafe fn package_dependencies_scan(x: SEXP) -> SEXP {
     if x.is_null() {
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
     if TYPEOF(x) != SEXPTYPE::STRSXP {
         Rf_error(b"non-character argument\0".as_ptr() as *const _);
@@ -136,14 +136,14 @@ pub unsafe fn package_dependencies_scan(x: SEXP) -> SEXP {
 
     let nx = LENGTH(x);
     if nx < 1 {
-        return Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::STRSXP, 0);
     }
     if nx == 1 {
         return package_dependencies_scan_one(STRING_ELT(x, 0));
     }
 
     // Multiple elements: collect into a list, then unlist
-    let z = Rf_allocVector(SEXPTYPE::VECSXP.0, nx);
+    let z = Rf_allocVector(SEXPTYPE::VECSXP, nx);
     Rf_protect(z);
     let mut ny: R_xlen_t = 0;
 
@@ -154,7 +154,7 @@ pub unsafe fn package_dependencies_scan(x: SEXP) -> SEXP {
     }
 
     // Unlist
-    let y = Rf_allocVector(SEXPTYPE::STRSXP.0, ny as c_int);
+    let y = Rf_allocVector(SEXPTYPE::STRSXP, ny as c_int);
     Rf_protect(y);
     let mut k: R_xlen_t = 0;
 

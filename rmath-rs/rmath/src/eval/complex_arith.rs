@@ -76,7 +76,7 @@ pub unsafe fn coerce_to_complex(x: SEXP) -> SEXP {
             return x;
         }
         let n = XLENGTH(x);
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -108,7 +108,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             nb
         };
         if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::CPLXSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::CPLXSXP, 0);
         }
 
         let a_is_complex = TYPEOF(sa) == SEXPTYPE::CPLXSXP;
@@ -121,7 +121,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return crate::eval::arithmetic::real_binary(op, sa, sb);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -216,7 +216,7 @@ pub unsafe fn complex_abs_vec(sa: SEXP) -> SEXP {
             return R_NilValue();
         }
         let n = XLENGTH(sa);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -242,7 +242,7 @@ pub unsafe fn complex_unary_vec(sa: SEXP, f: fn(Rcomplex) -> Rcomplex) -> SEXP {
             return R_NilValue();
         }
         let n = XLENGTH(sa);
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -332,7 +332,7 @@ pub unsafe fn do_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         let n = XLENGTH(re);
         let im_n = if im.is_null() { 0 } else { XLENGTH(im) };
 
-        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -439,7 +439,7 @@ mod tests {
         unsafe {
             let a = Rf_ScalarComplex(Rcomplex { r: 3.0, i: 4.0 });
             let result = complex_abs_vec(a);
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             let v = *REAL(result);
             assert!((v - 5.0).abs() < 1e-10);
         }

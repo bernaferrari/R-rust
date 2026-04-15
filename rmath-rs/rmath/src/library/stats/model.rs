@@ -165,7 +165,7 @@ unsafe fn translateChar(s: SEXP) -> &str {
 
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let s = Rf_allocVector3(sexptype as i32, (nrow * ncol) as R_xlen_t);
-    let dim = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
     *INTEGER(dim).add(0) = nrow;
     *INTEGER(dim).add(1) = ncol;
     setAttrib(s, R_DimSymbol(), dim);
@@ -528,10 +528,10 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     let rnames = Rf_protect(getAttrib(vars, Rf_install("row.names")));
 
     // Check variable types and set up variable info
-    let variable = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, nVar as R_xlen_t));
-    let nlevs = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nVar as R_xlen_t));
-    let ordered = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP.0, nVar as R_xlen_t));
-    let columns = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nVar as R_xlen_t));
+    let variable = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t));
+    let nlevs = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nVar as R_xlen_t));
+    let ordered = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, nVar as R_xlen_t));
+    let columns = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nVar as R_xlen_t));
 
     for i in 0..nVar {
         let mut var_i = VECTOR_ELT(vars, i as R_xlen_t);
@@ -587,8 +587,8 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     // No intercept adjustment (simplified - skip the factor pattern adjustment)
 
     // Compute contrasts
-    let contr1 = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, nVar as R_xlen_t));
-    let contr2 = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, nVar as R_xlen_t));
+    let contr1 = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t));
+    let contr2 = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nVar as R_xlen_t));
 
     let expr = Rf_protect(Rf_lang3(
         Rf_install("contrasts"),
@@ -622,7 +622,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Compute column counts
-    let count = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nterms as R_xlen_t));
+    let count = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nterms as R_xlen_t));
     let mut dnc: f64 = if intrcept != 0 { 1.0 } else { 0.0 };
 
     for j in 0..nterms {
@@ -646,7 +646,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     let nc = dnc as isize;
 
     // Compute assign vector
-    let assign = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nc as R_xlen_t));
+    let assign = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nc as R_xlen_t));
     let mut k: isize = 0;
     if intrcept != 0 {
         *INTEGER(assign).add(k) = 0;
@@ -660,7 +660,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Create column labels
-    let xnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, nc as R_xlen_t));
+    let xnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nc as R_xlen_t));
     k = 0;
     if intrcept != 0 {
         SET_STRING_ELT(xnames, k, Rf_mkChar("(Intercept)"));
@@ -728,7 +728,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Allocate and compute the design matrix
-    let x = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.0, n as c_int, nc as c_int));
+    let x = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, n as c_int, nc as c_int));
     let rx = REAL(x);
 
     // Begin with intercept column
@@ -816,7 +816,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
     }
 
     // Set dimnames
-    let tnames = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+    let tnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
     SET_VECTOR_ELT(tnames, 0, rnames);
     SET_VECTOR_ELT(tnames, 1, xnames);
     setAttrib(x, R_DimNamesSymbol(), tnames);
@@ -1239,7 +1239,7 @@ unsafe fn ExtractVars(formula: SEXP) {
 // Helper: AllocTerm
 unsafe fn AllocTerm() -> SEXP {
     let nw = NWORDS.get();
-    let term = Rf_allocVector3(SEXPTYPE::INTSXP.0, nw as R_xlen_t);
+    let term = Rf_allocVector3(SEXPTYPE::INTSXP, nw as R_xlen_t);
     for i in 0..nw {
         *INTEGER(term).add(i as usize) = 0;
     }
@@ -1472,7 +1472,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     let formula = Rf_protect(EncodeVars(CAR(args)));
 
     // Step 2a: Compute variable names
-    let varnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, nvar as R_xlen_t));
+    let varnames = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nvar as R_xlen_t));
     {
         let mut v = CDR(VARLIST.get() as SEXP);
         let mut idx: R_xlen_t = 0;
@@ -1480,7 +1480,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
             SET_STRING_ELT(
                 varnames,
                 idx,
-                STRING_ELT(Rf_allocVector3(SEXPTYPE::EXPRSXP.0, 1), 0),
+                STRING_ELT(Rf_allocVector3(SEXPTYPE::EXPRSXP, 1), 0),
             );
             // Simplified: use the symbol name directly
             idx += 1;
@@ -1493,8 +1493,8 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     // Skip offset removal for simplicity (would need deparse1line)
 
     // Step 3: Reorder terms
-    let ord = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, nterm as R_xlen_t));
-    let pattern = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, nterm as R_xlen_t));
+    let ord = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, nterm as R_xlen_t));
+    let pattern = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nterm as R_xlen_t));
 
     let mut call = formula;
     let mut bitmax: c_int = 0;
@@ -1532,11 +1532,11 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
             nn += nvar;
         }
     } else {
-        pat = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, 0));
+        pat = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, 0));
     }
 
     // Step 5: Compute term labels
-    let termlabs = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, nterm as R_xlen_t));
+    let termlabs = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, nterm as R_xlen_t));
     {
         let mut call = formula;
         let mut idx: R_xlen_t = 0;
@@ -1561,7 +1561,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
 
     // Set dimnames on pattern
     if nterm > 0 {
-        let dn = Rf_allocVector3(SEXPTYPE::VECSXP.0, 2);
+        let dn = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         SET_VECTOR_ELT(dn, 0, varnames);
         SET_VECTOR_ELT(dn, 1, termlabs);
         setAttrib(pat, R_DimNamesSymbol(), dn);
@@ -1570,7 +1570,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     // Set remaining attributes
     // (simplified - skip specials, dot expansion, etc.)
 
-    let order_vec = Rf_allocVector3(SEXPTYPE::INTSXP.0, nterm as R_xlen_t);
+    let order_vec = Rf_allocVector3(SEXPTYPE::INTSXP, nterm as R_xlen_t);
     call = formula;
     for idx in 0..nterm {
         *INTEGER(order_vec).add(idx as usize) = *INTEGER(ord).add(idx as usize);

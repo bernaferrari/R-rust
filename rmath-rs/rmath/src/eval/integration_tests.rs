@@ -103,7 +103,7 @@ fn test_self_evaluating_string() {
 #[test]
 fn test_eval_integer_vector() {
     unsafe {
-        let vec = Rf_allocVector(SEXPTYPE::INTSXP.0, 5);
+        let vec = Rf_allocVector(SEXPTYPE::INTSXP, 5);
         assert!(!vec.is_null());
         let data = (*vec).gengc_next_node as *mut c_int;
         for i in 0..5 {
@@ -125,7 +125,7 @@ fn test_eval_integer_vector() {
 #[test]
 fn test_eval_real_vector() {
     unsafe {
-        let vec = Rf_allocVector(SEXPTYPE::REALSXP.0, 3);
+        let vec = Rf_allocVector(SEXPTYPE::REALSXP, 3);
         assert!(!vec.is_null());
         let data = (*vec).gengc_next_node as *mut f64;
         *data = 1.1;
@@ -294,7 +294,7 @@ fn test_pairlist_eval() {
 #[test]
 fn test_arena_alloc_and_eval() {
     unsafe {
-        let vec = Rf_allocVector(SEXPTYPE::REALSXP.0, 4);
+        let vec = Rf_allocVector(SEXPTYPE::REALSXP, 4);
         assert!(!vec.is_null());
 
         let data = (*vec).gengc_next_node as *mut f64;
@@ -334,7 +334,7 @@ fn test_cons_and_car_cdr() {
 fn test_gc_after_allocations() {
     unsafe {
         for _ in 0..100 {
-            let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 10);
+            let v = Rf_allocVector(SEXPTYPE::INTSXP, 10);
             assert!(!v.is_null());
         }
     }
@@ -607,7 +607,7 @@ fn test_protect_stack_integrity() {
 
         let v1 = Rf_ScalarInteger(1);
         let v2 = Rf_ScalarReal(2.0);
-        let v3 = Rf_allocVector(SEXPTYPE::INTSXP.0, 10);
+        let v3 = Rf_allocVector(SEXPTYPE::INTSXP, 10);
 
         let _guard = protect(v1);
         Rf_protect(v2);

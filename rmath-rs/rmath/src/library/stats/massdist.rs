@@ -77,11 +77,11 @@ pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEX
     if n == NA_INTEGER || n <= 0 {
         // Return a length-0 real vector on error (matches R's error behavior
         // in this C-level function; the R wrapper calls error() itself).
-        return Rf_allocVector(SEXPTYPE::REALSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::REALSXP, 0);
     }
 
     let n_xlen = n as R_xlen_t;
-    let ans = Rf_allocVector(SEXPTYPE::REALSXP.0, 2 * n);
+    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
     Rf_protect(ans);
 
     let xlo = as_real(slo);

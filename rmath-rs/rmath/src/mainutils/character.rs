@@ -564,7 +564,7 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
     }
 
     let n = x.len() as c_int;
-    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n)) };
+    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n)) };
 
     for i in 0..x.len() {
         let el = x.string_elt(i).ok_or("missing string element")?;
@@ -698,7 +698,7 @@ fn case_transform_safe(x: Sexp<'_>, upper: bool) -> Result<SEXP, String> {
     }
 
     let n = x.len();
-    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int)) };
+    let y = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as c_int)) };
 
     for i in 0..n {
         let el = x.string_elt(i).ok_or("missing string element")?;
@@ -755,7 +755,7 @@ pub fn nchar_safe(
     };
 
     let len = x.len();
-    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, len as c_int)) };
+    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, len as c_int)) };
 
     for i in 0..len {
         let sxi = x.string_elt(i).ok_or("missing string element")?;
@@ -927,7 +927,7 @@ pub fn substr_safe<'a>(
     let k = starts.len();
     let l_val = stops.as_ref().map(|s| s.len()).unwrap_or(1);
 
-    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, len as c_int)) };
+    let s = unsafe { Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, len as c_int)) };
 
     for i in 0..len {
         let start = starts
@@ -1156,7 +1156,7 @@ mod tests {
     /// Helper to build a STRSXP vector from Rust strings.
     unsafe fn make_strsxp(strs: &[&str]) -> SEXP {
         let n = strs.len() as c_int;
-        let s = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
+        let s = Rf_allocVector(SEXPTYPE::STRSXP, n);
         for (i, st) in strs.iter().enumerate() {
             let cs = std::ffi::CString::new(*st).unwrap_or_default();
             let ch = Rf_mkCharLen(cs.as_ptr(), st.len() as c_int);
@@ -1168,7 +1168,7 @@ mod tests {
     /// Helper to build an INTSXP vector from Rust integers.
     unsafe fn make_intsxp(vals: &[c_int]) -> SEXP {
         let n = vals.len() as c_int;
-        let s = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        let s = Rf_allocVector(SEXPTYPE::INTSXP, n);
         let p = INTEGER(s);
         for (i, v) in vals.iter().enumerate() {
             *p.add(i) = *v;
@@ -1179,7 +1179,7 @@ mod tests {
     /// Helper to build an LGLSXP vector from Rust integers.
     unsafe fn make_lglsxp(vals: &[c_int]) -> SEXP {
         let n = vals.len() as c_int;
-        let s = Rf_allocVector(SEXPTYPE::LGLSXP.0, n);
+        let s = Rf_allocVector(SEXPTYPE::LGLSXP, n);
         let p = LOGICAL(s);
         for (i, v) in vals.iter().enumerate() {
             *p.add(i) = *v;
@@ -1216,7 +1216,7 @@ mod tests {
             let args = make_args(&[x]);
             let result = do_toupper(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(result), 2);
             assert_eq!(strsxp_to_string(result, 0), "HELLO");
             assert_eq!(strsxp_to_string(result, 1), "WORLD");
@@ -1264,7 +1264,7 @@ mod tests {
             let args = make_args(&[x]);
             let result = do_tolower(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(result), 2);
             assert_eq!(strsxp_to_string(result, 0), "hello");
             assert_eq!(strsxp_to_string(result, 1), "world");
@@ -1304,7 +1304,7 @@ mod tests {
             let args = make_args(&[old, new, x]);
             let result = do_chartr(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(result), 1);
             assert_eq!(strsxp_to_string(result, 0), "hEllO wOrld");
         }
@@ -1359,7 +1359,7 @@ mod tests {
             let args = make_args(&[x, stype, allow_na]);
             let result = do_nchar(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 3);
             let p = INTEGER(result);
             assert_eq!(*p.add(0), 5);
@@ -1421,7 +1421,7 @@ mod tests {
             let args = make_args(&[x, start, stop]);
             let result = do_substr(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
             assert_eq!(LENGTH(result), 1);
             assert_eq!(strsxp_to_string(result, 0), "ell");
         }

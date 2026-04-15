@@ -147,10 +147,10 @@ pub unsafe fn do_runif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let max = parse_double_scalar(max_arg, 1.0);
 
         if n <= 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
@@ -186,10 +186,10 @@ pub unsafe fn do_rnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let sigma = parse_double_scalar(sd_arg, 1.0);
 
         if n <= 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
@@ -221,10 +221,10 @@ pub unsafe fn do_rpois(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let lambda = parse_double_scalar(lambda_arg, 1.0);
 
         if n <= 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
@@ -257,10 +257,10 @@ pub unsafe fn do_rexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let scale = if rate > 0.0 { 1.0 / rate } else { NA_REAL };
 
         if n <= 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
 
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n as R_xlen_t);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
@@ -308,7 +308,7 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
 
         // For now, sample from REALSXP only
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, size as R_xlen_t);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, size as R_xlen_t);
         if result.is_null() {
             return R_NilValue();
         }
@@ -452,7 +452,7 @@ mod tests {
             let result = do_runif(R_NilValue(), R_NilValue(), args, R_NilValue());
 
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(result), 10);
 
             // All values should be in [0, 1)
@@ -476,7 +476,7 @@ mod tests {
             let result = do_rnorm(R_NilValue(), R_NilValue(), args, R_NilValue());
 
             assert!(!result.is_null());
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(result), 5);
         }
     }

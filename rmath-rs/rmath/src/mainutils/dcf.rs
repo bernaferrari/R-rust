@@ -93,7 +93,7 @@ unsafe fn field_is_foldable(field_name: &str, fold_excludes: SEXP) -> bool {
 unsafe fn alloc_matrix_na(nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
         let len = (nrow as i64) * (ncol as i64);
-        let mat = Rf_allocVector(SEXPTYPE::STRSXP.0, len as c_int);
+        let mat = Rf_allocVector(SEXPTYPE::STRSXP, len as c_int);
         if mat.is_null() {
             return ptr::null_mut();
         }
@@ -375,11 +375,11 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             let nfields = field_names.len();
             if nfields == 0 {
                 // Return 0x0 matrix
-                let mat = Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+                let mat = Rf_allocVector(SEXPTYPE::STRSXP, 0);
                 return mat;
             }
             // Return 0 x nfields matrix
-            let mat = Rf_allocVector(SEXPTYPE::STRSXP.0, 0);
+            let mat = Rf_allocVector(SEXPTYPE::STRSXP, 0);
             return mat;
         }
 
@@ -388,7 +388,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
         // Build the result STRSXP: column-major (nrows * nfields)
         let total = (nrows * nfields) as c_int;
-        let retval = Rf_allocVector(SEXPTYPE::STRSXP.0, total);
+        let retval = Rf_allocVector(SEXPTYPE::STRSXP, total);
         if retval.is_null() {
             return R_NilValue();
         }
@@ -415,7 +415,7 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         }
 
         // Build dim attribute: integer vector c(nrows, nfields)
-        let dims = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+        let dims = Rf_allocVector(SEXPTYPE::INTSXP, 2);
         Rf_protect(dims);
         let dim_data = INTEGER(dims);
         if !dim_data.is_null() {
@@ -424,12 +424,12 @@ pub unsafe fn do_readDCF(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
         }
 
         // Build dimnames: list(NULL, field_names_vector)
-        let dimnames = Rf_allocVector(SEXPTYPE::VECSXP.0, 2);
+        let dimnames = Rf_allocVector(SEXPTYPE::VECSXP, 2);
         Rf_protect(dimnames);
         // First element: NULL (no row names)
         SET_VECTOR_ELT(dimnames, 0, R_NilValue());
         // Second element: STRSXP of field names
-        let col_names = Rf_allocVector(SEXPTYPE::STRSXP.0, nfields as c_int);
+        let col_names = Rf_allocVector(SEXPTYPE::STRSXP, nfields as c_int);
         Rf_protect(col_names);
         for (i, name) in field_names.iter().enumerate() {
             let cs = CString::new(name.as_str()).unwrap_or_default();

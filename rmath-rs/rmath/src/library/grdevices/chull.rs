@@ -466,7 +466,7 @@ unsafe fn in_chull(
 pub unsafe fn chull(x: SEXP) -> SEXP {
     let n = nrows(x);
     if n <= 0 {
-        return Rf_allocVector(SEXPTYPE::INTSXP.0, 0);
+        return Rf_allocVector(SEXPTYPE::INTSXP, 0);
     }
 
     // Allocate work arrays using Vec::leak
@@ -495,7 +495,7 @@ pub unsafe fn chull(x: SEXP) -> SEXP {
         il_vec.as_mut_ptr().add(3 * n as usize),
     );
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, nh));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nh));
     let ians = INTEGER(ans);
     for i in 0..nh as usize {
         // Reverse order to match C output

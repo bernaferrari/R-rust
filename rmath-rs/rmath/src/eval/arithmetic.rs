@@ -164,13 +164,13 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         let n = result_length(sa, sb);
         if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::REALSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
         let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP || TYPEOF(sb) == SEXPTYPE::REALSXP;
         let result = if use_real {
-            Rf_allocVector3(SEXPTYPE::REALSXP.0, n)
+            Rf_allocVector3(SEXPTYPE::REALSXP, n)
         } else {
-            Rf_allocVector3(SEXPTYPE::INTSXP.0, n)
+            Rf_allocVector3(SEXPTYPE::INTSXP, n)
         };
         if result.is_null() {
             return R_NilValue();
@@ -242,7 +242,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 
         // For division, always return REALSXP (R semantics)
         if op == "/" {
-            let reals = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+            let reals = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if !reals.is_null() {
                 let _p2 = Rf_protect(reals);
                 for i in 0..n {
@@ -273,9 +273,9 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
         let n = result_length(sa, sb);
         if n == 0 {
-            return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+            return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -346,7 +346,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             return R_NilValue();
         }
         let n = XLENGTH(sa);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
         if result.is_null() {
             return R_NilValue();
         }
@@ -433,7 +433,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
         let n = XLENGTH(x);
 
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let result = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
             if result.is_null() {
                 return R_NilValue();
             }
@@ -447,7 +447,7 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             crate::sexp::protect::Rf_unprotect(1);
             result
         } else if t == SEXPTYPE::REALSXP {
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
             if result.is_null() {
                 return R_NilValue();
             }
@@ -523,7 +523,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
             if all_int {
-                let iresult = Rf_allocVector3(SEXPTYPE::INTSXP.0, n);
+                let iresult = Rf_allocVector3(SEXPTYPE::INTSXP, n);
                 if !iresult.is_null() {
                     let _p = Rf_protect(iresult);
                     let dst = INTEGER(iresult);
@@ -619,7 +619,7 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
             "range" => {
                 if has_na {
-                    let v = Rf_allocVector3(SEXPTYPE::REALSXP.0, 2);
+                    let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
                     if !v.is_null() {
                         let data = REAL(v);
                         *data.add(0) = NA_REAL;
@@ -629,7 +629,7 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
                 let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
                 let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-                let v = Rf_allocVector3(SEXPTYPE::REALSXP.0, 2);
+                let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
                 if !v.is_null() {
                     let data = REAL(v);
                     *data.add(0) = lo;
@@ -879,7 +879,7 @@ mod tests {
             let a = Rf_ScalarInteger(1);
             let b = Rf_ScalarInteger(2);
             let result = real_binary("+", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), 3);
         }
     }
@@ -890,7 +890,7 @@ mod tests {
             let a = Rf_ScalarReal(1.5);
             let b = Rf_ScalarReal(2.5);
             let result = real_binary("+", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             let v = *REAL(result);
             assert!((v - 4.0).abs() < 1e-10);
         }
@@ -912,7 +912,7 @@ mod tests {
             let a = Rf_ScalarInteger(10);
             let b = Rf_ScalarInteger(3);
             let result = real_binary("/", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             let v = *REAL(result);
             assert!((v - 3.3333333333333335).abs() < 1e-10);
         }
@@ -984,17 +984,17 @@ mod tests {
     fn test_vector_addition_with_recycling() {
         unsafe {
             // c(1,2,3) + c(10,20) should recycle → c(11, 22, 13)
-            let a = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             *INTEGER(a).add(0) = 1;
             *INTEGER(a).add(1) = 2;
             *INTEGER(a).add(2) = 3;
 
-            let b = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+            let b = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
             *INTEGER(b).add(0) = 10;
             *INTEGER(b).add(1) = 20;
 
             let result = real_binary("+", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(LENGTH(result), 3);
             assert_eq!(*INTEGER(result).add(0), 11); // 1+10
             assert_eq!(*INTEGER(result).add(1), 22); // 2+20
@@ -1006,18 +1006,18 @@ mod tests {
     fn test_vector_comparison() {
         unsafe {
             // c(1,2,3) > c(2,1,2) → c(FALSE, TRUE, TRUE)
-            let a = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             *INTEGER(a).add(0) = 1;
             *INTEGER(a).add(1) = 2;
             *INTEGER(a).add(2) = 3;
 
-            let b = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let b = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             *INTEGER(b).add(0) = 2;
             *INTEGER(b).add(1) = 1;
             *INTEGER(b).add(2) = 2;
 
             let result = binary_compare(">", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::LGLSXP);
             assert_eq!(LENGTH(result), 3);
             assert_eq!(*LOGICAL(result).add(0), FALSE); // 1 > 2
             assert_eq!(*LOGICAL(result).add(1), TRUE); // 2 > 1
@@ -1031,7 +1031,7 @@ mod tests {
             let a = Rf_ScalarInteger(NA_INTEGER);
             let b = Rf_ScalarInteger(5);
             let result = real_binary("+", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result), NA_INTEGER);
         }
     }
@@ -1041,7 +1041,7 @@ mod tests {
         unsafe {
             // 1 + c(10, 20, 30) → c(11, 21, 31)
             let a = Rf_ScalarInteger(1);
-            let b = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let b = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             *INTEGER(b).add(0) = 10;
             *INTEGER(b).add(1) = 20;
             *INTEGER(b).add(2) = 30;
@@ -1057,13 +1057,13 @@ mod tests {
     #[test]
     fn test_unary_minus_vector() {
         unsafe {
-            let a = Rf_allocVector3(SEXPTYPE::INTSXP.0, 3);
+            let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             *INTEGER(a).add(0) = 1;
             *INTEGER(a).add(1) = -5;
             *INTEGER(a).add(2) = 0;
 
             let result = unary_minus(a);
-            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(result).add(0), -1);
             assert_eq!(*INTEGER(result).add(1), 5);
             assert_eq!(*INTEGER(result).add(2), 0);
@@ -1076,7 +1076,7 @@ mod tests {
             let a = Rf_ScalarReal(1.5);
             let b = Rf_ScalarInteger(2);
             let result = real_binary("+", a, b);
-            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert!((*REAL(result) - 3.5).abs() < 1e-10);
         }
     }

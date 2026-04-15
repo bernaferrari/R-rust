@@ -542,7 +542,7 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
     if n == 0 {
         return ScalarInteger(dflt);
     }
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, n));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n));
     if isList(pch) != 0 {
         let mut i: c_int = 0;
         let mut cur = pch;
@@ -610,7 +610,7 @@ pub unsafe fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
     if n == 0 {
         ans = ScalarInteger(dflt);
     } else {
-        ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
         for i in 0..n as usize {
             INTEGER(ans).add(i).write(GE_LTYpar(lty, i as c_int));
         }
@@ -630,7 +630,7 @@ pub unsafe fn FixupLwd(lwd: SEXP, dflt: c_double) -> SEXP {
     } else {
         let lwd = Rf_protect(coerceVector(lwd, SEXPTYPE::REALSXP.0));
         let n = length(lwd);
-        let ans_p = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+        let ans_p = Rf_allocVector(SEXPTYPE::REALSXP, n);
         for i in 0..n as usize {
             let mut w = REAL(lwd).add(i).read();
             if w < 0.0 {
@@ -654,7 +654,7 @@ unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
     if n == 0 {
         ans = ScalarInteger(dflt);
     } else if isLogical(font) != 0 {
-        ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
         for i in 0..n as usize {
             let mut k = LOGICAL(font).add(i).read();
             if k < 1 || k > 5 {
@@ -663,7 +663,7 @@ unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
             INTEGER(ans).add(i).write(k);
         }
     } else if isInteger(font) != 0 {
-        ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
         for i in 0..n as usize {
             let mut k = INTEGER(font).add(i).read();
             if k < 1 || k > 5 {
@@ -672,7 +672,7 @@ unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
             INTEGER(ans).add(i).write(k);
         }
     } else if isReal(font) != 0 {
-        ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
         for i in 0..n as usize {
             let mut k = REAL(font).add(i).read() as c_int;
             if k < 1 || k > 5 {
@@ -699,7 +699,7 @@ pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
     if n == 0 {
         ans = Rf_protect(ScalarInteger(dflt as c_int));
     } else {
-        ans = Rf_allocVector(SEXPTYPE::INTSXP.0, n);
+        ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
         if isList(col) != 0 {
             let mut cur = col;
             for i in 0..n as usize {
@@ -730,14 +730,14 @@ unsafe fn FixupCex(cex: SEXP, dflt: c_double) -> SEXP {
     let n = length(cex);
     let ans: SEXP;
     if n == 0 {
-        ans = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+        ans = Rf_allocVector(SEXPTYPE::REALSXP, 1);
         if R_FINITE(dflt) != 0 && dflt > 0.0 {
             REAL(ans).add(0).write(dflt);
         } else {
             REAL(ans).add(0).write(NA_REAL);
         }
     } else {
-        ans = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+        ans = Rf_allocVector(SEXPTYPE::REALSXP, n);
         if isReal(cex) != 0 {
             for i in 0..n as usize {
                 let c = REAL(cex).add(i).read();
@@ -803,7 +803,7 @@ pub unsafe fn FixupVFont(vfont: SEXP) -> SEXP {
     if fontindex < 1 || fontindex > maxindex {
         Rf_error(b"invalid 'vfont' value\0".as_ptr() as *const c_char);
     }
-    let ans = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     INTEGER(ans).add(0).write(INTEGER(vf).add(0).read());
     INTEGER(ans).add(1).write(INTEGER(vf).add(1).read());
     Rf_unprotect(1);
@@ -1373,7 +1373,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
     let stype = TYPEOF(labels);
     match stype {
         tt if tt == SEXPTYPE::LGLSXP => {
-            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
             for i in 0..n as usize {
                 let strp = EncodeLogical(LOGICAL(labels).add(i).read(), 0);
                 SET_STRING_ELT(ans, i as R_xlen_t, mkChar(strp));
@@ -1381,7 +1381,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             Rf_unprotect(1);
         }
         tt if tt == SEXPTYPE::INTSXP => {
-            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
             for i in 0..n as usize {
                 let strp = EncodeInteger(INTEGER(labels).add(i).read(), 0);
                 SET_STRING_ELT(ans, i as R_xlen_t, mkChar(strp));
@@ -1393,7 +1393,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             let mut d: c_int = 0;
             let mut e: c_int = 0;
             formatReal(REAL(labels), n as R_xlen_t, &mut w, &mut d, &mut e, OutDec);
-            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
             for i in 0..n as usize {
                 let strp = EncodeReal0(
                     REAL(labels).add(i).read(),
@@ -1424,7 +1424,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
                 &mut ei,
                 OutDec,
             );
-            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
             for i in 0..n as usize {
                 let cx = COMPLEX(labels).add(i).read();
                 let strp = EncodeComplex(cx, 0, d, e, 0, di, ei, b".\0".as_ptr() as *const c_char);
@@ -1433,7 +1433,7 @@ pub unsafe fn labelformat(labels: SEXP) -> SEXP {
             Rf_unprotect(1);
         }
         tt if tt == SEXPTYPE::STRSXP => {
-            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+            ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
             for i in 0..n as usize {
                 SET_STRING_ELT(ans, i as R_xlen_t, STRING_ELT(labels, i as R_xlen_t));
             }

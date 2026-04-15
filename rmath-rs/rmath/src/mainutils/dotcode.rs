@@ -1006,9 +1006,9 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         // Build the result vector
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP.0, nargs as c_int);
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, nargs as c_int);
         if have_names {
-            let names = Rf_allocVector(SEXPTYPE::STRSXP.0, nargs as c_int);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, nargs as c_int);
             let mut na = 0usize;
             pa = args;
             while !pa.is_null() && pa != R_NilValue() {
@@ -1227,7 +1227,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         while *buf.add(len) != 0 && len < 255 {
                             len += 1;
                         }
-                        let s = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+                        let s = Rf_allocVector(SEXPTYPE::STRSXP, 1);
                         let mut char_buf = vec![0u8; len + 1];
                         ptr::copy_nonoverlapping(buf, char_buf.as_mut_ptr(), len);
                         char_buf[len] = 0;
@@ -1238,7 +1238,7 @@ pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         SET_VECTOR_ELT(ans, na_idx as R_xlen_t, s);
                     } else {
                         let cptr = p as *const *const c_char;
-                        let s = Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int);
+                        let s = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
                         for i in 0..n as usize {
                             let cstr = *cptr.add(i);
                             if !cstr.is_null() {

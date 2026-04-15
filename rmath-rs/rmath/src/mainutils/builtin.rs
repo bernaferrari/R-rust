@@ -536,7 +536,7 @@ pub unsafe fn do_cat(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_makelist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = Rf_length(args);
-        let s = Rf_allocVector(SEXPTYPE::VECSXP.0, n);
+        let s = Rf_allocVector(SEXPTYPE::VECSXP, n);
         let mut a = args;
         let mut i: R_xlen_t = 0;
         while !isNull(a) {
@@ -554,7 +554,7 @@ pub unsafe fn do_makelist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             a = CDR(a);
         }
         if has_names {
-            let names = Rf_allocVector(SEXPTYPE::STRSXP.0, n);
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, n);
             let mut a = args;
             let mut i: R_xlen_t = 0;
             while !isNull(a) {
@@ -580,7 +580,7 @@ pub unsafe fn do_makelist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 pub unsafe fn do_expression(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
         let n = Rf_length(args);
-        let s = Rf_allocVector(SEXPTYPE::EXPRSXP.0, n);
+        let s = Rf_allocVector(SEXPTYPE::EXPRSXP, n);
         let mut a = args;
         let mut i: R_xlen_t = 0;
         while !isNull(a) {

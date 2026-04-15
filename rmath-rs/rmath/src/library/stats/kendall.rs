@@ -140,7 +140,7 @@ pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
     let q = Rf_protect(coerceVector(q, SEXPTYPE::REALSXP.0));
     let len = LENGTH(q);
     let n = asInteger(sn);
-    let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, len));
+    let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len));
 
     pkendall(len, REAL(q), REAL(p), n);
 

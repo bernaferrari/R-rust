@@ -374,7 +374,7 @@ pub unsafe fn updateGContext(
  * ============================== */
 
 pub unsafe fn initGPar(dd: pGEDevDesc) {
-    let gp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, GP_FONTFACE + 1));
+    let gp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1));
 
     // GP_FILL (0): transparent white
     SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(R_TRANWHITE));

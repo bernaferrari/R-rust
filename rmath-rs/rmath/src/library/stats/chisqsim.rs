@@ -132,7 +132,7 @@ pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
     let mut observed = vec![0i32; (nr * nc) as usize];
     let mut fact = vec![0.0f64; (n + 1) as usize];
     let mut jwork = vec![0i32; nc as usize];
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, B));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, B));
     fisher_sim(
         nr,
         nc,
@@ -166,7 +166,7 @@ pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
     let mut observed = vec![0i32; (nr * nc) as usize];
     let mut fact = vec![0.0f64; (n + 1) as usize];
     let mut jwork = vec![0i32; nc as usize];
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, B));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, B));
     chisqsim(
         nr,
         nc,

@@ -193,8 +193,8 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     }
     let dd = rang / nb as c_double;
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let sc = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, nb as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let sc = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int));
     SET_VECTOR_ELT(ans, 0, Rf_ScalarReal(dd));
     SET_VECTOR_ELT(ans, 1, sc);
     let cnt = REAL(sc);
@@ -232,7 +232,7 @@ pub unsafe fn bw_den_binned(sx: SEXP) -> SEXP {
     let nb = LENGTH(sx);
     let x = INTEGER(sx);
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, nb as c_int));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nb as c_int));
     let cnt = REAL(ans);
     for ib in 0..(nb as usize) {
         *cnt.add(ib) = 0.0;

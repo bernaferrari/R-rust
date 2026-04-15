@@ -205,7 +205,7 @@ pub unsafe fn SWilk(x: SEXP) -> SEXP {
     if ifault > 0 && ifault != 7 {
         eprintln!("ifault={}. This should not happen", ifault);
     }
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 2));
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
     *REAL(ans) = W;
     *REAL(ans).add(1) = pw;
     Rf_unprotect(2);

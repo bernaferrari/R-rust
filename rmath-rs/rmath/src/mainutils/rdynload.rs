@@ -1114,8 +1114,8 @@ pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: S
         }
 
         // Create a simple NativeSymbolInfo object
-        let sym = Rf_allocVector(SEXPTYPE::VECSXP.0, 3);
-        let names = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
+        let sym = Rf_allocVector(SEXPTYPE::VECSXP, 3);
+        let names = Rf_allocVector(SEXPTYPE::STRSXP, 3);
 
         SET_VECTOR_ELT(sym, 0, sname);
         SET_STRING_ELT(names, 0, Rf_mkChar(b"name\0".as_ptr() as *const c_char));
@@ -1155,7 +1155,7 @@ pub unsafe fn R_getDllTable() -> SEXP {
         LOADED_DLL.with(|v| {
             let dlls = v.borrow();
             let count = dlls.len();
-            let ans = Rf_allocVector(SEXPTYPE::VECSXP.0, count as c_int);
+            let ans = Rf_allocVector(SEXPTYPE::VECSXP, count as c_int);
             for i in 0..count {
                 let info = dlls[i];
                 if !info.is_null() {
@@ -1177,11 +1177,11 @@ use crate::sexp::ffi::R_xlen_t;
 /// Create an SEXP representing a DllInfo.
 unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
     unsafe {
-        let ref_vec = Rf_allocVector(SEXPTYPE::VECSXP.0, 6);
-        let el_names = Rf_allocVector(SEXPTYPE::STRSXP.0, 6);
+        let ref_vec = Rf_allocVector(SEXPTYPE::VECSXP, 6);
+        let el_names = Rf_allocVector(SEXPTYPE::STRSXP, 6);
 
         // name
-        let tmp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         if !(*info).name.is_null() {
             SET_STRING_ELT(tmp, 0, Rf_mkChar((*info).name));
         }
@@ -1189,7 +1189,7 @@ unsafe fn make_dll_info_sexp(info: *const DllInfo) -> SEXP {
         SET_STRING_ELT(el_names, 0, Rf_mkChar(b"name\0".as_ptr() as *const c_char));
 
         // path
-        let tmp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        let tmp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         if !(*info).path.is_null() {
             SET_STRING_ELT(tmp, 0, Rf_mkChar((*info).path));
         }
@@ -1255,8 +1255,8 @@ pub unsafe fn R_getRegisteredRoutines(dll: SEXP) -> SEXP {
     unsafe {
         // In a full implementation, we'd extract the DllInfo* from the external pointer.
         // For now, return empty lists since we don't have a real external pointer to dereference.
-        let ans = Rf_allocVector(SEXPTYPE::VECSXP.0, 4);
-        let snames = Rf_allocVector(SEXPTYPE::STRSXP.0, 4);
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, 4);
+        let snames = Rf_allocVector(SEXPTYPE::STRSXP, 4);
 
         let type_names: [&[u8]; 4] = [b".C\0", b".Call\0", b".Fortran\0", b".External\0"];
         for i in 0..4usize {

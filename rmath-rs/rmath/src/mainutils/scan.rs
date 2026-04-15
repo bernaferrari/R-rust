@@ -363,7 +363,7 @@ pub unsafe fn do_readln(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // In library/embedded mode (UniFFI, Android), there is no interactive console.
         // Return an empty string, matching R's non-interactive behaviour.
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         Rf_protect(ans);
         let empty_char = Rf_mkChar(b"\0".as_ptr() as *const c_char);
         crate::sexp::accessors::SET_STRING_ELT(ans, 0, empty_char);

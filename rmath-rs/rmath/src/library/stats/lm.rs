@@ -55,7 +55,7 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let ans = Rf_allocVector(sexptype, nrow * ncol);
     Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     Rf_protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim.add(1)) = ncol;
@@ -89,8 +89,8 @@ use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 
 unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     let nn = names.len() as c_int;
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, nn));
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP.0, nn);
+    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nn));
+    let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
     setAttrib(ans, R_NamesSymbol(), nm);
     for i in 0..(nn as usize) {
         SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(names[i].as_ptr() as *const i8));
@@ -158,14 +158,14 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         "tol",
         "pivoted",
     ];
-    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP.0, &ansNms));
+    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP, &ansNms));
     let qr = shallow_duplicate(x);
     SET_VECTOR_ELT(ans, 0, qr);
 
     let coefficients = if ny > 1 {
-        allocMatrix(SEXPTYPE::REALSXP.0, p, ny)
+        allocMatrix(SEXPTYPE::REALSXP, p, ny)
     } else {
-        Rf_allocVector(SEXPTYPE::REALSXP.0, p)
+        Rf_allocVector(SEXPTYPE::REALSXP, p)
     };
     Rf_protect(coefficients);
     SET_VECTOR_ELT(ans, 1, coefficients);
@@ -175,14 +175,14 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
     let effects = shallow_duplicate(y);
     SET_VECTOR_ELT(ans, 3, effects);
 
-    let pivot = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, p));
+    let pivot = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, p));
     let ip = INTEGER(pivot);
     for i in 0..(p as usize) {
         *ip.add(i) = (i + 1) as c_int;
     }
     SET_VECTOR_ELT(ans, 5, pivot);
 
-    let qraux = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, p));
+    let qraux = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, p));
     SET_VECTOR_ELT(ans, 6, qraux);
     SET_VECTOR_ELT(ans, 7, tol);
 

@@ -93,6 +93,13 @@ impl From<SEXPTYPE> for c_int {
     }
 }
 
+impl From<c_int> for SEXPTYPE {
+    #[inline]
+    fn from(v: c_int) -> SEXPTYPE {
+        SEXPTYPE(v)
+    }
+}
+
 impl SEXPTYPE {
     pub const NILSXP: SEXPTYPE = SEXPTYPE(0);
     pub const SYMSXP: SEXPTYPE = SEXPTYPE(1);

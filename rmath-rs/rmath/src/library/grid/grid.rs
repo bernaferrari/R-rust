@@ -377,11 +377,11 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
     // (full implementation requires unit conversion and GE calls)
 
     // Save device size
-    let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 1));
+    let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
     *REAL(widthCM) = devWidthCM;
     SET_VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t, widthCM);
 
-    let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 1));
+    let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
     *REAL(heightCM) = devHeightCM;
     SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
 
@@ -459,10 +459,10 @@ unsafe fn childList(children: SEXP) -> SEXP {
 }
 
 unsafe fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> SEXP {
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(zeroDepth) = 0;
-    let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(curDepth) = depth;
 
     if noChildren(viewportChildren(vp)) {
@@ -498,8 +498,8 @@ unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int)
         count += 1;
     }
     if !found {
-        let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+        let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
         *INTEGER(zeroDepth) = 0;
         SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
         SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
@@ -780,7 +780,7 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
     // Full implementation requires unit conversion functions
     // STUB: return empty numeric
     let nx = unitLength(x);
-    Rf_allocVector(SEXPTYPE::REALSXP.0, nx)
+    Rf_allocVector(SEXPTYPE::REALSXP, nx)
 }
 
 /* ==============================
@@ -790,16 +790,16 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
 pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
     // Full implementation requires unit conversion
     let maxn = unitLength(x);
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
     SET_VECTOR_ELT(
         result,
         0 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, maxn),
+        Rf_allocVector(SEXPTYPE::REALSXP, maxn),
     );
     SET_VECTOR_ELT(
         result,
         1 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, maxn),
+        Rf_allocVector(SEXPTYPE::REALSXP, maxn),
     );
     Rf_unprotect(1);
     result
@@ -811,16 +811,16 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
 
 pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
     let maxn = unitLength(x);
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
     SET_VECTOR_ELT(
         result,
         0 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, maxn),
+        Rf_allocVector(SEXPTYPE::REALSXP, maxn),
     );
     SET_VECTOR_ELT(
         result,
         1 as R_xlen_t,
-        Rf_allocVector(SEXPTYPE::REALSXP.0, maxn),
+        Rf_allocVector(SEXPTYPE::REALSXP, maxn),
     );
     Rf_unprotect(1);
     result
@@ -836,7 +836,7 @@ pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
     if isNull(viewportLayout(currentvp)) {
         return R_NilValue();
     }
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 4));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
     // calcViewportLocationFromLayout(layoutPosRow, layoutPosCol, currentvp, &vpl);
     Rf_unprotect(1);
     answer
@@ -1408,7 +1408,7 @@ pub unsafe fn L_cap() -> SEXP {
         Rf_unprotect(1);
         R_NilValue()
     } else {
-        let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, LENGTH(raster)));
+        let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, LENGTH(raster)));
         Rf_unprotect(2);
         image
     }
@@ -1462,7 +1462,7 @@ pub unsafe fn L_textBounds(
     rot: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    let checkOverlap = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
+    let checkOverlap = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
     *LOGICAL(checkOverlap) = 0;
     gridText(
         label,
@@ -1482,9 +1482,9 @@ pub unsafe fn L_textBounds(
  * ============================== */
 
 unsafe fn symbolCoords(x: *const f64, y: *const f64, n: c_int, _dd: pGEDevDesc) -> SEXP {
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
-    let xs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
-    let ys = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let xs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+    let ys = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
     for i in 0..n as usize {
         *REAL(xs).add(i) = *x.add(i);
         *REAL(ys).add(i) = *y.add(i);
@@ -1645,7 +1645,7 @@ pub unsafe fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_locator() -> SEXP {
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 2));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
     *REAL(answer).add(0) = f64::NAN;
     *REAL(answer).add(1) = f64::NAN;
     Rf_unprotect(1);
@@ -1674,9 +1674,9 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
         0
     };
 
-    let ascent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
-    let descent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
-    let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+    let ascent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+    let descent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+    let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
 
     let mut gc: [u8; 256] = [0; 256];
     gcontextFromgpar(currentgp, 0, gc.as_mut_ptr(), dd);
@@ -1712,7 +1712,7 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
         *REAL(width_vec).add(i as usize) = width;
     }
 
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 3));
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
     SET_VECTOR_ELT(result, 0, ascent_vec);
     SET_VECTOR_ELT(result, 1, descent_vec);
     SET_VECTOR_ELT(result, 2, width_vec);

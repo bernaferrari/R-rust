@@ -50,7 +50,7 @@ pub unsafe fn R_getGeneric(_name: SEXP, _mustFind: SEXP, _env: SEXP, _package: S
 /// R_missingArg - check if an argument is missing in a method call.
 /// Ported from R's R_missingArg() in methods_list_dispatch.c.
 pub unsafe fn R_missingArg(symbol: SEXP, ev: SEXP) -> SEXP {
-    let res = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
+    let res = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
     Rf_protect(res);
     let ip = LOGICAL(res);
 

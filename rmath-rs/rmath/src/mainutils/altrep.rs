@@ -724,7 +724,7 @@ mod tests {
         unsafe {
             let seq = R_compact_intseq(42, 42);
             assert!(!seq.is_null());
-            assert_eq!(TYPEOF(seq), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(seq), SEXPTYPE::INTSXP);
             let data_ptr = (*seq).gengc_next_node as *const c_int;
             assert_eq!(*data_ptr, 42);
         }
@@ -735,7 +735,7 @@ mod tests {
         unsafe {
             let seq = R_compact_realseq(3.14, 1.0, 1);
             assert!(!seq.is_null());
-            assert_eq!(TYPEOF(seq), SEXPTYPE::REALSXP.0);
+            assert_eq!(TYPEOF(seq), SEXPTYPE::REALSXP);
             let data_ptr = (*seq).gengc_next_node as *const f64;
             assert!((*data_ptr - 3.14).abs() < 1e-10);
         }

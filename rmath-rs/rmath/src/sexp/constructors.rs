@@ -16,20 +16,22 @@ use super::memory::{self};
 // FFI-compatible constructor functions
 // ---------------------------------------------------------------------------
 
-/// Allocate a vector of the given type and length.
-/// This is the equivalent of R's `Rf_allocVector3`.
-#[unsafe(no_mangle)]
-pub unsafe fn Rf_allocVector3(sexptype: c_int, length: R_xlen_t) -> SEXP {
-    memory::with_arena(|arena| arena.alloc_vector(SEXPTYPE(sexptype), length))
+unsafe fn alloc_vector3_inner(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
+    memory::with_arena(|arena| arena.alloc_vector(sexptype, length))
 }
 
-/// Allocate a vector (c_int length version).
-#[unsafe(no_mangle)]
-pub unsafe fn Rf_allocVector(sexptype: c_int, length: c_int) -> SEXP {
-    unsafe { Rf_allocVector3(sexptype, length as R_xlen_t) }
+unsafe fn alloc_vector_inner(sexptype: SEXPTYPE, length: c_int) -> SEXP {
+    unsafe { alloc_vector3_inner(sexptype, length as R_xlen_t) }
 }
 
-/// Create a cons cell.
+pub unsafe fn Rf_allocVector3<T: Into<SEXPTYPE>>(sexptype: T, length: R_xlen_t) -> SEXP {
+    unsafe { alloc_vector3_inner(sexptype.into(), length) }
+}
+
+pub unsafe fn Rf_allocVector<T: Into<SEXPTYPE>>(sexptype: T, length: c_int) -> SEXP {
+    unsafe { alloc_vector_inner(sexptype.into(), length) }
+}
+
 pub unsafe fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP {
     memory::with_arena(|arena| arena.cons(car, cdr, ptr::null_mut()))
 }
@@ -125,7 +127,7 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
         if charsxp.is_null() {
             return ptr::null_mut();
         }
-        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         if strsxp.is_null() {
             return ptr::null_mut();
         }
@@ -143,7 +145,7 @@ pub unsafe fn Rf_mkString(s: *const c_char) -> SEXP {
 /// unlike the string `"NA"` which is a normal string value.
 pub unsafe fn Rf_mkNAString() -> SEXP {
     unsafe {
-        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        let strsxp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         if strsxp.is_null() {
             return ptr::null_mut();
         }
@@ -156,7 +158,7 @@ pub unsafe fn Rf_mkNAString() -> SEXP {
 /// Create a scalar logical value.
 pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
+        let s = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
         if !s.is_null() {
             let data = (*s).gengc_next_node as *mut c_int;
             *data = x;
@@ -168,7 +170,7 @@ pub unsafe fn Rf_ScalarLogical(x: c_int) -> SEXP {
 /// Create a scalar integer value.
 pub unsafe fn Rf_ScalarInteger(x: c_int) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
+        let s = Rf_allocVector(SEXPTYPE::INTSXP, 1);
         if !s.is_null() {
             let data = (*s).gengc_next_node as *mut c_int;
             *data = x;
@@ -180,7 +182,7 @@ pub unsafe fn Rf_ScalarInteger(x: c_int) -> SEXP {
 /// Create a scalar real value.
 pub unsafe fn Rf_ScalarReal(x: c_double) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+        let s = Rf_allocVector(SEXPTYPE::REALSXP, 1);
         if !s.is_null() {
             let data = (*s).gengc_next_node as *mut c_double;
             *data = x;
@@ -192,7 +194,7 @@ pub unsafe fn Rf_ScalarReal(x: c_double) -> SEXP {
 /// Create a scalar complex value.
 pub unsafe fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::CPLXSXP.0, 1);
+        let s = Rf_allocVector(SEXPTYPE::CPLXSXP, 1);
         if !s.is_null() {
             let data = (*s).gengc_next_node as *mut super::ffi::Rcomplex;
             *data = x;
@@ -204,7 +206,7 @@ pub unsafe fn Rf_ScalarComplex(x: super::ffi::Rcomplex) -> SEXP {
 /// Create a scalar string from a CHARSXP.
 pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+        let s = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         if !s.is_null() {
             let data = (*s).gengc_next_node as *mut SEXP;
             *data = x;
@@ -216,7 +218,7 @@ pub unsafe fn Rf_ScalarString(x: SEXP) -> SEXP {
 /// Create a scalar raw value.
 pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
     unsafe {
-        let s = Rf_allocVector(SEXPTYPE::RAWSXP.0, 1);
+        let s = Rf_allocVector(SEXPTYPE::RAWSXP, 1);
         if !s.is_null() {
             let data = (*s).gengc_next_node as *mut super::ffi::Rbyte;
             *data = x;
@@ -362,8 +364,7 @@ pub unsafe fn Rf_isFunction(x: SEXP) -> c_int {
             return 0;
         }
         let t = (*x).sxpinfo.type_of().0;
-        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP)
-            as c_int
+        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP) as c_int
     }
 }
 
@@ -389,7 +390,7 @@ mod tests {
     #[test]
     fn test_alloc_vector_real() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::REALSXP.0, 3);
+            let v = Rf_allocVector(SEXPTYPE::REALSXP, 3);
             assert!(!v.is_null());
             assert_eq!((*v).sxpinfo.type_of(), SEXPTYPE::REALSXP);
             assert_eq!((*v).vecsxp_length(), 3);
@@ -399,7 +400,7 @@ mod tests {
     #[test]
     fn test_alloc_vector_int() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+            let v = Rf_allocVector(SEXPTYPE::INTSXP, 2);
             assert!(!v.is_null());
             assert_eq!((*v).sxpinfo.type_of(), SEXPTYPE::INTSXP);
         }
@@ -408,7 +409,7 @@ mod tests {
     #[test]
     fn test_alloc_vector_logical() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
+            let v = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
             assert!(!v.is_null());
             assert_eq!((*v).sxpinfo.type_of(), SEXPTYPE::LGLSXP);
         }
@@ -417,7 +418,7 @@ mod tests {
     #[test]
     fn test_alloc_vector_string() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+            let v = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             assert!(!v.is_null());
             assert_eq!((*v).sxpinfo.type_of(), SEXPTYPE::STRSXP);
         }
@@ -426,7 +427,7 @@ mod tests {
     #[test]
     fn test_alloc_vector_raw() {
         unsafe {
-            let v = Rf_allocVector(SEXPTYPE::RAWSXP.0, 4);
+            let v = Rf_allocVector(SEXPTYPE::RAWSXP, 4);
             assert!(!v.is_null());
             assert_eq!((*v).sxpinfo.type_of(), SEXPTYPE::RAWSXP);
         }
@@ -509,11 +510,11 @@ mod tests {
     #[test]
     fn test_is_type_checks() {
         unsafe {
-            let iv = Rf_allocVector(SEXPTYPE::INTSXP.0, 1);
+            let iv = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             assert_eq!(Rf_isInteger(iv), 1);
             assert_eq!(Rf_isReal(iv), 0);
 
-            let rv = Rf_allocVector(SEXPTYPE::REALSXP.0, 1);
+            let rv = Rf_allocVector(SEXPTYPE::REALSXP, 1);
             assert_eq!(Rf_isReal(rv), 1);
             assert_eq!(Rf_isInteger(rv), 0);
 

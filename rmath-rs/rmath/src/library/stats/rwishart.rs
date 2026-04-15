@@ -62,7 +62,7 @@ unsafe fn alloc3DArray(sexptype: c_int, nrow: c_int, ncol: c_int, ndepth: c_int)
     let total = nrow as isize * ncol as isize * ndepth as isize;
     let ans = Rf_allocVector(sexptype, total as c_int);
     Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP.0, 3);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 3);
     Rf_protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim.add(1)) = ncol;
@@ -178,7 +178,7 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
     let p = *dims;
     let psqr = (p * p) as usize;
 
-    let ans = Rf_protect(alloc3DArray(SEXPTYPE::REALSXP.0, p, p, n));
+    let ans = Rf_protect(alloc3DArray(SEXPTYPE::REALSXP, p, p, n));
 
     // Allocate temporary arrays (replaces R_Calloc)
     let layout_tmp = std::alloc::Layout::array::<c_double>(psqr)

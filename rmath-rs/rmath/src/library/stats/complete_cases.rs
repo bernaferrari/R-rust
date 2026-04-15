@@ -210,7 +210,7 @@ pub unsafe fn compcases(args: SEXP) -> SEXP {
         return R_NilValue();
     }
 
-    let rval = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP.0, len));
+    let rval = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, len));
     let rval_int = INTEGER(rval);
     let mut i: c_int = 0;
     while i < len {

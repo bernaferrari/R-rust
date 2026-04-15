@@ -725,7 +725,7 @@ pub unsafe fn do_fileinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         );
 
         // Set dim
-        let dim = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP.0, 2));
+        let dim = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, 2));
         *crate::sexp::accessors::INTEGER(dim).add(0) = n as c_int;
         *crate::sexp::accessors::INTEGER(dim).add(1) = ncols;
         crate::eval::attrib_core::setAttrib(ans, crate::eval::attrib_core::R_DimSymbol(), dim);
@@ -1259,8 +1259,8 @@ pub unsafe fn do_localeconv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> 
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         let lc = libc::localeconv();
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 7));
-        let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 7));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 7));
+        let names = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 7));
 
         let field_names = [
             "decimal_point",
@@ -1545,8 +1545,8 @@ pub unsafe fn do_l10n_info(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> S
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
         // Returns a named list with 3 elements: MBCS, UTF-8, Latin-1
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 3));
-        let cn = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 3));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 3));
+        let cn = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 3));
         SET_STRING_ELT(cn, 0, Rf_mkChar(b"MBCS\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 1, Rf_mkChar(b"UTF-8\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 2, Rf_mkChar(b"Latin-1\0".as_ptr() as *const _));
@@ -1678,8 +1678,8 @@ pub unsafe fn do_Cstack_info(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) ->
         use crate::sexp::ffi::SEXPTYPE;
         use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP.0, 3));
-        let cn = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP.0, 3));
+        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, 3));
+        let cn = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, 3));
         SET_STRING_ELT(cn, 0, Rf_mkChar(b"used\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 1, Rf_mkChar(b"limit\0".as_ptr() as *const _));
         SET_STRING_ELT(cn, 2, Rf_mkChar(b"status\0".as_ptr() as *const _));

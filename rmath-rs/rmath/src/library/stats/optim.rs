@@ -124,7 +124,7 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 
 unsafe fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
     let os = &mut *(ex as *mut OptStruct);
-    let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+    let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
     if Rf_isNull((*os).names) == 0 {
         setAttrib(x, R_NamesSymbol(), (*os).names);
     }
@@ -161,7 +161,7 @@ unsafe fn fmingr(n: c_int, p: *mut c_double, df: *mut c_double, ex: *mut std::ff
 
     if Rf_isNull((*os).R_gcall) == 0 {
         // Analytical derivatives
-        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
         if Rf_isNull((*os).names) == 0 {
             setAttrib(x, R_NamesSymbol(), (*os).names);
         }
@@ -192,7 +192,7 @@ unsafe fn fmingr(n: c_int, p: *mut c_double, df: *mut c_double, ex: *mut std::ff
         Rf_unprotect(2);
     } else {
         // Numerical derivatives
-        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, n));
+        let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
         setAttrib(x, R_NamesSymbol(), (*os).names);
         for i in 0..n {
             *REAL(x).add(i as usize) = *p.add(i as usize) * *(*os).parscale.add(i as usize);
@@ -350,7 +350,7 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let ans = Rf_allocVector(sexptype, nrow * ncol);
     Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     Rf_protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim.add(1)) = ncol;
@@ -383,7 +383,7 @@ unsafe fn genptry(
 ) -> f64 {
     const E1: f64 = 1.7182818; /* exp(1) - 1 */
 
-    let s = Rf_allocVector(SEXPTYPE::REALSXP.0, n);
+    let s = Rf_allocVector(SEXPTYPE::REALSXP, n);
     let pi = R_ProtectWithIndex(s);
 
     for i in 0..n as usize {
@@ -585,8 +585,8 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         *dpar.add(i as usize) = *REAL(par).add(i as usize) / *(*os_ptr).parscale.add(i as usize);
     }
 
-    let res = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 5));
-    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 5));
+    let res = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 5));
+    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 5));
     SET_STRING_ELT(
         names,
         0,
@@ -615,9 +615,9 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     setAttrib(res, R_NamesSymbol(), names);
     Rf_unprotect(1);
 
-    let value = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, 1));
-    let counts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 2));
-    let countnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, 2));
+    let value = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+    let counts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+    let countnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
     SET_STRING_ELT(
         countnames,
         0,
@@ -631,7 +631,7 @@ pub unsafe fn optim(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     setAttrib(counts, R_NamesSymbol(), countnames);
     Rf_unprotect(1);
 
-    let _conv = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP.0, 1));
+    let _conv = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     let abstol = as_real(getListElement(
         options,
         CString::new("abstol").unwrap_or_default().as_ptr(),
@@ -1089,7 +1089,7 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
     Rf_unprotect(1);
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.0, npar, npar));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, npar, npar));
     let dpar = vect(npar);
     for i in 0..npar {
         *dpar.add(i as usize) = *REAL(par).add(i as usize) / *(*os_ptr).parscale.add(i as usize);
@@ -1127,7 +1127,7 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
     let nm = getAttrib(par, R_NamesSymbol());
     if Rf_isNull(nm) == 0 {
-        let dm = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, 2));
+        let dm = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
         SET_VECTOR_ELT(dm, 0, duplicate(nm));
         SET_VECTOR_ELT(dm, 1, duplicate(nm));
         setAttrib(ans, R_DimNamesSymbol(), dm);

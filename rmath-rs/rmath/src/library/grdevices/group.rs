@@ -47,7 +47,7 @@ pub unsafe fn useGroup(_args: SEXP) -> SEXP {
 /// devUp - check if the device has y increasing upward.
 pub unsafe fn devUp(_args: SEXP) -> SEXP {
     // Stub: no device to query; return FALSE
-    let ans = Rf_allocVector(SEXPTYPE::LGLSXP.0, 1);
+    let ans = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
     *LOGICAL(ans).add(0) = 0;
     ans
 }

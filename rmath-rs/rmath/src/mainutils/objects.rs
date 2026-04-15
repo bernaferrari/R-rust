@@ -367,7 +367,7 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
             return R_NilValue();
         }
         let len = n - pos;
-        let ans = Rf_allocVector(SEXPTYPE::STRSXP.0, len);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
         Rf_protect(ans);
         for i in 0..len {
             let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
@@ -1908,7 +1908,7 @@ unsafe fn inherits3(x: SEXP, what: SEXP, which: SEXP) -> SEXP {
 
         let rval: SEXP;
         if isvec {
-            rval = Rf_allocVector(SEXPTYPE::INTSXP.0, nwhat);
+            rval = Rf_allocVector(SEXPTYPE::INTSXP, nwhat);
             Rf_protect(rval);
         } else {
             rval = R_NilValue();
@@ -3338,7 +3338,7 @@ mod tests {
         unsafe {
             assert_eq!(length(ptr::null_mut()), 0);
             assert_eq!(length(R_NilValue()), 0);
-            let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 5);
+            let v = Rf_allocVector(SEXPTYPE::INTSXP, 5);
             assert_eq!(length(v), 5);
         }
     }
@@ -3383,7 +3383,7 @@ mod tests {
     fn test_inherits2_with_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -3534,7 +3534,7 @@ mod tests {
     fn test_R_check_class_and_super_with_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -3712,7 +3712,7 @@ mod tests {
     #[test]
     fn test_stringPositionTr() {
         unsafe {
-            let klass = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
+            let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             Rf_protect(klass);
             SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
@@ -3745,7 +3745,7 @@ mod tests {
     #[test]
     fn test_stringSuffix() {
         unsafe {
-            let klass = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
+            let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             Rf_protect(klass);
             SET_STRING_ELT(klass, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(klass, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
@@ -4062,7 +4062,7 @@ mod tests {
     fn test_objects_do_unclass_with_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -4100,7 +4100,7 @@ mod tests {
     fn test_inherits3_which_true() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let what = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+            let what = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(what);
             SET_STRING_ELT(what, 0, Rf_mkChar(b"numeric\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 1, Rf_mkChar(b"integer\0".as_ptr() as *const c_char));
@@ -4117,13 +4117,13 @@ mod tests {
     fn test_inherits3_with_explicit_class() {
         unsafe {
             let v = Rf_ScalarInteger(42);
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 2);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
             SET_STRING_ELT(class_vec, 0, Rf_mkChar(b"foo\0".as_ptr() as *const c_char));
             SET_STRING_ELT(class_vec, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
             setAttrib(v, R_ClassSymbol(), class_vec);
 
-            let what = Rf_allocVector(SEXPTYPE::STRSXP.0, 3);
+            let what = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             Rf_protect(what);
             SET_STRING_ELT(what, 0, Rf_mkChar(b"baz\0".as_ptr() as *const c_char));
             SET_STRING_ELT(what, 1, Rf_mkChar(b"bar\0".as_ptr() as *const c_char));
@@ -4190,7 +4190,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,
@@ -4213,7 +4213,7 @@ mod tests {
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
-            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP.0, 1);
+            let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             Rf_protect(class_vec);
             SET_STRING_ELT(
                 class_vec,

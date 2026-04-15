@@ -867,8 +867,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 .unwrap_or_else(|e| e.into_inner());
             let n = table.options.len() as c_int;
 
-            let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n));
-            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+            let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
+            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
 
             // Collect and sort option names
             let mut keys: Vec<String> = table.options.keys().cloned().collect();
@@ -902,8 +902,8 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             n = length(args);
         }
 
-        let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, n));
-        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n));
+        let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
+        let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
 
         // Get argnames for VECSXP args
         let mut argnames: SEXP = R_NilValue();
@@ -1738,7 +1738,7 @@ mod tests {
             // Get it back
             let retrieved = GetOptionByName("my_custom_option");
             assert!(!retrieved.is_null());
-            assert_eq!(TYPEOF(retrieved), SEXPTYPE::INTSXP.0);
+            assert_eq!(TYPEOF(retrieved), SEXPTYPE::INTSXP);
             assert_eq!(*INTEGER(retrieved).add(0), 42);
 
             // Clean up

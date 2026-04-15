@@ -61,7 +61,7 @@ unsafe fn length(x: SEXP) -> c_int {
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
     let ans = Rf_allocVector(sexptype, nrow * ncol);
     Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP.0, 2);
+    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
     Rf_protect(dim);
     *INTEGER(dim) = nrow;
     *INTEGER(dim.add(1)) = ncol;
@@ -173,7 +173,7 @@ unsafe fn lang2(fn_: SEXP, arg: SEXP) -> SEXP {
 unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     let n = names.len();
     let ans = Rf_protect(Rf_allocVector(sexptype, n as c_int));
-    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP.0, n as c_int));
+    let nms = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n as c_int));
     for i in 0..n {
         if !names[i].is_empty() {
             SET_STRING_ELT(
@@ -259,7 +259,7 @@ unsafe fn ConvInfoMsg(
     conv_new: f64,
 ) -> SEXP {
     let nms = ["isConv", "finIter", "finTol", "stopCode", "stopMessage", ""];
-    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP.0, &nms));
+    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP, &nms));
 
     SET_VECTOR_ELT(ans, 0, Rf_ScalarLogical(if whystop == 0 { 1 } else { 0 }));
     SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(iter));
@@ -370,7 +370,7 @@ pub unsafe fn nls_iter(m: SEXP, control: SEXP, doTraceArg: SEXP) -> SEXP {
 
     let mut fac: f64 = 1.0;
     let mut hasConverged = false;
-    let newPars = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP.0, nPars));
+    let newPars = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nPars));
     let mut evaltotCnt: c_int = 1;
     let mut convNew: f64 = -1.0;
     let mut i: c_int;
@@ -507,7 +507,7 @@ pub unsafe fn numeric_deriv(
 
     let mut nprot: c_int = 3;
     if TYPEOF(dir) != SEXPTYPE::REALSXP {
-        dir = Rf_protect(coerceVector(dir, SEXPTYPE::REALSXP));
+        dir = Rf_protect(coerceVector(dir, SEXPTYPE::REALSXP.0));
         nprot += 1;
     }
     if LENGTH(dir) != LENGTH(theta) {
@@ -522,7 +522,7 @@ pub unsafe fn numeric_deriv(
     let rho1 = Rf_protect(R_NewEnv(rho, false, 0));
     nprot += 1;
 
-    let pars = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP.0, LENGTH(theta)));
+    let pars = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, LENGTH(theta)));
     let mut ans = Rf_protect(duplicate(eval(expr, rho1)));
     let rDir = REAL(dir);
     let mut res: *mut c_double = ptr::null_mut();
@@ -530,7 +530,7 @@ pub unsafe fn numeric_deriv(
     // CHECK_FN_VAL macro equivalent
     unsafe fn check_fn_val<'a>(r: &mut *mut c_double, ans_ref: &mut SEXP) {
         if !isReal(*ans_ref) {
-            let temp = coerceVector(*ans_ref, SEXPTYPE::REALSXP);
+            let temp = coerceVector(*ans_ref, SEXPTYPE::REALSXP.0);
             Rf_unprotect(1);
             *ans_ref = Rf_protect(temp);
         }
@@ -567,7 +567,7 @@ pub unsafe fn numeric_deriv(
         lengthTheta += LENGTH(VECTOR_ELT(pars, i as i64));
     }
 
-    let gradient = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.0, LENGTH(ans), lengthTheta));
+    let gradient = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, LENGTH(ans), lengthTheta));
     let grad = REAL(gradient);
     let eps = asReal(eps_);
 

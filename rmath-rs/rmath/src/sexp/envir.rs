@@ -815,7 +815,7 @@ mod tests {
         unsafe {
             let env = NewEnvironment(ptr::null_mut(), R_NilValue(), ptr::null_mut());
             assert!(!env.is_null());
-            assert_eq!(TYPEOF(env), SEXPTYPE::ENVSXP.0);
+            assert_eq!(TYPEOF(env), SEXPTYPE::ENVSXP);
         }
     }
 
@@ -825,15 +825,15 @@ mod tests {
             let expr = Rf_ScalarInteger(99);
             let prom = super::super::memory_ext::mkPROMISE(expr, R_NilValue());
             assert!(!prom.is_null());
-            assert_eq!(TYPEOF(prom), SEXPTYPE::PROMSXP.0);
+            assert_eq!(TYPEOF(prom), SEXPTYPE::PROMSXP);
         }
     }
 
     #[test]
     fn test_type_to_char() {
         unsafe {
-            R_typeToChar(SEXPTYPE::INTSXP.0);
-            R_typeToChar(SEXPTYPE::REALSXP.0);
+            R_typeToChar(SEXPTYPE::INTSXP);
+            R_typeToChar(SEXPTYPE::REALSXP);
             R_typeToChar(999);
         }
     }
