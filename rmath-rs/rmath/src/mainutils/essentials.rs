@@ -3717,6 +3717,26 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "acos",
         "atan",
         "atan2",
+        // Core arithmetic — dispatched via do_summary/do_math1 in eval.rs
+        "sum",
+        "min",
+        "max",
+        "prod",
+        "range",
+        // Core math — dispatched via do_math1 in eval.rs
+        "ceiling",
+        "floor",
+        "sqrt",
+        "log",
+        "log10",
+        "exp",
+        // Type checks — dispatched via do_is_type in eval.rs
+        "is.numeric",
+        "is.integer",
+        "is.double",
+        "is.logical",
+        "is.character",
+        "is.null",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -6884,7 +6904,7 @@ pub unsafe fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     // Print column headers
     let mut header = String::from("     ");
     for name in &col_names_vec {
-        header.push_str(&format!("{:>12}", name));
+        let _ = std::fmt::Write::write_fmt(&mut header, format_args!("{:>12}", name));
     }
     println!("{}", header);
 
@@ -7276,7 +7296,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             } else {
                 format!("[,{}]", j + 1)
             };
-            header.push_str(&format!("{:>12} ", name));
+            let _ = std::fmt::Write::write_fmt(&mut header, format_args!("{:>12} ", name));
         }
         println!("{}", header);
     }
@@ -7292,7 +7312,7 @@ pub unsafe fn do_print_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             } else {
                 elt_to_string(col, i)
             };
-            row.push_str(&format!("{:>12} ", val));
+            let _ = std::fmt::Write::write_fmt(&mut row, format_args!("{:>12} ", val));
         }
         println!("{}", row);
     }
@@ -9733,7 +9753,7 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let mut count = 0_i64;
     for i in 0..n {
         let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
-        if v == v && v != NA_REAL {
+        if !v.is_nan() && v != NA_REAL {
             sum += v;
             count += 1;
         }
@@ -9749,7 +9769,7 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if do_scale {
         for i in 0..n {
             let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
-            if v == v && v != NA_REAL {
+            if !v.is_nan() && v != NA_REAL {
                 var_sum += (v - mean) * (v - mean);
             }
         }
@@ -9764,7 +9784,7 @@ pub unsafe fn do_scale(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     for i in 0..n {
         let v = real_or_default(elt_to_sexp(x, i), NA_REAL);
         let centered = if do_center { v - mean } else { v };
-        let scaled = if do_scale && sd != 0.0 && sd == sd {
+        let scaled = if do_scale && sd != 0.0 && !sd.is_nan() {
             centered / sd
         } else {
             centered
@@ -11070,7 +11090,7 @@ pub unsafe fn do_print_raw(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if i > 0 {
             line.push(' ');
         }
-        line.push_str(&format!("\"{}\"", p));
+        let _ = std::fmt::Write::write_fmt(&mut line, format_args!("\"{}\"", p));
         // Wrap lines roughly every 16 entries for readability
         if (i + 1) % 16 == 0 && i + 1 < parts.len() {
             println!("{}", line);
@@ -14482,14 +14502,21 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 arg,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
             );
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            if !dim_attr.is_null()
+                && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0
+                && LENGTH(dim_attr) >= 2
+            {
                 let r = *INTEGER(dim_attr) as R_xlen_t;
                 let c = *INTEGER(dim_attr.add(1)) as R_xlen_t;
-                if nrows == 0 { nrows = r; }
+                if nrows == 0 {
+                    nrows = r;
+                }
                 ncols += c;
             } else {
                 let n = XLENGTH(arg);
-                if nrows == 0 { nrows = n; }
+                if nrows == 0 {
+                    nrows = n;
+                }
                 ncols += 1;
             }
         }
@@ -14605,14 +14632,21 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 arg,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
             );
-            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+            if !dim_attr.is_null()
+                && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0
+                && LENGTH(dim_attr) >= 2
+            {
                 let r = *INTEGER(dim_attr) as R_xlen_t;
                 let c = *INTEGER(dim_attr.add(1)) as R_xlen_t;
-                if ncols == 0 { ncols = c; }
+                if ncols == 0 {
+                    ncols = c;
+                }
                 nrows += r;
             } else {
                 let n = XLENGTH(arg);
-                if ncols == 0 { ncols = n; }
+                if ncols == 0 {
+                    ncols = n;
+                }
                 nrows += 1;
             }
         }
@@ -14698,8 +14732,8 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
 
     crate::sexp::protect::Rf_unprotect(1);
-   crate::sexp::protect::Rf_unprotect(1);
-   result
+    crate::sexp::protect::Rf_unprotect(1);
+    result
 }
 /// R's `var(x, y = NULL, na.rm = FALSE)` — variance or covariance.
 pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -14710,7 +14744,8 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
     let y = CAR(CDR(args));
     let na_rm_arg = CAR(CDR(CDR(args)));
-    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
     if y.is_null() || y == R_NilValue() {
         // Variance of x
@@ -14731,7 +14766,9 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             };
 
             if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
-                if !na_rm { return Rf_ScalarReal(NA_REAL); }
+                if !na_rm {
+                    return Rf_ScalarReal(NA_REAL);
+                }
             } else {
                 sum += val;
                 sum_sq += val * val;
@@ -14780,7 +14817,9 @@ pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 || val_x.is_nan()
                 || val_y.is_nan()
             {
-                if !na_rm { return Rf_ScalarReal(NA_REAL); }
+                if !na_rm {
+                    return Rf_ScalarReal(NA_REAL);
+                }
             } else {
                 sum_x += val_x;
                 sum_y += val_y;
@@ -14825,7 +14864,8 @@ pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 
     let na_rm_arg = CAR(CDR(args));
-    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+    let na_rm =
+        !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
 
     let n = XLENGTH(x);
     let t = TYPEOF(x);
@@ -14842,7 +14882,9 @@ pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         };
 
         if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
-            if !na_rm { return Rf_ScalarReal(NA_REAL); }
+            if !na_rm {
+                return Rf_ScalarReal(NA_REAL);
+            }
         } else {
             vals.push(val);
         }
@@ -14854,7 +14896,7 @@ pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
     vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let mid = vals.len() / 2;
-    if vals.len() % 2 == 0 {
+    if vals.len().is_multiple_of(2) {
         Rf_ScalarReal((vals[mid - 1] + vals[mid]) / 2.0)
     } else {
         Rf_ScalarReal(vals[mid])
@@ -15298,11 +15340,7 @@ pub unsafe fn do_abs(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *REAL(x_arg).add(i as usize)
         } else {
             let iv = *INTEGER(x_arg).add(i as usize);
-            if iv == NA_INTEGER {
-                NA_REAL
-            } else {
-                iv as f64
-            }
+            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
         };
         *dst.add(i as usize) = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
             v
@@ -15342,11 +15380,7 @@ pub unsafe fn do_sign(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *REAL(x_arg).add(i as usize)
         } else {
             let iv = *INTEGER(x_arg).add(i as usize);
-            if iv == NA_INTEGER {
-                NA_REAL
-            } else {
-                iv as f64
-            }
+            if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
         };
         *dst.add(i as usize) = if v.is_nan() {
             v // preserve NaN/NA

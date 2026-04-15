@@ -3080,7 +3080,7 @@ unsafe extern "C" {
 /// Check if any element of a vector contains NA values.
 ///
 /// Ported from R's `anyNA()` in coerce.c.
-fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
+fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
     use crate::sexp::accessors::{
         CADR, CAR, CDR, COMPLEX_ELT, INTEGER_ELT, LENGTH, LOGICAL_ELT, OBJECT, REAL_ELT,
         STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
@@ -3095,7 +3095,7 @@ fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
 
         let recursive = if is_list && LENGTH(args) > 1 {
             let r = CADR(args);
-            asRbool(r, call) != 0
+            asRbool(r, _call) != 0
         } else {
             false
         };
@@ -3163,7 +3163,7 @@ fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
                     // Recursively check each element
                     let inner_args = Rf_cons(elt, R_NilValue());
                     Rf_protect(inner_args);
-                    let found = any_na_impl(call, op, inner_args, env);
+                    let found = any_na_impl(_call, _op, inner_args, _env);
                     Rf_unprotect(1);
                     if found {
                         return true;
@@ -3177,7 +3177,7 @@ fn any_na_impl(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> bool {
                     let elt = CAR(node);
                     let inner_args = Rf_cons(elt, R_NilValue());
                     Rf_protect(inner_args);
-                    let found = any_na_impl(call, op, inner_args, env);
+                    let found = any_na_impl(_call, _op, inner_args, _env);
                     Rf_unprotect(1);
                     if found {
                         return true;
