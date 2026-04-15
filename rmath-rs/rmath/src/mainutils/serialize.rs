@@ -12,22 +12,138 @@
 //! info, then recursive WriteItem/ReadItem.
 
 use std::cell::Cell;
+use std::ffi::CStr;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_double, c_int, c_void};
+#[cfg(unix)]
+use std::os::unix::ffi::OsStrExt;
 use std::ptr;
+use std::path::PathBuf;
 use std::slice;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_size_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_GlobalEnv, R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
+use crate::eval::attrib_core::{setAttrib, R_NamesSymbol};
+use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::symbol::Rf_install;
+use crate::eval::eval::Rf_eval;
+use crate::mainutils::coerce::{asInteger, asLogical};
 
 unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
     });
+}
+
+#[inline]
+unsafe fn require_arg(args: SEXP, index: usize) -> SEXP {
+    let mut cur = args;
+    for _ in 0..index {
+        if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+            unsafe { error("wrong number of arguments") };
+        }
+        cur = unsafe { CDR(cur) };
+    }
+    if cur.is_null() || unsafe { TYPEOF(cur) } == SEXPTYPE::NILSXP {
+        unsafe { error("wrong number of arguments") };
+    }
+    unsafe { CAR(cur) }
+}
+
+#[inline]
+unsafe fn sexp_to_path(file: SEXP) -> PathBuf {
+    if unsafe { TYPEOF(file) } != SEXPTYPE::STRSXP || unsafe { LENGTH(file) } <= 0 {
+        unsafe { error("not a proper file name") };
+    }
+    let elt = unsafe { STRING_ELT(file, 0) };
+    let cpath = unsafe { CHAR(elt) };
+    if cpath.is_null() {
+        unsafe { error("not a proper file name") };
+    }
+    let cstr = unsafe { CStr::from_ptr(cpath) };
+    #[cfg(unix)]
+    {
+        PathBuf::from(std::ffi::OsStr::from_bytes(cstr.to_bytes()))
+    }
+    #[cfg(not(unix))]
+    {
+        PathBuf::from(cstr.to_string_lossy().into_owned())
+    }
+}
+
+#[inline]
+unsafe fn raw_from_bytes(bytes: &[u8]) -> SEXP {
+    let ans = unsafe { Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t) };
+    if !ans.is_null() && !bytes.is_empty() {
+        unsafe {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(ans), bytes.len());
+        }
+    }
+    ans
+}
+
+#[inline]
+unsafe fn wrap_raw_passthrough(inp: SEXP, tag: u8) -> SEXP {
+    if unsafe { TYPEOF(inp) } != SEXPTYPE::RAWSXP {
+        unsafe { error("compression requires a raw vector") };
+    }
+    let len = unsafe { XLENGTH(inp) as usize };
+    if len > u32::MAX as usize {
+        unsafe { error("raw vector too large to compress") };
+    }
+    let mut out = Vec::with_capacity(len + 5);
+    out.extend_from_slice(&(len as u32).to_ne_bytes());
+    out.push(tag);
+    if len > 0 {
+        unsafe {
+            out.extend_from_slice(slice::from_raw_parts(RAW(inp), len));
+        }
+    }
+    unsafe { raw_from_bytes(&out) }
+}
+
+#[inline]
+unsafe fn unwrap_raw_passthrough(inp: SEXP, err: *mut Rboolean, name: &str) -> SEXP {
+    if !err.is_null() {
+        unsafe {
+            *err = 0;
+        }
+    }
+    if unsafe { TYPEOF(inp) } != SEXPTYPE::RAWSXP {
+        unsafe { error(&format!("{name} requires a raw vector")) };
+    }
+    let len = unsafe { XLENGTH(inp) as usize };
+    if len < 5 {
+        if !err.is_null() {
+            unsafe {
+                *err = 1;
+            }
+        }
+        return unsafe { R_NilValue() };
+    }
+    let data = unsafe { slice::from_raw_parts(RAW(inp), len) };
+    let declared = u32::from_ne_bytes(data[0..4].try_into().unwrap_or([0; 4])) as usize;
+    if declared != len - 5 {
+        if !err.is_null() {
+            unsafe {
+                *err = 1;
+            }
+        }
+        return unsafe { R_NilValue() };
+    }
+    unsafe { raw_from_bytes(&data[5..]) }
+}
+
+#[inline]
+unsafe fn clear_lazy_load_cache() {
+    USED.with(|used| used.set(0));
+    CACHE_NAMES.with(|names| names.set([ptr::null_mut(); NC]));
+    CACHE_PTRS.with(|ptrs| ptrs.set([ptr::null_mut(); NC]));
 }
 
 // ---------------------------------------------------------------------------
@@ -1235,19 +1351,81 @@ pub unsafe fn do_unserializeFromConn(call: SEXP, op: SEXP, args: SEXP, env: SEXP
 // ---------------------------------------------------------------------------
 
 pub unsafe fn do_lazyLoadDBflush(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe {
+        let _ = (call, op, env);
+        let file = require_arg(args, 0);
+        let _ = sexp_to_path(file);
+        clear_lazy_load_cache();
+        R_NilValue()
+    }
 }
 
 pub unsafe fn do_lazyLoadDBfetch(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe {
+        let _ = (call, op, env);
+        let key = require_arg(args, 0);
+        let file = require_arg(args, 1);
+        let compsxp = require_arg(args, 2);
+        let hook = require_arg(args, 3);
+        let compressed = asInteger(compsxp);
+
+        let mut err: Rboolean = 0;
+        let mut raw = Rf_protect(readRawFromFile(file, key));
+        if compressed == 3 {
+            let next = R_decompress3(raw, &mut err);
+            Rf_unprotect(1);
+            raw = Rf_protect(next);
+        } else if compressed == 2 {
+            let next = R_decompress2(raw, &mut err);
+            Rf_unprotect(1);
+            raw = Rf_protect(next);
+        } else if compressed != 0 {
+            let next = R_decompress1(raw, &mut err);
+            Rf_unprotect(1);
+            raw = Rf_protect(next);
+        }
+
+        if err != 0 {
+            let file_name = sexp_to_path(file);
+            Rf_unprotect(1);
+            error(&format!(
+                "lazy-load database '{}' is corrupt",
+                file_name.display()
+            ));
+        }
+
+        let mut val = Rf_protect(R_unserialize(raw, hook));
+        if TYPEOF(val) == SEXPTYPE::PROMSXP {
+            val = Rf_eval(val, R_GlobalEnv());
+            if !val.is_null() {
+                SET_NAMED(val, 2);
+            }
+        }
+        Rf_unprotect(2);
+        val
+    }
 }
 
 pub unsafe fn do_getVarsFromFrame(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe {
+        let _ = (call, op, env);
+        let vars = require_arg(args, 0);
+        let env = require_arg(args, 1);
+        let forcesxp = require_arg(args, 2);
+        R_getVarsFromFrame(vars, env, forcesxp)
+    }
 }
 
 pub unsafe fn do_lazyLoadDBinsertValue(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe {
+        let _ = (call, op, env);
+        let value = require_arg(args, 0);
+        let file = require_arg(args, 1);
+        let ascii = require_arg(args, 2);
+        let compsxp = require_arg(args, 3);
+        let hook = require_arg(args, 4);
+        R_lazyLoadDBinsertValue(value, file, ascii, compsxp, hook)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1811,19 +1989,95 @@ pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) 
 // ---------------------------------------------------------------------------
 
 unsafe fn CallHook(x: SEXP, fun: SEXP) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        let call = Rf_cons(fun, Rf_cons(x, R_NilValue()));
+        Rf_eval(call, R_GlobalEnv())
+    }
 }
 
 unsafe fn checkNotPromise(val: SEXP) -> SEXP {
-    val
+    unsafe {
+        if TYPEOF(val) == SEXPTYPE::PROMSXP {
+            error("cannot return a promise (PROMSXP) object");
+        }
+        val
+    }
 }
 
 unsafe fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
-    unsafe { error("write failed") }
+    unsafe {
+        let path = sexp_to_path(file);
+        if TYPEOF(bytes) != SEXPTYPE::RAWSXP {
+            error("not a proper raw vector");
+        }
+        let len = XLENGTH(bytes) as usize;
+        if len > i32::MAX as usize {
+            error("write failed");
+        }
+        let mut fp = match OpenOptions::new()
+            .create(true)
+            .read(true)
+            .write(true)
+            .open(&path)
+        {
+            Ok(file) => file,
+            Err(err) => error(&format!("cannot open file '{}': {}", path.display(), err)),
+        };
+        let pos = match fp.seek(SeekFrom::End(0)) {
+            Ok(pos) => pos,
+            Err(_) => error("write failed"),
+        };
+        let data = slice::from_raw_parts(RAW(bytes), len);
+        if fp.write_all(data).is_err() || fp.flush().is_err() {
+            error("write failed");
+        }
+        if pos > i32::MAX as u64 {
+            error("write failed");
+        }
+        let key = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if key.is_null() {
+            error("write failed");
+        }
+        *INTEGER(key) = pos as c_int;
+        *INTEGER(key).add(1) = len as c_int;
+        key
+    }
 }
 
 unsafe fn readRawFromFile(file: SEXP, key: SEXP) -> SEXP {
-    unsafe { error("read failed") }
+    unsafe {
+        let path = sexp_to_path(file);
+        if TYPEOF(key) != SEXPTYPE::INTSXP || LENGTH(key) != 2 {
+            error("bad offset/length argument");
+        }
+        let offset = *INTEGER(key);
+        let len = *INTEGER(key).add(1);
+        if offset < 0 || len < 0 {
+            error("bad offset/length argument");
+        }
+
+        let mut fp = match File::open(&path) {
+            Ok(file) => file,
+            Err(err) => error(&format!("cannot open file '{}': {}", path.display(), err)),
+        };
+        let filelen = match fp.seek(SeekFrom::End(0)) {
+            Ok(pos) => pos,
+            Err(_) => error("read failed"),
+        };
+        let offset_u64 = offset as u64;
+        let len_u64 = len as u64;
+        if offset_u64 > filelen || len_u64 > filelen.saturating_sub(offset_u64) {
+            error("read failed");
+        }
+        if fp.seek(SeekFrom::Start(offset_u64)).is_err() {
+            error("read failed");
+        }
+        let mut buf = vec![0u8; len as usize];
+        if len > 0 && fp.read_exact(&mut buf).is_err() {
+            error("read failed");
+        }
+        raw_from_bytes(&buf)
+    }
 }
 
 unsafe fn R_lazyLoadDBinsertValue(
@@ -1833,11 +2087,62 @@ unsafe fn R_lazyLoadDBinsertValue(
     compsxp: SEXP,
     hook: SEXP,
 ) -> SEXP {
-    unsafe { error("write failed") }
+    unsafe {
+        let mut data = R_serialize(value, R_NilValue(), ascii, R_NilValue(), hook);
+        let compress = asInteger(compsxp);
+        if compress == 3 {
+            data = R_compress3(data);
+        } else if compress == 2 {
+            data = R_compress2(data);
+        } else if compress != 0 {
+            data = R_compress1(data);
+        }
+        appendRawToFile(file, data)
+    }
 }
 
 unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        if TYPEOF(env) == SEXPTYPE::NILSXP {
+            error("use of NULL environment is defunct");
+        }
+        if TYPEOF(env) != SEXPTYPE::ENVSXP {
+            error("bad environment");
+        }
+        if TYPEOF(vars) != SEXPTYPE::STRSXP {
+            error("bad variable names");
+        }
+
+        let force = asLogical(forcesxp);
+        let len = LENGTH(vars);
+        let val = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t));
+        for i in 0..len {
+            let name = STRING_ELT(vars, i as R_xlen_t);
+            if name.is_null() {
+                Rf_unprotect(1);
+                error("bad variable names");
+            }
+            let sym = Rf_install(CHAR(name));
+            let mut tmp = R_findVarInFrame(env, sym);
+            if tmp == R_UnboundValue() {
+                Rf_unprotect(1);
+                error(&format!(
+                    "object '{}' not found",
+                    CStr::from_ptr(CHAR(name)).to_string_lossy()
+                ));
+            }
+            if force != 0 && TYPEOF(tmp) == SEXPTYPE::PROMSXP {
+                tmp = Rf_eval(tmp, R_GlobalEnv());
+                if !tmp.is_null() {
+                    SET_NAMED(tmp, 2);
+                }
+            }
+            SET_VECTOR_ELT(val, i as R_xlen_t, tmp);
+        }
+        setAttrib(val, R_NamesSymbol(), vars);
+        Rf_unprotect(1);
+        val
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1845,42 +2150,27 @@ unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_compress1(inp: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe { wrap_raw_passthrough(inp, b'0') }
 }
 
 pub unsafe fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe {
-        if !err.is_null() {
-            *err = 0;
-        }
-        error("not implemented")
-    }
+    unsafe { unwrap_raw_passthrough(inp, err, "R_decompress1") }
 }
 
 pub unsafe fn R_compress2(inp: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe { wrap_raw_passthrough(inp, b'0') }
 }
 
 pub unsafe fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe {
-        if !err.is_null() {
-            *err = 0;
-        }
-        error("not implemented")
-    }
+    unsafe { unwrap_raw_passthrough(inp, err, "R_decompress2") }
 }
 
 pub unsafe fn R_compress3(inp: SEXP) -> SEXP {
-    unsafe { error("not implemented") }
+    unsafe { wrap_raw_passthrough(inp, b'0') }
 }
 
 pub unsafe fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe {
-        if !err.is_null() {
-            *err = 0;
-        }
-        error("not implemented")
-    }
+    unsafe { unwrap_raw_passthrough(inp, err, "R_decompress3") }
 }
 
 // ---------------------------------------------------------------------------
@@ -1936,12 +2226,58 @@ unsafe fn UngetChar(s: R_instring_stream_t, c: c_int) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::envir::R_NewHashedEnv;
+    use crate::sexp::envir::defineVar;
+    use crate::sexp::globals::R_BaseEnv;
+    use std::ffi::CString;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
         match r {
             Ok(v) => v,
             Err(e) => panic!("test failed: {e:?}"),
         }
+    }
+
+    unsafe fn make_raw(bytes: &[u8]) -> SEXP {
+        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
+        if !raw.is_null() && !bytes.is_empty() {
+            ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw), bytes.len());
+        }
+        raw
+    }
+
+    unsafe fn make_string_scalar(value: &str) -> SEXP {
+        let c_value = CString::new(value).unwrap_or_default();
+        Rf_mkString(c_value.as_ptr())
+    }
+
+    unsafe fn make_string_vector(value: &str) -> SEXP {
+        let vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        SET_STRING_ELT(vec, 0, Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()));
+        vec
+    }
+
+    unsafe fn make_args(items: &[SEXP]) -> SEXP {
+        let mut tail = R_NilValue();
+        for item in items.iter().rev().copied() {
+            tail = Rf_cons(item, tail);
+        }
+        tail
+    }
+
+    fn temp_path(stem: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or_default();
+        path.push(format!(
+            "rport-serialize-{stem}-{}-{nanos}.bin",
+            std::process::id()
+        ));
+        path
     }
 
     #[test]
@@ -2225,27 +2561,16 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
     fn test_do_lazy_load_db_flush_returns_nil() {
         unsafe {
+            let path = temp_path("flush");
+            let path_str = path.to_str().unwrap().to_owned();
+            let file = make_string_scalar(&path_str);
+            let args = make_args(&[file]);
             let result = do_lazyLoadDBflush(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert_eq!(result, R_NilValue());
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_do_lazy_load_db_fetch_returns_nil() {
-        unsafe {
-            let result = do_lazyLoadDBfetch(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
+                args,
                 ptr::null_mut(),
             );
             assert_eq!(result, R_NilValue());
@@ -2253,48 +2578,111 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_do_get_vars_from_frame_returns_nil() {
+    fn test_do_lazy_load_db_insert_and_fetch_round_trip() {
         unsafe {
+            let path = temp_path("lazyload");
+            let path_str = path.to_str().unwrap().to_owned();
+            let file = make_string_scalar(&path_str);
+            let value = Rf_ScalarInteger(123);
+            let insert_args = make_args(&[
+                value,
+                file,
+                Rf_ScalarLogical(0),
+                Rf_ScalarInteger(3),
+                R_NilValue(),
+            ]);
+
+            let key = do_lazyLoadDBinsertValue(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                insert_args,
+                ptr::null_mut(),
+            );
+            assert_eq!(TYPEOF(key), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(key), 2);
+
+            let fetch_args = make_args(&[
+                key,
+                make_string_scalar(&path_str),
+                Rf_ScalarInteger(3),
+                R_NilValue(),
+            ]);
+            let fetched = do_lazyLoadDBfetch(
+                ptr::null_mut(),
+                ptr::null_mut(),
+                fetch_args,
+                ptr::null_mut(),
+            );
+            assert_eq!(TYPEOF(fetched), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(fetched), 1);
+            assert_eq!(*INTEGER(fetched), 123);
+            let _ = std::fs::remove_file(path);
+        }
+    }
+
+    #[test]
+    fn test_do_get_vars_from_frame_returns_values() {
+        unsafe {
+            let env = R_NewHashedEnv(R_BaseEnv(), 29);
+            let sym = Rf_install(c"x".as_ptr());
+            let val = Rf_ScalarInteger(42);
+            defineVar(sym, val, env);
+
+            let vars = make_string_vector("x");
+            let args = make_args(&[vars, env, Rf_ScalarLogical(0)]);
             let result = do_getVarsFromFrame(
                 ptr::null_mut(),
                 ptr::null_mut(),
-                ptr::null_mut(),
+                args,
                 ptr::null_mut(),
             );
-            assert_eq!(result, R_NilValue());
+            assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
+            assert_eq!(LENGTH(result), 1);
+            let elt = VECTOR_ELT(result, 0);
+            assert_eq!(TYPEOF(elt), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(elt), 42);
         }
     }
 
     #[test]
-    #[should_panic]
-    fn test_do_lazy_load_db_insert_value_returns_nil() {
+    fn test_r_compress_decompress_round_trip() {
         unsafe {
-            let result = do_lazyLoadDBinsertValue(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-                ptr::null_mut(),
-            );
-            assert_eq!(result, R_NilValue());
-        }
-    }
-
-    #[test]
-    #[should_panic]
-    fn test_r_compress_decompress_returns_nil() {
-        unsafe {
-            let nil = R_NilValue();
+            let raw = make_raw(&[0, 1, 2, 3, 4, 5, 6, 7]);
             let mut err: Rboolean = 1;
-            assert_eq!(R_compress1(nil), nil);
-            assert_eq!(R_decompress1(nil, &mut err), nil);
+
+            let c1 = R_compress1(raw);
+            let d1 = R_decompress1(c1, &mut err);
             assert_eq!(err, 0);
-            assert_eq!(R_compress2(nil), nil);
-            assert_eq!(R_decompress2(nil, &mut err), nil);
+            assert_eq!(TYPEOF(d1), SEXPTYPE::RAWSXP);
+            assert_eq!(slice::from_raw_parts(RAW(d1), 8), &[0, 1, 2, 3, 4, 5, 6, 7]);
+
+            let c2 = R_compress2(raw);
+            let d2 = R_decompress2(c2, &mut err);
             assert_eq!(err, 0);
-            assert_eq!(R_compress3(nil), nil);
-            assert_eq!(R_decompress3(nil, &mut err), nil);
+            assert_eq!(TYPEOF(d2), SEXPTYPE::RAWSXP);
+            assert_eq!(slice::from_raw_parts(RAW(d2), 8), &[0, 1, 2, 3, 4, 5, 6, 7]);
+
+            let c3 = R_compress3(raw);
+            let d3 = R_decompress3(c3, &mut err);
             assert_eq!(err, 0);
+            assert_eq!(TYPEOF(d3), SEXPTYPE::RAWSXP);
+            assert_eq!(slice::from_raw_parts(RAW(d3), 8), &[0, 1, 2, 3, 4, 5, 6, 7]);
+        }
+    }
+
+    #[test]
+    fn test_r_decompress_rejects_truncated_input() {
+        unsafe {
+            let raw = make_raw(&[1, 2, 3, 4]);
+            let mut err: Rboolean = 0;
+            assert_eq!(R_decompress1(raw, &mut err), R_NilValue());
+            assert_eq!(err, 1);
+            err = 0;
+            assert_eq!(R_decompress2(raw, &mut err), R_NilValue());
+            assert_eq!(err, 1);
+            err = 0;
+            assert_eq!(R_decompress3(raw, &mut err), R_NilValue());
+            assert_eq!(err, 1);
         }
     }
 
