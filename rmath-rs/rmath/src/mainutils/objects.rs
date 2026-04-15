@@ -1143,7 +1143,7 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
 
         // Try the .__S3MethodsTable__. in defrho
         let effective_defrho = if defrho == R_BaseEnv() {
-            R_BaseEnv()
+            R_GlobalEnv()
         } else {
             defrho
         };
@@ -1461,8 +1461,17 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             });
         }
 
+        // CTXT_GENERIC flag on entry
         // Get the environment NextMethod was called from
         let sysp = env; // simplified: sysparent would be the enclosing env
+
+        // Mark this context as generic for the purposes of lookups
+        let cptr_tmp = R_GlobalContext();
+        if !cptr_tmp.is_null() {
+            unsafe {
+                (*cptr_tmp).callflag = crate::sexp::context::CTXT_GENERIC;
+            }
+        }
 
         // Walk the context stack to find the function context matching sysp
         let mut found_cptr: *mut RCNTXT = ptr::null_mut();
@@ -1485,8 +1494,8 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             });
         }
 
-        // Duplicate the call
-        let mut newcall = (*found_cptr).call;
+        // Duplicate the call (parity with C: use shallow_duplicate)
+        let mut newcall = crate::mainutils::duplicate::shallow_duplicate((*found_cptr).call);
         if newcall.is_null() || newcall == R_NilValue() {
             return R_NilValue();
         }
@@ -1540,7 +1549,9 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
         }
 
         let formals = FORMALS(s_callfun);
-        let mut matchedarg = (*found_cptr).promiseargs;
+        // Use patchArgsByActuals instead of raw promiseargs
+        let mut matchedarg =
+            patchArgsByActuals(formals, (*found_cptr).promiseargs, (*found_cptr).cloenv);
         Rf_protect(matchedarg);
 
         // Handle ... arguments
@@ -1550,7 +1561,7 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
             R_NilValue()
         };
 
-        // Merge additional arguments if present
+        // Merge additional arguments if present (support ...)
         if !dots.is_null() && dots != R_NilValue() {
             let dots_val = crate::sexp::envir::R_findVarInFrame(env, sym("..."));
             if !dots_val.is_null() && dots_val != R_NilValue() && dots_val != R_MissingArg() {
@@ -1558,6 +1569,8 @@ pub unsafe fn do_nextmethod(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEX
                 newcall = fixcall(newcall, matchedarg);
             }
         }
+
+        // If klass is unbound, fetch from object
 
         // Get klass if unbound
         if klass == R_UnboundValue() {

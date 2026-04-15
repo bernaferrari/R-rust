@@ -3734,9 +3734,146 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
-        // Distribution functions — multinomial
-        "dmultinom" => unsafe {
-            crate::mainutils::essentials::do_dmultinom(
+       // Distribution functions — multinomial
+       "dmultinom" => unsafe {
+           crate::mainutils::essentials::do_dmultinom(
+               call.as_raw(),
+               fun.as_raw(),
+               evaled_args,
+               rho.as_raw(),
+           )
+       },
+        // Complete R runtime — cbind, rbind, t (transpose), statistics
+        "cbind" => unsafe {
+            crate::mainutils::essentials::do_cbind(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "rbind" => unsafe {
+            crate::mainutils::essentials::do_rbind(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "t" => unsafe {
+            crate::mainutils::essentials::do_transpose(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "var" => unsafe {
+            crate::mainutils::essentials::do_var(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sd" => unsafe {
+            crate::mainutils::essentials::do_sd(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "median" => unsafe {
+            crate::mainutils::essentials::do_median(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "cummin" => unsafe {
+            crate::mainutils::essentials::do_cummin(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "cummax" => unsafe {
+            crate::mainutils::essentials::do_cummax(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "dimnames" => unsafe {
+            crate::mainutils::essentials::do_dimnames(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "pi" => unsafe {
+            crate::mainutils::essentials::do_pi(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "sin" => unsafe {
+            crate::mainutils::essentials::do_sin(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "cos" => unsafe {
+            crate::mainutils::essentials::do_cos(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "tan" => unsafe {
+            crate::mainutils::essentials::do_tan(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "asin" => unsafe {
+            crate::mainutils::essentials::do_asin(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "acos" => unsafe {
+            crate::mainutils::essentials::do_acos(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "atan" => unsafe {
+            crate::mainutils::essentials::do_atan(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "atan2" => unsafe {
+            crate::mainutils::essentials::do_atan2(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,

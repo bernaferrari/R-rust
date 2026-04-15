@@ -3699,6 +3699,24 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "rowMeans",
         "col",
         "row",
+        // Complete R runtime — cbind, rbind, t (transpose), statistics
+        "cbind",
+        "rbind",
+        "t",
+        "var",
+        "sd",
+        "median",
+        "cummin",
+        "cummax",
+        "dimnames",
+        "pi",
+        "sin",
+        "cos",
+        "tan",
+        "asin",
+        "acos",
+        "atan",
+        "atan2",
     ];
 
     let builtins = BUILTIN_SEXPS.get_or_init(|| {
@@ -14426,6 +14444,826 @@ pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             R_NilValue()
         };
         *dst.add(i) = elt;
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+// ---------------------------------------------------------------------------
+// Complete R runtime — cbind, rbind, t (transpose), and other critical functions
+// ---------------------------------------------------------------------------
+
+/// R's `cbind(...)` — combine vectors/matrices by columns.
+pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Simplified: collect all args into a matrix by columns
+    let mut result_type = SEXPTYPE::LGLSXP.0;
+    let mut ncols: R_xlen_t = 0;
+    let mut nrows: R_xlen_t = 0;
+
+    // First pass: determine dimensions and type
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let t = TYPEOF(arg);
+            if t == SEXPTYPE::STRSXP.0 {
+                result_type = SEXPTYPE::STRSXP.0;
+            } else if t == SEXPTYPE::REALSXP.0 && result_type != SEXPTYPE::STRSXP.0 {
+                result_type = SEXPTYPE::REALSXP.0;
+            } else if t == SEXPTYPE::INTSXP.0
+                && result_type != SEXPTYPE::STRSXP.0
+                && result_type != SEXPTYPE::REALSXP.0
+            {
+                result_type = SEXPTYPE::INTSXP.0;
+            }
+
+            let dim_attr = crate::sexp::attrib_core::getAttrib(
+                arg,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+                let r = *INTEGER(dim_attr) as R_xlen_t;
+                let c = *INTEGER(dim_attr.add(1)) as R_xlen_t;
+                if nrows == 0 { nrows = r; }
+                ncols += c;
+            } else {
+                let n = XLENGTH(arg);
+                if nrows == 0 { nrows = n; }
+                ncols += 1;
+            }
+        }
+        current = CDR(current);
+    }
+
+    if nrows == 0 || ncols == 0 {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+
+    let total = nrows * ncols;
+    let result = Rf_allocVector3(result_type, total);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+
+    // Second pass: copy data column by column
+    let mut col_offset: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let t = TYPEOF(arg);
+            let dim_attr = crate::sexp::attrib_core::getAttrib(
+                arg,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            let (arg_nrow, arg_ncol) = if !dim_attr.is_null()
+                && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0
+                && LENGTH(dim_attr) >= 2
+            {
+                (
+                    *INTEGER(dim_attr) as R_xlen_t,
+                    *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                )
+            } else {
+                (XLENGTH(arg), 1)
+            };
+
+            for j in 0..arg_ncol {
+                for i in 0..arg_nrow.min(nrows) {
+                    let src_idx = (j * arg_nrow + i) as usize;
+                    let dst_idx = ((col_offset + j) * nrows + i) as usize;
+
+                    if result_type == SEXPTYPE::REALSXP.0 {
+                        let val = if t == SEXPTYPE::REALSXP.0 {
+                            *REAL(arg).add(src_idx)
+                        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                            let v = *INTEGER(arg).add(src_idx);
+                            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                        } else {
+                            NA_REAL
+                        };
+                        *REAL(result).add(dst_idx) = val;
+                    } else if result_type == SEXPTYPE::INTSXP.0 {
+                        let val = if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                            *INTEGER(arg).add(src_idx)
+                        } else {
+                            NA_INTEGER
+                        };
+                        *INTEGER(result).add(dst_idx) = val;
+                    }
+                }
+            }
+            col_offset += arg_ncol;
+        }
+        current = CDR(current);
+    }
+
+    // Set dim attribute
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+    if !dim.is_null() {
+        let _dp = Rf_protect(dim);
+        *INTEGER(dim) = nrows as c_int;
+        *INTEGER(dim.add(1)) = ncols as c_int;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            dim,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `rbind(...)` — combine vectors/matrices by rows.
+pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut result_type = SEXPTYPE::LGLSXP.0;
+    let mut ncols: R_xlen_t = 0;
+    let mut nrows: R_xlen_t = 0;
+
+    // First pass: determine dimensions and type
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let t = TYPEOF(arg);
+            if t == SEXPTYPE::STRSXP.0 {
+                result_type = SEXPTYPE::STRSXP.0;
+            } else if t == SEXPTYPE::REALSXP.0 && result_type != SEXPTYPE::STRSXP.0 {
+                result_type = SEXPTYPE::REALSXP.0;
+            } else if t == SEXPTYPE::INTSXP.0
+                && result_type != SEXPTYPE::STRSXP.0
+                && result_type != SEXPTYPE::REALSXP.0
+            {
+                result_type = SEXPTYPE::INTSXP.0;
+            }
+
+            let dim_attr = crate::sexp::attrib_core::getAttrib(
+                arg,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0 && LENGTH(dim_attr) >= 2 {
+                let r = *INTEGER(dim_attr) as R_xlen_t;
+                let c = *INTEGER(dim_attr.add(1)) as R_xlen_t;
+                if ncols == 0 { ncols = c; }
+                nrows += r;
+            } else {
+                let n = XLENGTH(arg);
+                if ncols == 0 { ncols = n; }
+                nrows += 1;
+            }
+        }
+        current = CDR(current);
+    }
+
+    if nrows == 0 || ncols == 0 {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP.0, 0);
+    }
+
+    let total = nrows * ncols;
+    let result = Rf_allocVector3(result_type, total);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+
+    // Second pass: copy data row by row
+    let mut row_offset: R_xlen_t = 0;
+    current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let arg = CAR(current);
+        if !arg.is_null() && arg != R_NilValue() {
+            let t = TYPEOF(arg);
+            let dim_attr = crate::sexp::attrib_core::getAttrib(
+                arg,
+                Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            );
+            let (arg_nrow, arg_ncol) = if !dim_attr.is_null()
+                && TYPEOF(dim_attr) == SEXPTYPE::INTSXP.0
+                && LENGTH(dim_attr) >= 2
+            {
+                (
+                    *INTEGER(dim_attr) as R_xlen_t,
+                    *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                )
+            } else {
+                (1, XLENGTH(arg))
+            };
+
+            for j in 0..arg_ncol.min(ncols) {
+                for i in 0..arg_nrow {
+                    let src_idx = (j * arg_nrow + i) as usize;
+                    let dst_idx = (j * nrows + row_offset + i) as usize;
+
+                    if result_type == SEXPTYPE::REALSXP.0 {
+                        let val = if t == SEXPTYPE::REALSXP.0 {
+                            *REAL(arg).add(src_idx)
+                        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                            let v = *INTEGER(arg).add(src_idx);
+                            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+                        } else {
+                            NA_REAL
+                        };
+                        *REAL(result).add(dst_idx) = val;
+                    } else if result_type == SEXPTYPE::INTSXP.0 {
+                        let val = if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                            *INTEGER(arg).add(src_idx)
+                        } else {
+                            NA_INTEGER
+                        };
+                        *INTEGER(result).add(dst_idx) = val;
+                    }
+                }
+            }
+            row_offset += arg_nrow;
+        }
+        current = CDR(current);
+    }
+
+    // Set dim attribute
+    let dim = Rf_allocVector3(SEXPTYPE::INTSXP.0, 2);
+    if !dim.is_null() {
+        let _dp = Rf_protect(dim);
+        *INTEGER(dim) = nrows as c_int;
+        *INTEGER(dim.add(1)) = ncols as c_int;
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+            dim,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+   crate::sexp::protect::Rf_unprotect(1);
+   result
+}
+/// R's `var(x, y = NULL, na.rm = FALSE)` — variance or covariance.
+pub unsafe fn do_var(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let y = CAR(CDR(args));
+    let na_rm_arg = CAR(CDR(CDR(args)));
+    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    if y.is_null() || y == R_NilValue() {
+        // Variance of x
+        let n = XLENGTH(x);
+        let t = TYPEOF(x);
+        let mut sum = 0.0f64;
+        let mut sum_sq = 0.0f64;
+        let mut count = 0i64;
+
+        for i in 0..n {
+            let val = if t == SEXPTYPE::REALSXP.0 {
+                *REAL(x).add(i as usize)
+            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+
+            if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+                if !na_rm { return Rf_ScalarReal(NA_REAL); }
+            } else {
+                sum += val;
+                sum_sq += val * val;
+                count += 1;
+            }
+        }
+
+        if count < 2 {
+            return Rf_ScalarReal(NA_REAL);
+        }
+
+        let mean = sum / count as f64;
+        let variance = (sum_sq - count as f64 * mean * mean) / (count - 1) as f64;
+        Rf_ScalarReal(variance)
+    } else {
+        // Covariance of x and y
+        let n = XLENGTH(x).min(XLENGTH(y));
+        let tx = TYPEOF(x);
+        let ty = TYPEOF(y);
+        let mut sum_x = 0.0f64;
+        let mut sum_y = 0.0f64;
+        let mut sum_xy = 0.0f64;
+        let mut count = 0i64;
+
+        for i in 0..n {
+            let val_x = if tx == SEXPTYPE::REALSXP.0 {
+                *REAL(x).add(i as usize)
+            } else if tx == SEXPTYPE::INTSXP.0 || tx == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(x).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+
+            let val_y = if ty == SEXPTYPE::REALSXP.0 {
+                *REAL(y).add(i as usize)
+            } else if ty == SEXPTYPE::INTSXP.0 || ty == SEXPTYPE::LGLSXP.0 {
+                let v = *INTEGER(y).add(i as usize);
+                if v == NA_INTEGER { NA_REAL } else { v as f64 }
+            } else {
+                NA_REAL
+            };
+
+            if val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+                || val_x.is_nan()
+                || val_y.is_nan()
+            {
+                if !na_rm { return Rf_ScalarReal(NA_REAL); }
+            } else {
+                sum_x += val_x;
+                sum_y += val_y;
+                sum_xy += val_x * val_y;
+                count += 1;
+            }
+        }
+
+        if count < 2 {
+            return Rf_ScalarReal(NA_REAL);
+        }
+
+        let mean_x = sum_x / count as f64;
+        let mean_y = sum_y / count as f64;
+        let covariance = (sum_xy - count as f64 * mean_x * mean_y) / (count - 1) as f64;
+        Rf_ScalarReal(covariance)
+    }
+}
+
+/// R's `sd(x, na.rm = FALSE)` — standard deviation.
+pub unsafe fn do_sd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    // Call do_var to get variance
+    let var_args = Rf_cons(CAR(args), CDR(args));
+    let var_result = do_var(_call, _op, var_args, _rho);
+    if var_result.is_null() {
+        return R_NilValue();
+    }
+
+    let v = real_or_default(var_result, NA_REAL);
+    if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v < 0.0 {
+        Rf_ScalarReal(NA_REAL)
+    } else {
+        Rf_ScalarReal(libm::sqrt(v))
+    }
+}
+
+/// R's `median(x, na.rm = FALSE)` — median value.
+pub unsafe fn do_median(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    let na_rm_arg = CAR(CDR(args));
+    let na_rm = !na_rm_arg.is_null() && na_rm_arg != R_NilValue() && real_or_default(na_rm_arg, 0.0) != 0.0;
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let mut vals: Vec<f64> = Vec::new();
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+            if !na_rm { return Rf_ScalarReal(NA_REAL); }
+        } else {
+            vals.push(val);
+        }
+    }
+
+    if vals.is_empty() {
+        return Rf_ScalarReal(NA_REAL);
+    }
+
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let mid = vals.len() / 2;
+    if vals.len() % 2 == 0 {
+        Rf_ScalarReal((vals[mid - 1] + vals[mid]) / 2.0)
+    } else {
+        Rf_ScalarReal(vals[mid])
+    }
+}
+
+/// R's `cummin(x)` — cumulative minimum.
+pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    let mut min_so_far = f64::INFINITY;
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+            min_so_far = NA_REAL;
+        } else if min_so_far.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN {
+            min_so_far = min_so_far.min(val);
+        }
+        *dst.add(i as usize) = min_so_far;
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `cummax(x)` — cumulative maximum.
+pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    let mut max_so_far = f64::NEG_INFINITY;
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || val.is_nan() {
+            max_so_far = NA_REAL;
+        } else if max_so_far.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN {
+            max_so_far = max_so_far.max(val);
+        }
+        *dst.add(i as usize) = max_so_far;
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `dimnames(x)` — get dimension names of a matrix/array.
+pub unsafe fn do_dimnames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
+    )
+}
+
+/// R's `%in%` operator — match operator.
+pub unsafe fn do_in_operator(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let table = CAR(CDR(args));
+
+    if x.is_null() || x == R_NilValue() || table.is_null() || table == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+
+    for i in 0..n {
+        let elem = elt_to_string(x, i);
+        let table_len = XLENGTH(table);
+        let mut found = false;
+        for j in 0..table_len {
+            let tbl_elem = elt_to_string(table, j);
+            if elem == tbl_elem {
+                found = true;
+                break;
+            }
+        }
+        *dst.add(i as usize) = if found { TRUE } else { FALSE };
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `pi` — mathematical constant π.
+pub unsafe fn do_pi(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
+    Rf_ScalarReal(std::f64::consts::PI)
+}
+
+/// R's `sin(x)` — sine function.
+pub unsafe fn do_sin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val.sin();
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `cos(x)` — cosine function.
+pub unsafe fn do_cos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val.cos();
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `tan(x)` — tangent function.
+pub unsafe fn do_tan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val.tan();
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `asin(x)` — arc sine function.
+pub unsafe fn do_asin(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val.asin();
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `acos(x)` — arc cosine function.
+pub unsafe fn do_acos(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val.acos();
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `atan(x)` — arc tangent function.
+pub unsafe fn do_atan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(x);
+    let t = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let val = if t == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(i as usize)
+        } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(i as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val.atan();
+        }
+    }
+
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
+/// R's `atan2(y, x)` — two-argument arc tangent function.
+pub unsafe fn do_atan2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let y = CAR(args);
+    let x = CAR(CDR(args));
+
+    if y.is_null() || y == R_NilValue() || x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let n = XLENGTH(y).max(XLENGTH(x));
+    let ty = TYPEOF(y);
+    let tx = TYPEOF(x);
+    let result = Rf_allocVector3(SEXPTYPE::REALSXP.0, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = REAL(result);
+
+    for i in 0..n {
+        let y_len = XLENGTH(y);
+        let x_len = XLENGTH(x);
+        let yi = if y_len > 0 { i % y_len } else { 0 };
+        let xi = if x_len > 0 { i % x_len } else { 0 };
+
+        let val_y = if ty == SEXPTYPE::REALSXP.0 {
+            *REAL(y).add(yi as usize)
+        } else if ty == SEXPTYPE::INTSXP.0 || ty == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(y).add(yi as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        let val_x = if tx == SEXPTYPE::REALSXP.0 {
+            *REAL(x).add(xi as usize)
+        } else if tx == SEXPTYPE::INTSXP.0 || tx == SEXPTYPE::LGLSXP.0 {
+            let v = *INTEGER(x).add(xi as usize);
+            if v == NA_INTEGER { NA_REAL } else { v as f64 }
+        } else {
+            NA_REAL
+        };
+
+        if val_y.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            || val_x.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+        {
+            *dst.add(i as usize) = NA_REAL;
+        } else {
+            *dst.add(i as usize) = val_y.atan2(val_x);
+        }
     }
 
     crate::sexp::protect::Rf_unprotect(1);

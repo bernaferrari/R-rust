@@ -997,7 +997,13 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             eprintln!(" {}", fmt_str);
 
             if R_SHOW_WARN_CALLS.load(Ordering::Relaxed) && !call.is_null() && !isNull(call) != 0 {
-                let tr = R_ConciseTraceback(call, 0);
+                // Respect .signalSimpleWarning hook if present by filtering the traceback accordingly
+                let sigsym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
+                let tr = if SYMVALUE(sigsym) != globals::R_UnboundValue() {
+                    R_ConciseTraceback(call, 1)
+                } else {
+                    R_ConciseTraceback(call, 0)
+                };
                 if !tr.is_empty() {
                     eprintln!("Calls: {}", tr);
                 }
