@@ -1,0 +1,138 @@
+name: Parity Gate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Build + test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        shell: bash
+        run: cargo fmt --check --all
+
+      - name: Clippy
+        shell: bash
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Build
+        shell: bash
+        run: cargo build --all-targets
+
+      - name: Test
+        shell: bash
+        run: cargo test --all-targets
+
+  desktop-host-smoke:
+    name: Desktop host smoke (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    needs: build
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Desktop host smoke
+        shell: bash
+        run: scripts/desktop_host_smoke.sh
+
+  android-baseline:
+    name: Android baseline + tooling
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Android toolchain check
+        shell: bash
+        run: scripts/android_toolchain_check.sh
+
+      - name: Android package smoke
+        shell: bash
+        run: scripts/android_package_smoke.sh --check
+
+  uniffi-bindings:
+    name: UniFFI binding check
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Generate bindings
+        shell: bash
+        run: scripts/generate_uniffi_bindings.sh --check
+
+  conformance:
+    name: Conformance harness
+    runs-on: ubuntu-latest
+    needs: build
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run differential harness
+        shell: bash
+        run: cargo run --manifest-path tests/differential/Cargo.toml --release
