@@ -17,7 +17,7 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
-use crate::mainutils::errors::{Rf_error, Rf_warning};
+use crate::mainutils::errors::{Rf_error, Rf_error1, Rf_warning};
 
 use super::clippath::{isClipPath, resolveClipPath};
 use super::gpar::{
@@ -687,6 +687,41 @@ unsafe fn childList(children: SEXP) -> SEXP {
     result
 }
 
+unsafe fn pathMatch(path: SEXP, pathsofar: SEXP, strict: SEXP) -> bool {
+    let fcall = Rf_protect(lang4(
+        Rf_install(b"pathMatch\0".as_ptr() as *const c_char),
+        path,
+        pathsofar,
+        strict,
+    ));
+    let result = Rf_protect(Rf_eval_with_gd(
+        fcall,
+        R_gridEvalEnv.with(|v| v.get()),
+        ptr::null_mut(),
+    ));
+    let r = asBool(result) != 0;
+    Rf_unprotect(2);
+    r
+}
+
+unsafe fn growPath(pathsofar: SEXP, name: SEXP) -> SEXP {
+    if isNull(pathsofar) {
+        return name;
+    }
+    let fcall = Rf_protect(lang3(
+        Rf_install(b"growPath\0".as_ptr() as *const c_char),
+        pathsofar,
+        name,
+    ));
+    let result = Rf_protect(Rf_eval_with_gd(
+        fcall,
+        R_gridEvalEnv.with(|v| v.get()),
+        ptr::null_mut(),
+    ));
+    Rf_unprotect(2);
+    result
+}
+
 unsafe fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> SEXP {
     let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
     let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
@@ -753,6 +788,87 @@ unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int)
     result
 }
 
+unsafe fn findvppathInChildren(
+    path: SEXP,
+    name: SEXP,
+    strict: SEXP,
+    pathsofar: SEXP,
+    children: SEXP,
+    depth: c_int,
+) -> SEXP {
+    let childnames = Rf_protect(childList(children));
+    let n = LENGTH(childnames);
+    let mut count: c_int = 0;
+    let mut found = false;
+    let mut result = R_NilValue();
+    while count < n && !found {
+        let vp = Rf_protect(findVar(
+            installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
+            children,
+        ));
+        let newpathsofar = Rf_protect(growPath(pathsofar, VECTOR_ELT(vp, VP_NAME as R_xlen_t)));
+        result = findvppath(path, name, strict, newpathsofar, vp, depth);
+        found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
+        count += 1;
+        Rf_unprotect(2);
+    }
+    if !found {
+        let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        *INTEGER(zeroDepth) = 0;
+        SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
+        SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
+        Rf_unprotect(2);
+        result = temp;
+    }
+    Rf_unprotect(1);
+    result
+}
+
+unsafe fn findvppath(
+    path: SEXP,
+    name: SEXP,
+    strict: SEXP,
+    pathsofar: SEXP,
+    vp: SEXP,
+    depth: c_int,
+) -> SEXP {
+    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+    let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+    *INTEGER(zeroDepth) = 0;
+    let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+    *INTEGER(curDepth) = depth;
+
+    if noChildren(viewportChildren(vp)) {
+        SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
+        SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
+    } else if childExists(name, viewportChildren(vp)) && pathMatch(path, pathsofar, strict) {
+        SET_VECTOR_ELT(result, 0 as R_xlen_t, curDepth);
+        SET_VECTOR_ELT(
+            result,
+            1 as R_xlen_t,
+            findVar(
+                installTrChar(STRING_ELT(name, 0)),
+                viewportChildren(vp),
+            ),
+        );
+    } else {
+        let found = Rf_protect(findvppathInChildren(
+            path,
+            name,
+            strict,
+            pathsofar,
+            viewportChildren(vp),
+            depth + 1,
+        ));
+        SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
+        SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
+        Rf_unprotect(1);
+    }
+    Rf_unprotect(3);
+    result
+}
+
 /* ==============================
  * L_downviewport
  * ============================== */
@@ -786,7 +902,8 @@ pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
         VECTOR_ELT(found, 0 as R_xlen_t)
     } else {
         Rf_unprotect(1);
-        Rf_ScalarInteger(0)
+        Rf_error1(c"Viewport '%s' was not found".as_ptr(), CHAR(STRING_ELT(name, 0)));
+        R_NilValue()
     }
 }
 
@@ -797,7 +914,7 @@ pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
 pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
     let dd = getDevice();
     let gvp = gridStateElement(dd, GSS_VP);
-    let found = Rf_protect(findViewport(name, strict, gvp, 1));
+    let found = Rf_protect(findvppath(path, name, strict, R_NilValue(), gvp, 1));
     if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
         let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
         setGridStateElement(dd, GSS_VP, vp);
@@ -823,7 +940,8 @@ pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
         VECTOR_ELT(found, 0 as R_xlen_t)
     } else {
         Rf_unprotect(1);
-        Rf_ScalarInteger(0)
+        Rf_error1(c"Viewport '%s' was not found".as_ptr(), CHAR(STRING_ELT(name, 0)));
+        R_NilValue()
     }
 }
 
