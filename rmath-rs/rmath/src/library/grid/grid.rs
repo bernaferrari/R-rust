@@ -17,7 +17,7 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
-use crate::mainutils::errors::Rf_warning;
+use crate::mainutils::errors::{Rf_error, Rf_warning};
 
 use super::clippath::{isClipPath, resolveClipPath};
 use super::gpar::{
@@ -408,15 +408,25 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
     let dd = getDevice();
     let vp = Rf_protect(Rf_duplicate(invp));
 
-    // STUB: call R function pushedvp()
-    // PROTECT(fcall = lang2(install("pushedvp"), vp));
-    // PROTECT(pushedvp = Rf_eval_with_gd(fcall, R_gridEvalEnv.with(|v| v.get()), ptr::null_mut()));
-
-    let pushedvp = doSetViewport(vp, if *LOGICAL(hasParent) != 0 { 0 } else { 1 }, 1, dd);
+    let fcall = Rf_protect(lang2(
+        Rf_install(b"pushedvp\0".as_ptr() as *const c_char),
+        vp,
+    ));
+    let pushedvp = Rf_protect(Rf_eval_with_gd(
+        fcall,
+        R_gridEvalEnv.with(|v| v.get()),
+        ptr::null_mut(),
+    ));
+    let pushedvp = doSetViewport(
+        pushedvp,
+        if *LOGICAL(hasParent) != 0 { 0 } else { 1 },
+        1,
+        dd,
+    );
 
     setGridStateElement(dd, GSS_VP, pushedvp);
 
-    Rf_unprotect(1);
+    Rf_unprotect(3);
     R_NilValue()
 }
 
@@ -481,16 +491,23 @@ unsafe fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> SEXP
         SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
     } else if childExists(name, viewportChildren(vp)) {
         SET_VECTOR_ELT(result, 0 as R_xlen_t, curDepth);
-        // SET_VECTOR_ELT(result, 1, findVar(installTrChar(STRING_ELT(name, 0)), viewportChildren(vp)));
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
+        SET_VECTOR_ELT(
+            result,
+            1 as R_xlen_t,
+            findVar(
+                installTrChar(STRING_ELT(name, 0)),
+                viewportChildren(vp),
+            ),
+        );
     } else {
         if *LOGICAL(strict) != 0 {
             SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
             SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
         } else {
-            // STUB: findInChildren(name, strict, viewportChildren(vp), depth + 1);
-            SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
-            SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
+            let found = Rf_protect(findInChildren(name, strict, viewportChildren(vp), depth + 1));
+            SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
+            SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
+            Rf_unprotect(1);
         }
     }
     Rf_unprotect(3);
@@ -503,9 +520,16 @@ unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int)
     let mut count: c_int = 0;
     let mut found = false;
     let mut result = R_NilValue();
-    Rf_protect(result);
     while count < n && !found {
-        // result = findViewport(name, strict, PROTECT(findVar(...)), depth);
+        let child = Rf_protect(findVar(
+            installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
+            children,
+        ));
+        if !isNull(child) {
+            result = findViewport(name, strict, child, depth);
+            found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
+        }
+        Rf_unprotect(1);
         count += 1;
     }
     if !found {
@@ -517,7 +541,7 @@ unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int)
         Rf_unprotect(2);
         result = temp;
     }
-    Rf_unprotect(2);
+    Rf_unprotect(1);
     result
 }
 
@@ -2377,7 +2401,101 @@ pub unsafe fn L_rectBounds(
  * ============================== */
 
 pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
-    // STUB: full implementation requires GEPath
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path).add(0) != 0
+    {
+        set_gp_fill_string(currentgp, c"black".as_ptr());
+    }
+
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let mut gp_is_scalar = [-1i32; 15];
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let mut gc_cache_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+    GEMode(1, dd);
+
+    for h in 0..LENGTH(index) {
+        let poly_ind = VECTOR_ELT(index, h as R_xlen_t);
+        let npoly = LENGTH(poly_ind);
+        if npoly <= 0 {
+            continue;
+        }
+
+        let mut ntot: c_int = 0;
+        let mut nper = vec![0i32; npoly as usize];
+        for i in 0..npoly as usize {
+            let n = LENGTH(VECTOR_ELT(poly_ind, i as R_xlen_t));
+            nper[i] = n;
+            ntot += n;
+        }
+        if ntot <= 0 {
+            continue;
+        }
+
+        let mut xx = vec![0.0; ntot as usize];
+        let mut yy = vec![0.0; ntot as usize];
+        let mut k: usize = 0;
+        for i in 0..npoly as usize {
+            let indices = INTEGER(VECTOR_ELT(poly_ind, i as R_xlen_t));
+            for j in 0..nper[i] as usize {
+                transformLocn(
+                    x,
+                    y,
+                    *indices.add(j) - 1,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xx[k],
+                    &mut yy[k],
+                );
+                xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
+                yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
+                if !xx[k].is_finite() || !yy[k].is_finite() {
+                    Rf_error(c"non-finite x or y in graphics path".as_ptr());
+                }
+                k += 1;
+            }
+        }
+
+        updateGContext(currentgp, h, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        GEPath(
+            xx.as_mut_ptr(),
+            yy.as_mut_ptr(),
+            npoly,
+            nper.as_mut_ptr(),
+            asBool(rule),
+            gc,
+            dd,
+        );
+    }
+
+    GEMode(0, dd);
+    Rf_unprotect(1);
     R_NilValue()
 }
 

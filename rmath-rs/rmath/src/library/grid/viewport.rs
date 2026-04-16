@@ -460,7 +460,7 @@ pub unsafe fn calcViewportTransform(
 }
 
 // ---------------------------------------------------------------------------
-// initVP — STUB: requires grid.c, state.c
+// initVP — initialize the top-level viewport for the current device
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
