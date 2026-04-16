@@ -30,16 +30,18 @@ use crate::sexp::accessors::{
 };
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::constructors::Rf_cons;
-use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::envir::findFun;
+use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::gcontextFromgpar;
+use super::getDeviceSize;
 use super::just::{justifyX, justifyY};
 use super::layout::calcViewportLayout;
+use super::state::{gridStateElement, setGridStateElement};
 use super::types::*;
 use super::unit::{
     transformHeighttoINCHES, transformWidthtoINCHES, transformXtoINCHES, transformYtoINCHES,
@@ -94,6 +96,14 @@ unsafe fn ScalarReal(x: f64) -> SEXP {
     let s = Rf_allocVector(SEXPTYPE::REALSXP, 1);
     *REAL(s) = x;
     s
+}
+
+unsafe fn lang1(fn_: SEXP) -> SEXP {
+    let call = Rf_cons(fn_, R_NilValue());
+    if !call.is_null() {
+        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+    }
+    call
 }
 
 // ---------------------------------------------------------------------------
@@ -454,8 +464,33 @@ pub unsafe fn calcViewportTransform(
 // ---------------------------------------------------------------------------
 
 #[unsafe(no_mangle)]
-pub unsafe fn initVP(_dd: *const u8) {
-    // pGEDevDesc
-    // STUB: requires gridStateElement, findFun, Rf_eval_with_gd,
-    //        doSetViewport, setGridStateElement from grid.c/state.c
+pub unsafe fn initVP(dd: *const u8) {
+    let dd = dd as pGEDevDesc;
+
+    let vpfnname = Rf_protect(Rf_install(b"grid.top.level.vp\0".as_ptr() as *const c_char));
+    let vpfn_env = R_gridEvalEnv.with(|v| v.get());
+    let vpfn = Rf_protect(lang1(findFun(vpfnname, vpfn_env)));
+    let vp = Rf_protect(Rf_eval(vpfn, R_GlobalEnv()));
+
+    let mut dev_width_cm: c_double = 0.0;
+    let mut dev_height_cm: c_double = 0.0;
+    getDeviceSize(dd, &mut dev_width_cm, &mut dev_height_cm);
+
+    let xscale = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+    *REAL(xscale).add(0) = 0.0;
+    *REAL(xscale).add(1) = dev_width_cm;
+    SET_VECTOR_ELT(vp, VP_XSCALE as R_xlen_t, xscale);
+
+    let yscale = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+    *REAL(yscale).add(0) = 0.0;
+    *REAL(yscale).add(1) = dev_height_cm;
+    SET_VECTOR_ELT(vp, VP_YSCALE as R_xlen_t, yscale);
+
+    let currentgp = gridStateElement(dd, GSS_GPAR);
+    SET_VECTOR_ELT(vp, PVP_GPAR as R_xlen_t, currentgp);
+
+    let vp = doSetViewport(vp, 1, 1, dd);
+    setGridStateElement(dd, GSS_VP, vp);
+
+    Rf_unprotect(5);
 }
