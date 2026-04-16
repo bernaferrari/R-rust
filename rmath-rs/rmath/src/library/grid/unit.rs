@@ -7,7 +7,7 @@
 
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
-use std::ptr;
+use std::cell::Cell;
 
 use crate::attrib_core::{R_NamesSymbol, R_classgets, getAttrib, setAttrib};
 use crate::sexp::accessors::*;
@@ -124,6 +124,65 @@ unsafe fn isGrobUnit(x: c_int) -> bool {
     x >= L_GROBX && x <= L_GROBDESCENT
 }
 
+type TransformToInchesFn =
+    unsafe fn(SEXP, c_int, LViewportContext, pGEcontext, c_double, c_double, pGEDevDesc) -> c_double;
+
+#[inline]
+fn transformDimensionToNPC(value: c_double, cm: c_double) -> c_double {
+    if cm == 0.0 {
+        0.0
+    } else {
+        value * 2.54 / cm
+    }
+}
+
+#[inline]
+fn combineArithmeticUnitValues(op: c_int, value: c_double, values: &[c_double]) -> c_double {
+    if values.is_empty() {
+        return 0.0;
+    }
+
+    let combined = match op {
+        L_SUM => values.iter().copied().sum(),
+        L_MIN => values
+            .iter()
+            .copied()
+            .fold(f64::INFINITY, |acc, value| acc.min(value)),
+        L_MAX => values
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, |acc, value| acc.max(value)),
+        _ => return value,
+    };
+
+    combined * value
+}
+
+unsafe fn transformArithmeticUnitToINCHES(
+    unit: SEXP,
+    index: c_int,
+    vpc: LViewportContext,
+    gc: pGEcontext,
+    widthCM: c_double,
+    heightCM: c_double,
+    dd: pGEDevDesc,
+    convert: TransformToInchesFn,
+) -> c_double {
+    let op = unitUnit(unit, index);
+    let value = unitValue(unit, index);
+    let data = unitData(unit, index);
+    let n = unitLength(data);
+    if n <= 0 {
+        return 0.0;
+    }
+
+    let mut values = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        values.push(convert(data, i, vpc, gc, widthCM, heightCM, dd));
+    }
+    combineArithmeticUnitValues(op, value, &values)
+}
+
 /* ==============================
  * Global null layout mode
  * ============================== */
@@ -164,7 +223,7 @@ unsafe fn isNewUnit(unit: SEXP) -> bool {
 }
 
 unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
-    // STUB: calls R's upgradeUnit function
+    // TODO: call R's upgradeUnit function once the eval bridge is available.
     unit
 }
 
@@ -175,7 +234,7 @@ unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
 pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
     let l = LENGTH(unit);
     if l == 0 {
-        // error in C, just return NilValue in stub
+        // C raises an error here; this port returns NilValue until the error bridge lands.
         return R_NilValue();
     }
     let i = index % l;
@@ -260,48 +319,38 @@ pub unsafe fn unitLength(u: SEXP) -> c_int {
  * ============================== */
 
 pub unsafe fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
-    let mut result: c_double = 0.0;
     let u = unitUnit(unit, index);
     let value = unitValue(unit, index);
-    let data: SEXP;
     match u {
         L_SUM => {
-            data = unitData(unit, index);
+            let data = unitData(unit, index);
             let n = unitLength(data);
+            let mut values = Vec::with_capacity(n as usize);
             for i in 0..n {
-                result += pureNullUnitValue(data, i);
+                values.push(pureNullUnitValue(data, i));
             }
-            result *= value;
+            combineArithmeticUnitValues(u, value, &values)
         }
         L_MIN => {
-            data = unitData(unit, index);
+            let data = unitData(unit, index);
             let n = unitLength(data);
-            result = c_double::MAX;
+            let mut values = Vec::with_capacity(n as usize);
             for i in 0..n {
-                let temp = pureNullUnitValue(data, i);
-                if temp < result {
-                    result = temp;
-                }
+                values.push(pureNullUnitValue(data, i));
             }
-            result *= value;
+            combineArithmeticUnitValues(u, value, &values)
         }
         L_MAX => {
-            data = unitData(unit, index);
+            let data = unitData(unit, index);
             let n = unitLength(data);
-            result = c_double::MIN;
+            let mut values = Vec::with_capacity(n as usize);
             for i in 0..n {
-                let temp = pureNullUnitValue(data, i);
-                if temp > result {
-                    result = temp;
-                }
+                values.push(pureNullUnitValue(data, i));
             }
-            result *= value;
+            combineArithmeticUnitValues(u, value, &values)
         }
-        _ => {
-            result = value;
-        }
+        _ => value,
     }
-    result
 }
 
 /* ==============================
@@ -333,7 +382,7 @@ pub unsafe fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
 
 unsafe fn evaluateNullUnit(
     value: c_double,
-    _thisCM: c_double,
+    thisCM: c_double,
     nullLayoutMode: c_int,
     nullArithmeticMode: c_int,
 ) -> c_double {
@@ -347,17 +396,16 @@ unsafe fn evaluateNullUnit(
                 result = 0.0;
             }
             L_minimising => {
-                // result = thisCM; -- would need thisCM
-                result = 0.0;
+                result = thisCM;
             }
-            _ => {} // intentionally unhandled: unknown unit type for layout calculation
+            _ => {}
         }
     }
     result
 }
 
 /* ==============================
- * transformX -- transform x unit to inches (STUB)
+ * transformX -- transform x unit to inches
  * ============================== */
 
 pub unsafe fn transformX(
@@ -371,11 +419,23 @@ pub unsafe fn transformX(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
+    let u = unitUnit(x, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(x, index), widthCM, nullLMode, nullAMode);
+    }
+    if isArith(u) && pureNullUnit(x, index, dd) != 0 {
+        return evaluateNullUnit(
+            pureNullUnitValue(x, index),
+            widthCM,
+            nullLMode,
+            nullAMode,
+        );
+    }
     transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
- * transformY -- transform y unit to inches (STUB)
+ * transformY -- transform y unit to inches
  * ============================== */
 
 pub unsafe fn transformY(
@@ -389,11 +449,23 @@ pub unsafe fn transformY(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
+    let u = unitUnit(y, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(y, index), heightCM, nullLMode, nullAMode);
+    }
+    if isArith(u) && pureNullUnit(y, index, dd) != 0 {
+        return evaluateNullUnit(
+            pureNullUnitValue(y, index),
+            heightCM,
+            nullLMode,
+            nullAMode,
+        );
+    }
     transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
- * transformWidth -- transform width unit to inches (STUB)
+ * transformWidth -- transform width unit to inches
  * ============================== */
 
 pub unsafe fn transformWidth(
@@ -407,11 +479,23 @@ pub unsafe fn transformWidth(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
+    let u = unitUnit(width, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(width, index), widthCM, nullLMode, nullAMode);
+    }
+    if isArith(u) && pureNullUnit(width, index, dd) != 0 {
+        return evaluateNullUnit(
+            pureNullUnitValue(width, index),
+            widthCM,
+            nullLMode,
+            nullAMode,
+        );
+    }
     transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
- * transformHeight -- transform height unit to inches (STUB)
+ * transformHeight -- transform height unit to inches
  * ============================== */
 
 pub unsafe fn transformHeight(
@@ -425,11 +509,23 @@ pub unsafe fn transformHeight(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
+    let u = unitUnit(height, index);
+    if u == L_NULL {
+        return evaluateNullUnit(unitValue(height, index), heightCM, nullLMode, nullAMode);
+    }
+    if isArith(u) && pureNullUnit(height, index, dd) != 0 {
+        return evaluateNullUnit(
+            pureNullUnitValue(height, index),
+            heightCM,
+            nullLMode,
+            nullAMode,
+        );
+    }
     transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
- * transformXtoINCHES -- transform x unit to inches (STUB)
+ * transformXtoINCHES -- transform x unit to inches
  * ============================== */
 
 pub unsafe fn transformXtoINCHES(
@@ -437,45 +533,46 @@ pub unsafe fn transformXtoINCHES(
     index: c_int,
     vpc: LViewportContext,
     _gc: pGEcontext,
-    _widthCM: c_double,
-    _heightCM: c_double,
+    widthCM: c_double,
+    heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
     let u = unitUnit(x, index);
     let value = unitValue(x, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            x, index, vpc, _gc, widthCM, heightCM, _dd, transformXtoINCHES,
+        );
+    }
     match u {
         L_NATIVE => {
-            // native units: value is in data coordinate system
-            // map from [xscalemin, xscalemax] to [0, 1] then to inches
             let range = vpc.xscalemax - vpc.xscalemin;
             if range == 0.0 {
                 0.0
             } else {
-                (value - vpc.xscalemin) / range
+                (value - vpc.xscalemin) / range * widthCM / 2.54
             }
         }
-        L_NPC => value,       // 0..1 range
-        L_CM => value / 2.54, // cm to inches
+        L_NPC => value * widthCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
+        L_CM => value / 2.54,
         L_INCHES => value,
-        L_MM => value / 25.4,              // mm to inches
-        L_POINTS => value / 72.27,         // points to inches
+        L_MM => value / 25.4,
+        L_POINTS => value / 72.27,
         L_PICAS => value / (12.0 * 72.27), // picas to inches
-        L_BIGPOINTS => value / 72.0,       // bigpoints to inches
+        L_BIGPOINTS => value / 72.0,
         L_LINES | L_CHAR | L_STRINGWIDTH | L_STRINGHEIGHT | L_STRINGASCENT | L_STRINGDESCENT
         | L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-            // STUB: these require device context or grob evaluation
+            // TODO: requires device context or grob evaluation.
             0.0
         }
         L_NULL => 0.0,
-        _ => {
-            // STUB for remaining unit types
-            0.0
-        }
+        _ => 0.0,
     }
 }
 
 /* ==============================
- * transformYtoINCHES -- transform y unit to inches (STUB)
+ * transformYtoINCHES -- transform y unit to inches
  * ============================== */
 
 pub unsafe fn transformYtoINCHES(
@@ -483,22 +580,28 @@ pub unsafe fn transformYtoINCHES(
     index: c_int,
     vpc: LViewportContext,
     _gc: pGEcontext,
-    _widthCM: c_double,
-    _heightCM: c_double,
+    widthCM: c_double,
+    heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
     let u = unitUnit(y, index);
     let value = unitValue(y, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            y, index, vpc, _gc, widthCM, heightCM, _dd, transformYtoINCHES,
+        );
+    }
     match u {
         L_NATIVE => {
             let range = vpc.yscalemax - vpc.yscalemin;
             if range == 0.0 {
                 0.0
             } else {
-                (value - vpc.yscalemin) / range
+                (value - vpc.yscalemin) / range * heightCM / 2.54
             }
         }
-        L_NPC => value,
+        L_NPC => value * heightCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM => value / 2.54,
         L_INCHES => value,
         L_MM => value / 25.4,
@@ -506,12 +609,12 @@ pub unsafe fn transformYtoINCHES(
         L_PICAS => value / (12.0 * 72.27),
         L_BIGPOINTS => value / 72.0,
         L_NULL => 0.0,
-        _ => 0.0, // STUB
+        _ => 0.0,
     }
 }
 
 /* ==============================
- * transformWidthtoINCHES -- transform width unit to inches (STUB)
+ * transformWidthtoINCHES -- transform width unit to inches
  * ============================== */
 
 pub unsafe fn transformWidthtoINCHES(
@@ -520,11 +623,16 @@ pub unsafe fn transformWidthtoINCHES(
     vpc: LViewportContext,
     _gc: pGEcontext,
     widthCM: c_double,
-    _heightCM: c_double,
+    heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
     let u = unitUnit(w, index);
     let value = unitValue(w, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            w, index, vpc, _gc, widthCM, heightCM, _dd, transformWidthtoINCHES,
+        );
+    }
     match u {
         L_NATIVE => {
             let range = vpc.xscalemax - vpc.xscalemin;
@@ -535,6 +643,7 @@ pub unsafe fn transformWidthtoINCHES(
             }
         }
         L_NPC => value * widthCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM => value / 2.54,
         L_INCHES => value,
         L_MM => value / 25.4,
@@ -542,12 +651,12 @@ pub unsafe fn transformWidthtoINCHES(
         L_PICAS => value / (12.0 * 72.27),
         L_BIGPOINTS => value / 72.0,
         L_NULL => 0.0,
-        _ => 0.0, // STUB
+        _ => 0.0,
     }
 }
 
 /* ==============================
- * transformHeighttoINCHES -- transform height unit to inches (STUB)
+ * transformHeighttoINCHES -- transform height unit to inches
  * ============================== */
 
 pub unsafe fn transformHeighttoINCHES(
@@ -555,12 +664,17 @@ pub unsafe fn transformHeighttoINCHES(
     index: c_int,
     vpc: LViewportContext,
     _gc: pGEcontext,
-    _widthCM: c_double,
+    widthCM: c_double,
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
     let u = unitUnit(h, index);
     let value = unitValue(h, index);
+    if isArith(u) {
+        return transformArithmeticUnitToINCHES(
+            h, index, vpc, _gc, widthCM, heightCM, _dd, transformHeighttoINCHES,
+        );
+    }
     match u {
         L_NATIVE => {
             let range = vpc.yscalemax - vpc.yscalemin;
@@ -571,6 +685,7 @@ pub unsafe fn transformHeighttoINCHES(
             }
         }
         L_NPC => value * heightCM / 2.54,
+        L_SNPC => value * widthCM.min(heightCM) / 2.54,
         L_CM => value / 2.54,
         L_INCHES => value,
         L_MM => value / 25.4,
@@ -578,12 +693,12 @@ pub unsafe fn transformHeighttoINCHES(
         L_PICAS => value / (12.0 * 72.27),
         L_BIGPOINTS => value / 72.0,
         L_NULL => 0.0,
-        _ => 0.0, // STUB
+        _ => 0.0,
     }
 }
 
 /* ==============================
- * transformLocn -- transform x,y location (STUB)
+ * transformLocn -- transform x,y location
  * ============================== */
 
 pub unsafe fn transformLocn(
@@ -604,7 +719,7 @@ pub unsafe fn transformLocn(
 }
 
 /* ==============================
- * transformDimn -- transform width,height dimensions (STUB)
+ * transformDimn -- transform width,height dimensions
  * ============================== */
 
 pub unsafe fn transformDimn(
@@ -625,7 +740,7 @@ pub unsafe fn transformDimn(
 }
 
 /* ==============================
- * transformXYFromINCHES -- convert inches to specified unit (STUB)
+ * transformXYFromINCHES -- convert inches to specified unit
  * ============================== */
 
 pub unsafe fn transformXYFromINCHES(
@@ -634,29 +749,31 @@ pub unsafe fn transformXYFromINCHES(
     scalemin: c_double,
     scalemax: c_double,
     _gc: pGEcontext,
-    _thisCM: c_double,
-    _otherCM: c_double,
+    thisCM: c_double,
+    otherCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
+    let snpcCM = thisCM.min(otherCM);
     match unit_id {
-        L_NPC => location, // STUB: should use thisCM
+        L_NPC => transformDimensionToNPC(location, thisCM),
+        L_SNPC => transformDimensionToNPC(location, snpcCM),
         L_NATIVE => {
             let range = scalemax - scalemin;
             if range == 0.0 {
                 0.0
             } else {
-                scalemin + location * range
+                scalemin + transformDimensionToNPC(location, thisCM) * range
             }
         }
         L_CM => location * 2.54,
         L_INCHES => location,
         L_MM => location * 25.4,
-        _ => location, // STUB for others
+        _ => location, // TODO: other unit types need device-dependent context.
     }
 }
 
 /* ==============================
- * transformWidthHeightFromINCHES -- convert inches to width/height unit (STUB)
+ * transformWidthHeightFromINCHES -- convert inches to width/height unit
  * ============================== */
 
 pub unsafe fn transformWidthHeightFromINCHES(
@@ -665,20 +782,26 @@ pub unsafe fn transformWidthHeightFromINCHES(
     scalemin: c_double,
     scalemax: c_double,
     _gc: pGEcontext,
-    _thisCM: c_double,
-    _otherCM: c_double,
+    thisCM: c_double,
+    otherCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
+    let snpcCM = thisCM.min(otherCM);
     match unit_id {
-        L_NPC => value,
+        L_NPC => transformDimensionToNPC(value, thisCM),
+        L_SNPC => transformDimensionToNPC(value, snpcCM),
         L_NATIVE => {
             let range = scalemax - scalemin;
-            if range == 0.0 { 0.0 } else { value / range }
+            if range == 0.0 {
+                0.0
+            } else {
+                transformDimensionToNPC(value, thisCM) * range
+            }
         }
         L_CM => value * 2.54,
         L_INCHES => value,
         L_MM => value * 25.4,
-        _ => value,
+        _ => value, // TODO: other unit types need device-dependent context.
     }
 }
 
@@ -692,8 +815,8 @@ pub unsafe fn transformXYtoNPC(x: c_double, from: c_int, min: c_double, max: c_d
             let range = max - min;
             if range == 0.0 { 0.5 } else { (x - min) / range }
         }
-        L_NPC => x,
-        _ => x, // STUB for other units
+        L_NPC | L_SNPC => x,
+        _ => x, // TODO: unsupported units need device-dependent context.
     }
 }
 
@@ -703,8 +826,8 @@ pub unsafe fn transformWHtoNPC(x: c_double, from: c_int, min: c_double, max: c_d
             let range = max - min;
             if range == 0.0 { 0.0 } else { x / range }
         }
-        L_NPC => x,
-        _ => x,
+        L_NPC | L_SNPC => x,
+        _ => x, // TODO: unsupported units need device-dependent context.
     }
 }
 
@@ -714,8 +837,8 @@ pub unsafe fn transformXYfromNPC(x: c_double, to: c_int, min: c_double, max: c_d
             let range = max - min;
             min + x * range
         }
-        L_NPC => x,
-        _ => x,
+        L_NPC | L_SNPC => x,
+        _ => x, // TODO: unsupported units need device-dependent context.
     }
 }
 
@@ -725,8 +848,8 @@ pub unsafe fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_d
             let range = max - min;
             x * range
         }
-        L_NPC => x,
-        _ => x,
+        L_NPC | L_SNPC => x,
+        _ => x, // TODO: unsupported units need device-dependent context.
     }
 }
 
@@ -892,4 +1015,88 @@ pub unsafe fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
     R_classgets(answer, cl);
     Rf_unprotect(3);
     answer
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn approx_eq(lhs: c_double, rhs: c_double) {
+        assert!(
+            (lhs - rhs).abs() < 1e-12,
+            "left={lhs:?}, right={rhs:?}"
+        );
+    }
+
+    #[test]
+    fn arithmetic_values_sum_min_and_max_with_multiplier() {
+        approx_eq(combineArithmeticUnitValues(L_SUM, 2.0, &[1.0, 2.0, 3.0]), 12.0);
+        approx_eq(combineArithmeticUnitValues(L_MIN, 0.5, &[3.0, 1.0, 4.0]), 0.5);
+        approx_eq(combineArithmeticUnitValues(L_MAX, 1.5, &[3.0, 1.0, 4.0]), 6.0);
+    }
+
+    #[test]
+    fn evaluate_null_unit_minimising_uses_available_dimension() {
+        unsafe {
+            approx_eq(evaluateNullUnit(3.0, 9.0, 0, L_minimising), 9.0);
+            approx_eq(evaluateNullUnit(3.0, 9.0, 0, L_plain), 0.0);
+        }
+    }
+
+    #[test]
+    fn inverse_inches_to_npc_uses_axis_and_square_dimensions() {
+        unsafe {
+            approx_eq(
+                transformXYFromINCHES(
+                    1.0,
+                    L_NPC,
+                    10.0,
+                    20.0,
+                    std::ptr::null(),
+                    12.7,
+                    7.62,
+                    std::ptr::null_mut(),
+                ),
+                0.4,
+            );
+            approx_eq(
+                transformXYFromINCHES(
+                    1.0,
+                    L_SNPC,
+                    10.0,
+                    20.0,
+                    std::ptr::null(),
+                    12.7,
+                    7.62,
+                    std::ptr::null_mut(),
+                ),
+                1.0 / 3.0,
+            );
+            approx_eq(
+                transformWidthHeightFromINCHES(
+                    1.0,
+                    L_NATIVE,
+                    10.0,
+                    20.0,
+                    std::ptr::null(),
+                    12.7,
+                    7.62,
+                    std::ptr::null_mut(),
+                ),
+                2.0,
+            );
+        }
+    }
+
+    #[test]
+    fn npc_helpers_round_trip_native_coordinates() {
+        unsafe {
+            approx_eq(transformXYtoNPC(15.0, L_NATIVE, 10.0, 20.0), 0.5);
+            approx_eq(transformXYfromNPC(0.5, L_NATIVE, 10.0, 20.0), 15.0);
+            approx_eq(transformWHtoNPC(5.0, L_NATIVE, 0.0, 10.0), 0.5);
+            approx_eq(transformWHfromNPC(0.5, L_NATIVE, 0.0, 10.0), 5.0);
+            approx_eq(transformXYtoNPC(0.25, L_SNPC, 0.0, 10.0), 0.25);
+            approx_eq(transformXYfromNPC(0.25, L_SNPC, 0.0, 10.0), 0.25);
+        }
+    }
 }
