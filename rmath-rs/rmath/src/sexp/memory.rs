@@ -254,6 +254,9 @@ impl RArena {
         if ptr.is_null() {
             return;
         }
+        if self.free_list.contains(&ptr) {
+            return;
+        }
         let addr = ptr as usize;
         let found = self
             .nodes
@@ -299,6 +302,10 @@ impl RArena {
                     }
                 }
             }
+            (*ptr).gengc_next_node = ptr::null_mut();
+            (*ptr).attrib = ptr::null_mut();
+            (*ptr).sxpinfo.set_mark(false);
+            (*ptr).sxpinfo.set_gcgen(crate::sexp::gengc::Generation::Old as u8);
         }
 
         self.free_list.push(ptr);
@@ -603,6 +610,15 @@ mod tests {
     }
 
     #[test]
+    fn test_arena_free_node_idempotent() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        arena.free_node(ptr);
+        arena.free_node(ptr);
+        assert_eq!(arena.free_count(), 1);
+    }
+
+    #[test]
     fn test_arena_free_node_null() {
         let mut arena = RArena::new();
         arena.free_node(ptr::null_mut());
@@ -618,6 +634,20 @@ mod tests {
         assert_eq!(ptr1, ptr2);
         assert_eq!(arena.node_count(), 1);
         assert_eq!(arena.free_count(), 0);
+    }
+
+    #[test]
+    fn test_arena_free_vector_clears_payload_pointer() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 2);
+        assert!(!ptr.is_null());
+        unsafe {
+            assert!(!(*ptr).gengc_next_node.is_null());
+        }
+        arena.free_node(ptr);
+        unsafe {
+            assert!((*ptr).gengc_next_node.is_null());
+        }
     }
 
     #[test]

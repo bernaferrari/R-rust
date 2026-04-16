@@ -1355,6 +1355,23 @@ mod tests {
     }
 
     #[test]
+    fn test_minor_gc_does_not_refree_nodes_on_free_list() {
+        with_arena(|arena| {
+            *arena = RArena::new();
+            arena.alloc_vector(SEXPTYPE::REALSXP, 2);
+        });
+
+        let (_, freed1) = minor_gc();
+        assert_eq!(freed1, 1);
+        let free_after_first = with_arena(|arena| arena.free_count());
+
+        let (_, freed2) = minor_gc();
+        let free_after_second = with_arena(|arena| arena.free_count());
+        assert_eq!(freed2, 0);
+        assert_eq!(free_after_second, free_after_first);
+    }
+
+    #[test]
     fn test_update_object_references_skips_atomic_vector_payloads() {
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
