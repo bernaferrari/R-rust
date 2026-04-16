@@ -265,12 +265,18 @@ pub unsafe fn getDevice() -> pGEDevDesc {
 
 #[unsafe(no_mangle)]
 pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeightCM: *mut c_double) {
-    // STUB: requires device access
-    // dd->dev->size(&left, &right, &bottom, &top, dd->dev);
-    // *devWidthCM = fabs(right - left) * dd->dev->ipr[0] * 2.54;
-    // *devHeightCM = fabs(top - bottom) * dd->dev->ipr[1] * 2.54;
-    *devWidthCM = 0.0;
-    *devHeightCM = 0.0;
+    // Prefer device-driven conversion helpers when available.
+    // In headless mode these still give deterministic non-zero sizes.
+    let mut width_in = toDeviceWidth(1.0, GE_INCHES, dd).abs();
+    let mut height_in = toDeviceHeight(1.0, GE_INCHES, dd).abs();
+    if !width_in.is_finite() || width_in == 0.0 {
+        width_in = 1.0;
+    }
+    if !height_in.is_finite() || height_in == 0.0 {
+        height_in = 1.0;
+    }
+    *devWidthCM = width_in * 2.54;
+    *devHeightCM = height_in * 2.54;
 }
 
 /* ==============================
@@ -370,12 +376,6 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
         //           vp, VECTOR_ELT(parent, PVP_CHILDREN));
     }
 
-    // calcViewportTransform(vp, viewportParent(vp),
-    //                       topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)), dd);
-
-    // Clipping region establishment - STUB
-    // (full implementation requires unit conversion and GE calls)
-
     // Save device size
     let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
     *REAL(widthCM) = devWidthCM;
@@ -384,6 +384,15 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
     let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
     *REAL(heightCM) = devHeightCM;
     SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
+
+    calcViewportTransform(
+        vp,
+        viewportParent(vp),
+        topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
+        dd,
+    );
+
+    // TODO: clipping region establishment still needs full GE clip semantics.
 
     Rf_unprotect(2);
     vp
@@ -764,12 +773,45 @@ pub unsafe fn getViewportTransform(
     let mut devWidthCM: c_double = 0.0;
     let mut devHeightCM: c_double = 0.0;
     getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
-    // if deviceChanged(devWidthCM, devHeightCM, currentvp) {
-    //     calcViewportTransform(currentvp, viewportParent(currentvp), 1, dd);
-    // }
-    *vpWidthCM = 0.0;
-    *vpHeightCM = 0.0;
-    *rotationAngle = 0.0;
+    if deviceChanged(devWidthCM, devHeightCM, currentvp) {
+        calcViewportTransform(currentvp, viewportParent(currentvp), 1, dd);
+    }
+
+    let width_cm = viewportWidthCM(currentvp);
+    let height_cm = viewportHeightCM(currentvp);
+    let rotation = viewportRotation(currentvp);
+    let t = viewportTransform(currentvp);
+
+    *vpWidthCM = if !isNull(width_cm) && TYPEOF(width_cm) == SEXPTYPE::REALSXP && LENGTH(width_cm) > 0 {
+        *REAL(width_cm)
+    } else {
+        devWidthCM
+    };
+    *vpHeightCM = if !isNull(height_cm) && TYPEOF(height_cm) == SEXPTYPE::REALSXP && LENGTH(height_cm) > 0 {
+        *REAL(height_cm)
+    } else {
+        devHeightCM
+    };
+    *rotationAngle = if !isNull(rotation) && TYPEOF(rotation) == SEXPTYPE::REALSXP && LENGTH(rotation) > 0 {
+        *REAL(rotation)
+    } else {
+        0.0
+    };
+
+    if !transform.is_null() {
+        for i in 0..3 {
+            for j in 0..3 {
+                (*transform)[i][j] = if i == j { 1.0 } else { 0.0 };
+            }
+        }
+        if !isNull(t) && TYPEOF(t) == SEXPTYPE::REALSXP && LENGTH(t) >= 9 {
+            for col in 0..3usize {
+                for row in 0..3usize {
+                    (*transform)[row][col] = *REAL(t).add(col * 3 + row);
+                }
+            }
+        }
+    }
 }
 
 /* ==============================
@@ -836,8 +878,49 @@ pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
     if isNull(viewportLayout(currentvp)) {
         return R_NilValue();
     }
+    let mut vpl = LViewportLocation {
+        x: R_NilValue(),
+        y: R_NilValue(),
+        width: R_NilValue(),
+        height: R_NilValue(),
+        hjust: 0.0,
+        vjust: 0.0,
+    };
+    calcViewportLocationFromLayout(layoutPosRow, layoutPosCol, currentvp, &mut vpl);
+
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+    let vp_width_cm = if !isNull(viewportWidthCM(currentvp))
+        && TYPEOF(viewportWidthCM(currentvp)) == SEXPTYPE::REALSXP
+        && LENGTH(viewportWidthCM(currentvp)) > 0
+    {
+        *REAL(viewportWidthCM(currentvp))
+    } else {
+        1.0
+    };
+    let vp_height_cm = if !isNull(viewportHeightCM(currentvp))
+        && TYPEOF(viewportHeightCM(currentvp)) == SEXPTYPE::REALSXP
+        && LENGTH(viewportHeightCM(currentvp)) > 0
+    {
+        *REAL(viewportHeightCM(currentvp))
+    } else {
+        1.0
+    };
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+
+    let x_cm = transformXtoINCHES(vpl.x, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+    let y_cm = transformYtoINCHES(vpl.y, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+    let w_cm =
+        transformWidthtoINCHES(vpl.width, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+    let h_cm =
+        transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+
     let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
-    // calcViewportLocationFromLayout(layoutPosRow, layoutPosCol, currentvp, &vpl);
+    *REAL(answer).add(0) = x_cm;
+    *REAL(answer).add(1) = y_cm;
+    *REAL(answer).add(2) = w_cm;
+    *REAL(answer).add(3) = h_cm;
     Rf_unprotect(1);
     answer
 }
@@ -1061,8 +1144,8 @@ unsafe fn calcArrow(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) {
-    let l1 = 0.0; // STUB: transformWidthtoINCHES
-    let l2 = 0.0; // STUB: transformHeighttoINCHES
+    let l1 = transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
+    let l2 = transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
     let l = fmin2(l1, l2);
     let na = LENGTH(angle);
     let a = DEG2RAD * *REAL(angle).add((i % na) as usize);
