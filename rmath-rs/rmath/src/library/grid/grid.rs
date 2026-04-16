@@ -85,6 +85,7 @@ unsafe extern "C" {
     fn vmaxget() -> *mut c_void;
     fn vmaxset(vmax: *mut c_void);
     fn R_alloc(n: usize, size: usize) -> *mut c_void;
+    fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int);
 }
 
 unsafe extern "C" {
@@ -196,7 +197,6 @@ unsafe extern "C" {
 
 const GE_INCHES: c_int = 1;
 const R_TRANWHITE: c_int = 0x7FFFFFFF;
-const NA_LOGICAL: c_int = -1;
 const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
 const NA_REAL: f64 = crate::sexp::ffi::NA_REAL;
 const CE_UTF8: c_int = 1;
@@ -211,9 +211,6 @@ const DMDC: f64 = 1.25331413731550025119;
 const TRC0: f64 = 1.55512030155621416073;
 const TRC1: f64 = 1.34677368708859836060;
 const TRC2: f64 = 0.77756015077810708036;
-
-// R_GE_group version constant
-const R_GE_group: c_int = 5;
 
 /* ==============================
  * Local helper: R_gridEvalEnv.with(|v| v.get())
@@ -375,18 +372,12 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
     if topLevelVP == 0 && pushing != 0 {
         let parent = gridStateElement(dd, GSS_VP);
         SET_VECTOR_ELT(vp, PVP_PARENT as R_xlen_t, parent);
-        // defineVar(installTrChar(STRING_ELT(VECTOR_ELT(vp, VP_NAME), 0)),
-        //           vp, VECTOR_ELT(parent, PVP_CHILDREN));
+        defineVar(
+            installTrChar(STRING_ELT(VECTOR_ELT(vp, VP_NAME as R_xlen_t), 0)),
+            vp,
+            VECTOR_ELT(parent, PVP_CHILDREN as R_xlen_t),
+        );
     }
-
-    // Save device size
-    let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
-    *REAL(widthCM) = devWidthCM;
-    SET_VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t, widthCM);
-
-    let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
-    *REAL(heightCM) = devHeightCM;
-    SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
 
     calcViewportTransform(
         vp,
@@ -395,7 +386,169 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
         dd,
     );
 
-    // TODO: clipping region establishment still needs full GE clip semantics.
+    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path) != 0
+    {
+        if !isClipPath(viewportClipSXP(vp))
+            && (viewportClip(vp) == NA_LOGICAL || viewportClip(vp) != 0)
+        {
+            Rf_warning(c"Turning clipping on or off within a (clipping) path is no honoured".as_ptr());
+        }
+    } else if isClipPath(viewportClipSXP(vp)) {
+        let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+        let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+        *REAL(currentClip).add(0) = *REAL(parentClip).add(0);
+        *REAL(currentClip).add(1) = *REAL(parentClip).add(1);
+        *REAL(currentClip).add(2) = *REAL(parentClip).add(2);
+        *REAL(currentClip).add(3) = *REAL(parentClip).add(3);
+        SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
+        Rf_unprotect(2);
+    } else {
+        if viewportClip(vp) == NA_LOGICAL {
+            xx1 = toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd);
+            yy1 = toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd);
+            xx2 = toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd);
+            yy2 = toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd);
+            GESetClip(xx1, yy1, xx2, yy2, dd);
+        } else if viewportClip(vp) != 0 {
+            let rotationAngle = if TYPEOF(viewportRotation(vp)) == SEXPTYPE::REALSXP
+                && LENGTH(viewportRotation(vp)) > 0
+            {
+                *REAL(viewportRotation(vp))
+            } else {
+                0.0
+            };
+            if rotationAngle != 0.0
+                && rotationAngle != 90.0
+                && rotationAngle != 270.0
+                && rotationAngle != 360.0
+            {
+                Rf_warning(c"cannot clip to rotated viewport".as_ptr());
+                let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+                xx1 = *REAL(parentClip).add(0);
+                yy1 = *REAL(parentClip).add(1);
+                xx2 = *REAL(parentClip).add(2);
+                yy2 = *REAL(parentClip).add(3);
+                Rf_unprotect(1);
+            } else {
+                let mut transform: LTransform = [[0.0; 3]; 3];
+                for i in 0..3usize {
+                    for j in 0..3usize {
+                        transform[i][j] = *REAL(viewportTransform(vp)).add(i + 3 * j);
+                    }
+                }
+                let vpWidthCM = *REAL(viewportWidthCM(vp));
+                let vpHeightCM = *REAL(viewportHeightCM(vp));
+                let x1 = Rf_protect(if topLevelVP == 0 {
+                    unit(0.0, L_NPC)
+                } else {
+                    unit(-0.5, L_NPC)
+                });
+                let y1 = Rf_protect(if topLevelVP == 0 {
+                    unit(0.0, L_NPC)
+                } else {
+                    unit(-0.5, L_NPC)
+                });
+                let x2 = Rf_protect(if topLevelVP == 0 {
+                    unit(1.0, L_NPC)
+                } else {
+                    unit(1.5, L_NPC)
+                });
+                let y2 = Rf_protect(if topLevelVP == 0 {
+                    unit(1.0, L_NPC)
+                } else {
+                    unit(1.5, L_NPC)
+                });
+                let mut vpc = LViewportContext::default();
+                getViewportContext(vp, &mut vpc);
+                let mut gc_buf: [u8; 256] = [0; 256];
+                gcontextFromViewport(vp, gc_buf.as_ptr(), dd as *const u8);
+                let gc = gc_buf.as_ptr() as pGEcontext;
+                transformLocn(
+                    x1,
+                    y1,
+                    0,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xx1,
+                    &mut yy1,
+                );
+                transformLocn(
+                    x2,
+                    y2,
+                    0,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xx2,
+                    &mut yy2,
+                );
+                Rf_unprotect(4);
+                xx1 = toDeviceX(xx1, GE_INCHES, dd);
+                yy1 = toDeviceY(yy1, GE_INCHES, dd);
+                xx2 = toDeviceX(xx2, GE_INCHES, dd);
+                yy2 = toDeviceY(yy2, GE_INCHES, dd);
+                GESetClip(xx1, yy1, xx2, yy2, dd);
+            }
+        } else {
+            let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+            xx1 = *REAL(parentClip).add(0);
+            yy1 = *REAL(parentClip).add(1);
+            xx2 = *REAL(parentClip).add(2);
+            yy2 = *REAL(parentClip).add(3);
+            let parentClipPath = Rf_protect(VECTOR_ELT(viewportParent(vp), PVP_CLIPPATH as R_xlen_t));
+            if isClipPath(parentClipPath) {
+                SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, parentClipPath);
+            }
+            if pushing == 0 && !isClipPath(parentClipPath) {
+                GESetClip(xx1, yy1, xx2, yy2, dd);
+            }
+            Rf_unprotect(2);
+        }
+
+        let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+        *REAL(currentClip).add(0) = xx1;
+        *REAL(currentClip).add(1) = yy1;
+        *REAL(currentClip).add(2) = xx2;
+        *REAL(currentClip).add(3) = yy2;
+        SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
+        Rf_unprotect(1);
+    }
+
+    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path) != 0
+    {
+        // Masks are ignored when resolving a clipping path.
+    } else if isMask(viewportMaskSXP(vp)) {
+        // Resolve after doSetViewport() once this viewport is current.
+    } else if viewportMask(vp) {
+        SET_VECTOR_ELT(
+            vp,
+            PVP_MASK as R_xlen_t,
+            VECTOR_ELT(viewportParent(vp), PVP_MASK as R_xlen_t),
+        );
+    } else {
+        SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, R_NilValue());
+        resolveMask(R_NilValue(), dd);
+    }
+
+    let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+    *REAL(widthCM) = devWidthCM;
+    SET_VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t, widthCM);
+
+    let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+    *REAL(heightCM) = devHeightCM;
+    SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
 
     Rf_unprotect(2);
     vp
@@ -426,6 +579,60 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
     );
 
     setGridStateElement(dd, GSS_VP, pushedvp);
+
+    {
+        let vpgp = Rf_protect(VECTOR_ELT(pushedvp, VP_GP as R_xlen_t));
+        let fill = getListElement(vpgp, c"fill".as_ptr() as *mut c_char);
+        if fill != R_NilValue() {
+            resolveGPar(vpgp, 1);
+            let pushed_gp = VECTOR_ELT(pushedvp, PVP_GPAR as R_xlen_t);
+            SET_VECTOR_ELT(
+                pushed_gp,
+                GP_FILL as R_xlen_t,
+                getListElement(vpgp, c"fill".as_ptr() as *mut c_char),
+            );
+            setGridStateElement(dd, GSS_GPAR, pushed_gp);
+        }
+        Rf_unprotect(1);
+    }
+
+    {
+        let clip = Rf_protect(viewportClipSXP(pushedvp));
+        if isClipPath(clip) {
+            let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+            if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+                && LENGTH(resolving_path) > 0
+                && *LOGICAL(resolving_path) != 0
+            {
+                Rf_warning(c"Clipping paths within a (clipping) path are not honoured".as_ptr());
+                SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
+            } else {
+                let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+                Rf_unprotect(1);
+            }
+        }
+        Rf_unprotect(1);
+    }
+
+    {
+        let mask = Rf_protect(viewportMaskSXP(pushedvp));
+        if isMask(mask) {
+            let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+            if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+                && LENGTH(resolving_path) > 0
+                && *LOGICAL(resolving_path) != 0
+            {
+                Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr());
+                SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, R_NilValue());
+            } else {
+                let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, resolvedmask);
+                Rf_unprotect(1);
+            }
+        }
+        Rf_unprotect(1);
+    }
 
     Rf_unprotect(3);
     R_NilValue()
@@ -557,6 +764,24 @@ pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
     if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
         let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
         setGridStateElement(dd, GSS_VP, vp);
+        {
+            let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
+            if isClipPath(clip) {
+                let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+                Rf_unprotect(1);
+            }
+            Rf_unprotect(1);
+        }
+        {
+            let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
+            if isMask(mask) {
+                let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
+                Rf_unprotect(1);
+            }
+            Rf_unprotect(1);
+        }
         Rf_unprotect(1);
         VECTOR_ELT(found, 0 as R_xlen_t)
     } else {
@@ -576,6 +801,24 @@ pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
     if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
         let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
         setGridStateElement(dd, GSS_VP, vp);
+        {
+            let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
+            if isClipPath(clip) {
+                let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+                Rf_unprotect(1);
+            }
+            Rf_unprotect(1);
+        }
+        {
+            let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
+            if isMask(mask) {
+                let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
+                Rf_unprotect(1);
+            }
+            Rf_unprotect(1);
+        }
         Rf_unprotect(1);
         VECTOR_ELT(found, 0 as R_xlen_t)
     } else {
@@ -841,8 +1084,17 @@ pub unsafe fn L_newpage() -> SEXP {
     R_NilValue()
 }
 
-pub unsafe fn L_clearDefinitions(_clearGroups: SEXP) -> SEXP {
-    // STUB: releasePattern, releaseClipPath, releaseMask, releaseGroup
+pub unsafe fn L_clearDefinitions(clearGroups: SEXP) -> SEXP {
+    let dd = getDevice();
+    if !dd.is_null() {
+        setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
+        let clear_groups = if TYPEOF(clearGroups) == SEXPTYPE::LGLSXP && LENGTH(clearGroups) > 0 {
+            if *LOGICAL(clearGroups) != 0 { 1 } else { 0 }
+        } else {
+            0
+        };
+        rmath_grid_release_definitions(dd, clear_groups);
+    }
     R_NilValue()
 }
 

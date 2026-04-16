@@ -38,6 +38,10 @@ use super::grid::getDevice;
 use super::state::{gridStateElement, setGridStateElement};
 use super::types::*;
 
+unsafe extern "C" {
+    fn rmath_grid_release_pattern(dd: pGEDevDesc, ref_: SEXP);
+}
+
 /// getListElement — get a named element from a list
 unsafe fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
     super::util::getListElement(list, str as *mut std::os::raw::c_char)
@@ -135,8 +139,7 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
             resolved_fill,
             b"index\0".as_ptr() as *const std::os::raw::c_char,
         );
-        // dd->dev->releasePattern(patternRef, dd->dev);
-        let _ = pattern_ref;
+        rmath_grid_release_pattern(dd, pattern_ref);
     }
     Rf_unprotect(2);
     ge::GEMode(0, dd);
@@ -175,8 +178,7 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
             resolved_fill,
             b"index\0".as_ptr() as *const std::os::raw::c_char,
         );
-        // dd->dev->releasePattern(patternRef, dd->dev);
-        let _ = pattern_ref;
+        rmath_grid_release_pattern(dd, pattern_ref);
     }
     Rf_unprotect(2);
     ge::GEMode(0, dd);

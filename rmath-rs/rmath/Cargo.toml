@@ -22,5 +22,8 @@ flate2 = "1.0"
 bzip2 = "0.5"
 lzma-sys = "0.1"
 
+[build-dependencies]
+cc = "1.1"
+
 [[bench]]
 name = "bench_eval"
