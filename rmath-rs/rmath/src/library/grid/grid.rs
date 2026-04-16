@@ -48,6 +48,7 @@ unsafe extern "C" {
     fn findVar(symbol: SEXP, env: SEXP) -> SEXP;
     fn findFun(symbol: SEXP, env: SEXP) -> SEXP;
     fn defineVar(symbol: SEXP, value: SEXP, env: SEXP);
+    fn SET_TAG(x: SEXP, y: SEXP);
     fn NewFrameConfirm(dev: *const c_void);
     fn NoDevices() -> c_int;
     fn asBool(x: SEXP) -> c_int;
@@ -589,27 +590,75 @@ pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
 
 pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
     let dd = getDevice();
-    let gvp = Rf_protect(gridStateElement(dd, GSS_VP));
+    let mut gvp = gridStateElement(dd, GSS_VP);
     let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
     if isNull(newvp) {
-        Rf_unprotect(1);
-        return R_NilValue();
+        Rf_error(c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr());
     }
     for _i in 1..*INTEGER(n) {
+        gvp = newvp;
         newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
-            break;
+            Rf_error(c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr());
         }
     }
-    // Full implementation would:
-    // 1. Remove child from parent's children
-    // 2. Check device size change
-    // 3. Restore parent gpar
-    // 4. Set clipping region
-    // 5. Set mask
-    // STUB: core actions
+
+    Rf_protect(gvp);
+    Rf_protect(newvp);
+    {
+        let false0 = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, 1));
+        *LOGICAL(false0) = 0;
+        let fcall = Rf_protect(lang4(
+            Rf_install(c"remove".as_ptr()),
+            VECTOR_ELT(gvp, VP_NAME as R_xlen_t),
+            VECTOR_ELT(newvp, PVP_CHILDREN as R_xlen_t),
+            false0,
+        ));
+        let mut t = fcall;
+        t = CDR(CDR(t));
+        SET_TAG(t, Rf_install(c"envir".as_ptr()));
+        t = CDR(t);
+        SET_TAG(t, Rf_install(c"inherits".as_ptr()));
+        Rf_eval_with_gd(fcall, R_gridEvalEnv.with(|v| v.get()), dd);
+        Rf_unprotect(2);
+    }
+
+    let mut devWidthCM: c_double = 0.0;
+    let mut devHeightCM: c_double = 0.0;
+    getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+    if deviceChanged(devWidthCM, devHeightCM, newvp) {
+        calcViewportTransform(newvp, viewportParent(newvp), 1, dd);
+    }
+    setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
     setGridStateElement(dd, GSS_VP, newvp);
-    Rf_unprotect(1);
+
+    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path) != 0)
+    {
+        let parentClip = Rf_protect(viewportClipRect(newvp));
+        let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
+        if isClipPath(parentClipPath) {
+            resolveClipPath(parentClipPath, dd);
+        } else {
+            let xx1 = *REAL(parentClip).add(0);
+            let yy1 = *REAL(parentClip).add(1);
+            let xx2 = *REAL(parentClip).add(2);
+            let yy2 = *REAL(parentClip).add(3);
+            GESetClip(xx1, yy1, xx2, yy2, dd);
+        }
+        Rf_unprotect(2);
+    }
+    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path) != 0)
+    {
+        resolveMask(VECTOR_ELT(newvp, PVP_MASK as R_xlen_t), dd);
+    }
+
+    SET_VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t, R_NilValue());
+    Rf_unprotect(2);
     R_NilValue()
 }
 
@@ -619,21 +668,52 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
 
 pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
     let dd = getDevice();
-    let gvp = Rf_protect(gridStateElement(dd, GSS_VP));
+    let mut gvp = gridStateElement(dd, GSS_VP);
     let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
     if isNull(newvp) {
-        Rf_unprotect(1);
-        return R_NilValue();
+        Rf_error(c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr());
     }
     for _i in 1..*INTEGER(n) {
+        gvp = newvp;
         newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
-            break;
+            Rf_error(c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr());
         }
     }
-    // Full implementation similar to L_unsetviewport but without modifying parent-child
+
+    let mut devWidthCM: c_double = 0.0;
+    let mut devHeightCM: c_double = 0.0;
+    getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+    if deviceChanged(devWidthCM, devHeightCM, newvp) {
+        calcViewportTransform(newvp, viewportParent(newvp), 1, dd);
+    }
+    setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
     setGridStateElement(dd, GSS_VP, newvp);
-    Rf_unprotect(1);
+
+    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path) != 0)
+    {
+        let parentClip = Rf_protect(viewportClipRect(newvp));
+        let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
+        if isClipPath(parentClipPath) {
+            resolveClipPath(parentClipPath, dd);
+        } else {
+            let xx1 = *REAL(parentClip).add(0);
+            let yy1 = *REAL(parentClip).add(1);
+            let xx2 = *REAL(parentClip).add(2);
+            let yy2 = *REAL(parentClip).add(3);
+            GESetClip(xx1, yy1, xx2, yy2, dd);
+        }
+        Rf_unprotect(2);
+    }
+    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path) != 0)
+    {
+        resolveMask(VECTOR_ELT(newvp, PVP_MASK as R_xlen_t), dd);
+    }
     R_NilValue()
 }
 
