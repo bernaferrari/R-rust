@@ -12,7 +12,7 @@
 //! info, then recursive WriteItem/ReadItem.
 
 use std::cell::Cell;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_double, c_int, c_void};
@@ -158,9 +158,6 @@ const HASHSIZE: c_int = 1009;
 /// Default serialize version (2 or 3).
 const R_DEFAULT_SERIALIZE_VERSION: c_int = 3;
 
-/// R's current version (placeholder).
-const R_VERSION: c_int = 4;
-
 /// R version (4, 5, 0) packed as integer.
 const R_VERSION_450: c_int = (4 << 16) | (5 << 8);
 
@@ -169,6 +166,9 @@ const R_VERSION_230: c_int = (2 << 16) | (3 << 8);
 
 /// R version (3, 5, 0) packed as integer.
 const R_VERSION_350: c_int = (3 << 16) | (5 << 8);
+
+/// Writer R version in packed form.
+const R_VERSION: c_int = R_VERSION_450;
 
 /// Chunk size for vector I/O.
 const CHUNK_SIZE: usize = 512;
@@ -1043,7 +1043,79 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        if stream.is_null() {
+            error("read error");
+        }
+        InFormat(stream);
+
+        let version = InInteger(stream);
+        let anslen = if version == 3 { 5 } else { 4 };
+        let writer_version = InInteger(stream);
+        let min_reader_version = InInteger(stream);
+
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, anslen as R_xlen_t);
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, anslen as R_xlen_t);
+        Rf_protect(ans);
+        Rf_protect(names);
+
+        SET_STRING_ELT(names, 0, Rf_mkChar(c"version".as_ptr()));
+        SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(version));
+
+        SET_STRING_ELT(names, 1, Rf_mkChar(c"writer_version".as_ptr()));
+        let mut vv = 0;
+        let mut vp = 0;
+        let mut vs = 0;
+        DecodeVersion(writer_version, &mut vv, &mut vp, &mut vs);
+        let writer_s = format!("{vv}.{vp}.{vs}");
+        let writer_c = CString::new(writer_s).unwrap_or_default();
+        SET_VECTOR_ELT(ans, 1, Rf_mkString(writer_c.as_ptr()));
+
+        SET_STRING_ELT(names, 2, Rf_mkChar(c"min_reader_version".as_ptr()));
+        if min_reader_version < 0 {
+            SET_VECTOR_ELT(ans, 2, Rf_ScalarString(R_NaString()));
+        } else {
+            DecodeVersion(min_reader_version, &mut vv, &mut vp, &mut vs);
+            let min_reader_s = format!("{vv}.{vp}.{vs}");
+            let min_reader_c = CString::new(min_reader_s).unwrap_or_default();
+            SET_VECTOR_ELT(ans, 2, Rf_mkString(min_reader_c.as_ptr()));
+        }
+
+        SET_STRING_ELT(names, 3, Rf_mkChar(c"format".as_ptr()));
+        match (*stream).type_ {
+            R_pstream_format_t::R_pstream_ascii_format
+            | R_pstream_format_t::R_pstream_asciihex_format => {
+                SET_VECTOR_ELT(ans, 3, Rf_mkString(c"ascii".as_ptr()));
+            }
+            R_pstream_format_t::R_pstream_binary_format => {
+                SET_VECTOR_ELT(ans, 3, Rf_mkString(c"binary".as_ptr()));
+            }
+            R_pstream_format_t::R_pstream_xdr_format => {
+                SET_VECTOR_ELT(ans, 3, Rf_mkString(c"xdr".as_ptr()));
+            }
+            _ => error("unknown input format"),
+        }
+
+        if version == 3 {
+            SET_STRING_ELT(names, 4, Rf_mkChar(c"native_encoding".as_ptr()));
+            let nelen = InInteger(stream);
+            if !(0..=R_CODESET_MAX).contains(&nelen) {
+                error("invalid length of encoding name");
+            }
+            if nelen == 0 {
+                SET_VECTOR_ELT(ans, 4, Rf_mkString(c"".as_ptr()));
+            } else {
+                let mut bytes = vec![0u8; nelen as usize];
+                InString(stream, bytes.as_mut_ptr() as *mut c_char, nelen);
+                let enc_ch = Rf_mkCharLen(bytes.as_ptr() as *const c_char, nelen);
+                SET_VECTOR_ELT(ans, 4, Rf_ScalarString(enc_ch));
+            }
+        }
+
+        setAttrib(ans, R_NamesSymbol(), names);
+        Rf_unprotect(2);
+        ans
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1679,10 +1751,51 @@ unsafe fn InFormat(stream: R_inpstream_t) {
         if stream.is_null() {
             return;
         }
-        // Read 2 bytes for format detection
         let mut buf = [0u8; 2];
         if let Some(in_bytes) = (*stream).InBytes {
             in_bytes(stream, buf.as_mut_ptr() as *mut c_void, 2);
+        } else if let Some(in_char) = (*stream).InChar {
+            for b in &mut buf {
+                let ch = in_char(stream);
+                if ch < 0 {
+                    error("read error");
+                }
+                *b = ch as u8;
+            }
+        } else {
+            error("read error");
+        }
+
+        let mut need_third = false;
+        let detected = match buf[0] {
+            b'A' => R_pstream_format_t::R_pstream_ascii_format,
+            b'B' => R_pstream_format_t::R_pstream_binary_format,
+            b'X' => R_pstream_format_t::R_pstream_xdr_format,
+            b'\n' if buf[1] == b'A' => {
+                need_third = true;
+                R_pstream_format_t::R_pstream_ascii_format
+            }
+            _ => error("unknown input format"),
+        };
+
+        // Keep the stream position consistent with the C newline hack.
+        if need_third {
+            let mut one = 0u8;
+            if let Some(in_bytes) = (*stream).InBytes {
+                in_bytes(stream, &mut one as *mut u8 as *mut c_void, 1);
+            } else if let Some(in_char) = (*stream).InChar {
+                if in_char(stream) < 0 {
+                    error("read error");
+                }
+            } else {
+                error("read error");
+            }
+        }
+
+        if (*stream).type_ == R_pstream_format_t::R_pstream_any_format {
+            (*stream).type_ = detected;
+        } else if (*stream).type_ != detected {
+            error("input format does not match specified format");
         }
     }
 }
@@ -1822,7 +1935,68 @@ unsafe fn OutStringVec(stream: R_outpstream_t, s: SEXP, ref_table: SEXP) {
 }
 
 unsafe fn InStringVec(stream: R_inpstream_t, ref_table: SEXP) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        if InInteger(stream) != 0 {
+            error("names in persistent strings are not supported yet");
+        }
+        let len = InInteger(stream);
+        if len < 0 {
+            error("read error");
+        }
+        let s = Rf_allocVector3(SEXPTYPE::STRSXP, len as R_xlen_t);
+        Rf_protect(s);
+        R_ReadItemDepth.with(|d| d.set(d.get() + 1));
+
+        let local_ref_table = if ref_table.is_null() {
+            MakeReadRefTable()
+        } else {
+            ref_table
+        };
+
+        for i in 0..len {
+            let flags = InInteger(stream);
+            let mut stype = 0;
+            UnpackFlags(
+                flags,
+                &mut stype,
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+                ptr::null_mut(),
+            );
+
+            let elt = if stype == REFSXP {
+                let idx = if (flags >> 8) == 0 {
+                    InInteger(stream)
+                } else {
+                    flags >> 8
+                };
+                GetReadRef(local_ref_table, idx)
+            } else {
+                let charsxp_type: c_int = SEXPTYPE::CHARSXP.into();
+                if stype != charsxp_type {
+                    error("read error");
+                }
+                let slen = InInteger(stream);
+                let val = if slen < 0 {
+                    R_NaString()
+                } else if slen == 0 {
+                    Rf_mkCharLen(c"".as_ptr(), 0)
+                } else {
+                    let mut bytes = vec![0u8; slen as usize];
+                    InString(stream, bytes.as_mut_ptr() as *mut c_char, slen);
+                    Rf_mkCharLen(bytes.as_ptr() as *const c_char, slen)
+                };
+                AddReadRef(local_ref_table, val);
+                val
+            };
+            SET_STRING_ELT(s, i as R_xlen_t, elt);
+        }
+
+        R_ReadItemDepth.with(|d| d.set(d.get().saturating_sub(1)));
+        Rf_unprotect(1);
+        s
+    }
 }
 
 unsafe fn OutIntegerVec(stream: R_outpstream_t, s: SEXP, length: R_xlen_t) {
@@ -2940,6 +3114,60 @@ mod tests {
     }
 
     #[test]
+    fn test_instringvec_round_trip() {
+        unsafe {
+            let src = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+            SET_STRING_ELT(src, 0, Rf_mkChar(c"foo".as_ptr()));
+            SET_STRING_ELT(src, 1, R_NaString());
+            SET_STRING_ELT(src, 2, Rf_mkChar(c"bar".as_ptr()));
+
+            let mut out_stream: R_outpstream_st = mem::zeroed();
+            let mut out_buf = membuf_st {
+                size: 0,
+                count: 0,
+                buf: ptr::null_mut(),
+            };
+            InitMemOutPStream(
+                &mut out_stream,
+                &mut out_buf,
+                R_pstream_format_t::R_pstream_binary_format,
+                3,
+                None,
+                R_NilValue(),
+            );
+            let write_ref_table = MakeHashTable();
+            OutStringVec(&mut out_stream, src, write_ref_table);
+            let raw = CloseMemOutPStream(&mut out_stream);
+
+            let mut in_stream: R_inpstream_st = mem::zeroed();
+            let mut in_buf = membuf_st {
+                size: 0,
+                count: 0,
+                buf: ptr::null_mut(),
+            };
+            InitMemInPStream(
+                &mut in_stream,
+                &mut in_buf,
+                RAW(raw) as *mut c_void,
+                XLENGTH(raw) as R_size_t,
+                None,
+                R_NilValue(),
+            );
+            in_stream.type_ = R_pstream_format_t::R_pstream_binary_format;
+
+            let read_ref_table = MakeReadRefTable();
+            let got = InStringVec(&mut in_stream, read_ref_table);
+            assert_eq!(TYPEOF(got), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(got), 3);
+            let g0 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(got, 0)));
+            let g2 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(got, 2)));
+            assert_eq!(g0.to_bytes(), b"foo");
+            assert_eq!(STRING_ELT(got, 1), R_NaString());
+            assert_eq!(g2.to_bytes(), b"bar");
+        }
+    }
+
+    #[test]
     fn test_ref_index_packing() {
         unsafe {
             let mut writer = BinaryWriter::new();
@@ -3017,6 +3245,76 @@ mod tests {
         unsafe {
             let result = R_SerializeInfo(ptr::null_mut());
             assert_eq!(result, R_NilValue());
+        }
+    }
+
+    #[test]
+    fn test_r_serialize_info_reports_header() {
+        unsafe {
+            let value = Rf_ScalarInteger(123);
+            let raw = R_serialize(
+                value,
+                R_NilValue(),
+                R_NilValue(),
+                R_NilValue(),
+                R_NilValue(),
+            );
+            assert_eq!(TYPEOF(raw), SEXPTYPE::RAWSXP);
+
+            let mut in_stream: R_inpstream_st = mem::zeroed();
+            let mut in_buf = membuf_st {
+                size: 0,
+                count: 0,
+                buf: ptr::null_mut(),
+            };
+            InitMemInPStream(
+                &mut in_stream,
+                &mut in_buf,
+                RAW(raw) as *mut c_void,
+                XLENGTH(raw) as R_size_t,
+                None,
+                R_NilValue(),
+            );
+
+            let info = R_SerializeInfo(&mut in_stream);
+            assert_eq!(TYPEOF(info), SEXPTYPE::VECSXP);
+            assert_eq!(LENGTH(info), 5);
+
+            let names = crate::eval::attrib_core::getAttrib(info, R_NamesSymbol());
+            assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(names), 5);
+            let n0 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)));
+            let n1 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)));
+            let n2 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 2)));
+            let n3 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 3)));
+            let n4 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 4)));
+            assert_eq!(n0.to_bytes(), b"version");
+            assert_eq!(n1.to_bytes(), b"writer_version");
+            assert_eq!(n2.to_bytes(), b"min_reader_version");
+            assert_eq!(n3.to_bytes(), b"format");
+            assert_eq!(n4.to_bytes(), b"native_encoding");
+
+            let version = VECTOR_ELT(info, 0);
+            assert_eq!(TYPEOF(version), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(version), 3);
+
+            let writer = VECTOR_ELT(info, 1);
+            assert_eq!(TYPEOF(writer), SEXPTYPE::STRSXP);
+            let writer_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(writer, 0)));
+            assert!(writer_s.to_bytes().contains(&b'.'));
+
+            let min_reader = VECTOR_ELT(info, 2);
+            assert_eq!(TYPEOF(min_reader), SEXPTYPE::STRSXP);
+            let min_reader_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(min_reader, 0)));
+            assert!(min_reader_s.to_bytes().contains(&b'.'));
+
+            let fmt = VECTOR_ELT(info, 3);
+            let fmt_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(fmt, 0)));
+            assert_eq!(fmt_s.to_bytes(), b"binary");
+
+            let enc = VECTOR_ELT(info, 4);
+            let enc_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(enc, 0)));
+            assert_eq!(enc_s.to_bytes(), b"");
         }
     }
 
