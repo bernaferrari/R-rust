@@ -473,7 +473,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
         }
     } else {
         // x is an integer vector: classify each code point
-        let x_coerced = crate::main::coerce::coerceVector(x, SEXPTYPE::INTSXP.0);
+        let x_coerced = crate::main::coerce::coerceVector(x, SEXPTYPE::INTSXP.as_c_int());
         nprotect += 1;
 
         let n = XLENGTH(x_coerced) as usize;

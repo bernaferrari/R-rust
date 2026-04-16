@@ -674,7 +674,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
         if dims != R_NilValue() && LENGTH(dims) > 1 {
             // Array-like list
             Rf_protect(dims);
-            let t = Rf_protect(allocArray(SEXPTYPE::STRSXP.0, dims));
+            let t = Rf_protect(allocArray(SEXPTYPE::STRSXP.as_c_int(), dims));
 
             let limit = if ns <= data.max as i64 + 1 {
                 ns
@@ -1085,7 +1085,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
 
         if dims != R_NilValue() && LENGTH(dims) > 1 {
             Rf_protect(dims);
-            let t = Rf_protect(allocArray(SEXPTYPE::STRSXP.0, dims));
+            let t = Rf_protect(allocArray(SEXPTYPE::STRSXP.as_c_int(), dims));
             let mut i: i64 = 0;
             let mut cur = s;
 

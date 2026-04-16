@@ -117,8 +117,8 @@ unsafe fn fisher_sim(
 }
 
 pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
-    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.0));
+    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.as_c_int()));
     let nr = LENGTH(sr);
     let nc = LENGTH(sc);
     let B = asInteger(sB);
@@ -150,9 +150,9 @@ pub unsafe fn Fisher_sim(sr: SEXP, sc: SEXP, sB: SEXP) -> SEXP {
 }
 
 pub unsafe fn chisq_sim(sr: SEXP, sc: SEXP, sB: SEXP, E: SEXP) -> SEXP {
-    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.0));
-    let E = Rf_protect(coerceVector(E, SEXPTYPE::REALSXP.0));
+    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.as_c_int()));
+    let E = Rf_protect(coerceVector(E, SEXPTYPE::REALSXP.as_c_int()));
     let nr = LENGTH(sr);
     let nc = LENGTH(sc);
     let B = asInteger(sB);

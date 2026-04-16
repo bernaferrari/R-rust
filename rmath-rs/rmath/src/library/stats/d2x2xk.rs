@@ -95,11 +95,11 @@ pub unsafe fn d2x2xk(sK: SEXP, m: SEXP, n: SEXP, t: SEXP, srn: SEXP) -> SEXP {
     let K = asInteger(sK);
     let rn = asInteger(srn);
 
-    let m = coerceVector(m, SEXPTYPE::REALSXP.0);
+    let m = coerceVector(m, SEXPTYPE::REALSXP.as_c_int());
     let m = Rf_protect(m);
-    let n = coerceVector(n, SEXPTYPE::REALSXP.0);
+    let n = coerceVector(n, SEXPTYPE::REALSXP.as_c_int());
     let n = Rf_protect(n);
-    let t = coerceVector(t, SEXPTYPE::REALSXP.0);
+    let t = coerceVector(t, SEXPTYPE::REALSXP.as_c_int());
     let t = Rf_protect(t);
 
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, rn as i32);

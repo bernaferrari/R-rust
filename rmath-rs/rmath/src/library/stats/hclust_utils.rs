@@ -23,10 +23,10 @@ use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
-    let merge = Rf_protect(coerceVector(merge, SEXPTYPE::INTSXP.0));
+    let merge = Rf_protect(coerceVector(merge, SEXPTYPE::INTSXP.as_c_int()));
     let i_merge = INTEGER(merge);
 
-    let which = Rf_protect(coerceVector(which, SEXPTYPE::INTSXP.0));
+    let which = Rf_protect(coerceVector(which, SEXPTYPE::INTSXP.as_c_int()));
     let i_which = INTEGER(which);
 
     let n = nrows(merge as *const std::ffi::c_void) + 1;

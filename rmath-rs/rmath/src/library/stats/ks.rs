@@ -527,8 +527,8 @@ fn Smirnov_sim_wrk(
 
 /// R entry point: Smirnov_sim(sr, sc, sB, twosided)
 pub unsafe fn Smirnov_sim(sr: SEXP, sc: SEXP, sB: SEXP, twosided: SEXP) -> SEXP {
-    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.0));
+    let sr = Rf_protect(coerceVector(sr, SEXPTYPE::INTSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::INTSXP.as_c_int()));
     let nr = LENGTH(sr);
     let nc = LENGTH(sc);
     let b = asInteger(sB);

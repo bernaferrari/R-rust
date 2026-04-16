@@ -128,9 +128,9 @@ pub unsafe fn do_split(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
         // Allocate counts vector
         let counts = Rf_allocVector3(
             if is_long {
-                SEXPTYPE::REALSXP.0
+                SEXPTYPE::REALSXP.as_c_int()
             } else {
-                SEXPTYPE::INTSXP.0
+                SEXPTYPE::INTSXP.as_c_int()
             },
             nlevs as R_xlen_t,
         );

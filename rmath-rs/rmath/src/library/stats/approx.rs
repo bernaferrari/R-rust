@@ -178,7 +178,7 @@ pub unsafe fn Approx(
     f: SEXP,
     na_rm: SEXP,
 ) -> SEXP {
-    let xout = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.0));
+    let xout = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.as_c_int()));
     let nx = XLENGTH(x);
     let nout = XLENGTH(xout);
     let yout = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nout as c_int));

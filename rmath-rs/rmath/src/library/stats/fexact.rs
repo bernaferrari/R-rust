@@ -2022,7 +2022,7 @@ pub unsafe fn Fexact(x: SEXP, pars: SEXP, work: SEXP, smult: SEXP) -> SEXP {
     let ws = asInteger_local(work);
     let mult = asInteger_local(smult);
 
-    let pars = coerceVector(pars, SEXPTYPE::REALSXP.0);
+    let pars = coerceVector(pars, SEXPTYPE::REALSXP.as_c_int());
     let pars = Rf_protect(pars);
 
     let mut p: c_double = 0.;

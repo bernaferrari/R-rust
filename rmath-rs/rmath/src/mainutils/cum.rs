@@ -331,7 +331,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             // Integer/logical path: coerce to integer, try integer cumsum
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::INTSXP.0,
+                SEXPTYPE::INTSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
@@ -370,7 +370,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             // Real / other types: coerce to double
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::REALSXP.0,
+                SEXPTYPE::REALSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
@@ -424,7 +424,7 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             // R's do_cum excludes cumprod (PRIMVAL == 2) from the integer path
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::REALSXP.0,
+                SEXPTYPE::REALSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
@@ -468,7 +468,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             // Integer/logical path: coerce to integer, use icummax logic
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::INTSXP.0,
+                SEXPTYPE::INTSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
@@ -502,7 +502,7 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             // Real / other types: coerce to double
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::REALSXP.0,
+                SEXPTYPE::REALSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
@@ -546,7 +546,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             // Integer/logical path: coerce to integer, use icummin logic
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::INTSXP.0,
+                SEXPTYPE::INTSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
@@ -578,7 +578,7 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             // Real / other types: coerce to double
             let t = Rf_protect(crate::mainutils::coerce::coerceVector(
                 s,
-                SEXPTYPE::REALSXP.0,
+                SEXPTYPE::REALSXP.as_c_int(),
             ));
             let n2 = XLENGTH(t);
             let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));

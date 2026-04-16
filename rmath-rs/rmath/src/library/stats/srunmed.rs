@@ -253,7 +253,7 @@ pub unsafe fn runmed(
 
     let mut sx = sx;
     if TYPEOF(sx) != SEXPTYPE::REALSXP {
-        sx = Rf_protect(coerceVector(sx, SEXPTYPE::REALSXP.0));
+        sx = Rf_protect(coerceVector(sx, SEXPTYPE::REALSXP.as_c_int()));
         nprot += 1;
     }
     let x = REAL(sx);

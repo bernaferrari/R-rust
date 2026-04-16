@@ -448,15 +448,15 @@ pub unsafe fn LogLin(
     let fit = Rf_protect(if TYPEOF(start) == SEXPTYPE::REALSXP {
         duplicate(start)
     } else {
-        coerceVector(start, SEXPTYPE::REALSXP.0)
+        coerceVector(start, SEXPTYPE::REALSXP.as_c_int())
     });
     let locmar = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, ncon));
     let marg = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nmar));
     let u = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ntab));
     let dev = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxit));
-    let dtab = Rf_protect(coerceVector(dtab, SEXPTYPE::INTSXP.0));
-    let conf = Rf_protect(coerceVector(conf, SEXPTYPE::INTSXP.0));
-    let table = Rf_protect(coerceVector(table, SEXPTYPE::REALSXP.0));
+    let dtab = Rf_protect(coerceVector(dtab, SEXPTYPE::INTSXP.as_c_int()));
+    let conf = Rf_protect(coerceVector(conf, SEXPTYPE::INTSXP.as_c_int()));
+    let table = Rf_protect(coerceVector(table, SEXPTYPE::REALSXP.as_c_int()));
 
     let mut nlast: c_int = 0;
     let mut ifault: c_int = 0;

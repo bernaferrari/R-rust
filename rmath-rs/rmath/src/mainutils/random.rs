@@ -1350,7 +1350,7 @@ pub unsafe fn do_random1(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return x;
         }
 
-        let a = Rf_protect(coerceVector(CADR(args), SEXPTYPE::REALSXP.0));
+        let a = Rf_protect(coerceVector(CADR(args), SEXPTYPE::REALSXP.as_c_int()));
         GetRNGstate();
 
         let primval = PRIMVAL_local(op);
@@ -1426,8 +1426,8 @@ pub unsafe fn do_random2(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return x;
         }
 
-        let a = Rf_protect(coerceVector(CADR(args), SEXPTYPE::REALSXP.0));
-        let b = Rf_protect(coerceVector(CADDR(args), SEXPTYPE::REALSXP.0));
+        let a = Rf_protect(coerceVector(CADR(args), SEXPTYPE::REALSXP.as_c_int()));
+        let b = Rf_protect(coerceVector(CADDR(args), SEXPTYPE::REALSXP.as_c_int()));
         GetRNGstate();
 
         let primval = PRIMVAL_local(op);
@@ -1649,9 +1649,9 @@ pub unsafe fn do_random3(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             return x;
         }
 
-        let a = Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0));
-        let b = Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.0));
-        let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.0));
+        let a = Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.as_c_int()));
+        let b = Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.as_c_int()));
+        let c = Rf_protect(coerceVector(c, SEXPTYPE::REALSXP.as_c_int()));
         GetRNGstate();
 
         let primval = PRIMVAL_local(op);

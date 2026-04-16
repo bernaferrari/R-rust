@@ -1256,7 +1256,7 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
         error(VAR_FACTOR_MSG);
     }
 
-    x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
+    x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.as_c_int()));
     if isMatrix(x) {
         n = nrows(x);
         ncx = ncols(x);
@@ -1272,7 +1272,7 @@ unsafe fn corcov(mut x: SEXP, mut y: SEXP, na_method: SEXP, skendall: SEXP, cor:
         if isFactor(y) {
             error(VAR_FACTOR_MSG);
         }
-        y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.0));
+        y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.as_c_int()));
         nprotect += 1;
         if isMatrix(y) {
             if nrows(y) != n {

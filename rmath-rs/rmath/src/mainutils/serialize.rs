@@ -691,7 +691,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
         // Handle SYMSXP
         if stype == SEXPTYPE::SYMSXP {
             ref_table.add(s);
-            writer.write_i32(SEXPTYPE::SYMSXP.0);
+            writer.write_i32(SEXPTYPE::SYMSXP.as_c_int());
             let pname = PRINTNAME(s);
             WriteItemInternal(pname, ref_table, writer);
             return;

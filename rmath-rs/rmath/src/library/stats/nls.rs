@@ -507,7 +507,7 @@ pub unsafe fn numeric_deriv(
 
     let mut nprot: c_int = 3;
     if TYPEOF(dir) != SEXPTYPE::REALSXP {
-        dir = Rf_protect(coerceVector(dir, SEXPTYPE::REALSXP.0));
+        dir = Rf_protect(coerceVector(dir, SEXPTYPE::REALSXP.as_c_int()));
         nprot += 1;
     }
     if LENGTH(dir) != LENGTH(theta) {
@@ -530,7 +530,7 @@ pub unsafe fn numeric_deriv(
     // CHECK_FN_VAL macro equivalent
     unsafe fn check_fn_val<'a>(r: &mut *mut c_double, ans_ref: &mut SEXP) {
         if !isReal(*ans_ref) {
-            let temp = coerceVector(*ans_ref, SEXPTYPE::REALSXP.0);
+            let temp = coerceVector(*ans_ref, SEXPTYPE::REALSXP.as_c_int());
             Rf_unprotect(1);
             *ans_ref = Rf_protect(temp);
         }

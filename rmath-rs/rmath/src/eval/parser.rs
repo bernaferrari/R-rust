@@ -1471,7 +1471,10 @@ mod tests {
             assert_eq!(crate::sexp::accessors::LENGTH(na_chr), 1);
             let elt = crate::sexp::accessors::STRING_ELT(na_chr, 0);
             assert!(!elt.is_null());
-            assert_eq!(crate::sexp::accessors::TYPEOF(elt), SEXPTYPE::CHARSXP.0);
+            assert_eq!(
+                crate::sexp::accessors::TYPEOF(elt),
+                SEXPTYPE::CHARSXP.as_c_int()
+            );
             assert_eq!((*elt).sxpinfo.gp(), 1);
         }
     }

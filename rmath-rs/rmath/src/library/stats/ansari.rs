@@ -180,7 +180,7 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 pub unsafe fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let m = as_integer(sm);
     let n = as_integer(sn);
-    let q = coerceVector(q, SEXPTYPE::REALSXP.0);
+    let q = coerceVector(q, SEXPTYPE::REALSXP.as_c_int());
     Rf_protect(q);
     let len = LENGTH(q);
     let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len as c_int));
@@ -192,7 +192,7 @@ pub unsafe fn pAnsari(q: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
 pub unsafe fn qAnsari(p: SEXP, sm: SEXP, sn: SEXP) -> SEXP {
     let m = as_integer(sm);
     let n = as_integer(sn);
-    let p = coerceVector(p, SEXPTYPE::REALSXP.0);
+    let p = coerceVector(p, SEXPTYPE::REALSXP.as_c_int());
     Rf_protect(p);
     let len = LENGTH(p);
     let q = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len as c_int));

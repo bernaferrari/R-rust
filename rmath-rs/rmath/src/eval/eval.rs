@@ -45,30 +45,30 @@ use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
 // SEXPTYPE constants for pattern matching
 // ---------------------------------------------------------------------------
 
-const NILSXP: c_int = SEXPTYPE::NILSXP.0;
-const SYMSXP: c_int = SEXPTYPE::SYMSXP.0;
-const LISTSXP: c_int = SEXPTYPE::LISTSXP.0;
-const CLOSXP: c_int = SEXPTYPE::CLOSXP.0;
-const ENVSXP: c_int = SEXPTYPE::ENVSXP.0;
-const PROMSXP: c_int = SEXPTYPE::PROMSXP.0;
-const LANGSXP: c_int = SEXPTYPE::LANGSXP.0;
-const SPECIALSXP: c_int = SEXPTYPE::SPECIALSXP.0;
-const BUILTINSXP: c_int = SEXPTYPE::BUILTINSXP.0;
-const CHARSXP: c_int = SEXPTYPE::CHARSXP.0;
-const LGLSXP: c_int = SEXPTYPE::LGLSXP.0;
-const INTSXP: c_int = SEXPTYPE::INTSXP.0;
-const REALSXP: c_int = SEXPTYPE::REALSXP.0;
-const CPLXSXP: c_int = SEXPTYPE::CPLXSXP.0;
-const STRSXP: c_int = SEXPTYPE::STRSXP.0;
-const DOTSXP: c_int = SEXPTYPE::DOTSXP.0;
-const ANYSXP: c_int = SEXPTYPE::ANYSXP.0;
-const VECSXP: c_int = SEXPTYPE::VECSXP.0;
-const EXPRSXP: c_int = SEXPTYPE::EXPRSXP.0;
-const BCODESXP: c_int = SEXPTYPE::BCODESXP.0;
-const EXTPTRSXP: c_int = SEXPTYPE::EXTPTRSXP.0;
-const WEAKREFSXP: c_int = SEXPTYPE::WEAKREFSXP.0;
-const RAWSXP: c_int = SEXPTYPE::RAWSXP.0;
-const OBJSXP: c_int = SEXPTYPE::OBJSXP.0;
+const NILSXP: c_int = SEXPTYPE::NILSXP.as_c_int();
+const SYMSXP: c_int = SEXPTYPE::SYMSXP.as_c_int();
+const LISTSXP: c_int = SEXPTYPE::LISTSXP.as_c_int();
+const CLOSXP: c_int = SEXPTYPE::CLOSXP.as_c_int();
+const ENVSXP: c_int = SEXPTYPE::ENVSXP.as_c_int();
+const PROMSXP: c_int = SEXPTYPE::PROMSXP.as_c_int();
+const LANGSXP: c_int = SEXPTYPE::LANGSXP.as_c_int();
+const SPECIALSXP: c_int = SEXPTYPE::SPECIALSXP.as_c_int();
+const BUILTINSXP: c_int = SEXPTYPE::BUILTINSXP.as_c_int();
+const CHARSXP: c_int = SEXPTYPE::CHARSXP.as_c_int();
+const LGLSXP: c_int = SEXPTYPE::LGLSXP.as_c_int();
+const INTSXP: c_int = SEXPTYPE::INTSXP.as_c_int();
+const REALSXP: c_int = SEXPTYPE::REALSXP.as_c_int();
+const CPLXSXP: c_int = SEXPTYPE::CPLXSXP.as_c_int();
+const STRSXP: c_int = SEXPTYPE::STRSXP.as_c_int();
+const DOTSXP: c_int = SEXPTYPE::DOTSXP.as_c_int();
+const ANYSXP: c_int = SEXPTYPE::ANYSXP.as_c_int();
+const VECSXP: c_int = SEXPTYPE::VECSXP.as_c_int();
+const EXPRSXP: c_int = SEXPTYPE::EXPRSXP.as_c_int();
+const BCODESXP: c_int = SEXPTYPE::BCODESXP.as_c_int();
+const EXTPTRSXP: c_int = SEXPTYPE::EXTPTRSXP.as_c_int();
+const WEAKREFSXP: c_int = SEXPTYPE::WEAKREFSXP.as_c_int();
+const RAWSXP: c_int = SEXPTYPE::RAWSXP.as_c_int();
+const OBJSXP: c_int = SEXPTYPE::OBJSXP.as_c_int();
 
 // ---------------------------------------------------------------------------
 // Primitive function dispatch

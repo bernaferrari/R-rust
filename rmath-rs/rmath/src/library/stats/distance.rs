@@ -344,7 +344,7 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
 
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n_val));
     let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
-        coerceVector(x, SEXPTYPE::REALSXP.0)
+        coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
     } else {
         x
     };

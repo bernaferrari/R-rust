@@ -320,7 +320,7 @@ pub unsafe fn acf(x: SEXP, lmax: SEXP, sCor: SEXP) -> SEXP {
     let ns = ncols(x);
     let lagmax = as_integer(lmax);
     let cor = as_logical(sCor) != 0;
-    let x = coerceVector(x, SEXPTYPE::REALSXP.0);
+    let x = coerceVector(x, SEXPTYPE::REALSXP.as_c_int());
     Rf_protect(x);
 
     let ans_size = (lagmax as isize + 1) * ns as isize * ns as isize;

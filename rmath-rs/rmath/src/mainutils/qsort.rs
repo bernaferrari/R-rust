@@ -541,10 +541,10 @@ pub unsafe fn do_qsort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         }
 
         let xtype = TYPEOF(x);
-        if xtype == crate::sexp::ffi::SEXPTYPE::REALSXP.0 {
+        if xtype == crate::sexp::ffi::SEXPTYPE::REALSXP.as_c_int() {
             let slice = std::slice::from_raw_parts_mut(REAL(x), n);
             R_qsort(slice, 1, n);
-        } else if xtype == crate::sexp::ffi::SEXPTYPE::INTSXP.0 {
+        } else if xtype == crate::sexp::ffi::SEXPTYPE::INTSXP.as_c_int() {
             let slice = std::slice::from_raw_parts_mut(INTEGER(x) as *mut f64, n);
             R_qsort(slice, 1, n);
         }

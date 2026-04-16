@@ -1015,7 +1015,7 @@ pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let ttype = TYPEOF(table);
 
         // Determine common type
-        let common_type = if xtype >= SEXPTYPE::STRSXP.0 || ttype >= SEXPTYPE::STRSXP.0 {
+        let common_type = if xtype >= SEXPTYPE::STRSXP.as_c_int() || ttype >= SEXPTYPE::STRSXP.as_c_int() {
             SEXPTYPE::STRSXP
         } else if xtype < ttype {
             SEXPTYPE(ttype)

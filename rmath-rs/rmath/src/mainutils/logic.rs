@@ -323,9 +323,9 @@ unsafe fn lunary(arg: SEXP) -> SEXP {
 
         // Determine output type
         let out_type = if is_raw(arg) {
-            SEXPTYPE::RAWSXP.0
+            SEXPTYPE::RAWSXP.as_c_int()
         } else {
-            SEXPTYPE::LGLSXP.0
+            SEXPTYPE::LGLSXP.as_c_int()
         };
 
         let x = Rf_protect(Rf_allocVector3(out_type, len as R_xlen_t));

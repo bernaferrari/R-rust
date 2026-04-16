@@ -1211,7 +1211,7 @@ pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
 
         if !isNull(CAR(args)) != 0 {
-            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.0));
+            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) != 0 {
                 let msg = translateChar(STRING_ELT(CAR(args), 0));
                 Rf_message_append(msg, append);
@@ -1489,7 +1489,7 @@ pub unsafe fn do_stop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         if !isNull(CAR(args)) != 0 {
             // Has a message
-            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.0));
+            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) == 0 {
                 let c_msg =
                     std::ffi::CString::new(" [invalid string in stop(.)]").unwrap_or_default();
@@ -1537,7 +1537,7 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         args = CDR(args);
 
         if !isNull(CAR(args)) != 0 {
-            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.0));
+            SETCAR(args, coerceVector(CAR(args), SEXPTYPE::STRSXP.as_c_int()));
             if isValidString(CAR(args)) == 0 {
                 let c_msg =
                     std::ffi::CString::new(" [invalid string in warning(.)]").unwrap_or_default();
@@ -2469,7 +2469,7 @@ pub unsafe fn R_tryCatchError(
                         _ => {
                             if handler.is_some() {
                                 let cond = crate::sexp::constructors::Rf_allocVector(
-                                    SEXPTYPE::STRSXP.0,
+                                    SEXPTYPE::STRSXP.as_c_int(),
                                     1,
                                 );
                                 if !cond.is_null() {

@@ -607,7 +607,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         let name_arg = CADDR(args);
 
         // Create a new environment
-        let s = allocSExp(SEXPTYPE(SEXPTYPE::ENVSXP.0));
+        let s = allocSExp(SEXPTYPE(SEXPTYPE::ENVSXP.as_c_int()));
         if s.is_null() {
             error("could not allocate environment");
         }

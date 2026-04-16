@@ -214,7 +214,7 @@ unsafe fn random1(sn: SEXP, sa: SEXP, fn_ptr: ran1, type_: SEXPTYPE) -> SEXP {
         fillWithNAs(x, n, type_);
     } else {
         let mut naflag = false;
-        let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
+        let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
         let mut i0: R_xlen_t = 0;
         let mut use_type = type_;
         GetRNGstate();
@@ -304,8 +304,8 @@ unsafe fn random2(sn: SEXP, sa: SEXP, sb: SEXP, fn_ptr: ran2, type_: SEXPTYPE) -
         fillWithNAs(x, n, type_);
     } else {
         let mut naflag = false;
-        let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-        let b = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
+        let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+        let b = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
         let mut i0: R_xlen_t = 0;
         let mut use_type = type_;
         GetRNGstate();
@@ -396,9 +396,9 @@ unsafe fn random3(sn: SEXP, sa: SEXP, sb: SEXP, sc: SEXP, fn_ptr: ran3, type_: S
         fillWithNAs(x, n, type_);
     } else {
         let mut naflag = false;
-        let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-        let b = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
-        let c = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.0));
+        let a = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+        let b = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
+        let c = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
         let mut i0: R_xlen_t = 0;
         let mut use_type = type_;
         GetRNGstate();
@@ -740,7 +740,7 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
         Rf_error(b"invalid second argument 'size'\0".as_ptr() as *const _);
         return R_NilValue();
     }
-    let mut prob = coerceVector(prob, SEXPTYPE::REALSXP.0);
+    let mut prob = coerceVector(prob, SEXPTYPE::REALSXP.as_c_int());
     let k = LENGTH(prob);
     Rf_protect(prob);
     FixupProb(REAL(prob), k);

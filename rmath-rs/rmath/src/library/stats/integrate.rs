@@ -59,7 +59,7 @@ unsafe fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
 
     // Check type and coerce if needed
     let resultsxp = if TYPEOF(resultsxp) == SEXPTYPE::INTSXP {
-        coerceVector(resultsxp, SEXPTYPE::REALSXP.0)
+        coerceVector(resultsxp, SEXPTYPE::REALSXP.as_c_int())
     } else if TYPEOF(resultsxp) != SEXPTYPE::REALSXP {
         Rf_unprotect(3);
         Rf_error(b"evaluation of function gave a result of wrong type\0".as_ptr() as *const _);

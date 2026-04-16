@@ -1211,8 +1211,8 @@ pub unsafe fn ARIMA_CSS(
 // ---------------------------------------------------------------------------
 
 pub unsafe fn TSconv(a: SEXP, b: SEXP) -> SEXP {
-    let a = Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.0));
-    let b = Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.0));
+    let a = Rf_protect(coerceVector(a, SEXPTYPE::REALSXP.as_c_int()));
+    let b = Rf_protect(coerceVector(b, SEXPTYPE::REALSXP.as_c_int()));
     let na = Rf_length(a) as isize;
     let nb = Rf_length(b) as isize;
     let nab = na + nb - 1;

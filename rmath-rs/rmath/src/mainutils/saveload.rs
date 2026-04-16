@@ -391,7 +391,7 @@ pub unsafe fn do_load(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             error("restore file may be empty -- no data loaded");
         }
 
-        let names = Rf_allocVector(crate::sexp::ffi::SEXPTYPE::STRSXP.0, n);
+        let names = Rf_allocVector(crate::sexp::ffi::SEXPTYPE::STRSXP.as_c_int(), n);
         Rf_protect(names);
 
         for i in 0..n as i64 {

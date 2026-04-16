@@ -137,7 +137,7 @@ unsafe fn pkendall(len: c_int, q: *const c_double, p: *mut c_double, n: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
-    let q = Rf_protect(coerceVector(q, SEXPTYPE::REALSXP.0));
+    let q = Rf_protect(coerceVector(q, SEXPTYPE::REALSXP.as_c_int()));
     let len = LENGTH(q);
     let n = asInteger(sn);
     let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len));

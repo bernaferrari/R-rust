@@ -94,8 +94,8 @@ unsafe fn math2_1(sa: SEXP, sb: SEXP, sI: SEXP, f: math2_fn_1) -> SEXP {
     }
 
     let n = if na < nb { nb } else { na };
-    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
+    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
     let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
     let a = REAL(sa);
     let b = REAL(sb);
@@ -153,8 +153,8 @@ unsafe fn math2_2(sa: SEXP, sb: SEXP, sI1: SEXP, sI2: SEXP, f: math2_fn_2) -> SE
     }
 
     let n = if na < nb { nb } else { na };
-    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
+    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
     let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
     let a = REAL(sa);
     let b = REAL(sb);
@@ -228,9 +228,9 @@ unsafe fn math3_1(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, f: math3_fn_1) -> SEXP
         n = nc;
     }
 
-    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.0));
+    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
     let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
     let a = REAL(sa);
     let b = REAL(sb);
@@ -303,9 +303,9 @@ unsafe fn math3_2(sa: SEXP, sb: SEXP, sc: SEXP, sI: SEXP, sJ: SEXP, f: math3_fn_
         n = nc;
     }
 
-    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.0));
+    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
     let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
     let a = REAL(sa);
     let b = REAL(sb);
@@ -390,10 +390,10 @@ unsafe fn math4_1(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, f: math4_fn_
         n = nd;
     }
 
-    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.0));
-    let sd = Rf_protect(coerceVector(sd, SEXPTYPE::REALSXP.0));
+    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
+    let sd = Rf_protect(coerceVector(sd, SEXPTYPE::REALSXP.as_c_int()));
     let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
     let a = REAL(sa);
     let b = REAL(sb);
@@ -485,10 +485,10 @@ unsafe fn math4_2(
         n = nd;
     }
 
-    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.0));
-    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.0));
-    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.0));
-    let sd = Rf_protect(coerceVector(sd, SEXPTYPE::REALSXP.0));
+    let sa = Rf_protect(coerceVector(sa, SEXPTYPE::REALSXP.as_c_int()));
+    let sb = Rf_protect(coerceVector(sb, SEXPTYPE::REALSXP.as_c_int()));
+    let sc = Rf_protect(coerceVector(sc, SEXPTYPE::REALSXP.as_c_int()));
+    let sd = Rf_protect(coerceVector(sd, SEXPTYPE::REALSXP.as_c_int()));
     let sy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n as c_int));
     let a = REAL(sa);
     let b = REAL(sb);

@@ -259,7 +259,7 @@ pub unsafe fn R_compute_identical(x: SEXP, y: SEXP, flags: c_int) -> c_int {
 
         let t = TYPEOF(x);
 
-        // Use integer constants for match since SEXPTYPE::X.0 is not a pattern
+        // Use integer constants for match since SEXPTYPE::X.as_c_int() is not a pattern
         if t == SEXPTYPE::NILSXP {
             return 1;
         } else if t == SEXPTYPE::LGLSXP {

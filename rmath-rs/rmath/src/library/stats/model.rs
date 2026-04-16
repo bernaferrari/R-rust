@@ -256,11 +256,11 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
 
     // Assemble the base data frame
     let data = Rf_protect(Rf_allocVector3(
-        SEXPTYPE::VECSXP.0,
+        SEXPTYPE::VECSXP.as_c_int(),
         (nvars + nactualdots) as R_xlen_t,
     ));
     let names = Rf_protect(Rf_allocVector3(
-        SEXPTYPE::STRSXP.0,
+        SEXPTYPE::STRSXP.as_c_int(),
         (nvars + nactualdots) as R_xlen_t,
     ));
 
@@ -338,7 +338,7 @@ pub unsafe fn modelframe(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         setAttrib(data, Rf_install("row.names"), row_names);
     } else {
         let row_names = Rf_protect(Rf_allocVector3(
-            SEXPTYPE::INTSXP.0,
+            SEXPTYPE::INTSXP.as_c_int(),
             if nr > 0 { 2 } else { 0 } as R_xlen_t,
         ));
         if nr > 0 {
@@ -572,7 +572,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             *INTEGER(nlevs).add(i as usize) = 2;
             *INTEGER(columns).add(i as usize) = ncols(var_i) as c_int;
         } else if isNumeric(var_i) {
-            var_i = Rf_protect(coerceVector(var_i, SEXPTYPE::REALSXP.0));
+            var_i = Rf_protect(coerceVector(var_i, SEXPTYPE::REALSXP.as_c_int()));
             SET_VECTOR_ELT(variable, i as R_xlen_t, var_i);
             *LOGICAL(ordered).add(i as usize) = 0;
             *INTEGER(nlevs).add(i as usize) = 0;
@@ -754,7 +754,7 @@ pub unsafe fn modelmatrix(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 let contrast = if fik == 1 { contr1 } else { contr2 };
                 let contrast = Rf_protect(coerceVector(
                     VECTOR_ELT(contrast, i as R_xlen_t),
-                    SEXPTYPE::REALSXP.0,
+                    SEXPTYPE::REALSXP.as_c_int(),
                 ));
 
                 if jnext == jstart {
@@ -1512,7 +1512,7 @@ pub unsafe fn termsform(args: SEXP) -> SEXP {
     let pat: SEXP;
     if nterm > 0 {
         pat = Rf_protect(allocMatrix(
-            SEXPTYPE::INTSXP.0,
+            SEXPTYPE::INTSXP.as_c_int(),
             nvar as c_int,
             nterm as c_int,
         ));

@@ -31,7 +31,7 @@ use crate::sexp::symbol::Rf_install;
 /// If any arg is STRSXP, result is STRSXP.
 pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // First pass: determine result type and total length
-    let mut result_type = SEXPTYPE::LGLSXP.0;
+    let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
     let mut total_len: R_xlen_t = 0;
     let mut current = args;
     while !current.is_null() && current != R_NilValue() {
@@ -39,20 +39,20 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !arg.is_null() && arg != R_NilValue() {
             let t = TYPEOF(arg);
             if t == SEXPTYPE::STRSXP {
-                result_type = SEXPTYPE::STRSXP.0;
+                result_type = SEXPTYPE::STRSXP.as_c_int();
             } else if t == SEXPTYPE::CPLXSXP && result_type != SEXPTYPE::STRSXP {
-                result_type = SEXPTYPE::CPLXSXP.0;
+                result_type = SEXPTYPE::CPLXSXP.as_c_int();
             } else if t == SEXPTYPE::REALSXP
                 && result_type != SEXPTYPE::STRSXP
                 && result_type != SEXPTYPE::CPLXSXP
             {
-                result_type = SEXPTYPE::REALSXP.0;
+                result_type = SEXPTYPE::REALSXP.as_c_int();
             } else if t == SEXPTYPE::INTSXP
                 && result_type != SEXPTYPE::STRSXP
                 && result_type != SEXPTYPE::CPLXSXP
                 && result_type != SEXPTYPE::REALSXP
             {
-                result_type = SEXPTYPE::INTSXP.0;
+                result_type = SEXPTYPE::INTSXP.as_c_int();
             }
             total_len += XLENGTH(arg);
         }
@@ -584,22 +584,22 @@ pub unsafe fn do_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `as.integer(x)` — coerce to INTSXP.
 pub unsafe fn do_as_integer(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    coerce_to_type(args, SEXPTYPE::INTSXP.0)
+    coerce_to_type(args, SEXPTYPE::INTSXP.as_c_int())
 }
 
 /// R's `as.double(x)` — coerce to REALSXP.
 pub unsafe fn do_as_double(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    coerce_to_type(args, SEXPTYPE::REALSXP.0)
+    coerce_to_type(args, SEXPTYPE::REALSXP.as_c_int())
 }
 
 /// R's `as.character(x)` — coerce to STRSXP.
 pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    coerce_to_type(args, SEXPTYPE::STRSXP.0)
+    coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
 }
 
 /// R's `as.logical(x)` — coerce to LGLSXP.
 pub unsafe fn do_as_logical(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    coerce_to_type(args, SEXPTYPE::LGLSXP.0)
+    coerce_to_type(args, SEXPTYPE::LGLSXP.as_c_int())
 }
 
 /// R's `as.vector(x)` — strips attributes, returns simple vector.
@@ -1152,11 +1152,11 @@ pub unsafe fn do_append(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     let after = (after.max(0) as R_xlen_t).min(n);
     let total = n + vlen;
     let t = if TYPEOF(values) == SEXPTYPE::STRSXP || TYPEOF(x) == SEXPTYPE::STRSXP {
-        SEXPTYPE::STRSXP.0
+        SEXPTYPE::STRSXP.as_c_int()
     } else if TYPEOF(x) == SEXPTYPE::REALSXP || TYPEOF(values) == SEXPTYPE::REALSXP {
-        SEXPTYPE::REALSXP.0
+        SEXPTYPE::REALSXP.as_c_int()
     } else {
-        SEXPTYPE::INTSXP.0
+        SEXPTYPE::INTSXP.as_c_int()
     };
     let result = Rf_allocVector3(t, total);
     if result.is_null() {
@@ -1392,7 +1392,7 @@ pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     } else if !y.is_null() && y != R_NilValue() {
         TYPEOF(y)
     } else {
-        SEXPTYPE::INTSXP.0
+        SEXPTYPE::INTSXP.as_c_int()
     };
     let mut seen: std::collections::BTreeSet<i64> = std::collections::BTreeSet::new();
     let mut result_keys: Vec<i64> = Vec::new();
@@ -6748,11 +6748,11 @@ pub unsafe fn do_unlist(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         }
     }
     let result_type = if saw_str {
-        SEXPTYPE::STRSXP.0
+        SEXPTYPE::STRSXP.as_c_int()
     } else if !all_values.is_empty() {
-        SEXPTYPE::REALSXP.0
+        SEXPTYPE::REALSXP.as_c_int()
     } else {
-        SEXPTYPE::INTSXP.0
+        SEXPTYPE::INTSXP.as_c_int()
     };
 
     let total: R_xlen_t = if result_type == SEXPTYPE::STRSXP {
@@ -9598,7 +9598,7 @@ pub unsafe fn do_scan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let filename = elt_to_string(file_arg, 0);
     let what_type = if what_arg.is_null() || what_arg == R_NilValue() {
-        SEXPTYPE::REALSXP.0
+        SEXPTYPE::REALSXP.as_c_int()
     } else {
         TYPEOF(what_arg)
     };
@@ -14621,7 +14621,7 @@ pub unsafe fn do_foreach(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// R's `cbind(...)` — combine vectors/matrices by columns.
 pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // Simplified: collect all args into a matrix by columns
-    let mut result_type = SEXPTYPE::LGLSXP.0;
+    let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
     let mut ncols: R_xlen_t = 0;
     let mut nrows: R_xlen_t = 0;
 
@@ -14632,14 +14632,14 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !arg.is_null() && arg != R_NilValue() {
             let t = TYPEOF(arg);
             if t == SEXPTYPE::STRSXP {
-                result_type = SEXPTYPE::STRSXP.0;
+                result_type = SEXPTYPE::STRSXP.as_c_int();
             } else if t == SEXPTYPE::REALSXP && result_type != SEXPTYPE::STRSXP {
-                result_type = SEXPTYPE::REALSXP.0;
+                result_type = SEXPTYPE::REALSXP.as_c_int();
             } else if t == SEXPTYPE::INTSXP
                 && result_type != SEXPTYPE::STRSXP
                 && result_type != SEXPTYPE::REALSXP
             {
-                result_type = SEXPTYPE::INTSXP.0;
+                result_type = SEXPTYPE::INTSXP.as_c_int();
             }
 
             let dim_attr = crate::sexp::attrib_core::getAttrib(
@@ -14749,7 +14749,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `rbind(...)` — combine vectors/matrices by rows.
 pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let mut result_type = SEXPTYPE::LGLSXP.0;
+    let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
     let mut ncols: R_xlen_t = 0;
     let mut nrows: R_xlen_t = 0;
 
@@ -14760,14 +14760,14 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !arg.is_null() && arg != R_NilValue() {
             let t = TYPEOF(arg);
             if t == SEXPTYPE::STRSXP {
-                result_type = SEXPTYPE::STRSXP.0;
+                result_type = SEXPTYPE::STRSXP.as_c_int();
             } else if t == SEXPTYPE::REALSXP && result_type != SEXPTYPE::STRSXP {
-                result_type = SEXPTYPE::REALSXP.0;
+                result_type = SEXPTYPE::REALSXP.as_c_int();
             } else if t == SEXPTYPE::INTSXP
                 && result_type != SEXPTYPE::STRSXP
                 && result_type != SEXPTYPE::REALSXP
             {
-                result_type = SEXPTYPE::INTSXP.0;
+                result_type = SEXPTYPE::INTSXP.as_c_int();
             }
 
             let dim_attr = crate::sexp::attrib_core::getAttrib(
@@ -15917,11 +15917,11 @@ pub unsafe fn do_simplify2array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) 
         for i in 0..n {
             let elem = crate::sexp::accessors::VECTOR_ELT(x, i as i64);
             if !elem.is_null() && TYPEOF(elem) == elem_type {
-                if elem_type == SEXPTYPE::REALSXP.0 {
+                if elem_type == SEXPTYPE::REALSXP.as_c_int() {
                     *REAL(result).add(i as usize) = *REAL(elem);
-                } else if elem_type == SEXPTYPE::INTSXP.0 {
+                } else if elem_type == SEXPTYPE::INTSXP.as_c_int() {
                     *INTEGER(result).add(i as usize) = *INTEGER(elem);
-                } else if elem_type == SEXPTYPE::LGLSXP.0 {
+                } else if elem_type == SEXPTYPE::LGLSXP.as_c_int() {
                     *LOGICAL(result).add(i as usize) = *LOGICAL(elem);
                 }
             }
@@ -16043,9 +16043,9 @@ pub unsafe fn do_sort_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
         let mut indices: Vec<(R_xlen_t, f64)> = Vec::with_capacity(n as usize);
         for i in 0..n {
-            let v = if t == SEXPTYPE::REALSXP.0 {
+            let v = if t == SEXPTYPE::REALSXP.as_c_int() {
                 *REAL(x).add(i as usize)
-            } else if t == SEXPTYPE::INTSXP.0 || t == SEXPTYPE::LGLSXP.0 {
+            } else if t == SEXPTYPE::INTSXP.as_c_int() || t == SEXPTYPE::LGLSXP.as_c_int() {
                 let iv = *INTEGER(x).add(i as usize);
                 if iv == NA_INTEGER { NA_REAL } else { iv as f64 }
             } else {

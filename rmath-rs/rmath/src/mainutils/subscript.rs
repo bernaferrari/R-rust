@@ -1220,7 +1220,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
 
         // Special case for simple scalar indices — does not duplicate
         let stype = TYPEOF(s);
-        if stype == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.0) != 0 {
+        if stype == SEXPTYPE::INTSXP && IS_SCALAR(s, SEXPTYPE::INTSXP.as_c_int()) != 0 {
             let i = SCALAR_IVAL(s);
             if i > 0 && (i as R_xlen_t) <= nx {
                 if !stretch.is_null() {
@@ -1228,7 +1228,7 @@ pub unsafe fn makeSubscript(x: SEXP, s: SEXP, stretch: *mut R_xlen_t, call: SEXP
                 }
                 return s;
             }
-        } else if stype == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.0) != 0 {
+        } else if stype == SEXPTYPE::REALSXP && IS_SCALAR(s, SEXPTYPE::REALSXP.as_c_int()) != 0 {
             let di = SCALAR_DVAL(s);
             if di >= 1.0 && (di as R_xlen_t) <= nx {
                 if !stretch.is_null() {

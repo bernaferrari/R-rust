@@ -127,6 +127,12 @@ impl SEXPTYPE {
     pub const OBJSXP: SEXPTYPE = SEXPTYPE(25);
     pub const FUNSXP: SEXPTYPE = SEXPTYPE(99);
 
+    /// Return the raw C integer tag value.
+    #[inline]
+    pub const fn as_c_int(self) -> c_int {
+        self.0
+    }
+
     /// Check if this type is a vector type (has length/trueLength fields).
     #[inline]
     pub fn is_vector_type(self) -> bool {

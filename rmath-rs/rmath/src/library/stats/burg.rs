@@ -96,7 +96,7 @@ unsafe fn burg(
 }
 
 pub unsafe fn Burg(x: SEXP, order: SEXP) -> SEXP {
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.as_c_int()));
     let n = LENGTH(x);
     let pmax = asInteger(order);
     let coefs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, pmax * pmax));

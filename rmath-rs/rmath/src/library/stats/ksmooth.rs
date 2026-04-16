@@ -175,9 +175,9 @@ pub unsafe fn ksmooth(x: SEXP, y: SEXP, xp: SEXP, skrn: SEXP, sbw: SEXP) -> SEXP
     let krn = asInteger(skrn);
     let bw = asReal(sbw);
 
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
-    let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.0));
-    let xp = Rf_protect(coerceVector(xp, SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.as_c_int()));
+    let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.as_c_int()));
+    let xp = Rf_protect(coerceVector(xp, SEXPTYPE::REALSXP.as_c_int()));
 
     let nx = XLENGTH(x);
     let np = XLENGTH(xp);

@@ -179,7 +179,7 @@ pub unsafe fn cmp_relop(
 ) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
-        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0);
+        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
         Rf_protect(op);
 
         let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
@@ -220,7 +220,7 @@ pub unsafe fn cmp_relop(
 pub unsafe fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
-        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0);
+        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
         Rf_protect(op);
 
         if crate::eval::attrib_core::isObject(x) != 0 {
@@ -262,7 +262,7 @@ pub unsafe fn cmp_arith2(
 ) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
-        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.0);
+        let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
         Rf_protect(op);
 
         let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;

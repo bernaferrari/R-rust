@@ -645,7 +645,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     let scalar = crate::sexp::constructors::Rf_ScalarString(pname);
                     SET_VECTOR_ELT(x, j, scalar);
                 } else {
-                    let coerced = coerceVector(xj, SEXPTYPE::STRSXP.0);
+                    let coerced = coerceVector(xj, SEXPTYPE::STRSXP.as_c_int());
                     SET_VECTOR_ELT(x, j, coerced);
                 }
 
@@ -905,7 +905,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
                     let scalar = crate::sexp::constructors::Rf_ScalarString(pname);
                     SET_VECTOR_ELT(x, j, scalar);
                 } else {
-                    let coerced = coerceVector(xj, SEXPTYPE::STRSXP.0);
+                    let coerced = coerceVector(xj, SEXPTYPE::STRSXP.as_c_int());
                     SET_VECTOR_ELT(x, j, coerced);
                 }
 

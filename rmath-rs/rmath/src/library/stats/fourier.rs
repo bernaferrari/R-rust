@@ -107,7 +107,7 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
 
     match TYPEOF(z) as c_int {
         t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
-            z = coerceVector(z, SEXPTYPE::CPLXSXP.0);
+            z = coerceVector(z, SEXPTYPE::CPLXSXP.as_c_int());
         }
         t if t == SEXPTYPE::CPLXSXP => {
             if MAYBE_REFERENCED(z) != 0 {
@@ -231,7 +231,7 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
     let mut z = z;
     match TYPEOF(z) as c_int {
         t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::REALSXP => {
-            z = coerceVector(z, SEXPTYPE::CPLXSXP.0);
+            z = coerceVector(z, SEXPTYPE::CPLXSXP.as_c_int());
         }
         t if t == SEXPTYPE::CPLXSXP => {
             if MAYBE_REFERENCED(z) != 0 {
@@ -362,7 +362,7 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     let mut nprot: c_int = 0;
     let mut f = f;
     if TYPEOF(f) != SEXPTYPE::INTSXP {
-        f = coerceVector(f, SEXPTYPE::INTSXP.0);
+        f = coerceVector(f, SEXPTYPE::INTSXP.as_c_int());
         Rf_protect(f);
         nprot += 1;
     }
@@ -397,7 +397,7 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
         }
         if n_max <= (c_int::MAX as c_double) / (*f_ as c_double) {
             use_int = true;
-            let n_new = coerceVector(n, SEXPTYPE::INTSXP.0);
+            let n_new = coerceVector(n, SEXPTYPE::INTSXP.as_c_int());
             Rf_protect(n_new);
             nprot += 1;
             n = n_new;
@@ -405,9 +405,9 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
     }
 
     let ans_type = if use_int {
-        SEXPTYPE::INTSXP.0
+        SEXPTYPE::INTSXP.as_c_int()
     } else {
-        SEXPTYPE::REALSXP.0
+        SEXPTYPE::REALSXP.as_c_int()
     };
     let ans = Rf_protect(Rf_allocVector(ans_type, nn as c_int));
     nprot += 1;
