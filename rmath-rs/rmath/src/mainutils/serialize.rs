@@ -1453,18 +1453,29 @@ pub unsafe fn R_serialize(
             error("read error");
         }
 
+        let version = if Sversion == R_NilValue() {
+            defaultSerializeVersion()
+        } else {
+            let version = asInteger(Sversion);
+            if version <= 0 {
+                error("bad version value");
+            }
+            version
+        };
+
         // Build the header
         let mut writer = BinaryWriter::new();
         // Format: 'B' + '\n' for binary
         writer.write_byte(b'B');
         writer.write_byte(b'\n');
 
-        // Version info (version 3)
-        let version = R_DEFAULT_SERIALIZE_VERSION;
-        writer.write_i32(3); // version
+        // Version info
+        writer.write_i32(version); // version
         writer.write_i32(R_VERSION); // writer version
         writer.write_i32(R_VERSION_350); // min reader version
-        writer.write_i32(0); // native encoding length
+        if version == 3 {
+            writer.write_i32(0); // native encoding length
+        }
 
         // Serialize the object
         let mut ref_table = WriteHashTable::new();
@@ -3562,6 +3573,54 @@ mod tests {
             let enc = VECTOR_ELT(info, 4);
             let enc_s = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(enc, 0)));
             assert_eq!(enc_s.to_bytes(), b"");
+        }
+    }
+
+    #[test]
+    fn test_r_serialize_honors_requested_version_2() {
+        unsafe {
+            let value = Rf_ScalarInteger(123);
+            let version = Rf_ScalarInteger(2);
+            let raw = R_serialize(
+                value,
+                R_NilValue(),
+                R_NilValue(),
+                version,
+                R_NilValue(),
+            );
+            assert_eq!(TYPEOF(raw), SEXPTYPE::RAWSXP);
+
+            let mut in_stream: R_inpstream_st = mem::zeroed();
+            let mut in_buf = membuf_st {
+                size: 0,
+                count: 0,
+                buf: ptr::null_mut(),
+            };
+            InitMemInPStream(
+                &mut in_stream,
+                &mut in_buf,
+                RAW(raw) as *mut c_void,
+                XLENGTH(raw) as R_size_t,
+                None,
+                R_NilValue(),
+            );
+
+            let info = R_SerializeInfo(&mut in_stream);
+            assert_eq!(TYPEOF(info), SEXPTYPE::VECSXP);
+            assert_eq!(LENGTH(info), 4);
+            assert_eq!(*INTEGER(VECTOR_ELT(info, 0)), 2);
+
+            let names = crate::eval::attrib_core::getAttrib(info, R_NamesSymbol());
+            assert_eq!(TYPEOF(names), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(names), 4);
+            let n0 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 0)));
+            let n1 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 1)));
+            let n2 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 2)));
+            let n3 = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(names, 3)));
+            assert_eq!(n0.to_bytes(), b"version");
+            assert_eq!(n1.to_bytes(), b"writer_version");
+            assert_eq!(n2.to_bytes(), b"min_reader_version");
+            assert_eq!(n3.to_bytes(), b"format");
         }
     }
 

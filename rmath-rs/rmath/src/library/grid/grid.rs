@@ -21,7 +21,8 @@ use crate::sexp::symbol::Rf_install;
 use super::clippath::{isClipPath, resolveClipPath};
 use super::gpar::{
     GP_ALPHA, GP_CEX, GP_COL, GP_FILL, GP_FONT, GP_FONTFAMILY, GP_FONTSIZE, GP_GAMMA, GP_LEX,
-    GP_LINEEND, GP_LINEHEIGHT, GP_LINEJOIN, GP_LINEMITRE, GP_LTY, GP_LWD, pGEDevDesc, pGEcontext,
+    GP_LINEEND, GP_LINEHEIGHT, GP_LINEJOIN, GP_LINEMITRE, GP_LTY, GP_LWD, gpFillSXP, pGEDevDesc,
+    pGEcontext,
 };
 use super::just::{justification, justifyX, justifyY};
 use super::layout::calcViewportLocationFromLayout;
@@ -1249,12 +1250,77 @@ unsafe fn arrows(
     }
 }
 
+#[inline]
+unsafe fn gp_fill_is_pattern(gp: SEXP) -> bool {
+    let fill = gpFillSXP(gp);
+    Rf_inherits(fill, c"GridPattern".as_ptr()) != 0
+        || Rf_inherits(fill, c"GridPatternList".as_ptr()) != 0
+}
+
+#[inline]
+unsafe fn set_gp_fill_string(gp: SEXP, fill: *const c_char) {
+    SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_mkString(fill));
+}
+
 /* ==============================
  * L_moveTo
  * ============================== */
 
 pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
-    // STUB: full implementation requires unit conversion
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    set_gp_fill_string(currentgp, c"transparent".as_ptr());
+
+    let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
+    let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    gcontextFromgpar(currentgp, 0, gc, dd);
+
+    let mut xx: c_double = NA_REAL;
+    let mut yy: c_double = NA_REAL;
+    transformLocn(
+        x,
+        y,
+        0,
+        vpc,
+        gc,
+        vpWidthCM,
+        vpHeightCM,
+        dd,
+        &mut transform,
+        &mut xx,
+        &mut yy,
+    );
+
+    if TYPEOF(prevloc) == SEXPTYPE::REALSXP
+        && LENGTH(prevloc) >= 2
+        && TYPEOF(devloc) == SEXPTYPE::REALSXP
+        && LENGTH(devloc) >= 2
+    {
+        *REAL(prevloc).add(0) = *REAL(devloc).add(0);
+        *REAL(prevloc).add(1) = *REAL(devloc).add(1);
+        *REAL(devloc).add(0) = xx;
+        *REAL(devloc).add(1) = yy;
+    }
+
+    Rf_unprotect(3);
     R_NilValue()
 }
 
@@ -1263,7 +1329,91 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
-    // STUB: full implementation requires unit conversion + GELine
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    if gp_fill_is_pattern(currentgp) {
+        set_gp_fill_string(currentgp, c"transparent".as_ptr());
+    }
+
+    let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
+    let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    gcontextFromgpar(currentgp, 0, gc, dd);
+
+    let mut xx: c_double = NA_REAL;
+    let mut yy: c_double = NA_REAL;
+    transformLocn(
+        x,
+        y,
+        0,
+        vpc,
+        gc,
+        vpWidthCM,
+        vpHeightCM,
+        dd,
+        &mut transform,
+        &mut xx,
+        &mut yy,
+    );
+
+    if TYPEOF(prevloc) == SEXPTYPE::REALSXP
+        && LENGTH(prevloc) >= 2
+        && TYPEOF(devloc) == SEXPTYPE::REALSXP
+        && LENGTH(devloc) >= 2
+    {
+        *REAL(prevloc).add(0) = *REAL(devloc).add(0);
+        *REAL(prevloc).add(1) = *REAL(devloc).add(1);
+        *REAL(devloc).add(0) = xx;
+        *REAL(devloc).add(1) = yy;
+
+        let xx0 = toDeviceX(*REAL(prevloc).add(0), GE_INCHES, dd);
+        let yy0 = toDeviceY(*REAL(prevloc).add(1), GE_INCHES, dd);
+        let xx1 = toDeviceX(xx, GE_INCHES, dd);
+        let yy1 = toDeviceY(yy, GE_INCHES, dd);
+
+        if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
+            GEMode(1, dd);
+            GELine(xx0, yy0, xx1, yy1, gc, dd);
+            if !isNull(arrow) {
+                let ax = [xx0, xx1];
+                let ay = [yy0, yy1];
+                arrows(
+                    ax.as_ptr(),
+                    ay.as_ptr(),
+                    2,
+                    arrow,
+                    0,
+                    true,
+                    true,
+                    vpc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    gc,
+                    dd,
+                );
+            }
+            GEMode(0, dd);
+        }
+    }
+
+    Rf_unprotect(3);
     R_NilValue()
 }
 
@@ -1272,7 +1422,133 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
-    // STUB: full implementation requires unit conversion + GEPolyline
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    if gp_fill_is_pattern(currentgp) {
+        set_gp_fill_string(currentgp, c"transparent".as_ptr());
+    }
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let mut gp_is_scalar = [-1i32; 15];
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let mut gc_cache_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+    GEMode(1, dd);
+    let nl = LENGTH(index);
+    for j in 0..nl {
+        let indices = VECTOR_ELT(index, j as R_xlen_t);
+        updateGContext(currentgp, j, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        let nx = LENGTH(indices);
+        if nx <= 0 {
+            continue;
+        }
+
+        let mut xx = vec![NA_REAL; nx as usize];
+        let mut yy = vec![NA_REAL; nx as usize];
+        let mut xold = NA_REAL;
+        let mut yold = NA_REAL;
+        let mut start: usize = 0;
+
+        for i in 0..nx as usize {
+            let idx = *INTEGER(indices).add(i);
+            if idx > 0 {
+                transformLocn(
+                    x,
+                    y,
+                    idx - 1,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xx[i],
+                    &mut yy[i],
+                );
+                xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
+                yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
+            }
+
+            let current_finite = xx[i].is_finite() && yy[i].is_finite();
+            let previous_finite = xold.is_finite() && yold.is_finite();
+
+            if current_finite && !previous_finite {
+                start = i;
+            } else if previous_finite && !current_finite {
+                if i.saturating_sub(start) > 1 {
+                    GEPolyline(
+                        (i - start) as c_int,
+                        xx.as_ptr().add(start),
+                        yy.as_ptr().add(start),
+                        gc,
+                        dd,
+                    );
+                    if !isNull(arrow) {
+                        arrows(
+                            xx.as_ptr().add(start),
+                            yy.as_ptr().add(start),
+                            (i - start) as c_int,
+                            arrow,
+                            j,
+                            start == 0,
+                            false,
+                            vpc,
+                            vpWidthCM,
+                            vpHeightCM,
+                            gc,
+                            dd,
+                        );
+                    }
+                }
+            } else if previous_finite && i + 1 == nx as usize {
+                GEPolyline(
+                    (nx as usize - start) as c_int,
+                    xx.as_ptr().add(start),
+                    yy.as_ptr().add(start),
+                    gc,
+                    dd,
+                );
+                if !isNull(arrow) {
+                    arrows(
+                        xx.as_ptr().add(start),
+                        yy.as_ptr().add(start),
+                        (nx as usize - start) as c_int,
+                        arrow,
+                        j,
+                        start == 0,
+                        true,
+                        vpc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        gc,
+                        dd,
+                    );
+                }
+            }
+
+            xold = xx[i];
+            yold = yy[i];
+        }
+    }
+    GEMode(0, dd);
+    Rf_unprotect(1);
     R_NilValue()
 }
 
@@ -1351,13 +1627,125 @@ pub unsafe fn L_xsplinePoints(
  * ============================== */
 
 pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
-    // STUB: full implementation requires unit conversion + GELine
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    if gp_fill_is_pattern(currentgp) {
+        set_gp_fill_string(currentgp, c"transparent".as_ptr());
+    }
+
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let mut gp_is_scalar = [-1i32; 15];
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let mut gc_cache_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+    let maxn = unitLength(x0)
+        .max(unitLength(y0))
+        .max(unitLength(x1))
+        .max(unitLength(y1));
+    GEMode(1, dd);
+    for i in 0..maxn {
+        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        let mut xx0: c_double = NA_REAL;
+        let mut yy0: c_double = NA_REAL;
+        let mut xx1: c_double = NA_REAL;
+        let mut yy1: c_double = NA_REAL;
+        transformLocn(
+            x0,
+            y0,
+            i,
+            vpc,
+            gc,
+            vpWidthCM,
+            vpHeightCM,
+            dd,
+            &mut transform,
+            &mut xx0,
+            &mut yy0,
+        );
+        transformLocn(
+            x1,
+            y1,
+            i,
+            vpc,
+            gc,
+            vpWidthCM,
+            vpHeightCM,
+            dd,
+            &mut transform,
+            &mut xx1,
+            &mut yy1,
+        );
+        xx0 = toDeviceX(xx0, GE_INCHES, dd);
+        yy0 = toDeviceY(yy0, GE_INCHES, dd);
+        xx1 = toDeviceX(xx1, GE_INCHES, dd);
+        yy1 = toDeviceY(yy1, GE_INCHES, dd);
+        if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
+            GELine(xx0, yy0, xx1, yy1, gc, dd);
+            if !isNull(arrow) {
+                let ax = [xx0, xx1];
+                let ay = [yy0, yy1];
+                arrows(
+                    ax.as_ptr(),
+                    ay.as_ptr(),
+                    2,
+                    arrow,
+                    i,
+                    true,
+                    true,
+                    vpc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    gc,
+                    dd,
+                );
+            }
+        }
+    }
+    GEMode(0, dd);
+    Rf_unprotect(1);
     R_NilValue()
 }
 
 /* ==============================
  * L_arrows
  * ============================== */
+
+unsafe fn getArrowN(x1: SEXP, x2: SEXP, xnm1: SEXP, xn: SEXP, y1: SEXP, y2: SEXP, ynm1: SEXP, yn: SEXP) -> c_int {
+    let mut maxn = 0;
+    let ny1 = if isNull(y1) { 0 } else { unitLength(y1) };
+    let nx2 = unitLength(x2);
+    let ny2 = unitLength(y2);
+    let nxnm1 = if isNull(xnm1) { 0 } else { unitLength(xnm1) };
+    let nynm1 = if isNull(ynm1) { 0 } else { unitLength(ynm1) };
+    let nxn = unitLength(xn);
+    let nyn = unitLength(yn);
+    maxn = maxn.max(ny1);
+    maxn = maxn.max(nx2);
+    maxn = maxn.max(ny2);
+    maxn = maxn.max(nxnm1);
+    maxn = maxn.max(nynm1);
+    maxn = maxn.max(nxn);
+    maxn = maxn.max(nyn);
+    maxn
+}
 
 pub unsafe fn L_arrows(
     x1: SEXP,
@@ -1373,7 +1761,194 @@ pub unsafe fn L_arrows(
     ends: SEXP,
     r#type: SEXP,
 ) -> SEXP {
-    // STUB: full implementation
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    if gp_fill_is_pattern(currentgp) {
+        set_gp_fill_string(currentgp, c"transparent".as_ptr());
+    }
+
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let maxn = getArrowN(x1, x2, xnm1, xn, y1, y2, ynm1, yn);
+    let ne = LENGTH(ends);
+    resolveGPar(currentgp, 0);
+
+    let mut gp_is_scalar = [-1i32; 15];
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let mut gc_cache_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+    GEMode(1, dd);
+    for i in 0..maxn {
+        let mut first = true;
+        let mut last = true;
+        match *INTEGER(ends).add((i % ne) as usize) {
+            2 => first = false,
+            1 => last = false,
+            _ => {}
+        }
+        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+        let mut devloc = R_NilValue();
+        if isNull(x1) {
+            devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+        }
+
+        if first {
+            let mut xx1: c_double = NA_REAL;
+            let mut yy1: c_double = NA_REAL;
+            if isNull(x1) {
+                if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
+                    xx1 = *REAL(devloc).add(0);
+                    yy1 = *REAL(devloc).add(1);
+                }
+            } else {
+                transformLocn(
+                    x1,
+                    y1,
+                    i,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xx1,
+                    &mut yy1,
+                );
+            }
+            let mut xx2: c_double = NA_REAL;
+            let mut yy2: c_double = NA_REAL;
+            transformLocn(
+                x2,
+                y2,
+                i,
+                vpc,
+                gc,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                &mut transform,
+                &mut xx2,
+                &mut yy2,
+            );
+
+            let mut vertx = [0.0; 3];
+            let mut verty = [0.0; 3];
+            calcArrow(
+                xx1,
+                yy1,
+                xx2,
+                yy2,
+                angle,
+                length,
+                i,
+                vpc,
+                vpWidthCM,
+                vpHeightCM,
+                vertx.as_mut_ptr(),
+                verty.as_mut_ptr(),
+                gc,
+                dd,
+            );
+            if toDeviceX(xx2, GE_INCHES, dd).is_finite()
+                && toDeviceY(yy2, GE_INCHES, dd).is_finite()
+                && vertx[1].is_finite()
+                && verty[1].is_finite()
+            {
+                drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+            }
+        }
+
+        if last {
+            let mut xxnm1: c_double = NA_REAL;
+            let mut yynm1: c_double = NA_REAL;
+            if isNull(xnm1) {
+                if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
+                    xxnm1 = *REAL(devloc).add(0);
+                    yynm1 = *REAL(devloc).add(1);
+                }
+            } else {
+                transformLocn(
+                    xnm1,
+                    ynm1,
+                    i,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xxnm1,
+                    &mut yynm1,
+                );
+            }
+
+            let mut xxn: c_double = NA_REAL;
+            let mut yyn: c_double = NA_REAL;
+            transformLocn(
+                xn,
+                yn,
+                i,
+                vpc,
+                gc,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                &mut transform,
+                &mut xxn,
+                &mut yyn,
+            );
+
+            let mut vertx = [0.0; 3];
+            let mut verty = [0.0; 3];
+            calcArrow(
+                xxn,
+                yyn,
+                xxnm1,
+                yynm1,
+                angle,
+                length,
+                i,
+                vpc,
+                vpWidthCM,
+                vpHeightCM,
+                vertx.as_mut_ptr(),
+                verty.as_mut_ptr(),
+                gc,
+                dd,
+            );
+            if toDeviceX(xxnm1, GE_INCHES, dd).is_finite()
+                && toDeviceY(yynm1, GE_INCHES, dd).is_finite()
+                && vertx[1].is_finite()
+                && verty[1].is_finite()
+            {
+                drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+            }
+        }
+
+        if isNull(x1) {
+            Rf_unprotect(1);
+        }
+    }
+    GEMode(0, dd);
+    Rf_unprotect(1);
     R_NilValue()
 }
 
@@ -1382,7 +1957,106 @@ pub unsafe fn L_arrows(
  * ============================== */
 
 pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
-    // STUB: full implementation requires unit conversion + GEPolygon
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+        && LENGTH(resolving_path) > 0
+        && *LOGICAL(resolving_path).add(0) != 0
+    {
+        set_gp_fill_string(currentgp, c"black".as_ptr());
+    }
+
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    let mut gp_is_scalar = [-1i32; 15];
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let mut gc_cache_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+    GEMode(1, dd);
+    let np = LENGTH(index);
+    for i in 0..np {
+        let indices = VECTOR_ELT(index, i as R_xlen_t);
+        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        let nx = LENGTH(indices);
+        if nx <= 0 {
+            continue;
+        }
+
+        let mut xx = vec![NA_REAL; nx as usize];
+        let mut yy = vec![NA_REAL; nx as usize];
+        let mut xold = NA_REAL;
+        let mut yold = NA_REAL;
+        let mut start: usize = 0;
+
+        for j in 0..nx as usize {
+            let idx = *INTEGER(indices).add(j);
+            if idx > 0 {
+                transformLocn(
+                    x,
+                    y,
+                    idx - 1,
+                    vpc,
+                    gc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    dd,
+                    &mut transform,
+                    &mut xx[j],
+                    &mut yy[j],
+                );
+                xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
+                yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
+            }
+
+            let current_finite = xx[j].is_finite() && yy[j].is_finite();
+            let previous_finite = xold.is_finite() && yold.is_finite();
+
+            if current_finite && !previous_finite {
+                start = j;
+            } else if previous_finite && !current_finite {
+                if j.saturating_sub(start) > 1 {
+                    GEPolygon(
+                        (j - start) as c_int,
+                        xx.as_ptr().add(start),
+                        yy.as_ptr().add(start),
+                        gc,
+                        dd,
+                    );
+                }
+            } else if previous_finite && j + 1 == nx as usize {
+                GEPolygon(
+                    (nx as usize - start) as c_int,
+                    xx.as_ptr().add(start),
+                    yy.as_ptr().add(start),
+                    gc,
+                    dd,
+                );
+            }
+
+            xold = xx[j];
+            yold = yy[j];
+        }
+    }
+    GEMode(0, dd);
+    Rf_unprotect(1);
     R_NilValue()
 }
 
