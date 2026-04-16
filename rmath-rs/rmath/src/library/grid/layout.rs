@@ -68,12 +68,11 @@ pub unsafe fn layoutVJust(l: SEXP) -> f64 {
 }
 
 // ---------------------------------------------------------------------------
-// relativeUnit — STUB: requires pureNullUnit from unit.c
+// relativeUnit — classify pure-null units as relative.
 // ---------------------------------------------------------------------------
 
 unsafe fn relativeUnit(_unit: SEXP, _index: c_int, _dd: *const u8) -> bool {
-    // STUB: requires pureNullUnit from unit.c
-    false
+    super::unit::pureNullUnit(_unit, _index, _dd as super::types::pGEDevDesc) != 0
 }
 
 // ---------------------------------------------------------------------------
@@ -447,4 +446,21 @@ pub unsafe fn calcViewportLocationFromLayout(
     _vpl: *mut LViewportLocation,
 ) {
     // STUB: requires unit() from unit.c, subRegion, and viewport accessors
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::library::grid::unit::{L_CM, L_NULL, unit};
+
+    #[test]
+    fn relative_unit_tracks_null_units() {
+        unsafe {
+            let null_unit = unit(1.0, L_NULL);
+            let cm_unit = unit(1.0, L_CM);
+
+            assert!(relativeUnit(null_unit, 0, std::ptr::null()));
+            assert!(!relativeUnit(cm_unit, 0, std::ptr::null()));
+        }
+    }
 }

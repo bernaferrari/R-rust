@@ -739,11 +739,11 @@ mod tests {
 
     #[test]
     fn test_sexptype2char() {
-        assert_eq!(sexptype2char(SEXPTYPE::INTSXP.0), "integer");
-        assert_eq!(sexptype2char(SEXPTYPE::REALSXP.0), "double");
-        assert_eq!(sexptype2char(SEXPTYPE::STRSXP.0), "character");
-        assert_eq!(sexptype2char(SEXPTYPE::LGLSXP.0), "logical");
-        assert_eq!(sexptype2char(SEXPTYPE::VECSXP.0), "list");
-        assert_eq!(sexptype2char(SEXPTYPE::NILSXP.0), "NULL");
+        assert_eq!(sexptype2char(SEXPTYPE::INTSXP.into()), "integer");
+        assert_eq!(sexptype2char(SEXPTYPE::REALSXP.into()), "double");
+        assert_eq!(sexptype2char(SEXPTYPE::STRSXP.into()), "character");
+        assert_eq!(sexptype2char(SEXPTYPE::LGLSXP.into()), "logical");
+        assert_eq!(sexptype2char(SEXPTYPE::VECSXP.into()), "list");
+        assert_eq!(sexptype2char(SEXPTYPE::NILSXP.into()), "NULL");
     }
 }

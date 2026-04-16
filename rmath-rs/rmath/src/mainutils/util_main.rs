@@ -1408,16 +1408,16 @@ pub unsafe fn str2type(s: *const c_char) -> c_int {
         let cs = CStr::from_ptr(s);
         let Ok(name) = cs.to_str() else { return -1 };
         match name {
-            "logical" => SEXPTYPE::LGLSXP.0,
-            "integer" => SEXPTYPE::INTSXP.0,
-            "double" => SEXPTYPE::REALSXP.0,
-            "complex" => SEXPTYPE::CPLXSXP.0,
-            "character" => SEXPTYPE::STRSXP.0,
-            "raw" => SEXPTYPE::RAWSXP.0,
-            "list" => SEXPTYPE::VECSXP.0,
-            "expression" => SEXPTYPE::EXPRSXP.0,
-            "closure" | "function" => SEXPTYPE::CLOSXP.0,
-            "environment" => SEXPTYPE::ENVSXP.0,
+            "logical" => SEXPTYPE::LGLSXP.into(),
+            "integer" => SEXPTYPE::INTSXP.into(),
+            "double" => SEXPTYPE::REALSXP.into(),
+            "complex" => SEXPTYPE::CPLXSXP.into(),
+            "character" => SEXPTYPE::STRSXP.into(),
+            "raw" => SEXPTYPE::RAWSXP.into(),
+            "list" => SEXPTYPE::VECSXP.into(),
+            "expression" => SEXPTYPE::EXPRSXP.into(),
+            "closure" | "function" => SEXPTYPE::CLOSXP.into(),
+            "environment" => SEXPTYPE::ENVSXP.into(),
             _ => -1,
         }
     }

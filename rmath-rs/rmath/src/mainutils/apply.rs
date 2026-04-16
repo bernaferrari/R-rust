@@ -38,19 +38,19 @@ use crate::sexp::symbol::Rf_install;
 // SEXPTYPE constants used in this module
 // ---------------------------------------------------------------------------
 
-const VECSXP_VAL: c_int = SEXPTYPE::VECSXP.0;
-const EXPRSXP_VAL: c_int = SEXPTYPE::EXPRSXP.0;
-const LGLSXP_VAL: c_int = SEXPTYPE::LGLSXP.0;
-const INTSXP_VAL: c_int = SEXPTYPE::INTSXP.0;
-const REALSXP_VAL: c_int = SEXPTYPE::REALSXP.0;
-const CPLXSXP_VAL: c_int = SEXPTYPE::CPLXSXP.0;
-const STRSXP_VAL: c_int = SEXPTYPE::STRSXP.0;
-const RAWSXP_VAL: c_int = SEXPTYPE::RAWSXP.0;
-const SYMSXP_VAL: c_int = SEXPTYPE::SYMSXP.0;
-const CLOSXP_VAL: c_int = SEXPTYPE::CLOSXP.0;
-const SPECIALSXP_VAL: c_int = SEXPTYPE::SPECIALSXP.0;
-const BUILTINSXP_VAL: c_int = SEXPTYPE::BUILTINSXP.0;
-const NILSXP_VAL: c_int = SEXPTYPE::NILSXP.0;
+const VECSXP_VAL: SEXPTYPE = SEXPTYPE::VECSXP;
+const EXPRSXP_VAL: SEXPTYPE = SEXPTYPE::EXPRSXP;
+const LGLSXP_VAL: SEXPTYPE = SEXPTYPE::LGLSXP;
+const INTSXP_VAL: SEXPTYPE = SEXPTYPE::INTSXP;
+const REALSXP_VAL: SEXPTYPE = SEXPTYPE::REALSXP;
+const CPLXSXP_VAL: SEXPTYPE = SEXPTYPE::CPLXSXP;
+const STRSXP_VAL: SEXPTYPE = SEXPTYPE::STRSXP;
+const RAWSXP_VAL: SEXPTYPE = SEXPTYPE::RAWSXP;
+const SYMSXP_VAL: SEXPTYPE = SEXPTYPE::SYMSXP;
+const CLOSXP_VAL: SEXPTYPE = SEXPTYPE::CLOSXP;
+const SPECIALSXP_VAL: SEXPTYPE = SEXPTYPE::SPECIALSXP;
+const BUILTINSXP_VAL: SEXPTYPE = SEXPTYPE::BUILTINSXP;
+const NILSXP_VAL: SEXPTYPE = SEXPTYPE::NILSXP;
 
 // ---------------------------------------------------------------------------
 // Local helper functions (matching R's internal macros/utilities)

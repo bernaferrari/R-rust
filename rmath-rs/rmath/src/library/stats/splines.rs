@@ -44,7 +44,7 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 
 unsafe fn asXlen(x: SEXP) -> R_xlen_t {
     let t = TYPEOF(x);
-    if (t >= SEXPTYPE::INTSXP.0 && t <= SEXPTYPE::REALSXP.0) && XLENGTH(x) >= 1 {
+    if (t >= SEXPTYPE::INTSXP.into() && t <= SEXPTYPE::REALSXP.into()) && XLENGTH(x) >= 1 {
         if t == SEXPTYPE::INTSXP {
             INTEGER(x).add(0).read() as R_xlen_t
         } else if t == SEXPTYPE::REALSXP {
@@ -435,8 +435,8 @@ unsafe fn spline_eval(
 
 /// SplineCoef - compute spline coefficients.
 pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
-    let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.into()));
+    let y = Rf_protect(coerceVector(y, SEXPTYPE::REALSXP.into()));
     let n = XLENGTH(x) as usize;
     let m = asInteger(method);
     if XLENGTH(y) as usize != n {
@@ -491,7 +491,7 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
 
 /// SplineEval - evaluate a spline at given points.
 pub unsafe fn SplineEval(xout: SEXP, z: SEXP) -> SEXP {
-    let xout = Rf_protect(coerceVector(xout, SEXPTYPE::REALSXP.0));
+    let xout = Rf_protect(coerceVector(xout, SEXPTYPE::REALSXP.into()));
     let nu = XLENGTH(xout) as usize;
     let z_n = getListElement(z, b"n\0".as_ptr() as *const c_char);
     let nx = asXlen(z_n) as usize;

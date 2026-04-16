@@ -717,30 +717,30 @@ unsafe fn compute_language_relop(call: SEXP, op: SEXP, x: SEXP, y: SEXP) -> SEXP
 pub unsafe fn do_relop_dflt(call: SEXP, op: SEXP, mut x: SEXP, mut y: SEXP) -> SEXP {
     unsafe {
         // Fast path: handle simple scalar cases
-        if IS_SIMPLE_SCALAR(x, SEXPTYPE::INTSXP.0) != 0 {
+        if IS_SIMPLE_SCALAR(x, SEXPTYPE::INTSXP.into()) != 0 {
             let ix = INTEGER_ELT(x, 0);
-            if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.0) != 0 {
+            if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.into()) != 0 {
                 let iy = INTEGER_ELT(y, 0);
                 if ix == NA_INTEGER || iy == NA_INTEGER {
                     return Rf_ScalarLogical(NA_LOGICAL);
                 }
                 return scalar_relop_int(PRIMVAL(op), ix, iy);
-            } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.0) != 0 {
+            } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.into()) != 0 {
                 let dy = REAL_ELT(y, 0);
                 if ix == NA_INTEGER || ISNAN(dy) {
                     return Rf_ScalarLogical(NA_LOGICAL);
                 }
                 return scalar_relop(PRIMVAL(op), ix as c_double, dy);
             }
-        } else if IS_SIMPLE_SCALAR(x, SEXPTYPE::REALSXP.0) != 0 {
+        } else if IS_SIMPLE_SCALAR(x, SEXPTYPE::REALSXP.into()) != 0 {
             let dx = REAL_ELT(x, 0);
-            if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.0) != 0 {
+            if IS_SIMPLE_SCALAR(y, SEXPTYPE::INTSXP.into()) != 0 {
                 let iy = INTEGER_ELT(y, 0);
                 if ISNAN(dx) || iy == NA_INTEGER {
                     return Rf_ScalarLogical(NA_LOGICAL);
                 }
                 return scalar_relop(PRIMVAL(op), dx, iy as c_double);
-            } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.0) != 0 {
+            } else if IS_SIMPLE_SCALAR(y, SEXPTYPE::REALSXP.into()) != 0 {
                 let dy = REAL_ELT(y, 0);
                 if ISNAN(dx) || ISNAN(dy) {
                     return Rf_ScalarLogical(NA_LOGICAL);
@@ -1241,7 +1241,7 @@ unsafe fn bitwiseNot(a: SEXP) -> SEXP {
         let mut np: c_int = 0;
 
         if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.0);
+            a = coerceVector(a, SEXPTYPE::INTSXP.into());
             np += 1;
         }
 
@@ -1293,11 +1293,11 @@ unsafe fn bitwise_op<F: Fn(c_int, c_int) -> c_int>(
     unsafe {
         let mut np: c_int = 0;
         if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.0);
+            a = coerceVector(a, SEXPTYPE::INTSXP.into());
             np += 1;
         }
         if isReal(b) != 0 {
-            b = coerceVector(b, SEXPTYPE::INTSXP.0);
+            b = coerceVector(b, SEXPTYPE::INTSXP.into());
             np += 1;
         }
 
@@ -1348,11 +1348,11 @@ unsafe fn bitwiseShiftL(a: SEXP, b: SEXP) -> SEXP {
         let mut b = b;
         let mut np: c_int = 0;
         if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.0);
+            a = coerceVector(a, SEXPTYPE::INTSXP.into());
             np += 1;
         }
         if isInteger(b) == 0 {
-            b = coerceVector(b, SEXPTYPE::INTSXP.0);
+            b = coerceVector(b, SEXPTYPE::INTSXP.into());
             np += 1;
         }
 
@@ -1403,11 +1403,11 @@ unsafe fn bitwiseShiftR(a: SEXP, b: SEXP) -> SEXP {
         let mut b = b;
         let mut np: c_int = 0;
         if isReal(a) != 0 {
-            a = coerceVector(a, SEXPTYPE::INTSXP.0);
+            a = coerceVector(a, SEXPTYPE::INTSXP.into());
             np += 1;
         }
         if isInteger(b) == 0 {
-            b = coerceVector(b, SEXPTYPE::INTSXP.0);
+            b = coerceVector(b, SEXPTYPE::INTSXP.into());
             np += 1;
         }
 

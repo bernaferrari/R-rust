@@ -615,14 +615,14 @@ pub unsafe fn do_makevector(_call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SE
             error("negative length vectors are not allowed");
         }
         let stype = match mode_str {
-            b"logical" => SEXPTYPE::LGLSXP.0,
-            b"integer" => SEXPTYPE::INTSXP.0,
-            b"numeric" | b"double" => SEXPTYPE::REALSXP.0,
-            b"complex" => SEXPTYPE::CPLXSXP.0,
-            b"character" => SEXPTYPE::STRSXP.0,
-            b"raw" => SEXPTYPE::RAWSXP.0,
-            b"list" => SEXPTYPE::VECSXP.0,
-            b"expression" => SEXPTYPE::EXPRSXP.0,
+            b"logical" => SEXPTYPE::LGLSXP.into(),
+            b"integer" => SEXPTYPE::INTSXP.into(),
+            b"numeric" | b"double" => SEXPTYPE::REALSXP.into(),
+            b"complex" => SEXPTYPE::CPLXSXP.into(),
+            b"character" => SEXPTYPE::STRSXP.into(),
+            b"raw" => SEXPTYPE::RAWSXP.into(),
+            b"list" => SEXPTYPE::VECSXP.into(),
+            b"expression" => SEXPTYPE::EXPRSXP.into(),
             _ => {
                 error("invalid 'mode' argument");
                 0

@@ -731,10 +731,10 @@ unsafe fn make_posixlt_skeleton(n: R_xlen_t) -> (SEXP, SEXP) {
         let nans: c_int = 11;
         let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nans as R_xlen_t));
         for i in 0..9 {
-            let sexp = if i > 0 {
-                SEXPTYPE::INTSXP.0
+            let sexp: c_int = if i > 0 {
+                SEXPTYPE::INTSXP.into()
             } else {
-                SEXPTYPE::REALSXP.0
+                SEXPTYPE::REALSXP.into()
             };
             SET_VECTOR_ELT(ans, i as R_xlen_t, Rf_allocVector3(sexp, n));
         }
@@ -1357,10 +1357,10 @@ pub unsafe fn do_balancePOSIXlt(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) 
 
         let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, nn as R_xlen_t));
         for i in 0..9 {
-            let sexp = if i > 0 {
-                SEXPTYPE::INTSXP.0
+            let sexp: c_int = if i > 0 {
+                SEXPTYPE::INTSXP.into()
             } else {
-                SEXPTYPE::REALSXP.0
+                SEXPTYPE::REALSXP.into()
             };
             SET_VECTOR_ELT(ans, i as R_xlen_t, Rf_allocVector3(sexp, n));
         }

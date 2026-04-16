@@ -25,7 +25,9 @@ use std::slice;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_size_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue, R_UnboundValue};
+use crate::sexp::globals::{
+    R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_NilValue, R_UnboundValue,
+};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
 use crate::eval::attrib_core::{setAttrib, R_NamesSymbol};
@@ -542,6 +544,21 @@ unsafe fn SaveSpecialHook(item: SEXP) -> c_int {
         if TYPEOF(item) == SEXPTYPE::NILSXP {
             return NILVALUE_SXP;
         }
+        if item == R_GlobalEnv() {
+            return GLOBALENV_SXP;
+        }
+        if item == R_UnboundValue() {
+            return UNBOUNDVALUE_SXP;
+        }
+        if item == R_MissingArg() {
+            return MISSINGARG_SXP;
+        }
+        if item == R_EmptyEnv() {
+            return EMPTYENV_SXP;
+        }
+        if item == R_BaseEnv() {
+            return BASEENV_SXP;
+        }
         0
     }
 }
@@ -631,7 +648,7 @@ unsafe fn WriteItemInternal(s: SEXP, ref_table: &mut WriteHashTable, writer: &mu
             let levs = LEVELS(s);
             let flags = PackFlags(stype, levs, 0, 0, 0);
             writer.write_i32(flags);
-            let len = LENGTH(s);
+            let len = if s == R_NaString() { -1 } else { LENGTH(s) };
             writer.write_i32(len);
             if len > 0 {
                 let char_data = CHAR(s);
@@ -732,6 +749,16 @@ unsafe fn ReadItemInternal(
 
         if stype == NILVALUE_SXP {
             Ok(R_NilValue())
+        } else if stype == GLOBALENV_SXP {
+            Ok(R_GlobalEnv())
+        } else if stype == UNBOUNDVALUE_SXP {
+            Ok(R_UnboundValue())
+        } else if stype == MISSINGARG_SXP {
+            Ok(R_MissingArg())
+        } else if stype == EMPTYENV_SXP {
+            Ok(R_EmptyEnv())
+        } else if stype == BASEENV_SXP {
+            Ok(R_BaseEnv())
         } else if stype == REFSXP {
             let idx = InRefIndex(flags, reader)?;
             ref_table.get(idx)
@@ -784,9 +811,7 @@ unsafe fn ReadItemInternal(
         } else if stype == SEXPTYPE::CHARSXP {
             let len = reader.read_i32()?;
             if len < 0 {
-                // NA string - create an empty CHARSXP
-                let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
-                Ok(s)
+                Ok(R_NaString())
             } else if len == 0 {
                 let s = Rf_mkCharLen(b"\0" as *const u8 as *const c_char, 0);
                 Ok(s)
@@ -1736,15 +1761,38 @@ unsafe fn HashGet(item: SEXP, ht: SEXP) -> c_int {
 // ---------------------------------------------------------------------------
 
 unsafe fn GetPersistentName(stream: R_outpstream_t, s: SEXP) -> SEXP {
-    unsafe { error("names in persistent strings are not supported yet") }
+    unsafe {
+        if stream.is_null() {
+            error("read error");
+        }
+        let Some(hook) = (*stream).OutPersistHookFunc else {
+            return R_NilValue();
+        };
+        let res = hook(s, (*stream).OutPersistHookData);
+        if res.is_null() || res == R_NilValue() {
+            return R_NilValue();
+        }
+        if TYPEOF(res) != SEXPTYPE::STRSXP {
+            error("persistent hook must return a character vector");
+        }
+        res
+    }
 }
 
 unsafe fn PersistentRestore(stream: R_inpstream_t, s: SEXP) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        if stream.is_null() {
+            error("read error");
+        }
+        let Some(hook) = (*stream).InPersistHookFunc else {
+            error("read error");
+        };
+        hook(s, (*stream).InPersistHookData)
+    }
 }
 
 unsafe fn SaveSpecialHookItem(item: SEXP) -> c_int {
-    0
+    unsafe { SaveSpecialHook(item) }
 }
 
 // ---------------------------------------------------------------------------
@@ -2543,7 +2591,7 @@ mod tests {
     use super::*;
     use crate::sexp::envir::R_NewHashedEnv;
     use crate::sexp::envir::defineVar;
-    use crate::sexp::globals::R_BaseEnv;
+    use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_UnboundValue};
     use std::ffi::CString;
     use std::mem;
     use std::os::raw::c_void;
@@ -2573,6 +2621,12 @@ mod tests {
     unsafe fn make_string_vector(value: &str) -> SEXP {
         let vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         SET_STRING_ELT(vec, 0, Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()));
+        vec
+    }
+
+    unsafe fn make_na_string_vector() -> SEXP {
+        let vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        SET_STRING_ELT(vec, 0, R_NaString());
         vec
     }
 
@@ -3341,6 +3395,40 @@ mod tests {
 
             let result = R_unserialize(raw, R_NilValue());
             assert_eq!(result, R_NilValue());
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_na_string() {
+        unsafe {
+            let s = make_na_string_vector();
+            let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
+            assert_ne!(raw, R_NilValue());
+
+            let result = R_unserialize(raw, R_NilValue());
+            assert_ne!(result, R_NilValue());
+            assert_eq!(TYPEOF(result), SEXPTYPE::STRSXP);
+            assert_eq!(LENGTH(result), 1);
+            assert_eq!(STRING_ELT(result, 0), R_NaString());
+        }
+    }
+
+    #[test]
+    fn test_roundtrip_special_singletons() {
+        unsafe {
+            let mut values = vec![R_NilValue(), R_UnboundValue(), R_MissingArg()];
+            for env in [R_GlobalEnv(), R_BaseEnv(), R_EmptyEnv()] {
+                if !env.is_null() {
+                    values.push(env);
+                }
+            }
+            for value in values {
+                let raw = R_serialize(value, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
+                assert_ne!(raw, R_NilValue());
+
+                let result = R_unserialize(raw, R_NilValue());
+                assert_eq!(result, value);
+            }
         }
     }
 
