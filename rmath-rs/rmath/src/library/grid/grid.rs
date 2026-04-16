@@ -17,6 +17,7 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
+use crate::mainutils::errors::Rf_warning;
 
 use super::clippath::{isClipPath, resolveClipPath};
 use super::gpar::{
@@ -2599,7 +2600,100 @@ pub unsafe fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SE
  * ============================== */
 
 pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
-    // STUB: full implementation requires GESetClip
+    let dd = getDevice();
+    let currentvp = gridStateElement(dd, GSS_VP);
+    let currentgp = gridStateElement(dd, GSS_GPAR);
+
+    let mut vpWidthCM: c_double = 0.0;
+    let mut vpHeightCM: c_double = 0.0;
+    let mut rotationAngle: c_double = 0.0;
+    let mut transform: LTransform = [[0.0; 3]; 3];
+    getViewportTransform(
+        currentvp,
+        dd,
+        &mut vpWidthCM,
+        &mut vpHeightCM,
+        &mut transform,
+        &mut rotationAngle,
+    );
+
+    let mut vpc = LViewportContext::default();
+    getViewportContext(currentvp, &mut vpc);
+
+    GEMode(1, dd);
+
+    /*
+     * Only set ONE clip rectangle (i.e., NOT vectorised)
+     */
+    let mut gc_buf: [u8; 256] = [0; 256];
+    let gc = gc_buf.as_mut_ptr() as pGEcontext;
+    gcontextFromgpar(currentgp, 0, gc, dd);
+
+    let mut xx: c_double = 0.0;
+    let mut yy: c_double = 0.0;
+    transformLocn(
+        x,
+        y,
+        0,
+        vpc,
+        gc,
+        vpWidthCM,
+        vpHeightCM,
+        dd,
+        &mut transform,
+        &mut xx,
+        &mut yy,
+    );
+    let ww = transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
+    let hh = transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
+
+    /*
+     * We can ONLY clip if the total rotation angle is zero.
+     */
+    if rotationAngle == 0.0 {
+        let hjust_val = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
+            *REAL(hjust)
+        } else {
+            0.0
+        };
+        let vjust_val = if TYPEOF(vjust) == SEXPTYPE::REALSXP && LENGTH(vjust) > 0 {
+            *REAL(vjust)
+        } else {
+            0.0
+        };
+        xx = justifyX(xx, ww, hjust_val);
+        yy = justifyY(yy, hh, vjust_val);
+
+        /*
+         * The graphics engine only takes device coordinates
+         */
+        xx = toDeviceX(xx, GE_INCHES, dd);
+        yy = toDeviceY(yy, GE_INCHES, dd);
+        let ww_dev = toDeviceWidth(ww, GE_INCHES, dd);
+        let hh_dev = toDeviceHeight(hh, GE_INCHES, dd);
+
+        if xx.is_finite() && yy.is_finite() && ww_dev.is_finite() && hh_dev.is_finite() {
+            GESetClip(xx, yy, xx + ww_dev, yy + hh_dev, dd);
+
+            /*
+             * ALSO set the current clip region for the current viewport so that,
+             * if a viewport is pushed within the current viewport, when that
+             * viewport gets popped again, the clip region returns to what was
+             * set by THIS clipGrob.
+             */
+            let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+            *REAL(currentClip).add(0) = xx;
+            *REAL(currentClip).add(1) = yy;
+            *REAL(currentClip).add(2) = xx + ww_dev;
+            *REAL(currentClip).add(3) = yy + hh_dev;
+            SET_VECTOR_ELT(currentvp, PVP_CLIPRECT as R_xlen_t, currentClip);
+            Rf_unprotect(1);
+        }
+    } else {
+        Rf_warning(c"unable to clip to rotated rectangle".as_ptr());
+    }
+
+    GEMode(0, dd);
     R_NilValue()
 }
 
