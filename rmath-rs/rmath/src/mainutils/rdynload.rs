@@ -284,6 +284,7 @@ unsafe extern "C" {
     fn malloc(size: usize) -> *mut c_void;
     fn calloc(nmemb: usize, size: usize) -> *mut c_void;
     fn free(ptr: *mut c_void);
+    fn dlsym(handle: *mut c_void, symbol: *const c_char) -> *mut c_void;
     fn strlen(s: *const c_char) -> usize;
     fn strcmp(a: *const c_char, b: *const c_char) -> c_int;
     fn strncmp(a: *const c_char, b: *const c_char, n: usize) -> c_int;
@@ -303,6 +304,10 @@ unsafe fn libc_free(ptr: *mut c_void) {
 
 unsafe fn libc_calloc(n: usize, size: usize) -> *mut c_void {
     unsafe { calloc(n, size) }
+}
+
+unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
+    unsafe { dlsym(handle, name) }
 }
 
 // ---------------------------------------------------------------------------
@@ -786,13 +791,34 @@ pub unsafe fn R_dlsym(info: *mut DllInfo, name: *const c_char, sym_type: c_int) 
             return None;
         }
 
-        // On modern ELF systems, symbols don't have leading underscore
-        let f = crate::unix::dynload::Rf_lookupCachedSymbol(name, 0);
-        if f.is_some() {
-            return f;
+        let sym = libc_dlsym((*info).handle, name);
+        if sym.is_null() {
+            return None;
         }
 
-        None
+        std::mem::transmute::<*mut c_void, DL_FUNC>(sym)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Handle lookup helper
+// ---------------------------------------------------------------------------
+
+/// Find a loaded DLL by its native handle.
+pub(crate) unsafe fn R_findDllByHandle(handle: *mut c_void) -> *mut DllInfo {
+    unsafe {
+        if handle.is_null() {
+            return ptr::null_mut();
+        }
+        LOADED_DLL.with(|v| {
+            let dlls = v.borrow();
+            for &dll in dlls.iter() {
+                if !dll.is_null() && (*dll).handle == handle {
+                    return dll;
+                }
+            }
+            ptr::null_mut()
+        })
     }
 }
 
@@ -1464,15 +1490,27 @@ pub unsafe fn R_GetCCallable(package: *const c_char, name: *const c_char) -> DL_
 }
 
 // ---------------------------------------------------------------------------
-// Rf_lookupCachedSymbol — compatibility stub
+// Rf_lookupCachedSymbol — compatibility wrapper
 // ---------------------------------------------------------------------------
 
 pub unsafe fn Rf_lookupCachedSymbol(
-    _name: *const c_char,
-    _pkg: *const c_char,
-    _all: c_int,
+    name: *const c_char,
+    pkg: *const c_char,
+    all: c_int,
 ) -> DL_FUNC {
-    None
+    unsafe {
+        if name.is_null() {
+            return None;
+        }
+
+        let pkg_ptr = if pkg.is_null() || all != 0 {
+            b"\0".as_ptr() as *const c_char
+        } else {
+            pkg
+        };
+
+        R_FindSymbol(name, pkg_ptr, R_ANY_SYM)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1482,6 +1520,7 @@ pub unsafe fn Rf_lookupCachedSymbol(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ptr;
 
     #[test]
     fn test_init_dynload() {
@@ -1612,6 +1651,62 @@ mod tests {
                 R_ANY_SYM,
             );
             assert!(f.is_none());
+        }
+    }
+
+    unsafe extern "C" fn test_registered_call() {}
+
+    #[test]
+    fn test_find_symbol_registered_call() {
+        unsafe {
+            init_loaded_dll();
+            let info = Box::into_raw(Box::new(DllInfo::new(
+                b"/tmp/test.so\0".as_ptr() as *mut c_char,
+                b"testpkg\0".as_ptr() as *mut c_char,
+                ptr::null_mut(),
+            )));
+            let routines = [
+                R_CallMethodDef {
+                    name: b"registered\0".as_ptr() as *const c_char,
+                    fun: Some(test_registered_call),
+                    num_args: 0,
+                },
+                R_CallMethodDef {
+                    name: ptr::null(),
+                    fun: None,
+                    num_args: 0,
+                },
+            ];
+            LOADED_DLL.with(|v| v.borrow_mut().push(info));
+            R_registerRoutines(
+                info,
+                ptr::null(),
+                routines.as_ptr(),
+                ptr::null(),
+                ptr::null(),
+            );
+
+            let found = R_FindSymbol(
+                b"registered\0".as_ptr() as *const c_char,
+                b"testpkg\0".as_ptr() as *const c_char,
+                R_CALL_SYM,
+            );
+            assert!(found.is_some());
+            assert_eq!(
+                found.unwrap() as *const (),
+                test_registered_call as *const ()
+            );
+
+            let loaded = Rf_lookupCachedSymbol(
+                b"registered\0".as_ptr() as *const c_char,
+                b"testpkg\0".as_ptr() as *const c_char,
+                0,
+            );
+            assert!(loaded.is_some());
+            assert_eq!(
+                loaded.unwrap() as *const (),
+                test_registered_call as *const ()
+            );
         }
     }
 }

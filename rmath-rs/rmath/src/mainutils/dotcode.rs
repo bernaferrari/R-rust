@@ -11,6 +11,7 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::mainutils::memory_main::{R_ExternalPtrAddr, sexptype2char};
+use crate::mainutils::rdynload::{R_dlsym, R_findDllByHandle, R_FindSymbol as R_lookupLoadedSymbol};
 use crate::mainutils::registration::DllInfo;
 use crate::mainutils::relop::PRIMVAL;
 use crate::sexp::accessors::{
@@ -146,16 +147,16 @@ impl R_RegisteredNativeSymbol {
 // Local error / warning helpers
 // ---------------------------------------------------------------------------
 
-unsafe fn error(msg: &str) {
+unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
-    });
+    })
 }
 
-unsafe fn errorcall(_call: SEXP, msg: &str) {
+unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: msg.to_string(),
-    });
+    })
 }
 
 unsafe fn warning(msg: &str) {
@@ -309,10 +310,19 @@ unsafe fn checkValidSymbolId(
     call: SEXP,
     fun: &mut DL_FUNC,
     _symbol: &mut R_RegisteredNativeSymbol,
-    _buf: *mut u8,
+    buf: *mut u8,
 ) {
     unsafe {
         if isValidStringF(op) {
+            if !buf.is_null() {
+                let name = translateChar(STRING_ELT(op, 0));
+                let bytes = std::ffi::CStr::from_ptr(name).to_bytes();
+                if bytes.len() >= MAX_SYMBOL_BYTES {
+                    errorcall(call, "symbol name is too long");
+                }
+                ptr::copy_nonoverlapping(bytes.as_ptr(), buf, bytes.len());
+                *buf.add(bytes.len()) = 0;
+            }
             return;
         }
 
@@ -343,7 +353,7 @@ unsafe fn checkValidSymbolId(
         }
 
         if isNativeSymbolInfo(op) {
-            checkValidSymbolId(VECTOR_ELT(op, 1), call, fun, _symbol, _buf);
+            checkValidSymbolId(VECTOR_ELT(op, 1), call, fun, _symbol, buf);
             return;
         }
 
@@ -575,20 +585,6 @@ unsafe fn comparePrimitiveTypes(ty: c_int, s: SEXP) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// R_FindSymbol — stub (dynamic loading not fully wired)
-// ---------------------------------------------------------------------------
-
-/// Look up a native symbol by name across loaded DLLs.
-/// Currently a stub — returns None (no dynamic resolution).
-unsafe fn R_FindSymbol(
-    _name: &[u8],
-    _pkg: &[u8],
-    _symbol: &mut R_RegisteredNativeSymbol,
-) -> DL_FUNC {
-    None
-}
-
-// ---------------------------------------------------------------------------
 // resolveNativeRoutine
 // ---------------------------------------------------------------------------
 
@@ -626,18 +622,34 @@ unsafe fn resolveNativeRoutine(
             if n as usize > MAX_ARGS {
                 errorcall(call, "too many arguments in foreign function call");
             }
-            // Return pruned args
-            if fun.is_some() {
-                return pruned;
-            }
-            return pruned;
-        } else {
-            let pruned = pkgtrim(CDR(args), &mut dll);
-            if fun.is_some() {
-                return pruned;
-            }
-            return pruned;
         }
+        let pruned = pkgtrim(CDR(args), &mut dll);
+
+        if fun.is_none() && !buf.is_empty() {
+            let looked_up = if dll.ref_type == DLL_HANDLE && !dll.dll.is_null() {
+                let loaded = R_findDllByHandle(dll.dll);
+                if loaded.is_null() {
+                    None
+                } else {
+                    R_dlsym(loaded, buf.as_ptr() as *const c_char, symbol.type_)
+                }
+            } else {
+                let pkg_ptr = if dll.dll_name[0] == 0 {
+                    b"\0".as_ptr() as *const c_char
+                } else {
+                    dll.dll_name.as_ptr() as *const c_char
+                };
+                R_lookupLoadedSymbol(
+                    buf.as_ptr() as *const c_char,
+                    pkg_ptr,
+                    symbol.type_,
+                )
+            };
+
+            *fun = looked_up;
+        }
+
+        pruned
     }
 }
 
@@ -1280,28 +1292,49 @@ pub unsafe fn do_isloaded(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             error("invalid 'symbol' argument");
         }
 
-        let _sym = translateChar(STRING_ELT(CAR(args), 0));
+        let sym_name = translateChar(STRING_ELT(CAR(args), 0));
 
-        let symbol = R_RegisteredNativeSymbol::new(R_ANY_SYM);
-        if nargs >= 3
-            && !isValidStringF(if CDR(CDR(args)).is_null() {
-                R_NilValue()
+        let pkg_ptr: *const c_char;
+        if nargs >= 2 {
+            let pkg_arg = CAR(CDR(args));
+            if pkg_arg.is_null() || pkg_arg == R_NilValue() {
+                pkg_ptr = b"\0".as_ptr() as *const c_char;
             } else {
-                {
-                    let c = CDR(CDR(args));
-                    if c.is_null() || c == R_NilValue() {
-                        R_NilValue()
-                    } else {
-                        CAR(c)
-                    }
+                if !isValidStringF(pkg_arg) {
+                    error("invalid 'PACKAGE' argument");
                 }
-            })
-        {
-            // ignore — just don't set type
+                pkg_ptr = translateChar(STRING_ELT(pkg_arg, 0));
+            }
+        } else {
+            pkg_ptr = b"\0".as_ptr() as *const c_char;
         }
 
-        // Stub: always report as not found since dynamic loading isn't wired
-        Rf_ScalarLogical(FALSE as c_int)
+        let sym_type: c_int;
+        if nargs >= 3 {
+            let type_arg = CAR(CDR(CDR(args)));
+            if type_arg.is_null() || type_arg == R_NilValue() {
+                sym_type = R_ANY_SYM;
+            } else {
+                if !isValidStringF(type_arg) {
+                    error("invalid 'type' argument");
+                }
+                sym_type = match std::ffi::CStr::from_ptr(translateChar(STRING_ELT(type_arg, 0)))
+                    .to_str()
+                    .unwrap_or("")
+                {
+                    "" => R_ANY_SYM,
+                    "Fortran" => R_FORTRAN_SYM,
+                    "Call" => R_CALL_SYM,
+                    "External" => R_EXTERNAL_SYM,
+                    _ => error("invalid 'type' argument"),
+                };
+            }
+        } else {
+            sym_type = R_ANY_SYM;
+        }
+
+        let found = R_lookupLoadedSymbol(sym_name, pkg_ptr, sym_type);
+        Rf_ScalarLogical(if found.is_some() { TRUE } else { FALSE })
     }
 }
 
@@ -1333,11 +1366,82 @@ pub unsafe fn Rf_getCallingDLL() -> SEXP {
 
 /// Find a native symbol from a specific DLL.
 unsafe fn R_FindNativeSymbolFromDLL(
-    _name: &[u8],
-    _dll: &mut DllReference,
-    _symbol: &mut R_RegisteredNativeSymbol,
+    name: &[u8],
+    dll: &mut DllReference,
+    symbol: &mut R_RegisteredNativeSymbol,
     _env: SEXP,
 ) -> DL_FUNC {
-    // Stub: dynamic symbol resolution not yet wired
-    None
+    unsafe {
+        if name.is_empty() {
+            return None;
+        }
+
+        let pkg_ptr = if dll.dll_name[0] == 0 {
+            b"\0".as_ptr() as *const c_char
+        } else {
+            dll.dll_name.as_ptr() as *const c_char
+        };
+
+        let looked_up = if dll.ref_type == DLL_HANDLE && !dll.dll.is_null() {
+            let loaded = R_findDllByHandle(dll.dll);
+            if loaded.is_null() {
+                None
+            } else {
+                R_dlsym(loaded, name.as_ptr() as *const c_char, symbol.type_)
+            }
+        } else {
+            R_lookupLoadedSymbol(name.as_ptr() as *const c_char, pkg_ptr, symbol.type_)
+        };
+
+        looked_up
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_check_valid_symbol_id_copies_name() {
+        unsafe {
+            let op = crate::sexp::constructors::Rf_mkString(b"registered\0".as_ptr() as *const c_char);
+            let mut fun: DL_FUNC = None;
+            let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
+            let mut buf = [0u8; MAX_SYMBOL_BYTES];
+
+            checkValidSymbolId(op, R_NilValue(), &mut fun, &mut symbol, buf.as_mut_ptr());
+
+            let copied = std::ffi::CStr::from_ptr(buf.as_ptr() as *const c_char)
+                .to_str()
+                .unwrap_or("");
+            assert_eq!(copied, "registered");
+            assert!(fun.is_none());
+        }
+    }
+
+    #[test]
+    fn test_isloaded_missing_symbol_is_false() {
+        unsafe {
+            let args = crate::sexp::constructors::Rf_cons(
+                crate::sexp::constructors::Rf_mkString(b"missing\0".as_ptr() as *const c_char),
+                R_NilValue(),
+            );
+            let out = do_isloaded(R_NilValue(), R_NilValue(), args, R_NilValue());
+            assert_eq!(*crate::sexp::accessors::INTEGER(out), FALSE as c_int);
+        }
+    }
+
+    #[test]
+    fn test_find_native_symbol_from_dll_empty() {
+        unsafe {
+            let mut dll = DllReference::new();
+            let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
+            let found = R_FindNativeSymbolFromDLL(b"missing\0", &mut dll, &mut symbol, R_NilValue());
+            assert!(found.is_none());
+        }
+    }
 }
