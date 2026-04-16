@@ -35,8 +35,8 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::protect::*;
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    crate::main::coerce::coerceVector(x, type_)
+unsafe fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
+    crate::main::coerce::coerceVector(x, type_.into())
 }
 
 unsafe fn asReal(x: SEXP) -> c_double {
@@ -52,7 +52,7 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::shallow_duplicate(x)
 }
 
-unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
+unsafe fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     let ans = Rf_allocVector(sexptype, nrow * ncol);
     Rf_protect(ans);
     let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
@@ -87,7 +87,7 @@ unsafe extern "C" {
 
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 
-unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
+unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
     let nn = names.len() as c_int;
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nn));
     let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
@@ -123,12 +123,12 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
 
     /* These lose attributes, so do after we have extracted dims */
     if TYPEOF(x) != SEXPTYPE::REALSXP {
-        x = coerceVector(x, SEXPTYPE::REALSXP.0);
+        x = coerceVector(x, SEXPTYPE::REALSXP);
         Rf_protect(x);
         nprotect += 1;
     }
     if TYPEOF(y) != SEXPTYPE::REALSXP {
-        y = coerceVector(y, SEXPTYPE::REALSXP.0);
+        y = coerceVector(y, SEXPTYPE::REALSXP);
         Rf_protect(y);
         nprotect += 1;
     }

@@ -15,12 +15,19 @@ use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Seek, SeekFrom, Write};
+use std::mem;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 use std::ptr;
 use std::path::PathBuf;
 use std::slice;
+
+use bzip2::read::BzDecoder;
+use bzip2::write::BzEncoder;
+use flate2::Compression;
+use flate2::read::ZlibDecoder;
+use flate2::write::ZlibEncoder;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -90,55 +97,151 @@ unsafe fn raw_from_bytes(bytes: &[u8]) -> SEXP {
 }
 
 #[inline]
-unsafe fn wrap_raw_passthrough(inp: SEXP, tag: u8) -> SEXP {
-    if unsafe { TYPEOF(inp) } != SEXPTYPE::RAWSXP {
-        unsafe { error("compression requires a raw vector") };
-    }
-    let len = unsafe { XLENGTH(inp) as usize };
-    if len > u32::MAX as usize {
-        unsafe { error("raw vector too large to compress") };
-    }
-    let mut out = Vec::with_capacity(len + 5);
-    out.extend_from_slice(&(len as u32).to_ne_bytes());
-    out.push(tag);
-    if len > 0 {
-        unsafe {
-            out.extend_from_slice(slice::from_raw_parts(RAW(inp), len));
-        }
-    }
-    unsafe { raw_from_bytes(&out) }
+fn swapped_len_bytes(len: usize) -> [u8; 4] {
+    (len as u32).swap_bytes().to_ne_bytes()
 }
 
 #[inline]
-unsafe fn unwrap_raw_passthrough(inp: SEXP, err: *mut Rboolean, name: &str) -> SEXP {
+fn parse_swapped_len_prefix(data: &[u8]) -> Option<usize> {
+    if data.len() < 4 {
+        return None;
+    }
+    let mut bytes = [0u8; 4];
+    bytes.copy_from_slice(&data[..4]);
+    Some(u32::from_ne_bytes(bytes).swap_bytes() as usize)
+}
+
+#[inline]
+fn mark_decompress_error(err: *mut Rboolean) {
     if !err.is_null() {
         unsafe {
-            *err = 0;
+            *err = 1;
         }
     }
-    if unsafe { TYPEOF(inp) } != SEXPTYPE::RAWSXP {
-        unsafe { error(&format!("{name} requires a raw vector")) };
+}
+
+#[inline]
+fn build_compressed_blob(source_len: usize, marker: Option<u8>, payload: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(4 + marker.map_or(0, |_| 1) + payload.len());
+    out.extend_from_slice(&swapped_len_bytes(source_len));
+    if let Some(tag) = marker {
+        out.push(tag);
     }
-    let len = unsafe { XLENGTH(inp) as usize };
-    if len < 5 {
-        if !err.is_null() {
-            unsafe {
-                *err = 1;
-            }
+    out.extend_from_slice(payload);
+    out
+}
+
+fn zlib_compress(input: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    let mut encoder = ZlibEncoder::new(Vec::new(), Compression::default());
+    encoder.write_all(input)?;
+    encoder.finish()
+}
+
+fn zlib_decompress_exact(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::io::Error> {
+    let mut decoder = ZlibDecoder::new(input);
+    let mut out = Vec::with_capacity(expected_len);
+    decoder.read_to_end(&mut out)?;
+    if out.len() != expected_len {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "zlib decompressed length mismatch",
+        ));
+    }
+    Ok(out)
+}
+
+fn bzip2_compress(input: &[u8]) -> Result<Vec<u8>, std::io::Error> {
+    let mut encoder = BzEncoder::new(Vec::new(), bzip2::Compression::best());
+    encoder.write_all(input)?;
+    encoder.finish()
+}
+
+fn bzip2_decompress_exact(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::io::Error> {
+    let mut decoder = BzDecoder::new(input);
+    let mut out = Vec::with_capacity(expected_len);
+    decoder.read_to_end(&mut out)?;
+    if out.len() != expected_len {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "bzip2 decompressed length mismatch",
+        ));
+    }
+    Ok(out)
+}
+
+unsafe fn lzma2_raw_encode(input: &[u8], out_cap: usize) -> Result<Vec<u8>, lzma_sys::lzma_ret> {
+    let mut opts: lzma_sys::lzma_options_lzma = unsafe { mem::zeroed() };
+    if unsafe { lzma_sys::lzma_lzma_preset(&mut opts, lzma_sys::LZMA_PRESET_DEFAULT) } != 0 {
+        return Err(lzma_sys::LZMA_OPTIONS_ERROR);
+    }
+    let mut filters = [
+        lzma_sys::lzma_filter {
+            id: lzma_sys::LZMA_FILTER_LZMA2,
+            options: (&mut opts as *mut lzma_sys::lzma_options_lzma).cast::<c_void>(),
+        },
+        lzma_sys::lzma_filter {
+            id: lzma_sys::LZMA_VLI_UNKNOWN,
+            options: ptr::null_mut(),
+        },
+    ];
+
+    let mut out = vec![0u8; out_cap];
+    let mut out_pos: usize = 0;
+    let ret = unsafe {
+        lzma_sys::lzma_raw_buffer_encode(
+            filters.as_mut_ptr(),
+            ptr::null(),
+            input.as_ptr(),
+            input.len(),
+            out.as_mut_ptr(),
+            &mut out_pos,
+            out.len(),
+        )
+    };
+    if ret != lzma_sys::LZMA_OK {
+        return Err(ret);
+    }
+    out.truncate(out_pos);
+    Ok(out)
+}
+
+unsafe fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, lzma_sys::lzma_ret> {
+    let mut opts: lzma_sys::lzma_options_lzma = unsafe { mem::zeroed() };
+    if unsafe { lzma_sys::lzma_lzma_preset(&mut opts, lzma_sys::LZMA_PRESET_DEFAULT) } != 0 {
+        return Err(lzma_sys::LZMA_OPTIONS_ERROR);
+    }
+    let filters = [
+        lzma_sys::lzma_filter {
+            id: lzma_sys::LZMA_FILTER_LZMA2,
+            options: (&mut opts as *mut lzma_sys::lzma_options_lzma).cast::<c_void>(),
+        },
+        lzma_sys::lzma_filter {
+            id: lzma_sys::LZMA_VLI_UNKNOWN,
+            options: ptr::null_mut(),
+        },
+    ];
+    let mut out = vec![0u8; expected_len];
+    let mut in_pos: usize = 0;
+    let mut out_pos: usize = 0;
+    let ret = unsafe {
+        lzma_sys::lzma_raw_buffer_decode(
+            filters.as_ptr(),
+            ptr::null(),
+            input.as_ptr(),
+            &mut in_pos,
+            input.len(),
+            out.as_mut_ptr(),
+            &mut out_pos,
+            out.len(),
+        )
+    };
+    if ret != lzma_sys::LZMA_OK || in_pos != input.len() || out_pos != expected_len {
+        if ret == lzma_sys::LZMA_OK {
+            return Err(lzma_sys::LZMA_DATA_ERROR);
         }
-        return unsafe { R_NilValue() };
+        return Err(ret);
     }
-    let data = unsafe { slice::from_raw_parts(RAW(inp), len) };
-    let declared = u32::from_ne_bytes(data[0..4].try_into().unwrap_or([0; 4])) as usize;
-    if declared != len - 5 {
-        if !err.is_null() {
-            unsafe {
-                *err = 1;
-            }
-        }
-        return unsafe { R_NilValue() };
-    }
-    unsafe { raw_from_bytes(&data[5..]) }
+    Ok(out)
 }
 
 #[inline]
@@ -2055,7 +2158,7 @@ unsafe fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
 }
 
 // ---------------------------------------------------------------------------
-// Bytecode serialization (stubs)
+// Bytecode serialization helpers
 // ---------------------------------------------------------------------------
 
 unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
@@ -2117,8 +2220,6 @@ unsafe fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 // Character conversion and reading
 // ---------------------------------------------------------------------------
-
-unsafe fn ConvertChar(obj: *mut c_void, inp: *mut c_char, inplen: usize, enc: c_int) {}
 
 unsafe fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs: c_int) {
     unsafe {
@@ -2386,7 +2487,7 @@ unsafe fn free_mem_buffer(data: *mut c_void) {
 }
 
 // ---------------------------------------------------------------------------
-// Buffer-connection operations (stubs)
+// Buffer-connection operations
 // ---------------------------------------------------------------------------
 
 unsafe fn InitBConOutPStream(
@@ -2683,35 +2784,181 @@ unsafe fn R_getVarsFromFrame(vars: SEXP, env: SEXP, forcesxp: SEXP) -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// Compression functions (stubs)
+// Compression functions
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_compress1(inp: SEXP) -> SEXP {
-    unsafe { wrap_raw_passthrough(inp, b'0') }
+    unsafe {
+        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
+            error("R_compress1 requires a raw vector");
+        }
+        let inlen = XLENGTH(inp) as usize;
+        if inlen > u32::MAX as usize {
+            error("raw vector too large to compress");
+        }
+        let input = slice::from_raw_parts(RAW(inp), inlen);
+        let payload = match zlib_compress(input) {
+            Ok(data) => data,
+            Err(err) => error(&format!("internal error in R_compress1: {err}")),
+        };
+        raw_from_bytes(&build_compressed_blob(inlen, None, &payload))
+    }
 }
 
 pub unsafe fn R_decompress1(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe { unwrap_raw_passthrough(inp, err, "R_decompress1") }
+    unsafe {
+        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
+            error("R_decompress1 requires a raw vector");
+        }
+        let inlen = XLENGTH(inp) as usize;
+        if inlen < 4 {
+            mark_decompress_error(err);
+            return R_NilValue();
+        }
+        let data = slice::from_raw_parts(RAW(inp), inlen);
+        let outlen = match parse_swapped_len_prefix(data) {
+            Some(v) => v,
+            None => {
+                mark_decompress_error(err);
+                return R_NilValue();
+            }
+        };
+        match zlib_decompress_exact(&data[4..], outlen) {
+            Ok(decoded) => raw_from_bytes(&decoded),
+            Err(_) => {
+                mark_decompress_error(err);
+                R_NilValue()
+            }
+        }
+    }
 }
 
 pub unsafe fn R_compress2(inp: SEXP) -> SEXP {
-    unsafe { wrap_raw_passthrough(inp, b'0') }
+    unsafe {
+        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
+            error("R_compress2 requires a raw vector");
+        }
+        let inlen = XLENGTH(inp) as usize;
+        if inlen > u32::MAX as usize {
+            error("raw vector too large to compress");
+        }
+        let input = slice::from_raw_parts(RAW(inp), inlen);
+        let (marker, payload) = match bzip2_compress(input) {
+            Ok(compressed) if compressed.len() <= inlen => (b'2', compressed),
+            Ok(_) => (b'0', input.to_vec()),
+            Err(err) => error(&format!("internal error in R_compress2: {err}")),
+        };
+        raw_from_bytes(&build_compressed_blob(inlen, Some(marker), &payload))
+    }
 }
 
 pub unsafe fn R_decompress2(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe { unwrap_raw_passthrough(inp, err, "R_decompress2") }
+    unsafe {
+        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
+            error("R_decompress2 requires a raw vector");
+        }
+        let inlen = XLENGTH(inp) as usize;
+        if inlen < 5 {
+            mark_decompress_error(err);
+            return R_NilValue();
+        }
+        let data = slice::from_raw_parts(RAW(inp), inlen);
+        let outlen = match parse_swapped_len_prefix(data) {
+            Some(v) => v,
+            None => {
+                mark_decompress_error(err);
+                return R_NilValue();
+            }
+        };
+        let decoded = match data[4] {
+            b'2' => bzip2_decompress_exact(&data[5..], outlen),
+            b'1' => zlib_decompress_exact(&data[5..], outlen),
+            b'0' => {
+                if data.len() < 5 + outlen {
+                    mark_decompress_error(err);
+                    return R_NilValue();
+                }
+                Ok(data[5..5 + outlen].to_vec())
+            }
+            _ => {
+                mark_decompress_error(err);
+                return R_NilValue();
+            }
+        };
+        match decoded {
+            Ok(out) => raw_from_bytes(&out),
+            Err(_) => {
+                mark_decompress_error(err);
+                R_NilValue()
+            }
+        }
+    }
 }
 
 pub unsafe fn R_compress3(inp: SEXP) -> SEXP {
-    unsafe { wrap_raw_passthrough(inp, b'0') }
+    unsafe {
+        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
+            error("R_compress3 requires a raw vector");
+        }
+        let inlen = XLENGTH(inp) as usize;
+        if inlen > u32::MAX as usize {
+            error("raw vector too large to compress");
+        }
+        let input = slice::from_raw_parts(RAW(inp), inlen);
+        let (marker, payload) = match lzma2_raw_encode(input, inlen + 5) {
+            Ok(compressed) => (b'Z', compressed),
+            Err(_) => (b'0', input.to_vec()),
+        };
+        raw_from_bytes(&build_compressed_blob(inlen, Some(marker), &payload))
+    }
 }
 
 pub unsafe fn R_decompress3(inp: SEXP, err: *mut Rboolean) -> SEXP {
-    unsafe { unwrap_raw_passthrough(inp, err, "R_decompress3") }
+    unsafe {
+        if TYPEOF(inp) != SEXPTYPE::RAWSXP {
+            error("R_decompress3 requires a raw vector");
+        }
+        let inlen = XLENGTH(inp) as usize;
+        if inlen < 5 {
+            mark_decompress_error(err);
+            return R_NilValue();
+        }
+        let data = slice::from_raw_parts(RAW(inp), inlen);
+        let outlen = match parse_swapped_len_prefix(data) {
+            Some(v) => v,
+            None => {
+                mark_decompress_error(err);
+                return R_NilValue();
+            }
+        };
+        let decoded = match data[4] {
+            b'Z' => lzma2_raw_decode(&data[5..], outlen).map_err(|_| ()),
+            b'2' => bzip2_decompress_exact(&data[5..], outlen).map_err(|_| ()),
+            b'1' => zlib_decompress_exact(&data[5..], outlen).map_err(|_| ()),
+            b'0' => {
+                if data.len() < 5 + outlen {
+                    mark_decompress_error(err);
+                    return R_NilValue();
+                }
+                Ok(data[5..5 + outlen].to_vec())
+            }
+            _ => {
+                mark_decompress_error(err);
+                return R_NilValue();
+            }
+        };
+        match decoded {
+            Ok(out) => raw_from_bytes(&out),
+            Err(_) => {
+                mark_decompress_error(err);
+                R_NilValue()
+            }
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
-// R_snprintf utility (stub)
+// R_snprintf utility
 // ---------------------------------------------------------------------------
 
 unsafe fn Rsnprintf(buf: *mut c_char, size: usize, _format: *const c_char) -> c_int {
@@ -3448,21 +3695,33 @@ mod tests {
     fn test_r_compress_decompress_round_trip() {
         unsafe {
             let raw = make_raw(&[0, 1, 2, 3, 4, 5, 6, 7]);
-            let mut err: Rboolean = 1;
+            let mut err: Rboolean = 0;
 
             let c1 = R_compress1(raw);
+            let c1_data = slice::from_raw_parts(RAW(c1), XLENGTH(c1) as usize);
+            assert_eq!(parse_swapped_len_prefix(c1_data), Some(8));
             let d1 = R_decompress1(c1, &mut err);
             assert_eq!(err, 0);
             assert_eq!(TYPEOF(d1), SEXPTYPE::RAWSXP);
             assert_eq!(slice::from_raw_parts(RAW(d1), 8), &[0, 1, 2, 3, 4, 5, 6, 7]);
 
+            err = 0;
             let c2 = R_compress2(raw);
+            let c2_data = slice::from_raw_parts(RAW(c2), XLENGTH(c2) as usize);
+            assert_eq!(parse_swapped_len_prefix(c2_data), Some(8));
+            assert!(c2_data.len() >= 5);
+            assert!(matches!(c2_data[4], b'2' | b'0'));
             let d2 = R_decompress2(c2, &mut err);
             assert_eq!(err, 0);
             assert_eq!(TYPEOF(d2), SEXPTYPE::RAWSXP);
             assert_eq!(slice::from_raw_parts(RAW(d2), 8), &[0, 1, 2, 3, 4, 5, 6, 7]);
 
+            err = 0;
             let c3 = R_compress3(raw);
+            let c3_data = slice::from_raw_parts(RAW(c3), XLENGTH(c3) as usize);
+            assert_eq!(parse_swapped_len_prefix(c3_data), Some(8));
+            assert!(c3_data.len() >= 5);
+            assert!(matches!(c3_data[4], b'Z' | b'0'));
             let d3 = R_decompress3(c3, &mut err);
             assert_eq!(err, 0);
             assert_eq!(TYPEOF(d3), SEXPTYPE::RAWSXP);
@@ -3478,6 +3737,64 @@ mod tests {
             assert_eq!(R_decompress1(raw, &mut err), R_NilValue());
             assert_eq!(err, 1);
             err = 0;
+            assert_eq!(R_decompress2(raw, &mut err), R_NilValue());
+            assert_eq!(err, 1);
+            err = 0;
+            assert_eq!(R_decompress3(raw, &mut err), R_NilValue());
+            assert_eq!(err, 1);
+        }
+    }
+
+    #[test]
+    fn test_r_decompress2_3_support_legacy_markers() {
+        unsafe {
+            let expected = [10, 20, 30, 40, 50, 60, 70, 80];
+            let raw = make_raw(&expected);
+            let c1 = R_compress1(raw);
+            let c1_data = slice::from_raw_parts(RAW(c1), XLENGTH(c1) as usize);
+
+            let mut marker1 = Vec::with_capacity(c1_data.len() + 1);
+            marker1.extend_from_slice(&c1_data[..4]);
+            marker1.push(b'1');
+            marker1.extend_from_slice(&c1_data[4..]);
+            let marker1_raw = make_raw(&marker1);
+
+            let mut marker0 = Vec::with_capacity(expected.len() + 5);
+            marker0.extend_from_slice(&swapped_len_bytes(expected.len()));
+            marker0.push(b'0');
+            marker0.extend_from_slice(&expected);
+            let marker0_raw = make_raw(&marker0);
+
+            let mut err: Rboolean = 0;
+            let d21 = R_decompress2(marker1_raw, &mut err);
+            assert_eq!(err, 0);
+            assert_eq!(slice::from_raw_parts(RAW(d21), expected.len()), &expected);
+
+            err = 0;
+            let d31 = R_decompress3(marker1_raw, &mut err);
+            assert_eq!(err, 0);
+            assert_eq!(slice::from_raw_parts(RAW(d31), expected.len()), &expected);
+
+            err = 0;
+            let d20 = R_decompress2(marker0_raw, &mut err);
+            assert_eq!(err, 0);
+            assert_eq!(slice::from_raw_parts(RAW(d20), expected.len()), &expected);
+
+            err = 0;
+            let d30 = R_decompress3(marker0_raw, &mut err);
+            assert_eq!(err, 0);
+            assert_eq!(slice::from_raw_parts(RAW(d30), expected.len()), &expected);
+        }
+    }
+
+    #[test]
+    fn test_r_decompress2_3_reject_unknown_marker() {
+        unsafe {
+            let mut blob = Vec::new();
+            blob.extend_from_slice(&swapped_len_bytes(0));
+            blob.push(b'X');
+            let raw = make_raw(&blob);
+            let mut err: Rboolean = 0;
             assert_eq!(R_decompress2(raw, &mut err), R_NilValue());
             assert_eq!(err, 1);
             err = 0;

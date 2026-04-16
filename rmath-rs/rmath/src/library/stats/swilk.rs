@@ -22,6 +22,12 @@ use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+// `crate::main::coerce::coerceVector` still takes `c_int`; keep the conversion
+// local so this module can use `SEXPTYPE` at the call site.
+unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
+    crate::main::coerce::coerceVector(x, sexptype.into())
+}
+
 unsafe fn poly(cc: *const c_double, nord: c_int, x: c_double) -> c_double {
     let mut ret_val = *cc;
     if nord > 1 {
@@ -199,7 +205,7 @@ pub unsafe fn SWilk(x: SEXP) -> SEXP {
     let mut W: c_double = 0.0;
     let mut pw: c_double = 0.0;
 
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP));
     let n = LENGTH(x);
     swilk(REAL(x), n, &mut W, &mut pw, &mut ifault);
     if ifault > 0 && ifault != 7 {

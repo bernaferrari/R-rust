@@ -19,6 +19,12 @@ use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+// `crate::main::coerce::coerceVector` still takes `c_int`; keep that conversion
+// local so the rest of this file uses `SEXPTYPE` directly.
+unsafe fn coerceVector(x: SEXP, sexptype: SEXPTYPE) -> SEXP {
+    crate::main::coerce::coerceVector(x, sexptype.into())
+}
+
 unsafe fn R_pp_sum(u: *const c_double, n: c_int, l: c_int) -> c_double {
     let mut tmp1: c_double = 0.0;
     let mut i: c_int = 1;
@@ -37,7 +43,7 @@ unsafe fn R_pp_sum(u: *const c_double, n: c_int, l: c_int) -> c_double {
 }
 
 pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
-    let u = Rf_protect(coerceVector(u, SEXPTYPE::REALSXP.0));
+    let u = Rf_protect(coerceVector(u, SEXPTYPE::REALSXP));
     let n = LENGTH(u);
     let l = asInteger(sl);
     let trm = R_pp_sum(REAL(u), n, l);
@@ -46,8 +52,8 @@ pub unsafe fn pp_sum(u: SEXP, sl: SEXP) -> SEXP {
 }
 
 pub unsafe fn intgrt_vec(x: SEXP, xi: SEXP, slag: SEXP) -> SEXP {
-    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP.0));
-    let xi = Rf_protect(coerceVector(xi, SEXPTYPE::REALSXP.0));
+    let x = Rf_protect(coerceVector(x, SEXPTYPE::REALSXP));
+    let xi = Rf_protect(coerceVector(xi, SEXPTYPE::REALSXP));
     let n = LENGTH(x);
     let lag = asInteger(slag);
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n + lag));

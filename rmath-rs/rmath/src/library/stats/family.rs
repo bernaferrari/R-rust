@@ -39,8 +39,8 @@ const THRESH: c_double = 30.0;
 const MTHRESH: c_double = -30.0;
 const INVEPS: c_double = 1.0 / f64::EPSILON;
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    crate::main::coerce::coerceVector(x, type_)
+unsafe fn coerceVector(x: SEXP, type_: SEXPTYPE) -> SEXP {
+    crate::main::coerce::coerceVector(x, type_.into())
 }
 
 unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
@@ -94,7 +94,7 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
     }
     let mut eta = eta;
     if TYPEOF(eta) != SEXPTYPE::REALSXP {
-        eta = coerceVector(eta, SEXPTYPE::REALSXP.0);
+        eta = coerceVector(eta, SEXPTYPE::REALSXP);
         Rf_protect(eta);
         nprot += 1;
     }
@@ -131,7 +131,7 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
     }
     let mut eta = eta;
     if TYPEOF(eta) != SEXPTYPE::REALSXP {
-        eta = coerceVector(eta, SEXPTYPE::REALSXP.0);
+        eta = coerceVector(eta, SEXPTYPE::REALSXP);
         Rf_protect(eta);
         nprot += 1;
     }
@@ -170,7 +170,7 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     let mut wt = wt;
 
     if TYPEOF(y) != SEXPTYPE::REALSXP {
-        y = coerceVector(y, SEXPTYPE::REALSXP.0);
+        y = coerceVector(y, SEXPTYPE::REALSXP);
         Rf_protect(y);
         nprot += 1;
     }
@@ -179,12 +179,12 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
     let rans = REAL(ans);
 
     if TYPEOF(mu) != SEXPTYPE::REALSXP {
-        mu = coerceVector(mu, SEXPTYPE::REALSXP.0);
+        mu = coerceVector(mu, SEXPTYPE::REALSXP);
         Rf_protect(mu);
         nprot += 1;
     }
     if TYPEOF(wt) != SEXPTYPE::REALSXP {
-        wt = coerceVector(wt, SEXPTYPE::REALSXP.0);
+        wt = coerceVector(wt, SEXPTYPE::REALSXP);
         Rf_protect(wt);
         nprot += 1;
     }

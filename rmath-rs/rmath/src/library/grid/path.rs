@@ -22,54 +22,21 @@
 //!
 //! Path drawing operations: stroke, fill, fillStroke.
 
+use std::ffi::c_void;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{INTEGER, Rf_isNull};
+use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+
+use crate::mainutils::engine as ge;
 
 use super::gpar::{gcontextFromgpar, resolveGPar};
 use super::grid::getDevice;
 use super::state::{gridStateElement, setGridStateElement};
 use super::types::*;
-
-// ---------------------------------------------------------------------------
-// External stubs for GE functions not yet ported
-// ---------------------------------------------------------------------------
-
-/// ScalarLogical — create a single-element logical vector
-unsafe fn ScalarLogical(x: c_int) -> SEXP {
-    let s = crate::sexp::constructors::Rf_allocVector(crate::sexp::ffi::SEXPTYPE::LGLSXP.into(), 1);
-    *crate::sexp::accessors::LOGICAL(s) = x;
-    s
-}
-
-/// GEMode — set graphics engine mode
-unsafe fn GEMode(_mode: c_int, _dd: *const u8) {
-    // STUB: requires GraphicsEngine
-}
-
-/// GEStroke — stroke a path on the device
-unsafe fn GEStroke(_path: SEXP, _gc: *const u8, _dd: *const u8) {
-    // STUB: requires GraphicsEngine
-}
-
-/// GEFill — fill a path on the device
-unsafe fn GEFill(_path: SEXP, _rule: c_int, _gc: *const u8, _dd: *const u8) {
-    // STUB: requires GraphicsEngine
-}
-
-/// GEFillStroke — fill and stroke a path on the device
-unsafe fn GEFillStroke(_path: SEXP, _rule: c_int, _gc: *const u8, _dd: *const u8) {
-    // STUB: requires GraphicsEngine
-}
-
-/// Rf_duplicate — deep copy an R object
-#[unsafe(no_mangle)]
-unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
-    crate::main::duplicate::Rf_duplicate(x)
-}
 
 /// getListElement — get a named element from a list
 unsafe fn getListElement(list: SEXP, str: *const std::os::raw::c_char) -> SEXP {
@@ -116,20 +83,23 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn L_stroke(path: SEXP) -> SEXP {
-    // R_GE_gcontext gc — opaque struct, allocated on stack
-    let mut _gc: [u8; 256] = [0; 256]; // placeholder for R_GE_gcontext
+    // R_GE_gcontext gc — opaque struct, allocated on stack.
+    // TODO: engine::GEStroke is still a headless no-op here; keep the call
+    // routed through the shared engine entry point so the device backend can
+    // be filled in centrally without adding another local shim.
+    let mut _gc: [u8; 256] = [0; 256];
     let dd = getDevice();
     if dd.is_null() {
         return R_NilValue();
     }
     let currentgp = gridStateElement(dd, GSS_GPAR);
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
+    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
-    GEMode(1, dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(1));
-    GEStroke(path, _gc.as_ptr(), dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(0));
-    GEMode(0, dd);
+    ge::GEMode(1, dd);
+    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
+    ge::GEStroke(path, _gc.as_ptr() as *const c_void, dd);
+    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
+    ge::GEMode(0, dd);
 
     R_NilValue()
 }
@@ -144,14 +114,16 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
     if dd.is_null() {
         return R_NilValue();
     }
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    let currentgp = Rf_protect(crate::main::duplicate::Rf_duplicate(gridStateElement(
+        dd, GSS_GPAR,
+    )));
     let resolved_fill = Rf_protect(resolveGPar(currentgp, 0));
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
+    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
-    GEMode(1, dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(1));
-    GEFill(path, *INTEGER(rule), _gc.as_ptr(), dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(0));
+    ge::GEMode(1, dd);
+    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
+    ge::GEFill(path, *INTEGER(rule), _gc.as_ptr() as *const c_void, dd);
+    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
 
     if Rf_isNull(resolved_fill) == 0
         && Rf_inherits(
@@ -167,7 +139,7 @@ pub unsafe fn L_fill(path: SEXP, rule: SEXP) -> SEXP {
         let _ = pattern_ref;
     }
     Rf_unprotect(2);
-    GEMode(0, dd);
+    ge::GEMode(0, dd);
 
     R_NilValue()
 }
@@ -182,14 +154,16 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
     if dd.is_null() {
         return R_NilValue();
     }
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+    let currentgp = Rf_protect(crate::main::duplicate::Rf_duplicate(gridStateElement(
+        dd, GSS_GPAR,
+    )));
     let resolved_fill = Rf_protect(resolveGPar(currentgp, 0));
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
+    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
-    GEMode(1, dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(1));
-    GEFillStroke(path, *INTEGER(rule), _gc.as_ptr(), dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, ScalarLogical(0));
+    ge::GEMode(1, dd);
+    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
+    ge::GEFillStroke(path, *INTEGER(rule), _gc.as_ptr() as *const c_void, dd);
+    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
 
     if Rf_isNull(resolved_fill) == 0
         && Rf_inherits(
@@ -205,7 +179,7 @@ pub unsafe fn L_fillStroke(path: SEXP, rule: SEXP) -> SEXP {
         let _ = pattern_ref;
     }
     Rf_unprotect(2);
-    GEMode(0, dd);
+    ge::GEMode(0, dd);
 
     R_NilValue()
 }

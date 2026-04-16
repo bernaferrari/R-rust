@@ -21,6 +21,7 @@
 //!
 //! Glyph rendering for text typesetting in grid.
 
+use std::ffi::c_void;
 use std::os::raw::{c_char, c_int};
 
 use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, REAL, SET_VECTOR_ELT, STRING_ELT, VECTOR_ELT};
@@ -30,100 +31,14 @@ use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+use crate::mainutils::{colors, engine as ge};
+
 use super::gpar::gcontextFromgpar;
 use super::grid::{getDevice, getViewportTransform};
 use super::state::gridStateElement;
 use super::types::*;
 use super::unit::transformLocn;
 use super::viewport::fillViewportContextFromViewport;
-
-// ---------------------------------------------------------------------------
-// External stubs for GE functions not yet ported
-// ---------------------------------------------------------------------------
-
-/// GEMode — set graphics engine mode
-unsafe fn GEMode(_mode: c_int, _dd: *const u8) {
-    // STUB: requires GraphicsEngine
-}
-
-/// Rf_duplicate — deep copy an R object
-unsafe fn Rf_duplicate(x: SEXP) -> SEXP {
-    crate::main::duplicate::Rf_duplicate(x)
-}
-
-/// toDeviceX — convert inches to device x coordinate
-#[unsafe(no_mangle)]
-unsafe fn toDeviceX(_x: f64, _unit: c_int, _dd: *const u8) -> f64 {
-    // STUB: requires GraphicsEngine
-    0.0
-}
-
-/// toDeviceY — convert inches to device y coordinate
-#[unsafe(no_mangle)]
-unsafe fn toDeviceY(_y: f64, _unit: c_int, _dd: *const u8) -> f64 {
-    // STUB: requires GraphicsEngine
-    0.0
-}
-
-/// R_GE_glyphInfoGlyphs — get glyphs from glyph info
-unsafe fn R_GE_glyphInfoGlyphs(_glyphInfo: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_glyphInfoFonts — get fonts from glyph info
-unsafe fn R_GE_glyphInfoFonts(_glyphInfo: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_glyphID — get glyph IDs
-unsafe fn R_GE_glyphID(_glyphs: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_glyphFont — get glyph font indices
-unsafe fn R_GE_glyphFont(_glyphs: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_glyphSize — get glyph sizes
-unsafe fn R_GE_glyphSize(_glyphs: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_hasGlyphRotation — check if glyph info has rotation
-unsafe fn R_GE_hasGlyphRotation(_glyphs: SEXP) -> bool {
-    false
-}
-
-/// R_GE_glyphRotation — get glyph rotation angles
-unsafe fn R_GE_glyphRotation(_glyphs: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_glyphColour — get glyph colours
-unsafe fn R_GE_glyphColour(_glyphs: SEXP) -> SEXP {
-    R_NilValue()
-}
-
-/// R_GE_str2col — convert colour string to integer
-unsafe fn R_GE_str2col(colstr: *const c_char) -> c_int {
-    crate::mainutils::colors::R_GE_str2col(colstr) as c_int
-}
-
-/// GEGlyph — render glyphs on device
-unsafe fn GEGlyph(
-    _n: c_int,
-    _id: *const c_int,
-    _x: *const f64,
-    _y: *const f64,
-    _font: SEXP,
-    _size: f64,
-    _colour: c_int,
-    _rotation: f64,
-    _dd: *const u8,
-) {
-    // STUB: requires GraphicsEngine
-}
 
 /// GE_INCHES constant for unit conversion
 const GE_INCHES: c_int = 8;
@@ -148,11 +63,14 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
         return;
     }
 
-    // R_GE_gcontext gc — placeholder
+    // R_GE_gcontext gc — opaque layout.
+    // TODO: the shared engine module still owns the fallback glyph-info
+    // accessors; keep this call path delegated there until the GE glyphInfo
+    // SEXP layout is available.
     let mut _gc: [u8; 256] = [0; 256];
-    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr(), dd);
+    gcontextFromgpar(currentgp, 0, _gc.as_mut_ptr() as *const c_void, dd);
 
-    let currentgp = Rf_protect(Rf_duplicate(currentgp));
+    let currentgp = Rf_protect(crate::main::duplicate::Rf_duplicate(currentgp));
     // Set gp$fill to "black" to avoid pattern resolution
     SET_VECTOR_ELT(
         currentgp,
@@ -182,13 +100,13 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     fillViewportContextFromViewport(currentvp, &mut vpc);
 
     if draw {
-        GEMode(1, dd);
+        ge::GEMode(1, dd);
     }
 
-    let glyphs = R_GE_glyphInfoGlyphs(glyphInfo);
-    let fonts = R_GE_glyphInfoFonts(glyphInfo);
-    let id = INTEGER(R_GE_glyphID(glyphs));
-    let n = LENGTH(R_GE_glyphID(glyphs));
+    let glyphs = ge::R_GE_glyphInfoGlyphs(glyphInfo);
+    let fonts = ge::R_GE_glyphInfoFonts(glyphInfo);
+    let id = INTEGER(ge::R_GE_glyphID(glyphs));
+    let n = LENGTH(ge::R_GE_glyphID(glyphs));
 
     // Allocate gx and gy arrays
     let mut gx: Vec<f64> = vec![0.0; n as usize];
@@ -202,7 +120,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
             y,
             i,
             vpc,
-            _gc.as_ptr(),
+            _gc.as_ptr() as *const c_void,
             vpWidthCM,
             vpHeightCM,
             dd,
@@ -210,8 +128,8 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
             &mut xx,
             &mut yy,
         );
-        gx[i as usize] = toDeviceX(xx, GE_INCHES, dd);
-        gy[i as usize] = toDeviceY(yy, GE_INCHES, dd);
+        gx[i as usize] = ge::toDeviceX(xx, GE_INCHES, dd);
+        gy[i as usize] = ge::toDeviceY(yy, GE_INCHES, dd);
     }
 
     let mut offset: c_int = 0;
@@ -219,11 +137,11 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
         let run_length = *INTEGER(runs).add(i as usize);
         let font = VECTOR_ELT(
             fonts,
-            (*INTEGER(R_GE_glyphFont(glyphs)).add(offset as usize) - 1) as R_xlen_t,
+            (*INTEGER(ge::R_GE_glyphFont(glyphs)).add(offset as usize) - 1) as R_xlen_t,
         );
-        let size = *REAL(R_GE_glyphSize(glyphs)).add(offset as usize);
-        let glyph_rotation = if R_GE_hasGlyphRotation(glyphs) {
-            *REAL(R_GE_glyphRotation(glyphs)).add(offset as usize)
+        let size = *REAL(ge::R_GE_glyphSize(glyphs)).add(offset as usize);
+        let glyph_rotation = if ge::R_GE_hasGlyphRotation(glyphs) {
+            *REAL(ge::R_GE_glyphRotation(glyphs)).add(offset as usize)
         } else {
             0.0
         };
@@ -231,13 +149,13 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
 
         let mut colstr: [std::os::raw::c_char; 51] = [0; 51];
         std::ptr::copy_nonoverlapping(
-            CHAR(STRING_ELT(R_GE_glyphColour(glyphs), offset as R_xlen_t)),
+            CHAR(STRING_ELT(ge::R_GE_glyphColour(glyphs), offset as R_xlen_t)),
             colstr.as_mut_ptr(),
             50,
         );
-        let colour = R_GE_str2col(colstr.as_ptr());
+        let colour = colors::R_GE_str2col(colstr.as_ptr()) as c_int;
 
-        GEGlyph(
+        ge::GEGlyph(
             run_length,
             id.add(offset as usize),
             gx.as_ptr().add(offset as usize),
@@ -252,7 +170,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     }
 
     if draw {
-        GEMode(0, dd);
+        ge::GEMode(0, dd);
     }
     Rf_unprotect(1);
 }
