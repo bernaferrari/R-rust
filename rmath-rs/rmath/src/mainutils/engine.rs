@@ -10,10 +10,13 @@
 //! subsystem is implemented.
 
 use std::cell::Cell;
+use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
 
-use crate::sexp::ffi::SEXP;
+use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF};
+use crate::sexp::constructors::Rf_mkString;
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, NA_INTEGER, NA_LOGICAL};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -74,6 +77,101 @@ pub const R_TRANWHITE: c_uint = 0x00FFFFFF;
 // ---------------------------------------------------------------------------
 
 thread_local! { static numGraphicsSystems: Cell<c_int> = Cell::new(0); }
+
+#[inline]
+fn wrap_index(len: c_int, ind: c_int) -> usize {
+    ind.rem_euclid(len.max(1)) as usize
+}
+
+unsafe fn sexp_string_at(value: SEXP, ind: c_int) -> Option<String> {
+    if value.is_null() || TYPEOF(value) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(value) == 0 {
+        return None;
+    }
+    let idx = wrap_index(LENGTH(value), ind) as R_xlen_t;
+    let cstr = CStr::from_ptr(CHAR(STRING_ELT(value, idx)));
+    Some(cstr.to_string_lossy().to_ascii_lowercase())
+}
+
+unsafe fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
+    if value.is_null() || LENGTH(value) == 0 {
+        return None;
+    }
+    let idx = wrap_index(LENGTH(value), ind);
+    match TYPEOF(value) {
+        t if t == SEXPTYPE::INTSXP.as_c_int() => {
+            let x = *INTEGER(value).add(idx);
+            if x == NA_INTEGER { None } else { Some(x) }
+        }
+        t if t == SEXPTYPE::LGLSXP.as_c_int() => {
+            let x = *LOGICAL(value).add(idx);
+            if x == NA_LOGICAL { None } else { Some(x) }
+        }
+        t if t == SEXPTYPE::REALSXP.as_c_int() => {
+            let x = *REAL(value).add(idx);
+            if x.is_finite() { Some(x as c_int) } else { None }
+        }
+        _ => None,
+    }
+}
+
+fn parse_lend_name(name: &str) -> Option<c_int> {
+    if name.starts_with("round") {
+        Some(GE_ROUND_CAP)
+    } else if name.starts_with("butt") {
+        Some(GE_BUTT_CAP)
+    } else if name.starts_with("square") {
+        Some(GE_SQUARE_CAP)
+    } else {
+        None
+    }
+}
+
+fn parse_ljoin_name(name: &str) -> Option<c_int> {
+    if name.starts_with("round") {
+        Some(GE_ROUND_JOIN)
+    } else if name.starts_with("mitre") || name.starts_with("miter") {
+        Some(GE_MITRE_JOIN)
+    } else if name.starts_with("bevel") {
+        Some(GE_BEVEL_JOIN)
+    } else {
+        None
+    }
+}
+
+fn parse_lty_name(name: &str) -> Option<c_uint> {
+    match name {
+        "blank" => Some(LTY_BLANK as c_uint),
+        "solid" => Some(LTY_SOLID as c_uint),
+        "dashed" => Some(LTY_DASHED as c_uint),
+        "dotted" => Some(LTY_DOTTED as c_uint),
+        "dotdash" => Some(LTY_DOTDASH as c_uint),
+        "longdash" => Some(LTY_LONGDASH as c_uint),
+        "twodash" => Some(LTY_TWODASH as c_uint),
+        _ => None,
+    }
+}
+
+fn parse_lty_hex_digit(b: u8) -> Option<c_uint> {
+    match b {
+        b'1'..=b'9' => Some((b - b'0') as c_uint),
+        b'a'..=b'f' => Some((b - b'a' + 10) as c_uint),
+        b'A'..=b'F' => Some((b - b'A' + 10) as c_uint),
+        _ => None,
+    }
+}
+
+fn parse_lty_hex_pattern(spec: &str) -> Option<c_uint> {
+    let bytes = spec.as_bytes();
+    if bytes.is_empty() || bytes.len() > 8 {
+        return None;
+    }
+    let mut pattern: c_uint = 0;
+    for b in bytes {
+        let digit = parse_lty_hex_digit(*b)?;
+        pattern = (pattern << 4) | digit;
+    }
+    Some(pattern)
+}
 
 // ---------------------------------------------------------------------------
 // R_GE_getVersion / R_GE_checkVersionOrDie
@@ -222,22 +320,50 @@ pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c
 
 /// Parse a line end specification from an R SEXP value.
 pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
-    GE_ROUND_CAP
+    if let Some(name) = sexp_string_at(value, ind) {
+        if let Some(parsed) = parse_lend_name(&name) {
+            return parsed;
+        }
+    }
+    match sexp_int_at(value, ind) {
+        Some(1) => GE_ROUND_CAP,
+        Some(2) => GE_BUTT_CAP,
+        Some(3) => GE_SQUARE_CAP,
+        _ => GE_ROUND_CAP,
+    }
 }
 
 /// Convert a line end code to an R string.
 pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
-    unsafe { R_NilValue() }
+    match lend {
+        GE_BUTT_CAP => Rf_mkString(c"butt".as_ptr()),
+        GE_SQUARE_CAP => Rf_mkString(c"square".as_ptr()),
+        _ => Rf_mkString(c"round".as_ptr()),
+    }
 }
 
 /// Parse a line join specification from an R SEXP value.
 pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
-    GE_ROUND_JOIN
+    if let Some(name) = sexp_string_at(value, ind) {
+        if let Some(parsed) = parse_ljoin_name(&name) {
+            return parsed;
+        }
+    }
+    match sexp_int_at(value, ind) {
+        Some(1) => GE_ROUND_JOIN,
+        Some(2) => GE_MITRE_JOIN,
+        Some(3) => GE_BEVEL_JOIN,
+        _ => GE_ROUND_JOIN,
+    }
 }
 
 /// Convert a line join code to an R string.
 pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
-    unsafe { R_NilValue() }
+    match ljoin {
+        GE_MITRE_JOIN => Rf_mkString(c"mitre".as_ptr()),
+        GE_BEVEL_JOIN => Rf_mkString(c"bevel".as_ptr()),
+        _ => Rf_mkString(c"round".as_ptr()),
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -671,7 +797,14 @@ pub unsafe fn GEonExit() {
 
 /// Convert a single-character string SEXP to a pch integer code.
 pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
-    -2147483647 - 1 // NA_INTEGER
+    if pch.is_null() || TYPEOF(pch) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(pch) == 0 {
+        return NA_INTEGER;
+    }
+    let ch = CStr::from_ptr(CHAR(STRING_ELT(pch, 0)))
+        .to_string_lossy()
+        .chars()
+        .next();
+    ch.map_or(NA_INTEGER, |c| c as c_int)
 }
 
 // ---------------------------------------------------------------------------
@@ -680,12 +813,44 @@ pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
 
 /// Parse a line type specification from an R SEXP value.
 pub unsafe fn GE_LTYpar(value: SEXP, ind: c_int) -> c_uint {
-    LTY_SOLID as c_uint
+    if let Some(name) = sexp_string_at(value, ind) {
+        if let Some(named) = parse_lty_name(&name) {
+            return named;
+        }
+        if let Some(custom) = parse_lty_hex_pattern(&name) {
+            return custom;
+        }
+        return LTY_SOLID as c_uint;
+    }
+    match sexp_int_at(value, ind) {
+        Some(0) => LTY_BLANK as c_uint,
+        Some(1) => LTY_SOLID as c_uint,
+        Some(2) => LTY_DASHED as c_uint,
+        Some(3) => LTY_DOTTED as c_uint,
+        Some(4) => LTY_DOTDASH as c_uint,
+        Some(5) => LTY_LONGDASH as c_uint,
+        Some(6) => LTY_TWODASH as c_uint,
+        _ => LTY_SOLID as c_uint,
+    }
 }
 
 /// Convert a line type code to an R string.
 pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
-    unsafe { R_NilValue() }
+    let named = match lty as c_int {
+        LTY_BLANK => Some("blank"),
+        LTY_SOLID => Some("solid"),
+        LTY_DASHED => Some("dashed"),
+        LTY_DOTTED => Some("dotted"),
+        LTY_DOTDASH => Some("dotdash"),
+        LTY_LONGDASH => Some("longdash"),
+        LTY_TWODASH => Some("twodash"),
+        _ => None,
+    };
+    if let Some(name) = named {
+        return Rf_mkString(CString::new(name).expect("lty name contains no NUL").as_ptr());
+    }
+    let custom = CString::new(format!("{lty:x}")).expect("hex lty contains no NUL");
+    Rf_mkString(custom.as_ptr())
 }
 
 // ---------------------------------------------------------------------------
@@ -970,6 +1135,18 @@ pub(crate) unsafe fn compute_closed_spline(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::accessors::STRING_ELT;
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_mkChar, Rf_mkString};
+    use crate::sexp::ffi::{R_xlen_t, SEXPTYPE};
+
+    unsafe fn make_string_vector(values: &[&str]) -> SEXP {
+        let v = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
+        for (i, value) in values.iter().enumerate() {
+            let c = std::ffi::CString::new(*value).expect("test string contains no NUL");
+            crate::sexp::accessors::SET_STRING_ELT(v, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+        }
+        v
+    }
 
     #[test]
     fn test_R_GE_getVersion() {
@@ -1093,9 +1270,39 @@ mod tests {
     }
 
     #[test]
-    fn test_GE_LTYpar_returns_solid() {
+    fn test_GEstring_to_pch_reads_first_character() {
         unsafe {
-            assert_eq!(GE_LTYpar(ptr::null_mut(), 0), LTY_SOLID as c_uint);
+            let pch = Rf_mkString(c"A".as_ptr());
+            assert_eq!(GEstring_to_pch(pch), 'A' as c_int);
+        }
+    }
+
+    #[test]
+    fn test_GE_LTYpar_parses_named_and_hex_styles() {
+        unsafe {
+            let named = make_string_vector(&["dotted"]);
+            let custom = make_string_vector(&["3313"]);
+            assert_eq!(GE_LTYpar(named, 0), LTY_DOTTED as c_uint);
+            assert_eq!(GE_LTYpar(custom, 0), 0x3313);
+        }
+    }
+
+    #[test]
+    fn test_GE_LTYpar_numeric_mapping() {
+        unsafe {
+            let numeric = Rf_ScalarInteger(2);
+            assert_eq!(GE_LTYpar(numeric, 0), LTY_DASHED as c_uint);
+        }
+    }
+
+    #[test]
+    fn test_GE_LTYget_round_trips_named_values() {
+        unsafe {
+            let out = GE_LTYget(LTY_LONGDASH as c_uint);
+            let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out, 0)))
+                .to_str()
+                .expect("valid UTF-8");
+            assert_eq!(name, "longdash");
         }
     }
 
@@ -1221,12 +1428,22 @@ mod tests {
     }
 
     #[test]
-    fn test_LEND_LJOIN_stubs() {
+    fn test_LEND_LJOIN_parse_and_get() {
         unsafe {
-            assert_eq!(GE_LENDpar(ptr::null_mut(), 0), GE_ROUND_CAP);
-            assert_eq!(GE_LJOINpar(ptr::null_mut(), 0), GE_ROUND_JOIN);
-            assert_eq!(GE_LENDget(0), R_NilValue());
-            assert_eq!(GE_LJOINget(0), R_NilValue());
+            let lend = make_string_vector(&["square"]);
+            let ljoin = make_string_vector(&["bevel"]);
+            assert_eq!(GE_LENDpar(lend, 0), GE_SQUARE_CAP);
+            assert_eq!(GE_LJOINpar(ljoin, 0), GE_BEVEL_JOIN);
+
+            let lend_name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(GE_LENDget(GE_BUTT_CAP), 0)))
+                .to_str()
+                .expect("valid UTF-8");
+            let ljoin_name =
+                std::ffi::CStr::from_ptr(CHAR(STRING_ELT(GE_LJOINget(GE_MITRE_JOIN), 0)))
+                    .to_str()
+                    .expect("valid UTF-8");
+            assert_eq!(lend_name, "butt");
+            assert_eq!(ljoin_name, "mitre");
         }
     }
 }
