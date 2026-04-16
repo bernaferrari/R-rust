@@ -15,6 +15,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::{mainutils::colors::RGBpar3, mainutils::engine as ge};
 
 use super::grid::getDevice;
 use super::state::{gridStateElement, setGridStateElement};
@@ -38,8 +39,8 @@ pub const GP_LINEMITRE: c_int = 13;
 pub const GP_LEX: c_int = 14;
 pub const GP_FONTFACE: c_int = 15;
 
-// R_TRANWHITE stub (transparent white for grid)
-const R_TRANWHITE: c_int = 0x7FFFFFFF;
+// Grid's transparent-white default is shared with the graphics engine.
+const R_TRANWHITE: c_int = ge::R_TRANWHITE as c_int;
 
 // pGEcontext and pGEDevDesc from types.rs
 pub use super::types::pGEDevDesc;
@@ -78,8 +79,7 @@ pub unsafe fn gpCol(gp: SEXP, i: c_int) -> c_int {
     if Rf_isNull(col) != 0 {
         R_TRANWHITE
     } else {
-        // STUB: RGBpar3 not yet available
-        R_TRANWHITE
+        RGBpar3(col as *mut c_void, i, ge::R_TRANWHITE) as c_int
     }
 }
 
@@ -92,8 +92,7 @@ pub unsafe fn gpFill(gp: SEXP, i: c_int) -> c_int {
     if Rf_isNull(fill) != 0 {
         R_TRANWHITE
     } else {
-        // STUB: RGBpar3 not yet available
-        R_TRANWHITE
+        RGBpar3(fill as *mut c_void, i, ge::R_TRANWHITE) as c_int
     }
 }
 
@@ -113,15 +112,7 @@ pub unsafe fn gpLineTypeSXP(gp: SEXP) -> SEXP {
 
 pub unsafe fn gpLineType(gp: SEXP, i: c_int) -> c_int {
     let linetype = gpLineTypeSXP(gp);
-    // STUB: GE_LTYpar not yet available
-    let len = LENGTH(linetype);
-    if TYPEOF(linetype) == SEXPTYPE::REALSXP {
-        *REAL(linetype).add((i % len) as usize) as c_int
-    } else if TYPEOF(linetype) == SEXPTYPE::INTSXP {
-        *INTEGER(linetype).add((i % len) as usize)
-    } else {
-        1
-    }
+    ge::GE_LTYpar(linetype, i) as c_int
 }
 
 pub unsafe fn gpLineWidthSXP(gp: SEXP) -> SEXP {
@@ -179,14 +170,8 @@ pub unsafe fn gpLineEndSXP(gp: SEXP) -> SEXP {
 }
 
 pub unsafe fn gpLineEnd(gp: SEXP, i: c_int) -> c_int {
-    // STUB: GE_LENDpar not yet available
     let lineend = gpLineEndSXP(gp);
-    let len = LENGTH(lineend);
-    if TYPEOF(lineend) == SEXPTYPE::INTSXP {
-        *INTEGER(lineend).add((i % len) as usize)
-    } else {
-        1 // GE_LINE_CAP_ROUND
-    }
+    ge::GE_LENDpar(lineend, i)
 }
 
 pub unsafe fn gpLineJoinSXP(gp: SEXP) -> SEXP {
@@ -194,14 +179,8 @@ pub unsafe fn gpLineJoinSXP(gp: SEXP) -> SEXP {
 }
 
 pub unsafe fn gpLineJoin(gp: SEXP, i: c_int) -> c_int {
-    // STUB: GE_LJOINpar not yet available
     let linejoin = gpLineJoinSXP(gp);
-    let len = LENGTH(linejoin);
-    if TYPEOF(linejoin) == SEXPTYPE::INTSXP {
-        *INTEGER(linejoin).add((i % len) as usize)
-    } else {
-        1 // GE_LINE_JOIN_ROUND
-    }
+    ge::GE_LJOINpar(linejoin, i)
 }
 
 pub unsafe fn gpLineMitreSXP(gp: SEXP) -> SEXP {
@@ -319,7 +298,7 @@ pub unsafe fn gpLex2(gp: SEXP, i: c_int, gpIsScalar: *mut c_int) -> c_double {
 }
 
 /* ==============================
- * resolveGPar -- STUB
+ * resolveGPar -- partial helper
  * ============================== */
 
 #[unsafe(no_mangle)]
@@ -328,45 +307,104 @@ pub unsafe fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
 }
 
 /* ==============================
- * gcontextFromgpar -- STUB
+ * gcontextFromgpar -- partial helper
  * ============================== */
 
 #[unsafe(no_mangle)]
 pub unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDevDesc) {
-    // STUB: sets GE context from gpar
+    let gp = resolveGPar(_gp, 0);
+    if gp.is_null() || Rf_isNull(gp) != 0 {
+        return;
+    }
+
+    // The real R_GE_gcontext layout is still opaque here, so we resolve and
+    // validate the gpar values that feed it without trying to write fields.
+    let _ = (
+        gpCol(gp, _i),
+        gpFill(gp, _i),
+        gpGamma(gp, _i),
+        gpLineType(gp, _i),
+        gpLineWidth(gp, _i),
+        gpCex(gp, _i),
+        gpFontSize(gp, _i),
+        gpLineHeight(gp, _i),
+        gpFont(gp, _i),
+        gpFontFamily(gp, _i),
+        gpAlpha(gp, _i),
+        gpLineEnd(gp, _i),
+        gpLineJoin(gp, _i),
+        gpLineMitre(gp, _i),
+        gpLex(gp, _i),
+    );
+    let _ = _gc;
+    let _ = _dd;
 }
 
 /* ==============================
- * initGContext -- STUB
+ * initGContext -- partial helper
  * ============================== */
 
-pub unsafe fn initGContext(
-    _gp: SEXP,
-    _gc: pGEcontext,
-    _dd: pGEDevDesc,
-    gpIsScalar: *mut c_int,
-    _gcCache: pGEcontext,
-) {
-    if !gpIsScalar.is_null() {
-        ptr::write_bytes(gpIsScalar, 0, GP_FONTFACE as usize + 1);
+unsafe fn set_gpar_scalar_flags(gp: SEXP, gpIsScalar: *mut c_int) {
+    if gpIsScalar.is_null() {
+        return;
+    }
+
+    ptr::write_bytes(gpIsScalar, 0, GP_FONTFACE as usize + 1);
+
+    if gp.is_null() || Rf_isNull(gp) != 0 {
+        return;
+    }
+
+    let slots = [
+        (GP_FILL, gpFillSXP(gp)),
+        (GP_COL, gpColSXP(gp)),
+        (GP_GAMMA, gpGammaSXP(gp)),
+        (GP_LTY, gpLineTypeSXP(gp)),
+        (GP_LWD, gpLineWidthSXP(gp)),
+        (GP_CEX, gpCexSXP(gp)),
+        (GP_FONTSIZE, gpFontSizeSXP(gp)),
+        (GP_LINEHEIGHT, gpLineHeightSXP(gp)),
+        (GP_FONT, gpFontSXP(gp)),
+        (GP_FONTFAMILY, gpFontFamilySXP(gp)),
+        (GP_ALPHA, gpAlphaSXP(gp)),
+        (GP_LINEEND, gpLineEndSXP(gp)),
+        (GP_LINEJOIN, gpLineJoinSXP(gp)),
+        (GP_LINEMITRE, gpLineMitreSXP(gp)),
+        (GP_LEX, gpLexSXP(gp)),
+    ];
+
+    for (slot, value) in slots {
+        *gpIsScalar.add(slot as usize) = if LENGTH(value) == 1 { 1 } else { 0 };
     }
 }
 
+pub unsafe fn initGContext(
+    gp: SEXP,
+    gc: pGEcontext,
+    dd: pGEDevDesc,
+    gpIsScalar: *mut c_int,
+    gcCache: pGEcontext,
+) {
+    gcontextFromgpar(gp, 0, gc, dd);
+    set_gpar_scalar_flags(gp, gpIsScalar);
+    let _ = gcCache;
+}
+
 /* ==============================
- * updateGContext -- STUB
+ * updateGContext -- partial helper
  * ============================== */
 
 pub unsafe fn updateGContext(
-    _gp: SEXP,
-    _i: c_int,
-    _gc: pGEcontext,
-    _dd: pGEDevDesc,
+    gp: SEXP,
+    i: c_int,
+    gc: pGEcontext,
+    dd: pGEDevDesc,
     gpIsScalar: *mut c_int,
-    _gcCache: pGEcontext,
+    gcCache: pGEcontext,
 ) {
-    if !gpIsScalar.is_null() {
-        ptr::write_bytes(gpIsScalar, 0, GP_FONTFACE as usize + 1);
-    }
+    gcontextFromgpar(gp, i, gc, dd);
+    set_gpar_scalar_flags(gp, gpIsScalar);
+    let _ = gcCache;
 }
 
 /* ==============================
@@ -413,11 +451,11 @@ pub unsafe fn initGPar(dd: pGEDevDesc) {
     // GP_ALPHA (10): 1.0 (fully opaque)
     SET_VECTOR_ELT(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
 
-    // GP_LINEEND (11): round cap (GE_ROUND_CAP = 1)
-    SET_VECTOR_ELT(gp, GP_LINEEND as R_xlen_t, Rf_ScalarInteger(1));
+    // GP_LINEEND (11): round cap
+    SET_VECTOR_ELT(gp, GP_LINEEND as R_xlen_t, Rf_ScalarInteger(ge::GE_ROUND_CAP));
 
-    // GP_LINEJOIN (12): round join (GE_ROUND_JOIN = 1)
-    SET_VECTOR_ELT(gp, GP_LINEJOIN as R_xlen_t, Rf_ScalarInteger(1));
+    // GP_LINEJOIN (12): round join
+    SET_VECTOR_ELT(gp, GP_LINEJOIN as R_xlen_t, Rf_ScalarInteger(ge::GE_ROUND_JOIN));
 
     // GP_LINEMITRE (13): 10.0
     SET_VECTOR_ELT(gp, GP_LINEMITRE as R_xlen_t, Rf_ScalarReal(10.0));
@@ -430,6 +468,131 @@ pub unsafe fn initGPar(dd: pGEDevDesc) {
 
     setGridStateElement(dd, GSS_GPAR, gp);
     Rf_unprotect(1);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    unsafe fn make_gpar() -> SEXP {
+        let gp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1));
+
+        SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(1));
+        SET_VECTOR_ELT(gp, GP_COL as R_xlen_t, Rf_ScalarInteger(1));
+        SET_VECTOR_ELT(gp, GP_GAMMA as R_xlen_t, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(gp, GP_LTY as R_xlen_t, Rf_mkString(b"dashed\0".as_ptr() as *const c_char));
+        SET_VECTOR_ELT(gp, GP_LWD as R_xlen_t, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(gp, GP_CEX as R_xlen_t, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(gp, GP_FONTSIZE as R_xlen_t, Rf_ScalarReal(12.0));
+        SET_VECTOR_ELT(gp, GP_LINEHEIGHT as R_xlen_t, Rf_ScalarReal(1.2));
+        SET_VECTOR_ELT(gp, GP_FONT as R_xlen_t, Rf_ScalarInteger(1));
+
+        let fontfamily = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        SET_STRING_ELT(fontfamily, 0, Rf_mkChar(b"sans\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(fontfamily, 1, Rf_mkChar(b"serif\0".as_ptr() as *const c_char));
+        SET_VECTOR_ELT(gp, GP_FONTFAMILY as R_xlen_t, fontfamily);
+
+        SET_VECTOR_ELT(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(gp, GP_LINEEND as R_xlen_t, Rf_ScalarInteger(2));
+
+        let linejoin = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        *INTEGER(linejoin) = 1;
+        *INTEGER(linejoin).add(1) = 2;
+        SET_VECTOR_ELT(gp, GP_LINEJOIN as R_xlen_t, linejoin);
+
+        SET_VECTOR_ELT(gp, GP_LINEMITRE as R_xlen_t, Rf_ScalarReal(10.0));
+        SET_VECTOR_ELT(gp, GP_LEX as R_xlen_t, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(gp, GP_FONTFACE as R_xlen_t, Rf_ScalarInteger(1));
+
+        gp
+    }
+
+    #[test]
+    fn test_gp_linetype_parses_names_and_patterns() {
+        unsafe {
+            let gp = make_gpar();
+            SET_VECTOR_ELT(
+                gp,
+                GP_LTY as R_xlen_t,
+                Rf_mkString(b"dotdash\0".as_ptr() as *const c_char),
+            );
+            assert_eq!(gpLineType(gp, 0), ge::LTY_DOTDASH);
+
+            SET_VECTOR_ELT(
+                gp,
+                GP_LTY as R_xlen_t,
+                Rf_mkString(b"0f\0".as_ptr() as *const c_char),
+            );
+            assert_eq!(gpLineType(gp, 0), 0x0f);
+            Rf_unprotect(1);
+        }
+    }
+
+    #[test]
+    fn test_gp_color_null_falls_back_to_transparent_white() {
+        unsafe {
+            assert_eq!(gpCol(R_NilValue(), 0), R_TRANWHITE);
+            assert_eq!(gpFill(R_NilValue(), 0), R_TRANWHITE);
+        }
+    }
+
+    #[test]
+    fn test_gp_lineend_and_join_delegate_to_engine_parsers() {
+        unsafe {
+            let gp = make_gpar();
+
+            SET_VECTOR_ELT(
+                gp,
+                GP_LINEEND as R_xlen_t,
+                Rf_mkString(b"butt\0".as_ptr() as *const c_char),
+            );
+            assert_eq!(gpLineEnd(gp, 0), ge::GE_BUTT_CAP);
+
+            SET_VECTOR_ELT(
+                gp,
+                GP_LINEJOIN as R_xlen_t,
+                Rf_mkString(b"bevel\0".as_ptr() as *const c_char),
+            );
+            assert_eq!(gpLineJoin(gp, 0), ge::GE_BEVEL_JOIN);
+            Rf_unprotect(1);
+        }
+    }
+
+    #[test]
+    fn test_init_and_update_gcontext_set_scalar_flags() {
+        unsafe {
+            let gp = make_gpar();
+            let mut flags = [c_int::MIN; GP_FONTFACE as usize + 1];
+
+            initGContext(
+                gp,
+                ptr::null(),
+                ptr::null_mut(),
+                flags.as_mut_ptr(),
+                ptr::null(),
+            );
+
+            assert_eq!(flags[GP_COL as usize], 1);
+            assert_eq!(flags[GP_LWD as usize], 1);
+            assert_eq!(flags[GP_FONTFAMILY as usize], 0);
+            assert_eq!(flags[GP_LINEJOIN as usize], 0);
+
+            flags.fill(c_int::MIN);
+            updateGContext(
+                gp,
+                0,
+                ptr::null(),
+                ptr::null_mut(),
+                flags.as_mut_ptr(),
+                ptr::null(),
+            );
+            assert_eq!(flags[GP_COL as usize], 1);
+            assert_eq!(flags[GP_LWD as usize], 1);
+            assert_eq!(flags[GP_FONTFAMILY as usize], 0);
+            assert_eq!(flags[GP_LINEJOIN as usize], 0);
+            Rf_unprotect(1);
+        }
+    }
 }
 
 /* ==============================

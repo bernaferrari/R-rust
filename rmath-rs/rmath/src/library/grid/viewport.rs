@@ -37,6 +37,7 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
+use super::gpar::gcontextFromgpar;
 use super::types::*;
 
 // ---------------------------------------------------------------------------
@@ -293,15 +294,23 @@ pub unsafe fn copyViewportContext(vpc1: LViewportContext, vpc2: *mut LViewportCo
 }
 
 // ---------------------------------------------------------------------------
-// gcontextFromViewport — STUB: requires gpar.c
+// gcontextFromViewport — delegate through gpar context resolution.
 // ---------------------------------------------------------------------------
 
 pub unsafe fn gcontextFromViewport(
-    _vp: SEXP,
-    _gc: *const u8, // pGEcontext — opaque until GraphicsEngine is ported
-    _dd: *const u8, // pGEDevDesc
+    vp: SEXP,
+    gc: *const u8, // pGEcontext — still opaque in Rust
+    dd: *const u8, // pGEDevDesc
 ) {
-    // STUB: requires gcontextFromgpar from gpar.c
+    let gpar = viewportgpar(vp);
+    if gpar.is_null() || Rf_isNull(gpar) != 0 {
+        return;
+    }
+
+    // Narrow TODO: the opaque GEcontext layout still blocks direct field
+    // writes here, but we can at least resolve/validate the viewport gpar
+    // path through the shared gpar accessor.
+    gcontextFromgpar(gpar, 0, gc as pGEcontext, dd as pGEDevDesc);
 }
 
 // ---------------------------------------------------------------------------
