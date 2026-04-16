@@ -7,7 +7,6 @@
 //! `devcap`, `devcapture`.
 
 use std::os::raw::{c_char, c_double, c_int, c_uint};
-use std::ptr;
 
 use crate::attrib_core::{R_ClassSymbol, R_DimSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical};
@@ -23,13 +22,15 @@ use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
+use super::device_registry;
+
 /* ==================== GE stub types ==================== */
 
 /// Stub for pGEDevDesc (graphics engine device descriptor pointer).
-pub type pGEDevDesc = *mut std::ffi::c_void;
+pub type pGEDevDesc = device_registry::pGEDevDesc;
 
 /// Stub for pDevDesc (device descriptor pointer).
-pub type pDevDesc = *mut std::ffi::c_void;
+pub type pDevDesc = device_registry::pDevDesc;
 
 /* ==================== R_GE_capability constants ==================== */
 
@@ -56,56 +57,49 @@ pub const R_GE_fontVar: c_int = 15;
 
 /* ==================== GE stub functions ==================== */
 
-/// Stub: get current graphics device. Returns null.
-unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    ptr::null_mut()
-}
-
-/// Stub: initialize display list for device. No-op.
-#[unsafe(no_mangle)]
-unsafe fn GEinitDisplayList(_gdd: pGEDevDesc) {
-    // no-op
-}
-
-/// Stub: copy display list. No-op.
-unsafe fn GEcopyDisplayList(_devnum: c_int) {
-    // no-op
-}
-
 /// Stub: get current device number. Returns 0 (no device).
 unsafe fn curDevice() -> c_int {
-    0
+    device_registry::curDevice()
 }
 
 /// Stub: get next device number. Returns 0.
 unsafe fn nextDevice(_dev: c_int) -> c_int {
-    0
+    device_registry::nextDevice(_dev)
 }
 
 /// Stub: get previous device number. Returns 0.
 unsafe fn prevDevice(_dev: c_int) -> c_int {
-    0
+    device_registry::prevDevice(_dev)
 }
 
 /// Stub: select device by number. Returns 0.
 unsafe fn selectDevice(_dev: c_int) -> c_int {
-    0
+    device_registry::selectDevice(_dev)
 }
 
 /// Stub: kill device by number. No-op.
 unsafe fn killDevice(_dev: c_int) {
-    // no-op
+    device_registry::killDevice(_dev)
 }
 
 /// Stub: get device by number. Returns null.
 unsafe fn GEgetDevice(_dev: c_int) -> pGEDevDesc {
-    ptr::null_mut()
+    device_registry::GEgetDevice(_dev)
 }
 
 /// Stub: capture device raster. Returns R_NilValue (unsupported).
-#[unsafe(no_mangle)]
-unsafe fn GECap(_gdd: pGEDevDesc) -> SEXP {
-    R_NilValue()
+unsafe fn GEcurrentDevice() -> pGEDevDesc {
+    device_registry::GEcurrentDevice()
+}
+
+/// Return whether the registry currently has no real devices.
+unsafe fn NoDevices() -> c_int {
+    device_registry::NoDevices()
+}
+
+/// Return the current device count, including the null device.
+unsafe fn NumDevices() -> c_int {
+    device_registry::NumDevices()
 }
 
 /* ==================== Device functions ==================== */
@@ -130,24 +124,29 @@ pub unsafe fn devcontrol(args: SEXP) -> SEXP {
     if listFlag == NA_LOGICAL {
         Rf_error(b"invalid argument\0".as_ptr() as *const c_char);
     }
-    let _gdd = GEcurrentDevice();
-    // Stub: cannot set displayListOn on void* gdd
-    GEinitDisplayList(_gdd);
+    let gdd = GEcurrentDevice();
+    if !gdd.is_null() {
+        (*gdd).displayListOn = listFlag;
+    }
+    device_registry::GEinitDisplayList(gdd);
     Rf_ScalarLogical(listFlag)
 }
 
 /// devdisplaylist() - query display list recording status on current device.
 pub unsafe fn devdisplaylist(args: SEXP) -> SEXP {
-    let _gdd = GEcurrentDevice();
-    // Stub: cannot read displayListOn on void* gdd; return FALSE
-    Rf_ScalarLogical(0)
+    let gdd = GEcurrentDevice();
+    if gdd.is_null() {
+        Rf_ScalarLogical(0)
+    } else {
+        Rf_ScalarLogical((*gdd).displayListOn)
+    }
 }
 
 /// devcopy(which) - copy display list from one device to another.
 pub unsafe fn devcopy(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = *INTEGER(CAR(args)).add(0) - 1;
-    GEcopyDisplayList(dev_num);
+    device_registry::GEcopyDisplayList(dev_num);
     R_NilValue()
 }
 
@@ -190,11 +189,16 @@ pub unsafe fn devset(args: SEXP) -> SEXP {
 pub unsafe fn devoff(args: SEXP) -> SEXP {
     let args = checkArity_length(args);
     let dev_num = *INTEGER(CAR(args)).add(0);
+    if dev_num == 1 {
+        Rf_error(b"cannot shut down device 1 (the null device)\0".as_ptr() as *const c_char);
+    }
     // Check device number is valid (64 is max num devices)
     if dev_num > 0 && dev_num < 64 {
         let gdd = GEgetDevice(dev_num - 1);
-        // Stub: cannot check gdd->lock on void*; skip unlock logic
-        let _ = gdd;
+        if !gdd.is_null() && (*gdd).lock != 0 {
+            Rf_warning(b"Killing locked device\0".as_ptr() as *const c_char);
+            (*gdd).lock = 0;
+        }
     }
     killDevice(*INTEGER(CAR(args)).add(0) - 1);
     R_NilValue()
@@ -202,11 +206,15 @@ pub unsafe fn devoff(args: SEXP) -> SEXP {
 
 /// dev.size(units) - return the size of the current device.
 pub unsafe fn devsize(args: SEXP) -> SEXP {
-    // Stub: GEcurrentDevice returns null, so we cannot call dd->size().
-    // Return c(0, 0) as placeholder.
+    let gdd = GEcurrentDevice();
     let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-    *REAL(ans).add(0) = 0.0;
-    *REAL(ans).add(1) = 0.0;
+    if gdd.is_null() {
+        *REAL(ans).add(0) = 0.0;
+        *REAL(ans).add(1) = 0.0;
+    } else {
+        *REAL(ans).add(0) = (*gdd).width.abs();
+        *REAL(ans).add(1) = (*gdd).height.abs();
+    }
     ans
 }
 
@@ -215,9 +223,11 @@ pub unsafe fn devholdflush(args: SEXP) -> SEXP {
     let mut args = args;
     args = CDR(args);
     let mut level = asInteger(CAR(args));
-    // Stub: no device to call holdflush on
-    if level == NA_INTEGER {
+    let gdd = GEcurrentDevice();
+    if level == NA_INTEGER || gdd.is_null() {
         level = 0;
+    } else {
+        level = (*gdd).holdflush_level;
     }
     Rf_ScalarInteger(level)
 }
@@ -242,13 +252,68 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     let variableFonts;
     let _devcap: SEXP;
 
-    // Stub: no current device, return capabilities list with conservative defaults
-
     args = CDR(args);
     capabilities = CAR(args);
 
+    let gdd = GEcurrentDevice();
+    let deviceVersion = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).deviceVersion
+    };
+    let haveTransparency = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).haveTransparency
+    };
+    let haveTransparentBg = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).haveTransparentBg
+    };
+    let haveRaster = if gdd.is_null() {
+        1
+    } else {
+        (*gdd).haveRaster
+    };
+    let haveCapture = if gdd.is_null() {
+        1
+    } else {
+        (*gdd).haveCapture
+    };
+    let haveLocator = if gdd.is_null() {
+        1
+    } else {
+        (*gdd).haveLocator
+    };
+    let canGenMouseDown = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).canGenMouseDown
+    };
+    let canGenMouseMove = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).canGenMouseMove
+    };
+    let canGenMouseUp = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).canGenMouseUp
+    };
+    let canGenKeybd = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).canGenKeybd
+    };
+    let canGenIdle = if gdd.is_null() {
+        0
+    } else {
+        (*gdd).canGenIdle
+    };
+
     trans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(trans).add(0) = 0; // no transparency
+    *INTEGER(trans).add(0) = haveTransparency;
     SET_VECTOR_ELT(
         capabilities,
         R_GE_capability_semiTransparency as R_xlen_t,
@@ -257,7 +322,7 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     Rf_unprotect(1);
 
     transbg = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(transbg).add(0) = 0; // no transparent bg
+    *INTEGER(transbg).add(0) = haveTransparentBg;
     SET_VECTOR_ELT(
         capabilities,
         R_GE_capability_transparentBackground as R_xlen_t,
@@ -266,7 +331,7 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     Rf_unprotect(1);
 
     raster = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(raster).add(0) = 1; // conservative default
+    *INTEGER(raster).add(0) = haveRaster;
     SET_VECTOR_ELT(
         capabilities,
         R_GE_capability_rasterImage as R_xlen_t,
@@ -275,21 +340,21 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     Rf_unprotect(1);
 
     capture = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(capture).add(0) = 1; // conservative default
+    *INTEGER(capture).add(0) = haveCapture;
     SET_VECTOR_ELT(capabilities, R_GE_capability_capture as R_xlen_t, capture);
     Rf_unprotect(1);
 
     locator = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(locator).add(0) = 1; // conservative default
+    *INTEGER(locator).add(0) = haveLocator;
     SET_VECTOR_ELT(capabilities, R_GE_capability_locator as R_xlen_t, locator);
     Rf_unprotect(1);
 
     events = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
-    *INTEGER(events).add(0) = 0; // canGenMouseDown
-    *INTEGER(events).add(1) = 0; // canGenMouseMove
-    *INTEGER(events).add(2) = 0; // canGenMouseUp
-    *INTEGER(events).add(3) = 0; // canGenKeybd
-    *INTEGER(events).add(4) = 0; // canGenIdle
+    *INTEGER(events).add(0) = canGenMouseDown;
+    *INTEGER(events).add(1) = canGenMouseMove;
+    *INTEGER(events).add(2) = canGenMouseUp;
+    *INTEGER(events).add(3) = canGenKeybd;
+    *INTEGER(events).add(4) = canGenIdle;
     SET_VECTOR_ELT(capabilities, R_GE_capability_events as R_xlen_t, events);
     Rf_unprotect(1);
 
@@ -316,9 +381,15 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     compositing = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     transforms = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     paths = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(compositing).add(0) = 0;
-    *INTEGER(transforms).add(0) = 0;
-    *INTEGER(paths).add(0) = 0;
+    if deviceVersion < R_GE_group {
+        *INTEGER(compositing).add(0) = 0;
+        *INTEGER(transforms).add(0) = 0;
+        *INTEGER(paths).add(0) = 0;
+    } else {
+        *INTEGER(compositing).add(0) = NA_INTEGER;
+        *INTEGER(transforms).add(0) = NA_INTEGER;
+        *INTEGER(paths).add(0) = NA_INTEGER;
+    }
     SET_VECTOR_ELT(
         capabilities,
         R_GE_capability_compositing as R_xlen_t,
@@ -333,14 +404,20 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     Rf_unprotect(3);
 
     glyphs = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    // deviceVersion < R_GE_glyphs (stub), so 0
-    *INTEGER(glyphs).add(0) = 0;
+    if deviceVersion < R_GE_glyphs {
+        *INTEGER(glyphs).add(0) = 0;
+    } else {
+        *INTEGER(glyphs).add(0) = NA_INTEGER;
+    }
     SET_VECTOR_ELT(capabilities, R_GE_capability_glyphs as R_xlen_t, glyphs);
     Rf_unprotect(1);
 
     variableFonts = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    // deviceVersion < R_GE_fontVar (stub), so 0
-    *INTEGER(variableFonts).add(0) = 0;
+    if deviceVersion < R_GE_fontVar {
+        *INTEGER(variableFonts).add(0) = 0;
+    } else {
+        *INTEGER(variableFonts).add(0) = NA_INTEGER;
+    }
     SET_VECTOR_ELT(
         capabilities,
         R_GE_capability_variableFonts as R_xlen_t,
@@ -365,7 +442,7 @@ pub unsafe fn devcapture(args: SEXP) -> SEXP {
         native = 0;
     }
 
-    raster = GECap(_gdd);
+    raster = device_registry::GECap(_gdd);
     // GECap returns R_NilValue when unsupported
     if Rf_isNull(raster) != 0 {
         return raster;

@@ -53,6 +53,15 @@ mod devcairo;
     unused_assignments,
     non_camel_case_types
 )]
+mod device_registry;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types
+)]
 mod devices;
 #[allow(
     dead_code,
