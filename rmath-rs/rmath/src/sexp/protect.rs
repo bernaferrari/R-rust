@@ -10,6 +10,9 @@
 use std::cell::RefCell;
 use std::os::raw::c_int;
 
+#[cfg(test)]
+use std::cell::Cell;
+
 use super::ffi::SEXP;
 
 /// RAII guard for the protection stack.
@@ -51,9 +54,10 @@ pub fn protect(s: SEXP) -> ProtectGuard {
     }
 }
 
-/// Protect n SEXP values and return an RAII guard.
+/// Create a guard that will unprotect `n` stack entries on drop.
 ///
-/// Use this when you need to protect multiple values at once.
+/// This does not call `Rf_protect`; callers must already have pushed `n`
+/// entries and want RAII-style unwinding safety around a manual protect batch.
 pub fn protect_n(n: usize) -> ProtectGuard {
     ProtectGuard { count: n }
 }
@@ -79,6 +83,21 @@ impl ProtectStack {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    static FORCE_RESERVE_FAIL: Cell<bool> = const { Cell::new(false) };
+}
+
+fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
+    #[cfg(test)]
+    if FORCE_RESERVE_FAIL.with(|flag| flag.get()) {
+        panic!("{api}: protection stack allocation failed");
+    }
+    if stack.try_reserve(1).is_err() {
+        panic!("{api}: protection stack allocation failed");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Core protect/unprotect functions
 // ---------------------------------------------------------------------------
@@ -92,9 +111,7 @@ pub unsafe fn Rf_protect(s: SEXP) -> SEXP {
     if !s.is_null() {
         PROTECT_STACK.with(|ps| {
             let mut stack = ps.borrow_mut();
-            if stack.stack.try_reserve(1).is_err() {
-                return;
-            }
+            reserve_slot_or_fail(&mut stack.stack, "Rf_protect");
             stack.stack.push(s);
         });
     }
@@ -217,9 +234,7 @@ pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
     let index = PROTECT_STACK.with(|ps| {
         let mut stack = ps.borrow_mut();
         if !s.is_null() {
-            if stack.stack.try_reserve(1).is_err() {
-                return usize::MAX;
-            }
+            reserve_slot_or_fail(&mut stack.stack, "R_ProtectWithIndex");
             stack.stack.push(s);
             (stack.stack.len() - 1) + 1
         } else {
@@ -267,9 +282,7 @@ pub unsafe fn R_PreserveObject(s: SEXP) {
     if !s.is_null() {
         PRESERVE_STACK.with(|ps| {
             let mut stack = ps.borrow_mut();
-            if stack.try_reserve(1).is_err() {
-                return;
-            }
+            reserve_slot_or_fail(&mut stack, "R_PreserveObject");
             stack.push(s);
         });
     }
@@ -296,6 +309,7 @@ pub unsafe fn R_ReleaseObject(s: SEXP) {
 
 #[cfg(test)]
 mod tests {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::ptr;
 
     use super::*;
@@ -307,6 +321,18 @@ mod tests {
         PRESERVE_STACK.with(|ps| {
             ps.borrow_mut().clear();
         });
+        #[cfg(test)]
+        FORCE_RESERVE_FAIL.with(|flag| flag.set(false));
+    }
+
+    fn with_forced_reserve_failure<F>(f: F)
+    where
+        F: FnOnce(),
+    {
+        FORCE_RESERVE_FAIL.with(|flag| flag.set(true));
+        let result = catch_unwind(AssertUnwindSafe(f));
+        FORCE_RESERVE_FAIL.with(|flag| flag.set(false));
+        assert!(result.is_err());
     }
 
     #[test]
@@ -589,5 +615,34 @@ mod tests {
         unsafe {
             R_ReleaseObject(0x200 as SEXP);
         }
+    }
+
+    #[test]
+    fn test_protect_reserve_failure_panics() {
+        reset_protect_stack();
+        with_forced_reserve_failure(|| unsafe {
+            Rf_protect(0x1 as SEXP);
+        });
+        assert_eq!(R_ProtectCount(), 0);
+    }
+
+    #[test]
+    fn test_protect_with_index_reserve_failure_panics() {
+        reset_protect_stack();
+        with_forced_reserve_failure(|| unsafe {
+            let _ = R_ProtectWithIndex(0x1 as SEXP);
+        });
+        assert_eq!(R_ProtectCount(), 0);
+    }
+
+    #[test]
+    fn test_preserve_reserve_failure_panics() {
+        reset_protect_stack();
+        with_forced_reserve_failure(|| unsafe {
+            R_PreserveObject(0x1 as SEXP);
+        });
+        PRESERVE_STACK.with(|ps| {
+            assert!(ps.borrow().is_empty());
+        });
     }
 }
