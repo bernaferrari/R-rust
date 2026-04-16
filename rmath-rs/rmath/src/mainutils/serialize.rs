@@ -1004,7 +1004,12 @@ pub unsafe fn R_Unserialize(stream: R_inpstream_t) -> SEXP {
         if stream.is_null() {
             error("read error");
         }
-        error("read error");
+        let bytes = read_stream_bytes_via_inchar(stream);
+        if bytes.is_empty() {
+            error("read error");
+        }
+        let raw = raw_from_bytes(&bytes);
+        R_unserialize(raw, R_NilValue())
     }
 }
 
@@ -1021,7 +1026,21 @@ pub unsafe fn R_SerializeInfo(stream: R_inpstream_t) -> SEXP {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_ReadItem(stream: R_inpstream_t) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        if stream.is_null() {
+            error("read error");
+        }
+        let bytes = read_stream_bytes_via_inchar(stream);
+        if bytes.is_empty() {
+            error("read error");
+        }
+        let mut reader = BinaryReader::new(&bytes);
+        let mut ref_table = ReadRefTable::new();
+        match ReadItemInternal(&mut reader, &mut ref_table) {
+            Ok(v) => v,
+            Err(_) => error("read error"),
+        }
+    }
 }
 
 pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
@@ -1051,6 +1070,26 @@ pub unsafe fn R_WriteItem(s: SEXP, stream: R_outpstream_t) {
                 offset += chunk_len;
             }
         }
+    }
+}
+
+unsafe fn read_stream_bytes_via_inchar(stream: R_inpstream_t) -> Vec<u8> {
+    unsafe {
+        if stream.is_null() {
+            return Vec::new();
+        }
+        let Some(in_char) = (*stream).InChar else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        loop {
+            let ch = in_char(stream);
+            if ch < 0 {
+                break;
+            }
+            out.push(ch as u8);
+        }
+        out
     }
 }
 
@@ -1121,7 +1160,16 @@ pub unsafe fn R_InitFileOutPStream(
     pdata: SEXP,
 ) {
     unsafe {
-        R_InitOutPStream(stream, fp, type_, version, None, None, phook, pdata);
+        R_InitOutPStream(
+            stream,
+            fp,
+            type_,
+            version,
+            Some(OutCharFile),
+            Some(OutBytesFile),
+            phook,
+            pdata,
+        );
     }
 }
 
@@ -1133,7 +1181,15 @@ pub unsafe fn R_InitFileInPStream(
     pdata: SEXP,
 ) {
     unsafe {
-        R_InitInPStream(stream, fp, type_, None, None, phook, pdata);
+        R_InitInPStream(
+            stream,
+            fp,
+            type_,
+            Some(InCharFile),
+            Some(InBytesFile),
+            phook,
+            pdata,
+        );
     }
 }
 
@@ -1145,6 +1201,18 @@ pub unsafe fn R_InitConnOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    unsafe {
+        R_InitOutPStream(
+            stream,
+            con,
+            type_,
+            version,
+            Some(OutCharFile),
+            Some(OutBytesFile),
+            phook,
+            pdata,
+        );
+    }
 }
 
 pub unsafe fn R_InitConnInPStream(
@@ -1154,6 +1222,17 @@ pub unsafe fn R_InitConnInPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    unsafe {
+        R_InitInPStream(
+            stream,
+            con,
+            type_,
+            Some(InCharFile),
+            Some(InBytesFile),
+            phook,
+            pdata,
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1590,16 +1669,66 @@ unsafe fn InFormat(stream: R_inpstream_t) {
 unsafe fn MakeHashTable() -> SEXP {
     unsafe {
         let vec = Rf_allocVector3(SEXPTYPE::VECSXP, HASHSIZE as R_xlen_t);
-        Rf_cons(R_NilValue(), vec)
+        Rf_cons(Rf_ScalarInteger(0), vec)
     }
 }
 
 unsafe fn HashAdd(obj: SEXP, ht: SEXP) {
-    // Simplified stub
+    unsafe {
+        if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
+            return;
+        }
+        let buckets = CDR(ht);
+        if buckets.is_null() || TYPEOF(buckets) != SEXPTYPE::VECSXP {
+            return;
+        }
+        let bucket_count = XLENGTH(buckets) as usize;
+        if bucket_count == 0 {
+            return;
+        }
+        let key = obj as usize;
+        let pos = ((key >> 2) % bucket_count) as R_xlen_t;
+        let current_count = asInteger(CAR(ht));
+        let next_count = current_count.saturating_add(1);
+        SETCAR(ht, Rf_ScalarInteger(next_count));
+
+        let entry = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        SET_VECTOR_ELT(entry, 0, obj);
+        SET_VECTOR_ELT(entry, 1, Rf_ScalarInteger(next_count));
+        let bucket = VECTOR_ELT(buckets, pos);
+        let new_bucket = Rf_cons(entry, bucket);
+        SET_VECTOR_ELT(buckets, pos, new_bucket);
+    }
 }
 
 unsafe fn HashGet(item: SEXP, ht: SEXP) -> c_int {
-    0
+    unsafe {
+        if ht.is_null() || TYPEOF(ht) != SEXPTYPE::LISTSXP {
+            return 0;
+        }
+        let buckets = CDR(ht);
+        if buckets.is_null() || TYPEOF(buckets) != SEXPTYPE::VECSXP {
+            return 0;
+        }
+        let bucket_count = XLENGTH(buckets) as usize;
+        if bucket_count == 0 {
+            return 0;
+        }
+        let key = item as usize;
+        let pos = ((key >> 2) % bucket_count) as R_xlen_t;
+        let mut node = VECTOR_ELT(buckets, pos);
+        while !node.is_null() && TYPEOF(node) == SEXPTYPE::LISTSXP {
+            let entry = CAR(node);
+            if !entry.is_null() && TYPEOF(entry) == SEXPTYPE::VECSXP && XLENGTH(entry) >= 2 {
+                let stored = VECTOR_ELT(entry, 0);
+                if stored == item {
+                    return asInteger(VECTOR_ELT(entry, 1));
+                }
+            }
+            node = CDR(node);
+        }
+        0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1707,10 +1836,60 @@ unsafe fn InComplexVec(stream: R_inpstream_t, obj: SEXP, length: R_xlen_t) {
 // Bytecode serialization (stubs)
 // ---------------------------------------------------------------------------
 
-unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {}
+unsafe fn WriteBC(s: SEXP, ref_table: SEXP, stream: R_outpstream_t) {
+    unsafe {
+        let _ = ref_table;
+        if stream.is_null() {
+            return;
+        }
+        let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
+        let len = XLENGTH(raw);
+        if len < 0 || len > c_int::MAX as R_xlen_t {
+            error("write failed");
+        }
+        OutInteger(stream, len as c_int);
+        if len > 0 {
+            if let Some(out_bytes) = (*stream).OutBytes {
+                out_bytes(stream, RAW(raw) as *const c_void, len as c_int);
+            } else if let Some(out_char) = (*stream).OutChar {
+                for i in 0..len as usize {
+                    out_char(stream, *RAW(raw).add(i) as c_int);
+                }
+            } else {
+                error("write failed");
+            }
+        }
+    }
+}
 
 unsafe fn ReadBC(ref_table: SEXP, stream: R_inpstream_t) -> SEXP {
-    unsafe { error("read error") }
+    unsafe {
+        let _ = ref_table;
+        if stream.is_null() {
+            error("read error");
+        }
+        let len = InInteger(stream);
+        if len < 0 {
+            error("read error");
+        }
+        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, len as R_xlen_t);
+        if len > 0 {
+            if let Some(in_bytes) = (*stream).InBytes {
+                in_bytes(stream, RAW(raw) as *mut c_void, len);
+            } else if let Some(in_char) = (*stream).InChar {
+                for i in 0..len as usize {
+                    let ch = in_char(stream);
+                    if ch < 0 {
+                        error("read error");
+                    }
+                    *RAW(raw).add(i) = ch as Rbyte;
+                }
+            } else {
+                error("read error");
+            }
+        }
+        R_unserialize(raw, R_NilValue())
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1735,15 +1914,56 @@ unsafe fn ReadChar(stream: R_inpstream_t, buf: *mut c_char, length: c_int, levs:
 unsafe fn MakeReadRefTable() -> SEXP {
     unsafe {
         let data = Rf_allocVector3(SEXPTYPE::VECSXP, INITIAL_REFREAD_TABLE_SIZE as R_xlen_t);
-        Rf_cons(data, R_NilValue())
+        Rf_cons(data, Rf_ScalarInteger(0))
     }
 }
 
 unsafe fn GetReadRef(table: SEXP, index: c_int) -> SEXP {
-    unsafe { error("reference index out of range") }
+    unsafe {
+        if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP || index <= 0 {
+            error("reference index out of range");
+        }
+        let data = CAR(table);
+        if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP {
+            error("reference index out of range");
+        }
+        let used = asInteger(CDR(table));
+        if index > used {
+            error("reference index out of range");
+        }
+        VECTOR_ELT(data, (index - 1) as R_xlen_t)
+    }
 }
 
-unsafe fn AddReadRef(table: SEXP, value: SEXP) {}
+unsafe fn AddReadRef(table: SEXP, value: SEXP) {
+    unsafe {
+        if table.is_null() || TYPEOF(table) != SEXPTYPE::LISTSXP {
+            return;
+        }
+        let mut data = CAR(table);
+        if data.is_null() || TYPEOF(data) != SEXPTYPE::VECSXP {
+            return;
+        }
+        let mut used = asInteger(CDR(table));
+        if used < 0 {
+            used = 0;
+        }
+
+        if (used as R_xlen_t) >= XLENGTH(data) {
+            let old_len = XLENGTH(data);
+            let new_len = std::cmp::max(1, old_len * 2);
+            let grown = Rf_allocVector3(SEXPTYPE::VECSXP, new_len);
+            for i in 0..old_len {
+                SET_VECTOR_ELT(grown, i, VECTOR_ELT(data, i));
+            }
+            SETCAR(table, grown);
+            data = grown;
+        }
+
+        SET_VECTOR_ELT(data, used as R_xlen_t, value);
+        SETCDR(table, Rf_ScalarInteger(used.saturating_add(1)));
+    }
+}
 
 // ---------------------------------------------------------------------------
 // R_InitSerializeRoutines
@@ -1956,32 +2176,127 @@ unsafe fn InitBConOutPStream(
     phook: Option<unsafe extern "C" fn(SEXP, SEXP) -> SEXP>,
     pdata: SEXP,
 ) {
+    unsafe {
+        if !bbs.is_null() {
+            R_InitOutPStream(
+                stream,
+                bbs as R_pstream_data_t,
+                type_,
+                version,
+                Some(OutCharMem),
+                Some(OutBytesMem),
+                phook,
+                pdata,
+            );
+        } else {
+            R_InitOutPStream(
+                stream,
+                con as R_pstream_data_t,
+                type_,
+                version,
+                Some(OutCharFile),
+                Some(OutBytesFile),
+                phook,
+                pdata,
+            );
+        }
+    }
 }
 
-unsafe fn flush_bcon_buffer(bbs: *mut c_void) {}
+unsafe fn flush_bcon_buffer(bbs: *mut c_void) {
+    unsafe {
+        if !bbs.is_null() {
+            let fp = bbs as *mut libc::FILE;
+            libc::fflush(fp);
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // File I/O callbacks
 // ---------------------------------------------------------------------------
 
-unsafe fn OutCharFile(stream: R_outpstream_t, c: c_int) {}
-
-unsafe fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {}
-
-unsafe fn InCharFile(stream: R_inpstream_t) -> c_int {
-    0
+unsafe extern "C" fn OutCharFile(stream: R_outpstream_t, c: c_int) {
+    unsafe {
+        if stream.is_null() {
+            return;
+        }
+        let fp = (*stream).data as *mut libc::FILE;
+        if fp.is_null() {
+            return;
+        }
+        libc::fputc(c, fp);
+    }
 }
 
-unsafe fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {}
+unsafe extern "C" fn OutBytesFile(stream: R_outpstream_t, buf: *const c_void, length: c_int) {
+    unsafe {
+        if stream.is_null() || buf.is_null() || length <= 0 {
+            return;
+        }
+        let fp = (*stream).data as *mut libc::FILE;
+        if fp.is_null() {
+            error("write failed");
+        }
+        let wrote = libc::fwrite(buf, 1, length as usize, fp);
+        if wrote != length as usize {
+            error("write failed");
+        }
+    }
+}
 
-unsafe fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {}
+unsafe extern "C" fn InCharFile(stream: R_inpstream_t) -> c_int {
+    unsafe {
+        if stream.is_null() {
+            return -1;
+        }
+        let fp = (*stream).data as *mut libc::FILE;
+        if fp.is_null() {
+            return -1;
+        }
+        libc::fgetc(fp)
+    }
+}
+
+unsafe extern "C" fn InBytesFile(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+    unsafe {
+        if stream.is_null() || buf.is_null() || length <= 0 {
+            return;
+        }
+        let fp = (*stream).data as *mut libc::FILE;
+        if fp.is_null() {
+            error("read error");
+        }
+        let read_n = libc::fread(buf, 1, length as usize, fp);
+        if read_n != length as usize {
+            error("read error");
+        }
+    }
+}
+
+unsafe fn InInit(stream: R_inpstream_t, buf: *mut c_void, length: c_int) {
+    unsafe {
+        if !stream.is_null() && !buf.is_null() && length > 0 {
+            InBytesFile(stream, buf, length);
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Connection I/O
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_WriteConnection(con: *mut c_void, buf: *const c_void, n: usize) -> usize {
-    0
+    unsafe {
+        if con.is_null() || buf.is_null() || n == 0 {
+            return 0;
+        }
+        let fp = con as *mut libc::FILE;
+        if fp.is_null() {
+            return 0;
+        }
+        libc::fwrite(buf, 1, n, fp)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2230,6 +2545,8 @@ mod tests {
     use crate::sexp::envir::defineVar;
     use crate::sexp::globals::R_BaseEnv;
     use std::ffi::CString;
+    use std::mem;
+    use std::os::raw::c_void;
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -2435,6 +2752,137 @@ mod tests {
         assert_eq!(must(rt.get(2)), fake2);
         assert!(rt.get(3).is_err());
         assert!(rt.get(0).is_err());
+    }
+
+    #[test]
+    fn test_c_read_ref_table_helpers() {
+        unsafe {
+            let table = MakeReadRefTable();
+            let a = Rf_ScalarInteger(11);
+            let b = Rf_ScalarReal(2.5);
+            AddReadRef(table, a);
+            AddReadRef(table, b);
+            assert_eq!(GetReadRef(table, 1), a);
+            assert_eq!(GetReadRef(table, 2), b);
+        }
+    }
+
+    #[test]
+    fn test_c_hash_table_helpers() {
+        unsafe {
+            let ht = MakeHashTable();
+            let a = Rf_ScalarInteger(1);
+            let b = Rf_ScalarInteger(2);
+            assert_eq!(HashGet(a, ht), 0);
+            HashAdd(a, ht);
+            HashAdd(b, ht);
+            assert!(HashGet(a, ht) > 0);
+            assert!(HashGet(b, ht) > 0);
+        }
+    }
+
+    #[test]
+    fn test_writebc_readbc_round_trip() {
+        unsafe {
+            let mut out_stream: R_outpstream_st = mem::zeroed();
+            let mut out_buf = membuf_st {
+                size: 0,
+                count: 0,
+                buf: ptr::null_mut(),
+            };
+            InitMemOutPStream(
+                &mut out_stream,
+                &mut out_buf,
+                R_pstream_format_t::R_pstream_binary_format,
+                3,
+                None,
+                R_NilValue(),
+            );
+            let value = Rf_ScalarInteger(77);
+            WriteBC(value, ptr::null_mut(), &mut out_stream);
+            let raw = CloseMemOutPStream(&mut out_stream);
+
+            let mut in_stream: R_inpstream_st = mem::zeroed();
+            let mut in_buf = membuf_st {
+                size: 0,
+                count: 0,
+                buf: ptr::null_mut(),
+            };
+            InitMemInPStream(
+                &mut in_stream,
+                &mut in_buf,
+                RAW(raw) as *mut c_void,
+                XLENGTH(raw) as R_size_t,
+                None,
+                R_NilValue(),
+            );
+            let got = ReadBC(ptr::null_mut(), &mut in_stream);
+            assert_eq!(TYPEOF(got), SEXPTYPE::INTSXP);
+            assert_eq!(LENGTH(got), 1);
+            assert_eq!(*INTEGER(got), 77);
+        }
+    }
+
+    #[test]
+    fn test_conn_stream_file_callbacks() {
+        unsafe {
+            let fp = libc::tmpfile();
+            assert!(!fp.is_null());
+
+            let mut out_stream: R_outpstream_st = mem::zeroed();
+            R_InitConnOutPStream(
+                &mut out_stream,
+                fp as *mut c_void,
+                R_pstream_format_t::R_pstream_binary_format,
+                3,
+                None,
+                R_NilValue(),
+            );
+            assert!(out_stream.OutBytes.is_some());
+            let bytes = [1u8, 2, 3, 4];
+            out_stream.OutBytes.unwrap()(
+                &mut out_stream,
+                bytes.as_ptr() as *const c_void,
+                bytes.len() as c_int,
+            );
+            libc::fflush(fp);
+            libc::rewind(fp);
+
+            let mut in_stream: R_inpstream_st = mem::zeroed();
+            R_InitConnInPStream(
+                &mut in_stream,
+                fp as *mut c_void,
+                R_pstream_format_t::R_pstream_binary_format,
+                None,
+                R_NilValue(),
+            );
+            assert!(in_stream.InBytes.is_some());
+            let mut got = [0u8; 4];
+            in_stream.InBytes.unwrap()(
+                &mut in_stream,
+                got.as_mut_ptr() as *mut c_void,
+                got.len() as c_int,
+            );
+            assert_eq!(got, bytes);
+
+            libc::fclose(fp);
+        }
+    }
+
+    #[test]
+    fn test_r_write_connection_file_round_trip() {
+        unsafe {
+            let fp = libc::tmpfile();
+            assert!(!fp.is_null());
+            let bytes = b"hello";
+            let wrote = R_WriteConnection(fp as *mut c_void, bytes.as_ptr() as *const c_void, bytes.len());
+            assert_eq!(wrote, bytes.len());
+            libc::fflush(fp);
+            libc::fseek(fp, 0, libc::SEEK_END);
+            let size = libc::ftell(fp);
+            assert_eq!(size, bytes.len() as libc::c_long);
+            libc::fclose(fp);
+        }
     }
 
     #[test]
