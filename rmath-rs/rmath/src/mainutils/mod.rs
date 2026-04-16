@@ -31,6 +31,7 @@ pub mod engine;
 pub mod envir;
 pub mod errors;
 pub mod essentials;
+pub mod essentials_basic;
 pub mod flexiblas;
 pub mod format;
 pub mod gram_ex;
