@@ -1777,12 +1777,11 @@ unsafe fn addDeviceFont(
 }
 
 // =========================================================================
-// R_GE_str2col stub
+// R_GE_str2col bridge
 // =========================================================================
 
-unsafe fn R_GE_str2col(_colstr: *const c_char) -> rcolor {
-    // Stub: in a full implementation, this dispatches to grDevices
-    0xFF000000 // black
+unsafe fn R_GE_str2col(colstr: *const c_char) -> rcolor {
+    crate::mainutils::colors::R_GE_str2col(colstr) as rcolor
 }
 
 // =========================================================================

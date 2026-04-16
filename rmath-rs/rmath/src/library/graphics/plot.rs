@@ -566,7 +566,7 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
         }
     } else if isString(pch) != 0 {
         for i in 0..n as usize {
-            /* GEstring_to_pch is a GE function - stub */
+            /* Delegate to shared engine conversion. */
             INTEGER(ans)
                 .add(i)
                 .write(GEstring_to_pch(STRING_ELT(pch, i as R_xlen_t)));
@@ -586,17 +586,15 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
     ans
 }
 
-/* GEstring_to_pch stub */
+/* GEstring_to_pch delegate */
 #[unsafe(no_mangle)]
 unsafe fn GEstring_to_pch(s: SEXP) -> c_int {
-    /* Stub: returns default pch */
-    1
+    crate::mainutils::engine::GEstring_to_pch(s)
 }
 
-/* GE_LTYpar stub */
+/* GE_LTYpar delegate */
 unsafe fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
-    /* Stub: returns default lty */
-    1
+    crate::mainutils::engine::GE_LTYpar(lty, i) as c_int
 }
 
 /* ========================================================================
