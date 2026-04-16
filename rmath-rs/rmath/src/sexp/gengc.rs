@@ -442,6 +442,11 @@ fn update_field(field: &mut SEXP, old_to_new: &HashMap<usize, SEXP>) {
     }
 }
 
+#[inline]
+fn vector_payload_has_sexp_refs(t: SEXPTYPE) -> bool {
+    matches!(t.0, 16 | 19 | 20) // STRSXP, VECSXP, EXPRSXP
+}
+
 fn update_protect_stack(old_to_new: &HashMap<usize, SEXP>) {
     update_protect_stack_refs(|ptr| {
         let addr = ptr as usize;
@@ -506,7 +511,7 @@ fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
                     _ => {} // intentionally unhandled: SEXPTYPE has no pointers to forward in GC
                 }
 
-                if t.is_vector_type() {
+                if vector_payload_has_sexp_refs(t) {
                     let len = (*obj).vecsxp_length();
                     let data = (*obj).gengc_next_node as *mut SEXP;
                     if !data.is_null() && len > 0 {
@@ -967,7 +972,7 @@ fn do_compact(snapshot: &CompactionSnapshot) -> usize {
                     old_to_new.get(&(env as usize)).copied().unwrap_or(env);
             }
 
-            if live.sexptype.is_vector_type() {
+            if vector_payload_has_sexp_refs(live.sexptype) {
                 let len = (*new_obj).vecsxp_length();
                 let data = (*new_obj).gengc_next_node as *mut SEXP;
                 if !data.is_null() && len > 0 {
@@ -1061,6 +1066,8 @@ impl<'a> VectorSlot<'a> {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::super::memory::with_arena;
     use super::*;
 
@@ -1345,5 +1352,52 @@ mod tests {
             *arena = RArena::new();
         });
         force_compact();
+    }
+
+    #[test]
+    fn test_update_object_references_skips_atomic_vector_payloads() {
+        let mut marker: SEXP = ptr::null_mut();
+        let mut vec: SEXP = ptr::null_mut();
+        with_arena(|arena| {
+            *arena = RArena::new();
+            marker = arena.alloc_node(SEXPTYPE::LISTSXP);
+            vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
+        });
+
+        let original_bits = marker as usize as u64;
+        unsafe {
+            *((*vec).gengc_next_node as *mut f64) = f64::from_bits(original_bits);
+        }
+
+        let replacement = 0x1234usize as SEXP;
+        let mut map = HashMap::new();
+        map.insert(marker as usize, replacement);
+        update_object_references(&map);
+
+        let after_bits = unsafe { *((*vec).gengc_next_node as *const f64) }.to_bits();
+        assert_eq!(after_bits, original_bits);
+    }
+
+    #[test]
+    fn test_update_object_references_updates_pointer_vector_payloads() {
+        let mut marker: SEXP = ptr::null_mut();
+        let mut vec: SEXP = ptr::null_mut();
+        with_arena(|arena| {
+            *arena = RArena::new();
+            marker = arena.alloc_node(SEXPTYPE::LISTSXP);
+            vec = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
+        });
+
+        unsafe {
+            *((*vec).gengc_next_node as *mut SEXP) = marker;
+        }
+
+        let replacement = 0x5678usize as SEXP;
+        let mut map = HashMap::new();
+        map.insert(marker as usize, replacement);
+        update_object_references(&map);
+
+        let after_ptr = unsafe { *((*vec).gengc_next_node as *mut SEXP) };
+        assert_eq!(after_ptr, replacement);
     }
 }
