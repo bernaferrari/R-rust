@@ -1,5 +1,6 @@
 package com.rstudio.mobile.ui
 
+import android.app.Activity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -8,12 +9,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
@@ -25,7 +25,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.automirrored.filled.Help
+import androidx.compose.material.icons.automirrored.filled.ListAlt
 import com.rstudio.mobile.components.ConsoleView
 import com.rstudio.mobile.components.EnvironmentBrowser
 import com.rstudio.mobile.components.FileBrowser
@@ -37,14 +40,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.InsertChart
-import androidx.compose.material.icons.filled.ListAlt
 import androidx.compose.material.icons.filled.Folder
-import androidx.compose.material.icons.filled.Help
 
 @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
 @Composable
 fun RStudioApp() {
-    val windowSizeClass = calculateWindowSizeClass()
+    val activity = LocalContext.current as Activity
+    val windowSizeClass = calculateWindowSizeClass(activity)
     val isTablet = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
 
     if (isTablet) {
@@ -62,9 +64,9 @@ private fun PhoneLayout() {
         "Script" to Icons.Default.Code,
         "Console" to Icons.Default.Terminal,
         "Plots" to Icons.Default.InsertChart,
-        "Env" to Icons.Default.ListAlt,
+        "Env" to Icons.AutoMirrored.Filled.ListAlt,
         "Files" to Icons.Default.Folder,
-        "Help" to Icons.Default.Help
+        "Help" to Icons.AutoMirrored.Filled.Help
     )
 
     Column(Modifier.fillMaxSize()) {
@@ -112,9 +114,9 @@ private fun TabletLayout() {
             val scope = rememberCoroutineScope()
             val tabs = listOf(
                 "Plots" to Icons.Default.InsertChart,
-                "Env" to Icons.Default.ListAlt,
+                "Env" to Icons.AutoMirrored.Filled.ListAlt,
                 "Files" to Icons.Default.Folder,
-                "Help" to Icons.Default.Help
+                "Help" to Icons.AutoMirrored.Filled.Help
             )
 
             TabRow(selectedTabIndex = rightPagerState.currentPage) {

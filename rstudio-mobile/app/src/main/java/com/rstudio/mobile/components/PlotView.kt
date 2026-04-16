@@ -21,6 +21,9 @@ import kotlin.math.roundToInt
 fun PlotView() {
     var scale by remember { mutableFloatStateOf(1f) }
     var offset by remember { mutableStateOf(IntOffset.Zero) }
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val outline = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+    val primary = MaterialTheme.colorScheme.primary
 
     Box(
         modifier = Modifier
@@ -53,13 +56,13 @@ fun PlotView() {
 
             // Axes
             drawLine(
-                color = MaterialTheme.colorScheme.onSurface,
+                color = onSurface,
                 start = androidx.compose.ui.geometry.Offset(padding, canvasHeight - padding),
                 end = androidx.compose.ui.geometry.Offset(canvasWidth - padding, canvasHeight - padding),
                 strokeWidth = 2f
             )
             drawLine(
-                color = MaterialTheme.colorScheme.onSurface,
+                color = onSurface,
                 start = androidx.compose.ui.geometry.Offset(padding, padding),
                 end = androidx.compose.ui.geometry.Offset(padding, canvasHeight - padding),
                 strokeWidth = 2f
@@ -69,7 +72,7 @@ fun PlotView() {
             for (i in 0..4) {
                 val y = padding + (canvasHeight - 2 * padding) * i / 4
                 drawLine(
-                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
+                    color = outline,
                     start = androidx.compose.ui.geometry.Offset(padding, y),
                     end = androidx.compose.ui.geometry.Offset(canvasWidth - padding, y),
                     strokeWidth = 1f
@@ -85,7 +88,7 @@ fun PlotView() {
                 val x = padding + (canvasWidth - 2 * padding) * index / (points.size - 1)
                 val y = canvasHeight - padding - (canvasHeight - 2 * padding) * value
                 drawCircle(
-                    color = MaterialTheme.colorScheme.primary,
+                    color = primary,
                     radius = 6f,
                     center = androidx.compose.ui.geometry.Offset(x, y)
                 )

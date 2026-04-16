@@ -27,7 +27,7 @@ object RSyntaxHighlighter {
 
             while (pos < input.length) {
                 when {
-                    input.startsWith('#', pos) -> {
+                    input.getOrNull(pos) == '#' -> {
                         val end = input.indexOf('\n', pos).takeIf { it != -1 } ?: input.length
                         addStyle(SpanStyle(color = COLOR_COMMENT), pos, end)
                         pos = end

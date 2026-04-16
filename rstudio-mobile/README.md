@@ -40,7 +40,14 @@ app/src/main/java/com/rstudio/mobile/
 ## Building
 
 ```bash
-./gradlew assembleDebug
+cd rstudio-mobile
+./gradlew :app:assembleDebug
+```
+
+For the release smoke path, run:
+
+```bash
+../scripts/android_package_smoke.sh --check
 ```
 
 ## Layout Behaviour
