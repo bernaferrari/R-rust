@@ -29,6 +29,7 @@ fn detect_r_include_dir() -> Option<PathBuf> {
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed=src/cshim/grid_release.c");
+    println!("cargo:rerun-if-changed=src/cshim/ge_device_bridge.c");
     println!("cargo:rerun-if-changed=../../r-source/src/include/R_ext/GraphicsDevice.h");
     println!("cargo:rerun-if-changed=../../r-source/src/include/R_ext/GraphicsEngine.h");
 
@@ -39,6 +40,7 @@ fn main() {
     let mut build = cc::Build::new();
     build
         .file(manifest_dir.join("src/cshim/grid_release.c"))
+        .file(manifest_dir.join("src/cshim/ge_device_bridge.c"))
         .warnings(false);
     if vendored_r_headers.exists() {
         build.include(&vendored_r_headers);
