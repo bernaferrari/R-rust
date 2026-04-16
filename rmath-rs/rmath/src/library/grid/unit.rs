@@ -18,6 +18,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::pGEDevDesc;
+use super::matrix::{location, locationX, locationY, rotation, trans};
 use super::types::pGEcontext;
 
 unsafe extern "C" {
@@ -710,12 +711,18 @@ pub unsafe fn transformLocn(
     widthCM: c_double,
     heightCM: c_double,
     dd: pGEDevDesc,
-    _t: *mut [[f64; 3]; 3],
+    t: *mut [[f64; 3]; 3],
     xx: *mut c_double,
     yy: *mut c_double,
 ) {
+    let mut lin = [0.0; 3];
+    let mut lout = [0.0; 3];
     *xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
     *yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
+    location(*xx, *yy, &mut lin);
+    trans(&lin, t, &mut lout);
+    *xx = locationX(&lout);
+    *yy = locationY(&lout);
 }
 
 /* ==============================
@@ -731,12 +738,20 @@ pub unsafe fn transformDimn(
     widthCM: c_double,
     heightCM: c_double,
     dd: pGEDevDesc,
-    _rotationAngle: c_double,
+    rotationAngle: c_double,
     ww: *mut c_double,
     hh: *mut c_double,
 ) {
+    let mut din = [0.0; 3];
+    let mut dout = [0.0; 3];
+    let mut r = [[0.0; 3]; 3];
     *ww = transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd);
     *hh = transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd);
+    location(*ww, *hh, &mut din);
+    rotation(rotationAngle, &mut r);
+    trans(&din, &r, &mut dout);
+    *ww = locationX(&dout);
+    *hh = locationY(&dout);
 }
 
 /* ==============================
@@ -1097,6 +1112,62 @@ mod tests {
             approx_eq(transformWHfromNPC(0.5, L_NATIVE, 0.0, 10.0), 5.0);
             approx_eq(transformXYtoNPC(0.25, L_SNPC, 0.0, 10.0), 0.25);
             approx_eq(transformXYfromNPC(0.25, L_SNPC, 0.0, 10.0), 0.25);
+        }
+    }
+
+    #[test]
+    fn transform_locn_applies_viewport_transform_matrix() {
+        unsafe {
+            let x = unit(1.0, L_INCHES);
+            let y = unit(2.0, L_INCHES);
+            let mut t = [[0.0; 3]; 3];
+            t[0][0] = 1.0;
+            t[1][1] = 1.0;
+            t[2][2] = 1.0;
+            t[2][0] = 3.0;
+            t[2][1] = -1.5;
+            let mut xx = 0.0;
+            let mut yy = 0.0;
+            transformLocn(
+                x,
+                y,
+                0,
+                LViewportContext::default(),
+                std::ptr::null(),
+                0.0,
+                0.0,
+                std::ptr::null_mut(),
+                &mut t,
+                &mut xx,
+                &mut yy,
+            );
+            approx_eq(xx, 4.0);
+            approx_eq(yy, 0.5);
+        }
+    }
+
+    #[test]
+    fn transform_dimn_applies_rotation_matrix() {
+        unsafe {
+            let w = unit(1.0, L_INCHES);
+            let h = unit(0.0, L_INCHES);
+            let mut ww = 0.0;
+            let mut hh = 0.0;
+            transformDimn(
+                w,
+                h,
+                0,
+                LViewportContext::default(),
+                std::ptr::null(),
+                0.0,
+                0.0,
+                std::ptr::null_mut(),
+                90.0,
+                &mut ww,
+                &mut hh,
+            );
+            approx_eq(ww, 0.0);
+            approx_eq(hh, 1.0);
         }
     }
 }
