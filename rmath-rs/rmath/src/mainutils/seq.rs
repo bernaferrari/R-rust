@@ -2179,22 +2179,26 @@ mod tests {
 
     /// Helper: create an integer vector with given values.
     unsafe fn make_int_vec(vals: &[c_int]) -> SEXP {
-        let v = Rf_allocVector(INTSXP_VAL, vals.len() as c_int);
-        let data = INTEGER(v);
-        for (i, &val) in vals.iter().enumerate() {
-            *data.add(i) = val;
+        unsafe {
+            let v = Rf_allocVector(INTSXP_VAL, vals.len() as c_int);
+            let data = INTEGER(v);
+            for (i, &val) in vals.iter().enumerate() {
+                *data.add(i) = val;
+            }
+            v
         }
-        v
     }
 
     /// Helper: create a real vector with given values.
     unsafe fn make_real_vec(vals: &[c_double]) -> SEXP {
-        let v = Rf_allocVector(REALSXP_VAL, vals.len() as c_int);
-        let data = REAL(v);
-        for (i, &val) in vals.iter().enumerate() {
-            *data.add(i) = val;
+        unsafe {
+            let v = Rf_allocVector(REALSXP_VAL, vals.len() as c_int);
+            let data = REAL(v);
+            for (i, &val) in vals.iter().enumerate() {
+                *data.add(i) = val;
+            }
+            v
         }
-        v
     }
 
     // -----------------------------------------------------------------------

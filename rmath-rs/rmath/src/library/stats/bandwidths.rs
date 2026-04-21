@@ -178,7 +178,7 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     let mut xmax = f64::NEG_INFINITY;
     for i in 0..(n as usize) {
         if !R_FINITE(*x.add(i)) {
-            Rf_error(b"non-finite x[%d] in bandwidth calculation\0".as_ptr() as *const i8);
+            Rf_error(b"non-finite x[%d] in bandwidth calculation\0".as_ptr() as *const libc::c_char);
         }
         if *x.add(i) < xmin {
             xmin = *x.add(i);
@@ -189,7 +189,7 @@ pub unsafe fn bw_den(nbin: SEXP, sx: SEXP) -> SEXP {
     }
     let mut rang = (xmax - xmin) * 1.01;
     if rang == 0.0 {
-        Rf_error(b"data are constant in bandwidth calculation\0".as_ptr() as *const i8);
+        Rf_error(b"data are constant in bandwidth calculation\0".as_ptr() as *const libc::c_char);
     }
     let dd = rang / nb as c_double;
 

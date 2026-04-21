@@ -1200,7 +1200,9 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let arg2 = CADR(args);
 
             // Handle scalar fast paths
-            if is_scalar(arg1, SEXPTYPE::REALSXP.as_c_int()) && is_scalar(arg2, SEXPTYPE::REALSXP.as_c_int()) {
+            if is_scalar(arg1, SEXPTYPE::REALSXP.as_c_int())
+                && is_scalar(arg2, SEXPTYPE::REALSXP.as_c_int())
+            {
                 let x1 = *REAL(arg1);
                 let x2 = *REAL(arg2);
                 let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
@@ -1220,7 +1222,9 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 return ans;
             }
 
-            if is_scalar(arg1, SEXPTYPE::INTSXP.as_c_int()) && is_scalar(arg2, SEXPTYPE::INTSXP.as_c_int()) {
+            if is_scalar(arg1, SEXPTYPE::INTSXP.as_c_int())
+                && is_scalar(arg2, SEXPTYPE::INTSXP.as_c_int())
+            {
                 let i1 = *INTEGER(arg1);
                 let i2 = *INTEGER(arg2);
                 match code {

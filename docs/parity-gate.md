@@ -10,6 +10,7 @@ commands that reproduce each CI job.
 - Java 17 for Android checks
 - Android SDK for `scripts/android_toolchain_check.sh` and
   `scripts/android_package_smoke.sh`
+- `Rscript` (stock C R) for conformance checks
 - macOS or Windows if you want to run the desktop host smoke step locally
 
 ## Job Equivalents
@@ -20,7 +21,7 @@ commands that reproduce each CI job.
 | Desktop host smoke | `scripts/desktop_host_smoke.sh` |
 | Android baseline + tooling | `scripts/android_toolchain_check.sh`<br>`scripts/android_package_smoke.sh --check` |
 | UniFFI binding check | `scripts/generate_uniffi_bindings.sh --check` |
-| Conformance harness | `cargo run --manifest-path tests/differential/Cargo.toml --release` |
+| Conformance harness | `cargo build -p rmath`<br>`scripts/conformance_parity.sh --check` |
 
 ## Suggested Local Order
 
@@ -35,8 +36,6 @@ scripts/desktop_host_smoke.sh
 scripts/android_toolchain_check.sh
 scripts/android_package_smoke.sh --check
 scripts/generate_uniffi_bindings.sh --check
-cargo run --manifest-path tests/differential/Cargo.toml --release
+cargo build -p rmath
+scripts/conformance_parity.sh --check
 ```
-
-The conformance harness currently runs directly from Cargo. If a wrapper script
-is added later, it should invoke the same command above.

@@ -2,7 +2,8 @@
 //!
 //! Contains:
 //! - `lapack`: LAPACK/BLAS Fortran FFI declarations and helper functions
-//! - `lapack_impl`: Exported stubs for LAPACK wrapper functions (deferred to Phase 3)
+//! - `backend`: Feature-gated dispatch to Fortran FFI or pure Rust (faer-rs)
+//! - `lapack_impl`: Exported stubs for LAPACK wrapper functions
 //! - `accelerate`: macOS Accelerate framework integration (stub)
 //! - `init_win`: Windows-only stdio mode initialization
 //! - `veclib_g95c`: macOS vecLib CBLAS compatibility wrappers (Fortran-callable)
@@ -16,6 +17,15 @@
     non_camel_case_types
 )]
 mod accelerate;
+#[allow(
+    dead_code,
+    unused_imports,
+    unused_variables,
+    unused_mut,
+    unused_assignments,
+    non_camel_case_types
+)]
+mod backend;
 #[allow(
     dead_code,
     unused_imports,
@@ -52,3 +62,6 @@ mod lapack_impl;
     non_camel_case_types
 )]
 mod veclib_g95c;
+
+#[cfg(test)]
+mod backend_tests;

@@ -14,7 +14,6 @@
 
 use std::os::raw::{c_double, c_int};
 
-use crate::main::coerce::coerceVector;
 use crate::nmath::dist::normal::pnorm5_inner;
 use crate::nmath::dist::normal::qnorm5_inner;
 use crate::sexp::accessors::{LENGTH, REAL, TYPEOF};

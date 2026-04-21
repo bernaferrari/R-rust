@@ -20,7 +20,7 @@ pub unsafe fn R_strdup(s: *const i8) -> *mut i8 {
         }
         std::ptr::copy_nonoverlapping(s as *const u8, newstr, len);
         *newstr.add(len) = 0;
-        newstr as *mut i8
+        newstr as *mut libc::c_char
     }
 }
 

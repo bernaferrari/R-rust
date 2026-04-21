@@ -1433,10 +1433,25 @@ pub unsafe fn rgbtonum(in_val: rgb) -> c_int {
     -1
 }
 
-/// Get a system colour. Platform-specific stub.
-pub unsafe fn myGetSysColor(_x: c_int) -> rgb {
-    // TODO: Platform-specific implementation
-    White
+/// Get a system colour using a small platform-neutral fallback palette.
+pub unsafe fn myGetSysColor(x: c_int) -> rgb {
+    match x {
+        0 | 15 => LightGrey,
+        1 | 16 => DarkGrey,
+        2 | 17 => Gray,
+        3 | 13 => rgb_make(10, 36, 106),
+        4 | 14 => White,
+        5 => White,
+        6 | 8 | 20 => Black,
+        7 | 18 => rgb_make(223, 223, 223),
+        9 => rgb_make(181, 181, 181),
+        10 => rgb_make(241, 241, 241),
+        11 => rgb_make(160, 160, 160),
+        12 => rgb_make(180, 200, 228),
+        19 => rgb_make(0, 120, 215),
+        21 => rgb_make(245, 245, 245),
+        _ => White,
+    }
 }
 
 /// Get the dialog background colour.
@@ -1469,4 +1484,25 @@ pub unsafe fn brighter(pixel: rgb) -> rgb {
     let g = ((g as c_ulong) * 4 / 3).min(255);
     let b = ((b as c_ulong) * 4 / 3).min(255);
     rgb_make(r, g, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dialog_background_uses_button_face_fallback() {
+        unsafe {
+            assert_eq!(dialog_bg(), LightGrey);
+        }
+    }
+
+    #[test]
+    fn system_colour_fallbacks_cover_text_and_highlight_roles() {
+        unsafe {
+            assert_eq!(myGetSysColor(3), rgb_make(10, 36, 106));
+            assert_eq!(myGetSysColor(6), Black);
+            assert_eq!(myGetSysColor(999), White);
+        }
+    }
 }

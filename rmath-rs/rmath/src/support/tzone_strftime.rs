@@ -104,7 +104,7 @@ fn r_mktime(_t: &stm) -> i64 {
 /// Stubs for `R_tzname`. Returns a static pointer to "UTC".
 fn r_tzname(_isdst: bool) -> *const i8 {
     // Placeholder. Real implementation lives in the tzone module.
-    b"UTC\0".as_ptr() as *const i8
+    b"UTC\0".as_ptr() as *const libc::c_char
 }
 
 // ---------------------------------------------------------------------------
@@ -1022,7 +1022,7 @@ mod tests {
             0,
             0,
             0,
-            ZONE_UTC.as_ptr() as *const i8,
+            ZONE_UTC.as_ptr() as *const libc::c_char,
         );
         assert_eq!(some(do_fmt("%Z", &t)), "UTC");
     }

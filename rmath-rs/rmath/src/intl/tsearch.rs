@@ -560,8 +560,8 @@ mod tests {
     use super::*;
 
     unsafe extern "C" fn int_compar(a: *const c_void, b: *const c_void) -> c_int {
-        let ia = *(a as *const i32);
-        let ib = *(b as *const i32);
+        let ia = unsafe { *(a as *const i32) };
+        let ib = unsafe { *(b as *const i32) };
         ia - ib
     }
 
@@ -572,7 +572,7 @@ mod tests {
     }
 
     unsafe fn drop_root(p: *mut *mut node_t) {
-        drop(Box::from_raw(p));
+        drop(unsafe { Box::from_raw(p) });
     }
 
     #[test]
@@ -644,7 +644,7 @@ mod tests {
 
     unsafe extern "C" fn free_int_key(p: *mut c_void) {
         if !p.is_null() {
-            drop(Box::from_raw(p as *mut i32));
+            drop(unsafe { Box::from_raw(p as *mut i32) });
         }
     }
 

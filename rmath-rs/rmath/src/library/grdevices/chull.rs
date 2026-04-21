@@ -25,11 +25,8 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
-
-unsafe extern "C" {
-    fn coerceVector(x: SEXP, type_: c_int) -> SEXP;
-    fn nrows(x: SEXP) -> c_int;
-}
+use crate::mainutils::coerce::coerceVector;
+use crate::mainutils::util_main::nrows;
 
 /// split() partitions m points by the line joining points ii and jj.
 unsafe fn split(
@@ -464,7 +461,7 @@ unsafe fn in_chull(
 /// Compute the convex hull of a set of 2D points.
 /// x is a two-column numeric matrix.
 pub unsafe fn chull(x: SEXP) -> SEXP {
-    let n = nrows(x);
+    let n = nrows(x as *const std::ffi::c_void);
     if n <= 0 {
         return Rf_allocVector(SEXPTYPE::INTSXP, 0);
     }

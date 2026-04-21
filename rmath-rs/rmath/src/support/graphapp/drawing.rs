@@ -10,6 +10,7 @@ use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::ptr;
 
+use super::gdraw;
 use super::types::*;
 
 thread_local! { static CURRENT_DRAWSTATE: RefCell<drawstruct> = RefCell::new(drawstruct {
@@ -23,7 +24,7 @@ thread_local! { static CURRENT_DRAWSTATE: RefCell<drawstruct> = RefCell::new(dra
 }); }
 
 #[repr(transparent)]
-struct MutPtr<T>(*mut T);
+pub struct MutPtr<T>(*mut T);
 
 impl<T> std::ops::Deref for MutPtr<T> {
     type Target = T;
@@ -38,12 +39,10 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
     }
 }
 
-/// Get a reference to the global drawstate.
 pub unsafe fn get_current_drawstate() -> &'static drawstruct {
     unsafe { CURRENT_DRAWSTATE.with(|v| &*v.as_ptr()) }
 }
 
-/// Get a mutable reference to the global drawstate.
 pub unsafe fn get_current_drawstate_mut() -> MutPtr<drawstruct> {
     MutPtr(CURRENT_DRAWSTATE.with(|v| v.as_ptr() as *mut drawstruct))
 }
@@ -106,178 +105,197 @@ pub extern "C" fn moveto(p: point) {
 /// Draw a line from the current point to the given point.
 pub extern "C" fn lineto(p: point) {
     CURRENT_DRAWSTATE.with(|v| {
-        let ds = v.borrow_mut();
-        drawline(ds.p, p);
+        let ds = v.borrow();
+        unsafe {
+            drawline(ds.p, p);
+        }
     });
     CURRENT_DRAWSTATE.with(|v| v.borrow_mut().p = p);
 }
 
 /// Draw a single point.
 pub extern "C" fn drawpoint(p: point) {
-    CURRENT_DRAWSTATE.with(|v| setpixel(p, v.borrow().hue));
+    CURRENT_DRAWSTATE.with(|v| unsafe { setpixel(p, v.borrow().hue) });
 }
 
 /// Draw a line between two points.
-pub unsafe fn drawline(_p1: point, _p2: point) {
-    // TODO: Platform-specific rendering
+pub unsafe fn drawline(p1: point, p2: point) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gdrawline(ds.dest, ds.linewidth, lSolid, ds.hue, p1, p2, 0, 0, 0, 0.0) };
 }
 
 /// Draw a rectangle outline.
-pub unsafe fn drawrect(_r: rect) {
-    // TODO: Platform-specific rendering
+pub unsafe fn drawrect(r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gdrawrect(ds.dest, ds.linewidth, lSolid, ds.hue, r, 0, 0, 0, 0.0) };
 }
 
 /// Fill a rectangle.
-pub unsafe fn fillrect(_r: rect) {
-    // TODO: Platform-specific rendering
+pub unsafe fn fillrect(r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gfillrect(ds.dest, ds.hue, r) };
 }
 
-/// Draw an arc.
-pub unsafe fn drawarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {
-    // TODO: Platform-specific rendering
-}
+/// Draw an arc within the bounding rectangle.
+///
+/// Arc drawing is not exposed through the `gdraw` interface in this port.
+/// Headless no-op: R's graphics engine uses `GEArc`/`GECircle` directly,
+/// bypassing this GraphApp layer.
+pub unsafe fn drawarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 
-/// Fill an arc (pie slice).
-pub unsafe fn fillarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {
-    // TODO: Platform-specific rendering
-}
+/// Fill an arc (pie slice) within the bounding rectangle.
+///
+/// Headless no-op: R's graphics engine uses its own arc primitives.
+pub unsafe fn fillarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 
 /// Draw an ellipse.
-pub unsafe fn drawellipse(_r: rect) {
-    // TODO: Platform-specific rendering
+pub unsafe fn drawellipse(r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gdrawellipse(ds.dest, ds.linewidth, ds.hue, r, 0, 0, 0, 0.0) };
 }
 
 /// Fill an ellipse.
-pub unsafe fn fillellipse(_r: rect) {
-    // TODO: Platform-specific rendering
+pub unsafe fn fillellipse(r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gfillellipse(ds.dest, ds.hue, r) };
 }
 
 /// Old fillellipse using platform Ellipse function.
-pub extern "C" fn oldfillellipse(r: rect) {
-    fillellipse(r);
-}
-
-/// Draw a rounded rectangle outline.
-pub unsafe fn drawroundrect(_r: rect) {
-    // TODO: Platform-specific rendering
-}
-
-/// Fill a rounded rectangle.
-pub unsafe fn fillroundrect(_r: rect) {
-    // TODO: Platform-specific rendering
-}
-
-/// Draw a polygon.
-pub unsafe fn drawpolygon(_p: *mut point, _n: c_int) {
-    // TODO: Platform-specific rendering
-}
-
-/// Fill a polygon.
-pub unsafe fn fillpolygon(_p: *mut point, _n: c_int) {
-    // TODO: Platform-specific rendering
-}
-
-/// Draw a string at the given position.
-pub unsafe fn drawstr(_p: point, s: *const std::os::raw::c_char) -> c_int {
-    // TODO: Platform-specific rendering
-    if s.is_null() { 0 } else { 0 }
-}
-
-/// Get the bounding rectangle of a string with the given font.
-pub unsafe fn strrect(_f: font, _s: *const std::os::raw::c_char) -> rect {
-    // TODO: Platform-specific font measurement
-    rect {
-        x: 0,
-        y: 0,
-        width: 0,
-        height: 0,
+pub unsafe fn oldfillellipse(r: rect) {
+    unsafe {
+        fillellipse(r);
     }
 }
 
+/// Draw a rounded rectangle outline.
+pub unsafe fn drawroundrect(r: rect) {
+    unsafe { drawrect(r) };
+}
+
+/// Fill a rounded rectangle.
+pub unsafe fn fillroundrect(r: rect) {
+    unsafe { fillrect(r) };
+}
+
+/// Draw a polygon.
+pub unsafe fn drawpolygon(p: *mut point, n: c_int) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0) };
+}
+
+/// Fill a polygon.
+pub unsafe fn fillpolygon(p: *mut point, n: c_int) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gfillpolygon(ds.dest, ds.hue, p, n) };
+}
+
+/// Draw a string at the given position.
+#[allow(clippy::if_same_then_else)]
+pub unsafe fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
+    if s.is_null() {
+        return 0;
+    }
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s) }
+}
+
+/// Get the bounding rectangle of a string with the given font.
+pub unsafe fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gstrrect(ds.dest, f, s) }
+}
+
 /// Get the size of a string with the given font.
-pub extern "C" fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
-    let r = strrect(f, s);
-    point {
-        x: r.width,
-        y: r.height,
+pub unsafe fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
+    unsafe {
+        let r = strrect(f, s);
+        point {
+            x: r.width,
+            y: r.height,
+        }
     }
 }
 
 /// Get the width of a string with the given font.
-pub extern "C" fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
-    strrect(f, s).width
+pub unsafe fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
+    unsafe { strrect(f, s).width }
 }
 
 /// Get a pixel colour.
-pub unsafe fn getpixel(_p: point) -> rgb {
-    // TODO: Platform-specific
-    Black
+pub unsafe fn getpixel(p: point) -> rgb {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::ggetpixel(ds.dest, p) }
 }
 
 /// Set a pixel colour.
-pub unsafe fn setpixel(_p: point, _c: rgb) {
-    // TODO: Platform-specific
+pub unsafe fn setpixel(p: point, c: rgb) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gsetpixel(ds.dest, p, c) };
 }
 
 /// Bit-block transfer.
-pub unsafe fn bitblt(_db: bitmap, _sb: bitmap, _p: point, _r: rect, _mode: c_int) {
-    // TODO: Platform-specific
+pub unsafe fn bitblt(db: bitmap, sb: bitmap, p: point, r: rect, _mode: c_int) {
+    unsafe { gdraw::gbitblt(db, sb, p, r) };
 }
 
 /// Scroll a rectangle.
-pub unsafe fn scrollrect(_dp: point, _r: rect) {
-    // TODO: Platform-specific
+pub unsafe fn scrollrect(dp: point, r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gscroll(ds.dest, dp, r) };
 }
 
 /// Copy a rectangle from source to current destination.
-pub unsafe fn copyrect(_sb: bitmap, _p: point, _r: rect) {
-    // TODO: Platform-specific
+pub unsafe fn copyrect(sb: bitmap, p: point, r: rect) {
+    unsafe { bitblt(currentdrawing() as bitmap, sb, p, r, currentmode()) };
 }
 
 /// Texture-fill a rectangle with a bitmap.
-pub unsafe fn texturerect(_sb: bitmap, _dr: rect) {
-    // TODO: Platform-specific
-}
+///
+/// No `gdraw` texture callback exists. Headless no-op.
+pub unsafe fn texturerect(_sb: bitmap, _dr: rect) {}
 
 /// Invert a rectangle.
-pub unsafe fn invertrect(_r: rect) {
-    // TODO: Platform-specific
+pub unsafe fn invertrect(r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::ginvert(ds.dest, r) };
 }
 
 /// Draw an image.
-pub unsafe fn drawimage(_img: image, _dr: rect, _sr: rect) {
-    // TODO: Platform-specific
+pub unsafe fn drawimage(img: image, dr: rect, sr: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gdrawimage(ds.dest, img, dr, sr) };
 }
 
 /// Draw an image in monochrome.
-pub unsafe fn drawmonochrome(_img: image, _dr: rect, _sr: rect) {
-    // TODO: Platform-specific
-}
+///
+/// No `gdraw` monochrome callback. Headless no-op.
+pub unsafe fn drawmonochrome(_img: image, _dr: rect, _sr: rect) {}
 
 /// Draw an image in greyscale.
-pub unsafe fn drawgreyscale(_img: image, _dr: rect, _sr: rect) {
-    // TODO: Platform-specific
-}
+///
+/// No `gdraw` greyscale callback. Headless no-op.
+pub unsafe fn drawgreyscale(_img: image, _dr: rect, _sr: rect) {}
 
 /// Draw an image darker.
-pub unsafe fn drawdarker(_img: image, _dr: rect, _sr: rect) {
-    // TODO: Platform-specific
-}
+///
+/// No `gdraw` darker callback. Headless no-op.
+pub unsafe fn drawdarker(_img: image, _dr: rect, _sr: rect) {}
 
 /// Draw an image brighter.
-pub unsafe fn drawbrighter(_img: image, _dr: rect, _sr: rect) {
-    // TODO: Platform-specific
-}
+///
+/// No `gdraw` brighter callback. Headless no-op.
+pub unsafe fn drawbrighter(_img: image, _dr: rect, _sr: rect) {}
 
 /// Get the clipping rectangle.
 pub unsafe fn getcliprect() -> rect {
-    // TODO: Platform-specific
-    rect::default()
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::ggetcliprect(ds.dest) }
 }
 
 /// Set the clipping rectangle.
-pub unsafe fn setcliprect(_r: rect) {
-    // TODO: Platform-specific
+pub unsafe fn setcliprect(r: rect) {
+    let ds = unsafe { get_current_drawstate() };
+    unsafe { gdraw::gsetcliprect(ds.dest, r) };
 }
 
 /// Copy the current draw state.
@@ -294,7 +312,7 @@ pub unsafe fn copydrawstate() -> drawstate {
 /// Set the draw state.
 pub extern "C" fn setdrawstate(saved: drawstate) {
     if !saved.is_null() {
-        CURRENT_DRAWSTATE.with(|v| *v.borrow_mut() = (*saved).clone());
+        CURRENT_DRAWSTATE.with(|v| *v.borrow_mut() = unsafe { (*saved).clone() });
     }
 }
 
@@ -323,9 +341,9 @@ pub extern "C" fn drawto(dest: drawing) {
 }
 
 /// Add a control to the current window.
-pub unsafe fn addto(_dest: control) {
-    // TODO: Platform-specific
-}
+///
+/// Headless no-op: no window system to add controls to.
+pub unsafe fn addto(_dest: control) {}
 
 /// Set the current cursor.
 pub extern "C" fn setcursor(c: cursor) {
@@ -337,18 +355,12 @@ pub extern "C" fn setfont(f: font) {
     CURRENT_DRAWSTATE.with(|v| v.borrow_mut().fnt = f);
 }
 
-/// Set the caret.
-pub unsafe fn setcaret(
-    _c: control,
-    _x: c_int,
-    _y: c_int,
-    _width: c_int,
-    _height: c_int,
-) {
-    // TODO: Platform-specific
-}
+/// Set the caret position and size.
+///
+/// Headless no-op: no text input caret in a headless rendering environment.
+pub unsafe fn setcaret(_c: control, _x: c_int, _y: c_int, _width: c_int, _height: c_int) {}
 
 /// Show/hide the caret.
-pub unsafe fn showcaret(_c: control, _showing: c_int) {
-    // TODO: Platform-specific
-}
+///
+/// Headless no-op: no text input caret in a headless rendering environment.
+pub unsafe fn showcaret(_c: control, _showing: c_int) {}

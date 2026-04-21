@@ -14,13 +14,12 @@
 use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::fs::{File, OpenOptions};
-use std::io::{Read, Seek, SeekFrom, Write};
-use std::mem;
+use std::io::{BufReader, Cursor, Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_char, c_double, c_int, c_void};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
-use std::ptr;
 use std::path::PathBuf;
+use std::ptr;
 use std::slice;
 
 use bzip2::read::BzDecoder;
@@ -29,19 +28,19 @@ use flate2::Compression;
 use flate2::read::ZlibDecoder;
 use flate2::write::ZlibEncoder;
 
+use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
+use crate::eval::eval::Rf_eval;
+use crate::mainutils::coerce::{asInteger, asLogical};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
+use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::ffi::{R_size_t, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::{
     R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_NilValue, R_UnboundValue,
 };
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::*;
-use crate::eval::attrib_core::{setAttrib, R_NamesSymbol};
-use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::symbol::Rf_install;
-use crate::eval::eval::Rf_eval;
-use crate::mainutils::coerce::{asInteger, asLogical};
 
 unsafe fn error(msg: &str) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
@@ -169,79 +168,28 @@ fn bzip2_decompress_exact(input: &[u8], expected_len: usize) -> Result<Vec<u8>, 
     Ok(out)
 }
 
-unsafe fn lzma2_raw_encode(input: &[u8], out_cap: usize) -> Result<Vec<u8>, lzma_sys::lzma_ret> {
-    let mut opts: lzma_sys::lzma_options_lzma = unsafe { mem::zeroed() };
-    if unsafe { lzma_sys::lzma_lzma_preset(&mut opts, lzma_sys::LZMA_PRESET_DEFAULT) } != 0 {
-        return Err(lzma_sys::LZMA_OPTIONS_ERROR);
-    }
-    let mut filters = [
-        lzma_sys::lzma_filter {
-            id: lzma_sys::LZMA_FILTER_LZMA2,
-            options: (&mut opts as *mut lzma_sys::lzma_options_lzma).cast::<c_void>(),
-        },
-        lzma_sys::lzma_filter {
-            id: lzma_sys::LZMA_VLI_UNKNOWN,
-            options: ptr::null_mut(),
-        },
-    ];
-
-    let mut out = vec![0u8; out_cap];
-    let mut out_pos: usize = 0;
-    let ret = unsafe {
-        lzma_sys::lzma_raw_buffer_encode(
-            filters.as_mut_ptr(),
-            ptr::null(),
-            input.as_ptr(),
-            input.len(),
-            out.as_mut_ptr(),
-            &mut out_pos,
-            out.len(),
-        )
-    };
-    if ret != lzma_sys::LZMA_OK {
-        return Err(ret);
-    }
-    out.truncate(out_pos);
-    Ok(out)
+fn lzma2_raw_encode(input: &[u8], _out_cap: usize) -> Result<Vec<u8>, std::io::Error> {
+    let mut compressed = Vec::new();
+    let mut reader = BufReader::new(Cursor::new(input));
+    lzma_rs::lzma2_compress(&mut reader, &mut compressed).map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, format!("lzma2 compress: {e}"))
+    })?;
+    Ok(compressed)
 }
 
-unsafe fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, lzma_sys::lzma_ret> {
-    let mut opts: lzma_sys::lzma_options_lzma = unsafe { mem::zeroed() };
-    if unsafe { lzma_sys::lzma_lzma_preset(&mut opts, lzma_sys::LZMA_PRESET_DEFAULT) } != 0 {
-        return Err(lzma_sys::LZMA_OPTIONS_ERROR);
+fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::io::Error> {
+    let mut decompressed = Vec::with_capacity(expected_len);
+    let mut reader = BufReader::new(input);
+    lzma_rs::lzma2_decompress(&mut reader, &mut decompressed).map_err(|e| {
+        std::io::Error::new(std::io::ErrorKind::InvalidData, format!("lzma2 decompress: {e}"))
+    })?;
+    if decompressed.len() != expected_len {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            "lzma2 decompressed length mismatch",
+        ));
     }
-    let filters = [
-        lzma_sys::lzma_filter {
-            id: lzma_sys::LZMA_FILTER_LZMA2,
-            options: (&mut opts as *mut lzma_sys::lzma_options_lzma).cast::<c_void>(),
-        },
-        lzma_sys::lzma_filter {
-            id: lzma_sys::LZMA_VLI_UNKNOWN,
-            options: ptr::null_mut(),
-        },
-    ];
-    let mut out = vec![0u8; expected_len];
-    let mut in_pos: usize = 0;
-    let mut out_pos: usize = 0;
-    let ret = unsafe {
-        lzma_sys::lzma_raw_buffer_decode(
-            filters.as_ptr(),
-            ptr::null(),
-            input.as_ptr(),
-            &mut in_pos,
-            input.len(),
-            out.as_mut_ptr(),
-            &mut out_pos,
-            out.len(),
-        )
-    };
-    if ret != lzma_sys::LZMA_OK || in_pos != input.len() || out_pos != expected_len {
-        if ret == lzma_sys::LZMA_OK {
-            return Err(lzma_sys::LZMA_DATA_ERROR);
-        }
-        return Err(ret);
-    }
-    Ok(out)
+    Ok(decompressed)
 }
 
 #[inline]
@@ -3023,7 +2971,9 @@ mod tests {
     use super::*;
     use crate::sexp::envir::R_NewHashedEnv;
     use crate::sexp::envir::defineVar;
-    use crate::sexp::globals::{R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_UnboundValue};
+    use crate::sexp::globals::{
+        R_BaseEnv, R_EmptyEnv, R_GlobalEnv, R_MissingArg, R_NaString, R_UnboundValue,
+    };
     use std::ffi::CString;
     use std::mem;
     use std::os::raw::c_void;
@@ -3037,35 +2987,41 @@ mod tests {
         }
     }
 
-    unsafe fn make_raw(bytes: &[u8]) -> SEXP {
-        let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t);
+    fn make_raw(bytes: &[u8]) -> SEXP {
+        let raw = unsafe { Rf_allocVector3(SEXPTYPE::RAWSXP, bytes.len() as R_xlen_t) };
         if !raw.is_null() && !bytes.is_empty() {
-            ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw), bytes.len());
+            unsafe { ptr::copy_nonoverlapping(bytes.as_ptr(), RAW(raw), bytes.len()) };
         }
         raw
     }
 
-    unsafe fn make_string_scalar(value: &str) -> SEXP {
+    fn make_string_scalar(value: &str) -> SEXP {
         let c_value = CString::new(value).unwrap_or_default();
-        Rf_mkString(c_value.as_ptr())
+        unsafe { Rf_mkString(c_value.as_ptr()) }
     }
 
-    unsafe fn make_string_vector(value: &str) -> SEXP {
-        let vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        SET_STRING_ELT(vec, 0, Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()));
+    fn make_string_vector(value: &str) -> SEXP {
+        let vec = unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, 1) };
+        unsafe {
+            SET_STRING_ELT(
+                vec,
+                0,
+                Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()),
+            );
+        }
         vec
     }
 
-    unsafe fn make_na_string_vector() -> SEXP {
-        let vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
-        SET_STRING_ELT(vec, 0, R_NaString());
+    fn make_na_string_vector() -> SEXP {
+        let vec = unsafe { Rf_allocVector3(SEXPTYPE::STRSXP, 1) };
+        unsafe { SET_STRING_ELT(vec, 0, R_NaString()) };
         vec
     }
 
-    unsafe fn make_args(items: &[SEXP]) -> SEXP {
-        let mut tail = R_NilValue();
+    fn make_args(items: &[SEXP]) -> SEXP {
+        let mut tail = unsafe { R_NilValue() };
         for item in items.iter().rev().copied() {
-            tail = Rf_cons(item, tail);
+            tail = unsafe { Rf_cons(item, tail) };
         }
         tail
     }
@@ -3361,7 +3317,11 @@ mod tests {
             let fp = libc::tmpfile();
             assert!(!fp.is_null());
             let bytes = b"hello";
-            let wrote = R_WriteConnection(fp as *mut c_void, bytes.as_ptr() as *const c_void, bytes.len());
+            let wrote = R_WriteConnection(
+                fp as *mut c_void,
+                bytes.as_ptr() as *const c_void,
+                bytes.len(),
+            );
             assert_eq!(wrote, bytes.len());
             libc::fflush(fp);
             libc::fseek(fp, 0, libc::SEEK_END);
@@ -3581,13 +3541,7 @@ mod tests {
         unsafe {
             let value = Rf_ScalarInteger(123);
             let version = Rf_ScalarInteger(2);
-            let raw = R_serialize(
-                value,
-                R_NilValue(),
-                R_NilValue(),
-                version,
-                R_NilValue(),
-            );
+            let raw = R_serialize(value, R_NilValue(), R_NilValue(), version, R_NilValue());
             assert_eq!(TYPEOF(raw), SEXPTYPE::RAWSXP);
 
             let mut in_stream: R_inpstream_st = mem::zeroed();
@@ -3673,12 +3627,8 @@ mod tests {
             let path_str = path.to_str().unwrap().to_owned();
             let file = make_string_scalar(&path_str);
             let args = make_args(&[file]);
-            let result = do_lazyLoadDBflush(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                args,
-                ptr::null_mut(),
-            );
+            let result =
+                do_lazyLoadDBflush(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(result, R_NilValue());
         }
     }
@@ -3736,12 +3686,8 @@ mod tests {
 
             let vars = make_string_vector("x");
             let args = make_args(&[vars, env, Rf_ScalarLogical(0)]);
-            let result = do_getVarsFromFrame(
-                ptr::null_mut(),
-                ptr::null_mut(),
-                args,
-                ptr::null_mut(),
-            );
+            let result =
+                do_getVarsFromFrame(ptr::null_mut(), ptr::null_mut(), args, ptr::null_mut());
             assert_eq!(TYPEOF(result), SEXPTYPE::VECSXP);
             assert_eq!(LENGTH(result), 1);
             let elt = VECTOR_ELT(result, 0);
@@ -4097,7 +4043,13 @@ mod tests {
                 }
             }
             for value in values {
-                let raw = R_serialize(value, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
+                let raw = R_serialize(
+                    value,
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_NilValue(),
+                    R_NilValue(),
+                );
                 assert_ne!(raw, R_NilValue());
 
                 let result = R_unserialize(raw, R_NilValue());

@@ -50,14 +50,14 @@ type R_hashtab_type = SEXP;
 unsafe fn checkArgCountPop(args: SEXP, n: c_int) -> SEXP {
     let args = CDR(args);
     if LENGTH(args) != n {
-        Rf_error(b"wrong argument count\0".as_ptr() as *const i8);
+        Rf_error(b"wrong argument count\0".as_ptr() as *const libc::c_char);
     }
     args
 }
 
 unsafe fn HT_TypeFromString(x: SEXP) -> c_int {
     if TYPEOF(x) != SEXPTYPE::STRSXP || XLENGTH(x) != 1 {
-        Rf_error(b"hash table type must be a scalar string\0".as_ptr() as *const i8);
+        Rf_error(b"hash table type must be a scalar string\0".as_ptr() as *const libc::c_char);
     }
     let s = CHAR(STRING_ELT(x, 0));
     let s_str = std::ffi::CStr::from_ptr(s);
@@ -67,7 +67,7 @@ unsafe fn HT_TypeFromString(x: SEXP) -> c_int {
     } else if s_bytes == b"address" {
         HT_TYPE_ADDRESS
     } else {
-        Rf_error(b"hash table type is not supported\0".as_ptr() as *const i8);
+        Rf_error(b"hash table type is not supported\0".as_ptr() as *const libc::c_char);
         0
     }
 }
@@ -124,7 +124,7 @@ pub unsafe fn hashtab_Ext(args: SEXP) -> SEXP {
     setAttrib(
         val,
         R_ClassSymbol(),
-        Rf_mkString(b"hashtab\0".as_ptr() as *const i8),
+        Rf_mkString(b"hashtab\0".as_ptr() as *const libc::c_char),
     );
     Rf_unprotect(1);
     val
@@ -163,10 +163,10 @@ pub unsafe fn typhash_Ext(args: SEXP) -> SEXP {
     let args = checkArgCountPop(args, 1);
     let h = R_asHashtable(CAR(args));
     match R_typhash(h) {
-        HT_TYPE_IDENTICAL => Rf_mkString(b"identical\0".as_ptr() as *const i8),
-        HT_TYPE_ADDRESS => Rf_mkString(b"address\0".as_ptr() as *const i8),
+        HT_TYPE_IDENTICAL => Rf_mkString(b"identical\0".as_ptr() as *const libc::c_char),
+        HT_TYPE_ADDRESS => Rf_mkString(b"address\0".as_ptr() as *const libc::c_char),
         _ => {
-            Rf_error(b"bad hash table type\0".as_ptr() as *const i8);
+            Rf_error(b"bad hash table type\0".as_ptr() as *const libc::c_char);
             std::ptr::null_mut()
         }
     }

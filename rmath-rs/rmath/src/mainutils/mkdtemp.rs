@@ -2,7 +2,7 @@
 
 //! Port of R's src/main/mkdtemp.c
 //!
-//! Create a unique temporary directory. The template must end in "XXXXXX",
+//! Create a unique temporary directory. The template must end in six `X` characters,
 //! which is replaced with a string that makes the filename unique.
 //! The directory is created with mode 0700.
 
@@ -15,7 +15,7 @@ const TMP_MAX: u32 = 238328;
 
 /// Generate a unique temporary directory from a template.
 ///
-/// The last six characters of `template` must be "XXXXXX"; they are replaced
+/// The last six characters of `template` must be six `X` characters; they are replaced
 /// with a string that makes the filename unique. The directory is created
 /// with mode 0700.
 ///

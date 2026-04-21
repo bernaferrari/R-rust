@@ -51,7 +51,7 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 #[inline]
 unsafe fn x_d_omx(x: c_double) -> c_double {
     if x < 0.0 || x > 1.0 {
-        crate::main::errors::Rf_error(b"Value out of range (0, 1)\0".as_ptr() as *const i8);
+        crate::main::errors::Rf_error(b"Value out of range (0, 1)\0".as_ptr() as *const libc::c_char);
     }
     x / (1.0 - x)
 }
@@ -66,7 +66,7 @@ pub unsafe fn logit_link(mu: SEXP) -> SEXP {
     let n = LENGTH(mu);
     if n == 0 || TYPEOF(mu) != SEXPTYPE::REALSXP {
         crate::main::errors::Rf_error(
-            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const i8
+            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const libc::c_char
         );
     }
     let ans = Rf_protect(shallow_duplicate(mu));
@@ -89,7 +89,7 @@ pub unsafe fn logit_linkinv(eta: SEXP) -> SEXP {
             || TYPEOF(eta) == SEXPTYPE::LGLSXP)
     {
         crate::main::errors::Rf_error(
-            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const i8
+            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const libc::c_char
         );
     }
     let mut eta = eta;
@@ -126,7 +126,7 @@ pub unsafe fn logit_mu_eta(eta: SEXP) -> SEXP {
             || TYPEOF(eta) == SEXPTYPE::LGLSXP)
     {
         crate::main::errors::Rf_error(
-            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const i8
+            b"Argument must be a nonempty numeric vector\0".as_ptr() as *const libc::c_char
         );
     }
     let mut eta = eta;
@@ -193,14 +193,12 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
 
     if lmu != n && lmu != 1 {
         crate::main::errors::Rf_error(
-            b"argument mu must be a numeric vector of length 1 or matching length\0".as_ptr()
-                as *const i8,
+            b"argument mu must be a numeric vector of length 1 or matching length\0".as_ptr() as *const libc::c_char,
         );
     }
     if lwt != n && lwt != 1 {
         crate::main::errors::Rf_error(
-            b"argument wt must be a numeric vector of length 1 or matching length\0".as_ptr()
-                as *const i8,
+            b"argument wt must be a numeric vector of length 1 or matching length\0".as_ptr() as *const libc::c_char,
         );
     }
 

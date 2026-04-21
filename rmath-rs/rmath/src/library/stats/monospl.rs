@@ -48,7 +48,7 @@ unsafe fn isInteger(x: SEXP) -> bool {
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
-    crate::main::coerce::isReal(x)
+    crate::main::coerce::isReal(x) != 0
 }
 
 unsafe fn error(msg: &str) {

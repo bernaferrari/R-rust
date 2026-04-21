@@ -186,7 +186,6 @@ unsafe fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 }
 
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     crate::sexp::accessors::VECTOR_ELT(x, i)
 }

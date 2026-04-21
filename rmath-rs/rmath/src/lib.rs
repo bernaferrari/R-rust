@@ -127,12 +127,20 @@ pub mod android;
 #[allow(dead_code, non_camel_case_types)]
 pub mod eval;
 #[allow(dead_code, non_camel_case_types)]
+pub mod modules;
+#[allow(dead_code, non_camel_case_types)]
 pub mod graphapp;
 pub mod intl;
 #[allow(dead_code, non_camel_case_types)]
+pub mod library;
+#[allow(dead_code, non_camel_case_types)]
 pub mod mainutils;
+pub use mainutils as main;
+#[allow(unused, dead_code, non_camel_case_types)]
+pub mod nmath;
 #[allow(dead_code, non_camel_case_types)]
 pub mod sexp;
+pub use sexp::attrib_core;
 #[allow(dead_code, non_camel_case_types)]
 pub mod tre;
 pub mod trio;

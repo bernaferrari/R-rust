@@ -36,6 +36,69 @@ const GC_TRIGGER_THRESHOLD: usize = 10_000;
 const GC_BYTE_THRESHOLD: usize = 64 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
+// Arena budget and error types
+// ---------------------------------------------------------------------------
+
+/// Errors that can occur during arena allocation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArenaError {
+    /// Allocation failed (e.g., out of memory).
+    OutOfMemory,
+    /// Request would exceed the arena's byte budget.
+    ByteBudgetExceeded { limit: usize, requested: usize },
+    /// Request would exceed the arena's node budget.
+    NodeBudgetExceeded { limit: usize, requested: usize },
+    /// Invalid vector length (negative or overflow).
+    InvalidLength,
+}
+
+impl std::fmt::Display for ArenaError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArenaError::OutOfMemory => write!(f, "arena out of memory"),
+            ArenaError::ByteBudgetExceeded { limit, requested } => {
+                write!(f, "arena byte budget exceeded: limit={limit}, requested={requested}")
+            }
+            ArenaError::NodeBudgetExceeded { limit, requested } => {
+                write!(f, "arena node budget exceeded: limit={limit}, requested={requested}")
+            }
+            ArenaError::InvalidLength => write!(f, "invalid vector length"),
+        }
+    }
+}
+
+impl std::error::Error for ArenaError {}
+
+/// Budget for arena allocations to prevent unbounded growth.
+///
+/// A budget of `0` means unlimited for that dimension.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ArenaBudget {
+    /// Maximum total bytes allowed in this arena (0 = unlimited).
+    pub max_bytes: usize,
+    /// Maximum number of active nodes allowed in this arena (0 = unlimited).
+    pub max_nodes: usize,
+}
+
+impl ArenaBudget {
+    /// Create an unlimited budget.
+    pub const fn unlimited() -> Self {
+        ArenaBudget {
+            max_bytes: 0,
+            max_nodes: 0,
+        }
+    }
+
+    /// Create a budget with the given limits.
+    pub const fn new(max_bytes: usize, max_nodes: usize) -> Self {
+        ArenaBudget {
+            max_bytes,
+            max_nodes,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
 
@@ -54,17 +117,41 @@ pub struct RArena {
     free_list: Vec<SEXP>,
     /// Total bytes allocated for tracking.
     total_bytes_allocated: usize,
+    /// Optional budget to limit arena growth.
+    budget: ArenaBudget,
 }
 
 impl RArena {
-    /// Create a new empty arena.
+    /// Create a new empty arena with an unlimited budget.
     pub fn new() -> Self {
         RArena {
             nodes: Vec::new(),
             data_bufs: Vec::new(),
             free_list: Vec::new(),
             total_bytes_allocated: 0,
+            budget: ArenaBudget::unlimited(),
         }
+    }
+
+    /// Create a new empty arena with the given budget.
+    pub fn with_budget(budget: ArenaBudget) -> Self {
+        RArena {
+            nodes: Vec::new(),
+            data_bufs: Vec::new(),
+            free_list: Vec::new(),
+            total_bytes_allocated: 0,
+            budget,
+        }
+    }
+
+    /// Return the current arena budget.
+    pub fn budget(&self) -> ArenaBudget {
+        self.budget
+    }
+
+    /// Set a new budget. Does not retroactively reject existing allocations.
+    pub fn set_budget(&mut self, budget: ArenaBudget) {
+        self.budget = budget;
     }
 
     /// Allocate a scalar SexprecCore node.
@@ -157,6 +244,90 @@ impl RArena {
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
         ptr
+    }
+
+    /// Allocate a vector SexprecCore node with associated data buffer,
+    /// returning `Result` instead of a raw pointer.
+    ///
+    /// Checks the arena budget before allocating and returns a descriptive
+    /// error if the budget would be exceeded.
+    pub fn alloc_vector_checked(
+        &mut self,
+        sexptype: SEXPTYPE,
+        length: R_xlen_t,
+    ) -> Result<SEXP, ArenaError> {
+        if length < 0 {
+            return Err(ArenaError::InvalidLength);
+        }
+
+        // Check node budget
+        if self.budget.max_nodes > 0 {
+            let active = self.node_count();
+            if active >= self.budget.max_nodes {
+                return Err(ArenaError::NodeBudgetExceeded {
+                    limit: self.budget.max_nodes,
+                    requested: active + 1,
+                });
+            }
+        }
+
+        let elem_size = sexp_elem_size(sexptype);
+        let data_bytes = match (length as usize).checked_mul(elem_size) {
+            Some(n) => n,
+            None => return Err(ArenaError::InvalidLength),
+        };
+        let total_increase = data_bytes
+            .checked_add(std::mem::size_of::<SexprecCore>())
+            .ok_or(ArenaError::InvalidLength)?;
+
+        // Check byte budget
+        if self.budget.max_bytes > 0 {
+            let new_total = self
+                .total_bytes_allocated
+                .checked_add(total_increase)
+                .ok_or(ArenaError::ByteBudgetExceeded {
+                    limit: self.budget.max_bytes,
+                    requested: usize::MAX,
+                })?;
+            if new_total > self.budget.max_bytes {
+                return Err(ArenaError::ByteBudgetExceeded {
+                    limit: self.budget.max_bytes,
+                    requested: new_total,
+                });
+            }
+        }
+
+        // Run GC if approaching thresholds (same as alloc_vector)
+        if self.total_bytes_allocated > GC_BYTE_THRESHOLD {
+            crate::sexp::gengc::minor_gc();
+        }
+
+        let mut boxed = Box::new(SexprecCore::new_vector(sexptype, length));
+
+        if data_bytes > 0 {
+            let layout = match Layout::from_size_align(data_bytes, std::mem::align_of::<u64>()) {
+                Ok(l) => l,
+                Err(_) => return Err(ArenaError::OutOfMemory),
+            };
+            let data_ptr = unsafe { alloc(layout) };
+            if data_ptr.is_null() {
+                return Err(ArenaError::OutOfMemory);
+            }
+            unsafe {
+                std::ptr::write_bytes(data_ptr, 0, data_bytes);
+            }
+            let ptr: SEXP = &mut *boxed as *mut _;
+            unsafe {
+                (*ptr).gengc_next_node = data_ptr as SEXP;
+            }
+            self.total_bytes_allocated += data_bytes;
+            self.data_bufs.push((data_ptr, layout));
+        }
+
+        let ptr: SEXP = &mut *boxed as *mut _;
+        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
+        self.nodes.push(boxed);
+        Ok(ptr)
     }
 
     /// Allocate a CHARSXP with inline string data.
@@ -385,10 +556,14 @@ where
     thread_local! {
         static EVAL_ARENA: std::cell::RefCell<RArena> = std::cell::RefCell::new(RArena::new());
     }
-    EVAL_ARENA.with(|arena| {
-        let mut arena = arena.borrow_mut();
-        f(&mut arena)
-    })
+    if super::instance::has_current_instance() {
+        super::instance::with_current_instance(|inst| f(&mut inst.arena)).unwrap()
+    } else {
+        EVAL_ARENA.with(|arena| {
+            let mut arena = arena.borrow_mut();
+            f(&mut arena)
+        })
+    }
 }
 
 /// Reset the thread-local evaluation arena, freeing all allocations.
@@ -478,7 +653,7 @@ mod tests {
         unsafe {
             assert_eq!((*ptr).sxpinfo.type_of(), SEXPTYPE::CHARSXP);
             let data = (*ptr).gengc_next_node as *const u8;
-            let s = std::ffi::CStr::from_ptr(data as *const i8);
+            let s = std::ffi::CStr::from_ptr(data as *const libc::c_char);
             assert_eq!(s.to_str().unwrap_or(""), "hello");
         }
     }
@@ -490,7 +665,7 @@ mod tests {
         assert!(!ptr.is_null());
         unsafe {
             let data = (*ptr).gengc_next_node as *const u8;
-            let s = std::ffi::CStr::from_ptr(data as *const i8);
+            let s = std::ffi::CStr::from_ptr(data as *const libc::c_char);
             assert_eq!(s.to_str().unwrap_or(""), "");
         }
     }

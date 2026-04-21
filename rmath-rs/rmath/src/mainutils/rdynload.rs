@@ -1524,12 +1524,10 @@ mod tests {
 
     #[test]
     fn test_init_dynload() {
-        unsafe {
-            init_loaded_dll();
-            LOADED_DLL.with(|v| {
-                assert!(v.borrow().is_empty());
-            });
-        }
+        init_loaded_dll();
+        LOADED_DLL.with(|v| {
+            assert!(v.borrow().is_empty());
+        });
     }
 
     #[test]

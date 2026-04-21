@@ -1015,13 +1015,14 @@ pub unsafe fn do_match(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let ttype = TYPEOF(table);
 
         // Determine common type
-        let common_type = if xtype >= SEXPTYPE::STRSXP.as_c_int() || ttype >= SEXPTYPE::STRSXP.as_c_int() {
-            SEXPTYPE::STRSXP
-        } else if xtype < ttype {
-            SEXPTYPE(ttype)
-        } else {
-            SEXPTYPE(xtype)
-        };
+        let common_type =
+            if xtype >= SEXPTYPE::STRSXP.as_c_int() || ttype >= SEXPTYPE::STRSXP.as_c_int() {
+                SEXPTYPE::STRSXP
+            } else if xtype < ttype {
+                SEXPTYPE(ttype)
+            } else {
+                SEXPTYPE(xtype)
+            };
 
         let ans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, n as c_int));
         let ians = INTEGER(ans);

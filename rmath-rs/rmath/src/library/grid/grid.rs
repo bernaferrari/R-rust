@@ -18,6 +18,9 @@ use crate::sexp::globals::*;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 use crate::mainutils::errors::{Rf_error, Rf_error1, Rf_warning};
+use crate::mainutils::subset::installTrChar;
+use crate::sexp::envir::defineVar;
+use crate::mainutils::engine::{toDeviceHeight, toDeviceWidth, toDeviceX, toDeviceY, GESetClip};
 
 use super::clippath::{isClipPath, resolveClipPath};
 use super::gpar::{
@@ -36,6 +39,7 @@ use super::unit::{
     transformYtoINCHES, unit, unitLength, unitUnit, unitValue,
 };
 use super::util::{copyRect, getListElement, intersect, rect, setListElement, textRect};
+use super::state::gridStateElement;
 use super::viewport::*;
 
 unsafe extern "C" {
@@ -47,12 +51,10 @@ unsafe extern "C" {
     fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP;
     fn findVar(symbol: SEXP, env: SEXP) -> SEXP;
     fn findFun(symbol: SEXP, env: SEXP) -> SEXP;
-    fn defineVar(symbol: SEXP, value: SEXP, env: SEXP);
     fn SET_TAG(x: SEXP, y: SEXP);
     fn NewFrameConfirm(dev: *const c_void);
     fn NoDevices() -> c_int;
     fn asBool(x: SEXP) -> c_int;
-    fn installTrChar(name: SEXP) -> SEXP;
     fn Rf_CreateAtVector(axp: *mut c_double, usr: *mut c_double, n: c_int, log: c_int) -> SEXP;
     fn col2name(color: c_int) -> *const c_char;
     fn RGBpar3(col: *mut c_void, i: c_int, bg: c_uint) -> c_uint;
@@ -89,7 +91,6 @@ unsafe extern "C" {
 }
 
 unsafe extern "C" {
-    fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -> SEXP;
     fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP);
     fn initVP(dd: pGEDevDesc);
     fn initDL(dd: pGEDevDesc);
@@ -116,6 +117,7 @@ unsafe extern "C" {
 
 // GE drawing functions
 unsafe extern "C" {
+    #[link_name = "rmath_GEcurrentDevice"]
     fn GEcurrentDevice() -> pGEDevDesc;
     fn GEMode(mode: c_int, dd: pGEDevDesc);
     fn GELine(x1: f64, y1: f64, x2: f64, y2: f64, gc: pGEcontext, dd: pGEDevDesc);
@@ -123,7 +125,6 @@ unsafe extern "C" {
     fn GEPolygon(n: c_int, x: *const f64, y: *const f64, gc: pGEcontext, dd: pGEDevDesc);
     fn GECircle(x: f64, y: f64, r: f64, gc: pGEcontext, dd: pGEDevDesc);
     fn GERect(x0: f64, y0: f64, x1: f64, y1: f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GESetClip(x0: f64, y0: f64, x1: f64, y1: f64, dd: pGEDevDesc);
     fn GENewPage(gc: pGEcontext, dd: pGEDevDesc);
     fn GEText(
         x: f64,
@@ -181,10 +182,6 @@ unsafe extern "C" {
         dd: pGEDevDesc,
     );
     fn GECap(dd: pGEDevDesc) -> SEXP;
-    fn toDeviceX(x: f64, from: c_int, dd: pGEDevDesc) -> f64;
-    fn toDeviceY(y: f64, from: c_int, dd: pGEDevDesc) -> f64;
-    fn toDeviceWidth(x: f64, from: c_int, dd: pGEDevDesc) -> f64;
-    fn toDeviceHeight(y: f64, from: c_int, dd: pGEDevDesc) -> f64;
     fn fromDeviceX(x: f64, from: c_int, dd: pGEDevDesc) -> f64;
     fn fromDeviceY(y: f64, from: c_int, dd: pGEDevDesc) -> f64;
     fn fromDeviceWidth(x: f64, from: c_int, dd: pGEDevDesc) -> f64;
@@ -211,12 +208,6 @@ const DMDC: f64 = 1.25331413731550025119;
 const TRC0: f64 = 1.55512030155621416073;
 const TRC1: f64 = 1.34677368708859836060;
 const TRC2: f64 = 0.77756015077810708036;
-
-/* ==============================
- * Local helper: R_gridEvalEnv.with(|v| v.get())
- * ============================== */
-
-thread_local! { static R_gridEvalEnv.with(|v| v.get()): Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 /* ==============================
  * Local helper: numeric(x, index)
@@ -306,7 +297,7 @@ unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: 
  * ============================== */
 
 pub unsafe fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
-    R_gridEvalEnv.with(|v| v.get()).with(|v| v.set(GridEvalEnv));
+    R_gridEvalEnv.with(|v| v.set(GridEvalEnv));
     // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
     R_NilValue()
 }
@@ -464,8 +455,8 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
                 let mut vpc = LViewportContext::default();
                 getViewportContext(vp, &mut vpc);
                 let mut gc_buf: [u8; 256] = [0; 256];
-                gcontextFromViewport(vp, gc_buf.as_ptr(), dd as *const u8);
                 let gc = gc_buf.as_ptr() as pGEcontext;
+                gcontextFromViewport(vp, gc, dd);
                 transformLocn(
                     x1,
                     y1,
@@ -988,7 +979,7 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
     let mut devHeightCM: c_double = 0.0;
     getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
     if deviceChanged(devWidthCM, devHeightCM, newvp) {
-        calcViewportTransform(newvp, viewportParent(newvp), 1, dd);
+        calcViewportTransform(newvp, viewportParent(newvp), true, dd);
     }
     setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
     setGridStateElement(dd, GSS_VP, newvp);
@@ -1046,7 +1037,7 @@ pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
     let mut devHeightCM: c_double = 0.0;
     getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
     if deviceChanged(devWidthCM, devHeightCM, newvp) {
-        calcViewportTransform(newvp, viewportParent(newvp), 1, dd);
+        calcViewportTransform(newvp, viewportParent(newvp), true, dd);
     }
     setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
     setGridStateElement(dd, GSS_VP, newvp);
@@ -1196,8 +1187,8 @@ pub unsafe fn L_newpage() -> SEXP {
     if !dd.is_null() {
         let currentgp = gridStateElement(dd, GSS_GPAR);
         let mut gc: [u8; 256] = [0; 256];
-        gcontextFromgpar(currentgp, 0, gc.as_mut_ptr(), dd);
-        GENewPage(gc.as_ptr(), dd);
+        gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
+        GENewPage(gc.as_ptr() as pGEcontext, dd);
     }
     R_NilValue()
 }
@@ -1250,7 +1241,7 @@ pub unsafe fn getViewportTransform(
     let mut devHeightCM: c_double = 0.0;
     getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
     if deviceChanged(devWidthCM, devHeightCM, currentvp) {
-        calcViewportTransform(currentvp, viewportParent(currentvp), 1, dd);
+        calcViewportTransform(currentvp, viewportParent(currentvp), true, dd);
     }
 
     let width_cm = viewportWidthCM(currentvp);
@@ -1856,9 +1847,9 @@ unsafe fn calcArrow(
     angle: SEXP,
     length: SEXP,
     i: c_int,
-    _vpc: LViewportContext,
-    _vpWidthCM: f64,
-    _vpHeightCM: f64,
+    vpc: LViewportContext,
+    vpWidthCM: f64,
+    vpHeightCM: f64,
     vertx: *mut f64,
     verty: *mut f64,
     gc: pGEcontext,
@@ -3008,7 +2999,7 @@ pub unsafe fn L_raster(
         image_owned.as_mut_ptr()
     };
 
-    let dim = getAttrib(raster, R_DimSymbol);
+    let dim = getAttrib(raster, R_DimSymbol());
     if TYPEOF(dim) != SEXPTYPE::INTSXP || LENGTH(dim) < 2 {
         Rf_error(c"invalid raster dimensions".as_ptr());
     }
@@ -3505,7 +3496,7 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
     let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
 
     let mut gc: [u8; 256] = [0; 256];
-    gcontextFromgpar(currentgp, 0, gc.as_mut_ptr(), dd);
+    gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
 
     for i in 0..n as R_xlen_t {
         let mut ascent: f64 = 0.0;
@@ -3514,7 +3505,7 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
         if TYPEOF(label) == SEXPTYPE::EXPRSXP {
             GEExpressionMetric(
                 VECTOR_ELT(label, i),
-                gc.as_ptr(),
+                gc.as_ptr() as pGEcontext,
                 &mut ascent,
                 &mut descent,
                 &mut width,
@@ -3526,7 +3517,7 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
             GEStrMetric(
                 s,
                 ce,
-                gc.as_ptr(),
+                gc.as_ptr() as pGEcontext,
                 &mut ascent,
                 &mut descent,
                 &mut width,

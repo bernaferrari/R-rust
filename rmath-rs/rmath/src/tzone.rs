@@ -111,7 +111,7 @@ pub struct stm {
     pub tm_yday: i32,
     pub tm_isdst: i32,
     pub tm_gmtoff: i64,
-    pub tm_zone: *const i8,
+    pub tm_zone: *const libc::c_char,
 }
 
 // We need Default for internal use.
@@ -277,7 +277,7 @@ fn get_tz_globals() -> &'static Mutex<TzGlobals> {
 // Wild abbreviation (three spaces).
 static WILDABBR: &[u8] = b"   ";
 
-thread_local! { static R_TZNAME: UnsafeCell<[*mut i8; 2]> = UnsafeCell::new([std::ptr::null_mut(); 2]); }
+thread_local! { static R_TZNAME: UnsafeCell<[*mut libc::c_char; 2]> = UnsafeCell::new([std::ptr::null_mut(); 2]); }
 thread_local! { static TZNAME_BUF0: Cell<[u8; TZ_MAX_CHARS + 1]> = Cell::new([0u8; TZ_MAX_CHARS + 1]); }
 thread_local! { static TZNAME_BUF1: Cell<[u8; TZ_MAX_CHARS + 1]> = Cell::new([0u8; TZ_MAX_CHARS + 1]); }
 
@@ -558,8 +558,8 @@ fn settzname(g: &mut TzGlobals) {
     let mut buf1_val = TZNAME_BUF1.with(|v| v.get());
     R_TZNAME.with(|v| unsafe {
         let arr = &mut *v.get();
-        arr[0] = buf0_val.as_mut_ptr() as *mut i8;
-        arr[1] = buf1_val.as_mut_ptr() as *mut i8;
+        arr[0] = buf0_val.as_mut_ptr() as *mut libc::c_char;
+        arr[1] = buf1_val.as_mut_ptr() as *mut libc::c_char;
     });
 }
 
@@ -1827,7 +1827,7 @@ fn localsub(g: &mut TzGlobals, timep: &i64, _offset: i32, tmp: &mut stm) -> Opti
     // This is safe because the chars buffer lives in the TzGlobals struct
     // which is behind a Mutex and persists for the lifetime of the program.
     let abbr_ind = ttisp.tt_abbrind as usize;
-    tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const i8;
+    tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const libc::c_char;
 
     Some(result)
 }
@@ -2302,11 +2302,11 @@ pub unsafe fn R_tzsetwall() {
 
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
-pub unsafe fn R_tzname() -> *mut *mut i8 {
+pub unsafe fn R_tzname() -> *mut *mut libc::c_char {
     let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
     r_tzset_impl(&mut g);
     drop(g);
-    R_TZNAME.with(|v| v.get() as *mut *mut i8)
+    R_TZNAME.with(|v| v.get() as *mut *mut libc::c_char)
 }
 
 // ---------------------------------------------------------------------------

@@ -1,3 +1,5 @@
+#![allow(unsafe_op_in_unsafe_fn)]
+
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/methods/src/methods_list_dispatch.c
@@ -97,15 +99,15 @@ thread_local! { static N_OV: Cell<c_int> = Cell::new(0); }
 
 pub extern "C" fn R_clear_method_selection() -> SEXP {
     N_OV.with(|v| v.set(0));
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 thread_local! { static TABLE_DISPATCH_ON: Cell<c_int> = Cell::new(0); }
 
 pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
     let prev = TABLE_DISPATCH_ON.with(|v| v.get());
-    let value = if TYPEOF(onOff) == SEXPTYPE::LGLSXP && LENGTH(onOff) >= 1 {
-        LOGICAL_ELT(onOff, 0)
+    let value = if unsafe { TYPEOF(onOff) } == SEXPTYPE::LGLSXP && unsafe { LENGTH(onOff) } >= 1 {
+        unsafe { LOGICAL_ELT(onOff, 0) }
     } else {
         0 // NA_LOGICAL treated as "return previous"
     };
@@ -113,7 +115,7 @@ pub extern "C" fn R_set_method_dispatch(onOff: SEXP) -> SEXP {
         // NA_LOGICAL == INT_MIN
         TABLE_DISPATCH_ON.with(|v| v.set(if value != 0 { 1 } else { 0 }));
     }
-    Rf_ScalarLogical(prev)
+    unsafe { Rf_ScalarLogical(prev) }
 }
 
 /// R_methodsPackageMetaName - construct a meta-data object name.

@@ -101,7 +101,7 @@ pub fn print_value(x: Sexp<'_>) {
                 let v = x.integer_elt(0).unwrap_or(0);
                 emit(&format!("[1] {}\n", v));
             } else {
-                let vals: Vec<String> = x.iter_integer().take(10).map(|v| v.to_string()).collect();
+                let vals: Vec<String> = unsafe { x.iter_integer() }.take(10).map(|v| v.to_string()).collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
             }
@@ -111,8 +111,7 @@ pub fn print_value(x: Sexp<'_>) {
                 let v = x.real_elt(0).unwrap_or(0.0);
                 emit(&format!("[1] {}\n", v));
             } else {
-                let vals: Vec<String> = x
-                    .iter_real()
+                let vals: Vec<String> = unsafe { x.iter_real() }
                     .take(10)
                     .map(|v| format!("{:.6}", v))
                     .collect();
@@ -121,8 +120,7 @@ pub fn print_value(x: Sexp<'_>) {
             }
         }
         SEXPTYPE::LGLSXP => {
-            let vals: Vec<&str> = x
-                .iter_integer()
+            let vals: Vec<&str> = unsafe { x.iter_integer() }
                 .take(10)
                 .map(|v| match v {
                     0 => "FALSE",
@@ -216,7 +214,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 let v = x.integer_elt(0).unwrap_or(0);
                 format!("[1] {}", v)
             } else {
-                let vals: Vec<String> = x.iter_integer().take(10).map(|v| v.to_string()).collect();
+                let vals: Vec<String> = unsafe { x.iter_integer() }.take(10).map(|v| v.to_string()).collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", vals.join(" "), suffix)
             }
@@ -226,8 +224,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 let v = x.real_elt(0).unwrap_or(0.0);
                 format!("[1] {}", v)
             } else {
-                let vals: Vec<String> = x
-                    .iter_real()
+                let vals: Vec<String> = unsafe { x.iter_real() }
                     .take(10)
                     .map(|v| format!("{:.6}", v))
                     .collect();
@@ -236,8 +233,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
         }
         SEXPTYPE::LGLSXP => {
-            let vals: Vec<&str> = x
-                .iter_integer()
+            let vals: Vec<&str> = unsafe { x.iter_integer() }
                 .take(10)
                 .map(|v| match v {
                     0 => "FALSE",
@@ -294,7 +290,7 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
 
     match x.typeof_() {
         SEXPTYPE::INTSXP => {
-            let vals: Vec<_> = x.iter_integer().take(10).collect();
+            let vals: Vec<_> = unsafe { x.iter_integer() }.take(10).collect();
             let suffix = if x.len() > 10 { ", ..." } else { "" };
             let output = format!("{}int [{}]: {:?}{}", prefix, x.len(), vals, suffix);
             if is_capturing() {
@@ -305,7 +301,7 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
             }
         }
         SEXPTYPE::REALSXP => {
-            let vals: Vec<_> = x.iter_real().take(10).collect();
+            let vals: Vec<_> = unsafe { x.iter_real() }.take(10).collect();
             let suffix = if x.len() > 10 { ", ..." } else { "" };
             let output = format!("{}double [{}]: {:?}{}", prefix, x.len(), vals, suffix);
             if is_capturing() {
@@ -332,7 +328,7 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
             } else {
                 println!("{}", output);
             }
-            for (i, elem) in x.iter_vector().take(5).enumerate() {
+            for (i, elem) in unsafe { x.iter_vector() }.take(5).enumerate() {
                 print_structure(elem, indent + 1);
             }
         }

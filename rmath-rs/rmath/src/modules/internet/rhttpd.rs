@@ -398,7 +398,7 @@ unsafe fn send_response(s: c_int, buf: *const c_char, len: size_t) -> c_int {
     0
 }
 
-/// Send HTTP/x.x plus the text (which should be of the form " XXX ...")
+/// Send `HTTP/x.x` plus the text (which should be of the form `"status message"`).
 unsafe fn send_http_response(c: *mut HttpdConn, text: *const c_char) {
     let sig = http_sig(&*c);
     let l = libc::strlen(text);

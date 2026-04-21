@@ -287,6 +287,6 @@ pub type GEevent = c_int;
 /* ==================== Global state ==================== */
 
 /// Grid registration index (set by the graphics engine).
-pub thread_local! { static gridRegisterIndex: Cell<c_int> = Cell::new(0); }
+thread_local! { pub static gridRegisterIndex: Cell<c_int> = Cell::new(0); }
 
-pub thread_local! { static R_gridEvalEnv: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
+thread_local! { pub static R_gridEvalEnv: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }

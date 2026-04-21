@@ -1994,7 +1994,7 @@ fn trio_scan_process(
                             } else if flags & FLAGS_LONG != 0 {
                                 *(pointer as *mut c_long) = final_number as c_long;
                             } else if flags & FLAGS_SHORTSHORT != 0 {
-                                *(pointer as *mut i8) = final_number as i8;
+                                *(pointer as *mut libc::c_char) = final_number as i8;
                             } else if flags & FLAGS_SHORT != 0 {
                                 *(pointer as *mut i16) = final_number as i16;
                             } else {

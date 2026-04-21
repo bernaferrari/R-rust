@@ -122,11 +122,27 @@ unsafe fn asInteger(x: SEXP) -> c_int {
         let t = TYPEOF(x);
         if t == SEXPTYPE::INTSXP {
             if LENGTH(x) >= 1 {
-                return *INTEGER(x).add(0);
+                let data = INTEGER(x);
+                let data_addr = data as usize;
+                if data.is_null()
+                    || data_addr < 0x1000
+                    || (data_addr & (std::mem::align_of::<c_int>() - 1)) != 0
+                {
+                    return NA_INTEGER;
+                }
+                return *data;
             }
         } else if t == SEXPTYPE::REALSXP {
             if LENGTH(x) >= 1 {
-                let v = *REAL(x).add(0);
+                let data = REAL(x);
+                let data_addr = data as usize;
+                if data.is_null()
+                    || data_addr < 0x1000
+                    || (data_addr & (std::mem::align_of::<c_double>() - 1)) != 0
+                {
+                    return NA_INTEGER;
+                }
+                let v = *data;
                 if ISNAN(v) {
                     return NA_INTEGER;
                 }
@@ -136,7 +152,15 @@ unsafe fn asInteger(x: SEXP) -> c_int {
                 return v as c_int;
             }
         } else if t == SEXPTYPE::LGLSXP && LENGTH(x) >= 1 {
-            return *LOGICAL(x).add(0);
+            let data = LOGICAL(x);
+            let data_addr = data as usize;
+            if data.is_null()
+                || data_addr < 0x1000
+                || (data_addr & (std::mem::align_of::<c_int>() - 1)) != 0
+            {
+                return NA_INTEGER;
+            }
+            return *data;
         }
         NA_INTEGER
     }
@@ -227,8 +251,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return 0;
         }
         let t = TYPEOF(x);
-        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP)
-            as c_int
+        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP) as c_int
     }
 }
 
@@ -444,6 +467,17 @@ unsafe fn FixupScipen(scipen: SEXP, warn: warn_type) -> c_int {
 unsafe fn GetOptionByName(name: &str) -> SEXP {
     unsafe {
         InitOptions();
+        let nil = R_NilValue();
+
+        if crate::sexp::instance::has_current_instance() {
+            return crate::sexp::instance::with_current_instance(|inst| {
+                match inst.options.get(name) {
+                    Some(&val) if (val as usize) > 0x1000 && (val as usize).trailing_zeros() >= 3 => val,
+                    _ => nil,
+                }
+            }).unwrap_or(nil);
+        }
+
         let table = get_options_table()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -515,6 +549,29 @@ pub unsafe fn GetOption(name: *const c_char) -> SEXP {
 /// The C code stores options as SYMVALUE(install(".Options")), a dotted-pair list.
 pub unsafe fn R_Options() -> SEXP {
     unsafe {
+        let nil = R_NilValue();
+
+        if crate::sexp::instance::has_current_instance() {
+            return crate::sexp::instance::with_current_instance(|inst| {
+                let n = inst.options.len();
+                if n == 0 {
+                    return nil;
+                }
+                let mut keys: Vec<String> = inst.options.keys().cloned().collect();
+                keys.sort();
+
+                let mut result: SEXP = nil;
+                for key in keys.iter().rev() {
+                    let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
+                    let val = *inst.options.get(key.as_str()).unwrap_or(&nil);
+                    let cell = Rf_cons(val, result);
+                    SETTAG(cell, tag);
+                    result = cell;
+                }
+                result
+            }).unwrap_or(nil);
+        }
+
         let table = get_options_table()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -543,12 +600,29 @@ pub unsafe fn R_Options() -> SEXP {
 /// Returns R_NilValue if not found.
 pub unsafe fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
     unsafe {
+        let nil = R_NilValue();
         // In our implementation, we use the HashMap directly.
         // This function is kept for FFI compatibility.
         let name_str = match option_name_from_tag(tag) {
             Some(s) => s,
-            None => return R_NilValue(),
+            None => return nil,
         };
+
+        if crate::sexp::instance::has_current_instance() {
+            return crate::sexp::instance::with_current_instance(|inst| {
+                match inst.options.get(name_str.as_str()) {
+                    Some(&val) => {
+                        let cell = Rf_cons(val, nil);
+                        if !cell.is_null() {
+                            SETTAG(cell, tag);
+                        }
+                        cell
+                    }
+                    None => nil,
+                }
+            }).unwrap_or(nil);
+        }
+
         let table = get_options_table()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
@@ -579,12 +653,26 @@ unsafe fn SetOption(tag: SEXP, value: SEXP) -> SEXP {
 /// Set or remove an option by plain string key. Returns old value.
 unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
     unsafe {
+        let nil = R_NilValue();
         InitOptions();
+
+        if crate::sexp::instance::has_current_instance() {
+            return crate::sexp::instance::with_current_instance(|inst| {
+                if value == nil {
+                    inst.options.remove(name).unwrap_or(nil)
+                } else {
+                    R_PreserveObject(value);
+                    inst.options.insert(name.to_string(), value).unwrap_or(nil)
+                }
+            }).unwrap_or(nil);
+        }
+
+        // Fall back to global
         let mut table = get_options_table()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
 
-        if value == R_NilValue() {
+        if value == nil {
             // Remove the option, returning the old value
             if let Some(old) = table.options.remove(name) {
                 old
@@ -721,89 +809,84 @@ pub unsafe fn Rf_GetOptionDeviceAsk() -> Rboolean {
 // Initialize default options
 // ---------------------------------------------------------------------------
 
+/// Populate an options HashMap with default R option values.
+unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
+    unsafe {
+    let pi = crate::sexp::constructors::persistent_scalar_integer;
+    let pl = crate::sexp::constructors::persistent_scalar_logical;
+    let pm = crate::sexp::constructors::persistent_mkstring;
+
+    let val = pm(CString::new("> ").unwrap_or_default().as_ptr());
+    options.insert("prompt".to_string(), val);
+
+    let val = pm(CString::new("+ ").unwrap_or_default().as_ptr());
+    options.insert("continue".to_string(), val);
+
+    options.insert("expressions".to_string(), pi(5000));
+    options.insert("width".to_string(), pi(80));
+    options.insert("deparse.cutoff".to_string(), pi(60));
+    options.insert("digits".to_string(), pi(7));
+    options.insert("echo".to_string(), pl(TRUE));
+    options.insert("quiet".to_string(), pl(FALSE));
+    options.insert("verbose".to_string(), pl(FALSE));
+    options.insert("check.bounds".to_string(), pl(FALSE));
+    options.insert("keep.source".to_string(), pl(FALSE));
+    options.insert("keep.source.pkgs".to_string(), pl(FALSE));
+    options.insert("keep.parse.data".to_string(), pl(TRUE));
+    options.insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
+    options.insert("warning.length".to_string(), pi(1000));
+    options.insert("nwarnings".to_string(), pi(50));
+
+    let val = pm(CString::new(".").unwrap_or_default().as_ptr());
+    options.insert("OutDec".to_string(), val);
+
+    options.insert("CBoundsCheck".to_string(), pl(FALSE));
+
+    let val = pm(CString::new("default").unwrap_or_default().as_ptr());
+    options.insert("matprod".to_string(), val);
+
+    options.insert("PCRE_study".to_string(), pl(TRUE));
+    options.insert("PCRE_use_JIT".to_string(), pl(TRUE));
+    options.insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL));
+    options.insert("max.contour.segments".to_string(), pi(25000));
+    options.insert("warnPartialMatchDollar".to_string(), pl(FALSE));
+    options.insert("warnPartialMatchArgs".to_string(), pl(FALSE));
+    options.insert("warnPartialMatchAttr".to_string(), pl(FALSE));
+    options.insert("showWarnCalls".to_string(), pl(FALSE));
+    options.insert("showErrorCalls".to_string(), pl(FALSE));
+    options.insert("showNCalls".to_string(), pi(50));
+    options.insert("browserNLdisabled".to_string(), pl(FALSE));
+    options.insert("warn".to_string(), pi(0));
+    options.insert("max.print".to_string(), pi(99999));
+    options.insert("show.error.messages".to_string(), pl(TRUE));
+    options.insert("scipen".to_string(), pi(0));
+    options.insert("height".to_string(), pi(60));
+    options.insert("add.smooth".to_string(), pl(TRUE));
+    }
+}
+
 /// Initialize the default options list.
 pub unsafe fn InitOptions() {
     unsafe {
+        // Check for active instance first
+        if crate::sexp::instance::has_current_instance() {
+            crate::sexp::instance::with_current_instance(|inst| {
+                if inst.options_initialized {
+                    return;
+                }
+                populate_options(&mut inst.options);
+                inst.options_initialized = true;
+            });
+            return;
+        }
+        // Fall back to global table
         let mut table = get_options_table()
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         if table.initialized {
             return;
         }
-
-        let pi = crate::sexp::constructors::persistent_scalar_integer;
-        let pl = crate::sexp::constructors::persistent_scalar_logical;
-        let pm = crate::sexp::constructors::persistent_mkstring;
-
-        let val = pm(CString::new("> ").unwrap_or_default().as_ptr());
-        table.options.insert("prompt".to_string(), val);
-
-        let val = pm(CString::new("+ ").unwrap_or_default().as_ptr());
-        table.options.insert("continue".to_string(), val);
-
-        table.options.insert("expressions".to_string(), pi(5000));
-        table.options.insert("width".to_string(), pi(80));
-        table.options.insert("deparse.cutoff".to_string(), pi(60));
-        table.options.insert("digits".to_string(), pi(7));
-        table.options.insert("echo".to_string(), pl(TRUE));
-        table.options.insert("quiet".to_string(), pl(FALSE));
-        table.options.insert("verbose".to_string(), pl(FALSE));
-        table.options.insert("check.bounds".to_string(), pl(FALSE));
-        table.options.insert("keep.source".to_string(), pl(FALSE));
-        table
-            .options
-            .insert("keep.source.pkgs".to_string(), pl(FALSE));
-        table
-            .options
-            .insert("keep.parse.data".to_string(), pl(TRUE));
-        table
-            .options
-            .insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
-        table.options.insert("warning.length".to_string(), pi(1000));
-        table.options.insert("nwarnings".to_string(), pi(50));
-
-        let val = pm(CString::new(".").unwrap_or_default().as_ptr());
-        table.options.insert("OutDec".to_string(), val);
-
-        table.options.insert("CBoundsCheck".to_string(), pl(FALSE));
-
-        let val = pm(CString::new("default").unwrap_or_default().as_ptr());
-        table.options.insert("matprod".to_string(), val);
-
-        table.options.insert("PCRE_study".to_string(), pl(TRUE));
-        table.options.insert("PCRE_use_JIT".to_string(), pl(TRUE));
-        table
-            .options
-            .insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL));
-        table
-            .options
-            .insert("max.contour.segments".to_string(), pi(25000));
-        table
-            .options
-            .insert("warnPartialMatchDollar".to_string(), pl(FALSE));
-        table
-            .options
-            .insert("warnPartialMatchArgs".to_string(), pl(FALSE));
-        table
-            .options
-            .insert("warnPartialMatchAttr".to_string(), pl(FALSE));
-        table.options.insert("showWarnCalls".to_string(), pl(FALSE));
-        table
-            .options
-            .insert("showErrorCalls".to_string(), pl(FALSE));
-        table.options.insert("showNCalls".to_string(), pi(50));
-        table
-            .options
-            .insert("browserNLdisabled".to_string(), pl(FALSE));
-        table.options.insert("warn".to_string(), pi(0));
-        table.options.insert("max.print".to_string(), pi(99999));
-        table
-            .options
-            .insert("show.error.messages".to_string(), pl(TRUE));
-        table.options.insert("scipen".to_string(), pi(0));
-        table.options.insert("height".to_string(), pi(60));
-        table.options.insert("add.smooth".to_string(), pl(TRUE));
-
+        populate_options(&mut table.options);
         table.initialized = true;
     }
 }
@@ -862,6 +945,34 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
         // Zero-argument case: return all options sorted alphabetically
         if args == R_NilValue() {
+            let nil = R_NilValue();
+
+            if crate::sexp::instance::has_current_instance() {
+                return crate::sexp::instance::with_current_instance(|inst| {
+                    let n = inst.options.len() as c_int;
+
+                    let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
+                    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+
+                    let mut keys: Vec<String> = inst.options.keys().cloned().collect();
+                    keys.sort();
+
+                    for (i, key) in keys.iter().enumerate() {
+                        let name_charsxp =
+                            Rf_mkChar(CString::new(key.as_str()).unwrap_or_default().as_ptr());
+                        SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
+                        if let Some(&val) = inst.options.get(key) {
+                            SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
+                        }
+                    }
+
+                    setAttrib(value, R_NamesSymbol(), names);
+                    Rf_unprotect(2);
+                    set_R_Visible(TRUE);
+                    value
+                }).unwrap_or(nil);
+            }
+
             let table = get_options_table()
                 .lock()
                 .unwrap_or_else(|e| e.into_inner());
@@ -1541,6 +1652,7 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
     use crate::sexp::protect::R_ProtectCount;
     use std::ffi::CString;
 
@@ -1565,6 +1677,26 @@ mod tests {
     impl Drop for ProtectStackGuard {
         fn drop(&mut self) {
             reset_protect_stack();
+        }
+    }
+
+    struct TestInstance {
+        _instance: Box<RInstance>,
+    }
+
+    impl TestInstance {
+        fn new() -> Self {
+            let mut instance = Box::new(RInstance::new());
+            unsafe {
+                set_current_instance(&mut *instance);
+            }
+            TestInstance { _instance: instance }
+        }
+    }
+
+    impl Drop for TestInstance {
+        fn drop(&mut self) {
+            clear_current_instance();
         }
     }
 
@@ -1621,31 +1753,33 @@ mod tests {
     #[test]
     fn test_init_options() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
-            let table = get_options_table()
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            assert!(table.initialized);
-            assert!(table.options.contains_key("width"));
-            assert!(table.options.contains_key("digits"));
-            assert!(table.options.contains_key("prompt"));
-            assert!(table.options.contains_key("continue"));
-            assert!(table.options.contains_key("expressions"));
-            assert!(table.options.contains_key("warn"));
-            assert!(table.options.contains_key("max.print"));
-            assert!(table.options.contains_key("scipen"));
-            assert!(table.options.contains_key("echo"));
-            assert!(table.options.contains_key("verbose"));
-            assert!(table.options.contains_key("height"));
-            assert!(table.options.contains_key("OutDec"));
-            assert!(table.options.contains_key("add.smooth"));
+            assert_eq!(GetOptionWidth(), 80);
+            assert_eq!(GetOptionDigits(), 7);
+            assert_eq!(GetOptionCutoff(), 60);
+            assert_eq!(R_ShowWarningOption(), 0);
+            let prompt_opt = GetOptionByName("prompt");
+            assert!(!prompt_opt.is_null());
+            let cont_opt = GetOptionByName("continue");
+            assert!(!cont_opt.is_null());
+            assert_eq!(GetOptionByName("expressions") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("warn") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("max.print") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("scipen") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("echo") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("verbose") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("height") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("OutDec") == R_NilValue(), false);
+            assert_eq!(GetOptionByName("add.smooth") == R_NilValue(), false);
         }
     }
 
     #[test]
     fn test_get_option_width_default() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             assert_eq!(GetOptionWidth(), 80);
@@ -1655,6 +1789,7 @@ mod tests {
     #[test]
     fn test_get_option_digits_default() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             assert_eq!(GetOptionDigits(), 7);
@@ -1664,6 +1799,7 @@ mod tests {
     #[test]
     fn test_get_option_cutoff_default() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             assert_eq!(GetOptionCutoff(), 60);
@@ -1673,6 +1809,7 @@ mod tests {
     #[test]
     fn test_set_option_width() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             let old = R_SetOptionWidth(123);
@@ -1684,6 +1821,7 @@ mod tests {
     #[test]
     fn test_set_option_warn() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             let old = R_SetOptionWarn(1);
@@ -1695,6 +1833,7 @@ mod tests {
     #[test]
     fn test_get_option_device_ask_default() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             assert_eq!(Rf_GetOptionDeviceAsk(), FALSE);
@@ -1704,13 +1843,10 @@ mod tests {
     #[test]
     fn test_show_error_option() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
             let val = R_ShowErrorOption();
-            // When the option is found and valid, should be 0 or 1 (TRUE/FALSE)
-            // When not found, returns 1 (default)
-            // With arena allocation, the stored SEXP may get recycled, giving NA
-            // Just verify it doesn't crash
             assert!(val == 1 || val == 0 || val == NA_INTEGER);
         }
     }
@@ -1718,6 +1854,7 @@ mod tests {
     #[test]
     fn test_set_get_option_roundtrip() {
         let _guard = ProtectStackGuard::new();
+        let _inst = TestInstance::new();
         unsafe {
             InitOptions();
 

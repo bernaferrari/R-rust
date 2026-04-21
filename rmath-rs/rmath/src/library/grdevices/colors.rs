@@ -444,11 +444,11 @@ unsafe fn StrMatch(s: *const c_char, t: *const c_char) -> c_int {
         if sc == 0 && tc == 0 {
             return 1;
         }
-        if sc == b' ' as i8 {
+        if sc == b' ' as libc::c_char {
             si += 1;
             continue;
         }
-        if tc == b' ' as i8 {
+        if tc == b' ' as libc::c_char {
             ti += 1;
             continue;
         }
@@ -483,7 +483,7 @@ unsafe fn hexdigit(d: c_int) -> u32 {
 // ---------------------------------------------------------------------------
 
 unsafe fn rgb2col(rgb: *const c_char) -> rcolor {
-    if *rgb != b'#' as i8 {
+    if *rgb != b'#' as libc::c_char {
         Rf_error(b"invalid RGB specification\0".as_ptr() as *const c_char);
     }
     let len = libc::strlen(rgb);
@@ -3193,7 +3193,7 @@ unsafe fn name2col(nm: *const c_char) -> rcolor {
 }
 
 unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
-    if *s == b'#' as i8 {
+    if *s == b'#' as libc::c_char {
         return rgb2col(s);
     }
     if (*s as c_int) >= b'0' as c_int && (*s as c_int) <= b'9' as c_int {
@@ -3218,7 +3218,7 @@ unsafe fn str2col(s: *const c_char, bg: rcolor) -> rcolor {
 // ---------------------------------------------------------------------------
 
 /// Internal to external color representation.
-pub unsafe fn incol2name(col: c_uint) -> *const c_char {
+pub unsafe extern "C" fn incol2name(col: c_uint) -> *const c_char {
     if R_OPAQUE(col) != 0 {
         for entry in COLOR_DATA_BASE.iter() {
             if entry.name.is_empty() {
@@ -3236,7 +3236,7 @@ pub unsafe fn incol2name(col: c_uint) -> *const c_char {
     }
 }
 
-pub unsafe fn inR_GE_str2col(s: *const c_char) -> c_uint {
+pub unsafe extern "C" fn inR_GE_str2col(s: *const c_char) -> c_uint {
     if streql(s, b"0\0".as_ptr() as *const c_char) != 0 {
         Rf_error(b"invalid color specification\0".as_ptr() as *const c_char);
     }
@@ -3289,7 +3289,7 @@ pub unsafe fn inRGBpar3(x: SEXP, i: c_int, bg: rcolor) -> rcolor {
 }
 
 /// Save/restore palette (NOT #[unsafe(no_mangle)] — main/colors.rs already exports it)
-unsafe fn savePalette_impl(save: c_int) {
+unsafe extern "C" fn savePalette_impl(save: c_int) {
     let ps = PALETTE_SIZE.with(|v| v.get()) as usize;
     if save != 0 {
         let mut i = 0usize;
@@ -3319,7 +3319,7 @@ unsafe fn savePalette_impl(save: c_int) {
 // ---------------------------------------------------------------------------
 
 /// Wrapper for inRGBpar3 with void pointer signature (for Rg_set_col_ptrs).
-unsafe fn inRGBpar3_dispatch(
+unsafe extern "C" fn inRGBpar3_dispatch(
     x: *mut std::os::raw::c_void,
     i: c_int,
     bg: c_uint,
@@ -3752,7 +3752,7 @@ pub unsafe fn do_RGB2hsv(rgb: SEXP) -> SEXP {
     }
     let n = *INTEGER(dd).add(1) as usize;
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, 3, n as c_int));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), 3, n as c_int));
     let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
     let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3));
     SET_STRING_ELT(names, 0, Rf_mkChar(b"h\0".as_ptr() as *const c_char));
@@ -3807,7 +3807,7 @@ pub unsafe fn do_col2rgb(colors: SEXP, alpha: SEXP) -> SEXP {
     Rf_protect(colors);
 
     let n = LENGTH(colors) as usize;
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP, 3 + alph, n as c_int));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), 3 + alph, n as c_int));
     let dmns = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
     let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 3 + alph));
     SET_STRING_ELT(names, 0, Rf_mkChar(b"red\0".as_ptr() as *const c_char));
@@ -3883,7 +3883,7 @@ pub unsafe fn do_palette(val: SEXP) -> SEXP {
         let mut i = 0usize;
         while i < n {
             let s = CHAR(STRING_ELT(val, i as R_xlen_t));
-            color_buf[i] = if *s == b'#' as i8 {
+            color_buf[i] = if *s == b'#' as libc::c_char {
                 rgb2col(s)
             } else {
                 name2col(s)

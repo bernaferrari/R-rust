@@ -181,18 +181,7 @@ unsafe fn PutRNGstate() {
     crate::main::random::PutRNGstate()
 }
 
-unsafe extern "C" {
-    fn rcont2(
-        nrow: c_int,
-        ncol: c_int,
-        nrowt: *const c_int,
-        ncolt: *const c_int,
-        ntotal: c_int,
-        fact: *const c_double,
-        jwork: *mut c_int,
-        matrix: *mut c_int,
-    );
-}
+use crate::library::stats::rcont::rcont2;
 
 // ---------------------------------------------------------------------------
 // random1 -- 1-parameter random sampling
@@ -746,11 +735,11 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
     FixupProb(REAL(prob), k);
 
     GetRNGstate();
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP, k, n));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), k, n));
     let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
     for i in 0..n as R_xlen_t {
         let ik = i * k as R_xlen_t;
-        crate::nmath::dist::multinom::rmultinom_inner(
+        let _ = crate::nmath::dist::multinom::rmultinom_inner(
             size,
             std::slice::from_raw_parts(REAL(prob), k as usize),
             &mut rn_buf,
@@ -839,7 +828,7 @@ pub unsafe fn r2dtable(n: SEXP, r: SEXP, c: SEXP) -> SEXP {
     GetRNGstate();
 
     for i in 0..n_of_samples {
-        let tmp = Rf_protect(allocMatrix(SEXPTYPE::INTSXP, nr, nc));
+        let tmp = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), nr, nc));
         rcont2(
             nr,
             nc,

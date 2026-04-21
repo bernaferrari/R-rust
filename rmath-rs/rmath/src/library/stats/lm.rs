@@ -64,8 +64,9 @@ unsafe fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     ans
 }
 
+use crate::sexp::memory_ext::R_alloc;
+
 unsafe extern "C" {
-    fn R_alloc(size: usize, eltsize: usize) -> *mut std::ffi::c_void;
     /// LINPACK dqrls — Fortran name-mangled entry point
     #[link_name = "dqrls_"]
     fn dqrls(
@@ -93,7 +94,7 @@ unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
     let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
     setAttrib(ans, R_NamesSymbol(), nm);
     for i in 0..(nn as usize) {
-        SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(names[i].as_ptr() as *const i8));
+        SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(names[i].as_ptr() as *const libc::c_char));
     }
     Rf_unprotect(1);
     ans
@@ -108,7 +109,7 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
 
     let ans_dim = getAttrib(x, R_DimSymbol());
     if asBool(chk) && LENGTH(ans_dim) != 2 {
-        Rf_error(b"'x' is not a matrix\0".as_ptr() as *const i8);
+        Rf_error(b"'x' is not a matrix\0".as_ptr() as *const libc::c_char);
     }
     let dims = INTEGER(ans_dim);
     let n = *dims.add(0);
@@ -118,7 +119,7 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
         ny = (XLENGTH(y) as i64 / n as i64) as c_int;
     }
     if asBool(chk) && n * ny != XLENGTH(y) as c_int {
-        Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const i8);
+        Rf_error(b"dimensions of 'x' and 'y' do not match\0".as_ptr() as *const libc::c_char);
     }
 
     /* These lose attributes, so do after we have extracted dims */
@@ -136,14 +137,14 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
     let rptr = REAL(x);
     for i in 0..(XLENGTH(x) as usize) {
         if !R_FINITE(*rptr.add(i)) {
-            Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const i8);
+            Rf_error(b"NA/NaN/Inf in 'x'\0".as_ptr() as *const libc::c_char);
         }
     }
 
     let rptr = REAL(y);
     for i in 0..(XLENGTH(y) as usize) {
         if !R_FINITE(*rptr.add(i)) {
-            Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const i8);
+            Rf_error(b"NA/NaN/Inf in 'y'\0".as_ptr() as *const libc::c_char);
         }
     }
 

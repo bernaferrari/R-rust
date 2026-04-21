@@ -1301,20 +1301,24 @@ mod tests {
 
     /// Helper to create an integer vector with values.
     unsafe fn make_int_vector(values: &[c_int]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
-        for (i, &val) in values.iter().enumerate() {
-            *INTEGER(v).add(i) = val;
+        unsafe {
+            let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
+            for (i, &val) in values.iter().enumerate() {
+                *INTEGER(v).add(i) = val;
+            }
+            v
         }
-        v
     }
 
     /// Helper to create a real vector with values.
     unsafe fn make_real_vector(values: &[c_double]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
-        for (i, &val) in values.iter().enumerate() {
-            *REAL(v).add(i) = val;
+        unsafe {
+            let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+            for (i, &val) in values.iter().enumerate() {
+                *REAL(v).add(i) = val;
+            }
+            v
         }
-        v
     }
 
     #[test]

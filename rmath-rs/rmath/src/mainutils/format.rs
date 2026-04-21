@@ -67,11 +67,7 @@ pub unsafe fn format_get_R_print() -> RPrint {
 // can call it. The actual implementation is in printutils.rs.
 // ---------------------------------------------------------------------------
 
-unsafe extern "C" {
-    /// Compute the escaped display width of a CHARSXP.
-    /// Defined in printutils.rs.
-    fn Rstrlen(s: SEXP, quote: c_int) -> c_int;
-}
+use crate::mainutils::printutils::Rstrlen;
 
 // ---------------------------------------------------------------------------
 // Helper: IndexWidth
@@ -168,7 +164,7 @@ const NB: usize = 1000;
 /// >= 16 for IEEE 754 double).
 pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig: *mut c_int) {
     unsafe {
-        let mut buff = [0i8; NB];
+        let mut buff = [0 as libc::c_char; NB];
         let d = d as usize;
         let _nc = snprintf(&mut buff, NB, b"%#.*e\0".as_ptr().cast(), d - 1, r);
         // buff[d+2..] contains the exponent string, e.g. "e+02" or "e+100"
@@ -179,7 +175,7 @@ pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig
         *kpower = exp_val as c_int;
         // Count significant digits from the right: skip trailing zeros.
         let mut i = d as i32;
-        while i >= 2 && buff[i as usize] == b'0' as i8 {
+        while i >= 2 && buff[i as usize] == b'0' as libc::c_char {
             i -= 1;
         }
         *nsig = i;
@@ -189,7 +185,7 @@ pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig
 /// Minimal snprintf shim for our format_via_sprintf.
 /// Writes into `buf` (up to `buf_size` bytes including NUL) using the
 /// C format string `fmt`.
-fn snprintf(buf: &mut [i8], buf_size: usize, fmt: *const i8, precision: usize, value: f64) -> i32 {
+fn snprintf(buf: &mut [libc::c_char], buf_size: usize, fmt: *const libc::c_char, precision: usize, value: f64) -> i32 {
     let fmt_cstr = unsafe { std::ffi::CStr::from_ptr(fmt) };
     let fmt_str = fmt_cstr.to_str().unwrap_or("%.15e");
     // We only support the specific "%#.*e" pattern used by format_via_sprintf.
@@ -199,8 +195,8 @@ fn snprintf(buf: &mut [i8], buf_size: usize, fmt: *const i8, precision: usize, v
     buf[..copy_len].copy_from_slice(
         &bytes[..copy_len]
             .iter()
-            .map(|&b| b as i8)
-            .collect::<Vec<i8>>()[..copy_len],
+            .map(|&b| b as libc::c_char)
+            .collect::<Vec<libc::c_char>>()[..copy_len],
     );
     buf[copy_len] = 0;
     formatted.len() as i32
@@ -826,9 +822,7 @@ pub unsafe fn formatComplex(
 
         // Use R_alloc for transient memory (matches C behavior).
         // R_alloc args are (element_size, count).
-        unsafe extern "C" {
-            fn R_alloc(size: usize, nelem: usize) -> *mut c_void;
-        }
+        use crate::sexp::memory_ext::R_alloc;
 
         let re_ptr = R_alloc(std::mem::size_of::<c_double>(), n_usize) as *mut c_double;
         let im_ptr = R_alloc(std::mem::size_of::<c_double>(), n_usize) as *mut c_double;

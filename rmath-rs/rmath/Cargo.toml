@@ -9,21 +9,23 @@ crate-type = ["rlib", "staticlib"]
 name = "rmath"
 
 [features]
-default = ["standalone"]
-standalone = []
-integrated = []
+default = ["rust-backend"]
+# Use Fortran LAPACK/BLAS via FFI (requires Fortran toolchain, not suitable for Android)
+fortran-backend = []
+# Use pure Rust linear algebra via faer-rs (Android-compatible, no external toolchain)
+rust-backend = ["faer"]
 
 [dependencies]
 libm = "0.1"
 num = "0.4"
 libc = "0.2"
 hashbrown.workspace = true
-flate2 = "1.0"
-bzip2 = "0.5"
-lzma-sys = "0.1"
+flate2 = { version = "1.1", default-features = false, features = ["rust_backend"] }
+bzip2 = "0.6"
+lzma-rs = "0.3"
 
-[build-dependencies]
-cc = "1.1"
+# Pure Rust linear algebra backend (enabled via rust-backend feature)
+faer = { version = "0.24", optional = true }
 
 [[bench]]
 name = "bench_eval"

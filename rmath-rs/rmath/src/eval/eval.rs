@@ -28,6 +28,7 @@
 
 use std::ffi::CString;
 use std::os::raw::c_int;
+use std::time::{Duration, Instant};
 
 use crate::sexp::accessors::{CAR, CDR, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT, TYPEOF};
 use crate::sexp::envir::forcePromise;
@@ -136,6 +137,7 @@ pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
 #[derive(Debug)]
 pub enum EvalError {
     TooDeeplyNested,
+    TimeLimitExceeded,
     IncorrectDotsContext,
     ObjectNotFound(String),
     MissingArgument,
@@ -149,6 +151,7 @@ impl std::fmt::Display for EvalError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             EvalError::TooDeeplyNested => write!(f, "evaluation nested too deeply"),
+            EvalError::TimeLimitExceeded => write!(f, "evaluation time limit exceeded"),
             EvalError::IncorrectDotsContext => write!(f, "'...' used in an incorrect context"),
             EvalError::ObjectNotFound(name) => write!(f, "object '{}' not found", name),
             EvalError::MissingArgument => write!(f, "missing argument"),
@@ -163,6 +166,67 @@ impl std::fmt::Display for EvalError {
 }
 
 // ---------------------------------------------------------------------------
+// Evaluation limits
+// ---------------------------------------------------------------------------
+
+/// Limits for expression evaluation to prevent runaway computation.
+///
+/// A limit of `0` means unlimited for that dimension.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct EvalLimits {
+    /// Maximum evaluation recursion depth (0 = default of 500).
+    pub max_eval_depth: usize,
+    /// Maximum execution time in milliseconds (0 = unlimited).
+    pub max_execution_time_ms: u64,
+    /// Maximum total allocations in bytes during evaluation (0 = unlimited).
+    pub max_alloc_bytes: usize,
+}
+
+impl EvalLimits {
+    /// Default limits matching historic R behavior.
+    pub const fn default() -> Self {
+        EvalLimits {
+            max_eval_depth: 500,
+            max_execution_time_ms: 0,
+            max_alloc_bytes: 0,
+        }
+    }
+
+    /// No limits at all.
+    pub const fn none() -> Self {
+        EvalLimits {
+            max_eval_depth: 0,
+            max_execution_time_ms: 0,
+            max_alloc_bytes: 0,
+        }
+    }
+}
+
+thread_local! {
+    static CURRENT_LIMITS: std::cell::RefCell<EvalLimits> = const {
+        std::cell::RefCell::new(EvalLimits::default())
+    };
+    static EVAL_START_TIME: std::cell::RefCell<Option<Instant>> = const {
+        std::cell::RefCell::new(None)
+    };
+}
+
+/// Set evaluation limits for the current thread.
+pub fn set_eval_limits(limits: EvalLimits) {
+    CURRENT_LIMITS.with(|l| *l.borrow_mut() = limits);
+}
+
+/// Get the current evaluation limits for this thread.
+pub fn get_eval_limits() -> EvalLimits {
+    CURRENT_LIMITS.with(|l| *l.borrow())
+}
+
+/// Reset evaluation limits to the default (500 depth, unlimited time/alloc).
+pub fn reset_eval_limits() {
+    CURRENT_LIMITS.with(|l| *l.borrow_mut() = EvalLimits::default());
+}
+
+// ---------------------------------------------------------------------------
 // Safe eval API — the primary internal implementation
 // ---------------------------------------------------------------------------
 
@@ -174,12 +238,31 @@ impl Drop for DepthGuard {
     }
 }
 
-/// Check evaluation depth and return a guard that decrements on drop.
+/// Check evaluation depth and time limits, returning a guard that decrements on drop.
 fn check_eval_depth() -> Result<DepthGuard, String> {
+    let limits = get_eval_limits();
     let depth = unsafe { R_EvalDepth() } + 1;
-    if depth > 500 {
+    let max_depth = if limits.max_eval_depth > 0 {
+        limits.max_eval_depth
+    } else {
+        500
+    };
+    if depth as usize > max_depth {
         return Err(EvalError::TooDeeplyNested.to_string());
     }
+
+    // Check execution time limit
+    if limits.max_execution_time_ms > 0 {
+        let elapsed = EVAL_START_TIME.with(|t| {
+            t.borrow().map(|start| start.elapsed())
+        });
+        if let Some(elapsed) = elapsed {
+            if elapsed > Duration::from_millis(limits.max_execution_time_ms) {
+                return Err(EvalError::TimeLimitExceeded.to_string());
+            }
+        }
+    }
+
     unsafe { crate::sexp::globals::set_R_EvalDepth(depth) };
     Ok(DepthGuard(depth))
 }
@@ -5147,6 +5230,24 @@ fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
 #[must_use = "eval returns a Result that should be checked"]
 pub fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     eval_safe(e, rho)
+}
+
+/// Evaluate an R expression with custom limits.
+///
+/// Sets the thread-local evaluation limits for the duration of this call,
+/// then restores the previous limits afterward.
+pub fn eval_with_limits<'a>(
+    e: Sexp<'a>,
+    rho: Sexp<'a>,
+    limits: EvalLimits,
+) -> Result<Sexp<'a>, String> {
+    let previous = get_eval_limits();
+    set_eval_limits(limits);
+    EVAL_START_TIME.with(|t| *t.borrow_mut() = Some(Instant::now()));
+    let result = eval_safe(e, rho);
+    EVAL_START_TIME.with(|t| *t.borrow_mut() = None);
+    set_eval_limits(previous);
+    result
 }
 
 /// Internal safe eval implementation (legacy, delegates to eval_safe).

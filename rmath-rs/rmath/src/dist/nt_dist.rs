@@ -57,7 +57,7 @@ pub fn dnt_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
 
     /* If infinite df then the density is identical to a
        normal distribution with mean = ncp.  However, the formula
-       loses a lot of accuracy around df=1e9 // FIXME?
+       loses a lot of accuracy around df=1e9; revisit if extreme-df precision becomes important.
     */
     if !r_finite(df) || df > 1e8 {
         return dnorm4_inner(x, ncp, 1.0, log_p);
@@ -73,7 +73,7 @@ pub fn dnt_inner(x: f64, df: f64, ncp: f64, log_p: bool) -> f64 {
                 pnt_inner(x * sqrt((df + 2.0) / df), df + 2.0, ncp, true, false)
                     - pnt_inner(x, df, ncp, true, false),
             ));
-        /* FIXME: the above still suffers from cancellation (but not horribly) */
+        /* Numerical note: the expression above still suffers from some cancellation. */
     } else {
         /* x ~= 0 : -> same value as for  x = 0 */
         u = lgammafn((df + 1.0) / 2.0)
@@ -139,7 +139,7 @@ pub fn pnt_inner(t: f64, df: f64, ncp: f64, lower_tail: bool, log_p: bool) -> f6
 
     if df > 4e5 || del * del > 2.0 * M_LN2 * (-(DBL_MIN_EXP as f64)) {
         /*-- 2nd part: if del > 37.62, then p=0 below
-        FIXME: test should depend on `df', `tt' AND `del' ! */
+        Numerical note: this test should depend on `df', `tt' and `del'. */
         /* Approx. from Abramowitz & Stegun 26.7.10 (p.949) */
         let s = 1.0 / (4.0 * df);
 

@@ -101,7 +101,7 @@ pub unsafe fn isoreg(y: SEXP) -> SEXP {
     let n = XLENGTH(y);
 
     let anms: [&str; 5] = ["y", "yc", "yf", "iKnots", ""];
-    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP, &anms));
+    let ans = Rf_protect(mkNamed(SEXPTYPE::VECSXP.into(), &anms));
 
     let yc = Rf_allocVector(SEXPTYPE::REALSXP, (n + 1) as c_int);
     let yf = Rf_allocVector(SEXPTYPE::REALSXP, n as c_int);

@@ -40,9 +40,7 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::duplicate(x)
 }
 
-unsafe extern "C" {
-    fn ncols(s: *const std::ffi::c_void) -> c_int;
-}
+use crate::mainutils::util_main::ncols;
 
 // ---------------------------------------------------------------------------
 // Helper: asReal

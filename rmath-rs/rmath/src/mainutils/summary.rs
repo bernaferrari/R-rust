@@ -1034,9 +1034,7 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let mut a = args_mut;
         while a != R_NilValue() {
             match TYPEOF(CAR(a)) {
-                t if t == SEXPTYPE::INTSXP
-                    || t == SEXPTYPE::LGLSXP
-                    || t == SEXPTYPE::NILSXP => {}
+                t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP || t == SEXPTYPE::NILSXP => {}
                 t if t == SEXPTYPE::REALSXP => {
                     real_a = true;
                 }

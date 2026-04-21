@@ -126,7 +126,7 @@ pub static R_NegInf: f64 = ML_NEGINF;
 /// REprintf: print to stderr (varargs-like, simplified for Rust).
 /// In standalone mode, this just prints to stderr.
 /// For the C FFI compatibility, we provide a simple version.
-pub extern "C" fn REprintf(format: *const i8) {
+pub extern "C" fn REprintf(format: *const libc::c_char) {
     unsafe {
         if format.is_null() {
             return;

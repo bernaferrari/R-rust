@@ -172,7 +172,7 @@ where
 }
 
 pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let bytecode = code.as_integer_slice().ok_or("bytecode has no data")?;
+    let bytecode = unsafe { code.as_integer_slice() }.ok_or("bytecode has no data")?;
     let mut pc: usize = 0;
     let mut stack: Vec<Sexp<'a>> = Vec::new();
     let constants = code.attrib();

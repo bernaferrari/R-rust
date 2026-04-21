@@ -1,4 +1,6 @@
 
+#![allow(unsafe_op_in_unsafe_fn)]
+
 use core::ffi::{c_char, c_double, c_int};
 use std::ptr;
 use std::slice;
@@ -73,7 +75,7 @@ impl Array {
 
 fn array_assert(cond: bool) {
     if !cond {
-        Rf_error(b"assert failed in src/library/stats/mar.rs\0".as_ptr() as *const _);
+        unsafe { Rf_error(b"assert failed in src/library/stats/mar.rs\0".as_ptr() as *const _) };
     }
 }
 
@@ -231,7 +233,7 @@ fn array_op(arr1: &Array, arr2: &Array, op: char, ans: &mut Array) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in array_op\0".as_ptr() as *const _);
+            unsafe { Rf_error(b"Unknown op in array_op\0".as_ptr() as *const _) };
         }
     }
 }
@@ -263,7 +265,7 @@ fn array_op_in_place(ans: &mut Array, arr: &Array, op: char) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in array_op_in_place\0".as_ptr() as *const _);
+            unsafe { Rf_error(b"Unknown op in array_op_in_place\0".as_ptr() as *const _) };
         }
     }
 }
@@ -294,7 +296,7 @@ fn scalar_op(arr: &Array, s: f64, op: char, ans: &mut Array) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in scalar_op\0".as_ptr() as *const _);
+            unsafe { Rf_error(b"Unknown op in scalar_op\0".as_ptr() as *const _) };
         }
     }
 }
@@ -324,7 +326,7 @@ fn scalar_op_in_place(arr: &mut Array, s: f64, op: char) {
             }
         }
         _ => {
-            Rf_error(b"Unknown op in scalar_op_in_place\0".as_ptr() as *const _);
+            unsafe { Rf_error(b"Unknown op in scalar_op_in_place\0".as_ptr() as *const _) };
         }
     }
 }
@@ -522,7 +524,7 @@ fn ldet(x: &Array) -> f64 {
     }
 
     if rank != p {
-        Rf_error(b"Singular matrix in ldet\0".as_ptr() as *const c_char);
+        unsafe { Rf_error(b"Singular matrix in ldet\0".as_ptr() as *const c_char) };
         unreachable!();
     }
 
@@ -800,7 +802,7 @@ fn burg0(
             array_op_in_place(&mut e, &tmp, '+');
             scalar_op_in_place(&mut e, 2.0 * (n - m - 1) as f64, '/');
         } else {
-            Rf_error(b"Invalid vmethod\0".as_ptr() as *const _);
+            unsafe { Rf_error(b"Invalid vmethod\0".as_ptr() as *const _) };
         }
 
         // Store V[m+1] = E, P[m+1] = KA

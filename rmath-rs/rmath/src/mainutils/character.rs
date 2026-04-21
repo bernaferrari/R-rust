@@ -1156,11 +1156,11 @@ mod tests {
     /// Helper to build a STRSXP vector from Rust strings.
     unsafe fn make_strsxp(strs: &[&str]) -> SEXP {
         let n = strs.len() as c_int;
-        let s = Rf_allocVector(SEXPTYPE::STRSXP, n);
+        let s = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, n) };
         for (i, st) in strs.iter().enumerate() {
             let cs = std::ffi::CString::new(*st).unwrap_or_default();
-            let ch = Rf_mkCharLen(cs.as_ptr(), st.len() as c_int);
-            SET_STRING_ELT(s, i as R_xlen_t, ch);
+            let ch = unsafe { Rf_mkCharLen(cs.as_ptr(), st.len() as c_int) };
+            unsafe { SET_STRING_ELT(s, i as R_xlen_t, ch) };
         }
         s
     }
@@ -1168,10 +1168,10 @@ mod tests {
     /// Helper to build an INTSXP vector from Rust integers.
     unsafe fn make_intsxp(vals: &[c_int]) -> SEXP {
         let n = vals.len() as c_int;
-        let s = Rf_allocVector(SEXPTYPE::INTSXP, n);
-        let p = INTEGER(s);
+        let s = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, n) };
+        let p = unsafe { INTEGER(s) };
         for (i, v) in vals.iter().enumerate() {
-            *p.add(i) = *v;
+            unsafe { *p.add(i) = *v };
         }
         s
     }
@@ -1179,18 +1179,18 @@ mod tests {
     /// Helper to build an LGLSXP vector from Rust integers.
     unsafe fn make_lglsxp(vals: &[c_int]) -> SEXP {
         let n = vals.len() as c_int;
-        let s = Rf_allocVector(SEXPTYPE::LGLSXP, n);
-        let p = LOGICAL(s);
+        let s = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, n) };
+        let p = unsafe { LOGICAL(s) };
         for (i, v) in vals.iter().enumerate() {
-            *p.add(i) = *v;
+            unsafe { *p.add(i) = *v };
         }
         s
     }
 
     /// Helper to read back a STRSXP element as a Rust String.
     unsafe fn strsxp_to_string(s: SEXP, i: R_xlen_t) -> String {
-        let el = STRING_ELT(s, i);
-        std::ffi::CStr::from_ptr(CHAR(el))
+        let el = unsafe { STRING_ELT(s, i) };
+        unsafe { std::ffi::CStr::from_ptr(CHAR(el)) }
             .to_string_lossy()
             .into_owned()
     }
@@ -1198,11 +1198,11 @@ mod tests {
     /// Helper to build a pairlist (args) from a vec of SEXP values.
     unsafe fn make_args(items: &[SEXP]) -> SEXP {
         if items.is_empty() {
-            return R_NilValue();
+            return unsafe { R_NilValue() };
         }
-        let mut result = R_NilValue();
+        let mut result = unsafe { R_NilValue() };
         for item in items.iter().rev() {
-            result = Rf_cons(*item, result);
+            result = unsafe { Rf_cons(*item, result) };
         }
         result
     }

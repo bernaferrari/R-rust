@@ -38,7 +38,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::gcontextFromgpar;
-use super::getDeviceSize;
+use super::grid::{doSetViewport, getDeviceSize};
 use super::just::{justifyX, justifyY};
 use super::layout::calcViewportLayout;
 use super::state::{gridStateElement, setGridStateElement};
@@ -323,25 +323,25 @@ pub unsafe fn copyViewportContext(vpc1: LViewportContext, vpc2: *mut LViewportCo
 
 pub unsafe fn gcontextFromViewport(
     vp: SEXP,
-    gc: *const u8, // pGEcontext — still opaque in Rust
-    dd: *const u8, // pGEDevDesc
+    gc: pGEcontext,
+    dd: pGEDevDesc,
 ) {
     let gpar = viewportgpar(vp);
     if gpar.is_null() || Rf_isNull(gpar) != 0 {
         return;
     }
 
-    // Narrow TODO: the opaque GEcontext layout still blocks direct field
+    // Narrow limitation: the opaque GEcontext layout still blocks direct field
     // writes here, but we can at least resolve/validate the viewport gpar
     // path through the shared gpar accessor.
-    gcontextFromgpar(gpar, 0, gc as pGEcontext, dd as pGEDevDesc);
+    gcontextFromgpar(gpar, 0, gc, dd);
 }
 
 pub unsafe fn calcViewportTransform(
     vp: SEXP,
     parent: SEXP,
     _incremental: bool,
-    dd: *const u8, // pGEDevDesc
+    dd: pGEDevDesc,
 ) {
     let parent_context = if parent.is_null() || Rf_isNull(parent) != 0 {
         LViewportContext {
@@ -386,8 +386,8 @@ pub unsafe fn calcViewportTransform(
     }
 
     let mut gc_buf: [u8; 256] = [0; 256];
-    gcontextFromViewport(vp, gc_buf.as_ptr(), dd);
     let gc = gc_buf.as_ptr() as pGEcontext;
+    gcontextFromViewport(vp, gc, dd);
     let dd = dd as pGEDevDesc;
 
     let width_in = transformWidthtoINCHES(

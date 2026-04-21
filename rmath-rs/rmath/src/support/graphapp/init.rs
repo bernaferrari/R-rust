@@ -64,21 +64,24 @@ pub unsafe fn exitapp() {
 
 /// Play an error sound.
 pub unsafe fn gabeep() {
-    // TODO: Platform-specific
+    eprint!("\x07");
 }
 
 /// Main loop entry point.
 pub unsafe fn gamainloop() {
-    // TODO: Platform-specific event loop
+    unsafe {
+        events::mainloop();
+    }
 }
 
 /// Start graphapp (for Windows entry point).
 pub unsafe fn startgraphapp(
-    _instance: *mut c_void,
-    _prev_instance: *mut c_void,
+    instance: *mut c_void,
+    previous_instance: *mut c_void,
     _cmd_show: c_int,
 ) {
-    // TODO: Platform-specific
+    this_instance.with(|v| v.set(instance));
+    prev_instance.with(|v| v.set(previous_instance));
     initapp(0, ptr::null_mut());
 }
 
@@ -88,7 +91,11 @@ pub unsafe fn isTopmost(_w: window) -> c_int {
 }
 
 /// Bring window to top.
-pub unsafe fn BringToTop(_w: window, _stay: c_int) { /* TODO */
+pub unsafe fn BringToTop(w: window, stay: c_int) {
+    if !w.is_null() {
+        super::windows::set_current_window(w);
+    }
+    TopmostDialogs.with(|v| v.set(i32::from(stay != 0)));
 }
 
 /// Get window handle.
@@ -101,7 +108,12 @@ pub unsafe fn getHandle(w: window) -> *mut c_void {
 }
 
 /// Send a message window.
-pub unsafe fn GA_msgWindow(_c: window, _typ: c_int) { /* TODO */
+pub unsafe fn GA_msgWindow(c: window, typ: c_int) {
+    if typ != 0 && !c.is_null() {
+        unsafe {
+            BringToTop(c, typ);
+        }
+    }
 }
 
 /// Topmost dialogs flag.

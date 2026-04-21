@@ -122,7 +122,7 @@ unsafe fn getListElement(list: SEXP, str: *const c_char) -> SEXP {
 // fminfn -- objective function callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
+unsafe extern "C" fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_double {
     let os = &mut *(ex as *mut OptStruct);
     let x = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
     if Rf_isNull((*os).names) == 0 {
@@ -156,7 +156,12 @@ unsafe fn fminfn(n: c_int, p: *mut c_double, ex: *mut std::ffi::c_void) -> c_dou
 // fmingr -- gradient callback for optim
 // ---------------------------------------------------------------------------
 
-unsafe fn fmingr(n: c_int, p: *mut c_double, df: *mut c_double, ex: *mut std::ffi::c_void) {
+unsafe extern "C" fn fmingr(
+    n: c_int,
+    p: *mut c_double,
+    df: *mut c_double,
+    ex: *mut std::ffi::c_void,
+) {
     let os = &mut *(ex as *mut OptStruct);
 
     if Rf_isNull((*os).R_gcall) == 0 {
@@ -1089,7 +1094,7 @@ pub unsafe fn optimhess(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     }
     Rf_unprotect(1);
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, npar, npar));
+    let ans = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), npar, npar));
     let dpar = vect(npar);
     for i in 0..npar {
         *dpar.add(i as usize) = *REAL(par).add(i as usize) / *(*os_ptr).parscale.add(i as usize);

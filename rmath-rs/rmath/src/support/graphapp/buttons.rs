@@ -3,7 +3,15 @@
 
 //! Button-related functions for GraphApp.
 
+use super::controls;
 use super::types::*;
+use super::windows;
 
-pub unsafe fn clickbutton(_w: window, _b: button) { /* TODO */
+pub unsafe fn clickbutton(w: window, b: button) {
+    if !w.is_null() {
+        windows::set_current_window(w);
+    }
+    unsafe {
+        controls::activatecontrol(b);
+    }
 }

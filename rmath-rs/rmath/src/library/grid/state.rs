@@ -25,6 +25,7 @@ thread_local! { static CURRENT_GRID_STATE: Cell<SEXP> = const { Cell::new(std::p
 
 unsafe extern "C" {
     /// Stub: get current graphics device
+    #[link_name = "rmath_GEcurrentDevice"]
     fn GEcurrentDevice() -> pGEDevDesc;
     /// Stub: mark device as dirty
     fn GEdirtyDevice(dd: pGEDevDesc);
@@ -256,14 +257,14 @@ pub unsafe fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
 unsafe fn deglobaliseState(state: SEXP) {
     let index = *INTEGER(VECTOR_ELT(state, GSS_GLOBALINDEX as R_xlen_t)).add(0);
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-    let globalstate = findVar(sym, R_gridEvalEnv);
+    let globalstate = findVar(sym, R_gridEvalEnv.with(|v| v.get()));
     SET_VECTOR_ELT(globalstate, index as R_xlen_t, R_NilValue());
 }
 
 /// Find an empty slot in the global state list.
 unsafe fn findStateSlot() -> c_int {
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-    let globalstate = findVar(sym, R_gridEvalEnv);
+    let globalstate = findVar(sym, R_gridEvalEnv.with(|v| v.get()));
     let len = LENGTH(globalstate) as i32;
     for i in 0..len {
         if isNull(VECTOR_ELT(globalstate, i as R_xlen_t)) {
@@ -278,7 +279,7 @@ unsafe fn findStateSlot() -> c_int {
 unsafe fn globaliseState(state: SEXP) {
     let index = findStateSlot();
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-    let globalstate = findVar(sym, R_gridEvalEnv);
+    let globalstate = findVar(sym, R_gridEvalEnv.with(|v| v.get()));
     Rf_protect(globalstate);
     let indexsxp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
     Rf_protect(indexsxp);

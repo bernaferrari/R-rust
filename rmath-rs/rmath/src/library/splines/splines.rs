@@ -262,7 +262,7 @@ pub unsafe fn spline_basis(knots: SEXP, order: SEXP, xvals: SEXP, derivs: SEXP) 
     let rdel = R_alloc(std::mem::size_of::<c_double>(), ordm1 as usize) as *mut c_double;
     let a = R_alloc(std::mem::size_of::<c_double>(), ord as usize) as *mut c_double;
 
-    let val = allocMatrix(SEXPTYPE::REALSXP, ord, nx);
+    let val = allocMatrix(SEXPTYPE::REALSXP.into(), ord, nx);
     Rf_protect(val);
     let valM = REAL(val);
 

@@ -1,54 +1,8 @@
 use std::env;
 use std::path::{Path, PathBuf};
-use std::process::Command;
-
-fn detect_r_include_dir() -> Option<PathBuf> {
-    if let Ok(home) = env::var("R_HOME") {
-        let include = PathBuf::from(home).join("include");
-        if include.exists() {
-            return Some(include);
-        }
-    }
-
-    let output = Command::new("R").arg("RHOME").output().ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let home = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    if home.is_empty() {
-        return None;
-    }
-    let include = PathBuf::from(home).join("include");
-    if include.exists() {
-        Some(include)
-    } else {
-        None
-    }
-}
 
 fn main() {
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-changed=src/cshim/grid_release.c");
-    println!("cargo:rerun-if-changed=src/cshim/ge_device_bridge.c");
-    println!("cargo:rerun-if-changed=../../r-source/src/include/R_ext/GraphicsDevice.h");
-    println!("cargo:rerun-if-changed=../../r-source/src/include/R_ext/GraphicsEngine.h");
-
-    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let vendored_r_headers = manifest_dir.join("../../r-source/src/include");
-    let system_r_headers = detect_r_include_dir();
-
-    let mut build = cc::Build::new();
-    build
-        .file(manifest_dir.join("src/cshim/grid_release.c"))
-        .file(manifest_dir.join("src/cshim/ge_device_bridge.c"))
-        .warnings(false);
-    if vendored_r_headers.exists() {
-        build.include(&vendored_r_headers);
-    }
-    if let Some(system_headers) = system_r_headers {
-        build.include(system_headers);
-    }
-    build.compile("rmath_grid_release");
 
     // After building, copy librmath.a -> libRmath.a for C compatibility
     let target_dir = env::var("CARGO_TARGET_DIR")

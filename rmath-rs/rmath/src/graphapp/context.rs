@@ -5,25 +5,136 @@
 //!
 //! Ported from context.c - internal functions for manipulating device contexts.
 
+use std::cell::RefCell;
 use std::os::raw::c_void;
 use std::ptr;
 
 use super::types::*;
 
-pub unsafe fn init_contexts() { /* TODO */
+#[derive(Clone, Copy)]
+struct ContextEntry {
+    obj: object,
+    dc: *mut c_void,
+    old: *mut c_void,
 }
-pub unsafe fn finish_contexts() { /* TODO */
+
+thread_local! {
+    static CONTEXTS: RefCell<Vec<ContextEntry>> = RefCell::new(Vec::new());
 }
-pub unsafe fn add_context(_obj: object, _dc: *mut c_void, _old: *mut c_void) { /* TODO */
+
+pub unsafe fn init_contexts() {
+    CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
 }
-pub unsafe fn get_context(_obj: object) -> *mut c_void {
-    ptr::null_mut()
+
+pub unsafe fn finish_contexts() {
+    unsafe {
+        del_all_contexts();
+    }
 }
-pub unsafe fn remove_context(_obj: object) { /* TODO */
+
+pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
+    if obj.is_null() {
+        return;
+    }
+    CONTEXTS.with(|contexts| {
+        let mut contexts = contexts.borrow_mut();
+        if let Some(entry) = contexts.iter_mut().find(|entry| entry.obj == obj) {
+            entry.dc = dc;
+            entry.old = old;
+        } else {
+            contexts.push(ContextEntry { obj, dc, old });
+        }
+    });
 }
-pub unsafe fn del_context(_obj: object) { /* TODO */
+
+pub unsafe fn get_context(obj: object) -> *mut c_void {
+    if obj.is_null() {
+        return ptr::null_mut();
+    }
+    CONTEXTS.with(|contexts| {
+        contexts
+            .borrow()
+            .iter()
+            .find(|entry| entry.obj == obj)
+            .map_or(ptr::null_mut(), |entry| entry.dc)
+    })
 }
-pub unsafe fn del_all_contexts() { /* TODO */
+
+pub unsafe fn remove_context(obj: object) {
+    if obj.is_null() {
+        return;
+    }
+    CONTEXTS.with(|contexts| {
+        if let Some(entry) = contexts.borrow_mut().iter_mut().find(|entry| entry.obj == obj) {
+            entry.dc = entry.old;
+            entry.old = ptr::null_mut();
+        }
+    });
 }
-pub unsafe fn fix_brush(_dc: *mut c_void, _obj: drawing, _brush: *mut c_void) { /* TODO */
+
+pub unsafe fn del_context(obj: object) {
+    if obj.is_null() {
+        return;
+    }
+    CONTEXTS.with(|contexts| {
+        contexts.borrow_mut().retain(|entry| entry.obj != obj);
+    });
+}
+
+pub unsafe fn del_all_contexts() {
+    CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
+}
+
+pub unsafe fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) {
+    if obj.is_null() || dc.is_null() {
+        return;
+    }
+    unsafe {
+        if get_context(obj).is_null() {
+            add_context(obj, dc, brush);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn context_lifecycle_restores_old_context_before_delete() {
+        let obj = 1usize as object;
+        let dc = 2usize as *mut c_void;
+        let old = 3usize as *mut c_void;
+
+        unsafe {
+            init_contexts();
+            add_context(obj, dc, old);
+            assert_eq!(get_context(obj), dc);
+
+            remove_context(obj);
+            assert_eq!(get_context(obj), old);
+
+            del_context(obj);
+            assert!(get_context(obj).is_null());
+        }
+    }
+
+    #[test]
+    fn fix_brush_registers_missing_context_once() {
+        let obj = 4usize as object;
+        let dc = 5usize as *mut c_void;
+        let brush = 6usize as *mut c_void;
+
+        unsafe {
+            init_contexts();
+            fix_brush(dc, obj, brush);
+            assert_eq!(get_context(obj), dc);
+
+            remove_context(obj);
+            assert_eq!(get_context(obj), brush);
+
+            finish_contexts();
+            assert!(get_context(obj).is_null());
+        }
+    }
 }

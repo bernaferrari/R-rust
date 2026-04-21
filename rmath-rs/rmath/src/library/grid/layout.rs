@@ -31,6 +31,10 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
 use super::types::*;
+use super::viewport::{
+    viewportHeightCM, viewportLayout, viewportLayoutHeights, viewportLayoutPosCol,
+    viewportLayoutPosRow, viewportLayoutWidths, viewportWidthCM,
+};
 
 // ---------------------------------------------------------------------------
 // Simple layout accessor functions
@@ -255,8 +259,8 @@ unsafe fn allocateRespected(
     _parentContext: LViewportContext,
     _parentgc: *const u8,
     _dd: *const u8,
-    _npcWidths: *mut f64,
-    _npcHeights: *mut f64,
+    npcWidths: *mut f64,
+    npcHeights: *mut f64,
 ) {
     let widths = layoutWidths(_layout);
     let heights = layoutHeights(_layout);
@@ -610,8 +614,6 @@ pub unsafe fn calcViewportLayout(
 // checkPosRowPosCol
 // ---------------------------------------------------------------------------
 
-use crate::library::grid::viewport::{viewportLayout, viewportLayoutPosCol, viewportLayoutPosRow};
-
 pub unsafe fn checkPosRowPosCol(vp: SEXP, parent: SEXP) -> bool {
     let parent_layout = viewportLayout(parent);
     let ncol = layoutNCol(parent_layout);
@@ -645,12 +647,12 @@ pub unsafe fn calcViewportLocationFromLayout(
     let (minrow, maxrow) = if Rf_isNull(layoutPosRow) != 0 {
         (0, layoutNRow(layout) - 1)
     } else {
-        (*INTEGER(layoutPosRow), *INTEGER(layoutPosRow).add(1) - 1)
+        (*INTEGER(layoutPosRow) - 1, *INTEGER(layoutPosRow).add(1) - 1)
     };
     let (mincol, maxcol) = if Rf_isNull(layoutPosCol) != 0 {
         (0, layoutNCol(layout) - 1)
     } else {
-        (*INTEGER(layoutPosCol), *INTEGER(layoutPosCol).add(1) - 1)
+        (*INTEGER(layoutPosCol) - 1, *INTEGER(layoutPosCol).add(1) - 1)
     };
 
     let widths = REAL(viewportLayoutWidths(parent));
@@ -800,11 +802,11 @@ mod tests {
             let layout_widths = VECTOR_ELT(vp, PVP_WIDTHS as R_xlen_t);
             let layout_heights = VECTOR_ELT(vp, PVP_HEIGHTS as R_xlen_t);
 
-            assert_eq!(*REAL(layout_widths), 3.3333333333333335);
-            assert_eq!(*REAL(layout_widths).add(1), 3.3333333333333335);
-            assert_eq!(*REAL(layout_widths).add(2), 3.3333333333333335);
-            assert_eq!(*REAL(layout_heights), 1.0);
-            assert_eq!(*REAL(layout_heights).add(1), 1.0);
+            assert!((*REAL(layout_widths) - 3.3333333333333335).abs() < 1e-12);
+            assert!((*REAL(layout_widths).add(1) - 3.3333333333333335).abs() < 1e-12);
+            assert!((*REAL(layout_widths).add(2) - 3.3333333333333335).abs() < 1e-12);
+            assert!((*REAL(layout_heights) - 1.0).abs() < 1e-12);
+            assert!((*REAL(layout_heights).add(1) - 1.0).abs() < 1e-12);
         }
     }
 
@@ -844,9 +846,9 @@ mod tests {
 
             assert_eq!(unitLength(vpl.x), 1);
             assert_eq!(unitUnit(vpl.x, 0), L_CM);
-            assert!((crate::library::grid::unit::unitValue(vpl.x, 0) - 3.3333333333333335).abs() < 1e-12);
+            assert!((crate::library::grid::unit::unitValue(vpl.x, 0) - 10.0 / 3.0).abs() < 1e-12);
             assert_eq!(unitUnit(vpl.width, 0), L_CM);
-            assert!((crate::library::grid::unit::unitValue(vpl.width, 0) - 6.666666666666667).abs() < 1e-12);
+            assert!((crate::library::grid::unit::unitValue(vpl.width, 0) - 20.0 / 3.0).abs() < 1e-12);
             assert_eq!(unitUnit(vpl.height, 0), L_CM);
             assert!((crate::library::grid::unit::unitValue(vpl.height, 0) - 2.0).abs() < 1e-12);
             Rf_unprotect(2);

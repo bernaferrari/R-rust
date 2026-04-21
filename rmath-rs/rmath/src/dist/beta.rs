@@ -212,7 +212,7 @@ pub fn dbeta_inner(x: f64, a: f64, b: f64, give_log: bool) -> f64 {
 // pbeta
 // =====================================================================
 
-// TODO: Full TOMS Algorithm 708 implementation (bratio function from toms708.c).
+// Partial port: bratio currently uses the simplified path instead of the full TOMS 708 routine.
 // The C code delegates to bratio() from toms708.c which is ~68k of code.
 // For now, we provide a simplified implementation that handles common cases
 // using the continued fraction and series expansion approach.

@@ -3,10 +3,28 @@
 
 //! Printer support for GraphApp.
 
+use std::ptr;
+
+use super::objects;
 use super::types::*;
 
-pub unsafe fn newprinter(_w: f64, _h: f64, _name: *const std::os::raw::c_char) -> printer {
-    std::ptr::null_mut()
+pub unsafe fn newprinter(w: f64, h: f64, name: *const std::os::raw::c_char) -> printer {
+    let printer = unsafe { objects::new_object(PrinterObject, ptr::null_mut(), ptr::null_mut()) };
+    if printer.is_null() {
+        return ptr::null_mut();
+    }
+
+    unsafe {
+        (*printer).rect.width = w.round() as i32;
+        (*printer).rect.height = h.round() as i32;
+        (*printer).text = super::strings::new_string(name);
+    }
+    printer
 }
-pub unsafe fn nextpage(_p: printer) { /* TODO */
+pub unsafe fn nextpage(p: printer) {
+    unsafe {
+        if !p.is_null() {
+            (*p).value += 1;
+        }
+    }
 }

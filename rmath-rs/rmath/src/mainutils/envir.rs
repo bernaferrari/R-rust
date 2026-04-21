@@ -593,9 +593,7 @@ pub unsafe fn do_attach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             && LENGTH(pos_arg) >= 1
         {
             *INTEGER(pos_arg)
-        } else if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::REALSXP
-            && LENGTH(pos_arg) >= 1
+        } else if !pos_arg.is_null() && TYPEOF(pos_arg) == SEXPTYPE::REALSXP && LENGTH(pos_arg) >= 1
         {
             let r = *crate::sexp::accessors::REAL(pos_arg);
             r as c_int
@@ -705,9 +703,7 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             && LENGTH(pos_arg) >= 1
         {
             *INTEGER(pos_arg)
-        } else if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::REALSXP
-            && LENGTH(pos_arg) >= 1
+        } else if !pos_arg.is_null() && TYPEOF(pos_arg) == SEXPTYPE::REALSXP && LENGTH(pos_arg) >= 1
         {
             let r = *crate::sexp::accessors::REAL(pos_arg);
             r as c_int

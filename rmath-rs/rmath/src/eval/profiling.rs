@@ -38,6 +38,12 @@ use crate::sexp::ffi::{NA_INTEGER, R_FINITE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject};
+
+/// Profiling timer type (ITIMER_PROF is not available on Android).
+#[cfg(not(target_os = "android"))]
+const PROF_TIMER: libc::c_int = libc::ITIMER_PROF;
+#[cfg(target_os = "android")]
+const PROF_TIMER: libc::c_int = 2; // ITIMER_PROF value on most Unix systems
 use crate::sexp::symbol::Rf_install;
 use crate::sexp::symbol::{
     R_Bracket2Symbol, R_DollarSymbol, R_DoubleColonSymbol, R_TripleColonSymbol,
@@ -878,7 +884,7 @@ unsafe fn R_EndProfiling() {
                     tv_usec: 0,
                 },
             };
-            libc::setitimer(libc::ITIMER_PROF, &zero_val, ptr::null_mut());
+            libc::setitimer(PROF_TIMER, &zero_val, ptr::null_mut());
         }
 
         // For elapsed-time profiling, the thread is stopped via terminate flag
@@ -1036,7 +1042,7 @@ unsafe fn R_InitProfiling(
                 it_interval,
                 it_value: it_interval,
             };
-            if libc::setitimer(libc::ITIMER_PROF, &itv, ptr::null_mut()) == -1 {
+            if libc::setitimer(PROF_TIMER, &itv, ptr::null_mut()) == -1 {
                 // Failed to set timer
                 libc::close(R_ProfileOutfile.with(|v| v.get()));
                 R_ProfileOutfile.with(|v| v.set(-1));
@@ -1247,7 +1253,7 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             it_interval,
             it_value: it_interval,
         };
-        if libc::setitimer(libc::ITIMER_PROF, &itv, ptr::null_mut()) == -1 {
+        if libc::setitimer(PROF_TIMER, &itv, ptr::null_mut()) == -1 {
             return R_NilValue();
         }
 
@@ -1283,7 +1289,7 @@ pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
                 tv_usec: 0,
             },
         };
-        libc::setitimer(libc::ITIMER_PROF, &zero_val, ptr::null_mut());
+        libc::setitimer(PROF_TIMER, &zero_val, ptr::null_mut());
 
         bc_profiling.with(|v| v.set(0));
 

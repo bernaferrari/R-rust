@@ -11,10 +11,7 @@
 use crate::main::coerce::asInteger;
 use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::SEXP;
-
-unsafe extern "C" {
-    fn initPalette();
-}
+use crate::library::grdevices::colors::initPalette;
 
 /// Stub: cairoProps - return whether Cairo features are available.
 /// Returns FALSE (0) for both Cairo and PangoCairo.

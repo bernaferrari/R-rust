@@ -39,7 +39,7 @@ struct IntStruct {
 // Rintfn -- the integrand function called by the quadrature routines
 // ---------------------------------------------------------------------------
 
-unsafe fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
+unsafe extern "C" fn Rintfn(x: *mut c_double, n: c_int, ex: *mut std::ffi::c_void) {
     let is = &*(ex as *const IntStruct);
 
     let args = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));

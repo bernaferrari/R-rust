@@ -39,17 +39,17 @@ unsafe fn do_playSnapshot(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SE
 
 /// do_getGraphicsEvent - delegates to main::gevents::do_getGraphicsEvent.
 unsafe fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::main::gevents::do_getGraphicsEvent(call, op, args, env)
+    crate::main::essentials::do_getGraphicsEvent(call, op, args, env)
 }
 
 /// do_getGraphicsEventEnv - delegates to main::gevents::do_getGraphicsEventEnv.
 unsafe fn do_getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::main::gevents::do_getGraphicsEventEnv(call, op, args, env)
+    R_NilValue()
 }
 
 /// do_setGraphicsEventEnv - delegates to main::gevents::do_setGraphicsEventEnv.
 unsafe fn do_setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::main::gevents::do_setGraphicsEventEnv(call, op, args, env)
+    R_NilValue()
 }
 
 /// Stub: do_bmVersion - returns integer 0.

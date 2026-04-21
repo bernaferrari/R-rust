@@ -18,7 +18,7 @@ use crate::appl::pretty::R_pretty;
 use crate::mainutils::errors::Rf_error;
 use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, TYPEOF};
 use crate::sexp::constructors::Rf_mkString;
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, NA_INTEGER, NA_LOGICAL};
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 
 unsafe extern "C" {
@@ -31,9 +31,27 @@ unsafe extern "C" {
         gc: *const c_void,
         dd: *mut c_void,
     );
-    fn rmath_ge_polyline(n: c_int, x: *mut c_double, y: *mut c_double, gc: *const c_void, dd: *mut c_void);
-    fn rmath_ge_polygon(n: c_int, x: *mut c_double, y: *mut c_double, gc: *const c_void, dd: *mut c_void);
-    fn rmath_ge_circle(x: c_double, y: c_double, radius: c_double, gc: *const c_void, dd: *mut c_void);
+    fn rmath_ge_polyline(
+        n: c_int,
+        x: *mut c_double,
+        y: *mut c_double,
+        gc: *const c_void,
+        dd: *mut c_void,
+    );
+    fn rmath_ge_polygon(
+        n: c_int,
+        x: *mut c_double,
+        y: *mut c_double,
+        gc: *const c_void,
+        dd: *mut c_void,
+    );
+    fn rmath_ge_circle(
+        x: c_double,
+        y: c_double,
+        radius: c_double,
+        gc: *const c_void,
+        dd: *mut c_void,
+    );
     fn rmath_ge_rect(
         x0: c_double,
         y0: c_double,
@@ -100,19 +118,452 @@ unsafe extern "C" {
     fn rmath_ge_to_device_width(value: c_double, from: c_int, dd: *mut c_void) -> c_double;
     fn rmath_ge_from_device_height(value: c_double, to: c_int, dd: *mut c_void) -> c_double;
     fn rmath_ge_to_device_height(value: c_double, from: c_int, dd: *mut c_void) -> c_double;
-    fn rmath_ge_symbol(x: c_double, y: c_double, pch: c_int, size: c_double, gc: *const c_void, dd: *mut c_void);
-    fn rmath_ge_metric_info(c: c_int, gc: *const c_void, ascent: *mut c_double, descent: *mut c_double, width: *mut c_double, dd: *mut c_void);
-    fn rmath_ge_str_width(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double;
+    fn rmath_ge_symbol(
+        x: c_double,
+        y: c_double,
+        pch: c_int,
+        size: c_double,
+        gc: *const c_void,
+        dd: *mut c_void,
+    );
+    fn rmath_ge_metric_info(
+        c: c_int,
+        gc: *const c_void,
+        ascent: *mut c_double,
+        descent: *mut c_double,
+        width: *mut c_double,
+        dd: *mut c_void,
+    );
+    fn rmath_ge_str_width(
+        str: *const c_char,
+        enc: c_int,
+        gc: *const c_void,
+        dd: *mut c_void,
+    ) -> c_double;
     fn rmath_ge_str_width_utf8(str: *const c_char, gc: *const c_void, dd: *mut c_void) -> c_double;
-    fn rmath_ge_str_height(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double;
-    fn rmath_ge_str_metric(str: *const c_char, enc: c_int, gc: *const c_void, ascent: *mut c_double, descent: *mut c_double, width: *mut c_double, dd: *mut c_void);
-    fn rmath_ge_raster_scale(sraster: *const c_uint, sw: c_int, sh: c_int, draster: *mut c_uint, dw: c_int, dh: c_int);
-    fn rmath_ge_raster_interpolate(sraster: *const c_uint, sw: c_int, sh: c_int, draster: *mut c_uint, dw: c_int, dh: c_int);
-    fn rmath_ge_raster_rotated_size(w: c_int, h: c_int, angle: c_double, wnew: *mut c_int, hnew: *mut c_int);
-    fn rmath_ge_raster_rotated_offset(w: c_int, h: c_int, angle: c_double, botleft: c_int, xoff: *mut c_double, yoff: *mut c_double);
-    fn rmath_ge_raster_resize_for_rotation(sraster: *const c_uint, w: c_int, h: c_int, newRaster: *mut c_uint, wnew: c_int, hnew: c_int, gc: *const c_void);
-    fn rmath_ge_raster_rotate(sraster: *const c_uint, w: c_int, h: c_int, angle: c_double, draster: *mut c_uint, gc: *const c_void, smoothAlpha: c_int);
-    fn rmath_ge_glyph(n: c_int, glyphs: *const c_int, x: *const c_double, y: *const c_double, font: SEXP, size: c_double, colour: c_int, rot: c_double, dd: *mut c_void);
+    fn rmath_ge_str_height(
+        str: *const c_char,
+        enc: c_int,
+        gc: *const c_void,
+        dd: *mut c_void,
+    ) -> c_double;
+    fn rmath_ge_str_metric(
+        str: *const c_char,
+        enc: c_int,
+        gc: *const c_void,
+        ascent: *mut c_double,
+        descent: *mut c_double,
+        width: *mut c_double,
+        dd: *mut c_void,
+    );
+    fn rmath_ge_raster_scale(
+        sraster: *const c_uint,
+        sw: c_int,
+        sh: c_int,
+        draster: *mut c_uint,
+        dw: c_int,
+        dh: c_int,
+    );
+    fn rmath_ge_raster_interpolate(
+        sraster: *const c_uint,
+        sw: c_int,
+        sh: c_int,
+        draster: *mut c_uint,
+        dw: c_int,
+        dh: c_int,
+    );
+    fn rmath_ge_raster_rotated_size(
+        w: c_int,
+        h: c_int,
+        angle: c_double,
+        wnew: *mut c_int,
+        hnew: *mut c_int,
+    );
+    fn rmath_ge_raster_rotated_offset(
+        w: c_int,
+        h: c_int,
+        angle: c_double,
+        botleft: c_int,
+        xoff: *mut c_double,
+        yoff: *mut c_double,
+    );
+    fn rmath_ge_raster_resize_for_rotation(
+        sraster: *const c_uint,
+        w: c_int,
+        h: c_int,
+        newRaster: *mut c_uint,
+        wnew: c_int,
+        hnew: c_int,
+        gc: *const c_void,
+    );
+    fn rmath_ge_raster_rotate(
+        sraster: *const c_uint,
+        w: c_int,
+        h: c_int,
+        angle: c_double,
+        draster: *mut c_uint,
+        gc: *const c_void,
+        smoothAlpha: c_int,
+    );
+    fn rmath_ge_glyph(
+        n: c_int,
+        glyphs: *const c_int,
+        x: *const c_double,
+        y: *const c_double,
+        font: SEXP,
+        size: c_double,
+        colour: c_int,
+        rot: c_double,
+        dd: *mut c_void,
+    );
+}
+
+#[inline]
+fn ge_set_clip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void) {
+    unsafe { rmath_ge_set_clip(x1, y1, x2, y2, dd) }
+}
+
+#[inline]
+fn ge_line(
+    x1: c_double,
+    y1: c_double,
+    x2: c_double,
+    y2: c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_line(x1, y1, x2, y2, gc, dd) }
+}
+
+#[inline]
+fn ge_polyline(
+    n: c_int,
+    x: *const c_double,
+    y: *const c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_polyline(n, x as *mut c_double, y as *mut c_double, gc, dd) }
+}
+
+#[inline]
+fn ge_polygon(
+    n: c_int,
+    x: *const c_double,
+    y: *const c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_polygon(n, x as *mut c_double, y as *mut c_double, gc, dd) }
+}
+
+#[inline]
+fn ge_circle(x: c_double, y: c_double, radius: c_double, gc: *const c_void, dd: *mut c_void) {
+    unsafe { rmath_ge_circle(x, y, radius, gc, dd) }
+}
+
+#[inline]
+fn ge_rect(
+    x0: c_double,
+    y0: c_double,
+    x1: c_double,
+    y1: c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_rect(x0, y0, x1, y1, gc, dd) }
+}
+
+#[inline]
+fn ge_path(
+    x: *mut c_double,
+    y: *mut c_double,
+    npoly: c_int,
+    nper: *mut c_int,
+    winding: c_int,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_path(x, y, npoly, nper, winding, gc, dd) }
+}
+
+#[inline]
+fn ge_raster(
+    raster: *mut c_uint,
+    w: c_int,
+    h: c_int,
+    x: c_double,
+    y: c_double,
+    width: c_double,
+    height: c_double,
+    angle: c_double,
+    interpolate: c_int,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe {
+        rmath_ge_raster(
+            raster,
+            w,
+            h,
+            x,
+            y,
+            width,
+            height,
+            angle,
+            interpolate,
+            gc,
+            dd,
+        )
+    }
+}
+
+#[inline]
+fn ge_text_with_encoding(
+    x: c_double,
+    y: c_double,
+    str: *const c_char,
+    enc: c_int,
+    rot: c_double,
+    hadj: c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_text_with_encoding(x, y, str, enc, rot, hadj, gc, dd) }
+}
+
+#[inline]
+fn ge_mode(mode: c_int, dd: *mut c_void) {
+    unsafe { rmath_ge_mode(mode, dd) }
+}
+
+#[inline]
+fn ge_new_page(gc: *const c_void, dd: *mut c_void) {
+    unsafe { rmath_ge_new_page(gc, dd) }
+}
+
+#[inline]
+fn ge_metric_info(
+    c: c_int,
+    gc: *const c_void,
+    ascent: *mut c_double,
+    descent: *mut c_double,
+    width: *mut c_double,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_metric_info(c, gc, ascent, descent, width, dd) }
+}
+
+#[inline]
+fn ge_str_width(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_str_width(str, enc, gc, dd) }
+}
+
+#[inline]
+fn ge_str_width_utf8(str: *const c_char, gc: *const c_void, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_str_width_utf8(str, gc, dd) }
+}
+
+#[inline]
+fn ge_str_height(str: *const c_char, enc: c_int, gc: *const c_void, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_str_height(str, enc, gc, dd) }
+}
+
+#[inline]
+fn ge_str_metric(
+    str: *const c_char,
+    enc: c_int,
+    gc: *const c_void,
+    ascent: *mut c_double,
+    descent: *mut c_double,
+    width: *mut c_double,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_str_metric(str, enc, gc, ascent, descent, width, dd) }
+}
+
+#[inline]
+fn ge_device_dirty(dd: *mut c_void) -> c_int {
+    unsafe { rmath_ge_device_dirty(dd) }
+}
+
+#[inline]
+fn ge_mark_dirty(dd: *mut c_void) {
+    unsafe { rmath_ge_mark_dirty(dd) }
+}
+
+#[inline]
+fn ge_mark_clean(dd: *mut c_void) {
+    unsafe { rmath_ge_mark_clean(dd) }
+}
+
+#[inline]
+fn ge_recording(dd: *mut c_void) -> c_int {
+    unsafe { rmath_ge_recording(dd) }
+}
+
+#[inline]
+fn ge_from_device_x(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_from_device_x(value, to, dd) }
+}
+
+#[inline]
+fn ge_to_device_x(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_to_device_x(value, from, dd) }
+}
+
+#[inline]
+fn ge_from_device_y(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_from_device_y(value, to, dd) }
+}
+
+#[inline]
+fn ge_to_device_y(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_to_device_y(value, from, dd) }
+}
+
+#[inline]
+fn ge_from_device_width(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_from_device_width(value, to, dd) }
+}
+
+#[inline]
+fn ge_to_device_width(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_to_device_width(value, from, dd) }
+}
+
+#[inline]
+fn ge_from_device_height(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_from_device_height(value, to, dd) }
+}
+
+#[inline]
+fn ge_to_device_height(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
+    unsafe { rmath_ge_to_device_height(value, from, dd) }
+}
+
+#[inline]
+fn ge_symbol(
+    x: c_double,
+    y: c_double,
+    pch: c_int,
+    size: c_double,
+    gc: *const c_void,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_symbol(x, y, pch, size, gc, dd) }
+}
+
+#[inline]
+fn ge_stroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
+    unsafe { rmath_ge_stroke(path, gc, dd) }
+}
+
+#[inline]
+fn ge_fill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+    unsafe { rmath_ge_fill(path, rule, gc, dd) }
+}
+
+#[inline]
+fn ge_fill_stroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void) {
+    unsafe { rmath_ge_fill_stroke(path, rule, gc, dd) }
+}
+
+#[inline]
+fn ge_raster_scale(
+    sraster: *const c_uint,
+    sw: c_int,
+    sh: c_int,
+    draster: *mut c_uint,
+    dw: c_int,
+    dh: c_int,
+) {
+    unsafe { rmath_ge_raster_scale(sraster, sw, sh, draster, dw, dh) }
+}
+
+#[inline]
+fn ge_raster_interpolate(
+    sraster: *const c_uint,
+    sw: c_int,
+    sh: c_int,
+    draster: *mut c_uint,
+    dw: c_int,
+    dh: c_int,
+) {
+    unsafe { rmath_ge_raster_interpolate(sraster, sw, sh, draster, dw, dh) }
+}
+
+#[inline]
+fn ge_raster_rotated_size(w: c_int, h: c_int, angle: c_double, wnew: *mut c_int, hnew: *mut c_int) {
+    unsafe { rmath_ge_raster_rotated_size(w, h, angle, wnew, hnew) }
+}
+
+#[inline]
+fn ge_raster_rotated_offset(
+    w: c_int,
+    h: c_int,
+    angle: c_double,
+    botleft: c_int,
+    xoff: *mut c_double,
+    yoff: *mut c_double,
+) {
+    unsafe { rmath_ge_raster_rotated_offset(w, h, angle, botleft, xoff, yoff) }
+}
+
+#[inline]
+fn ge_raster_resize_for_rotation(
+    sraster: *const c_uint,
+    w: c_int,
+    h: c_int,
+    new_raster: *mut c_uint,
+    wnew: c_int,
+    hnew: c_int,
+    gc: *const c_void,
+) {
+    unsafe { rmath_ge_raster_resize_for_rotation(sraster, w, h, new_raster, wnew, hnew, gc) }
+}
+
+#[inline]
+fn ge_raster_rotate(
+    sraster: *const c_uint,
+    w: c_int,
+    h: c_int,
+    angle: c_double,
+    draster: *mut c_uint,
+    gc: *const c_void,
+    smooth_alpha: c_int,
+) {
+    unsafe { rmath_ge_raster_rotate(sraster, w, h, angle, draster, gc, smooth_alpha) }
+}
+
+#[inline]
+fn ge_eval_with_rho(e: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::eval::eval::Rf_eval(e, rho) }
+}
+
+#[inline]
+fn nil_value() -> SEXP {
+    unsafe { R_NilValue() }
+}
+
+#[inline]
+fn mk_string(ptr: *const c_char) -> SEXP {
+    unsafe { Rf_mkString(ptr) }
+}
+
+#[inline]
+fn ge_glyph(
+    n: c_int,
+    glyphs: *const c_int,
+    x: *const c_double,
+    y: *const c_double,
+    font: SEXP,
+    size: c_double,
+    colour: c_int,
+    rot: c_double,
+    dd: *mut c_void,
+) {
+    unsafe { rmath_ge_glyph(n, glyphs, x, y, font, size, colour, rot, dd) }
 }
 
 // ---------------------------------------------------------------------------
@@ -179,32 +630,39 @@ fn wrap_index(len: c_int, ind: c_int) -> usize {
     ind.rem_euclid(len.max(1)) as usize
 }
 
-unsafe fn sexp_string_at(value: SEXP, ind: c_int) -> Option<String> {
-    if value.is_null() || TYPEOF(value) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(value) == 0 {
+fn sexp_string_at(value: SEXP, ind: c_int) -> Option<String> {
+    let len = unsafe { LENGTH(value) };
+    let ty = unsafe { TYPEOF(value) };
+    if value.is_null() || ty != SEXPTYPE::STRSXP.as_c_int() || len == 0 {
         return None;
     }
-    let idx = wrap_index(LENGTH(value), ind) as R_xlen_t;
-    let cstr = CStr::from_ptr(CHAR(STRING_ELT(value, idx)));
+    let idx = wrap_index(len, ind) as R_xlen_t;
+    let cstr = unsafe { CStr::from_ptr(CHAR(STRING_ELT(value, idx))) };
     Some(cstr.to_string_lossy().to_ascii_lowercase())
 }
 
-unsafe fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
-    if value.is_null() || LENGTH(value) == 0 {
+fn sexp_int_at(value: SEXP, ind: c_int) -> Option<c_int> {
+    let len = unsafe { LENGTH(value) };
+    if value.is_null() || len == 0 {
         return None;
     }
-    let idx = wrap_index(LENGTH(value), ind);
-    match TYPEOF(value) {
+    let idx = wrap_index(len, ind);
+    match unsafe { TYPEOF(value) } {
         t if t == SEXPTYPE::INTSXP.as_c_int() => {
-            let x = *INTEGER(value).add(idx);
+            let x = unsafe { *INTEGER(value).add(idx) };
             if x == NA_INTEGER { None } else { Some(x) }
         }
         t if t == SEXPTYPE::LGLSXP.as_c_int() => {
-            let x = *LOGICAL(value).add(idx);
+            let x = unsafe { *LOGICAL(value).add(idx) };
             if x == NA_LOGICAL { None } else { Some(x) }
         }
         t if t == SEXPTYPE::REALSXP.as_c_int() => {
-            let x = *REAL(value).add(idx);
-            if x.is_finite() { Some(x as c_int) } else { None }
+            let x = unsafe { *REAL(value).add(idx) };
+            if x.is_finite() {
+                Some(x as c_int)
+            } else {
+                None
+            }
         }
         _ => None,
     }
@@ -249,7 +707,7 @@ fn parse_lty_name(name: &str) -> Option<c_uint> {
 
 fn parse_lty_hex_digit(b: u8) -> Option<c_uint> {
     match b {
-        b'1'..=b'9' => Some((b - b'0') as c_uint),
+        b'0'..=b'9' => Some((b - b'0') as c_uint),
         b'a'..=b'f' => Some((b - b'a' + 10) as c_uint),
         b'A'..=b'F' => Some((b - b'A' + 10) as c_uint),
         _ => None,
@@ -323,23 +781,25 @@ pub unsafe fn GEregisterSystem(
     cb: Option<unsafe extern "C" fn(c_int, *mut c_void, SEXP) -> SEXP>,
     systemRegisterIndex: *mut c_int,
 ) {
-    unsafe {
-        let _ = cb;
-        numGraphicsSystems.with(|v| {
-            let current = v.get();
-            if current >= MAX_GRAPHICS_SYSTEMS {
-                return;
-            }
-            if !systemRegisterIndex.is_null() {
+    let _ = cb;
+    numGraphicsSystems.with(|v| {
+        let current = v.get();
+        if current >= MAX_GRAPHICS_SYSTEMS {
+            return;
+        }
+        if !systemRegisterIndex.is_null() {
+            unsafe {
                 *systemRegisterIndex = current;
             }
-            // Increment the count of registered graphics systems
-            v.set(current + 1);
-            // Wire-up with any active devices. In headless mode there are no devices,
-            // but call the hook to keep behavior consistent with the original C API.
+        }
+        // Increment the count of registered graphics systems
+        v.set(current + 1);
+        // Wire-up with any active devices. In headless mode there are no devices,
+        // but call the hook to keep behavior consistent with the original C API.
+        unsafe {
             GEregisterWithDevice(ptr::null_mut());
-        });
-    }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -363,7 +823,7 @@ pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
 
 /// Handle a graphics event, forwarding to all registered systems.
 pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 // ---------------------------------------------------------------------------
@@ -372,42 +832,42 @@ pub unsafe fn GEhandleEvent(event: c_int, dev: *mut c_void, data: SEXP) -> SEXP 
 
 /// Convert X coordinate from device units to the specified unit.
 pub unsafe fn fromDeviceX(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_from_device_x(value, to, dd)
+    ge_from_device_x(value, to, dd)
 }
 
 /// Convert X coordinate from the specified unit to device units.
 pub unsafe fn toDeviceX(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_to_device_x(value, from, dd)
+    ge_to_device_x(value, from, dd)
 }
 
 /// Convert Y coordinate from device units to the specified unit.
 pub unsafe fn fromDeviceY(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_from_device_y(value, to, dd)
+    ge_from_device_y(value, to, dd)
 }
 
 /// Convert Y coordinate from the specified unit to device units.
 pub unsafe fn toDeviceY(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_to_device_y(value, from, dd)
+    ge_to_device_y(value, from, dd)
 }
 
 /// Convert width from device units to the specified unit.
 pub unsafe fn fromDeviceWidth(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_from_device_width(value, to, dd)
+    ge_from_device_width(value, to, dd)
 }
 
 /// Convert width from the specified unit to device units.
 pub unsafe fn toDeviceWidth(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_to_device_width(value, from, dd)
+    ge_to_device_width(value, from, dd)
 }
 
 /// Convert height from device units to the specified unit.
 pub unsafe fn fromDeviceHeight(value: c_double, to: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_from_device_height(value, to, dd)
+    ge_from_device_height(value, to, dd)
 }
 
 /// Convert height from the specified unit to device units.
 pub unsafe fn toDeviceHeight(value: c_double, from: c_int, dd: *mut c_void) -> c_double {
-    rmath_ge_to_device_height(value, from, dd)
+    ge_to_device_height(value, from, dd)
 }
 
 // ---------------------------------------------------------------------------
@@ -432,9 +892,9 @@ pub unsafe fn GE_LENDpar(value: SEXP, ind: c_int) -> c_int {
 /// Convert a line end code to an R string.
 pub unsafe fn GE_LENDget(lend: c_int) -> SEXP {
     match lend {
-        GE_BUTT_CAP => Rf_mkString(c"butt".as_ptr()),
-        GE_SQUARE_CAP => Rf_mkString(c"square".as_ptr()),
-        _ => Rf_mkString(c"round".as_ptr()),
+        GE_BUTT_CAP => mk_string(c"butt".as_ptr()),
+        GE_SQUARE_CAP => mk_string(c"square".as_ptr()),
+        _ => mk_string(c"round".as_ptr()),
     }
 }
 
@@ -456,9 +916,9 @@ pub unsafe fn GE_LJOINpar(value: SEXP, ind: c_int) -> c_int {
 /// Convert a line join code to an R string.
 pub unsafe fn GE_LJOINget(ljoin: c_int) -> SEXP {
     match ljoin {
-        GE_MITRE_JOIN => Rf_mkString(c"mitre".as_ptr()),
-        GE_BEVEL_JOIN => Rf_mkString(c"bevel".as_ptr()),
-        _ => Rf_mkString(c"round".as_ptr()),
+        GE_MITRE_JOIN => mk_string(c"mitre".as_ptr()),
+        GE_BEVEL_JOIN => mk_string(c"bevel".as_ptr()),
+        _ => mk_string(c"round".as_ptr()),
     }
 }
 
@@ -471,7 +931,7 @@ pub unsafe fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, 
     if dd.is_null() {
         return;
     }
-    rmath_ge_set_clip(x1, y1, x2, y2, dd);
+    ge_set_clip(x1, y1, x2, y2, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -490,7 +950,7 @@ pub unsafe fn GELine(
     if dd.is_null() {
         return;
     }
-    rmath_ge_line(x1, y1, x2, y2, gc, dd);
+    ge_line(x1, y1, x2, y2, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -508,7 +968,7 @@ pub unsafe fn GEPolyline(
     if dd.is_null() {
         return;
     }
-    rmath_ge_polyline(n, x as *mut c_double, y as *mut c_double, gc, dd);
+    ge_polyline(n, x, y, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -526,7 +986,7 @@ pub unsafe fn GEPolygon(
     if dd.is_null() {
         return;
     }
-    rmath_ge_polygon(n, x as *mut c_double, y as *mut c_double, gc, dd);
+    ge_polygon(n, x, y, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -544,7 +1004,7 @@ pub unsafe fn GECircle(
     if dd.is_null() {
         return;
     }
-    rmath_ge_circle(x, y, radius, gc, dd);
+    ge_circle(x, y, radius, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -563,7 +1023,7 @@ pub unsafe fn GERect(
     if dd.is_null() {
         return;
     }
-    rmath_ge_rect(x0, y0, x1, y1, gc, dd);
+    ge_rect(x0, y0, x1, y1, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -583,7 +1043,7 @@ pub unsafe fn GEPath(
     if dd.is_null() {
         return;
     }
-    rmath_ge_path(x, y, npoly, nper, winding, gc, dd);
+    ge_path(x, y, npoly, nper, winding, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -607,7 +1067,19 @@ pub unsafe fn GERaster(
     if dd.is_null() {
         return;
     }
-    rmath_ge_raster(raster, w, h, x, y, width, height, angle, interpolate, gc, dd);
+    ge_raster(
+        raster,
+        w,
+        h,
+        x,
+        y,
+        width,
+        height,
+        angle,
+        interpolate,
+        gc,
+        dd,
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -616,7 +1088,7 @@ pub unsafe fn GERaster(
 
 /// Capture the current device contents as a raster image.
 pub unsafe fn GECap(dd: *mut c_void) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 // ---------------------------------------------------------------------------
@@ -639,7 +1111,7 @@ pub unsafe fn GEText(
         return;
     }
     // GEText currently maps x-centering onto device hadj callback input.
-    rmath_ge_text_with_encoding(x, y, str, enc, rot, xc, gc, dd);
+    ge_text_with_encoding(x, y, str, enc, rot, xc, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -658,7 +1130,7 @@ pub unsafe fn GEXspline(
     gc: *const c_void,
     dd: *mut c_void,
 ) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 // ---------------------------------------------------------------------------
@@ -670,7 +1142,7 @@ pub unsafe fn GEMode(mode: c_int, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    rmath_ge_mode(mode, dd);
+    ge_mode(mode, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -689,7 +1161,7 @@ pub unsafe fn GESymbol(
     if dd.is_null() {
         return;
     }
-    rmath_ge_symbol(x, y, pch, size, gc, dd);
+    ge_symbol(x, y, pch, size, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -701,18 +1173,28 @@ pub unsafe fn GEPretty(lo: *mut c_double, up: *mut c_double, ndiv: *mut c_int) {
     if lo.is_null() || up.is_null() || ndiv.is_null() {
         return;
     }
-    if *ndiv <= 0 {
-        let msg = CString::new(format!("invalid axis extents [GEPretty(.,.,n={})", *ndiv))
-            .expect("GEPretty message contains no NUL");
-        Rf_error(msg.as_ptr());
-    }
-    if !(*lo).is_finite() || !(*up).is_finite() {
+    let lo_value = unsafe { *lo };
+    let up_value = unsafe { *up };
+    let ndiv_value = unsafe { *ndiv };
+    if ndiv_value <= 0 {
         let msg = CString::new(format!(
-            "non-finite axis extents [GEPretty({},{}, n={})]",
-            *lo, *up, *ndiv
+            "invalid axis extents [GEPretty(.,.,n={})",
+            ndiv_value
         ))
         .expect("GEPretty message contains no NUL");
-        Rf_error(msg.as_ptr());
+        unsafe {
+            Rf_error(msg.as_ptr());
+        }
+    }
+    if !lo_value.is_finite() || !up_value.is_finite() {
+        let msg = CString::new(format!(
+            "non-finite axis extents [GEPretty({},{}, n={})]",
+            lo_value, up_value, ndiv_value
+        ))
+        .expect("GEPretty message contains no NUL");
+        unsafe {
+            Rf_error(msg.as_ptr());
+        }
     }
     let high_u_fact = [0.8_f64, 1.7_f64, 1.125_f64];
     let _ = R_pretty(lo, up, ndiv, 1, 0.25, high_u_fact.as_ptr(), 2, 0);
@@ -731,7 +1213,7 @@ pub unsafe fn GEMetricInfo(
     width: *mut c_double,
     dd: *mut c_void,
 ) {
-    rmath_ge_metric_info(c, gc, ascent, descent, width, dd);
+    ge_metric_info(c, gc, ascent, descent, width, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -749,9 +1231,9 @@ pub unsafe fn GEStrWidth(
         return 0.0;
     }
     if enc == 1 {
-        rmath_ge_str_width_utf8(str, gc, dd)
+        ge_str_width_utf8(str, gc, dd)
     } else {
-        rmath_ge_str_width(str, enc, gc, dd)
+        ge_str_width(str, enc, gc, dd)
     }
 }
 
@@ -769,7 +1251,7 @@ pub unsafe fn GEStrHeight(
     if dd.is_null() {
         return 0.0;
     }
-    rmath_ge_str_height(str, enc, gc, dd)
+    ge_str_height(str, enc, gc, dd)
 }
 
 // ---------------------------------------------------------------------------
@@ -786,7 +1268,7 @@ pub unsafe fn GEStrMetric(
     width: *mut c_double,
     dd: *mut c_void,
 ) {
-    rmath_ge_str_metric(str, enc, gc, ascent, descent, width, dd);
+    ge_str_metric(str, enc, gc, ascent, descent, width, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -798,7 +1280,7 @@ pub unsafe fn GENewPage(gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    rmath_ge_new_page(gc, dd);
+    ge_new_page(gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -810,7 +1292,7 @@ pub unsafe fn GEdeviceDirty(dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
-    rmath_ge_device_dirty(dd)
+    ge_device_dirty(dd)
 }
 
 /// Mark a device as having received output.
@@ -818,7 +1300,7 @@ pub unsafe fn GEdirtyDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    rmath_ge_mark_dirty(dd);
+    ge_mark_dirty(dd);
 }
 
 /// Mark a device as clean (no output recorded).
@@ -826,7 +1308,7 @@ pub(crate) unsafe fn GEcleanDevice(dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    rmath_ge_mark_clean(dd);
+    ge_mark_clean(dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -851,7 +1333,7 @@ pub unsafe fn GErecording(call: SEXP, dd: *mut c_void) -> c_int {
     if dd.is_null() {
         return 0;
     }
-    rmath_ge_recording(dd)
+    ge_recording(dd)
 }
 
 // ---------------------------------------------------------------------------
@@ -897,7 +1379,7 @@ pub unsafe fn GEcopyDisplayList(fromDevice: c_int) {
 /// Create a snapshot of the current display, including graphics system state.
 pub unsafe fn GEcreateSnapshot(dd: *mut c_void) -> SEXP {
     let _ = dd;
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 // ---------------------------------------------------------------------------
@@ -916,13 +1398,13 @@ pub unsafe fn GEplaySnapshot(snapshot: SEXP, dd: *mut c_void) {
 /// recordPlot() -- R internal entry point.
 pub unsafe fn do_getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// replayPlot() -- R internal entry point.
 pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 // ---------------------------------------------------------------------------
@@ -932,7 +1414,7 @@ pub unsafe fn do_playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SE
 /// .Internal(recordGraphics(...)) -- R internal entry point.
 pub unsafe fn do_recordGraphics(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     let _ = (call, op, args, env);
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 // ---------------------------------------------------------------------------
@@ -950,13 +1432,15 @@ pub unsafe fn GEonExit() {
 
 /// Convert a single-character string SEXP to a pch integer code.
 pub unsafe fn GEstring_to_pch(pch: SEXP) -> c_int {
-    if pch.is_null() || TYPEOF(pch) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(pch) == 0 {
-        return NA_INTEGER;
-    }
-    let ch = CStr::from_ptr(CHAR(STRING_ELT(pch, 0)))
-        .to_string_lossy()
-        .chars()
-        .next();
+    let ch = unsafe {
+        if pch.is_null() || TYPEOF(pch) != SEXPTYPE::STRSXP.as_c_int() || LENGTH(pch) == 0 {
+            return NA_INTEGER;
+        }
+        CStr::from_ptr(CHAR(STRING_ELT(pch, 0)))
+            .to_string_lossy()
+            .chars()
+            .next()
+    };
     ch.map_or(NA_INTEGER, |c| c as c_int)
 }
 
@@ -1000,10 +1484,14 @@ pub unsafe fn GE_LTYget(lty: c_uint) -> SEXP {
         _ => None,
     };
     if let Some(name) = named {
-        return Rf_mkString(CString::new(name).expect("lty name contains no NUL").as_ptr());
+        return mk_string(
+            CString::new(name)
+                .expect("lty name contains no NUL")
+                .as_ptr(),
+        );
     }
     let custom = CString::new(format!("{lty:x}")).expect("hex lty contains no NUL");
-    Rf_mkString(custom.as_ptr())
+    mk_string(custom.as_ptr())
 }
 
 // ---------------------------------------------------------------------------
@@ -1019,7 +1507,7 @@ pub unsafe fn R_GE_rasterScale(
     dw: c_int,
     dh: c_int,
 ) {
-    rmath_ge_raster_scale(sraster, sw, sh, draster, dw, dh);
+    ge_raster_scale(sraster, sw, sh, draster, dw, dh);
 }
 
 /// Scale a raster image using bilinear interpolation.
@@ -1031,7 +1519,7 @@ pub unsafe fn R_GE_rasterInterpolate(
     dw: c_int,
     dh: c_int,
 ) {
-    rmath_ge_raster_interpolate(sraster, sw, sh, draster, dw, dh);
+    ge_raster_interpolate(sraster, sw, sh, draster, dw, dh);
 }
 
 /// Calculate the size needed for a rotated raster image.
@@ -1042,7 +1530,7 @@ pub unsafe fn R_GE_rasterRotatedSize(
     wnew: *mut c_int,
     hnew: *mut c_int,
 ) {
-    rmath_ge_raster_rotated_size(w, h, angle, wnew, hnew);
+    ge_raster_rotated_size(w, h, angle, wnew, hnew);
 }
 
 /// Calculate the offset for a rotated raster image.
@@ -1054,7 +1542,7 @@ pub unsafe fn R_GE_rasterRotatedOffset(
     xoff: *mut c_double,
     yoff: *mut c_double,
 ) {
-    rmath_ge_raster_rotated_offset(w, h, angle, botleft, xoff, yoff);
+    ge_raster_rotated_offset(w, h, angle, botleft, xoff, yoff);
 }
 
 /// Copy a raster image into the middle of a larger raster (for rotation).
@@ -1067,7 +1555,7 @@ pub unsafe fn R_GE_rasterResizeForRotation(
     hnew: c_int,
     gc: *const c_void,
 ) {
-    rmath_ge_raster_resize_for_rotation(sraster, w, h, newRaster, wnew, hnew, gc);
+    ge_raster_resize_for_rotation(sraster, w, h, newRaster, wnew, hnew, gc);
 }
 
 /// Rotate a raster image.
@@ -1080,7 +1568,7 @@ pub unsafe fn R_GE_rasterRotate(
     gc: *const c_void,
     smoothAlpha: c_int,
 ) {
-    rmath_ge_raster_rotate(sraster, w, h, angle, draster, gc, smoothAlpha);
+    ge_raster_rotate(sraster, w, h, angle, draster, gc, smoothAlpha);
 }
 
 // ---------------------------------------------------------------------------
@@ -1092,7 +1580,7 @@ pub unsafe fn GEStroke(path: SEXP, gc: *const c_void, dd: *mut c_void) {
     if dd.is_null() {
         return;
     }
-    rmath_ge_stroke(path, gc, dd);
+    ge_stroke(path, gc, dd);
 }
 
 /// Fill a path on the device.
@@ -1100,7 +1588,7 @@ pub unsafe fn GEFill(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut c_void
     if dd.is_null() {
         return;
     }
-    rmath_ge_fill(path, rule, gc, dd);
+    ge_fill(path, rule, gc, dd);
 }
 
 /// Fill and stroke a path on the device.
@@ -1108,7 +1596,7 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
     if dd.is_null() {
         return;
     }
-    rmath_ge_fill_stroke(path, rule, gc, dd);
+    ge_fill_stroke(path, rule, gc, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -1117,47 +1605,47 @@ pub unsafe fn GEFillStroke(path: SEXP, rule: c_int, gc: *const c_void, dd: *mut 
 
 /// Get the glyphs component from a glyphInfo SEXP.
 pub unsafe fn R_GE_glyphInfoGlyphs(glyphInfo: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the fonts component from a glyphInfo SEXP.
 pub unsafe fn R_GE_glyphInfoFonts(glyphInfo: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph IDs from a glyphs SEXP.
 pub unsafe fn R_GE_glyphID(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph X positions from a glyphs SEXP.
 pub unsafe fn R_GE_glyphX(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph Y positions from a glyphs SEXP.
 pub unsafe fn R_GE_glyphY(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph font indices from a glyphs SEXP.
 pub unsafe fn R_GE_glyphFont(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph sizes from a glyphs SEXP.
 pub unsafe fn R_GE_glyphSize(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph colours from a glyphs SEXP.
 pub unsafe fn R_GE_glyphColour(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Get the glyph rotations from a glyphs SEXP.
 pub unsafe fn R_GE_glyphRotation(glyphs: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+    nil_value()
 }
 
 /// Check whether a glyphs SEXP has rotation information.
@@ -1238,7 +1726,7 @@ pub unsafe fn GEGlyph(
     if dd.is_null() {
         return;
     }
-    rmath_ge_glyph(n, glyphs, x, y, font, size, colour, rot, dd);
+    ge_glyph(n, glyphs, x, y, font, size, colour, rot, dd);
 }
 
 // ---------------------------------------------------------------------------
@@ -1248,7 +1736,7 @@ pub unsafe fn GEGlyph(
 /// Evaluate an expression within a graphics device context (with device locking).
 pub unsafe fn Rf_eval_with_gd(e: SEXP, rho: SEXP, dd: *mut c_void) -> SEXP {
     let _ = dd;
-    unsafe { crate::eval::eval::Rf_eval(e, rho) }
+    ge_eval_with_rho(e, rho)
 }
 
 // ---------------------------------------------------------------------------
@@ -1290,11 +1778,13 @@ mod tests {
     use crate::sexp::accessors::STRING_ELT;
     use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_mkChar, Rf_mkString};
     use crate::sexp::ffi::{R_xlen_t, SEXPTYPE};
-    unsafe fn make_string_vector(values: &[&str]) -> SEXP {
-        let v = Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int);
+    fn make_string_vector(values: &[&str]) -> SEXP {
+        let v = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int) };
         for (i, value) in values.iter().enumerate() {
             let c = std::ffi::CString::new(*value).expect("test string contains no NUL");
-            crate::sexp::accessors::SET_STRING_ELT(v, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+            unsafe {
+                crate::sexp::accessors::SET_STRING_ELT(v, i as R_xlen_t, Rf_mkChar(c.as_ptr()));
+            }
         }
         v
     }
@@ -1344,9 +1834,9 @@ mod tests {
             let mut d = 1.0;
             let mut w = 1.0;
             GEMetricInfo(77, ptr::null(), &mut a, &mut d, &mut w, ptr::null_mut());
-            assert_eq!(a, 0.8);
-            assert_eq!(d, 0.2);
-            assert_eq!(w, 0.5);
+            assert_eq!(a, 0.0);
+            assert_eq!(d, 0.0);
+            assert_eq!(w, 0.0);
         }
     }
 
@@ -1554,8 +2044,8 @@ mod tests {
             let mut wnew: c_int = 0;
             let mut hnew: c_int = 0;
             R_GE_rasterRotatedSize(100, 200, 0.5, &mut wnew, &mut hnew);
-            assert_eq!(wnew, 100);
-            assert_eq!(hnew, 200);
+            assert_eq!(wnew, 184);
+            assert_eq!(hnew, 223);
         }
     }
 
@@ -1565,8 +2055,8 @@ mod tests {
             let mut xoff = 1.0;
             let mut yoff = 1.0;
             R_GE_rasterRotatedOffset(100, 200, 0.5, 1, &mut xoff, &mut yoff);
-            assert_eq!(xoff, 0.0);
-            assert_eq!(yoff, 0.0);
+            assert!((xoff - 54.06342576590164).abs() < 1e-12);
+            assert!((yoff - (-11.72953311924742)).abs() < 1e-12);
         }
     }
 

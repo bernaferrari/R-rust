@@ -5,10 +5,9 @@
 //!
 //! # Overview
 //!
-//! [`RSession`] encapsulates the arena, protection stack depth, and
-//! environment state for an R interpreter session. It provides methods
-//! for evaluating expressions, finding and defining variables, running
-//! garbage collection, and managing protection scopes.
+//! [`RSession`] encapsulates an [`RInstance`] that owns its own arena,
+//! protection stack, and environment state, enabling multiple independent
+//! R sessions to coexist within the same process.
 //!
 //! # Examples
 //!
@@ -31,15 +30,19 @@ use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
+use super::instance::{RInstance, set_current_instance, clear_current_instance};
 use super::memory::RArena;
 use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 use super::safe::Sexp;
 use crate::error::{catch_r, REvalError, RResult};
 
-/// An R interpreter session.
+/// An R interpreter session with its own isolated instance state.
 ///
-/// This provides an explicit context for R operations, encapsulating
-/// the arena, protection stack depth, and environment state.
+/// Each `RSession` owns an [`RInstance`] containing a private arena,
+/// environment chain, and protection stack. When a session is active,
+/// all global accessor functions (`R_GlobalEnv`, `Rf_protect`, `with_arena`,
+/// etc.) dispatch to the session's instance instead of the process-wide
+/// fallbacks.
 ///
 /// # Thread Safety
 ///
@@ -48,22 +51,23 @@ use crate::error::{catch_r, REvalError, RResult};
 pub struct RSession {
     /// Whether this session is active.
     active: bool,
-    /// The global environment for this session.
-    global_env: SEXP,
-    /// The base environment for this session.
-    base_env: SEXP,
+    /// The owned R instance with isolated state.
+    instance: Box<RInstance>,
 }
 
 impl RSession {
-    /// Create a new R session.
+    /// Create a new R session with its own isolated instance.
     ///
-    /// Initializes the session with references to the global and base
-    /// environments. The session is active by default.
+    /// Initializes a fresh [`RInstance`] with its own arena and environment
+    /// chain, and sets it as the current thread-local instance.
     pub fn new() -> Self {
+        let mut instance = Box::new(RInstance::new());
+        unsafe {
+            set_current_instance(&mut *instance as *mut RInstance);
+        }
         RSession {
             active: true,
-            global_env: unsafe { R_GlobalEnv() },
-            base_env: unsafe { R_BaseEnv() },
+            instance,
         }
     }
 
@@ -78,14 +82,14 @@ impl RSession {
     ///
     /// Returns `None` if the global environment pointer is null.
     pub fn global_env(&self) -> Option<Sexp<'_>> {
-        Sexp::from_raw(self.global_env)
+        Sexp::from_raw(self.instance.global_env)
     }
 
     /// Get the base environment.
     ///
     /// Returns `None` if the base environment pointer is null.
     pub fn base_env(&self) -> Option<Sexp<'_>> {
-        Sexp::from_raw(self.base_env)
+        Sexp::from_raw(self.instance.base_env)
     }
 
     /// Evaluate an expression in this session's global environment.
@@ -104,7 +108,7 @@ impl RSession {
                 message: "session is closed".to_string(),
             });
         }
-        catch_r(|| unsafe { crate::eval::eval::Rf_eval(expr, self.global_env) }).map_err(|e| {
+        catch_r(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) }).map_err(|e| {
             REvalError {
                 message: format!("evaluation failed: {}", e.message),
             }
@@ -145,7 +149,7 @@ impl RSession {
         if symbol.is_null() {
             return None;
         }
-        let result = unsafe { crate::sexp::envir::R_findVar(symbol, self.global_env) };
+        let result = unsafe { crate::sexp::envir::R_findVar(symbol, self.instance.global_env) };
         if result == unsafe { R_UnboundValue() } || result == unsafe { R_NilValue() } {
             None
         } else {
@@ -171,7 +175,7 @@ impl RSession {
             return;
         }
         unsafe {
-            crate::sexp::envir::defineVar(symbol, value, self.global_env);
+            crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
         }
     }
 
@@ -192,7 +196,6 @@ impl RSession {
     /// let session = RSession::new();
     /// session.with_protected(|| {
     ///     unsafe { Rf_protect(ptr::null_mut()); }
-    ///     // Protection is automatically cleaned up after this closure
     /// });
     /// ```
     pub fn with_protected<F, T>(&self, f: F) -> T
@@ -220,15 +223,25 @@ impl RSession {
     /// Close this session.
     ///
     /// After closing, [`is_active`](RSession::is_active) returns `false`
-    /// and evaluation methods return errors.
+    /// and evaluation methods return errors. The current thread-local
+    /// instance is cleared.
     pub fn close(&mut self) {
         self.active = false;
+        clear_current_instance();
     }
 }
 
 impl Default for RSession {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for RSession {
+    fn drop(&mut self) {
+        if self.active {
+            clear_current_instance();
+        }
     }
 }
 

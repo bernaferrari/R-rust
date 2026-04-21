@@ -33,8 +33,11 @@ use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::main::duplicate::duplicate;
 use crate::main::errors::Rf_error;
+use crate::mainutils::bind::isList;
+use crate::mainutils::colors::RGBpar3;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
+use crate::sexp::constructors::{Rf_length as length, Rf_ScalarInteger as ScalarInteger};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
@@ -101,6 +104,7 @@ const DBL_MAX_EXP: c_int = 1024;
 
 unsafe extern "C" {
     /* Device management */
+    #[link_name = "rmath_GEcurrentDevice"]
     fn GEcurrentDevice() -> pGEDevDesc;
     fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: pGEDevDesc);
     fn NoDevices() -> c_int;
@@ -265,9 +269,6 @@ unsafe extern "C" {
         dd: pGEDevDesc,
     ) -> SEXP;
 
-    /* Color */
-    fn RGBpar3(col: *mut c_void, i: c_int, bg: c_uint) -> c_uint;
-
     /* Axis creation */
     fn CreateAtVector(
         axp: *const c_double,
@@ -345,7 +346,6 @@ unsafe extern "C" {
     fn asRboolean(x: SEXP) -> c_int;
 
     /* Vector construction */
-    fn ScalarInteger(x: c_int) -> SEXP;
     fn ScalarReal(x: c_double) -> SEXP;
     fn ScalarLogical(x: c_int) -> SEXP;
     fn allocList(n: c_int) -> SEXP;
@@ -361,7 +361,6 @@ unsafe extern "C" {
 
     /* Type checks */
     fn isNewList(x: SEXP) -> c_int;
-    fn isList(x: SEXP) -> c_int;
     fn isNumeric(x: SEXP) -> c_int;
     fn isReal(x: SEXP) -> c_int;
     fn isInteger(x: SEXP) -> c_int;
@@ -370,10 +369,6 @@ unsafe extern "C" {
     fn isExpression(x: SEXP) -> c_int;
     fn isSymbol(x: SEXP) -> c_int;
     fn isLanguage(x: SEXP) -> c_int;
-    fn length(x: SEXP) -> c_int;
-
-    /* Other accessors */
-    fn COMPLEX(x: SEXP) -> *mut Rcomplex;
 
     /* Misc R internals */
     fn Rexp10(x: c_double) -> c_double;

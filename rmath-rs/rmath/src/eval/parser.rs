@@ -1375,7 +1375,7 @@ pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{CAR, CDR, TYPEOF};
+    use crate::sexp::accessors::{CAR, TYPEOF};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::memory::RArena;

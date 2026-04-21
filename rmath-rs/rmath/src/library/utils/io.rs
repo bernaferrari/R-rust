@@ -43,20 +43,30 @@ use crate::attrib_core;
 use crate::main::coerce::asLogical;
 use crate::main::duplicate::{Rf_duplicate, copyVector};
 
-/// Get errno pointer (macOS uses __error())
+/// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
 #[inline]
 unsafe fn errno_ptr() -> *mut c_int {
-    libc::__error()
+    #[cfg(target_os = "macos")]
+    {
+        libc::__error()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        unsafe extern "C" {
+            fn __errno_location() -> *mut c_int;
+        }
+        __errno_location()
+    }
 }
 
 /// Check if string is blank (empty or whitespace-only)
-unsafe fn isBlankString(s: *const i8) -> c_int {
+unsafe fn isBlankString(s: *const libc::c_char) -> c_int {
     if *s == 0 {
         return 1;
     }
     let mut p = s;
     while *p != 0 {
-        if *p != b' ' as i8 && *p != b'\t' as i8 && *p != b'\n' as i8 && *p != b'\r' as i8 {
+        if *p != b' ' as libc::c_char && *p != b'\t' as libc::c_char && *p != b'\n' as libc::c_char && *p != b'\r' as libc::c_char {
             return 0;
         }
         p = p.add(1);
@@ -825,7 +835,7 @@ unsafe fn ruleout_types(
     if typeInfo.isreal {
         let mut endp: *mut c_char = ptr::null_mut();
         Strtod(s, &mut endp, 1, data, exact);
-        if isBlankString(endp as *const i8) == 0 {
+        if isBlankString(endp as *const libc::c_char) == 0 {
             typeInfo.isreal = false;
         }
     }
@@ -833,7 +843,7 @@ unsafe fn ruleout_types(
     if typeInfo.iscomplex {
         let mut endp: *mut c_char = ptr::null_mut();
         strtoc(s, &mut endp, 1, data, exact);
-        if isBlankString(endp as *const i8) == 0 {
+        if isBlankString(endp as *const libc::c_char) == 0 {
             typeInfo.iscomplex = false;
         }
     }
@@ -959,21 +969,21 @@ unsafe fn strchr_quoteset(quoteset: &[c_char; 10], c: c_int) -> bool {
 unsafe fn r_error(fmt: *const c_char, arg: *const c_char) {
     // Rf_error in our Rust port takes a single format string
     // Build the full message using snprintf
-    let mut buf = [0i8; 512];
+    let mut buf = [0 as libc::c_char; 512];
     libc::snprintf(buf.as_mut_ptr(), 512, fmt, arg);
     Rf_error(buf.as_ptr());
 }
 
 /// Format an error message with int arg and call Rf_error
 unsafe fn r_error_int(fmt: *const c_char, arg: c_int) {
-    let mut buf = [0i8; 512];
+    let mut buf = [0 as libc::c_char; 512];
     libc::snprintf(buf.as_mut_ptr(), 512, fmt, arg);
     Rf_error(buf.as_ptr());
 }
 
 /// Format a warning message and call Rf_warning
 unsafe fn r_warning(fmt: *const c_char, arg: *const c_char) {
-    let mut buf = [0i8; 512];
+    let mut buf = [0 as libc::c_char; 512];
     libc::snprintf(buf.as_mut_ptr(), 512, fmt, arg);
     Rf_warning(buf.as_ptr());
 }
@@ -1480,7 +1490,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             } else {
                 let mut endp: *mut c_char = ptr::null_mut();
                 let val = Strtod(tmp, &mut endp, 0, &data, i_exact);
-                if isBlankString(endp as *const i8) == 0 {
+                if isBlankString(endp as *const libc::c_char) == 0 {
                     all_real = false;
                     typeInfo.isreal = false;
                     ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
@@ -1513,7 +1523,7 @@ pub unsafe fn typeconvert(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             } else {
                 let mut endp: *mut c_char = ptr::null_mut();
                 let z = strtoc(tmp, &mut endp, 0, &data, i_exact);
-                if isBlankString(endp as *const i8) == 0 {
+                if isBlankString(endp as *const libc::c_char) == 0 {
                     all_complex = false;
                     typeInfo.iscomplex = false;
                     ruleout_types(tmp, &mut typeInfo, &data, if exact { 1 } else { 0 });
@@ -1840,7 +1850,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
             nread += 1;
             // Check for embedded nulls (strlen < nbuf)
             if libc::strlen(buf) < nbuf {
-                let mut warn_buf = [0i8; 256];
+                let mut warn_buf = [0 as libc::c_char; 256];
                 libc::snprintf(
                     warn_buf.as_mut_ptr(),
                     256,

@@ -109,11 +109,18 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
 #[unsafe(no_mangle)]
 pub unsafe fn Rf_protect(s: SEXP) -> SEXP {
     if !s.is_null() {
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            reserve_slot_or_fail(&mut stack.stack, "Rf_protect");
-            stack.stack.push(s);
-        });
+        if super::instance::with_current_instance(|inst| {
+            reserve_slot_or_fail(&mut inst.protect_stack, "Rf_protect");
+            inst.protect_stack.push(s);
+        })
+        .is_none()
+        {
+            PROTECT_STACK.with(|ps| {
+                let mut stack = ps.borrow_mut();
+                reserve_slot_or_fail(&mut stack.stack, "Rf_protect");
+                stack.stack.push(s);
+            });
+        }
     }
     s
 }
@@ -131,17 +138,28 @@ pub unsafe fn Rf_unprotect(n: c_int) {
     if n <= 0 {
         return;
     }
-    PROTECT_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
-        let len = stack.stack.len();
-        let to_remove = n as usize;
+    let to_remove = n as usize;
+    if super::instance::with_current_instance(|inst| {
+        let len = inst.protect_stack.len();
         if to_remove >= len {
-            stack.stack.clear();
+            inst.protect_stack.clear();
         } else {
-            let new_len = len - to_remove;
-            stack.stack.truncate(new_len);
+            inst.protect_stack.truncate(len - to_remove);
         }
-    });
+    })
+    .is_none()
+    {
+        PROTECT_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            let len = stack.stack.len();
+            if to_remove >= len {
+                stack.stack.clear();
+            } else {
+                let new_len = len - to_remove;
+                stack.stack.truncate(new_len);
+            }
+        });
+    }
 }
 
 /// Unprotect the top entry from the protection stack.
@@ -151,19 +169,28 @@ pub unsafe fn Rf_unprotect_ptr(s: SEXP) {
     if s.is_null() {
         return;
     }
-    PROTECT_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
-        if let Some(pos) = stack.stack.iter().rposition(|&x| x == s) {
-            stack.stack.remove(pos);
+    if super::instance::with_current_instance(|inst| {
+        if let Some(pos) = inst.protect_stack.iter().rposition(|&x| x == s) {
+            inst.protect_stack.remove(pos);
         }
-    });
+    })
+    .is_none()
+    {
+        PROTECT_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            if let Some(pos) = stack.stack.iter().rposition(|&x| x == s) {
+                stack.stack.remove(pos);
+            }
+        });
+    }
 }
 
 /// Get the current number of entries on the protection stack.
 ///
 /// Used by the context system to track protect depth.
 pub fn R_ProtectCount() -> usize {
-    PROTECT_STACK.with(|ps| ps.borrow().stack.len())
+    super::instance::with_current_instance(|inst| inst.protect_stack.len())
+        .unwrap_or_else(|| PROTECT_STACK.with(|ps| ps.borrow().stack.len()))
 }
 
 /// Iterate over all protected SEXP values on the stack.
@@ -172,10 +199,14 @@ pub fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    PROTECT_STACK.with(|ps| {
-        let stack = ps.borrow();
-        f(&stack.stack)
-    })
+    if super::instance::has_current_instance() {
+        super::instance::with_current_instance(|inst| f(&inst.protect_stack)).unwrap()
+    } else {
+        PROTECT_STACK.with(|ps| {
+            let stack = ps.borrow();
+            f(&stack.stack)
+        })
+    }
 }
 
 /// Update all protect stack references using the given mapping function.
@@ -184,12 +215,20 @@ pub fn update_protect_stack_refs<F>(mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    PROTECT_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
-        for slot in stack.stack.iter_mut() {
+    if super::instance::with_current_instance(|inst| {
+        for slot in inst.protect_stack.iter_mut() {
             *slot = update_fn(*slot);
         }
-    });
+    })
+    .is_none()
+    {
+        PROTECT_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            for slot in stack.stack.iter_mut() {
+                *slot = update_fn(*slot);
+            }
+        });
+    }
 }
 
 /// Update all preserve stack references using the given mapping function.
@@ -231,15 +270,26 @@ pub struct ProtectIndex {
 ///
 /// This is the equivalent of R's `R_ProtectWithIndex()`.
 pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
-    let index = PROTECT_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
+    let index = super::instance::with_current_instance(|inst| {
         if !s.is_null() {
-            reserve_slot_or_fail(&mut stack.stack, "R_ProtectWithIndex");
-            stack.stack.push(s);
-            (stack.stack.len() - 1) + 1
+            reserve_slot_or_fail(&mut inst.protect_stack, "R_ProtectWithIndex");
+            inst.protect_stack.push(s);
+            (inst.protect_stack.len() - 1) + 1
         } else {
             0
         }
+    })
+    .unwrap_or_else(|| {
+        PROTECT_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            if !s.is_null() {
+                reserve_slot_or_fail(&mut stack.stack, "R_ProtectWithIndex");
+                stack.stack.push(s);
+                (stack.stack.len() - 1) + 1
+            } else {
+                0
+            }
+        })
     });
     index as *mut ProtectIndex
 }
@@ -257,12 +307,20 @@ pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
         return;
     }
     let idx = (index as usize).wrapping_sub(1);
-    PROTECT_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
-        if idx < stack.stack.len() {
-            stack.stack[idx] = s;
+    if super::instance::with_current_instance(|inst| {
+        if idx < inst.protect_stack.len() {
+            inst.protect_stack[idx] = s;
         }
-    });
+    })
+    .is_none()
+    {
+        PROTECT_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            if idx < stack.stack.len() {
+                stack.stack[idx] = s;
+            }
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------

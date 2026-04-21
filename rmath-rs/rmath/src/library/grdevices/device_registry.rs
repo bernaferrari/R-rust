@@ -3,6 +3,8 @@
 use std::os::raw::{c_double, c_int};
 use std::ptr;
 use std::sync::{Mutex, OnceLock};
+use crate::sexp::ffi::SEXP;
+use crate::sexp::globals::R_NilValue;
 
 /// Minimal graphics device descriptor used by the headless Rust registry.
 ///
@@ -240,51 +242,60 @@ pub(crate) fn reset_registry_for_tests() {
     with_registry(|registry| registry.reset());
 }
 
-pub(crate) unsafe fn GEcurrentDevice() -> pGEDevDesc {
+#[unsafe(export_name = "rmath_GEcurrentDevice")]
+pub unsafe extern "C" fn GEcurrentDevice() -> pGEDevDesc {
     with_registry(|registry| registry.current_ptr())
 }
 
-pub(crate) unsafe fn GEgetDevice(dev: c_int) -> pGEDevDesc {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn GEgetDevice(dev: c_int) -> pGEDevDesc {
     with_registry(|registry| registry.device_ptr(dev + 1))
 }
 
-pub(crate) unsafe fn curDevice() -> c_int {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn curDevice() -> c_int {
     with_registry(|registry| registry.current_internal())
 }
 
-pub(crate) unsafe fn nextDevice(dev: c_int) -> c_int {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nextDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.next_external(dev + 1) - 1)
 }
 
-pub(crate) unsafe fn prevDevice(dev: c_int) -> c_int {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn prevDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.prev_external(dev + 1) - 1)
 }
 
-pub(crate) unsafe fn selectDevice(dev: c_int) -> c_int {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn selectDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.select_external(dev + 1) - 1)
 }
 
-pub(crate) unsafe fn killDevice(dev: c_int) {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn killDevice(dev: c_int) {
     let _ = with_registry(|registry| registry.kill_external(dev + 1));
 }
 
-pub(crate) unsafe fn NoDevices() -> c_int {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn NoDevices() -> c_int {
     with_registry(|registry| registry.no_devices() as c_int)
 }
 
-pub(crate) unsafe fn NumDevices() -> c_int {
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn NumDevices() -> c_int {
     with_registry(|registry| registry.num_devices())
 }
 
 #[unsafe(no_mangle)]
-pub(crate) unsafe fn GEinitDisplayList(_gdd: pGEDevDesc) {}
+pub unsafe extern "C" fn GEinitDisplayList(_gdd: pGEDevDesc) {}
 
 #[unsafe(no_mangle)]
-pub(crate) unsafe fn GEcopyDisplayList(_devnum: c_int) {}
+pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
 #[unsafe(no_mangle)]
-pub(crate) unsafe fn GECap(_gdd: pGEDevDesc) -> *mut std::ffi::c_void {
-    ptr::null_mut()
+pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
+    R_NilValue()
 }
 
 #[cfg(test)]

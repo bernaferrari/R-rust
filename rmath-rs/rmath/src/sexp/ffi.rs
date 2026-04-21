@@ -125,6 +125,7 @@ impl SEXPTYPE {
     pub const WEAKREFSXP: SEXPTYPE = SEXPTYPE(23);
     pub const RAWSXP: SEXPTYPE = SEXPTYPE(24);
     pub const OBJSXP: SEXPTYPE = SEXPTYPE(25);
+    pub const S4SXP: SEXPTYPE = SEXPTYPE(25);
     pub const FUNSXP: SEXPTYPE = SEXPTYPE(99);
 
     /// Return the raw C integer tag value.

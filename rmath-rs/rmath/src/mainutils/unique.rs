@@ -603,7 +603,7 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
             && let Some(pname) = tag.printname()
             && let Some(name_bytes) = pname.data_ptr()
         {
-            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
             if name_str.to_bytes() == b"na.rm"
                 && let Some(na_val) = current.car()
                 && let Some(nrm) = na_val.logical_elt(0)
@@ -625,7 +625,7 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         let skip = if let Some(tag) = current.tag() {
             if let Some(pname) = tag.printname() {
                 if let Some(name_bytes) = pname.data_ptr() {
-                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
                     name_str.to_bytes() == b"na.rm"
                 } else {
                     false
@@ -687,7 +687,7 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
             && let Some(pname) = tag.printname()
             && let Some(name_bytes) = pname.data_ptr()
         {
-            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
             if name_str.to_bytes() == b"na.rm"
                 && let Some(na_val) = current.car()
                 && let Some(nrm) = na_val.logical_elt(0)
@@ -709,7 +709,7 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         let skip = if let Some(tag) = current.tag() {
             if let Some(pname) = tag.printname() {
                 if let Some(name_bytes) = pname.data_ptr() {
-                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const i8) };
+                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
                     name_str.to_bytes() == b"na.rm"
                 } else {
                     false
@@ -1053,30 +1053,39 @@ mod tests {
     // -----------------------------------------------------------------------
 
     /// Helper to create an integer vector with values.
-    unsafe fn make_int_vector(values: &[c_int]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
-        for (i, &val) in values.iter().enumerate() {
-            *INTEGER(v).add(i) = val;
+    fn make_int_vector(values: &[c_int]) -> SEXP {
+        unsafe {
+            let v = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
+            let ints = INTEGER(v);
+            for (i, &val) in values.iter().enumerate() {
+                *ints.add(i) = val;
+            }
+            v
         }
-        v
     }
 
     /// Helper to create a logical vector with values.
-    unsafe fn make_logical_vector(values: &[c_int]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::LGLSXP, values.len() as R_xlen_t);
-        for (i, &val) in values.iter().enumerate() {
-            *LOGICAL(v).add(i) = val;
+    fn make_logical_vector(values: &[c_int]) -> SEXP {
+        unsafe {
+            let v = Rf_allocVector3(SEXPTYPE::LGLSXP, values.len() as R_xlen_t);
+            let logicals = LOGICAL(v);
+            for (i, &val) in values.iter().enumerate() {
+                *logicals.add(i) = val;
+            }
+            v
         }
-        v
     }
 
     /// Helper to create a real vector with values.
-    unsafe fn make_real_vector(values: &[f64]) -> SEXP {
-        let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
-        for (i, &val) in values.iter().enumerate() {
-            *REAL(v).add(i) = val;
+    fn make_real_vector(values: &[f64]) -> SEXP {
+        unsafe {
+            let v = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+            let reals = REAL(v);
+            for (i, &val) in values.iter().enumerate() {
+                *reals.add(i) = val;
+            }
+            v
         }
-        v
     }
 
     #[test]
@@ -1339,28 +1348,30 @@ mod tests {
         }
     }
 
-    unsafe fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
-        let px = LOGICAL(x);
-        let mut has_na = false;
+    fn check_values(op: i32, na_rm: bool, x: SEXP, n: R_xlen_t) -> i32 {
+        unsafe {
+            let px = LOGICAL(x);
+            let mut has_na = false;
 
-        for i in 0..n {
-            let xi = *px.add(i as usize);
-            if !na_rm && xi == NA_LOGICAL {
-                has_na = true;
-            } else {
-                if xi == 1 && op == 2 {
-                    return 1;
-                }
-                if xi == 0 && op == 1 {
-                    return 0;
+            for i in 0..n {
+                let xi = *px.add(i as usize);
+                if !na_rm && xi == NA_LOGICAL {
+                    has_na = true;
+                } else {
+                    if xi == 1 && op == 2 {
+                        return 1;
+                    }
+                    if xi == 0 && op == 1 {
+                        return 0;
+                    }
                 }
             }
-        }
 
-        if op == 2 {
-            if has_na { NA_LOGICAL } else { 0 }
-        } else {
-            if has_na { NA_LOGICAL } else { 1 }
+            if op == 2 {
+                if has_na { NA_LOGICAL } else { 0 }
+            } else {
+                if has_na { NA_LOGICAL } else { 1 }
+            }
         }
     }
 
@@ -1370,110 +1381,86 @@ mod tests {
 
     #[test]
     fn test_check_values_any_all_true() {
-        unsafe {
-            let x = make_logical_vector(&[0, 0, 1, 0]);
-            // any: finds TRUE -> returns 1
-            assert_eq!(check_values(2, false, x, 4), 1);
-        }
+        let x = make_logical_vector(&[0, 0, 1, 0]);
+        // any: finds TRUE -> returns 1
+        assert_eq!(check_values(2, false, x, 4), 1);
     }
 
     #[test]
     fn test_check_values_any_all_false() {
-        unsafe {
-            let x = make_logical_vector(&[0, 0, 0, 0]);
-            // any: no TRUE -> returns 0
-            assert_eq!(check_values(2, false, x, 4), 0);
-        }
+        let x = make_logical_vector(&[0, 0, 0, 0]);
+        // any: no TRUE -> returns 0
+        assert_eq!(check_values(2, false, x, 4), 0);
     }
 
     #[test]
     fn test_check_values_any_with_na() {
-        unsafe {
-            let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
-            // any with NA: returns NA
-            assert_eq!(check_values(2, false, x, 3), NA_LOGICAL);
-        }
+        let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
+        // any with NA: returns NA
+        assert_eq!(check_values(2, false, x, 3), NA_LOGICAL);
     }
 
     #[test]
     fn test_check_values_any_with_na_narm() {
-        unsafe {
-            let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
-            // any with NA and na.rm=TRUE: returns 0 (FALSE)
-            assert_eq!(check_values(2, true, x, 3), 0);
-        }
+        let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
+        // any with NA and na.rm=TRUE: returns 0 (FALSE)
+        assert_eq!(check_values(2, true, x, 3), 0);
     }
 
     #[test]
     fn test_check_values_any_true_over_na() {
-        unsafe {
-            let x = make_logical_vector(&[NA_LOGICAL, 1, 0]);
-            // any: finds TRUE -> returns 1 immediately
-            assert_eq!(check_values(2, false, x, 3), 1);
-        }
+        let x = make_logical_vector(&[NA_LOGICAL, 1, 0]);
+        // any: finds TRUE -> returns 1 immediately
+        assert_eq!(check_values(2, false, x, 3), 1);
     }
 
     #[test]
     fn test_check_values_all_all_true() {
-        unsafe {
-            let x = make_logical_vector(&[1, 1, 1]);
-            // all: no FALSE -> returns 1 (TRUE)
-            assert_eq!(check_values(1, false, x, 3), 1);
-        }
+        let x = make_logical_vector(&[1, 1, 1]);
+        // all: no FALSE -> returns 1 (TRUE)
+        assert_eq!(check_values(1, false, x, 3), 1);
     }
 
     #[test]
     fn test_check_values_all_has_false() {
-        unsafe {
-            let x = make_logical_vector(&[1, 0, 1]);
-            // all: finds FALSE -> returns 0
-            assert_eq!(check_values(1, false, x, 3), 0);
-        }
+        let x = make_logical_vector(&[1, 0, 1]);
+        // all: finds FALSE -> returns 0
+        assert_eq!(check_values(1, false, x, 3), 0);
     }
 
     #[test]
     fn test_check_values_all_with_na() {
-        unsafe {
-            let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
-            // all with NA: returns NA
-            assert_eq!(check_values(1, false, x, 3), NA_LOGICAL);
-        }
+        let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
+        // all with NA: returns NA
+        assert_eq!(check_values(1, false, x, 3), NA_LOGICAL);
     }
 
     #[test]
     fn test_check_values_all_with_na_narm() {
-        unsafe {
-            let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
-            // all with NA and na.rm=TRUE: returns 1 (TRUE)
-            assert_eq!(check_values(1, true, x, 3), 1);
-        }
+        let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
+        // all with NA and na.rm=TRUE: returns 1 (TRUE)
+        assert_eq!(check_values(1, true, x, 3), 1);
     }
 
     #[test]
     fn test_check_values_all_false_over_na() {
-        unsafe {
-            let x = make_logical_vector(&[1, 0, NA_LOGICAL]);
-            // all: finds FALSE -> returns 0 immediately
-            assert_eq!(check_values(1, false, x, 3), 0);
-        }
+        let x = make_logical_vector(&[1, 0, NA_LOGICAL]);
+        // all: finds FALSE -> returns 0 immediately
+        assert_eq!(check_values(1, false, x, 3), 0);
     }
 
     #[test]
     fn test_check_values_empty_any() {
-        unsafe {
-            let x = make_logical_vector(&[]);
-            // any of empty: returns 0 (FALSE)
-            assert_eq!(check_values(2, false, x, 0), 0);
-        }
+        let x = make_logical_vector(&[]);
+        // any of empty: returns 0 (FALSE)
+        assert_eq!(check_values(2, false, x, 0), 0);
     }
 
     #[test]
     fn test_check_values_empty_all() {
-        unsafe {
-            let x = make_logical_vector(&[]);
-            // all of empty: returns 1 (TRUE)
-            assert_eq!(check_values(1, false, x, 0), 1);
-        }
+        let x = make_logical_vector(&[]);
+        // all of empty: returns 1 (TRUE)
+        assert_eq!(check_values(1, false, x, 0), 1);
     }
 
     // -----------------------------------------------------------------------

@@ -391,8 +391,8 @@ mod tests {
             .map(|s| {
                 let cstr = CString::new(*s).unwrap_or_default();
                 let len = cstr.as_bytes_with_nul().len();
-                let ptr = libc::malloc(len) as *mut c_char;
-                ptr::copy_nonoverlapping(cstr.as_ptr(), ptr, len);
+                let ptr = unsafe { libc::malloc(len) as *mut c_char };
+                unsafe { ptr::copy_nonoverlapping(cstr.as_ptr(), ptr, len) };
                 ptr
             })
             .collect()
@@ -406,7 +406,7 @@ mod tests {
         let mut seen = std::collections::HashSet::new();
         for &p in argv.iter() {
             if !p.is_null() && seen.insert(p) {
-                libc::free(p as *mut c_void);
+                unsafe { libc::free(p as *mut c_void) };
             }
         }
     }
@@ -477,7 +477,7 @@ mod tests {
         }
     }
 
-    unsafe fn reset_state() {
+    fn reset_state() {
         SaveAction.with(|v| v.set(SA_SAVEASK));
         RestoreAction.with(|v| v.set(SA_RESTORE));
         R_RestoreHistory.with(|v| v.set(1));

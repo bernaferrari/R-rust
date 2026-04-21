@@ -178,10 +178,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return FALSE;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CLOSXP
-            || t == SEXPTYPE::BUILTINSXP
-            || t == SEXPTYPE::SPECIALSXP
-        {
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             TRUE
         } else {
             FALSE
@@ -869,10 +866,7 @@ unsafe fn findFunInEnvRange(symbol: SEXP, rho: SEXP, target: SEXP) -> SEXP {
                     // Would need to eval -- for now skip promise forcing
                 }
                 let t = TYPEOF(vl);
-                if t == SEXPTYPE::CLOSXP
-                    || t == SEXPTYPE::BUILTINSXP
-                    || t == SEXPTYPE::SPECIALSXP
-                {
+                if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
                     return vl;
                 }
             }
@@ -893,10 +887,7 @@ unsafe fn findFunWithBaseEnvAfterGlobalEnv(symbol: SEXP, rho: SEXP) -> SEXP {
             let vl = crate::sexp::envir::R_findVarInFrame(current_rho, symbol);
             if vl != R_UnboundValue() {
                 let t = TYPEOF(vl);
-                if t == SEXPTYPE::CLOSXP
-                    || t == SEXPTYPE::BUILTINSXP
-                    || t == SEXPTYPE::SPECIALSXP
-                {
+                if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
                     return vl;
                 }
             }
@@ -2423,8 +2414,7 @@ pub unsafe fn do_set_prim_method(
         };
 
         let offset = if !op.is_null()
-            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP
-                || TYPEOF(op) == SEXPTYPE::SPECIALSXP)
+            && (TYPEOF(op) == SEXPTYPE::BUILTINSXP || TYPEOF(op) == SEXPTYPE::SPECIALSXP)
         {
             // PRIMOFFSET: for now we use the function index if available
             0 // simplified
@@ -2716,10 +2706,7 @@ pub unsafe fn R_possible_dispatch(
             let mut a = args;
             let mut b = s;
             while !a.is_null() && a != R_NilValue() {
-                if !b.is_null()
-                    && b != R_NilValue()
-                    && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP
-                {
+                if !b.is_null() && b != R_NilValue() && TYPEOF(CAR(b)) == SEXPTYPE::PROMSXP {
                     SET_PRVALUE(CAR(b), CAR(a));
                 }
                 a = CDR(a);

@@ -42,7 +42,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut i8,
+                    ptr as *mut libc::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -70,7 +70,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut i8,
+                    ptr as *mut libc::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -87,7 +87,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut i8,
+                    ptr as *mut libc::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -115,7 +115,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut i8,
+                    ptr as *mut libc::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;
@@ -132,7 +132,7 @@ unsafe fn get_locale_from_env(category: c_int) -> *const c_char {
             if !ptr.is_null() {
                 ptr::copy_nonoverlapping(
                     cstr.as_ptr(),
-                    ptr as *mut i8,
+                    ptr as *mut libc::c_char,
                     cstr.as_bytes_with_nul().len(),
                 );
                 return ptr;

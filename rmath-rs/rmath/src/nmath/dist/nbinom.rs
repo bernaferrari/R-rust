@@ -14,6 +14,7 @@ use crate::nmath::dist::binomial::dbinom_raw;
 use crate::nmath::dist::gamma::rgamma_inner;
 use crate::nmath::dist::normal::qnorm5_inner;
 use crate::nmath::dist::poisson::{dpois_raw, ppois_inner, qpois_inner, rpois_inner};
+pub use crate::dist::nbinom::qnbinom_inner;
 use crate::nmath::dpq::*;
 use crate::nmath::error::*;
 use crate::nmath::special::gamma::lgammafn1p;
@@ -269,6 +270,49 @@ fn do_search_nbinom(
             let newz;
             y += incr;
             newz = pnbinom_inner(y, size, prob, lower_tail, log_p);
+            if isnan(newz) || (lower_tail && newz >= p) || (!lower_tail && newz < p) {
+                if incr <= 1.0 {
+                    *z = newz;
+                    return y;
+                }
+                return prevy;
+            }
+            *z = newz;
+        }
+    }
+}
+
+fn do_search_nbinom_mu(
+    mut y: f64,
+    z: &mut f64,
+    p: f64,
+    size: f64,
+    mu: f64,
+    incr: f64,
+    lower_tail: bool,
+    log_p: bool,
+) -> f64 {
+    let left = if lower_tail { *z >= p } else { *z < p };
+    if left {
+        loop {
+            let mut newz = -1.0;
+            if y > 0.0 {
+                newz = pnbinom_mu_inner(y - incr, size, mu, lower_tail, log_p);
+            } else if y < 0.0 {
+                y = 0.0;
+            }
+            if y == 0.0 || isnan(newz) || (lower_tail && newz < p) || (!lower_tail && newz >= p) {
+                return y;
+            }
+            y = fmax2(0.0, y - incr);
+            *z = newz;
+        }
+    } else {
+        loop {
+            let prevy = y;
+            let newz;
+            y += incr;
+            newz = pnbinom_mu_inner(y, size, mu, lower_tail, log_p);
             if isnan(newz) || (lower_tail && newz >= p) || (!lower_tail && newz < p) {
                 if incr <= 1.0 {
                     *z = newz;

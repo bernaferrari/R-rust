@@ -9,6 +9,7 @@ use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
+use super::{memory, objects, strings};
 use super::types::*;
 
 thread_local! { static CURRENT_WINDOW: Cell<window> = Cell::new(ptr::null_mut()); }
@@ -34,10 +35,46 @@ pub fn decrement_active_windows() {
     ACTIVE_WINDOWS.with(|v| v.set(v.get() - 1));
 }
 
-pub unsafe fn newwindow(_name: *const c_char, _r: rect, _flags: c_long) -> window {
+unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
+    unsafe {
+        let state = memory::memalloc(std::mem::size_of::<drawstruct>() as i64) as drawstate;
+        if state.is_null() {
+            return ptr::null_mut();
+        }
+        ptr::write_bytes(state as *mut u8, 0, std::mem::size_of::<drawstruct>());
+        (*state).dest = dest;
+        (*state).hue = Black;
+        state
+    }
+}
+
+pub unsafe fn newwindow(name: *const c_char, r: rect, flags: c_long) -> window {
     unsafe {
         super::init::initapp(0, ptr::null_mut());
-        ptr::null_mut() // TODO: Platform-specific
+        objects::init_objects();
+
+        let window = objects::new_object(WindowObject, ptr::null_mut(), ptr::null_mut());
+        if window.is_null() {
+            return ptr::null_mut();
+        }
+
+        let drawstate = alloc_drawstate(window);
+        if drawstate.is_null() {
+            objects::delobj(window);
+            objects::deletion_traversal();
+            return ptr::null_mut();
+        }
+
+        (*window).rect = r;
+        (*window).flags = flags;
+        (*window).state = GA_Enabled;
+        (*window).fg = Black;
+        (*window).bg = White;
+        (*window).text = strings::new_string(name);
+        (*window).drawstate = drawstate;
+
+        set_active_windows(get_active_windows() + 1);
+        window
     }
 }
 
@@ -89,12 +126,24 @@ pub unsafe fn GetCurrentWinPos(obj: object) -> rect {
     }
 }
 
-pub unsafe fn show_window(_obj: object) { /* TODO */
+pub unsafe fn show_window(obj: object) {
+    unsafe {
+        show(obj);
+        if !obj.is_null() {
+            set_current_window(obj);
+        }
+    }
 }
-pub unsafe fn hide_window(_obj: object) { /* TODO */
+pub unsafe fn hide_window(obj: object) {
+    unsafe {
+        hide(obj);
+        if get_current_window() == obj {
+            set_current_window(ptr::null_mut());
+        }
+    }
 }
 pub unsafe fn simple_window() -> window {
-    ptr::null_mut()
+    unsafe { newwindow(ptr::null(), rect::default(), SimpleWindow as c_long) }
 }
 pub unsafe fn screen_coords(obj: object) -> rect {
     unsafe {

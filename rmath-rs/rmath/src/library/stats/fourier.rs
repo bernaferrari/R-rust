@@ -48,19 +48,14 @@ unsafe fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::duplicate(x)
 }
 
-unsafe extern "C" {
-    fn MAYBE_REFERENCED(x: SEXP) -> c_int;
-    fn fft_factor(n: c_int, pmaxf: *mut c_int, pmaxp: *mut c_int);
-    fn fft_work(
-        re: *mut c_double,
-        im: *mut c_double,
-        nseg: c_int,
-        n: c_int,
-        nspn: c_int,
-        inv: c_int,
-        work: *mut c_double,
-        iwork: *mut c_int,
-    );
+use crate::library::stats::fft::{fft_factor, fft_work};
+
+/// true if namedness > 0 (potentially shared).
+unsafe fn MAYBE_REFERENCED(x: SEXP) -> c_int {
+    if x.is_null() {
+        return 0;
+    }
+    crate::sexp::accessors::NAMED(x) as c_int
 }
 
 unsafe fn as_integer(x: SEXP) -> c_int {
@@ -115,7 +110,7 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
             }
         }
         _ => {
-            Rf_error(b"non-numeric argument\0".as_ptr() as *const i8);
+            Rf_error(b"non-numeric argument\0".as_ptr() as *const libc::c_char);
         }
     }
     Rf_protect(z);
@@ -138,12 +133,12 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
             let mut maxp: c_int = 0;
             fft_factor(n, &mut maxf, &mut maxp);
             if maxf == 0 {
-                Rf_error(b"fft factorization error\0".as_ptr() as *const i8);
+                Rf_error(b"fft factorization error\0".as_ptr() as *const libc::c_char);
             }
             let smaxf = maxf as usize;
             let maxsize = usize::MAX / 4;
             if smaxf > maxsize {
-                Rf_error(b"fft too large\0".as_ptr() as *const i8);
+                Rf_error(b"fft too large\0".as_ptr() as *const libc::c_char);
             }
             let mut work = vec![0.0f64; 4 * smaxf];
             let mut iwork = vec![0i32; maxp as usize];
@@ -170,7 +165,7 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
                     let mut maxp: c_int = 0;
                     fft_factor(*INTEGER(d.add(i)), &mut maxf, &mut maxp);
                     if maxf == 0 {
-                        Rf_error(b"fft factorization error\0".as_ptr() as *const i8);
+                        Rf_error(b"fft factorization error\0".as_ptr() as *const libc::c_char);
                     }
                     if maxf > maxmaxf {
                         maxmaxf = maxf;
@@ -183,7 +178,7 @@ pub unsafe fn fft(z: SEXP, inverse: SEXP) -> SEXP {
             let smaxf = maxmaxf as usize;
             let maxsize = usize::MAX / 4;
             if smaxf > maxsize {
-                Rf_error(b"fft too large\0".as_ptr() as *const i8);
+                Rf_error(b"fft too large\0".as_ptr() as *const libc::c_char);
             }
             let mut work = vec![0.0f64; 4 * smaxf];
             let mut iwork = vec![0i32; maxmaxp as usize];
@@ -223,7 +218,7 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
 
     let d = getAttrib(z, R_DimSymbol());
     if d.is_null() || LENGTH(d) > 2 {
-        Rf_error(b"vector-valued (multivariate) series required\0".as_ptr() as *const i8);
+        Rf_error(b"vector-valued (multivariate) series required\0".as_ptr() as *const libc::c_char);
     }
     let n = *INTEGER(d);
     let p = *INTEGER(d.add(1));
@@ -239,7 +234,7 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
             }
         }
         _ => {
-            Rf_error(b"non-numeric argument\0".as_ptr() as *const i8);
+            Rf_error(b"non-numeric argument\0".as_ptr() as *const libc::c_char);
         }
     }
     Rf_protect(z);
@@ -256,12 +251,12 @@ pub unsafe fn mvfft(z: SEXP, inverse: SEXP) -> SEXP {
         let mut maxp: c_int = 0;
         fft_factor(n, &mut maxf, &mut maxp);
         if maxf == 0 {
-            Rf_error(b"fft factorization error\0".as_ptr() as *const i8);
+            Rf_error(b"fft factorization error\0".as_ptr() as *const libc::c_char);
         }
         let smaxf = maxf as usize;
         let maxsize = usize::MAX / 4;
         if smaxf > maxsize {
-            Rf_error(b"fft too large\0".as_ptr() as *const i8);
+            Rf_error(b"fft too large\0".as_ptr() as *const libc::c_char);
         }
         let mut work = vec![0.0f64; 4 * smaxf];
         let mut iwork = vec![0i32; maxp as usize];
@@ -326,7 +321,7 @@ unsafe fn nextn0(mut n: c_int, f: *const c_int, nf: c_int) -> c_int {
     }
     if n >= c_int::MAX {
         crate::main::errors::Rf_warning(
-            b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr() as *const i8,
+            b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr() as *const libc::c_char,
         );
         return NA_INTEGER;
     }
@@ -345,7 +340,7 @@ unsafe fn nextn0_64(mut n: u64, f: *const c_int, nf: c_int) -> u64 {
     }
     if n >= u64::MAX {
         crate::main::errors::Rf_warning(
-            b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const i8
+            b"nextn<64>() found no solution < UINT64_MAX\0".as_ptr() as *const libc::c_char
         );
         return 0;
     }
@@ -371,20 +366,20 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
 
     /* check the factors */
     if nf == 0 {
-        Rf_error(b"no factors\0".as_ptr() as *const i8);
+        Rf_error(b"no factors\0".as_ptr() as *const libc::c_char);
     }
     if nf < 0 {
-        Rf_error(b"too many factors\0".as_ptr() as *const i8);
+        Rf_error(b"too many factors\0".as_ptr() as *const libc::c_char);
     }
     for i in 0..(nf as usize) {
         if *f_.add(i) == NA_INTEGER || *f_.add(i) <= 1 {
-            Rf_error(b"invalid factors\0".as_ptr() as *const i8);
+            Rf_error(b"invalid factors\0".as_ptr() as *const libc::c_char);
         }
     }
 
     let mut use_int = TYPEOF(n) == SEXPTYPE::INTSXP;
     if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP {
-        Rf_error(b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr() as *const i8);
+        Rf_error(b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr() as *const libc::c_char);
     }
     let nn = XLENGTH(n);
     if !use_int && nn > 0 {
@@ -442,8 +437,7 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
                 let n_n = nextn0_64(*n_.add(i) as u64, f_, nf);
                 if n_n > max_dbl_int {
                     crate::main::errors::Rf_warning(
-                        b"nextn() may not be exactly representable in R (as \"double\")\0".as_ptr()
-                            as *const i8,
+                        b"nextn() may not be exactly representable in R (as \"double\")\0".as_ptr() as *const libc::c_char,
                     );
                 }
                 *r.add(i) = n_n as c_double;

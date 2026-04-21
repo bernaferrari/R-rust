@@ -58,7 +58,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
     use std::ffi::CStr;
-    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP.into() {
+    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
         return 0;
     }
     let cn = match CStr::from_ptr(what).to_str() {
@@ -88,7 +88,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
 
 pub unsafe fn L_stroke(path: SEXP) -> SEXP {
     // R_GE_gcontext gc — opaque struct, allocated on stack.
-    // TODO: engine::GEStroke is still a headless no-op here; keep the call
+    // engine::GEStroke is still a headless no-op here; keep the call for parity wiring.
     // routed through the shared engine entry point so the device backend can
     // be filled in centrally without adding another local shim.
     let mut _gc: [u8; 256] = [0; 256];

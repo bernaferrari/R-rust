@@ -23,6 +23,7 @@ pub mod ffi;
 pub mod gengc;
 pub mod globals;
 pub mod init;
+pub mod instance;
 pub mod memory;
 pub mod memory_ext;
 pub mod output;

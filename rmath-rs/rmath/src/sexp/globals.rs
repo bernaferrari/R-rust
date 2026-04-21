@@ -126,15 +126,18 @@ static R_BASE_NAMESPACE_PTR: AtomicUsize = AtomicUsize::new(0);
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_GlobalEnv() -> SEXP {
-    R_GLOBAL_ENV_PTR.load(Ordering::Acquire) as SEXP
+    super::instance::with_current_instance(|inst| inst.global_env)
+        .unwrap_or_else(|| R_GLOBAL_ENV_PTR.load(Ordering::Acquire) as SEXP)
 }
 
 pub unsafe fn R_BaseEnv() -> SEXP {
-    R_BASE_ENV_PTR.load(Ordering::Acquire) as SEXP
+    super::instance::with_current_instance(|inst| inst.base_env)
+        .unwrap_or_else(|| R_BASE_ENV_PTR.load(Ordering::Acquire) as SEXP)
 }
 
 pub unsafe fn R_EmptyEnv() -> SEXP {
-    R_EMPTY_ENV_PTR.load(Ordering::Acquire) as SEXP
+    super::instance::with_current_instance(|inst| inst.empty_env)
+        .unwrap_or_else(|| R_EMPTY_ENV_PTR.load(Ordering::Acquire) as SEXP)
 }
 
 /// Set the global environment.

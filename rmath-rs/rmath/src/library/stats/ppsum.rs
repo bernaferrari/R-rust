@@ -13,7 +13,7 @@
 
 use std::os::raw::{c_double, c_int};
 
-use crate::main::coerce::{asInteger, coerceVector};
+use crate::main::coerce::asInteger;
 use crate::sexp::accessors::{LENGTH, REAL, TYPEOF};
 use crate::sexp::constructors::{Rf_ScalarReal, Rf_allocVector};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};

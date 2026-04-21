@@ -11,7 +11,9 @@ use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
 use crate::mainutils::memory_main::{R_ExternalPtrAddr, sexptype2char};
-use crate::mainutils::rdynload::{R_dlsym, R_findDllByHandle, R_FindSymbol as R_lookupLoadedSymbol};
+use crate::mainutils::rdynload::{
+    R_FindSymbol as R_lookupLoadedSymbol, R_dlsym, R_findDllByHandle,
+};
 use crate::mainutils::registration::DllInfo;
 use crate::mainutils::relop::PRIMVAL;
 use crate::sexp::accessors::{
@@ -639,11 +641,7 @@ unsafe fn resolveNativeRoutine(
                 } else {
                     dll.dll_name.as_ptr() as *const c_char
                 };
-                R_lookupLoadedSymbol(
-                    buf.as_ptr() as *const c_char,
-                    pkg_ptr,
-                    symbol.type_,
-                )
+                R_lookupLoadedSymbol(buf.as_ptr() as *const c_char, pkg_ptr, symbol.type_)
             };
 
             *fun = looked_up;
@@ -710,7 +708,6 @@ macro_rules! define_dotcall_dispatch {
             }
             _ => {
                 errorcall(ptr::null_mut(), "too many arguments, sorry");
-                R_NilValue()
             }
         }
     };
@@ -1408,7 +1405,8 @@ mod tests {
     #[test]
     fn test_check_valid_symbol_id_copies_name() {
         unsafe {
-            let op = crate::sexp::constructors::Rf_mkString(b"registered\0".as_ptr() as *const c_char);
+            let op =
+                crate::sexp::constructors::Rf_mkString(b"registered\0".as_ptr() as *const c_char);
             let mut fun: DL_FUNC = None;
             let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
             let mut buf = [0u8; MAX_SYMBOL_BYTES];
@@ -1440,7 +1438,8 @@ mod tests {
         unsafe {
             let mut dll = DllReference::new();
             let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
-            let found = R_FindNativeSymbolFromDLL(b"missing\0", &mut dll, &mut symbol, R_NilValue());
+            let found =
+                R_FindNativeSymbolFromDLL(b"missing\0", &mut dll, &mut symbol, R_NilValue());
             assert!(found.is_none());
         }
     }

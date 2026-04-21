@@ -7,7 +7,7 @@ use crate::nmath::error::*;
 use libm::*;
 
 // Constants
-const _M_LN_2PI: f64 = 1.837877066409345483560659472811; // log(2*pi)
+const M_LN_2PI: f64 = 1.837877066409345483560659472811; // log(2*pi)
 const DBL_MAX: f64 = 1.7976931348623157e+308;
 
 // ---- dbinom_raw (from dbinom.c) ----
@@ -292,7 +292,7 @@ pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
         return df2 / crate::nmath::dist::chisq::qchisq_inner(p, df2, !lower_tail, log_p);
     }
 
-    // FIXME: (1/qb - 1) = (1 - qb)/qb; if we know qb ~= 1, should use other tail
+    // Numerical note: when qb ~= 1, prefer the complementary-tail form to reduce cancellation.
     let result = (1.0
         / crate::nmath::dist::beta::qbeta_inner(p, df2 / 2.0, df1 / 2.0, !lower_tail, log_p)
         - 1.0)

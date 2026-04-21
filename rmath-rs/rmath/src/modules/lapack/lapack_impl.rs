@@ -21,8 +21,8 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::*;
 
-use super::lapack::{
-    La_norm_type, La_rcond_type, La_valid_uplo, Rcomplex as LapRcomplex, fort_char, fort_str,
+use super::backend::{
+    La_norm_type, La_rcond_type, La_valid_uplo, LapRcomplex, fort_char, fort_str,
     unscramble,
 };
 
@@ -82,7 +82,7 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
     let mut lwork: c_int = -1;
 
     // Query optimal work size
-    super::lapack::dgesdd_(
+    super::backend::dgesdd_(
         ju,
         &n,
         &p,
@@ -107,7 +107,7 @@ pub unsafe fn La_svd(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, vt: SEXP) -> SEXP {
     let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
 
     // Actual computation
-    super::lapack::dgesdd_(
+    super::backend::dgesdd_(
         ju,
         &n,
         &p,
@@ -199,7 +199,7 @@ pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
     let mut m: c_int = 0;
     let mut info: c_int = 0;
 
-    super::lapack::dsyevr_(
+    super::backend::dsyevr_(
         &jobv, &range, &uplo, &n, rx, &n, &0.0f64, &0.0f64, &0, &0, &0.0f64, &mut m, rvalues, rz,
         &n, isuppz, &mut tmp, &lwork, &mut itmp, &liwork, &mut info,
     );
@@ -214,7 +214,7 @@ pub unsafe fn La_rs(x: SEXP, only_values: SEXP) -> SEXP {
     let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
     let iwork = R_alloc(liwork as usize, std::mem::size_of::<c_int>()) as *mut c_int;
 
-    super::lapack::dsyevr_(
+    super::backend::dsyevr_(
         &jobv, &range, &uplo, &n, rx, &n, &0.0f64, &0.0f64, &0, &0, &0.0f64, &mut m, rvalues, rz,
         &n, isuppz, work, &lwork, iwork, &liwork, &mut info,
     );
@@ -290,7 +290,7 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
     let mut lwork: c_int = -1;
     let mut info: c_int = 0;
 
-    super::lapack::dgeev_(
+    super::backend::dgeev_(
         &jobvl,
         &jobvr,
         &n,
@@ -314,7 +314,7 @@ pub unsafe fn La_rg(x: SEXP, only_values: SEXP) -> SEXP {
     lwork = tmp as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
 
-    super::lapack::dgeev_(
+    super::backend::dgeev_(
         &jobvl,
         &jobvr,
         &n,
@@ -439,7 +439,7 @@ pub unsafe fn La_dlange(a: SEXP, type_: SEXP) -> SEXP {
         }
     ];
 
-    let anorm = super::lapack::dlange_(&norm_c, &m, &n, REAL(a), &m, work.as_mut_ptr());
+    let anorm = super::backend::dlange_(&norm_c, &m, &n, REAL(a), &m, work.as_mut_ptr());
 
     let ans = Rf_allocVector(REALSXP_C, 1);
     *REAL(ans) = anorm;
@@ -472,7 +472,7 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
 
     // Compute the norm of A
     let mut work_norm = vec![0.0f64; if norm_c == b'I' { n as usize } else { 0 }];
-    let anorm = super::lapack::dlange_(&norm_c, &n, &n, REAL(a), &n, work_norm.as_mut_ptr());
+    let anorm = super::backend::dlange_(&norm_c, &n, &n, REAL(a), &n, work_norm.as_mut_ptr());
 
     if anorm == 0.0 {
         let ans = Rf_allocVector(REALSXP_C, 1);
@@ -488,7 +488,7 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
     let mut info: c_int = 0;
 
     // LU factorization
-    super::lapack::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
+    super::backend::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
     if info > 0 {
         let ans = Rf_allocVector(REALSXP_C, 1);
         *REAL(ans) = 0.0;
@@ -502,7 +502,7 @@ pub unsafe fn La_dgecon(a: SEXP, norm: SEXP) -> SEXP {
     let mut work = vec![0.0f64; 4 * n as usize];
     let iwork = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
 
-    super::lapack::dgecon_(
+    super::backend::dgecon_(
         &norm_c,
         &n,
         a_copy.as_ptr(),
@@ -555,7 +555,7 @@ pub unsafe fn La_dtrcon(a: SEXP, norm: SEXP) -> SEXP {
     let uplo = b'U'; // Default upper
     let diag = b'N'; // Non-unit triangular
 
-    super::lapack::dtrcon_(
+    super::backend::dtrcon_(
         &norm_c,
         &uplo,
         &diag,
@@ -614,7 +614,7 @@ pub unsafe fn La_dtrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     let diag = b'N';
     let mut info: c_int = 0;
 
-    super::lapack::dtrcon_(
+    super::backend::dtrcon_(
         &norm_c,
         &uplo_c,
         &diag,
@@ -667,7 +667,7 @@ pub unsafe fn La_zlange(a: SEXP, type_: SEXP) -> SEXP {
     ];
 
     let a_ptr = COMPLEX(a) as *const LapRcomplex;
-    let anorm = super::lapack::zlange_(&norm_c, &m, &n, a_ptr, &m, work.as_mut_ptr());
+    let anorm = super::backend::zlange_(&norm_c, &m, &n, a_ptr, &m, work.as_mut_ptr());
 
     let ans = Rf_allocVector(REALSXP_C, 1);
     *REAL(ans) = anorm;
@@ -699,7 +699,7 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     }
 
     let mut work_norm = vec![0.0f64; if norm_c == b'I' { n as usize } else { 0 }];
-    let anorm = super::lapack::zlange_(
+    let anorm = super::backend::zlange_(
         &norm_c,
         &n,
         &n,
@@ -722,7 +722,7 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
     let mut info: c_int = 0;
 
-    super::lapack::zgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
+    super::backend::zgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
     if info > 0 {
         let ans = Rf_allocVector(REALSXP_C, 1);
         *REAL(ans) = 0.0;
@@ -736,7 +736,7 @@ pub unsafe fn La_zgecon(a: SEXP, norm: SEXP) -> SEXP {
     let mut work = vec![LapRcomplex::default(); 2 * n as usize];
     let mut rwork = vec![0.0f64; 2 * n as usize];
 
-    super::lapack::zgecon_(
+    super::backend::zgecon_(
         &norm_c,
         &n,
         a_copy.as_ptr(),
@@ -788,7 +788,7 @@ pub unsafe fn La_ztrcon(a: SEXP, norm: SEXP) -> SEXP {
     let diag = b'N';
     let mut info: c_int = 0;
 
-    super::lapack::ztrcon_(
+    super::backend::ztrcon_(
         &norm_c,
         &uplo,
         &diag,
@@ -847,7 +847,7 @@ pub unsafe fn La_ztrcon3(a: SEXP, norm: SEXP, uplo: SEXP) -> SEXP {
     let diag = b'N';
     let mut info: c_int = 0;
 
-    super::lapack::ztrcon_(
+    super::backend::ztrcon_(
         &norm_c,
         &uplo_c,
         &diag,
@@ -904,7 +904,7 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
         let mut rank: c_int = 0;
         let mut work = vec![0.0f64; 2 * n as usize];
 
-        super::lapack::dpstrf_(
+        super::backend::dpstrf_(
             &uplo,
             &n,
             a_copy.as_mut_ptr(),
@@ -946,7 +946,7 @@ pub unsafe fn La_chol(a: SEXP, pivot: SEXP, stol: SEXP) -> SEXP {
         ret
     } else {
         // Non-pivoted Cholesky: dpotrf
-        super::lapack::dpotrf_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
+        super::backend::dpotrf_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
 
         if info != 0 {
             Rf_error(b"not positive definite\0".as_ptr() as *const c_char);
@@ -981,7 +981,7 @@ pub unsafe fn La_chol2inv(a: SEXP, size: SEXP) -> SEXP {
     let mut info: c_int = 0;
     let uplo = b'U';
 
-    super::lapack::dpotri_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
+    super::backend::dpotri_(&uplo, &n, a_copy.as_mut_ptr(), &n, &mut info);
 
     if info != 0 {
         Rf_error(b"error code from Lapack routine 'dpotri'\0".as_ptr() as *const c_char);
@@ -1039,7 +1039,7 @@ pub unsafe fn La_solve(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
     let mut info: c_int = 0;
 
-    super::lapack::dgesv_(
+    super::backend::dgesv_(
         &n,
         &nrhs,
         a_copy.as_mut_ptr(),
@@ -1106,7 +1106,7 @@ pub unsafe fn La_solve_cmplx(a: SEXP, bin: SEXP, tolin: SEXP) -> SEXP {
     let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
     let mut info: c_int = 0;
 
-    super::lapack::zgesv_(
+    super::backend::zgesv_(
         &n,
         &nrhs,
         a_copy.as_mut_ptr(),
@@ -1161,7 +1161,7 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
     let mut lwork: c_int = -1;
     let mut info: c_int = 0;
 
-    super::lapack::dgeqp3_(
+    super::backend::dgeqp3_(
         &m,
         &n,
         a_copy.as_mut_ptr(),
@@ -1180,7 +1180,7 @@ pub unsafe fn La_qr(ain: SEXP) -> SEXP {
     lwork = tmp as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
 
-    super::lapack::dgeqp3_(
+    super::backend::dgeqp3_(
         &m,
         &n,
         a_copy.as_mut_ptr(),
@@ -1257,7 +1257,7 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
     let mut rwork = vec![0.0f64; 2 * n as usize];
     let mut info: c_int = 0;
 
-    super::lapack::zgeqp3_(
+    super::backend::zgeqp3_(
         &m,
         &n,
         a_copy.as_mut_ptr(),
@@ -1277,7 +1277,7 @@ pub unsafe fn La_qr_cmplx(ain: SEXP) -> SEXP {
     lwork = tmp.r as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
 
-    super::lapack::zgeqp3_(
+    super::backend::zgeqp3_(
         &m,
         &n,
         a_copy.as_mut_ptr(),
@@ -1371,7 +1371,7 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
     let mut info: c_int = 0;
     let mut lwork: c_int = -1;
 
-    super::lapack::zgesdd_(
+    super::backend::zgesdd_(
         ju,
         &n,
         &p,
@@ -1396,7 +1396,7 @@ pub unsafe fn La_svd_cmplx(jobu: SEXP, x: SEXP, s: SEXP, u: SEXP, v: SEXP) -> SE
     lwork = tmp.r as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
 
-    super::lapack::zgesdd_(
+    super::backend::zgesdd_(
         ju,
         &n,
         &p,
@@ -1468,7 +1468,7 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
     let mut lwork: c_int = -1;
     let mut info: c_int = 0;
 
-    super::lapack::zheev_(
+    super::backend::zheev_(
         &jobv,
         &uplo,
         &n,
@@ -1488,7 +1488,7 @@ pub unsafe fn La_rs_cmplx(xin: SEXP, only_values: SEXP) -> SEXP {
     lwork = tmp.r as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
 
-    super::lapack::zheev_(
+    super::backend::zheev_(
         &jobv,
         &uplo,
         &n,
@@ -1572,7 +1572,7 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
     let mut lwork: c_int = -1;
     let mut info: c_int = 0;
 
-    super::lapack::zgeev_(
+    super::backend::zgeev_(
         &jobvl,
         &jobvr,
         &n,
@@ -1596,7 +1596,7 @@ pub unsafe fn La_rg_cmplx(x: SEXP, only_values: SEXP) -> SEXP {
     lwork = tmp.r as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
 
-    super::lapack::zgeev_(
+    super::backend::zgeev_(
         &jobvl,
         &jobvr,
         &n,
@@ -1673,7 +1673,7 @@ pub unsafe fn qr_coef_real(q: SEXP, bin: SEXP) -> SEXP {
     let mut info: c_int = 0;
 
     // Solve R^T x = b^T using dtrtrs (transpose)
-    super::lapack::dtrtrs_(
+    super::backend::dtrtrs_(
         b"U".as_ptr(),
         b"T".as_ptr(),
         b"N".as_ptr(),
@@ -1738,7 +1738,7 @@ pub unsafe fn qr_coef_cmplx(q: SEXP, bin: SEXP) -> SEXP {
 
     let mut info: c_int = 0;
 
-    super::lapack::ztrtrs_(
+    super::backend::ztrtrs_(
         b"U".as_ptr(),
         b"C".as_ptr(),
         b"N".as_ptr(),
@@ -1810,7 +1810,7 @@ pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     let side = b'L';
     let ctrans = if tr != 0 { b'T' } else { b'N' };
 
-    super::lapack::dormqr_(
+    super::backend::dormqr_(
         &side,
         &ctrans,
         &m,
@@ -1833,7 +1833,7 @@ pub unsafe fn qr_qy_real(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     lwork = tmp as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<f64>()) as *mut f64;
 
-    super::lapack::dormqr_(
+    super::backend::dormqr_(
         &side,
         &ctrans,
         &m,
@@ -1904,7 +1904,7 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     let side = b'L';
     let ctrans = if tr != 0 { b'C' } else { b'N' };
 
-    super::lapack::zunmqr_(
+    super::backend::zunmqr_(
         &side,
         &ctrans,
         &m,
@@ -1927,7 +1927,7 @@ pub unsafe fn qr_qy_cmplx(q: SEXP, bin: SEXP, trans: SEXP) -> SEXP {
     lwork = tmp.r as c_int;
     let work = R_alloc(lwork as usize, std::mem::size_of::<LapRcomplex>()) as *mut LapRcomplex;
 
-    super::lapack::zunmqr_(
+    super::backend::zunmqr_(
         &side,
         &ctrans,
         &m,
@@ -1980,7 +1980,7 @@ pub unsafe fn det_ge_real(ain: SEXP, logarithm: SEXP) -> SEXP {
     let ipiv = R_alloc(n as usize, std::mem::size_of::<c_int>()) as *mut c_int;
     let mut info: c_int = 0;
 
-    super::lapack::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
+    super::backend::dgetrf_(&n, &n, a_copy.as_mut_ptr(), &n, ipiv, &mut info);
 
     if info != 0 {
         let modulus = Rf_protect(Rf_allocVector(REALSXP_C, 1));

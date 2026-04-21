@@ -18,7 +18,7 @@ use crate::nmath::utils::*;
 use libm::*;
 
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
-const _M_LN_2PI: f64 = 1.837877066409345483560659472811; // log(2*pi)
+const M_LN_2PI: f64 = 1.837877066409345483560659472811; // log(2*pi)
 
 // ---- pow1p (also used by other distributions) ----
 

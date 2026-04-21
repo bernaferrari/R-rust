@@ -507,33 +507,33 @@ mod tests {
     unsafe fn parse_plural(expr: &str) -> *mut expression {
         let mut bytes = expr.as_bytes().to_vec();
         bytes.push(0);
-        let mut parser = PluralParser::new(bytes.as_ptr() as *const c_char);
-        parser.parse()
+        let mut parser = unsafe { PluralParser::new(bytes.as_ptr() as *const c_char) };
+        unsafe { parser.parse() }
     }
 
     unsafe fn free_expr(p: *mut expression) {
         if p.is_null() {
             return;
         }
-        match (*p).operation {
+        match unsafe { (*p).operation } {
             expression_operator::var | expression_operator::num => {}
             expression_operator::lnot => {
-                free_expr((*p).val.args[0]);
+                unsafe { free_expr((*p).val.args[0]) };
             }
             _ => {
-                if (*p).nargs >= 1 {
-                    free_expr((*p).val.args[0]);
+                if unsafe { (*p).nargs } >= 1 {
+                    unsafe { free_expr((*p).val.args[0]) };
                 }
-                if (*p).nargs >= 2 {
-                    free_expr((*p).val.args[1]);
+                if unsafe { (*p).nargs } >= 2 {
+                    unsafe { free_expr((*p).val.args[1]) };
                 }
-                if (*p).nargs >= 3 {
-                    free_expr((*p).val.args[2]);
+                if unsafe { (*p).nargs } >= 3 {
+                    unsafe { free_expr((*p).val.args[2]) };
                 }
             }
         }
         let layout = Layout::new::<expression>();
-        std::alloc::dealloc(p as *mut u8, layout);
+        unsafe { std::alloc::dealloc(p as *mut u8, layout) };
     }
 
     #[test]

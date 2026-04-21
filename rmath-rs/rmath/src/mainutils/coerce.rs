@@ -1622,7 +1622,7 @@ unsafe fn asFunction(x: SEXP) -> SEXP {
     }
 }
 
-/// Common coercion helper for as.vector / as.XXX dispatch.
+/// Common coercion helper for as.vector / typed coercion dispatch.
 /// This matches R's ascommon() from coerce.c.
 unsafe fn ascommon(call: SEXP, u: SEXP, type_: c_int) -> SEXP {
     unsafe {
@@ -1799,9 +1799,7 @@ pub unsafe fn asLogical2(x: SEXP, checking: c_int, _call: SEXP) -> c_int {
                 t if t == SEXPTYPE::REALSXP => LogicalFromReal(REAL_ELT(x, 0), &mut warn),
                 t if t == SEXPTYPE::CPLXSXP => LogicalFromComplex(COMPLEX_ELT(x, 0), &mut warn),
                 t if t == SEXPTYPE::STRSXP => LogicalFromString(STRING_ELT(x, 0), &mut warn),
-                t if t == SEXPTYPE::RAWSXP => {
-                    LogicalFromInteger(RAW_ELT(x, 0) as c_int, &mut warn)
-                }
+                t if t == SEXPTYPE::RAWSXP => LogicalFromInteger(RAW_ELT(x, 0) as c_int, &mut warn),
                 _ => NA_LOGICAL,
             }
         } else if TYPEOF(x) == SEXPTYPE::CHARSXP {
@@ -1883,6 +1881,11 @@ pub unsafe fn asReal(x: SEXP) -> c_double {
 
         NA_REAL
     }
+}
+
+/// Predicate helper kept for compatibility with translated library code.
+pub unsafe fn isReal(x: SEXP) -> c_int {
+    unsafe { crate::mainutils::relop::isReal(x) }
 }
 
 // ---------------------------------------------------------------------------
@@ -2287,8 +2290,10 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             let x_raw = x.as_raw();
             unsafe {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
-                    let dot_x_data =
-                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::SYMSXP.into());
+                    let dot_x_data = crate::mainutils::subassign::R_getS4DataSlot(
+                        x_raw,
+                        SEXPTYPE::SYMSXP.into(),
+                    );
                     (TYPEOF(dot_x_data) == SEXPTYPE::SYMSXP) as c_int
                 } else {
                     (TYPEOF(x_raw) == SEXPTYPE::SYMSXP) as c_int
@@ -2299,8 +2304,10 @@ pub fn is_type_safe(x: Sexp<'_>, op: i32) -> Result<c_int, String> {
             let x_raw = x.as_raw();
             unsafe {
                 if IS_S4_OBJECT(x_raw) != 0 && TYPEOF(x_raw) == SEXPTYPE::OBJSXP {
-                    let dot_x_data =
-                        crate::mainutils::subassign::R_getS4DataSlot(x_raw, SEXPTYPE::ENVSXP.into());
+                    let dot_x_data = crate::mainutils::subassign::R_getS4DataSlot(
+                        x_raw,
+                        SEXPTYPE::ENVSXP.into(),
+                    );
                     (TYPEOF(dot_x_data) == SEXPTYPE::ENVSXP) as c_int
                 } else {
                     (TYPEOF(x_raw) == SEXPTYPE::ENVSXP) as c_int

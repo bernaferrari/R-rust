@@ -1,0 +1,7 @@
+[package]
+name = "rport-conformance-runner"
+version = "0.1.0"
+edition = "2024"
+description = "Standalone Rust-side runner for C-vs-Rust conformance parity checks"
+
+[workspace]

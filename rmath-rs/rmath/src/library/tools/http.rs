@@ -124,7 +124,7 @@ fn remove_dot_segments(p: &str) -> String {
         {
             idx += 3;
             // remove trailing "/segment" from output
-            while !outbuf.is_empty() && *outbuf.last().copied().unwrap_or('\0') != '/' {
+            while !outbuf.is_empty() && outbuf.last().copied().unwrap_or('\0') != '/' {
                 outbuf.pop();
             }
             if !outbuf.is_empty() {
@@ -141,7 +141,7 @@ fn remove_dot_segments(p: &str) -> String {
             // trailing "/.." -> "/"
             inbuf.truncate(idx + 1);
             // remove trailing "/segment" from output
-            while !outbuf.is_empty() && *outbuf.last().copied().unwrap_or('\0') != '/' {
+            while !outbuf.is_empty() && outbuf.last().copied().unwrap_or('\0') != '/' {
                 outbuf.pop();
             }
             if !outbuf.is_empty() {

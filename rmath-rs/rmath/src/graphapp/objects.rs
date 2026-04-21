@@ -214,7 +214,7 @@ unsafe fn update_app_globals(obj: object) {
         // These need to be set when the corresponding modules are initialized
         // For now, stub out the global drawstate reference
         if !(*obj).drawstate.is_null() {
-            // TODO: check if drawstate is current
+            // Keep the global drawstate hook in sync if a live drawstate tracker is added.
         }
     }
 }

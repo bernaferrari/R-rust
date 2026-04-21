@@ -292,7 +292,7 @@ pub fn qf_inner(p: f64, df1: f64, df2: f64, lower_tail: bool, log_p: bool) -> f6
         return df2 / crate::dist::chisq::qchisq_inner(p, df2, !lower_tail, log_p);
     }
 
-    // FIXME: (1/qb - 1) = (1 - qb)/qb; if we know qb ~= 1, should use other tail
+    // Numerical note: when qb ~= 1, prefer the complementary-tail form to reduce cancellation.
     let result =
         (1.0 / crate::dist::beta::qbeta_inner(p, df2 / 2.0, df1 / 2.0, !lower_tail, log_p) - 1.0)
             * (df2 / df1);

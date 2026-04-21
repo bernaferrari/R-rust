@@ -30,6 +30,7 @@ use crate::mainutils::coerce::coerceVector;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::symbol::Rf_install;
+pub use crate::special::mlutils::REprintf;
 
 // PRINTNAME is re-exported from inlined.rs
 use crate::mainutils::inlined::PRINTNAME;
@@ -310,8 +311,7 @@ unsafe fn GetOption1(sym: SEXP) -> SEXP {
 unsafe fn isFunction(s: SEXP) -> c_int {
     unsafe {
         let t = TYPEOF(s);
-        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP)
-            as c_int
+        (t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP) as c_int
     }
 }
 
@@ -3603,16 +3603,14 @@ mod tests {
 
     #[test]
     fn test_rf_errorcall_fmt() {
-        unsafe {
-            let fmt = std::ffi::CString::new("hello %s world %s").unwrap_or_default();
-            let arg1 = must(std::ffi::CStr::from_bytes_with_nul(b"beautiful\0"));
-            let arg2 = must(std::ffi::CStr::from_bytes_with_nul(b"today\0"));
-            // This function pre-formats and calls verrorcall_dflt, which panics
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                Rf_errorcall_fmt(ptr::null_mut(), fmt.as_ptr(), &[arg1, arg2]);
-            }));
-            assert!(result.is_err());
-        }
+        let fmt = std::ffi::CString::new("hello %s world %s").unwrap_or_default();
+        let arg1 = must(std::ffi::CStr::from_bytes_with_nul(b"beautiful\0"));
+        let arg2 = must(std::ffi::CStr::from_bytes_with_nul(b"today\0"));
+        // This function pre-formats and calls verrorcall_dflt, which panics
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            Rf_errorcall_fmt(ptr::null_mut(), fmt.as_ptr(), &[arg1, arg2]);
+        }));
+        assert!(result.is_err());
     }
 
     #[test]

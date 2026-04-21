@@ -159,19 +159,19 @@ mod tests {
 
     unsafe fn get_argument_as_int(arg: &argument) -> Option<c_int> {
         match arg.type_ {
-            arg_type::TYPE_SCHAR => Some(arg.a.a_schar as c_int),
-            arg_type::TYPE_UCHAR => Some(arg.a.a_uchar as c_int),
-            arg_type::TYPE_SHORT => Some(arg.a.a_short as c_int),
-            arg_type::TYPE_USHORT => Some(arg.a.a_ushort as c_int),
-            arg_type::TYPE_INT => Some(arg.a.a_int),
-            arg_type::TYPE_CHAR => Some(arg.a.a_char),
+            arg_type::TYPE_SCHAR => Some(unsafe { arg.a.a_schar as c_int }),
+            arg_type::TYPE_UCHAR => Some(unsafe { arg.a.a_uchar as c_int }),
+            arg_type::TYPE_SHORT => Some(unsafe { arg.a.a_short as c_int }),
+            arg_type::TYPE_USHORT => Some(unsafe { arg.a.a_ushort as c_int }),
+            arg_type::TYPE_INT => Some(unsafe { arg.a.a_int }),
+            arg_type::TYPE_CHAR => Some(unsafe { arg.a.a_char }),
             _ => None,
         }
     }
 
     unsafe fn get_argument_as_string(arg: &argument) -> Option<&str> {
-        if arg.type_ == arg_type::TYPE_STRING && !arg.a.a_string.is_null() {
-            CStr::from_ptr(arg.a.a_string).to_str().ok()
+        if arg.type_ == arg_type::TYPE_STRING && !unsafe { arg.a.a_string.is_null() } {
+            unsafe { CStr::from_ptr(arg.a.a_string).to_str().ok() }
         } else {
             None
         }
@@ -179,7 +179,7 @@ mod tests {
 
     unsafe fn get_argument_as_pointer(arg: &argument) -> Option<*mut c_void> {
         if arg.type_ == arg_type::TYPE_POINTER {
-            Some(arg.a.a_pointer)
+            Some(unsafe { arg.a.a_pointer })
         } else {
             None
         }

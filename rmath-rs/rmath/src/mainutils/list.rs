@@ -178,17 +178,17 @@ mod tests {
     use super::*;
 
     /// Helper: create a symbol node.
-    unsafe fn make_sym(name: &str) -> SEXP {
+    fn make_sym(name: &str) -> SEXP {
         use crate::mainutils::dstruct::mkSYMSXP;
         use crate::sexp::constructors::Rf_mkChar;
-        let charsxp = Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
-        mkSYMSXP(charsxp, R_NilValue())
+        let charsxp = unsafe { Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr()) };
+        unsafe { mkSYMSXP(charsxp, R_NilValue()) }
     }
 
     /// Helper: create a cons cell (LANGSXP-like pair).
-    unsafe fn make_cons(car: SEXP, cdr: SEXP) -> SEXP {
+    fn make_cons(car: SEXP, cdr: SEXP) -> SEXP {
         use crate::sexp::constructors::Rf_cons;
-        Rf_cons(car, cdr)
+        unsafe { Rf_cons(car, cdr) }
     }
 
     #[test]

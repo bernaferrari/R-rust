@@ -257,7 +257,7 @@ unsafe fn isVector(x: SEXP) -> c_int {
 
 /// Check if x is a pairlist (LISTSXP).
 #[inline(always)]
-unsafe fn isList(x: SEXP) -> c_int {
+pub unsafe fn isList(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() {
             return 0;

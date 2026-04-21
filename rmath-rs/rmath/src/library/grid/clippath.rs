@@ -51,7 +51,7 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
     use std::ffi::CStr;
-    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP.into() {
+    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
         return 0;
     }
     let cn = match CStr::from_ptr(what).to_str() {

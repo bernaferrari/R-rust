@@ -374,8 +374,7 @@ pub unsafe fn do_str(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             // pairlist length
             let mut s = x;
             let mut count: c_int = 0;
-            while !s.is_null()
-                && (TYPEOF(s) == SEXPTYPE::LISTSXP || TYPEOF(s) == SEXPTYPE::LANGSXP)
+            while !s.is_null() && (TYPEOF(s) == SEXPTYPE::LISTSXP || TYPEOF(s) == SEXPTYPE::LANGSXP)
             {
                 count += 1;
                 s = CDR(s);

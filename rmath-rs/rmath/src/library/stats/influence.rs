@@ -145,7 +145,7 @@ pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
     let tol = asReal(stol);
 
     let hat = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-    let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP, n, q));
+    let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), n, q));
 
     lminfl_(
         REAL(qr),

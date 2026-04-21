@@ -674,7 +674,7 @@ pub unsafe fn Ri18n_wctype(name: *const u8) -> c_uint {
         }
 
         // Convert C string to Rust &str
-        let c_name = std::ffi::CStr::from_ptr(name as *const i8);
+        let c_name = std::ffi::CStr::from_ptr(name as *const libc::c_char);
         let name_str = match c_name.to_str() {
             Ok(s) => s,
             Err(_) => return 0,

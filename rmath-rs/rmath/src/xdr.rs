@@ -674,7 +674,7 @@ pub unsafe fn xdr_string(xdrs: *mut XdrC, cpp: *mut *mut u8, maxsize: c_uint) ->
             }
             XdrOp::Encode => {
                 if !sp.is_null() {
-                    let cstr = CStr::from_ptr(sp as *const i8);
+                    let cstr = CStr::from_ptr(sp as *const libc::c_char);
                     size = cstr.to_bytes().len() as c_uint;
                 }
             }

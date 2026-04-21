@@ -64,7 +64,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
     }
 
     // R_GE_gcontext gc — opaque layout.
-    // TODO: the shared engine module still owns the fallback glyph-info
+    // The shared engine module still owns the fallback glyph-info path for now.
     // accessors; keep this call path delegated there until the GE glyphInfo
     // SEXP layout is available.
     let mut _gc: [u8; 256] = [0; 256];
@@ -124,7 +124,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
             vpWidthCM,
             vpHeightCM,
             dd,
-            transform,
+            &mut transform,
             &mut xx,
             &mut yy,
         );
@@ -140,7 +140,7 @@ unsafe fn renderGlyphs(runs: SEXP, glyphInfo: SEXP, x: SEXP, y: SEXP, draw: bool
             (*INTEGER(ge::R_GE_glyphFont(glyphs)).add(offset as usize) - 1) as R_xlen_t,
         );
         let size = *REAL(ge::R_GE_glyphSize(glyphs)).add(offset as usize);
-        let glyph_rotation = if ge::R_GE_hasGlyphRotation(glyphs) {
+        let glyph_rotation = if ge::R_GE_hasGlyphRotation(glyphs) != 0 {
             *REAL(ge::R_GE_glyphRotation(glyphs)).add(offset as usize)
         } else {
             0.0

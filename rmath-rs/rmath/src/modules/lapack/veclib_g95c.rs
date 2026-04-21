@@ -14,7 +14,7 @@
  *  These calls were deprecated in 'new' Accelerate and are warned about, so
  *  suppress the warnings.
  *
- *  FIXME: define ACCELERATE_NEW_LAPACK where appropriate
+ *  Note: define ACCELERATE_NEW_LAPACK where appropriate.
  *  *and* use new entry points.
  */
 

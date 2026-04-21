@@ -61,11 +61,19 @@ pub unsafe fn exitapp() {
     }
 }
 
-pub unsafe fn gabeep() {}
+pub unsafe fn gabeep() {
+    eprint!("\x07");
+}
 
-pub unsafe fn gamainloop() {}
+pub unsafe fn gamainloop() {
+    unsafe {
+        events::mainloop();
+    }
+}
 
-pub unsafe fn startgraphapp(_instance: *mut c_void, _prev_instance: *mut c_void, _cmd_show: c_int) {
+pub unsafe fn startgraphapp(instance: *mut c_void, previous_instance: *mut c_void, _cmd_show: c_int) {
+    this_instance.with(|v| v.set(instance));
+    prev_instance.with(|v| v.set(previous_instance));
     unsafe {
         initapp(0, ptr::null_mut());
     }
@@ -75,7 +83,12 @@ pub unsafe fn isTopmost(_w: window) -> c_int {
     0
 }
 
-pub unsafe fn BringToTop(_w: window, _stay: c_int) {}
+pub unsafe fn BringToTop(w: window, stay: c_int) {
+    if !w.is_null() {
+        super::windows::set_current_window(w);
+    }
+    TopmostDialogs.with(|v| v.set(i32::from(stay != 0)));
+}
 
 pub unsafe fn getHandle(w: window) -> *mut c_void {
     unsafe {
@@ -87,7 +100,13 @@ pub unsafe fn getHandle(w: window) -> *mut c_void {
     }
 }
 
-pub unsafe fn GA_msgWindow(_c: window, _typ: c_int) {}
+pub unsafe fn GA_msgWindow(c: window, typ: c_int) {
+    if typ != 0 && !c.is_null() {
+        unsafe {
+            BringToTop(c, typ);
+        }
+    }
+}
 
 thread_local! { pub static TopmostDialogs: Cell<c_int> = Cell::new(0); }
 

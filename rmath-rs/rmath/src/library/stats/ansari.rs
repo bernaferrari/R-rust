@@ -152,7 +152,7 @@ unsafe fn qansari(len: c_int, p: *const f64, q: *mut f64, m: c_int, n: c_int) {
     for i in 0..(len as usize) {
         let xi = *p.add(i);
         if xi < 0.0 || xi > 1.0 {
-            Rf_error(b"probabilities outside [0,1] in qansari()\0".as_ptr() as *const i8);
+            Rf_error(b"probabilities outside [0,1] in qansari()\0".as_ptr() as *const libc::c_char);
         }
         if xi == 0.0 {
             *q.add(i) = l as f64;

@@ -54,11 +54,21 @@ use libc::{
     timeval, usleep, waitpid, write,
 };
 
-/// Get errno pointer (macOS uses __error())
+/// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
 #[cfg(unix)]
 #[inline]
 unsafe fn errno_ptr() -> *mut c_int {
-    libc::__error()
+    #[cfg(target_os = "macos")]
+    {
+        libc::__error()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        unsafe extern "C" {
+            fn __errno_location() -> *mut c_int;
+        }
+        __errno_location()
+    }
 }
 
 // read()/write() on pipes may not support arbitrary lengths, so
@@ -885,7 +895,7 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
         let mut k: c_uint = 0;
         while k < wlen {
             let mut found: c_int = 0;
-            let mut ci2 = children;
+            let mut ci2 = children.with(|v| v.get());
             while !ci2.is_null() {
                 if (*ci2).detached == 0
                     && (*ci2).ppid == ppid
@@ -937,7 +947,7 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
             // Note: R_wait_usec is a global; we treat it as 0 (no external wait)
             if timeout > 0.0 {
                 tv.tv_sec = remains as i64;
-                tv.tv_usec = ((remains - (remains as i64) as c_double) * 1_000_000.0) as i32;
+                tv.tv_usec = ((remains - (remains as i64) as c_double) * 1_000_000.0) as libc::suseconds_t;
             } else {
                 tv.tv_sec = 1; // still allow to process events
                 tv.tv_usec = 0;
@@ -1073,7 +1083,7 @@ pub unsafe fn mc_read_children(sTimeout: SEXP) -> SEXP {
             tvp = ptr::null_mut();
         } else {
             tv.tv_sec = tov as i64;
-            tv.tv_usec = ((tov - (tov as i64) as c_double) * 1_000_000.0) as i32;
+            tv.tv_usec = ((tov - (tov as i64) as c_double) * 1_000_000.0) as libc::suseconds_t;
         }
     }
 

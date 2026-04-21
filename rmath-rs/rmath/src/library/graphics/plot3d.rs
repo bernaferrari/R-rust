@@ -162,6 +162,7 @@ unsafe extern "C" {
     fn GStrWidth(_str: *const c_char, _enc: cetype_t, _units: c_int, _dd: pGEDevDesc) -> c_double;
     fn GStrHeight(_str: *const c_char, _enc: cetype_t, _units: c_int, _dd: pGEDevDesc) -> c_double;
     fn GPretty(_lo: *mut c_double, _up: *mut c_double, _ndiv: *mut c_int);
+    #[link_name = "rmath_GEcurrentDevice"]
     fn GEcurrentDevice() -> pGEDevDesc;
     fn PrintDefaults();
     fn ProcessInlinePars(_args: SEXP, _dd: pGEDevDesc);

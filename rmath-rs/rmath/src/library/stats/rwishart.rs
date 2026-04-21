@@ -55,7 +55,7 @@ unsafe fn isMatrix(x: SEXP) -> bool {
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
-    crate::main::coerce::isReal(x)
+    crate::main::coerce::isReal(x) != 0
 }
 
 unsafe fn alloc3DArray(sexptype: c_int, nrow: c_int, ncol: c_int, ndepth: c_int) -> SEXP {
@@ -178,7 +178,7 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
     let p = *dims;
     let psqr = (p * p) as usize;
 
-    let ans = Rf_protect(alloc3DArray(SEXPTYPE::REALSXP, p, p, n));
+    let ans = Rf_protect(alloc3DArray(SEXPTYPE::REALSXP.into(), p, p, n));
 
     // Allocate temporary arrays (replaces R_Calloc)
     let layout_tmp = std::alloc::Layout::array::<c_double>(psqr)

@@ -447,24 +447,20 @@ mod tests {
 
     #[test]
     fn test_complex_exp() {
-        unsafe {
-            // exp(i*pi) = -1
-            let z = complex_exp(Rcomplex {
-                r: 0.0,
-                i: std::f64::consts::PI,
-            });
-            assert!((z.r - (-1.0)).abs() < 1e-10);
-            assert!(z.i.abs() < 1e-10);
-        }
+        // exp(i*pi) = -1
+        let z = complex_exp(Rcomplex {
+            r: 0.0,
+            i: std::f64::consts::PI,
+        });
+        assert!((z.r - (-1.0)).abs() < 1e-10);
+        assert!(z.i.abs() < 1e-10);
     }
 
     #[test]
     fn test_complex_sqrt() {
-        unsafe {
-            // sqrt(-1) = i
-            let z = complex_sqrt(Rcomplex { r: -1.0, i: 0.0 });
-            assert!(z.r.abs() < 1e-10);
-            assert!((z.i - 1.0).abs() < 1e-10);
-        }
+        // sqrt(-1) = i
+        let z = complex_sqrt(Rcomplex { r: -1.0, i: 0.0 });
+        assert!(z.r.abs() < 1e-10);
+        assert!((z.i - 1.0).abs() < 1e-10);
     }
 }

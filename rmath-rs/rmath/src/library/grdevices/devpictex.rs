@@ -16,18 +16,51 @@ use std::ptr;
 
 use crate::main::coerce::{asLogical, asReal};
 use crate::main::colors::R_GE_str2col;
-use crate::main::devices::{
-    GEaddDevice2f, GEcreateDD, GEcreateDevDesc, GEfreeDD, R_CheckDeviceAvailable,
-};
-use crate::main::engine::{R_GE_definitions, pDevDesc, pGEcontext};
 use crate::main::errors::Rf_error;
 use crate::main::relop::NA_STRING;
-use crate::main::sysutils::{R_ExpandFileName, R_fopen, translateCharFP};
 use crate::main::util_main::asChar;
+use crate::mainutils::graphics_ffi::{DevDesc, GEDevDesc, pDevDesc, pGEDevDesc, pGEcontext};
 use crate::sexp::accessors::{CAR, CDR, CHAR};
 use crate::sexp::ffi::{NA_LOGICAL, SEXP};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory_ext::{vmaxget, vmaxset};
+use crate::unix::sys_unix::R_ExpandFileName;
+
+const R_GE_definitions: c_int = 16;
+
+unsafe fn translateCharFP(s: SEXP) -> *const c_char {
+    CHAR(s)
+}
+
+unsafe fn R_fopen(path: *const c_char, mode: *const c_char) -> *mut libc::FILE {
+    libc::fopen(path, mode)
+}
+
+unsafe fn R_CheckDeviceAvailable() {}
+
+unsafe fn GEcreateDD() -> pDevDesc {
+    Box::into_raw(Box::new(std::mem::zeroed::<DevDesc>()))
+}
+
+unsafe fn GEfreeDD(dev: pDevDesc) {
+    if !dev.is_null() {
+        drop(Box::from_raw(dev));
+    }
+}
+
+unsafe fn GEcreateDevDesc(dev: pDevDesc) -> pGEDevDesc {
+    Box::into_raw(Box::new(GEDevDesc {
+        dev,
+        displayListOn: 0,
+        displayList: R_NilValue(),
+        DLlastElt: R_NilValue(),
+        savedSnapshot: R_NilValue(),
+        dirty: 0,
+        recordGraphics: 0,
+    }))
+}
+
+unsafe fn GEaddDevice2f(_dd: pGEDevDesc, _name: *const c_char, _file: *const c_char) {}
 
 /* ==================== Constants ==================== */
 
@@ -361,7 +394,7 @@ unsafe fn textext(str: *const c_char, ptd: *mut picTeXDesc) {
 /* ==================== Device driver actions ==================== */
 
 /// PicTeX_Circle - draw a circle using `\circulararc` command.
-unsafe fn PicTeX_Circle(
+unsafe extern "C" fn PicTeX_Circle(
     x: c_double,
     y: c_double,
     r: c_double,
@@ -382,7 +415,7 @@ unsafe fn PicTeX_Circle(
 }
 
 /// PicTeX_Clip - set the clip region.
-unsafe fn PicTeX_Clip(
+unsafe extern "C" fn PicTeX_Clip(
     x0: c_double,
     x1: c_double,
     y0: c_double,
@@ -406,7 +439,7 @@ unsafe fn PicTeX_Clip(
 }
 
 /// PicTeX_Close - close the device: write closing LaTeX and free resources.
-unsafe fn PicTeX_Close(dd: pDevDesc) {
+unsafe extern "C" fn PicTeX_Close(dd: pDevDesc) {
     let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
     fprintf((*ptd).texfp, format_args!("\\endpicture\n}}\n"));
     libc::fclose((*ptd).texfp);
@@ -414,7 +447,7 @@ unsafe fn PicTeX_Close(dd: pDevDesc) {
 }
 
 /// PicTeX_Line - draw a line segment with clipping.
-unsafe fn PicTeX_Line(
+unsafe extern "C" fn PicTeX_Line(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -466,7 +499,7 @@ unsafe fn PicTeX_Line(
 /// PicTeX_MetricInfo - get font metric information for a character.
 ///
 /// Returns 0,0,0 as in the C source (metric info not available).
-unsafe fn PicTeX_MetricInfo(
+unsafe extern "C" fn PicTeX_MetricInfo(
     _c: c_int,
     _gc: pGEcontext,
     ascent: *mut c_double,
@@ -486,7 +519,7 @@ unsafe fn PicTeX_MetricInfo(
 }
 
 /// PicTeX_NewPage - start a new page.
-unsafe fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
+unsafe extern "C" fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
     let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
     if (*ptd).pageno != 0 {
@@ -521,10 +554,10 @@ unsafe fn PicTeX_NewPage(_gc: pGEcontext, dd: pDevDesc) {
 }
 
 /// PicTeX_Polygon - draw a filled/stroked polygon.
-unsafe fn PicTeX_Polygon(
+unsafe extern "C" fn PicTeX_Polygon(
     n: c_int,
-    x: *const c_double,
-    y: *const c_double,
+    x: *mut c_double,
+    y: *mut c_double,
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
@@ -578,10 +611,10 @@ unsafe fn PicTeX_Polygon(
 }
 
 /// PicTeX_Polyline - draw a polyline (series of connected line segments).
-unsafe fn PicTeX_Polyline(
+unsafe extern "C" fn PicTeX_Polyline(
     n: c_int,
-    x: *const c_double,
-    y: *const c_double,
+    x: *mut c_double,
+    y: *mut c_double,
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
@@ -620,7 +653,7 @@ unsafe fn PicTeX_Polyline(
 }
 
 /// PicTeX_Rect - draw a rectangle (delegates to PicTeX_Polygon).
-unsafe fn PicTeX_Rect(
+unsafe extern "C" fn PicTeX_Rect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -628,13 +661,13 @@ unsafe fn PicTeX_Rect(
     gc: pGEcontext,
     dd: pDevDesc,
 ) {
-    let x = [x0, x0, x1, x1];
-    let y = [y0, y1, y1, y0];
-    PicTeX_Polygon(4, x.as_ptr(), y.as_ptr(), gc, dd);
+    let mut x = [x0, x0, x1, x1];
+    let mut y = [y0, y1, y1, y0];
+    PicTeX_Polygon(4, x.as_mut_ptr(), y.as_mut_ptr(), gc, dd);
 }
 
 /// PicTeX_Size - return the device size (left, right, bottom, top).
-unsafe fn PicTeX_Size(
+unsafe extern "C" fn PicTeX_Size(
     left: *mut c_double,
     right: *mut c_double,
     bottom: *mut c_double,
@@ -659,7 +692,7 @@ unsafe fn PicTeX_Size(
 ///
 /// Sums character widths from the CHARWIDTH table for each byte in the string,
 /// scaled by the current font size.
-unsafe fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDevDesc) -> c_double {
+unsafe extern "C" fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDevDesc) -> c_double {
     let ptd = (*dd).deviceSpecific as *mut picTeXDesc;
 
     // Compute font size from gc, matching C: size = (int)(gc->cex * gc->ps + 0.5)
@@ -694,7 +727,7 @@ unsafe fn PicTeX_StrWidth(str: *const c_char, gc: pGEcontext, dd: pDevDesc) -> c
 ///
 /// Writes `\put` commands with optional `\rotatebox` for rotated text.
 /// Escapes special TeX characters via textext().
-unsafe fn PicTeX_Text(
+unsafe extern "C" fn PicTeX_Text(
     x: c_double,
     y: c_double,
     str: *const c_char,
@@ -751,33 +784,33 @@ unsafe fn PicTeX_Text(
 
 /// PicTeX_setPattern - set a fill pattern.
 /// Returns R_NilValue (patterns not supported).
-unsafe fn PicTeX_setPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe extern "C" fn PicTeX_setPattern(_pattern: SEXP, _dd: pDevDesc) -> SEXP {
     R_NilValue()
 }
 
 /// PicTeX_releasePattern - release a fill pattern reference.
 /// No-op.
-unsafe fn PicTeX_releasePattern(_ref: SEXP, _dd: pDevDesc) {}
+unsafe extern "C" fn PicTeX_releasePattern(_ref: SEXP, _dd: pDevDesc) {}
 
 /// PicTeX_setClipPath - set a clipping path.
 /// Returns R_NilValue (clip paths not supported).
-unsafe fn PicTeX_setClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe extern "C" fn PicTeX_setClipPath(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
     R_NilValue()
 }
 
 /// PicTeX_releaseClipPath - release a clipping path reference.
 /// No-op.
-unsafe fn PicTeX_releaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
+unsafe extern "C" fn PicTeX_releaseClipPath(_ref: SEXP, _dd: pDevDesc) {}
 
 /// PicTeX_setMask - set a mask.
 /// Returns R_NilValue (masks not supported).
-unsafe fn PicTeX_setMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
+unsafe extern "C" fn PicTeX_setMask(_path: SEXP, _ref: SEXP, _dd: pDevDesc) -> SEXP {
     R_NilValue()
 }
 
 /// PicTeX_releaseMask - release a mask reference.
 /// No-op.
-unsafe fn PicTeX_releaseMask(_ref: SEXP, _dd: pDevDesc) {}
+unsafe extern "C" fn PicTeX_releaseMask(_ref: SEXP, _dd: pDevDesc) {}
 
 /* ==================== Device driver initialization ==================== */
 

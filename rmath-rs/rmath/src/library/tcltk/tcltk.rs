@@ -44,7 +44,7 @@ use crate::sexp::protect::*;
 
 /// Opaque placeholder for a Tcl interpreter pointer.
 /// In the real implementation this is `*mut Tcl_Interp`.
-pub thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
+thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_mut()); }
 
 // ---------------------------------------------------------------------------
 // tcltk_init -- called on package load (Unix path)

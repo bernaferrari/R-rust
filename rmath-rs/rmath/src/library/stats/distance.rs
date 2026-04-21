@@ -177,7 +177,7 @@ unsafe fn R_dist_binary(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c
     for _ in 0..nc {
         if both_non_NA(*x.add(idx1), *x.add(idx2)) {
             if !both_FINITE(*x.add(idx1), *x.add(idx2)) {
-                Rf_warning(b"treating non-finite values as NA\0".as_ptr() as *const i8);
+                Rf_warning(b"treating non-finite values as NA\0".as_ptr() as *const libc::c_char);
             } else {
                 if *x.add(idx1) != 0.0 || *x.add(idx2) != 0.0 {
                     count += 1;

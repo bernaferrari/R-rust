@@ -5,11 +5,15 @@
  *  unit -- unit objects and coordinate transformation for grid.
  */
 
+use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
-use std::cell::Cell;
 
 use crate::attrib_core::{R_NamesSymbol, R_classgets, getAttrib, setAttrib};
+use crate::mainutils::graphics_ffi::{
+    rmath_ge_from_device_height, rmath_ge_from_device_width, rmath_ge_metric_info,
+    rmath_ge_str_height, rmath_ge_str_metric, rmath_ge_str_width,
+};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -75,14 +79,7 @@ pub const L_minimising: c_int = 6;
  * LViewportContext
  * ============================== */
 
-#[derive(Clone, Copy, Default)]
-#[repr(C)]
-pub struct LViewportContext {
-    pub xscalemin: c_double,
-    pub xscalemax: c_double,
-    pub yscalemin: c_double,
-    pub yscalemax: c_double,
-}
+pub type LViewportContext = super::types::LViewportContext;
 
 /* ==============================
  * Helper macros as functions
@@ -125,16 +122,60 @@ unsafe fn isGrobUnit(x: c_int) -> bool {
     x >= L_GROBX && x <= L_GROBDESCENT
 }
 
-type TransformToInchesFn =
-    unsafe fn(SEXP, c_int, LViewportContext, pGEcontext, c_double, c_double, pGEDevDesc) -> c_double;
+type TransformToInchesFn = unsafe fn(
+    SEXP,
+    c_int,
+    LViewportContext,
+    pGEcontext,
+    c_double,
+    c_double,
+    pGEDevDesc,
+) -> c_double;
+
+const POINTS_PER_INCH: c_double = 72.27;
+const BIGPOINTS_PER_INCH: c_double = 72.0;
+const SCALEDPOINTS_PER_POINT: c_double = 65_536.0;
+const DIDA_PER_POINT_RATIO: c_double = 1157.0 / 1238.0;
+const CICERO_PER_PICA_RATIO: c_double = DIDA_PER_POINT_RATIO;
+const GE_INCHES: c_int = 2;
 
 #[inline]
 fn transformDimensionToNPC(value: c_double, cm: c_double) -> c_double {
-    if cm == 0.0 {
-        0.0
-    } else {
-        value * 2.54 / cm
-    }
+    if cm == 0.0 { 0.0 } else { value * 2.54 / cm }
+}
+
+#[inline]
+fn absoluteUnitToInches(value: c_double, unit_id: c_int) -> Option<c_double> {
+    let inches = match unit_id {
+        L_CM => value / 2.54,
+        L_INCHES => value,
+        L_MM => value / 25.4,
+        L_POINTS => value / POINTS_PER_INCH,
+        L_PICAS => value * 12.0 / POINTS_PER_INCH,
+        L_BIGPOINTS => value / BIGPOINTS_PER_INCH,
+        L_DIDA => value / POINTS_PER_INCH / DIDA_PER_POINT_RATIO,
+        L_CICERO => value * 12.0 / POINTS_PER_INCH / CICERO_PER_PICA_RATIO,
+        L_SCALEDPOINTS => value / SCALEDPOINTS_PER_POINT / POINTS_PER_INCH,
+        _ => return None,
+    };
+    Some(inches)
+}
+
+#[inline]
+fn inchesToAbsoluteUnit(value: c_double, unit_id: c_int) -> Option<c_double> {
+    let converted = match unit_id {
+        L_CM => value * 2.54,
+        L_INCHES => value,
+        L_MM => value * 25.4,
+        L_POINTS => value * POINTS_PER_INCH,
+        L_PICAS => value * POINTS_PER_INCH / 12.0,
+        L_BIGPOINTS => value * BIGPOINTS_PER_INCH,
+        L_DIDA => value * POINTS_PER_INCH * DIDA_PER_POINT_RATIO,
+        L_CICERO => value * POINTS_PER_INCH * CICERO_PER_PICA_RATIO / 12.0,
+        L_SCALEDPOINTS => value * SCALEDPOINTS_PER_POINT * POINTS_PER_INCH,
+        _ => return None,
+    };
+    Some(converted)
 }
 
 #[inline]
@@ -157,6 +198,115 @@ fn combineArithmeticUnitValues(op: c_int, value: c_double, values: &[c_double]) 
     };
 
     combined * value
+}
+
+#[inline]
+unsafe fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
+    if gc.is_null() {
+        12.0 / POINTS_PER_INCH
+    } else {
+        let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+        ((*gc).ps * (*gc).cex) / POINTS_PER_INCH
+    }
+}
+
+#[inline]
+unsafe fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
+    let multiplier = if gc.is_null() {
+        1.2
+    } else {
+        let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+        (*gc).lineheight
+    };
+    gc_pointsize_inches(gc) * multiplier
+}
+
+unsafe fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
+    let data = unitData(unit, index);
+    if data.is_null() || TYPEOF(data) != SEXPTYPE::STRSXP || LENGTH(data) <= 0 {
+        return std::ptr::null();
+    }
+    CHAR(STRING_ELT(data, (index % LENGTH(data)) as R_xlen_t))
+}
+
+fn fallback_string_metrics(text: *const c_char, gc: pGEcontext) -> (c_double, c_double, c_double, c_double) {
+    let lineheight = unsafe { gc_lineheight_inches(gc) };
+    let char_width = unsafe { gc_pointsize_inches(gc) * 0.6 };
+    if text.is_null() {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+
+    let bytes = unsafe { std::ffi::CStr::from_ptr(text).to_bytes() };
+    if bytes.is_empty() {
+        return (0.0, 0.0, 0.0, 0.0);
+    }
+
+    let mut longest = 0usize;
+    let mut lines = 0usize;
+    for line in bytes.split(|b| *b == b'\n') {
+        longest = longest.max(line.len());
+        lines += 1;
+    }
+
+    let width = longest as c_double * char_width;
+    let height = lines as c_double * lineheight;
+    (width, height, height, 0.0)
+}
+
+unsafe fn string_metrics_inches(
+    unit: SEXP,
+    index: c_int,
+    gc: pGEcontext,
+    dd: pGEDevDesc,
+) -> (c_double, c_double, c_double, c_double) {
+    let text = unit_data_string(unit, index);
+    if text.is_null() || dd.is_null() {
+        return fallback_string_metrics(text, gc);
+    }
+
+    let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+    let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+
+    let mut ascent = 0.0;
+    let mut descent = 0.0;
+    let mut width = 0.0;
+    rmath_ge_str_metric(text, 0, ffi_gc, &mut ascent, &mut descent, &mut width, ffi_dd);
+    let mut height = rmath_ge_str_height(text, 0, ffi_gc, ffi_dd);
+
+    width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
+    ascent = rmath_ge_from_device_height(ascent, GE_INCHES, ffi_dd);
+    descent = rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd);
+    height = rmath_ge_from_device_height(height, GE_INCHES, ffi_dd);
+
+    if width == 0.0 && height == 0.0 && ascent == 0.0 && descent == 0.0 {
+        return fallback_string_metrics(text, gc);
+    }
+
+    (width, height, ascent, descent)
+}
+
+unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_double) {
+    if dd.is_null() {
+        let pointsize = gc_pointsize_inches(gc);
+        let lineheight = gc_lineheight_inches(gc);
+        return (pointsize * 0.6, lineheight, 0.0);
+    }
+
+    let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+    let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+    let mut ascent = 0.0;
+    let mut descent = 0.0;
+    let mut width = 0.0;
+    rmath_ge_metric_info('M' as c_int, ffi_gc, &mut ascent, &mut descent, &mut width, ffi_dd);
+    let height = rmath_ge_from_device_height(ascent + descent, GE_INCHES, ffi_dd);
+    let width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
+    if width == 0.0 && height == 0.0 {
+        let pointsize = gc_pointsize_inches(gc);
+        let lineheight = gc_lineheight_inches(gc);
+        (pointsize * 0.6, lineheight, 0.0)
+    } else {
+        (width, height.max(gc_lineheight_inches(gc)), rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd))
+    }
 }
 
 unsafe fn transformArithmeticUnitToINCHES(
@@ -224,7 +374,7 @@ unsafe fn isNewUnit(unit: SEXP) -> bool {
 }
 
 unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
-    // TODO: call R's upgradeUnit function once the eval bridge is available.
+    // Fallback until the R eval bridge is available: keep legacy units unchanged.
     unit
 }
 
@@ -425,12 +575,7 @@ pub unsafe fn transformX(
         return evaluateNullUnit(unitValue(x, index), widthCM, nullLMode, nullAMode);
     }
     if isArith(u) && pureNullUnit(x, index, dd) != 0 {
-        return evaluateNullUnit(
-            pureNullUnitValue(x, index),
-            widthCM,
-            nullLMode,
-            nullAMode,
-        );
+        return evaluateNullUnit(pureNullUnitValue(x, index), widthCM, nullLMode, nullAMode);
     }
     transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
 }
@@ -455,12 +600,7 @@ pub unsafe fn transformY(
         return evaluateNullUnit(unitValue(y, index), heightCM, nullLMode, nullAMode);
     }
     if isArith(u) && pureNullUnit(y, index, dd) != 0 {
-        return evaluateNullUnit(
-            pureNullUnitValue(y, index),
-            heightCM,
-            nullLMode,
-            nullAMode,
-        );
+        return evaluateNullUnit(pureNullUnitValue(y, index), heightCM, nullLMode, nullAMode);
     }
     transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
 }
@@ -542,7 +682,14 @@ pub unsafe fn transformXtoINCHES(
     let value = unitValue(x, index);
     if isArith(u) {
         return transformArithmeticUnitToINCHES(
-            x, index, vpc, _gc, widthCM, heightCM, _dd, transformXtoINCHES,
+            x,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformXtoINCHES,
         );
     }
     match u {
@@ -556,15 +703,15 @@ pub unsafe fn transformXtoINCHES(
         }
         L_NPC => value * widthCM / 2.54,
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM => value / 2.54,
-        L_INCHES => value,
-        L_MM => value / 25.4,
-        L_POINTS => value / 72.27,
-        L_PICAS => value / (12.0 * 72.27), // picas to inches
-        L_BIGPOINTS => value / 72.0,
-        L_LINES | L_CHAR | L_STRINGWIDTH | L_STRINGHEIGHT | L_STRINGASCENT | L_STRINGDESCENT
-        | L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-            // TODO: requires device context or grob evaluation.
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).0,
+        L_STRINGWIDTH => value * string_metrics_inches(x, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
+        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
             0.0
         }
         L_NULL => 0.0,
@@ -589,7 +736,14 @@ pub unsafe fn transformYtoINCHES(
     let value = unitValue(y, index);
     if isArith(u) {
         return transformArithmeticUnitToINCHES(
-            y, index, vpc, _gc, widthCM, heightCM, _dd, transformYtoINCHES,
+            y,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformYtoINCHES,
         );
     }
     match u {
@@ -603,12 +757,14 @@ pub unsafe fn transformYtoINCHES(
         }
         L_NPC => value * heightCM / 2.54,
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM => value / 2.54,
-        L_INCHES => value,
-        L_MM => value / 25.4,
-        L_POINTS => value / 72.27,
-        L_PICAS => value / (12.0 * 72.27),
-        L_BIGPOINTS => value / 72.0,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).1,
+        L_STRINGWIDTH => value * string_metrics_inches(y, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
         L_NULL => 0.0,
         _ => 0.0,
     }
@@ -631,7 +787,14 @@ pub unsafe fn transformWidthtoINCHES(
     let value = unitValue(w, index);
     if isArith(u) {
         return transformArithmeticUnitToINCHES(
-            w, index, vpc, _gc, widthCM, heightCM, _dd, transformWidthtoINCHES,
+            w,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformWidthtoINCHES,
         );
     }
     match u {
@@ -645,12 +808,14 @@ pub unsafe fn transformWidthtoINCHES(
         }
         L_NPC => value * widthCM / 2.54,
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM => value / 2.54,
-        L_INCHES => value,
-        L_MM => value / 25.4,
-        L_POINTS => value / 72.27,
-        L_PICAS => value / (12.0 * 72.27),
-        L_BIGPOINTS => value / 72.0,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).0,
+        L_STRINGWIDTH => value * string_metrics_inches(w, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
         L_NULL => 0.0,
         _ => 0.0,
     }
@@ -673,7 +838,14 @@ pub unsafe fn transformHeighttoINCHES(
     let value = unitValue(h, index);
     if isArith(u) {
         return transformArithmeticUnitToINCHES(
-            h, index, vpc, _gc, widthCM, heightCM, _dd, transformHeighttoINCHES,
+            h,
+            index,
+            vpc,
+            _gc,
+            widthCM,
+            heightCM,
+            _dd,
+            transformHeighttoINCHES,
         );
     }
     match u {
@@ -687,12 +859,14 @@ pub unsafe fn transformHeighttoINCHES(
         }
         L_NPC => value * heightCM / 2.54,
         L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM => value / 2.54,
-        L_INCHES => value,
-        L_MM => value / 25.4,
-        L_POINTS => value / 72.27,
-        L_PICAS => value / (12.0 * 72.27),
-        L_BIGPOINTS => value / 72.0,
+        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+        L_LINES => value * gc_lineheight_inches(_gc),
+        L_CHAR => value * char_metric_inches(_gc, _dd).1,
+        L_STRINGWIDTH => value * string_metrics_inches(h, index, _gc, _dd).0,
+        L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
+        L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
+        L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
         L_NULL => 0.0,
         _ => 0.0,
     }
@@ -780,10 +954,7 @@ pub unsafe fn transformXYFromINCHES(
                 scalemin + transformDimensionToNPC(location, thisCM) * range
             }
         }
-        L_CM => location * 2.54,
-        L_INCHES => location,
-        L_MM => location * 25.4,
-        _ => location, // TODO: other unit types need device-dependent context.
+        _ => inchesToAbsoluteUnit(location, unit_id).unwrap_or(location),
     }
 }
 
@@ -813,10 +984,7 @@ pub unsafe fn transformWidthHeightFromINCHES(
                 transformDimensionToNPC(value, thisCM) * range
             }
         }
-        L_CM => value * 2.54,
-        L_INCHES => value,
-        L_MM => value * 25.4,
-        _ => value, // TODO: other unit types need device-dependent context.
+        _ => inchesToAbsoluteUnit(value, unit_id).unwrap_or(value),
     }
 }
 
@@ -831,7 +999,7 @@ pub unsafe fn transformXYtoNPC(x: c_double, from: c_int, min: c_double, max: c_d
             if range == 0.0 { 0.5 } else { (x - min) / range }
         }
         L_NPC | L_SNPC => x,
-        _ => x, // TODO: unsupported units need device-dependent context.
+        _ => x, // Fallback for units that require device-dependent context.
     }
 }
 
@@ -842,7 +1010,7 @@ pub unsafe fn transformWHtoNPC(x: c_double, from: c_int, min: c_double, max: c_d
             if range == 0.0 { 0.0 } else { x / range }
         }
         L_NPC | L_SNPC => x,
-        _ => x, // TODO: unsupported units need device-dependent context.
+        _ => x, // Fallback for units that require device-dependent context.
     }
 }
 
@@ -853,7 +1021,7 @@ pub unsafe fn transformXYfromNPC(x: c_double, to: c_int, min: c_double, max: c_d
             min + x * range
         }
         L_NPC | L_SNPC => x,
-        _ => x, // TODO: unsupported units need device-dependent context.
+        _ => x, // Fallback for units that require device-dependent context.
     }
 }
 
@@ -864,7 +1032,7 @@ pub unsafe fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_d
             x * range
         }
         L_NPC | L_SNPC => x,
-        _ => x, // TODO: unsupported units need device-dependent context.
+        _ => x, // Fallback for units that require device-dependent context.
     }
 }
 
@@ -939,7 +1107,7 @@ pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
     if nmax == 0 {
         return R_NilValue();
     }
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nmax as usize));
+    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nmax));
     for i in 0..nmax as R_xlen_t {
         let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
         SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
@@ -1037,17 +1205,23 @@ mod tests {
     use super::*;
 
     fn approx_eq(lhs: c_double, rhs: c_double) {
-        assert!(
-            (lhs - rhs).abs() < 1e-12,
-            "left={lhs:?}, right={rhs:?}"
-        );
+        assert!((lhs - rhs).abs() < 1e-12, "left={lhs:?}, right={rhs:?}");
     }
 
     #[test]
     fn arithmetic_values_sum_min_and_max_with_multiplier() {
-        approx_eq(combineArithmeticUnitValues(L_SUM, 2.0, &[1.0, 2.0, 3.0]), 12.0);
-        approx_eq(combineArithmeticUnitValues(L_MIN, 0.5, &[3.0, 1.0, 4.0]), 0.5);
-        approx_eq(combineArithmeticUnitValues(L_MAX, 1.5, &[3.0, 1.0, 4.0]), 6.0);
+        approx_eq(
+            combineArithmeticUnitValues(L_SUM, 2.0, &[1.0, 2.0, 3.0]),
+            12.0,
+        );
+        approx_eq(
+            combineArithmeticUnitValues(L_MIN, 0.5, &[3.0, 1.0, 4.0]),
+            0.5,
+        );
+        approx_eq(
+            combineArithmeticUnitValues(L_MAX, 1.5, &[3.0, 1.0, 4.0]),
+            6.0,
+        );
     }
 
     #[test]
@@ -1072,7 +1246,7 @@ mod tests {
                     7.62,
                     std::ptr::null_mut(),
                 ),
-                0.4,
+                0.2,
             );
             approx_eq(
                 transformXYFromINCHES(
@@ -1099,6 +1273,129 @@ mod tests {
                     std::ptr::null_mut(),
                 ),
                 2.0,
+            );
+            approx_eq(
+                transformXYFromINCHES(
+                    1.0,
+                    L_PICAS,
+                    10.0,
+                    20.0,
+                    std::ptr::null(),
+                    12.7,
+                    7.62,
+                    std::ptr::null_mut(),
+                ),
+                POINTS_PER_INCH / 12.0,
+            );
+        }
+    }
+
+    #[test]
+    fn absolute_units_round_trip_through_inches() {
+        let cases = [
+            (L_CM, 2.54),
+            (L_INCHES, 1.0),
+            (L_MM, 25.4),
+            (L_POINTS, POINTS_PER_INCH),
+            (L_PICAS, POINTS_PER_INCH / 12.0),
+            (L_BIGPOINTS, BIGPOINTS_PER_INCH),
+            (L_DIDA, POINTS_PER_INCH * DIDA_PER_POINT_RATIO),
+            (L_CICERO, POINTS_PER_INCH * CICERO_PER_PICA_RATIO / 12.0),
+            (L_SCALEDPOINTS, POINTS_PER_INCH * SCALEDPOINTS_PER_POINT),
+        ];
+
+        for (unit_id, absolute_value) in cases {
+            let inches = absoluteUnitToInches(absolute_value, unit_id).unwrap();
+            approx_eq(inches, 1.0);
+            approx_eq(
+                inchesToAbsoluteUnit(inches, unit_id).unwrap(),
+                absolute_value,
+            );
+        }
+    }
+
+    #[test]
+    fn transform_to_inches_supports_extended_absolute_units() {
+        unsafe {
+            let units = [
+                (unit(2.54, L_CM), 1.0),
+                (unit(POINTS_PER_INCH / 12.0, L_PICAS), 1.0),
+                (unit(POINTS_PER_INCH * DIDA_PER_POINT_RATIO, L_DIDA), 1.0),
+                (unit(POINTS_PER_INCH * CICERO_PER_PICA_RATIO / 12.0, L_CICERO), 1.0),
+                (unit(POINTS_PER_INCH * SCALEDPOINTS_PER_POINT, L_SCALEDPOINTS), 1.0),
+            ];
+
+            for (value, expected_inches) in units {
+                approx_eq(
+                    transformXtoINCHES(
+                        value,
+                        0,
+                        LViewportContext::default(),
+                        std::ptr::null(),
+                        0.0,
+                        0.0,
+                        std::ptr::null_mut(),
+                    ),
+                    expected_inches,
+                );
+            }
+        }
+    }
+
+    unsafe fn string_unit(value: c_double, text: &[u8], unit_id: c_int) -> SEXP {
+        let amount = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+        *REAL(amount).add(0) = value;
+        let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+        let chars = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        SET_STRING_ELT(chars, 0, Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int));
+        SET_VECTOR_ELT(data, 0, chars);
+        let unit_type = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        *INTEGER(unit_type).add(0) = unit_id;
+        let result = constructUnits(amount, data, unit_type);
+        Rf_unprotect(4);
+        result
+    }
+
+    #[test]
+    fn text_units_use_context_fallbacks_without_a_device() {
+        unsafe {
+            let gc = Box::new(crate::mainutils::graphics_ffi::R_GE_gcontext {
+                col: 0,
+                fill: 0,
+                gamma: 1.0,
+                lwd: 1.0,
+                lty: 0,
+                lend: 0,
+                ljoin: 0,
+                lmitre: 1.0,
+                cex: 2.0,
+                ps: 10.0,
+                lineheight: 1.5,
+                fontface: 1,
+                fontfamily: [0; 201],
+                patternFill: R_NilValue(),
+            });
+            let gc_ptr = (&*gc as *const crate::mainutils::graphics_ffi::R_GE_gcontext).cast::<c_void>();
+            let line_unit = unit(2.0, L_LINES);
+            let char_unit = unit(3.0, L_CHAR);
+            let string_width = string_unit(1.0, b"abcd", L_STRINGWIDTH);
+            let string_height = string_unit(1.0, b"one\ntwo", L_STRINGHEIGHT);
+
+            approx_eq(
+                transformXtoINCHES(line_unit, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                2.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 1.5,
+            );
+            approx_eq(
+                transformWidthtoINCHES(char_unit, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                3.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 0.6,
+            );
+            approx_eq(
+                transformWidthtoINCHES(string_width, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                4.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 0.6,
+            );
+            approx_eq(
+                transformHeighttoINCHES(string_height, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                2.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 1.5,
             );
         }
     }

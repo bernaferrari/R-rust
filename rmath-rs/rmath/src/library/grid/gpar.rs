@@ -75,6 +75,9 @@ pub unsafe fn gpColSXP(gp: SEXP) -> SEXP {
 }
 
 pub unsafe fn gpCol(gp: SEXP, i: c_int) -> c_int {
+    if gp.is_null() || Rf_isNull(gp) != 0 {
+        return R_TRANWHITE;
+    }
     let col = gpColSXP(gp);
     if Rf_isNull(col) != 0 {
         R_TRANWHITE
@@ -88,6 +91,9 @@ pub unsafe fn gpFillSXP(gp: SEXP) -> SEXP {
 }
 
 pub unsafe fn gpFill(gp: SEXP, i: c_int) -> c_int {
+    if gp.is_null() || Rf_isNull(gp) != 0 {
+        return R_TRANWHITE;
+    }
     let fill = gpFillSXP(gp);
     if Rf_isNull(fill) != 0 {
         R_TRANWHITE

@@ -1077,9 +1077,7 @@ unsafe fn stringSubscript(
 
             // Linear search through names
             let mut found = false;
-            if !names.is_null()
-                && TYPEOF(names) == SEXPTYPE::STRSXP
-                && LENGTH(names) >= nx as c_int
+            if !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP && LENGTH(names) >= nx as c_int
             {
                 for j in 0..nx as usize {
                     let name_elt = STRING_ELT(names, j as R_xlen_t);
@@ -1280,46 +1278,59 @@ mod tests {
 
     use super::*;
 
-    unsafe fn make_int_vector(values: &[c_int]) -> SEXP {
-        let x = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
-        for (i, v) in values.iter().enumerate() {
-            *INTEGER(x).add(i) = *v;
+    fn make_int_vector(values: &[c_int]) -> SEXP {
+        unsafe {
+            let x = Rf_allocVector3(SEXPTYPE::INTSXP, values.len() as R_xlen_t);
+            let ints = INTEGER(x);
+            for (i, v) in values.iter().enumerate() {
+                *ints.add(i) = *v;
+            }
+            x
         }
-        x
     }
 
-    unsafe fn make_real_vector(values: &[c_double]) -> SEXP {
-        let x = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
-        for (i, v) in values.iter().enumerate() {
-            *REAL(x).add(i) = *v;
+    fn make_real_vector(values: &[c_double]) -> SEXP {
+        unsafe {
+            let x = Rf_allocVector3(SEXPTYPE::REALSXP, values.len() as R_xlen_t);
+            let reals = REAL(x);
+            for (i, v) in values.iter().enumerate() {
+                *reals.add(i) = *v;
+            }
+            x
         }
-        x
     }
 
-    unsafe fn make_string_vector(values: &[&[u8]]) -> SEXP {
-        let x = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
-        for (i, v) in values.iter().enumerate() {
-            SET_STRING_ELT(x, i as R_xlen_t, Rf_mkChar(v.as_ptr() as *const c_char));
+    fn make_string_vector(values: &[&[u8]]) -> SEXP {
+        unsafe {
+            let x = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+            for (i, v) in values.iter().enumerate() {
+                SET_STRING_ELT(x, i as R_xlen_t, Rf_mkChar(v.as_ptr() as *const c_char));
+            }
+            x
         }
-        x
     }
 
-    unsafe fn make_dim_matrix(values: &[c_int], nrow: c_int, ncol: c_int) -> SEXP {
-        let x = make_int_vector(values);
-        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
-        *INTEGER(dim) = nrow;
-        *INTEGER(dim).add(1) = ncol;
-        crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), dim);
-        x
+    fn make_dim_matrix(values: &[c_int], nrow: c_int, ncol: c_int) -> SEXP {
+        unsafe {
+            let x = make_int_vector(values);
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            let dim_ints = INTEGER(dim);
+            *dim_ints = nrow;
+            *dim_ints.add(1) = ncol;
+            crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimSymbol(), dim);
+            x
+        }
     }
 
-    unsafe fn make_dimnames_list(first: &[&[u8]], second: &[&[u8]]) -> SEXP {
-        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
-        let first = make_string_vector(first);
-        let second = make_string_vector(second);
-        SET_VECTOR_ELT(dimnames, 0, first);
-        SET_VECTOR_ELT(dimnames, 1, second);
-        dimnames
+    fn make_dimnames_list(first: &[&[u8]], second: &[&[u8]]) -> SEXP {
+        unsafe {
+            let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+            let first = make_string_vector(first);
+            let second = make_string_vector(second);
+            SET_VECTOR_ELT(dimnames, 0, first);
+            SET_VECTOR_ELT(dimnames, 1, second);
+            dimnames
+        }
     }
 
     fn panic_message<F>(f: F) -> String
@@ -1452,7 +1463,11 @@ mod tests {
         unsafe {
             let dimnames = make_dimnames_list(&[b"a\0", b"b\0"], &[b"c\0", b"d\0"]);
             let x = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-            crate::eval::attrib_core::setAttrib(x, crate::eval::attrib_core::R_DimNamesSymbol(), dimnames);
+            crate::eval::attrib_core::setAttrib(
+                x,
+                crate::eval::attrib_core::R_DimNamesSymbol(),
+                dimnames,
+            );
 
             let s = make_string_vector(&[b"a\0", b"b\0", b"c\0", b"d\0"]);
             let sdim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);

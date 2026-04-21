@@ -36,6 +36,7 @@ pub mod flexiblas;
 pub mod format;
 pub mod gram_ex;
 pub mod gram_main;
+pub mod graphics_ffi;
 pub mod grep;
 pub mod identical;
 pub mod inlined;

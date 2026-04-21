@@ -147,11 +147,7 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        if TYPEOF(x) == SEXPTYPE::SYMSXP {
-            1
-        } else {
-            0
-        }
+        if TYPEOF(x) == SEXPTYPE::SYMSXP { 1 } else { 0 }
     }
 }
 
@@ -160,11 +156,7 @@ unsafe fn isString(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        if TYPEOF(x) == SEXPTYPE::STRSXP {
-            1
-        } else {
-            0
-        }
+        if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 }
     }
 }
 
@@ -1882,11 +1874,7 @@ pub unsafe fn isEnvironment(x: SEXP) -> c_int {
         if x.is_null() {
             return 0;
         }
-        if TYPEOF(x) == SEXPTYPE::ENVSXP {
-            1
-        } else {
-            0
-        }
+        if TYPEOF(x) == SEXPTYPE::ENVSXP { 1 } else { 0 }
     }
 }
 

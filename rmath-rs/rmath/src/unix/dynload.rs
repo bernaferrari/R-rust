@@ -133,7 +133,7 @@ unsafe extern "C" fn get_system_error(buf: *mut c_char, len: c_int) {
                 let err_str = CStr::from_ptr(err);
                 let bytes = err_str.to_bytes();
                 let copy_len = bytes.len().min(len as usize - 1);
-                ptr::copy_nonoverlapping(err_str.as_ptr(), buf as *mut i8, copy_len);
+                ptr::copy_nonoverlapping(err_str.as_ptr(), buf as *mut libc::c_char, copy_len);
                 *buf.add(copy_len) = 0;
             } else {
                 *buf = 0;

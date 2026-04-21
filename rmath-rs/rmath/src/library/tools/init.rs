@@ -31,20 +31,15 @@
 use std::os::raw::c_int;
 
 use crate::sexp::ffi::*;
-
-unsafe extern "C" {
-    fn Rprintf(format: *const i8, ...) -> c_int;
-}
+use crate::mainutils::printutils::Rprintf;
 
 /* Test function used in tests/encodings.R */
-pub unsafe fn Renctest(x: *mut *mut i8) {
+pub unsafe fn Renctest(x: *mut *mut libc::c_char) {
     let s = std::ffi::CStr::from_ptr(*x);
     let len = s.to_bytes().len();
-    Rprintf(
-        b"'%s', nbytes = %lld\n\0".as_ptr() as *const i8,
-        *x,
-        len as i64,
-    );
+    let msg = format!("'{}', nbytes = {}\n", s.to_string_lossy(), len);
+    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+    Rprintf(c_msg.as_ptr(), std::ptr::null_mut());
 }
 
 /* Stub: DllInfo registration */

@@ -565,8 +565,8 @@ fn settzname(g: &mut TzGlobals) {
     let buf1_val = TZNAME_BUF1.with(|v| v.get());
     R_TZNAME.with(|v| unsafe {
         let arr = &mut *v.get();
-        arr[0] = buf0_val.as_mut_ptr() as *mut i8;
-        arr[1] = buf1_val.as_mut_ptr() as *mut i8;
+        arr[0] = buf0_val.as_mut_ptr() as *mut libc::c_char;
+        arr[1] = buf1_val.as_mut_ptr() as *mut libc::c_char;
     });
 }
 
@@ -1720,7 +1720,7 @@ fn localsub(g: &mut TzGlobals, timep: &i64, _offset: i32, tmp: &mut stm) -> Opti
     // This is safe because the chars buffer lives in the TzGlobals struct
     // which is behind a Mutex and persists for the lifetime of the program.
     let abbr_ind = ttisp.tt_abbrind as usize;
-    tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const i8;
+    tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const libc::c_char;
 
     Some(result)
 }

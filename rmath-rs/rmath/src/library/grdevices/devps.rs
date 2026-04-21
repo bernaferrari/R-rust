@@ -1280,9 +1280,9 @@ unsafe fn addEncoding(encpath: *const c_char, isPDF: bool) -> encodinginfo {
             return ptr::null_mut();
         }
         let enclist = if isPDF {
-            PDFloadedEncodings
+            PDFloadedEncodings.with(|v| v.get())
         } else {
-            loadedEncodings
+            loadedEncodings.with(|v| v.get())
         };
         safestrcpy((*encoding).encpath.as_mut_ptr(), encpath, R_PATH_MAX);
         (*newenc).encoding = encoding;
