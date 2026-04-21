@@ -69,7 +69,28 @@ const CONTENT_FORM_UENC: c_char = -128; // 0x80 as i8
 
 unsafe extern "C" {
     fn inet_addr(cp: *const c_char) -> u32;
-    fn __error() -> *mut c_int; // macOS errno accessor
+}
+
+#[cfg(target_os = "macos")]
+unsafe extern "C" {
+    fn __error() -> *mut c_int;
+}
+
+#[cfg(not(target_os = "macos"))]
+unsafe extern "C" {
+    fn __errno_location() -> *mut c_int;
+}
+
+#[inline]
+unsafe fn get_errno() -> c_int {
+    #[cfg(target_os = "macos")]
+    {
+        *__error()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        *__errno_location()
+    }
 }
 
 // ============================================================
@@ -1645,7 +1666,7 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
         core::mem::size_of::<sockaddr_in>() as u32,
     ) != 0
     {
-        let err = *__error();
+        let err = get_errno();
         if err == libc::EADDRINUSE {
             close(SRV_SOCK.with(|v| v.get()));
             SRV_SOCK.with(|v| v.set(INVALID_SOCKET));

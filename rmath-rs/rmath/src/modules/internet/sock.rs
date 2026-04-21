@@ -7,8 +7,6 @@ use core::ffi::{c_char, c_int, c_void};
 use libc::{size_t, socklen_t, ssize_t};
 
 use libc::{
-    // errno access
-    __error,
     // socket constants
     AF_INET,
     // error
@@ -74,7 +72,16 @@ unsafe extern "C" {
 
 #[inline]
 unsafe fn get_errno() -> c_int {
-    *__error()
+    #[cfg(target_os = "macos")]
+    {
+        unsafe extern "C" { fn __error() -> *mut c_int; }
+        *__error()
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        unsafe extern "C" { fn __errno_location() -> *mut c_int; }
+        *__errno_location()
+    }
 }
 
 // --- Internal helper: get h_errno ---

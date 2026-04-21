@@ -25,7 +25,7 @@ mod accelerate;
     unused_assignments,
     non_camel_case_types
 )]
-mod backend;
+pub(crate) mod backend;
 #[allow(
     dead_code,
     unused_imports,

@@ -177,7 +177,7 @@ type curl_off_t = i64;
 // libcurl FFI function declarations (linked via system libcurl)
 // ============================================================
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(all(not(target_os = "macos"), not(target_os = "android")))]
 #[link(name = "curl")]
 unsafe extern "C" {}
 

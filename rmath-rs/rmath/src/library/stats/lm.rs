@@ -66,24 +66,120 @@ unsafe fn allocMatrix(sexptype: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
 
 use crate::sexp::memory_ext::R_alloc;
 
-unsafe extern "C" {
-    /// LINPACK dqrls — Fortran name-mangled entry point
-    #[link_name = "dqrls_"]
-    fn dqrls(
-        qr: *mut c_double,
-        n: *mut c_int,
-        p: *mut c_int,
-        y: *mut c_double,
-        ny: *mut c_int,
-        tol: *mut c_double,
-        coefficients: *mut c_double,
-        residuals: *mut c_double,
-        effects: *mut c_double,
-        rank: *mut c_int,
-        pivot: *mut c_int,
-        qraux: *mut c_double,
-        work: *mut c_double,
+/// Pure-Rust replacement for LINPACK dqrls (QR least squares).
+///
+/// Computes QR factorisation with column pivoting of X (n x p),
+/// then solves min ||X*b - y||_2.  On entry `pivot` must hold 1..p.
+/// On exit `pivot` contains the column permutation, `qraux` the
+/// Householder scalars, `effects = Q^T y`, and `rank` the numerical
+/// rank determined by `tol`.
+unsafe fn dqrls_rust(
+    qr: *mut c_double,
+    n: c_int,
+    p: c_int,
+    y: *mut c_double,
+    ny: c_int,
+    tol: c_double,
+    coefficients: *mut c_double,
+    residuals: *mut c_double,
+    effects: *mut c_double,
+    rank: *mut c_int,
+    pivot: *mut c_int,
+    qraux: *mut c_double,
+) {
+    use crate::modules::lapack::backend;
+
+    let n_us = n as usize;
+    let p_us = p as usize;
+    let ny_us = ny as usize;
+    let k = n_us.min(p_us);
+
+    // --- 1. QR with column pivoting (dgeqp3) ---------------------------
+    let mut info = 0i32;
+    let mut lwork = -1i32;
+    let mut work_query = [0.0f64; 1];
+    backend::dgeqp3_(
+        &n, &p,
+        qr, &n,
+        pivot,
+        qraux,
+        work_query.as_mut_ptr(), &lwork,
+        &mut info,
     );
+    lwork = work_query[0] as i32;
+    let mut work = vec![0.0f64; lwork as usize];
+    backend::dgeqp3_(
+        &n, &p,
+        qr, &n,
+        pivot,
+        qraux,
+        work.as_mut_ptr(), &lwork,
+        &mut info,
+    );
+
+    // --- 2. Form Q^T * y (effects) using Householder vectors -----------
+    // effects is a copy of y on entry; we apply the reflectors in place.
+    for j in 0..ny_us {
+        for i in 0..n_us {
+            *effects.add(i + j * n_us) = *y.add(i + j * n_us);
+        }
+    }
+    for jj in 0..k {
+        let tau_val = *qraux.add(jj);
+        if tau_val == 0.0 {
+            continue;
+        }
+        // v = [1, qr[jj+1:n, jj]]
+        for col in 0..ny_us {
+            let mut dot = *effects.add(jj + col * n_us);
+            for i in (jj + 1)..n_us {
+                dot += *qr.add(i + jj * n_us) * *effects.add(i + col * n_us);
+            }
+            dot *= tau_val;
+            *effects.add(jj + col * n_us) -= dot;
+            for i in (jj + 1)..n_us {
+                *effects.add(i + col * n_us) -= dot * *qr.add(i + jj * n_us);
+            }
+        }
+    }
+
+    // --- 3. Determine rank from diagonal of R -------------------------
+    let mut rnk = 0usize;
+    if k > 0 {
+        let max_r = (0..k).map(|j| (*qr.add(j + j * n_us)).abs()).fold(0.0f64, f64::max);
+        let thresh = tol * max_r;
+        rnk = (0..k).take_while(|&j| (*qr.add(j + j * n_us)).abs() > thresh).count();
+    }
+    *rank = rnk as c_int;
+
+    // --- 4. Solve R[0:rnk, 0:rnk] * beta = effects[0:rnk] -------------
+    for col in 0..ny_us {
+        for j in (0..rnk).rev() {
+            let mut sum = *effects.add(j + col * n_us);
+            for i in (j + 1)..rnk {
+                sum -= *qr.add(j + i * n_us) * *coefficients.add(i + col * p_us);
+            }
+            let diag = *qr.add(j + j * n_us);
+            *coefficients.add(j + col * p_us) = if diag != 0.0 { sum / diag } else { 0.0 };
+        }
+        // zero out the trailing part (rank-deficient case)
+        for j in rnk..p_us {
+            *coefficients.add(j + col * p_us) = 0.0;
+        }
+    }
+
+    // --- 5. Compute residuals = y - X * beta --------------------------
+    for col in 0..ny_us {
+        for i in 0..n_us {
+            let mut xb = 0.0f64;
+            for j in 0..p_us {
+                // apply column permutation: original col j is now at position pivot[j]-1
+                let perm_j = (*pivot.add(j) - 1) as usize;
+                xb += *qr.add(i + perm_j * n_us) * *coefficients.add(j + col * p_us);
+            }
+            *residuals.add(i + col * n_us) = *y.add(i + col * n_us) - xb;
+        }
+    }
 }
 
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
@@ -190,25 +286,21 @@ pub unsafe fn Cdqrls(x: SEXP, y: SEXP, tol: SEXP, chk: SEXP) -> SEXP {
     let work = R_alloc(2 * p as usize, std::mem::size_of::<c_double>()) as *mut c_double;
 
     let mut rank: c_int = 0;
-    let mut n_mut = n;
-    let mut p_mut = p;
-    let mut ny_mut = ny;
-    let mut rtol = asReal(tol);
+    let rtol = asReal(tol);
 
-    dqrls(
+    dqrls_rust(
         REAL(qr),
-        &mut n_mut,
-        &mut p_mut,
+        n,
+        p,
         REAL(y),
-        &mut ny_mut,
-        &mut rtol,
+        ny,
+        rtol,
         REAL(coefficients),
         REAL(residuals),
         REAL(effects),
         &mut rank,
         INTEGER(pivot),
         REAL(qraux),
-        work,
     );
 
     SET_VECTOR_ELT(ans, 4, Rf_ScalarInteger(rank));
