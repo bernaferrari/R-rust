@@ -179,18 +179,18 @@ fn fround_inner(x: f64, digits: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-pub extern "C" fn Rf_fprec(x: f64, digits: f64) -> f64 {
+pub fn Rf_fprec(x: f64, digits: f64) -> f64 {
     fprec_inner(x, digits)
 }
 
-pub extern "C" fn fprec_c(x: f64, digits: f64) -> f64 {
+pub fn fprec_c(x: f64, digits: f64) -> f64 {
     fprec_inner(x, digits)
 }
 
-pub extern "C" fn Rf_fround(x: f64, digits: f64) -> f64 {
+pub fn Rf_fround(x: f64, digits: f64) -> f64 {
     fround_inner(x, digits)
 }
 
-pub extern "C" fn fround_c(x: f64, digits: f64) -> f64 {
+pub fn fround_c(x: f64, digits: f64) -> f64 {
     fround_inner(x, digits)
 }

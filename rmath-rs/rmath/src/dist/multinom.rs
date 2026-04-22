@@ -97,7 +97,7 @@ pub fn rmultinom_inner(n: i32, prob: &[f64], rn: &mut [f64]) {
 
 // ---- FFI shim ----
 
-pub extern "C" fn rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut c_double) {
+pub fn rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut c_double) {
     if prob.is_null() || rn.is_null() || k < 0 {
         return;
     }
@@ -111,6 +111,6 @@ pub extern "C" fn rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut 
     }
 }
 
-pub extern "C" fn Rf_rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut c_double) {
+pub fn Rf_rmultinom(n: c_int, prob: *const c_double, k: c_int, rn: *mut c_double) {
     rmultinom(n, prob, k, rn);
 }

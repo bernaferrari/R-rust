@@ -38,41 +38,41 @@ pub fn rchisq_inner(df: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub extern "C" fn Rf_dchisq(x: f64, df: f64, give_log: i32) -> f64 {
+pub fn Rf_dchisq(x: f64, df: f64, give_log: i32) -> f64 {
     dchisq_inner(x, df, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dchisq(x: f64, df: f64, give_log: i32) -> f64 {
+pub fn dchisq(x: f64, df: f64, give_log: i32) -> f64 {
     dchisq_inner(x, df, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_pchisq(x: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_pchisq(x: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
     pchisq_inner(x, df, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn pchisq(x: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn pchisq(x: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
     pchisq_inner(x, df, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
     qchisq_inner(p, df, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qchisq(p: f64, df: f64, lower_tail: i32, log_p: i32) -> f64 {
     qchisq_inner(p, df, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rchisq(df: f64) -> f64 {
+pub fn Rf_rchisq(df: f64) -> f64 {
     rchisq_inner(df)
 }
 
 #[must_use]
-pub extern "C" fn rchisq(df: f64) -> f64 {
+pub fn rchisq(df: f64) -> f64 {
     rchisq_inner(df)
 }

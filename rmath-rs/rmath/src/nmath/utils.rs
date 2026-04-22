@@ -5,7 +5,7 @@ use crate::nmath::constants::*;
 use libm::{fabs, trunc};
 
 /// Maximum of two doubles, propagating NaN (like C's fmax2).
-pub extern "C" fn fmax2(x: f64, y: f64) -> f64 {
+pub fn fmax2(x: f64, y: f64) -> f64 {
     if isnan(x) || isnan(y) {
         return x + y; // NaN propagation
     }
@@ -13,7 +13,7 @@ pub extern "C" fn fmax2(x: f64, y: f64) -> f64 {
 }
 
 /// Minimum of two doubles, propagating NaN (like C's fmin2).
-pub extern "C" fn fmin2(x: f64, y: f64) -> f64 {
+pub fn fmin2(x: f64, y: f64) -> f64 {
     if isnan(x) || isnan(y) {
         return x + y; // NaN propagation
     }
@@ -21,18 +21,18 @@ pub extern "C" fn fmin2(x: f64, y: f64) -> f64 {
 }
 
 /// Maximum of two integers.
-pub extern "C" fn imax2(x: i32, y: i32) -> i32 {
+pub fn imax2(x: i32, y: i32) -> i32 {
     if x < y { y } else { x }
 }
 
 /// Minimum of two integers.
-pub extern "C" fn imin2(x: i32, y: i32) -> i32 {
+pub fn imin2(x: i32, y: i32) -> i32 {
     if x < y { x } else { y }
 }
 
 /// Sign function: returns 1 if x > 0, 0 if x == 0, -1 if x < 0.
 /// Propagates NaN.
-pub extern "C" fn sign(x: f64) -> f64 {
+pub fn sign(x: f64) -> f64 {
     if isnan(x) {
         return x;
     }
@@ -46,7 +46,7 @@ pub extern "C" fn sign(x: f64) -> f64 {
 }
 
 /// Transfer of sign: |x| * signum(y). Propagates NaN.
-pub extern "C" fn fsign(x: f64, y: f64) -> f64 {
+pub fn fsign(x: f64, y: f64) -> f64 {
     if isnan(x) || isnan(y) {
         return x + y; // NaN propagation
     }
@@ -54,7 +54,7 @@ pub extern "C" fn fsign(x: f64, y: f64) -> f64 {
 }
 
 /// Truncation toward zero.
-pub extern "C" fn ftrunc(x: f64) -> f64 {
+pub fn ftrunc(x: f64) -> f64 {
     trunc(x)
 }
 

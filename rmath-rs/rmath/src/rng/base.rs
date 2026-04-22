@@ -11,14 +11,14 @@ thread_local! {
 }
 
 /// Set the RNG seed.
-pub extern "C" fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
+pub fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     RNG_STATE.with(|state| {
         *state.borrow_mut() = (i1, i2);
     });
 }
 
 /// Get the current RNG seed.
-pub extern "C" fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
+pub fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
     if i1.is_null() || i2.is_null() {
         return;
     }
@@ -34,7 +34,7 @@ pub extern "C" fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw:
 /// Generate a uniform random number in [0, 1).
 #[must_use]
 /// This is a faithful port of the Marsaglia-MultiCarry generator.
-pub extern "C" fn unif_rand() -> f64 {
+pub fn unif_rand() -> f64 {
     RNG_STATE.with(|state| {
         let mut state = state.borrow_mut();
         let (i1, i2) = *state;
@@ -53,11 +53,11 @@ pub extern "C" fn unif_rand() -> f64 {
     })
 }
 
-pub extern "C" fn Rf_set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
+pub fn Rf_set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     set_seed(i1, i2)
 }
 
 #[must_use]
-pub extern "C" fn Rf_unif_rand() -> f64 {
+pub fn Rf_unif_rand() -> f64 {
     unif_rand()
 }

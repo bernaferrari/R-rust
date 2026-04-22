@@ -12,13 +12,13 @@ thread_local! {
 }
 
 /// Set the RNG seed.
-pub extern "C" fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
+pub fn set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     RNG_I1.with(|c| c.set(i1));
     RNG_I2.with(|c| c.set(i2));
 }
 
 /// Get the current RNG seed.
-pub extern "C" fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
+pub fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw::c_uint) {
     if i1.is_null() || i2.is_null() {
         return;
     }
@@ -33,7 +33,7 @@ pub extern "C" fn get_seed(i1: *mut std::os::raw::c_uint, i2: *mut std::os::raw:
 ///
 /// Thread safety: uses thread-local state, so concurrent calls from different
 /// threads produce independent sequences without serialization.
-pub extern "C" fn unif_rand() -> f64 {
+pub fn unif_rand() -> f64 {
     RNG_I1.with(|i1_cell| {
         RNG_I2.with(|i2_cell| {
             let i1 = i1_cell.get();
@@ -54,10 +54,10 @@ pub extern "C" fn unif_rand() -> f64 {
     })
 }
 
-pub extern "C" fn Rf_set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
+pub fn Rf_set_seed(i1: std::os::raw::c_uint, i2: std::os::raw::c_uint) {
     set_seed(i1, i2)
 }
 
-pub extern "C" fn Rf_unif_rand() -> f64 {
+pub fn Rf_unif_rand() -> f64 {
     unif_rand()
 }

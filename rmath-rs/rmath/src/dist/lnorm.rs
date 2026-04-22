@@ -105,41 +105,41 @@ pub fn rlnorm_inner(meanlog: f64, sdlog: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub extern "C" fn Rf_dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
+pub fn Rf_dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
     dlnorm_inner(x, meanlog, sdlog, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
+pub fn dlnorm(x: f64, meanlog: f64, sdlog: f64, give_log: i32) -> f64 {
     dlnorm_inner(x, meanlog, sdlog, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     plnorm_inner(x, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn plnorm(x: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     plnorm_inner(x, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlnorm_inner(p, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qlnorm(p: f64, meanlog: f64, sdlog: f64, lower_tail: i32, log_p: i32) -> f64 {
     qlnorm_inner(p, meanlog, sdlog, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rlnorm(meanlog: f64, sdlog: f64) -> f64 {
+pub fn Rf_rlnorm(meanlog: f64, sdlog: f64) -> f64 {
     rlnorm_inner(meanlog, sdlog)
 }
 
 #[must_use]
-pub extern "C" fn rlnorm(meanlog: f64, sdlog: f64) -> f64 {
+pub fn rlnorm(meanlog: f64, sdlog: f64) -> f64 {
     rlnorm_inner(meanlog, sdlog)
 }

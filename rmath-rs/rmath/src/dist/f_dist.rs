@@ -323,41 +323,41 @@ pub fn rf_inner(n1: f64, n2: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub extern "C" fn Rf_df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
+pub fn Rf_df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
     df_inner(x, m, n, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
+pub fn df(x: f64, m: f64, n: f64, give_log: i32) -> f64 {
     df_inner(x, m, n, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     pf_inner(x, df1, df2, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn pf(x: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     pf_inner(x, df1, df2, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     qf_inner(p, df1, df2, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qf(p: f64, df1: f64, df2: f64, lower_tail: i32, log_p: i32) -> f64 {
     qf_inner(p, df1, df2, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rf(n1: f64, n2: f64) -> f64 {
+pub fn Rf_rf(n1: f64, n2: f64) -> f64 {
     rf_inner(n1, n2)
 }
 
 #[must_use]
-pub extern "C" fn rf(n1: f64, n2: f64) -> f64 {
+pub fn rf(n1: f64, n2: f64) -> f64 {
     rf_inner(n1, n2)
 }

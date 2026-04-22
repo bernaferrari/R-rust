@@ -700,41 +700,41 @@ pub fn rnf_inner(df1: f64, df2: f64, ncp: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub extern "C" fn Rf_dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
+pub fn Rf_dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
     dnf_inner(x, df1, df2, ncp, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
+pub fn dnf(x: f64, df1: f64, df2: f64, ncp: f64, give_log: i32) -> f64 {
     dnf_inner(x, df1, df2, ncp, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnf_inner(x, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn pnf(x: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     pnf_inner(x, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnf_inner(p, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qnf(p: f64, df1: f64, df2: f64, ncp: f64, lower_tail: i32, log_p: i32) -> f64 {
     qnf_inner(p, df1, df2, ncp, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
+pub fn Rf_rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
     rnf_inner(df1, df2, ncp)
 }
 
 #[must_use]
-pub extern "C" fn rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
+pub fn rnf(df1: f64, df2: f64, ncp: f64) -> f64 {
     rnf_inner(df1, df2, ncp)
 }

@@ -339,16 +339,16 @@ pub fn rwilcox_inner(m: f64, n: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub extern "C" fn Rf_dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
+pub fn Rf_dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
     dwilcox_inner(x, m, n, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
+pub fn dwilcox(x: c_double, m: c_double, n: c_double, give_log: c_int) -> c_double {
     dwilcox_inner(x, m, n, give_log != 0)
 }
 
-pub extern "C" fn Rf_pwilcox(
+pub fn Rf_pwilcox(
     q: c_double,
     m: c_double,
     n: c_double,
@@ -358,7 +358,7 @@ pub extern "C" fn Rf_pwilcox(
     pwilcox_inner(q, m, n, lower_tail != 0, log_p != 0)
 }
 
-pub extern "C" fn pwilcox(
+pub fn pwilcox(
     q: c_double,
     m: c_double,
     n: c_double,
@@ -368,7 +368,7 @@ pub extern "C" fn pwilcox(
     pwilcox_inner(q, m, n, lower_tail != 0, log_p != 0)
 }
 
-pub extern "C" fn Rf_qwilcox(
+pub fn Rf_qwilcox(
     p: c_double,
     m: c_double,
     n: c_double,
@@ -378,7 +378,7 @@ pub extern "C" fn Rf_qwilcox(
     qwilcox_inner(p, m, n, lower_tail != 0, log_p != 0)
 }
 
-pub extern "C" fn qwilcox(
+pub fn qwilcox(
     p: c_double,
     m: c_double,
     n: c_double,
@@ -389,11 +389,11 @@ pub extern "C" fn qwilcox(
 }
 
 #[must_use]
-pub extern "C" fn Rf_rwilcox(m: c_double, n: c_double) -> c_double {
+pub fn Rf_rwilcox(m: c_double, n: c_double) -> c_double {
     rwilcox_inner(m, n)
 }
 
 #[must_use]
-pub extern "C" fn rwilcox(m: c_double, n: c_double) -> c_double {
+pub fn rwilcox(m: c_double, n: c_double) -> c_double {
     rwilcox_inner(m, n)
 }

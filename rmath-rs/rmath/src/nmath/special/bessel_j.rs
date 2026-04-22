@@ -592,7 +592,7 @@ pub fn bessel_j(x: f64, alpha: f64) -> f64 {
 }
 
 /// C FFI wrapper for bessel_j
-pub extern "C" fn bessel_j_c(x: f64, alpha: f64) -> f64 {
+pub fn bessel_j_c(x: f64, alpha: f64) -> f64 {
     bessel_j(x, alpha)
 }
 
@@ -654,7 +654,7 @@ pub fn bessel_j_ex(x: f64, alpha: f64, bj: &mut [f64]) -> f64 {
 }
 
 /// C FFI wrapper for bessel_j_ex
-pub extern "C" fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
+pub fn bessel_j_ex_c(x: f64, alpha: f64, bj: *mut f64, nb: i32) -> f64 {
     if bj.is_null() || nb <= 0 {
         return ML_NAN;
     }

@@ -55,6 +55,6 @@ pub(crate) fn lgammacor(x: f64) -> f64 {
     1.0 / (x * 12.0)
 }
 
-pub extern "C" fn Rf_lgammacor(x: f64) -> f64 {
+pub fn Rf_lgammacor(x: f64) -> f64 {
     lgammacor(x)
 }

@@ -527,42 +527,42 @@ pub fn pentagamma(x: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-pub extern "C" fn Rf_digamma(x: f64) -> f64 {
+pub fn Rf_digamma(x: f64) -> f64 {
     imp::digamma(x)
 }
 
-pub extern "C" fn digamma_c(x: f64) -> f64 {
+pub fn digamma_c(x: f64) -> f64 {
     imp::digamma(x)
 }
 
-pub extern "C" fn Rf_trigamma(x: f64) -> f64 {
+pub fn Rf_trigamma(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
-pub extern "C" fn trigamma_c(x: f64) -> f64 {
+pub fn trigamma_c(x: f64) -> f64 {
     imp::trigamma(x)
 }
 
-pub extern "C" fn Rf_tetragamma(x: f64) -> f64 {
+pub fn Rf_tetragamma(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
-pub extern "C" fn tetragamma_c(x: f64) -> f64 {
+pub fn tetragamma_c(x: f64) -> f64 {
     imp::tetragamma(x)
 }
 
-pub extern "C" fn Rf_pentagamma(x: f64) -> f64 {
+pub fn Rf_pentagamma(x: f64) -> f64 {
     imp::pentagamma(x)
 }
 
-pub extern "C" fn pentagamma_c(x: f64) -> f64 {
+pub fn pentagamma_c(x: f64) -> f64 {
     imp::pentagamma(x)
 }
 
-pub extern "C" fn Rf_psigamma(x: f64, deriv: f64) -> f64 {
+pub fn Rf_psigamma(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)
 }
 
-pub extern "C" fn psigamma_c(x: f64, deriv: f64) -> f64 {
+pub fn psigamma_c(x: f64, deriv: f64) -> f64 {
     imp::psigamma(x, deriv)
 }

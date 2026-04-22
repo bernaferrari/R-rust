@@ -1052,41 +1052,41 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
 // =====================================================================
 
 #[must_use]
-pub extern "C" fn Rf_dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
+pub fn Rf_dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dbeta_inner(x, a, b, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
+pub fn dbeta(x: f64, a: f64, b: f64, give_log: i32) -> f64 {
     dbeta_inner(x, a, b, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     pbeta_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn pbeta(x: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     pbeta_inner(x, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbeta_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qbeta(p: f64, a: f64, b: f64, lower_tail: i32, log_p: i32) -> f64 {
     qbeta_inner(p, a, b, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rbeta(a: f64, b: f64) -> f64 {
+pub fn Rf_rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)
 }
 
 #[must_use]
-pub extern "C" fn rbeta(a: f64, b: f64) -> f64 {
+pub fn rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)
 }

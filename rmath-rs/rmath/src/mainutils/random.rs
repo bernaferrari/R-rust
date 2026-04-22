@@ -1003,7 +1003,7 @@ fn r_Samp_kind(kind: Sampletype) {
 // R scalar random generators (matching Rmath.h signatures)
 // ---------------------------------------------------------------------------
 
-pub extern "C" fn R_runif(a: c_double, b: c_double) -> c_double {
+pub fn R_runif(a: c_double, b: c_double) -> c_double {
     if !a.is_finite() || !b.is_finite() {
         return f64::NAN;
     }
@@ -1016,7 +1016,7 @@ pub extern "C" fn R_runif(a: c_double, b: c_double) -> c_double {
     a + (b - a) * r_unif_rand()
 }
 
-pub extern "C" fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
+pub fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
     if !sigma.is_finite() {
         return f64::NAN;
     }
@@ -1026,87 +1026,87 @@ pub extern "C" fn R_rnorm(mu: c_double, sigma: c_double) -> c_double {
     mu + sigma * r_norm_rand()
 }
 
-pub extern "C" fn R_rbinom(n: c_double, p: c_double) -> c_double {
+pub fn R_rbinom(n: c_double, p: c_double) -> c_double {
     crate::dist::binomial::rbinom(n, p)
 }
 
-pub extern "C" fn R_rexp(rate: c_double) -> c_double {
+pub fn R_rexp(rate: c_double) -> c_double {
     crate::dist::exponential::rexp(rate)
 }
 
-pub extern "C" fn R_rpois(mu: c_double) -> c_double {
+pub fn R_rpois(mu: c_double) -> c_double {
     crate::dist::poisson::rpois(mu)
 }
 
-pub extern "C" fn R_rchisq(df: c_double) -> c_double {
+pub fn R_rchisq(df: c_double) -> c_double {
     crate::dist::chisq::rchisq(df)
 }
 
-pub extern "C" fn R_rgamma(shape: c_double, scale: c_double) -> c_double {
+pub fn R_rgamma(shape: c_double, scale: c_double) -> c_double {
     crate::dist::gamma::rgamma(shape, scale)
 }
 
-pub extern "C" fn R_rbeta(a: c_double, b: c_double) -> c_double {
+pub fn R_rbeta(a: c_double, b: c_double) -> c_double {
     crate::dist::beta::rbeta(a, b)
 }
 
-pub extern "C" fn R_rt(df: c_double) -> c_double {
+pub fn R_rt(df: c_double) -> c_double {
     crate::dist::t_dist::rt(df)
 }
 
-pub extern "C" fn R_rf(n1: c_double, n2: c_double) -> c_double {
+pub fn R_rf(n1: c_double, n2: c_double) -> c_double {
     crate::dist::f_dist::rf(n1, n2)
 }
 
-pub extern "C" fn R_rcauchy(location: c_double, scale: c_double) -> c_double {
+pub fn R_rcauchy(location: c_double, scale: c_double) -> c_double {
     crate::dist::cauchy::rcauchy(location, scale)
 }
 
-pub extern "C" fn R_rlnorm(meanlog: c_double, sdlog: c_double) -> c_double {
+pub fn R_rlnorm(meanlog: c_double, sdlog: c_double) -> c_double {
     crate::dist::lnorm::rlnorm(meanlog, sdlog)
 }
 
-pub extern "C" fn R_rlogis(location: c_double, scale: c_double) -> c_double {
+pub fn R_rlogis(location: c_double, scale: c_double) -> c_double {
     crate::dist::logistic::rlogis(location, scale)
 }
 
-pub extern "C" fn R_rweibull(shape: c_double, scale: c_double) -> c_double {
+pub fn R_rweibull(shape: c_double, scale: c_double) -> c_double {
     crate::dist::weibull::rweibull(shape, scale)
 }
 
-pub extern "C" fn R_rwilcox(m: c_double, n: c_double) -> c_double {
+pub fn R_rwilcox(m: c_double, n: c_double) -> c_double {
     crate::dist::wilcox::rwilcox(m, n)
 }
 
-pub extern "C" fn R_rsignrank(n: c_double) -> c_double {
+pub fn R_rsignrank(n: c_double) -> c_double {
     crate::dist::signrank::rsignrank(n)
 }
 
-pub extern "C" fn R_rnbinom(size: c_double, prob: c_double) -> c_double {
+pub fn R_rnbinom(size: c_double, prob: c_double) -> c_double {
     crate::dist::nbinom::rnbinom(size, prob)
 }
 
-pub extern "C" fn R_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
+pub fn R_rnbinom_mu(size: c_double, mu: c_double) -> c_double {
     crate::dist::nbinom::rnbinom_mu(size, mu)
 }
 
-pub extern "C" fn R_rnchisq(df: c_double, ncp: c_double) -> c_double {
+pub fn R_rnchisq(df: c_double, ncp: c_double) -> c_double {
     crate::dist::nchisq::rnchisq(df, ncp)
 }
 
-pub extern "C" fn R_rhyper(nn1: c_double, nn2: c_double, kk: c_double) -> c_double {
+pub fn R_rhyper(nn1: c_double, nn2: c_double, kk: c_double) -> c_double {
     crate::dist::hypergeometric::rhyper(nn1, nn2, kk)
 }
 
-pub extern "C" fn R_rgeom(p: c_double) -> c_double {
+pub fn R_rgeom(p: c_double) -> c_double {
     crate::dist::geometric::rgeom(p)
 }
 
-pub extern "C" fn R_unif_index(dn: c_double) -> c_double {
+pub fn R_unif_index(dn: c_double) -> c_double {
     r_R_unif_index(dn)
 }
 
-pub extern "C" fn R_sample_kind() -> c_int {
+pub fn R_sample_kind() -> c_int {
     r_sample_kind() as c_int
 }
 
@@ -1116,7 +1116,7 @@ pub extern "C" fn R_sample_kind() -> c_int {
 
 /// One-parameter random generation using a function pointer wrapper.
 fn random1_call(
-    f: extern "C" fn(f64) -> f64,
+    f: fn(f64) -> f64,
     a: *const f64,
     na: R_xlen_t,
     x: *mut f64,
@@ -1143,7 +1143,7 @@ fn random1_call(
 
 /// Two-parameter random generation using a function pointer wrapper.
 fn random2_call(
-    f: extern "C" fn(f64, f64) -> f64,
+    f: fn(f64, f64) -> f64,
     a: *const f64,
     na: R_xlen_t,
     b: *const f64,
@@ -1178,7 +1178,7 @@ fn random2_call(
 
 /// Three-parameter random generation using a function pointer wrapper.
 fn random3_call(
-    f: extern "C" fn(f64, f64, f64) -> f64,
+    f: fn(f64, f64, f64) -> f64,
     a: *const f64,
     na: R_xlen_t,
     b: *const f64,

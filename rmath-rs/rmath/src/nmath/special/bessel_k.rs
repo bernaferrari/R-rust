@@ -593,7 +593,7 @@ fn k_bessel_forward(
 mod imp {
     use super::*;
 
-    pub extern "C" fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
+    pub fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
         bessel_k(x, alpha, expo)
     }
 }

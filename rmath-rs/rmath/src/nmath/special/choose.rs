@@ -171,24 +171,24 @@ pub fn choose(n: f64, k: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-pub extern "C" fn Rf_choose(n: f64, k: f64) -> f64 {
+pub fn Rf_choose(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
 
-pub extern "C" fn choose_c(n: f64, k: f64) -> f64 {
+pub fn choose_c(n: f64, k: f64) -> f64 {
     imp::choose(n, k)
 }
 
-pub extern "C" fn Rf_lchoose(n: f64, k: f64) -> f64 {
+pub fn Rf_lchoose(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
 
-pub extern "C" fn lchoose_c(n: f64, k: f64) -> f64 {
+pub fn lchoose_c(n: f64, k: f64) -> f64 {
     imp::lchoose(n, k)
 }
 
 /// Rf_lfastchoose: fast version of lchoose(n, k) for integer k.
 /// Returns log|choose(n,k)|. The sign argument is for compatibility only.
-pub extern "C" fn Rf_lfastchoose(n: f64, k: f64, _sgn: *mut std::os::raw::c_int) -> f64 {
+pub fn Rf_lfastchoose(n: f64, k: f64, _sgn: *mut std::os::raw::c_int) -> f64 {
     imp::lchoose(n, k)
 }

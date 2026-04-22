@@ -81,6 +81,7 @@ unsafe fn error(msg: &str) {
 // LAPACK / BLAS external declarations
 // ---------------------------------------------------------------------------
 
+#[cfg(feature = "fortran-backend")]
 unsafe extern "C" {
     fn dpotrf_(
         uplo: *const u8,
@@ -115,6 +116,9 @@ unsafe extern "C" {
         ldc: *const c_int,
     );
 }
+
+#[cfg(not(feature = "fortran-backend"))]
+use crate::modules::lapack::backend;
 
 // ---------------------------------------------------------------------------
 // std_rWishart_factor: simulate Cholesky factor of standardized Wishart
@@ -210,7 +214,7 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
     // Cholesky factorization: scCp <- U'U where scal = U'U
     let mut info: c_int = 0;
     let uplo_u: [u8; 1] = [b'U'];
-    dpotrf_(uplo_u.as_ptr(), &p, scCp, &p, &mut info);
+    backend::dpotrf_(uplo_u.as_ptr(), &p, scCp, &p, &mut info);
     if info != 0 {
         error("'scal' matrix is not positive-definite");
         std::alloc::dealloc(tmp as *mut u8, layout_tmp);
@@ -236,6 +240,7 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
         std_rWishart_factor(nu, p, 1, tmp);
 
         // tmp := tmp * U  (dtrmm: R, U, N, N)
+        #[cfg(feature = "fortran-backend")]
         dtrmm_(
             side_r.as_ptr(),
             uplo_u2.as_ptr(),
@@ -249,8 +254,26 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
             tmp,
             &p,
         );
+        #[cfg(not(feature = "fortran-backend"))]
+        {
+            // Pure-Rust fallback: tmp = tmp * scCp (upper triangular)
+            let mut prod = vec![0.0f64; psqr];
+            for i in 0..p as usize {
+                for j in 0..p as usize {
+                    let mut s = 0.0;
+                    for k in 0..=j {
+                        s += *tmp.add(i + k * p as usize) * *scCp.add(k + j * p as usize);
+                    }
+                    prod[i + j * p as usize] = s;
+                }
+            }
+            for i in 0..psqr {
+                *tmp.add(i) = prod[i];
+            }
+        }
 
         // ansj := tmp' * tmp  (dsyrk: U, T)
+        #[cfg(feature = "fortran-backend")]
         dsyrk_(
             uplo_u3.as_ptr(),
             trans_t.as_ptr(),
@@ -263,6 +286,19 @@ pub unsafe fn rWishart(ns: SEXP, nuP: SEXP, scal: SEXP) -> SEXP {
             ansj,
             &p,
         );
+        #[cfg(not(feature = "fortran-backend"))]
+        {
+            // Pure-Rust fallback: ansj = tmp^T * tmp (symmetric, store upper)
+            for j in 0..p as usize {
+                for i in 0..=j {
+                    let mut s = 0.0;
+                    for k in 0..p as usize {
+                        s += *tmp.add(k + i * p as usize) * *tmp.add(k + j * p as usize);
+                    }
+                    *ansj.add(i + j * p as usize) = s;
+                }
+            }
+        }
 
         // Copy upper triangle to lower triangle
         for i in 1..p as usize {

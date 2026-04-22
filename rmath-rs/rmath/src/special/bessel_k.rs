@@ -597,7 +597,7 @@ mod imp {
     use super::*;
 
     #[must_use]
-    pub extern "C" fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
+    pub fn bessel_k_c(x: f64, alpha: f64, expo: f64) -> f64 {
         bessel_k(x, alpha, expo)
     }
 }

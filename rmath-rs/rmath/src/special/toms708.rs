@@ -2333,7 +2333,7 @@ fn gamln(a: f64) -> f64 {
 // =====================================================================
 
 /// C-compatible bratio: stores results via pointers.
-pub extern "C" fn Rf_bratio(
+pub fn Rf_bratio(
     a: f64,
     b: f64,
     x: f64,

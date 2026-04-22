@@ -947,6 +947,6 @@ pub(crate) fn ebd0(x: f64, m: f64) -> (f64, f64) {
 }
 
 #[must_use]
-pub extern "C" fn Rf_bd0(x: f64, np: f64) -> f64 {
+pub fn Rf_bd0(x: f64, np: f64) -> f64 {
     bd0(x, np)
 }

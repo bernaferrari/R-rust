@@ -363,12 +363,12 @@ pub fn gammafn(x: f64) -> f64 {
 }
 
 /// C FFI wrapper for gammafn
-pub extern "C" fn gammafn_c(x: f64) -> f64 {
+pub fn gammafn_c(x: f64) -> f64 {
     gammafn(x)
 }
 
 /// C FFI wrapper for lgammafn1p
-pub extern "C" fn lgammafn1p_c(a: f64) -> f64 {
+pub fn lgammafn1p_c(a: f64) -> f64 {
     lgammafn1p(a)
 }
 
@@ -440,7 +440,7 @@ pub fn lgammafn(x: f64) -> f64 {
 }
 
 /// C FFI wrapper for lgammafn
-pub extern "C" fn lgammafn_c(x: f64) -> f64 {
+pub fn lgammafn_c(x: f64) -> f64 {
     lgammafn(x)
 }
 
@@ -472,20 +472,20 @@ pub fn lgammafn_sign(x: f64, sgn: Option<&mut i32>) -> f64 {
 // Rf_ prefixed FFI shims (R-compatible symbol names)
 // =====================================================================
 
-pub extern "C" fn Rf_gammafn(x: f64) -> f64 {
+pub fn Rf_gammafn(x: f64) -> f64 {
     gammafn(x)
 }
 
-pub extern "C" fn Rf_lgammafn(x: f64) -> f64 {
+pub fn Rf_lgammafn(x: f64) -> f64 {
     lgammafn(x)
 }
 
-pub extern "C" fn Rf_lgammafn1p(a: f64) -> f64 {
+pub fn Rf_lgammafn1p(a: f64) -> f64 {
     lgammafn1p(a)
 }
 
 /// C FFI for lgammafn_sign: returns log|gamma(x)|, stores sign in *sgn if sgn is non-null.
-pub extern "C" fn Rf_lgammafn_sign(x: f64, sgn: *mut i32) -> f64 {
+pub fn Rf_lgammafn_sign(x: f64, sgn: *mut i32) -> f64 {
     let sgn_opt = if sgn.is_null() {
         None
     } else {

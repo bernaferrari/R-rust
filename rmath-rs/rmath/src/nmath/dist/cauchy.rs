@@ -143,16 +143,16 @@ pub fn rcauchy_inner(location: f64, scale: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub extern "C" fn Rf_dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
+pub fn Rf_dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dcauchy_inner(x, location, scale, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
+pub fn dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dcauchy_inner(x, location, scale, give_log != 0)
 }
 
-pub extern "C" fn Rf_pcauchy(
+pub fn Rf_pcauchy(
     x: f64,
     location: f64,
     scale: f64,
@@ -163,11 +163,11 @@ pub extern "C" fn Rf_pcauchy(
 }
 
 #[must_use]
-pub extern "C" fn pcauchy(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn pcauchy(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pcauchy_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
-pub extern "C" fn Rf_qcauchy(
+pub fn Rf_qcauchy(
     p: f64,
     location: f64,
     scale: f64,
@@ -178,16 +178,16 @@ pub extern "C" fn Rf_qcauchy(
 }
 
 #[must_use]
-pub extern "C" fn qcauchy(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qcauchy(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qcauchy_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rcauchy(location: f64, scale: f64) -> f64 {
+pub fn Rf_rcauchy(location: f64, scale: f64) -> f64 {
     rcauchy_inner(location, scale)
 }
 
 #[must_use]
-pub extern "C" fn rcauchy(location: f64, scale: f64) -> f64 {
+pub fn rcauchy(location: f64, scale: f64) -> f64 {
     rcauchy_inner(location, scale)
 }

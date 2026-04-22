@@ -579,41 +579,41 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
 // ---- FFI shims ----
 
 #[must_use]
-pub extern "C" fn Rf_dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
+pub fn Rf_dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
     dhyper_inner(x, r, b, n, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
+pub fn dhyper(x: f64, r: f64, b: f64, n: f64, give_log: i32) -> f64 {
     dhyper_inner(x, r, b, n, give_log != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     phyper_inner(x, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn phyper(x: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     phyper_inner(x, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn Rf_qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     qhyper_inner(p, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
+pub fn qhyper(p: f64, nr: f64, nb: f64, n: f64, lower_tail: i32, log_p: i32) -> f64 {
     qhyper_inner(p, nr, nb, n, lower_tail != 0, log_p != 0)
 }
 
 #[must_use]
-pub extern "C" fn Rf_rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
+pub fn Rf_rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
     rhyper_inner(nn1, nn2, kk)
 }
 
 #[must_use]
-pub extern "C" fn rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
+pub fn rhyper(nn1: f64, nn2: f64, kk: f64) -> f64 {
     rhyper_inner(nn1, nn2, kk)
 }

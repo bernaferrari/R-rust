@@ -58,10 +58,10 @@ pub fn beta(a: f64, b: f64) -> f64 {
 // C FFI shims
 // =====================================================================
 
-pub extern "C" fn Rf_beta(a: f64, b: f64) -> f64 {
+pub fn Rf_beta(a: f64, b: f64) -> f64 {
     imp::beta(a, b)
 }
 
-pub extern "C" fn beta_c(a: f64, b: f64) -> f64 {
+pub fn beta_c(a: f64, b: f64) -> f64 {
     imp::beta(a, b)
 }

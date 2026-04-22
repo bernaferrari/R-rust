@@ -71,48 +71,48 @@ mod ffi {
     /// C FFI shim: Rf_bessel_i(x, alpha, expo)
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub extern "C" fn Rf_bessel_i(x: c_double, alpha: c_double, expo: c_int) -> c_double {
+    pub fn Rf_bessel_i(x: c_double, alpha: c_double, expo: c_int) -> c_double {
         super::bessel_i(x, alpha, expo != 0)
     }
 
     /// C FFI shim: bessel_i(x, alpha, expo)
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub extern "C" fn bessel_i(x: c_double, alpha: c_double, expo: c_int) -> c_double {
+    pub fn bessel_i(x: c_double, alpha: c_double, expo: c_int) -> c_double {
         super::bessel_i(x, alpha, expo != 0)
     }
 
     /// C FFI shim: Rf_bessel_j(x, alpha)
-    pub extern "C" fn Rf_bessel_j(x: c_double, alpha: c_double) -> c_double {
+    pub fn Rf_bessel_j(x: c_double, alpha: c_double) -> c_double {
         super::bessel_j(x, alpha)
     }
 
     /// C FFI shim: bessel_j(x, alpha)
-    pub extern "C" fn bessel_j(x: c_double, alpha: c_double) -> c_double {
+    pub fn bessel_j(x: c_double, alpha: c_double) -> c_double {
         super::bessel_j(x, alpha)
     }
 
     /// C FFI shim: Rf_bessel_k(x, alpha, expo)
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub extern "C" fn Rf_bessel_k(x: c_double, alpha: c_double, expo: c_int) -> c_double {
+    pub fn Rf_bessel_k(x: c_double, alpha: c_double, expo: c_int) -> c_double {
         super::bessel_k(x, alpha, expo != 0)
     }
 
     /// C FFI shim: bessel_k(x, alpha, expo)
     ///
     /// `expo` is interpreted as a C int: 0 = unscaled, nonzero = exponentiated.
-    pub extern "C" fn bessel_k(x: c_double, alpha: c_double, expo: c_int) -> c_double {
+    pub fn bessel_k(x: c_double, alpha: c_double, expo: c_int) -> c_double {
         super::bessel_k(x, alpha, expo != 0)
     }
 
     /// C FFI shim: Rf_bessel_y(x, alpha)
-    pub extern "C" fn Rf_bessel_y(x: c_double, alpha: c_double) -> c_double {
+    pub fn Rf_bessel_y(x: c_double, alpha: c_double) -> c_double {
         super::bessel_y(x, alpha)
     }
 
     /// C FFI shim: bessel_y(x, alpha)
-    pub extern "C" fn bessel_y(x: c_double, alpha: c_double) -> c_double {
+    pub fn bessel_y(x: c_double, alpha: c_double) -> c_double {
         super::bessel_y(x, alpha)
     }
 }

@@ -8,7 +8,7 @@ const PI: f64 = 3.14159265358979323846264338327950288;
 
 /// cos(pi * x) -- exact when x = k/2 for all integer k.
 #[must_use]
-pub extern "C" fn cospi(x: f64) -> f64 {
+pub fn cospi(x: f64) -> f64 {
     if isnan(x) {
         return x;
     }
@@ -31,7 +31,7 @@ pub extern "C" fn cospi(x: f64) -> f64 {
 
 /// sin(pi * x) -- exact when x = k/2 for all integer k.
 #[must_use]
-pub extern "C" fn sinpi(x: f64) -> f64 {
+pub fn sinpi(x: f64) -> f64 {
     if isnan(x) {
         return x;
     }
@@ -90,6 +90,6 @@ fn rtanpi(x: f64) -> f64 {
 
 /// tan(pi * x) -- exact when x = k/4 for all integer k.
 #[must_use]
-pub extern "C" fn tanpi(x: f64) -> f64 {
+pub fn tanpi(x: f64) -> f64 {
     rtanpi(x)
 }
