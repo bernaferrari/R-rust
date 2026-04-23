@@ -2183,13 +2183,13 @@ pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
 }
 
 /// `R_tzset` -- set timezone from TZ environment variable.
-pub unsafe fn R_tzset() {
+pub fn R_tzset() {
     let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
     r_tzset_impl(&mut g);
 }
 
 /// `R_tzsetwall` -- set timezone from system wall clock.
-pub unsafe fn R_tzsetwall() {
+pub fn R_tzsetwall() {
     let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
     r_tzsetwall(&mut g);
 }
