@@ -29,12 +29,12 @@ use crate::sexp::protect::*;
 ///      R's input handlers into Tcl's event queue
 ///   3. Sets R_wait_usec for polling frequency
 #[cfg(unix)]
-pub unsafe fn Tcl_unix_setup() {
+pub fn Tcl_unix_setup() {
     // Stub: no actual Tcl interpreter available to set up event sources.
 }
 
 #[cfg(not(unix))]
-pub unsafe fn Tcl_unix_setup() {
+pub fn Tcl_unix_setup() {
     // No-op on non-Unix platforms.
 }
 
@@ -49,12 +49,12 @@ pub unsafe fn Tcl_unix_setup() {
 ///   ptr_R_FlushConsole, ptr_R_ClearerrConsole
 /// to Tcl-based implementations.
 #[cfg(unix)]
-pub unsafe fn RTcl_ActivateConsole() {
+pub fn RTcl_ActivateConsole() {
     // Stub: no Tcl interpreter to redirect console through.
 }
 
 #[cfg(not(unix))]
-pub unsafe fn RTcl_ActivateConsole() {
+pub fn RTcl_ActivateConsole() {
     // No-op on non-Unix platforms.
 }
 

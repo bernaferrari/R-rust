@@ -548,13 +548,13 @@ pub unsafe fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
 
 /// registerBase -- register the base graphics system with the Graphics Engine.
 /// Stub: does nothing.
-pub unsafe fn registerBase() {
+pub fn registerBase() {
     /* Stub: calls GEregisterSystem(baseCallback, &baseRegisterIndex) */
 }
 
 /// unregisterBase -- unregister the base graphics system.
 /// Stub: does nothing.
-pub unsafe fn unregisterBase() {
+pub fn unregisterBase() {
     /* Stub: calls GEunregisterSystem(baseRegisterIndex) */
 }
 

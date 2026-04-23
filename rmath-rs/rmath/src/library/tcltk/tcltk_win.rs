@@ -53,12 +53,12 @@ pub unsafe fn tcltk_start() {
 /// In the real implementation this calls unset_R_Tcldo to remove
 /// the Tcl event polling callback.
 #[cfg(target_os = "windows")]
-pub unsafe fn tcltk_end() {
+pub fn tcltk_end() {
     // Stub: no unset_R_Tcldo available
 }
 
 #[cfg(not(target_os = "windows"))]
-pub unsafe fn tcltk_end() {
+pub fn tcltk_end() {
     // No-op on non-Windows platforms
 }
 

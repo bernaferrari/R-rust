@@ -3328,13 +3328,15 @@ unsafe extern "C" fn inRGBpar3_dispatch(
 }
 
 #[unsafe(no_mangle)]
-pub unsafe fn initPalette() {
-    crate::main::colors::Rg_set_col_ptrs(
-        Some(inRGBpar3_dispatch),
-        Some(incol2name),
-        Some(inR_GE_str2col),
-        Some(savePalette_impl),
-    );
+pub fn initPalette() {
+    unsafe {
+        crate::main::colors::Rg_set_col_ptrs(
+            Some(inRGBpar3_dispatch),
+            Some(incol2name),
+            Some(inR_GE_str2col),
+            Some(savePalette_impl),
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

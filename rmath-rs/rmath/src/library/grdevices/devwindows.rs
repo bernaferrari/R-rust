@@ -1219,13 +1219,13 @@ mod win_impl {
 
     // --- init_PS_PDF ---
 
-    pub unsafe fn init_PS_PDF() {
+    pub fn init_PS_PDF() {
         // no-op stub
     }
 
     // --- Load_Rcairo_Dll ---
 
-    pub unsafe fn Load_Rcairo_Dll() -> c_int {
+    pub fn Load_Rcairo_Dll() -> c_int {
         0 // FALSE
     }
 }
@@ -1518,8 +1518,8 @@ mod win_impl {
         0
     }
     pub unsafe fn err_cannot_open(_fn: *const c_char) {}
-    pub unsafe fn init_PS_PDF() {}
-    pub unsafe fn Load_Rcairo_Dll() -> c_int {
+    pub fn init_PS_PDF() {}
+    pub fn Load_Rcairo_Dll() -> c_int {
         0
     }
 }

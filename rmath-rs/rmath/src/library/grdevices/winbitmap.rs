@@ -103,19 +103,19 @@ pub unsafe fn R_SaveAsBmp(
 }
 
 /// Return the libpng version string, or "" if not available.
-pub unsafe fn R_pngVersion() -> *const c_char {
+pub fn R_pngVersion() -> *const c_char {
     static VERSION: [c_char; 1] = [0];
     VERSION.as_ptr()
 }
 
 /// Return the libjpeg version string, or "" if not available.
-pub unsafe fn R_jpegVersion() -> *const c_char {
+pub fn R_jpegVersion() -> *const c_char {
     static VERSION: [c_char; 1] = [0];
     VERSION.as_ptr()
 }
 
 /// Return the libtiff version string, or "" if not available.
-pub unsafe fn R_tiffVersion() -> *const c_char {
+pub fn R_tiffVersion() -> *const c_char {
     static VERSION: [c_char; 1] = [0];
     VERSION.as_ptr()
 }
