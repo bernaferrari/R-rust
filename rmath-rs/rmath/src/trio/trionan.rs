@@ -45,7 +45,7 @@ pub fn trio_fpclassify_and_signbit(number: f64, is_negative: &mut c_int) -> c_in
 /// Check if a number is NaN.
 ///
 /// Returns non-zero if `number` is NaN, zero otherwise.
-pub unsafe fn trio_isnan(number: f64) -> c_int {
+pub fn trio_isnan(number: f64) -> c_int {
     let mut dummy: c_int = 0;
     if trio_fpclassify_and_signbit(number, &mut dummy) == TRIO_FP_NAN {
         1
@@ -57,7 +57,7 @@ pub unsafe fn trio_isnan(number: f64) -> c_int {
 /// Check if a number is infinite.
 ///
 /// Returns 1 if positive infinity, -1 if negative infinity, 0 otherwise.
-pub unsafe fn trio_isinf(number: f64) -> c_int {
+pub fn trio_isinf(number: f64) -> c_int {
     let mut is_negative: c_int = 0;
     if trio_fpclassify_and_signbit(number, &mut is_negative) == TRIO_FP_INFINITE {
         if is_negative != 0 { -1 } else { 1 }
@@ -69,7 +69,7 @@ pub unsafe fn trio_isinf(number: f64) -> c_int {
 /// Check if a number is finite.
 ///
 /// Returns non-zero if finite, zero otherwise.
-pub unsafe fn trio_isfinite(number: f64) -> c_int {
+pub fn trio_isfinite(number: f64) -> c_int {
     let mut dummy: c_int = 0;
     match trio_fpclassify_and_signbit(number, &mut dummy) {
         TRIO_FP_INFINITE | TRIO_FP_NAN => 0,
@@ -80,7 +80,7 @@ pub unsafe fn trio_isfinite(number: f64) -> c_int {
 /// Examine the sign of a number.
 ///
 /// Returns non-zero if the number has the sign bit set (i.e. is negative).
-pub unsafe fn trio_signbit(number: f64) -> c_int {
+pub fn trio_signbit(number: f64) -> c_int {
     let mut is_negative: c_int = 0;
     let _ = trio_fpclassify_and_signbit(number, &mut is_negative);
     is_negative
@@ -89,27 +89,27 @@ pub unsafe fn trio_signbit(number: f64) -> c_int {
 /// Examine the class of a number.
 ///
 /// Returns one of the TRIO_FP_* constants.
-pub unsafe fn trio_fpclassify(number: f64) -> c_int {
+pub fn trio_fpclassify(number: f64) -> c_int {
     let mut dummy: c_int = 0;
     trio_fpclassify_and_signbit(number, &mut dummy)
 }
 
 /// Generate NaN (Not-a-Number).
-pub unsafe fn trio_nan() -> f64 {
+pub fn trio_nan() -> f64 {
     f64::NAN
 }
 
 /// Generate positive infinity.
-pub unsafe fn trio_pinf() -> f64 {
+pub fn trio_pinf() -> f64 {
     f64::INFINITY
 }
 
 /// Generate negative infinity.
-pub unsafe fn trio_ninf() -> f64 {
+pub fn trio_ninf() -> f64 {
     f64::NEG_INFINITY
 }
 
 /// Generate negative zero.
-pub unsafe fn trio_nzero() -> f64 {
+pub fn trio_nzero() -> f64 {
     -0.0f64
 }
