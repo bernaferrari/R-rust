@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 //! Port of R's src/library/stats/src/nls.c
 //!
 //! Nonlinear least squares (NLS) iteration and numeric differentiation.

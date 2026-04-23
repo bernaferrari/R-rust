@@ -1,11 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 /*
  * Algorithm AS 51 Appl. Statist. (1972), vol. 21, p. 218
  *   original (C) Royal Statistical Society 1972

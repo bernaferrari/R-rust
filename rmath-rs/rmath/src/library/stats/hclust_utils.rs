@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 //! Hierarchical clustering utilities: cutree
 //! Port of r-source/src/library/stats/src/hclust-utils.c
 

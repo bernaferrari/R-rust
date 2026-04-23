@@ -1,10 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_assignments,
-    non_camel_case_types
-)]
 /* --- Isotonic regression ---
  * code simplified from VR_mds_fn() which is part of MASS.c,
  * Copyright (C) 1995  Brian Ripley

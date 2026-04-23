@@ -1,11 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
 //! Windows graphics device module (devWindows.c, 4053 lines)
 //!
 //! Provides Windows GDI-based graphics device (devga), savePlot,

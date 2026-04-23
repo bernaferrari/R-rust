@@ -1,13 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    non_snake_case
-)]
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2004-2007  The R Foundation

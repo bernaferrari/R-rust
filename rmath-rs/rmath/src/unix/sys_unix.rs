@@ -76,23 +76,27 @@ pub unsafe fn R_ExpandFileName(s: *const c_char) -> *const c_char {
         let home = if user_part.is_empty() {
             // ~ or ~/path: use HOME env var
             match env::var("HOME") {
-                Ok(ref v) if !v.is_empty() => {
-                    // Fall back to getpwuid if HOME is empty
-                    let pw = libc::getpwuid(libc::getuid());
-                    if pw.is_null() {
+                Ok(ref v) if !v.is_empty() => v.clone(),
+                Ok(_) | Err(_) => {
+                    // On Android (and other systems without a full passwd db),
+                    // getpwuid may return NULL. Try common env fallbacks first.
+                    #[cfg(target_os = "android")]
+                    {
+                        // Android app processes have no traditional home directory
+                        // and getpwuid returns NULL for non-system users.
+                        // Return unexpanded rather than guessing a path.
+                        let _ = env::var("USER"); // suppress unused warning
                         return s; // can't expand
                     }
-                    let pw_dir = CStr::from_ptr((*pw).pw_dir);
-                    pw_dir.to_string_lossy().into_owned()
-                }
-                Ok(v) => v,
-                Err(_) => {
-                    let pw = libc::getpwuid(libc::getuid());
-                    if pw.is_null() {
-                        return s;
+                    #[cfg(not(target_os = "android"))]
+                    {
+                        let pw = libc::getpwuid(libc::getuid());
+                        if pw.is_null() {
+                            return s; // can't expand
+                        }
+                        let pw_dir = CStr::from_ptr((*pw).pw_dir);
+                        pw_dir.to_string_lossy().into_owned()
                     }
-                    let pw_dir = CStr::from_ptr((*pw).pw_dir);
-                    pw_dir.to_string_lossy().into_owned()
                 }
             }
         } else {
@@ -144,12 +148,23 @@ pub unsafe fn do_machine(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEX
 thread_local! { static clk_tck: Cell<c_double> = Cell::new(100.0); }
 thread_local! { static StartTime: Cell<c_double> = Cell::new(0.0); }
 
-/// Get current time in seconds (using gettimeofday).
+/// Get current time in seconds.
+/// On Android uses clock_gettime(CLOCK_MONOTONIC) since gettimeofday is deprecated
+/// in Bionic. On other Unix platforms uses gettimeofday for compatibility.
 unsafe fn currentTime() -> c_double {
     unsafe {
-        let mut tv: libc::timeval = std::mem::zeroed();
-        libc::gettimeofday(&mut tv, ptr::null_mut());
-        tv.tv_sec as c_double + tv.tv_usec as c_double * 1e-6
+        #[cfg(target_os = "android")]
+        {
+            let mut ts: libc::timespec = std::mem::zeroed();
+            libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts);
+            ts.tv_sec as c_double + ts.tv_nsec as c_double * 1e-9
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let mut tv: libc::timeval = std::mem::zeroed();
+            libc::gettimeofday(&mut tv, ptr::null_mut());
+            tv.tv_sec as c_double + tv.tv_usec as c_double * 1e-6
+        }
     }
 }
 
@@ -219,11 +234,21 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
             login.as_c_str()
         };
 
-        // Get user name from passwd
+        // Get user name: try env vars first (needed on Android where getpwuid returns NULL)
+        let user_env = env::var("USER")
+            .or_else(|_| env::var("LOGNAME"))
+            .unwrap_or_default();
+        let user_env_cstr = if !user_env.is_empty() {
+            Some(CString::new(user_env).unwrap_or_default())
+        } else {
+            None
+        };
         let user_cstr = {
             let pw = libc::getpwuid(libc::getuid());
             if !pw.is_null() {
                 CStr::from_ptr((*pw).pw_name)
+            } else if let Some(ref c) = user_env_cstr {
+                c.as_c_str()
             } else {
                 login_cstr
             }

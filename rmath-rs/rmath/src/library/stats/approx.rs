@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 //! Linear and Step Function Interpolation
 //! Port of r-source/src/library/stats/src/approx.c
 

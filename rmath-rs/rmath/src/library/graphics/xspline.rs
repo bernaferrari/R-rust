@@ -1,13 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types,
-    non_snake_case
-)]
-
 /*
  *  Source code from Xfig 3.2.4 modified to work with arrays of doubles
  *  instead of linked lists of F_points and to remove some globals.

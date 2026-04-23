@@ -1,11 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
 //! Windows bitmap device module (winbitmap.c)
 //!
 //! Provides R_SaveAsPng, R_SaveAsJpeg, R_SaveAsTIFF, R_SaveAsBmp,

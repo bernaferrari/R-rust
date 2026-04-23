@@ -9,14 +9,6 @@
  *
  *  Original C translation by Ross Ihaka, University of Auckland, Feb 1997.
  */
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 use libc::{c_double, c_int};
 use std::cell::{Cell, RefCell};
 

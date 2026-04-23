@@ -174,13 +174,13 @@ pub fn fillroundrect(r: rect) {
 
 /// Draw a polygon.
 pub unsafe fn drawpolygon(p: *mut point, n: c_int) {
-    let ds = unsafe { get_current_drawstate() };
+    let ds = get_current_drawstate();
     gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
 }
 
 /// Fill a polygon.
 pub unsafe fn fillpolygon(p: *mut point, n: c_int) {
-    let ds = unsafe { get_current_drawstate() };
+    let ds = get_current_drawstate();
     gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
 }
 
@@ -190,13 +190,13 @@ pub unsafe fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
     if s.is_null() {
         return 0;
     }
-    let ds = unsafe { get_current_drawstate() };
+    let ds = get_current_drawstate();
     gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s)
 }
 
 /// Get the bounding rectangle of a string with the given font.
 pub unsafe fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
-    let ds = unsafe { get_current_drawstate() };
+    let ds = get_current_drawstate();
     gdraw::gstrrect(ds.dest, f, s)
 }
 

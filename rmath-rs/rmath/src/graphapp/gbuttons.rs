@@ -72,7 +72,7 @@ pub unsafe fn scrolltext(c: textbox, lines: c_int) {
 }
 
 pub fn ggetkeystate() -> c_int {
-    unsafe { events::getkeystate() }
+    events::getkeystate()
 }
 
 pub unsafe fn scrollcaret(c: textbox, lines: c_int) {

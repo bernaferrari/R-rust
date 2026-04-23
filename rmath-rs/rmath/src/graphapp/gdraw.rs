@@ -556,7 +556,7 @@ pub fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
             copied.push((
                 p.x + (x - x0),
                 p.y + (y - y0),
-                unsafe { ggetpixel(sb, point { x, y }) },
+                ggetpixel(sb, point { x, y }),
             ));
         }
     }
@@ -591,7 +591,7 @@ pub fn ginvert(d: drawing, r: rect) {
     };
     for y in y0..y1 {
         for x in x0..x1 {
-            let color = rgb_invert(unsafe { ggetpixel(d, point { x, y }) });
+            let color = rgb_invert(ggetpixel(d, point { x, y }));
             set_pixel_if_visible(d, x, y, color);
         }
     }

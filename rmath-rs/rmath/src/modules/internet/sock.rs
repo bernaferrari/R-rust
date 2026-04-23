@@ -28,12 +28,14 @@ use libc::{
     SOMAXCONN,
     TCP_NODELAY,
     accept,
+    addrinfo,
     bind,
     close,
     connect,
     fcntl,
-    // host resolution (type only; functions declared via extern "C" below)
-    hostent,
+    freeaddrinfo,
+    getaddrinfo,
+    getnameinfo,
     htons,
     in_addr,
     listen,
@@ -59,13 +61,6 @@ type Sock_port_t = u16;
 pub(crate) struct Sock_error_t {
     pub error: c_int,
     pub h_error: c_int,
-}
-
-// hostent is provided by libc; gethostbyname/gethostbyaddr are deprecated in
-// POSIX but still available as system library functions. Declare them here.
-unsafe extern "C" {
-    fn gethostbyname(name: *const c_char) -> *mut hostent;
-    fn gethostbyaddr(addr: *const c_char, len: c_int, type_: c_int) -> *mut hostent;
 }
 
 // --- Internal helper: get errno (platform-specific) ---
@@ -319,25 +314,33 @@ pub(crate) unsafe fn Sock_listen(
         }
 
         if !cname.is_null() && buflen > 0 {
-            let name: *const c_char;
-            let hostptr = gethostbyaddr(
-                &mut net_client.sin_addr as *mut in_addr as *mut c_char,
-                core::mem::size_of::<in_addr>() as i32,
-                AF_INET,
+            let mut name_buf: Vec<c_char> = vec![0; buflen as usize];
+            let ret = getnameinfo(
+                &net_client as *const sockaddr_in as *const sockaddr,
+                core::mem::size_of::<sockaddr_in>() as socklen_t,
+                name_buf.as_mut_ptr(),
+                buflen as libc::socklen_t,
+                core::ptr::null_mut(),
+                0,
+                0,
             );
-            if hostptr.is_null() {
-                name = b"unknown\0".as_ptr() as *const c_char;
+            if ret != 0 {
+                // Fallback to "unknown" on failure
+                let unknown = b"unknown\0";
+                let copy_len = std::cmp::min(unknown.len() - 1, (buflen - 1) as usize);
+                core::ptr::copy_nonoverlapping(
+                    unknown.as_ptr() as *const c_char,
+                    cname,
+                    copy_len,
+                );
+                *cname.add(copy_len) = 0;
             } else {
-                name = (*hostptr).h_name;
+                // getnameinfo null-terminates; copy up to buflen-1
+                let nlen = libc::strlen(name_buf.as_ptr() as *const c_char);
+                let max_len = std::cmp::min(nlen, (buflen - 1) as usize);
+                core::ptr::copy_nonoverlapping(name_buf.as_ptr(), cname, max_len);
+                *cname.add(max_len) = 0;
             }
-
-            let mut nlen = libc::strlen(name);
-            let max_len = (buflen - 1) as usize;
-            if nlen > max_len {
-                nlen = max_len;
-            }
-            libc::strncpy(cname, name, nlen);
-            *cname.add(nlen) = 0;
         }
 
         retval
@@ -352,29 +355,50 @@ pub(crate) unsafe fn Sock_connect(
     perr: *mut Sock_error_t,
 ) -> c_int {
     unsafe {
-        // R_gethostbyname is defined in rsock.rs; fall back to libc gethostbyname
-        // if the R wrapper is not available. We call gethostbyname directly here
-        // since R_gethostbyname is just a wrapper with a localhost fallback.
-        let hp = gethostbyname(sname);
-        if hp.is_null() {
-            return Sock_error(perr, get_errno(), get_h_errno());
+        // Use getaddrinfo (thread-safe, Android-friendly) instead of deprecated gethostbyname
+        let mut hints: addrinfo = core::mem::zeroed();
+        hints.ai_family = AF_INET;
+        hints.ai_socktype = SOCK_STREAM;
+        let mut res: *mut addrinfo = core::ptr::null_mut();
+        let gai_err = getaddrinfo(sname, core::ptr::null(), &hints, &mut res);
+        if gai_err != 0 {
+            return Sock_error(perr, get_errno(), gai_err);
+        }
+        if res.is_null() {
+            freeaddrinfo(res);
+            return Sock_error(perr, get_errno(), 0);
+        }
+
+        // Find first IPv4 result
+        let mut ai = res;
+        let mut found = false;
+        while !ai.is_null() {
+            if (*ai).ai_family == AF_INET {
+                found = true;
+                break;
+            }
+            ai = (*ai).ai_next;
+        }
+        if !found {
+            freeaddrinfo(res);
+            return Sock_error(perr, get_errno(), 0);
         }
 
         let sock = socket(AF_INET, SOCK_STREAM, 0);
         if R_invalid_socket(sock) != 0 {
+            freeaddrinfo(res);
             return Sock_error(perr, get_errno(), 0);
         }
 
         let mut server: sockaddr_in = core::mem::zeroed();
-        // Copy first address from h_addr_list[0] into sin_addr
-        let first_addr = *(*hp).h_addr_list.add(0);
         core::ptr::copy_nonoverlapping(
-            first_addr,
-            &mut server.sin_addr as *mut in_addr as *mut c_char,
-            (*hp).h_length as usize,
+            (*ai).ai_addr as *const sockaddr_in,
+            &mut server,
+            1,
         );
         server.sin_port = htons(port as u16);
         server.sin_family = AF_INET as u8;
+        freeaddrinfo(res);
 
         let mut retval: c_int;
         loop {

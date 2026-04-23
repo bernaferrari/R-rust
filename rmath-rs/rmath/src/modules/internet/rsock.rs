@@ -25,9 +25,12 @@ use libc::{
     SO_ERROR,
     SOCK_STREAM,
     SOL_SOCKET,
+    addrinfo,
     connect,
     // fd_set and select
     fd_set,
+    freeaddrinfo,
+    getaddrinfo,
     getsockopt,
     // hostent is re-exported from libc
     hostent,
@@ -39,7 +42,7 @@ use libc::{
     sockaddr,
     // network types
     sockaddr_in,
-    // socket/networking
+    // socket functions
     socket,
     ssize_t,
     // string comparison
@@ -88,10 +91,7 @@ unsafe extern "C" {
     fn R_socket_strerror(errnum: c_int) -> *mut c_char;
     fn R_set_nonblocking(s: c_int) -> c_int;
     fn REprintf(format: *const i8);
-    // R_alloc for in_Rsockread buffer allocation
     fn R_alloc(size: usize, nelem: usize) -> *mut c_void;
-    // libc gethostbyname (deprecated but available on all Unix)
-    fn gethostbyname(name: *const c_char) -> *mut hostent;
 }
 
 thread_local! { static sock_inited: Cell<c_int> = Cell::new(0); }
@@ -509,22 +509,47 @@ pub(crate) unsafe fn R_SockConnect(
         return -1;
     }
 
-    // Use R_gethostbyname (which is defined in this file) via direct call
-    let hp = R_gethostbyname(host);
-    if hp.is_null() {
-        close_and_return!(-1);
+    // Use getaddrinfo (thread-safe, Android-friendly) instead of deprecated gethostbyname
+    let mut hints: addrinfo = core::mem::zeroed();
+    hints.ai_family = PF_INET;
+    hints.ai_socktype = SOCK_STREAM;
+    let mut res: *mut addrinfo = core::ptr::null_mut();
+    let gai_err = getaddrinfo(host, core::ptr::null(), &hints, &mut res);
+    if gai_err != 0 {
+        R_close_socket(s);
+        return -1;
+    }
+    if res.is_null() {
+        freeaddrinfo(res);
+        R_close_socket(s);
+        return -1;
+    }
+
+    // Find first IPv4 result
+    let mut ai = res;
+    let mut found = false;
+    while !ai.is_null() {
+        if (*ai).ai_family == AF_INET {
+            found = true;
+            break;
+        }
+        ai = (*ai).ai_next;
+    }
+    if !found {
+        freeaddrinfo(res);
+        R_close_socket(s);
+        return -1;
     }
 
     let mut server: sockaddr_in = core::mem::zeroed();
-    // Copy first address from h_addr_list[0] into sin_addr
-    let first_addr = *(*hp).h_addr_list.add(0);
     core::ptr::copy_nonoverlapping(
-        first_addr,
-        &mut server.sin_addr as *mut _ as *mut c_char,
-        (*hp).h_length as usize,
+        (*ai).ai_addr as *const sockaddr_in,
+        &mut server,
+        1,
     );
     server.sin_port = htons(port as u16);
     server.sin_family = AF_INET as u8;
+    freeaddrinfo(res);
 
     let conn_status = connect(
         s,
@@ -795,19 +820,3 @@ pub(crate) unsafe fn R_SockWrite(
     out
 }
 
-/// R_gethostbyname - get host entry by name (with localhost fallback)
-/// Falls back to "127.0.0.1" if "localhost" lookup fails.
-/// Signature: struct hostent *R_gethostbyname(const char *name)
-pub(crate) unsafe fn R_gethostbyname(name: *const c_char) -> *mut hostent {
-    // Call libc's gethostbyname (declared via extern "C" above)
-    let ans = gethostbyname(name);
-
-    // Hard-code IPv4 address for localhost to be robust against misconfigured systems
-    if ans.is_null()
-        && !name.is_null()
-        && strcmp(name, b"localhost\0".as_ptr() as *const c_char) == 0
-    {
-        return gethostbyname(b"127.0.0.1\0".as_ptr() as *const c_char);
-    }
-    ans
-}

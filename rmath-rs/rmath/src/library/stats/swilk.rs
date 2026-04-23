@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 //! Shapiro-Wilk W test
 //! Port of r-source/src/library/stats/src/swilk.c
 //! Based on Applied Statistics algorithms AS181, R94

@@ -43,13 +43,11 @@ static DEFAULT_WORKSPACE_BYTES: &[u8] = b".RData\0";
 
 // Get current workspace name (as C string pointer).
 pub unsafe fn get_workspace_name() -> *const c_char {
-    unsafe {
-        let ptr = WORKSPACE_NAME.load(Ordering::Relaxed);
-        if ptr.is_null() {
-            DEFAULT_WORKSPACE_BYTES.as_ptr() as *const c_char
-        } else {
-            ptr as *const c_char
-        }
+    let ptr = WORKSPACE_NAME.load(Ordering::Relaxed);
+    if ptr.is_null() {
+        DEFAULT_WORKSPACE_BYTES.as_ptr() as *const c_char
+    } else {
+        ptr as *const c_char
     }
 }
 

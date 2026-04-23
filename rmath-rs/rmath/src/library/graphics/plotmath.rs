@@ -1,5 +1,3 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code)]
-
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 

@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 //! Lowess (locally weighted scatterplot smoothing)
 //! Port of r-source/src/library/stats/src/lowess.c
 

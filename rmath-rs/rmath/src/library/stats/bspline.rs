@@ -1,12 +1,3 @@
-#![allow(
-    dead_code,
-    unused_imports,
-    unused_variables,
-    unused_mut,
-    unused_assignments,
-    non_camel_case_types
-)]
-
 /*
  * Ported from R's Fortran B-spline routines:
  *   - bsplvd.f / bsplvb.f : B-spline value and derivative evaluation
