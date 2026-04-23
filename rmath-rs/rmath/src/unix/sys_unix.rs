@@ -185,7 +185,7 @@ pub unsafe fn R_getProcTime(data: *mut c_double) {
 }
 
 /// Get the clock increment in seconds.
-pub unsafe fn R_getClockIncrement() -> c_double {
+pub fn R_getClockIncrement() -> c_double {
     1.0 / clk_tck.with(|v| v.get())
 }
 
@@ -291,7 +291,7 @@ pub unsafe fn do_sysinfo(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEX
 // ---------------------------------------------------------------------------
 
 /// Process pending events (stub).
-pub unsafe fn R_ProcessEvents() {
+pub fn R_ProcessEvents() {
     // In the full implementation, this calls ptr_R_ProcessEvents
     // and R_PolledEvents, then checks time limits.
 }
@@ -303,7 +303,7 @@ pub unsafe fn R_ProcessEvents() {
 /// Set up FPU control word.
 /// On most platforms this is a no-op. On FreeBSD and ARM, it adjusts
 /// floating-point exception handling.
-pub unsafe fn fpu_setup(start: c_int) {
+pub fn fpu_setup(start: c_int) {
     if start != 0 {
         // Platform-specific FPU setup
         #[cfg(target_os = "freebsd")]

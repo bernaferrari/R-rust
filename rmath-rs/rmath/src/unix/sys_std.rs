@@ -133,19 +133,19 @@ pub unsafe fn Rstd_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) 
 // ---------------------------------------------------------------------------
 
 /// Reset the console state.
-pub unsafe fn Rstd_ResetConsole() {}
+pub fn Rstd_ResetConsole() {}
 
 /// Flush console output.
-pub unsafe fn Rstd_FlushConsole() {
+pub fn Rstd_FlushConsole() {
     let _ = io::stdout().flush();
     let _ = io::stderr().flush();
 }
 
 /// Clear error state on console.
-pub unsafe fn Rstd_ClearerrConsole() {}
+pub fn Rstd_ClearerrConsole() {}
 
 /// Set busy indicator.
-pub unsafe fn Rstd_Busy(_which: c_int) {}
+pub fn Rstd_Busy(_which: c_int) {}
 
 // ---------------------------------------------------------------------------
 // Rstd_ShowMessage
@@ -226,16 +226,14 @@ thread_local! { pub static R_PolledEvents: Cell<Option<unsafe extern "C" fn()>> 
 thread_local! { pub static Rg_PolledEvents: Cell<Option<unsafe extern "C" fn()>> = Cell::new(None); }
 
 /// Wait for the specified number of microseconds.
-pub unsafe fn R_wait_usec(_usec: c_int) {
+pub fn R_wait_usec(_usec: c_int) {
     // In the full implementation, this uses select() on no file descriptors
     // to sleep for the specified time.
 }
 
 /// Graphics wait for microseconds.
-pub unsafe fn Rg_wait_usec(_usec: c_int) {
-    unsafe {
-        R_wait_usec(_usec);
-    }
+pub fn Rg_wait_usec(_usec: c_int) {
+    R_wait_usec(_usec);
 }
 
 // ---------------------------------------------------------------------------

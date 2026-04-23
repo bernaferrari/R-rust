@@ -180,7 +180,7 @@ unsafe fn libc_dlerror() -> *mut c_char {
 /// Initialize the function hashing / dynamic loading subsystem.
 /// Sets up the OS-specific vtable for dlopen/dlsym/dlclose.
 #[unsafe(no_mangle)]
-pub unsafe fn InitFunctionHashing() {
+pub fn InitFunctionHashing() {
     R_osDynSymbol_table.with(|v| {
         v.borrow_mut().loadLibrary = Some(load_library);
         v.borrow_mut().dlsym_fn = Some(local_dlsym);
@@ -200,7 +200,7 @@ pub unsafe fn Rf_lookupCachedSymbol(_name: *const c_char, _can_cache: c_int) -> 
 }
 
 /// Delete all cached symbols (stub).
-pub unsafe fn Rf_deleteCachedSymbols() {}
+pub fn Rf_deleteCachedSymbols() {}
 
 /// Look up a cached symbol (stub).
 pub unsafe fn Rf_lookupCachedSymbols(_name: *const c_char, _can_cache: c_int) -> DL_FUNC {
