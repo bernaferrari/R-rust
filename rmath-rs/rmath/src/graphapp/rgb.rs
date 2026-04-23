@@ -1422,7 +1422,7 @@ pub unsafe fn rgbtoname(in_val: rgb) -> *const c_char {
 
 /// Get the index of a colour in the named colour table.
 /// Returns -1 if not found.
-pub unsafe fn rgbtonum(in_val: rgb) -> c_int {
+pub fn rgbtonum(in_val: rgb) -> c_int {
     for i in 0..RGBCOLORS {
         let v = &RgbValue[i];
         let rgb_val = rgb_make(v[0] as c_ulong, v[1] as c_ulong, v[2] as c_ulong);
@@ -1434,7 +1434,7 @@ pub unsafe fn rgbtonum(in_val: rgb) -> c_int {
 }
 
 /// Get a system colour using a small platform-neutral fallback palette.
-pub unsafe fn myGetSysColor(x: c_int) -> rgb {
+pub fn myGetSysColor(x: c_int) -> rgb {
     match x {
         0 | 15 => LightGrey,
         1 | 16 => DarkGrey,
@@ -1455,14 +1455,12 @@ pub unsafe fn myGetSysColor(x: c_int) -> rgb {
 }
 
 /// Get the dialog background colour.
-pub unsafe fn dialog_bg() -> rgb {
-    unsafe {
-        myGetSysColor(0) // COLOR_BTNFACE
-    }
+pub fn dialog_bg() -> rgb {
+    myGetSysColor(0) // COLOR_BTNFACE
 }
 
 /// Darken a colour.
-pub unsafe fn darker(pixel: rgb) -> rgb {
+pub fn darker(pixel: rgb) -> rgb {
     if getalpha(pixel) > 0x7F {
         return Transparent;
     }
@@ -1473,7 +1471,7 @@ pub unsafe fn darker(pixel: rgb) -> rgb {
 }
 
 /// Brighten a colour.
-pub unsafe fn brighter(pixel: rgb) -> rgb {
+pub fn brighter(pixel: rgb) -> rgb {
     if getalpha(pixel) > 0x7F {
         return Transparent;
     }

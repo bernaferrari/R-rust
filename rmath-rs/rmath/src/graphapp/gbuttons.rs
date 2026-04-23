@@ -55,11 +55,11 @@ pub unsafe fn gsetcursor(d: drawing, c: cursor) {
     drawing_state::setcursor(c);
 }
 
-pub unsafe fn newtoolbar(_height: c_int) -> control {
+pub fn newtoolbar(_height: c_int) -> control {
     ptr::null_mut()
 }
 
-pub unsafe fn newtoolbutton(_img: image, _r: rect, _fn_: actionfn) -> button {
+pub fn newtoolbutton(_img: image, _r: rect, _fn_: actionfn) -> button {
     ptr::null_mut()
 }
 

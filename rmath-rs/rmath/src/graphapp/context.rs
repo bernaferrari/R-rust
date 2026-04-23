@@ -22,14 +22,12 @@ thread_local! {
     static CONTEXTS: RefCell<Vec<ContextEntry>> = RefCell::new(Vec::new());
 }
 
-pub unsafe fn init_contexts() {
+pub fn init_contexts() {
     CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
 }
 
-pub unsafe fn finish_contexts() {
-    unsafe {
-        del_all_contexts();
-    }
+pub fn finish_contexts() {
+    del_all_contexts();
 }
 
 pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
@@ -81,7 +79,7 @@ pub unsafe fn del_context(obj: object) {
     });
 }
 
-pub unsafe fn del_all_contexts() {
+pub fn del_all_contexts() {
     CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
 }
 
