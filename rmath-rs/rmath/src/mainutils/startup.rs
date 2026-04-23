@@ -16,6 +16,7 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
+use std::sync::atomic::{AtomicPtr, Ordering};
 
 use libc::FILE;
 
@@ -37,17 +38,17 @@ fn cstr_to_string(ptr: *const c_char) -> Option<String> {
 // Workspace management (minimal subset, kept deliberately simple)
 // ---------------------------------------------------------------------------
 
-static mut WORKSPACE_NAME: *mut c_char = ptr::null_mut();
+static WORKSPACE_NAME: AtomicPtr<c_char> = AtomicPtr::new(ptr::null_mut());
 static DEFAULT_WORKSPACE_BYTES: &[u8] = b".RData\0";
 
 // Get current workspace name (as C string pointer).
 pub unsafe fn get_workspace_name() -> *const c_char {
     unsafe {
-        if WORKSPACE_NAME.is_null() {
-            // Default value as in the original C source
+        let ptr = WORKSPACE_NAME.load(Ordering::Relaxed);
+        if ptr.is_null() {
             DEFAULT_WORKSPACE_BYTES.as_ptr() as *const c_char
         } else {
-            WORKSPACE_NAME
+            ptr as *const c_char
         }
     }
 }
@@ -59,10 +60,8 @@ pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool {
             return false;
         }
         if let Ok(new_name) = CStr::from_ptr(fn_ptr).to_str() {
-            // Free previous if needed (best-effort; we leak here to keep it simple and
-            // avoid unsafe deallocation semantics around lifetime management in this port).
             let cs = CString::new(new_name).unwrap_or_default();
-            WORKSPACE_NAME = cs.into_raw();
+            WORKSPACE_NAME.store(cs.into_raw(), Ordering::Relaxed);
             true
         } else {
             false

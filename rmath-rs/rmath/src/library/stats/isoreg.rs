@@ -3,8 +3,7 @@
     unused_imports,
     unused_variables,
     unused_assignments,
-    non_camel_case_types,
-    unsafe_op_in_unsafe_fn
+    non_camel_case_types
 )]
 /* --- Isotonic regression ---
  * code simplified from VR_mds_fn() which is part of MASS.c,

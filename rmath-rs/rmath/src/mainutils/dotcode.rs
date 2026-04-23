@@ -371,7 +371,7 @@ unsafe fn checkValidSymbolId(
 // ---------------------------------------------------------------------------
 
 /// Called from the R-level .Call2() implementation.
-pub unsafe fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
+pub fn R_dotCallFn(op: SEXP, call: SEXP, _nargs: c_int) -> DL_FUNC {
     unsafe {
         let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
         let mut fun: DL_FUNC = None;
@@ -657,17 +657,18 @@ unsafe fn resolveNativeRoutine(
 
 unsafe fn check_retval(call: SEXP, val: SEXP) -> SEXP {
     unsafe {
-        static mut CHECK_INIT: bool = false;
-        static mut DO_CHECK: bool = false;
+        use std::sync::atomic::{AtomicBool, Ordering};
+        static CHECK_INIT: AtomicBool = AtomicBool::new(false);
+        static DO_CHECK: AtomicBool = AtomicBool::new(false);
 
-        if !CHECK_INIT {
-            CHECK_INIT = true;
+        if !CHECK_INIT.load(Ordering::Relaxed) {
+            CHECK_INIT.store(true, Ordering::Relaxed);
             if let Ok(p) = std::env::var("_R_CHECK_DOTCODE_RETVAL_") {
-                DO_CHECK = p == "TRUE" || p == "true" || p == "1" || p == "yes";
+                DO_CHECK.store(p == "TRUE" || p == "true" || p == "1" || p == "yes", Ordering::Relaxed);
             }
         }
 
-        if DO_CHECK {
+        if DO_CHECK.load(Ordering::Relaxed) {
             if (val as usize) < 16 {
                 errorcall(call, &format!("WEIRD RETURN VALUE: {:?}", val));
             }
@@ -844,7 +845,7 @@ unsafe fn dispatch_dotcode(fun: DL_FUNC, args: &[*mut c_void], call: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Core .Call dispatch: invokes a native function returning SEXP with 0..MAX_ARGS arguments.
-pub unsafe fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SEXP {
+pub fn R_doDotCall(fun: DL_FUNC, nargs: c_int, cargs: &[SEXP], call: SEXP) -> SEXP {
     unsafe {
         if fun.is_none() {
             return R_NilValue();

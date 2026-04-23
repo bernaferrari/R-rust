@@ -460,11 +460,11 @@ pub const Lime: rgb = 0x0080FF00;
 // Point and rectangle arithmetic
 // ============================================================
 
-pub unsafe fn newpoint(x: c_int, y: c_int) -> point {
+pub fn newpoint(x: c_int, y: c_int) -> point {
     point { x, y }
 }
 
-pub unsafe fn newrect(left: c_int, top: c_int, width: c_int, height: c_int) -> rect {
+pub fn newrect(left: c_int, top: c_int, width: c_int, height: c_int) -> rect {
     rect {
         x: left,
         y: top,
@@ -473,7 +473,7 @@ pub unsafe fn newrect(left: c_int, top: c_int, width: c_int, height: c_int) -> r
     }
 }
 
-pub unsafe fn rpt(min: point, max: point) -> rect {
+pub fn rpt(min: point, max: point) -> rect {
     rect {
         x: min.x,
         y: min.y,
@@ -482,67 +482,67 @@ pub unsafe fn rpt(min: point, max: point) -> rect {
     }
 }
 
-pub unsafe fn topleft(r: rect) -> point {
+pub fn topleft(r: rect) -> point {
     point { x: r.x, y: r.y }
 }
 
-pub unsafe fn bottomright(r: rect) -> point {
+pub fn bottomright(r: rect) -> point {
     point {
         x: r.x + r.width,
         y: r.y + r.height,
     }
 }
 
-pub unsafe fn topright(r: rect) -> point {
+pub fn topright(r: rect) -> point {
     point {
         x: r.x + r.width,
         y: r.y,
     }
 }
 
-pub unsafe fn bottomleft(r: rect) -> point {
+pub fn bottomleft(r: rect) -> point {
     point {
         x: r.x,
         y: r.y + r.height,
     }
 }
 
-pub unsafe fn addpt(p1: point, p2: point) -> point {
+pub fn addpt(p1: point, p2: point) -> point {
     point {
         x: p1.x + p2.x,
         y: p1.y + p2.y,
     }
 }
 
-pub unsafe fn subpt(p1: point, p2: point) -> point {
+pub fn subpt(p1: point, p2: point) -> point {
     point {
         x: p1.x - p2.x,
         y: p1.y - p2.y,
     }
 }
 
-pub unsafe fn midpt(p1: point, p2: point) -> point {
+pub fn midpt(p1: point, p2: point) -> point {
     point {
         x: (p1.x + p2.x) / 2,
         y: (p1.y + p2.y) / 2,
     }
 }
 
-pub unsafe fn mulpt(p1: point, i: c_int) -> point {
+pub fn mulpt(p1: point, i: c_int) -> point {
     point {
         x: p1.x * i,
         y: p1.y * i,
     }
 }
 
-pub unsafe fn divpt(p1: point, i: c_int) -> point {
+pub fn divpt(p1: point, i: c_int) -> point {
     point {
         x: p1.x / i,
         y: p1.y / i,
     }
 }
 
-pub unsafe fn rmove(r: rect, p: point) -> rect {
+pub fn rmove(r: rect, p: point) -> rect {
     rect {
         x: r.x + p.x,
         y: r.y + p.y,
@@ -550,11 +550,11 @@ pub unsafe fn rmove(r: rect, p: point) -> rect {
     }
 }
 
-pub unsafe fn raddpt(r: rect, p: point) -> rect {
-    unsafe { rmove(r, p) }
+pub fn raddpt(r: rect, p: point) -> rect {
+    rmove(r, p)
 }
 
-pub unsafe fn rsubpt(r: rect, p: point) -> rect {
+pub fn rsubpt(r: rect, p: point) -> rect {
     rect {
         x: r.x - p.x,
         y: r.y - p.y,
@@ -562,7 +562,7 @@ pub unsafe fn rsubpt(r: rect, p: point) -> rect {
     }
 }
 
-pub unsafe fn rmul(r: rect, i: c_int) -> rect {
+pub fn rmul(r: rect, i: c_int) -> rect {
     rect {
         x: r.x * i,
         y: r.y * i,
@@ -571,7 +571,7 @@ pub unsafe fn rmul(r: rect, i: c_int) -> rect {
     }
 }
 
-pub unsafe fn rdiv(r: rect, i: c_int) -> rect {
+pub fn rdiv(r: rect, i: c_int) -> rect {
     rect {
         x: r.x / i,
         y: r.y / i,

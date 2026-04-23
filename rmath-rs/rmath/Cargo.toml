@@ -5,8 +5,14 @@ edition = "2024"
 description = "Rust port of R's nmath statistical library"
 
 [lib]
-crate-type = ["rlib", "staticlib"]
+crate-type = ["rlib", "staticlib", "cdylib"]
 name = "rmath"
+
+[build-dependencies]
+uniffi = { version = "0.28", features = ["build"] }
+
+[dev-dependencies]
+uniffi = { version = "0.28", features = ["cli"] }
 
 [features]
 default = ["rust-backend"]
@@ -27,5 +33,8 @@ lzma-rs = "0.3"
 # Pure Rust linear algebra backend (enabled via rust-backend feature)
 faer = { version = "0.24", optional = true }
 
+uniffi = { version = "0.28" }
+
 [[bench]]
 name = "bench_eval"
+harness = false

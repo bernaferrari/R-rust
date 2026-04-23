@@ -1,8 +1,7 @@
 #![allow(
     non_snake_case,
     non_camel_case_types,
-    dead_code,
-    unsafe_op_in_unsafe_fn
+    dead_code
 )]
 
 use std::ffi::{CStr, CString, c_void};

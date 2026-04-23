@@ -535,18 +535,18 @@ fn draw_image_into_rect(d: drawing, img: image, dr: rect, sr: rect, mask: Option
     }
 }
 
-pub unsafe fn ggetcliprect(d: drawing) -> rect {
+pub fn ggetcliprect(d: drawing) -> rect {
     with_state(d, |state| get_clip(d, state).unwrap_or_default())
 }
 
-pub unsafe fn gsetcliprect(d: drawing, r: rect) {
+pub fn gsetcliprect(d: drawing, r: rect) {
     if d.is_null() {
         return;
     }
     with_state_mut(d, |state| state.clip = rect_bounds(r).map(|_| normalized_rect(r)));
 }
 
-pub unsafe fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
+pub fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
     let Some((x0, y0, x1, y1)) = rect_bounds(r) else {
         return;
     };
@@ -565,7 +565,7 @@ pub unsafe fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
     }
 }
 
-pub unsafe fn gscroll(d: drawing, dp: point, r: rect) {
+pub fn gscroll(d: drawing, dp: point, r: rect) {
     if d.is_null() {
         return;
     }
@@ -585,7 +585,7 @@ pub unsafe fn gscroll(d: drawing, dp: point, r: rect) {
     });
 }
 
-pub unsafe fn ginvert(d: drawing, r: rect) {
+pub fn ginvert(d: drawing, r: rect) {
     let Some((x0, y0, x1, y1)) = rect_bounds(r) else {
         return;
     };
@@ -597,15 +597,15 @@ pub unsafe fn ginvert(d: drawing, r: rect) {
     }
 }
 
-pub unsafe fn ggetpixel(d: drawing, p: point) -> rgb {
+pub fn ggetpixel(d: drawing, p: point) -> rgb {
     get_pixel_state(d, p.x, p.y)
 }
 
-pub unsafe fn gsetpixel(d: drawing, p: point, c: rgb) {
+pub fn gsetpixel(d: drawing, p: point, c: rgb) {
     set_pixel_if_visible(d, p.x, p.y, c);
 }
 
-pub unsafe fn gdrawline(
+pub fn gdrawline(
     d: drawing,
     width: c_int,
     _style: c_int,
@@ -620,7 +620,7 @@ pub unsafe fn gdrawline(
     draw_line_segment(d, width.max(1), c, p1, p2);
 }
 
-pub unsafe fn gdrawrect(
+pub fn gdrawrect(
     d: drawing,
     width: c_int,
     _style: c_int,
@@ -634,12 +634,12 @@ pub unsafe fn gdrawrect(
     draw_rect_outline(d, width.max(1), c, r);
 }
 
-pub unsafe fn gfillrect(d: drawing, fill: rgb, r: rect) {
+pub fn gfillrect(d: drawing, fill: rgb, r: rect) {
     fill_rect_pixels(d, r, fill);
 }
 
-pub unsafe fn gcopy(d: drawing, d2: drawing, r: rect) {
-    unsafe { gbitblt(d, d2, point { x: r.x, y: r.y }, r) };
+pub fn gcopy(d: drawing, d2: drawing, r: rect) {
+    gbitblt(d, d2, point { x: r.x, y: r.y }, r);
 }
 
 pub unsafe fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
@@ -648,15 +648,15 @@ pub unsafe fn gcopyalpha(d: drawing, d2: drawing, r: rect, alpha: c_int) {
     };
     for y in y0..y1 {
         for x in x0..x1 {
-            let src = unsafe { ggetpixel(d2, point { x, y }) };
-            let dst = unsafe { ggetpixel(d, point { x, y }) };
+            let src = ggetpixel(d2, point { x, y });
+            let dst = ggetpixel(d, point { x, y });
             set_pixel_if_visible(d, x, y, blend_rgb(dst, src, alpha));
         }
     }
 }
 
-pub unsafe fn gcopyalpha2(d: drawing, src: image, r: rect) {
-    unsafe { gdrawimage(
+pub fn gcopyalpha2(d: drawing, src: image, r: rect) {
+    gdrawimage(
         d,
         src,
         r,
@@ -666,10 +666,10 @@ pub unsafe fn gcopyalpha2(d: drawing, src: image, r: rect) {
             width: r.width,
             height: r.height,
         },
-    ) };
+    );
 }
 
-pub unsafe fn gdrawellipse(
+pub fn gdrawellipse(
     d: drawing,
     width: c_int,
     border: rgb,
@@ -682,7 +682,7 @@ pub unsafe fn gdrawellipse(
     draw_ellipse_impl(d, width.max(1), border, r, false);
 }
 
-pub unsafe fn gfillellipse(d: drawing, fill: rgb, r: rect) {
+pub fn gfillellipse(d: drawing, fill: rgb, r: rect) {
     draw_ellipse_impl(d, 1, fill, r, true);
 }
 
@@ -726,7 +726,7 @@ pub unsafe fn gdrawpolygon(
     unsafe { gdrawpolyline(d, width, style, c, p, n, 1, fast, lend, ljoin, lmitre) };
 }
 
-pub unsafe fn gsetpolyfillmode(d: drawing, oddeven: c_int) {
+pub fn gsetpolyfillmode(d: drawing, oddeven: c_int) {
     if d.is_null() {
         return;
     }
@@ -763,11 +763,11 @@ pub unsafe fn gfillpolypolygon(
     }
 }
 
-pub unsafe fn gdrawimage(d: drawing, img: image, dr: rect, sr: rect) {
+pub fn gdrawimage(d: drawing, img: image, dr: rect, sr: rect) {
     draw_image_into_rect(d, img, dr, sr, None);
 }
 
-pub unsafe fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
+pub fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
     draw_image_into_rect(d, img, dr, sr, Some(mask));
 }
 

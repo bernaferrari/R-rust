@@ -4,8 +4,7 @@
     unused_variables,
     unused_mut,
     unused_assignments,
-    non_camel_case_types,
-    unsafe_op_in_unsafe_fn
+    non_camel_case_types
 )]
 
 use std::os::raw::c_int;

@@ -2,8 +2,7 @@
     non_snake_case,
     non_upper_case_globals,
     dead_code,
-    unused_variables,
-    unsafe_op_in_unsafe_fn
+    unused_variables
 )]
 
 //! Special form implementations — ports R's special functions from eval.c.

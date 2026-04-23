@@ -1,6 +1,5 @@
 //! R library packages
 
-#![allow(unsafe_op_in_unsafe_fn)]
 #![allow(unused_doc_comments)]
 #![allow(unused_attributes)]
 

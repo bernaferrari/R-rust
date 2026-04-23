@@ -1,5 +1,4 @@
 #![allow(
-    unsafe_op_in_unsafe_fn,
     dead_code,
     unused_imports,
     unused_variables,

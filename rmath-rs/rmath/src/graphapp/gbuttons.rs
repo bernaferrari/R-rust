@@ -71,7 +71,7 @@ pub unsafe fn scrolltext(c: textbox, lines: c_int) {
     }
 }
 
-pub unsafe fn ggetkeystate() -> c_int {
+pub fn ggetkeystate() -> c_int {
     unsafe { events::getkeystate() }
 }
 
@@ -175,7 +175,7 @@ pub unsafe fn checklimittext(t: textbox, n: c_long) {
     }
 }
 
-pub unsafe fn getpastelength() -> c_long {
+pub fn getpastelength() -> c_long {
     0
 }
 
@@ -206,7 +206,7 @@ pub unsafe fn finddialog(_t: textbox) {}
 
 pub unsafe fn replacedialog(_t: textbox) {}
 
-pub unsafe fn modeless_active() -> c_int {
+pub fn modeless_active() -> c_int {
     0
 }
 

@@ -3,8 +3,7 @@
     unused_imports,
     unused_variables,
     unused_assignments,
-    non_camel_case_types,
-    unsafe_op_in_unsafe_fn
+    non_camel_case_types
 )]
 /*
  *  R : A Computer Language for Statistical Data Analysis

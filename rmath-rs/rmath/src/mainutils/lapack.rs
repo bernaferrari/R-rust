@@ -7,6 +7,7 @@
 
 use std::os::raw::c_void;
 use std::ptr;
+use std::sync::Mutex;
 
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
@@ -26,20 +27,19 @@ unsafe fn checkArity(op: SEXP, args: SEXP) {
 /// Function pointer type for the LAPACK dispatch function.
 type LapackFn = Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>;
 
-static mut LAPACK_DISPATCH: LapackFn = None;
+static LAPACK_DISPATCH: Mutex<LapackFn> = Mutex::new(None);
 
 pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
     unsafe {
-        let old = LAPACK_DISPATCH;
+        let mut guard = LAPACK_DISPATCH.lock().unwrap_or_else(|e| e.into_inner());
+        let old = *guard;
         if !routines.is_null() {
-            // In C, routines is a pointer to a struct whose first field is the dispatch fn.
-            // We store the function pointer directly.
-            LAPACK_DISPATCH = Some(std::mem::transmute::<
+            *guard = Some(std::mem::transmute::<
                 *const c_void,
                 unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP,
             >(routines));
         } else {
-            LAPACK_DISPATCH = None;
+            *guard = None;
         }
         match old {
             Some(f) => f as *const c_void,
@@ -53,11 +53,13 @@ pub unsafe fn R_setLapackRoutines(routines: *const c_void) -> *const c_void {
 // ---------------------------------------------------------------------------
 
 /// .Internal(lapack(...)) -- dispatch to the LAPACK module.
-pub unsafe fn do_lapack(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+pub fn do_lapack(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        // LAPACK module not loaded in the Rust port.
-        // The C code calls error() when module initialization fails.
-        R_NilValue()
+        let guard = LAPACK_DISPATCH.lock().unwrap_or_else(|e| e.into_inner());
+        match *guard {
+            Some(f) => f(call, op, args, rho),
+            None => R_NilValue(),
+        }
     }
 }
 
