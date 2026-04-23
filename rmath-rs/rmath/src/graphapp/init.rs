@@ -20,11 +20,11 @@ pub unsafe fn get_app_name() -> *mut c_char {
     APP_NAME.with(|v| v.get())
 }
 
-pub unsafe fn get_app_initialised() -> c_int {
+pub fn get_app_initialised() -> c_int {
     APP_INITIALISED.with(|v| v.get())
 }
 
-pub unsafe fn set_app_initialised(val: c_int) {
+pub fn set_app_initialised(val: c_int) {
     APP_INITIALISED.with(|v| v.set(val));
 }
 
@@ -61,14 +61,12 @@ pub unsafe fn exitapp() {
     }
 }
 
-pub unsafe fn gabeep() {
+pub fn gabeep() {
     eprint!("\x07");
 }
 
-pub unsafe fn gamainloop() {
-    unsafe {
-        events::mainloop();
-    }
+pub fn gamainloop() {
+    events::mainloop();
 }
 
 pub unsafe fn startgraphapp(instance: *mut c_void, previous_instance: *mut c_void, _cmd_show: c_int) {
