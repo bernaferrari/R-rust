@@ -539,7 +539,7 @@ pub unsafe fn newradiobutton(text: *const c_char, r: rect, fn_: actionfn) -> rad
         button
     }
 }
-pub unsafe fn newradiogroup() -> radiogroup {
+pub fn newradiogroup() -> radiogroup {
     unsafe { new_control_object(RadiogroupObject, ptr::null(), rect::default(), false) }
 }
 pub unsafe fn newscrollbar(r: rect, max: c_int, pagesize: c_int, _fn_: scrollfn) -> scrollbar {
