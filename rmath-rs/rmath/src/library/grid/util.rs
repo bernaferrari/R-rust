@@ -141,7 +141,7 @@ pub unsafe fn copyRect(r1: LRect, r: *mut LRect) {
 
 /// Do two lines intersect?
 /// Algorithm from Paul Bourke.
-pub unsafe fn linesIntersect(
+pub fn linesIntersect(
     x1: c_double,
     x2: c_double,
     x3: c_double,

@@ -90,7 +90,7 @@ const CE_SYMBOL: c_int = 2;
 
 /// R_Log10 -- compute base-10 logarithm, returning NA_REAL for
 /// non-positive or non-finite input.
-pub unsafe fn R_Log10(x: c_double) -> c_double {
+pub fn R_Log10(x: c_double) -> c_double {
     if x.is_finite() && x > 0.0 {
         x.log10()
     } else {

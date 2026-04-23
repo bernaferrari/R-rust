@@ -994,13 +994,13 @@ thread_local! { static R_BCIntActive: Cell<c_int> = Cell::new(0); }
 
 /// Get whether the bytecode interpreter is active.
 #[inline]
-pub unsafe fn get_R_BCIntActive() -> c_int {
+pub fn get_R_BCIntActive() -> c_int {
     R_BCIntActive.with(|v| v.get())
 }
 
 /// Set whether the bytecode interpreter is active.
 #[inline]
-pub unsafe fn set_R_BCIntActive(val: c_int) {
+pub fn set_R_BCIntActive(val: c_int) {
     R_BCIntActive.with(|v| v.set(val))
 }
 

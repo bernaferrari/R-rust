@@ -32,7 +32,7 @@ unsafe fn error(_msg: *const c_char) {}
 // ---------------------------------------------------------------------------
 
 /// Check whether X11 is available.
-pub unsafe fn R_access_X11() -> c_int {
+pub fn R_access_X11() -> c_int {
     0 // FALSE
 }
 

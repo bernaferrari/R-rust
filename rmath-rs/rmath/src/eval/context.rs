@@ -429,16 +429,14 @@ pub unsafe fn do_sysbrowser(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 // R_run_onexits — run on.exit handlers (stub — full impl needs eval)
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_run_onexits() {}
+pub fn R_run_onexits() {}
 
 // ---------------------------------------------------------------------------
 // eval_CleanUp — cleanup on error or normal exit
 // ---------------------------------------------------------------------------
 
-pub unsafe fn eval_CleanUp(_sa: c_int, _status: c_int, _RunLast: c_int) {
-    unsafe {
-        R_run_onexits();
-    }
+pub fn eval_CleanUp(_sa: c_int, _status: c_int, _RunLast: c_int) {
+    R_run_onexits();
 }
 
 // ---------------------------------------------------------------------------
@@ -455,7 +453,7 @@ pub unsafe fn R_jumpctxt(_ctxt: *mut RCNTXT, _retval: c_int) {
 // R_jump_to_top — jump to the top-level context
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_jump_to_top() {
+pub fn R_jump_to_top() {
     std::panic::panic_any(crate::sexp::context::RError {
         message: "jump_to_top".to_string(),
     });

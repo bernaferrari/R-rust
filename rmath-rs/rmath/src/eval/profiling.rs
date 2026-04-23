@@ -129,7 +129,7 @@ thread_local! { static R_Srcfiles_buffer: Cell<SEXP> = Cell::new(ptr::null_mut()
 // ---------------------------------------------------------------------------
 
 /// Check whether R profiling is currently active.
-pub unsafe fn R_Profiling_active() -> c_int {
+pub fn R_Profiling_active() -> c_int {
     R_Profiling.with(|v| v.get())
 }
 
@@ -138,7 +138,7 @@ pub unsafe fn R_Profiling_active() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// Check if R profiling is enabled (public API).
-pub unsafe fn R_isRprofiling() -> c_int {
+pub fn R_isRprofiling() -> c_int {
     R_Profiling.with(|v| v.get())
 }
 
@@ -1332,7 +1332,7 @@ pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 /// Write current profiling sample to the output file.
 ///
 /// Ported from R's `R_WriteProfile()` in eval.c.
-pub unsafe fn R_WriteProfile(_out: c_int) {
+pub fn R_WriteProfile(_out: c_int) {
     // Stub: used by external profiling tools
 }
 

@@ -446,27 +446,27 @@ pub unsafe fn R_CheckJIT(op: SEXP) -> c_int {
 }
 
 /// Get whether JIT is enabled.
-pub unsafe fn get_R_jit_enabled() -> c_int {
+pub fn get_R_jit_enabled() -> c_int {
     R_jit_enabled.with(|v| v.get())
 }
 
 /// Set whether JIT is enabled.
-pub unsafe fn set_R_jit_enabled(val: c_int) {
+pub fn set_R_jit_enabled(val: c_int) {
     R_jit_enabled.with(|v| v.set(val));
 }
 
 /// Get whether to compile packages.
-pub unsafe fn get_R_compile_pkgs() -> c_int {
+pub fn get_R_compile_pkgs() -> c_int {
     R_compile_pkgs.with(|v| v.get())
 }
 
 /// Get whether bytecode is disabled.
-pub unsafe fn get_R_disable_bytecode() -> c_int {
+pub fn get_R_disable_bytecode() -> c_int {
     R_disable_bytecode.with(|v| v.get())
 }
 
 /// Get the constant checking level.
-pub unsafe fn get_R_check_constants() -> c_int {
+pub fn get_R_check_constants() -> c_int {
     R_check_constants.with(|v| v.get())
 }
 

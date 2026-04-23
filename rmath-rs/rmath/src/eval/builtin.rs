@@ -107,7 +107,7 @@ pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
 /// Initialize the builtin function slots.
 ///
 /// This is the equivalent of R's `R_InitBuiltinSlots()`.
-pub unsafe fn R_InitBuiltinSlots() {
+pub fn R_InitBuiltinSlots() {
     // In the full implementation, this walks R_FunTab and
     // creates SPECIALSXP/BUILTINSXP nodes for each entry.
     // For now, this is a stub.

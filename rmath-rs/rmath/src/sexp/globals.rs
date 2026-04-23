@@ -187,27 +187,27 @@ thread_local! {
 }
 
 /// Get the current R_Visible flag.
-pub unsafe fn R_Visible() -> c_int {
+pub fn R_Visible() -> c_int {
     R_VISIBLE.with(|v| v.get())
 }
 
 /// Set the R_Visible flag.
-pub unsafe fn set_R_Visible(v: c_int) {
+pub fn set_R_Visible(v: c_int) {
     R_VISIBLE.with(|vis| vis.set(v));
 }
 
 /// Get the current evaluation depth.
-pub unsafe fn R_EvalDepth() -> c_int {
+pub fn R_EvalDepth() -> c_int {
     R_EVAL_DEPTH.with(|d| d.get())
 }
 
 /// Set the evaluation depth.
-pub unsafe fn set_R_EvalDepth(d: c_int) {
+pub fn set_R_EvalDepth(d: c_int) {
     R_EVAL_DEPTH.with(|depth| depth.set(d));
 }
 
 /// Get the evaluation depth limit.
-pub unsafe fn R_EvalDepthLimit() -> c_int {
+pub fn R_EvalDepthLimit() -> c_int {
     R_EVAL_DEPTH_LIMIT.with(|d| d.get())
 }
 
