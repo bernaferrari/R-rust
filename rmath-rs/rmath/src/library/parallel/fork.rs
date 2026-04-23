@@ -548,6 +548,17 @@ pub unsafe fn mc_cleanup(sKill: SEXP, sDetach: SEXP, sShutdown: SEXP) -> SEXP {
 ///   [2] = file descriptor of the child-stdin pipe (master->child)
 #[cfg(unix)]
 pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
+    #[cfg(target_os = "android")]
+    {
+        let _ = sEstranged;
+        crate::main::errors::Rf_error(
+            b"forking is not available on Android\0".as_ptr() as *const c_char
+        );
+        return R_NilValue();
+    }
+
+    #[cfg(not(target_os = "android"))]
+    {
     use crate::main::coerce::asInteger;
 
     let mut pipefd: [c_int; 2] = [-1, -1]; // write end, read end
@@ -660,6 +671,7 @@ pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
     }
 
     res
+    }
 }
 
 /// Close or redirect stdout.

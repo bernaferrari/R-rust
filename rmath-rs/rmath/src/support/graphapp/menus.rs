@@ -109,7 +109,7 @@ unsafe fn trigger_menu_item(item: menuitem) {
     });
 }
 
-pub unsafe fn init_menus() {
+pub fn init_menus() {
     CURRENT_MENUBAR.with(|current| current.set(ptr::null_mut()));
     CURRENT_MENU.with(|current| current.set(ptr::null_mut()));
     NEXT_MENU_ID.with(|next| next.set(MinMenuID as c_int));

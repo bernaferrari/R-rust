@@ -22,37 +22,33 @@ struct TimerState {
     pending: bool,
 }
 
-pub unsafe fn init_events() {
+pub fn init_events() {
     KEYSTATE.with(|state| state.set(0));
     TIMER_STATE.with(|state| *state.borrow_mut() = TimerState::default());
 }
 
-pub unsafe fn finish_events() {
+pub fn finish_events() {
     TIMER_STATE.with(|state| *state.borrow_mut() = TimerState::default());
 }
 
 pub unsafe fn handle_control(_hwnd: *mut c_void, _message: c_uint) {}
 
-pub unsafe fn getkeystate() -> c_int {
+pub fn getkeystate() -> c_int {
     KEYSTATE.with(|v| v.get())
 }
 
-pub unsafe fn drawall() {}
+pub fn drawall() {}
 
-pub unsafe fn peekevent() -> c_int {
+pub fn peekevent() -> c_int {
     TIMER_STATE.with(|state| i32::from(state.borrow().pending))
 }
 
 pub unsafe fn waitevent() {
     let millisec = TIMER_STATE.with(|state| state.borrow().millisec);
     if millisec > 0 {
-        unsafe {
-            delay(millisec);
-        }
+        delay(millisec);
     }
-    unsafe {
-        doevent();
-    }
+    doevent();
 }
 
 pub unsafe fn doevent() -> c_int {
@@ -76,10 +72,8 @@ pub unsafe fn doevent() -> c_int {
 }
 
 pub unsafe fn mainloop() {
-    while unsafe { peekevent() } != 0 {
-        unsafe {
-            waitevent();
-        }
+    while peekevent() != 0 {
+        waitevent();
     }
 }
 
@@ -87,7 +81,7 @@ pub unsafe fn execapp(_cmd: *mut std::os::raw::c_char) -> c_int {
     0
 }
 
-pub unsafe fn settimer(millisec: c_uint) -> c_int {
+pub fn settimer(millisec: c_uint) -> c_int {
     TIMER_STATE.with(|state| {
         let mut state = state.borrow_mut();
         state.millisec = millisec;
@@ -105,17 +99,17 @@ pub unsafe fn settimerfn(timeout: timerfn, data: *mut c_void) {
     });
 }
 
-pub unsafe fn setmousetimer(millisec: c_uint) -> c_int {
-    unsafe { settimer(millisec) }
+pub fn setmousetimer(millisec: c_uint) -> c_int {
+    settimer(millisec)
 }
 
-pub unsafe fn delay(millisec: c_uint) {
+pub fn delay(millisec: c_uint) {
     if millisec > 0 {
         std::thread::sleep(Duration::from_millis(u64::from(millisec)));
     }
 }
 
-pub unsafe fn currenttime() -> c_long {
+pub fn currenttime() -> c_long {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -123,9 +117,9 @@ pub unsafe fn currenttime() -> c_long {
         .min(c_long::MAX as u128) as c_long
 }
 
-pub unsafe fn toolbar_show() {}
+pub fn toolbar_show() {}
 
-pub unsafe fn toolbar_hide() {}
+pub fn toolbar_hide() {}
 
 #[cfg(test)]
 mod tests {
@@ -140,26 +134,22 @@ mod tests {
 
     #[test]
     fn timer_callback_runs_once_per_scheduled_event() {
-        unsafe {
-            init_events();
-            TIMER_CALLS.with(|calls| calls.set(0));
+        init_events();
+        TIMER_CALLS.with(|calls| calls.set(0));
 
-            settimerfn(Some(record_timer), std::ptr::null_mut());
-            assert_eq!(peekevent(), 0);
+        unsafe { settimerfn(Some(record_timer), std::ptr::null_mut()); }
+        assert_eq!(peekevent(), 0);
 
-            assert_eq!(settimer(1), 1);
-            assert_eq!(peekevent(), 1);
-            assert_eq!(doevent(), 1);
-            assert_eq!(peekevent(), 0);
+        assert_eq!(settimer(1), 1);
+        assert_eq!(peekevent(), 1);
+        assert_eq!(doevent(), 1);
+        assert_eq!(peekevent(), 0);
 
-            TIMER_CALLS.with(|calls| assert_eq!(calls.get(), 1));
-        }
+        TIMER_CALLS.with(|calls| assert_eq!(calls.get(), 1));
     }
 
     #[test]
     fn currenttime_is_nonzero() {
-        unsafe {
-            assert!(currenttime() > 0);
-        }
+        assert!(currenttime() > 0);
     }
 }

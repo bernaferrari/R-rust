@@ -27,7 +27,7 @@ fn ensure_cursor(slot: &Cell<cursor>) {
     }
 }
 
-pub unsafe fn init_cursors() {
+pub fn init_cursors() {
     ArrowCursor.with(ensure_cursor);
     BlankCursor.with(ensure_cursor);
     WatchCursor.with(ensure_cursor);

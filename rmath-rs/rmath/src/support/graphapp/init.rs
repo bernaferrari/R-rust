@@ -24,11 +24,11 @@ pub unsafe fn get_app_name() -> *mut c_char {
     APP_NAME.with(|v| v.get())
 }
 
-pub unsafe fn get_app_initialised() -> c_int {
+pub fn get_app_initialised() -> c_int {
     APP_INITIALISED.with(|v| v.get())
 }
 
-pub unsafe fn set_app_initialised(val: c_int) {
+pub fn set_app_initialised(val: c_int) {
     APP_INITIALISED.with(|v| v.set(val));
 }
 

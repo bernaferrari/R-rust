@@ -57,7 +57,7 @@ pub unsafe fn getstringfromclipboard(str_: *mut std::os::raw::c_char, n: c_int) 
     })
 }
 
-pub unsafe fn clipboardhastext() -> c_int {
+pub fn clipboardhastext() -> c_int {
     CLIPBOARD_TEXT.with(|clipboard| (!clipboard.borrow().is_empty()) as c_int)
 }
 

@@ -94,7 +94,7 @@ pub unsafe fn hide(w: window) {
     }
 }
 
-pub unsafe fn ismdi() -> c_int {
+pub fn ismdi() -> c_int {
     0
 }
 

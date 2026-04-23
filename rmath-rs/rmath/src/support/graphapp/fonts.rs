@@ -54,7 +54,7 @@ pub fn init_fonts() {
     Courier.with(|slot| ensure_font(slot, "Courier", FixedWidth, 10));
 }
 
-pub unsafe fn getSysFontSize() -> c_int {
+pub fn getSysFontSize() -> c_int {
     10
 }
 

@@ -22,14 +22,16 @@ thread_local! {
     static CONTEXTS: RefCell<Vec<ContextEntry>> = RefCell::new(Vec::new());
 }
 
-pub unsafe fn init_contexts() {
+pub fn init_contexts() {
     CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
 }
 
-pub unsafe fn finish_contexts() {
-    unsafe {
-        del_all_contexts();
-    }
+pub fn finish_contexts() {
+    del_all_contexts();
+}
+
+pub fn del_all_contexts() {
+    CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
 }
 
 pub unsafe fn add_context(obj: object, dc: *mut c_void, old: *mut c_void) {
@@ -81,10 +83,6 @@ pub unsafe fn del_context(obj: object) {
     });
 }
 
-pub unsafe fn del_all_contexts() {
-    CONTEXTS.with(|contexts| contexts.borrow_mut().clear());
-}
-
 pub unsafe fn fix_brush(dc: *mut c_void, obj: drawing, brush: *mut c_void) {
     if obj.is_null() || dc.is_null() {
         return;
@@ -106,8 +104,8 @@ mod tests {
         let dc = 2usize as *mut c_void;
         let old = 3usize as *mut c_void;
 
+        init_contexts();
         unsafe {
-            init_contexts();
             add_context(obj, dc, old);
             assert_eq!(get_context(obj), dc);
 
@@ -125,16 +123,15 @@ mod tests {
         let dc = 5usize as *mut c_void;
         let brush = 6usize as *mut c_void;
 
+        init_contexts();
         unsafe {
-            init_contexts();
             fix_brush(dc, obj, brush);
             assert_eq!(get_context(obj), dc);
 
             remove_context(obj);
             assert_eq!(get_context(obj), brush);
-
-            finish_contexts();
-            assert!(get_context(obj).is_null());
         }
+        finish_contexts();
+        assert!(get_context(obj).is_null());
     }
 }
