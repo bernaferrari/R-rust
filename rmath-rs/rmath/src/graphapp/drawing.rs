@@ -39,11 +39,11 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
     }
 }
 
-pub unsafe fn get_current_drawstate() -> &'static drawstruct {
+pub fn get_current_drawstate() -> &'static drawstruct {
     unsafe { CURRENT_DRAWSTATE.with(|v| &*v.as_ptr()) }
 }
 
-pub unsafe fn get_current_drawstate_mut() -> MutPtr<drawstruct> {
+pub fn get_current_drawstate_mut() -> MutPtr<drawstruct> {
     MutPtr(CURRENT_DRAWSTATE.with(|v| v.as_ptr() as *mut drawstruct))
 }
 
@@ -105,35 +105,32 @@ pub extern "C" fn moveto(p: point) {
 /// Draw a line from the current point to the given point.
 pub extern "C" fn lineto(p: point) {
     CURRENT_DRAWSTATE.with(|v| {
-        let ds = v.borrow();
-        unsafe {
-            drawline(ds.p, p);
-        }
+        drawline(v.borrow().p, p);
     });
     CURRENT_DRAWSTATE.with(|v| v.borrow_mut().p = p);
 }
 
 /// Draw a single point.
 pub extern "C" fn drawpoint(p: point) {
-    CURRENT_DRAWSTATE.with(|v| unsafe { setpixel(p, v.borrow().hue) });
+    CURRENT_DRAWSTATE.with(|v| setpixel(p, v.borrow().hue));
 }
 
 /// Draw a line between two points.
-pub unsafe fn drawline(p1: point, p2: point) {
-    let ds = unsafe { get_current_drawstate() };
-    unsafe { gdraw::gdrawline(ds.dest, ds.linewidth, lSolid, ds.hue, p1, p2, 0, 0, 0, 0.0) };
+pub fn drawline(p1: point, p2: point) {
+    let ds = get_current_drawstate();
+    gdraw::gdrawline(ds.dest, ds.linewidth, lSolid, ds.hue, p1, p2, 0, 0, 0, 0.0);
 }
 
 /// Draw a rectangle outline.
-pub unsafe fn drawrect(r: rect) {
-    let ds = unsafe { get_current_drawstate() };
-    unsafe { gdraw::gdrawrect(ds.dest, ds.linewidth, lSolid, ds.hue, r, 0, 0, 0, 0.0) };
+pub fn drawrect(r: rect) {
+    let ds = get_current_drawstate();
+    gdraw::gdrawrect(ds.dest, ds.linewidth, lSolid, ds.hue, r, 0, 0, 0, 0.0);
 }
 
 /// Fill a rectangle.
-pub unsafe fn fillrect(r: rect) {
-    let ds = unsafe { get_current_drawstate() };
-    unsafe { gdraw::gfillrect(ds.dest, ds.hue, r) };
+pub fn fillrect(r: rect) {
+    let ds = get_current_drawstate();
+    gdraw::gfillrect(ds.dest, ds.hue, r);
 }
 
 /// Draw an arc within the bounding rectangle.
@@ -149,29 +146,29 @@ pub fn drawarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 pub fn fillarc(_r: rect, _start_angle: c_int, _end_angle: c_int) {}
 
 /// Draw an ellipse.
-pub unsafe fn drawellipse(r: rect) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn drawellipse(r: rect) {
+    let ds = get_current_drawstate();
     gdraw::gdrawellipse(ds.dest, ds.linewidth, ds.hue, r, 0, 0, 0, 0.0);
 }
 
 /// Fill an ellipse.
-pub unsafe fn fillellipse(r: rect) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn fillellipse(r: rect) {
+    let ds = get_current_drawstate();
     gdraw::gfillellipse(ds.dest, ds.hue, r);
 }
 
 /// Old fillellipse using platform Ellipse function.
-pub unsafe fn oldfillellipse(r: rect) {
+pub fn oldfillellipse(r: rect) {
     fillellipse(r);
 }
 
 /// Draw a rounded rectangle outline.
-pub unsafe fn drawroundrect(r: rect) {
+pub fn drawroundrect(r: rect) {
     drawrect(r);
 }
 
 /// Fill a rounded rectangle.
-pub unsafe fn fillroundrect(r: rect) {
+pub fn fillroundrect(r: rect) {
     fillrect(r);
 }
 
@@ -218,14 +215,14 @@ pub unsafe fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
 }
 
 /// Get a pixel colour.
-pub unsafe fn getpixel(p: point) -> rgb {
-    let ds = unsafe { get_current_drawstate() };
+pub fn getpixel(p: point) -> rgb {
+    let ds = get_current_drawstate();
     gdraw::ggetpixel(ds.dest, p)
 }
 
 /// Set a pixel colour.
-pub unsafe fn setpixel(p: point, c: rgb) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn setpixel(p: point, c: rgb) {
+    let ds = get_current_drawstate();
     gdraw::gsetpixel(ds.dest, p, c);
 }
 
@@ -235,8 +232,8 @@ pub fn bitblt(db: bitmap, sb: bitmap, p: point, r: rect, _mode: c_int) {
 }
 
 /// Scroll a rectangle.
-pub unsafe fn scrollrect(dp: point, r: rect) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn scrollrect(dp: point, r: rect) {
+    let ds = get_current_drawstate();
     gdraw::gscroll(ds.dest, dp, r);
 }
 
@@ -251,14 +248,14 @@ pub fn copyrect(sb: bitmap, p: point, r: rect) {
 pub fn texturerect(_sb: bitmap, _dr: rect) {}
 
 /// Invert a rectangle.
-pub unsafe fn invertrect(r: rect) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn invertrect(r: rect) {
+    let ds = get_current_drawstate();
     gdraw::ginvert(ds.dest, r);
 }
 
 /// Draw an image.
-pub unsafe fn drawimage(img: image, dr: rect, sr: rect) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn drawimage(img: image, dr: rect, sr: rect) {
+    let ds = get_current_drawstate();
     gdraw::gdrawimage(ds.dest, img, dr, sr);
 }
 
@@ -283,14 +280,14 @@ pub fn drawdarker(_img: image, _dr: rect, _sr: rect) {}
 pub fn drawbrighter(_img: image, _dr: rect, _sr: rect) {}
 
 /// Get the clipping rectangle.
-pub unsafe fn getcliprect() -> rect {
-    let ds = unsafe { get_current_drawstate() };
+pub fn getcliprect() -> rect {
+    let ds = get_current_drawstate();
     gdraw::ggetcliprect(ds.dest)
 }
 
 /// Set the clipping rectangle.
-pub unsafe fn setcliprect(r: rect) {
-    let ds = unsafe { get_current_drawstate() };
+pub fn setcliprect(r: rect) {
+    let ds = get_current_drawstate();
     gdraw::gsetcliprect(ds.dest, r);
 }
 

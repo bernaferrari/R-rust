@@ -230,7 +230,7 @@ pub unsafe fn R_WriteConsoleEx(buf: *const c_char, len: c_int, otype: c_int) {
     }
 }
 
-pub unsafe fn R_ResetConsole() {
+pub fn R_ResetConsole() {
     unsafe {
         if let Some(f) = ptr_R_ResetConsole.with(|v| v.get()) {
             f();
@@ -238,7 +238,7 @@ pub unsafe fn R_ResetConsole() {
     }
 }
 
-pub unsafe fn R_FlushConsole() {
+pub fn R_FlushConsole() {
     unsafe {
         if let Some(f) = ptr_R_FlushConsole.with(|v| v.get()) {
             f();
@@ -247,7 +247,7 @@ pub unsafe fn R_FlushConsole() {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe fn R_ClearerrConsole() {
+pub fn R_ClearerrConsole() {
     unsafe {
         if let Some(f) = ptr_R_ClearerrConsole.with(|v| v.get()) {
             f();
@@ -255,7 +255,7 @@ pub unsafe fn R_ClearerrConsole() {
     }
 }
 
-pub unsafe fn R_Busy(which: c_int) {
+pub fn R_Busy(which: c_int) {
     unsafe {
         if let Some(f) = ptr_R_Busy.with(|v| v.get()) {
             f(which);
@@ -318,7 +318,7 @@ pub unsafe fn R_EditFiles(
 // R_setupHistory
 // ---------------------------------------------------------------------------
 
-pub unsafe fn R_setupHistory() {
+pub fn R_setupHistory() {
     let histfile = env::var("R_HISTFILE");
     match histfile {
         Ok(ref s) if !s.is_empty() => {
@@ -338,11 +338,7 @@ pub unsafe fn R_setupHistory() {
     }
 }
 
-// ---------------------------------------------------------------------------
-// R_GetFDLimit / R_EnsureFDLimit
-// ---------------------------------------------------------------------------
-
-pub unsafe fn R_GetFDLimit() -> c_int {
+pub fn R_GetFDLimit() -> c_int {
     unsafe {
         #[cfg(all(unix, not(target_os = "macos")))]
         {
@@ -371,7 +367,7 @@ pub unsafe fn R_GetFDLimit() -> c_int {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe fn R_EnsureFDLimit(desired: c_int) -> c_int {
+pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
     unsafe {
         #[cfg(unix)]
         {
