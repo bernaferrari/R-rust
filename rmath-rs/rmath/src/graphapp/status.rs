@@ -28,10 +28,10 @@ unsafe fn write_status_bytes(text: *const c_char) {
     }
 }
 
-pub unsafe fn addstatusbar() -> c_int {
+pub fn addstatusbar() -> c_int {
     0
 }
-pub unsafe fn delstatusbar() -> c_int {
+pub fn delstatusbar() -> c_int {
     0
 }
 pub unsafe fn setstatus(text: *const c_char) {

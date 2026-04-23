@@ -194,7 +194,7 @@ pub unsafe fn setuserfilter(filter: *const c_char) {
     });
 }
 
-pub unsafe fn askchangedir() {
+pub fn askchangedir() {
     if let Some(path) = env_dialog_input() {
         let _ = env::set_current_dir(path);
     }

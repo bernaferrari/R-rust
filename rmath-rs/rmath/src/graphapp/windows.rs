@@ -94,7 +94,7 @@ pub unsafe fn hide(w: window) {
     }
 }
 
-pub unsafe fn ismdi() -> c_int {
+pub fn ismdi() -> c_int {
     0
 }
 
@@ -112,7 +112,7 @@ pub unsafe fn isUnicodeWindow(obj: object) -> c_int {
     }
 }
 
-pub unsafe fn isiconic(_w: window) -> c_int {
+pub fn isiconic(_w: window) -> c_int {
     0
 }
 
@@ -142,7 +142,7 @@ pub unsafe fn hide_window(obj: object) {
         }
     }
 }
-pub unsafe fn simple_window() -> window {
+pub fn simple_window() -> window {
     unsafe { newwindow(ptr::null(), rect::default(), SimpleWindow as c_long) }
 }
 pub unsafe fn screen_coords(obj: object) -> rect {
