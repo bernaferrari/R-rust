@@ -194,7 +194,7 @@ pub unsafe fn glthread_once_singlethreaded(once_control: *mut gl_once_t) -> c_in
 /// Check whether threads are in use.
 ///
 /// In the standalone port, this always returns 0 (no threads).
-pub unsafe fn glthread_in_use() -> c_int {
+pub fn glthread_in_use() -> c_int {
     0
 }
 

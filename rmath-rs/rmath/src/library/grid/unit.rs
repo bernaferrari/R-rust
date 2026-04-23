@@ -992,7 +992,7 @@ pub unsafe fn transformWidthHeightFromINCHES(
  * NPC conversion helpers
  * ============================== */
 
-pub unsafe fn transformXYtoNPC(x: c_double, from: c_int, min: c_double, max: c_double) -> c_double {
+pub fn transformXYtoNPC(x: c_double, from: c_int, min: c_double, max: c_double) -> c_double {
     match from {
         L_NATIVE => {
             let range = max - min;
@@ -1003,18 +1003,18 @@ pub unsafe fn transformXYtoNPC(x: c_double, from: c_int, min: c_double, max: c_d
     }
 }
 
-pub unsafe fn transformWHtoNPC(x: c_double, from: c_int, min: c_double, max: c_double) -> c_double {
+pub fn transformWHtoNPC(x: c_double, from: c_int, min: c_double, max: c_double) -> c_double {
     match from {
         L_NATIVE => {
             let range = max - min;
             if range == 0.0 { 0.0 } else { x / range }
         }
         L_NPC | L_SNPC => x,
-        _ => x, // Fallback for units that require device-dependent context.
+        _ => x,
     }
 }
 
-pub unsafe fn transformXYfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) -> c_double {
+pub fn transformXYfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) -> c_double {
     match to {
         L_NATIVE => {
             let range = max - min;
@@ -1025,7 +1025,7 @@ pub unsafe fn transformXYfromNPC(x: c_double, to: c_int, min: c_double, max: c_d
     }
 }
 
-pub unsafe fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) -> c_double {
+pub fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) -> c_double {
     match to {
         L_NATIVE => {
             let range = max - min;
