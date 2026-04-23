@@ -580,7 +580,7 @@ pub fn rdiv(r: rect, i: c_int) -> rect {
     }
 }
 
-pub unsafe fn growr(r: rect, w: c_int, h: c_int) -> rect {
+pub fn growr(r: rect, w: c_int, h: c_int) -> rect {
     rect {
         x: r.x - w,
         y: r.y - h,
@@ -589,11 +589,11 @@ pub unsafe fn growr(r: rect, w: c_int, h: c_int) -> rect {
     }
 }
 
-pub unsafe fn insetr(r: rect, i: c_int) -> rect {
-    unsafe { growr(r, -i, -i) }
+pub fn insetr(r: rect, i: c_int) -> rect {
+    growr(r, -i, -i)
 }
 
-pub unsafe fn rcenter(r1: rect, r2: rect) -> rect {
+pub fn rcenter(r1: rect, r2: rect) -> rect {
     rect {
         x: r2.x + (r2.width - r1.width) / 2,
         y: r2.y + (r2.height - r1.height) / 2,
@@ -601,7 +601,7 @@ pub unsafe fn rcenter(r1: rect, r2: rect) -> rect {
     }
 }
 
-pub unsafe fn ptinr(p: point, r: rect) -> c_int {
+pub fn ptinr(p: point, r: rect) -> c_int {
     if p.x >= r.x && p.x < r.x + r.width && p.y >= r.y && p.y < r.y + r.height {
         1
     } else {
@@ -609,7 +609,7 @@ pub unsafe fn ptinr(p: point, r: rect) -> c_int {
     }
 }
 
-pub unsafe fn rinr(r1: rect, r2: rect) -> c_int {
+pub fn rinr(r1: rect, r2: rect) -> c_int {
     if r1.x >= r2.x
         && r1.y >= r2.y
         && r1.x + r1.width <= r2.x + r2.width
@@ -621,7 +621,7 @@ pub unsafe fn rinr(r1: rect, r2: rect) -> c_int {
     }
 }
 
-pub unsafe fn rxr(r1: rect, r2: rect) -> c_int {
+pub fn rxr(r1: rect, r2: rect) -> c_int {
     if r1.x < r2.x + r2.width
         && r1.y < r2.y + r2.height
         && r1.x + r1.width > r2.x
@@ -633,11 +633,11 @@ pub unsafe fn rxr(r1: rect, r2: rect) -> c_int {
     }
 }
 
-pub unsafe fn equalpt(p1: point, p2: point) -> c_int {
+pub fn equalpt(p1: point, p2: point) -> c_int {
     if p1.x == p2.x && p1.y == p2.y { 1 } else { 0 }
 }
 
-pub unsafe fn equalr(r1: rect, r2: rect) -> c_int {
+pub fn equalr(r1: rect, r2: rect) -> c_int {
     if r1.x == r2.x && r1.y == r2.y && r1.width == r2.width && r1.height == r2.height {
         1
     } else {
@@ -645,7 +645,7 @@ pub unsafe fn equalr(r1: rect, r2: rect) -> c_int {
     }
 }
 
-pub unsafe fn clipr(r1: rect, r2: rect) -> rect {
+pub fn clipr(r1: rect, r2: rect) -> rect {
     let x1 = r1.x.max(r2.x);
     let y1 = r1.y.max(r2.y);
     let x2 = (r1.x + r1.width).min(r2.x + r2.width);
@@ -667,7 +667,7 @@ pub unsafe fn clipr(r1: rect, r2: rect) -> rect {
     }
 }
 
-pub unsafe fn rcanon(r: rect) -> rect {
+pub fn rcanon(r: rect) -> rect {
     let (x, y, w, h) = if r.width < 0 {
         (r.x + r.width, r.y, -r.width, r.height)
     } else {
