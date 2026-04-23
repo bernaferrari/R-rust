@@ -169,7 +169,7 @@ pub unsafe fn Rstd_ShowMessage(s: *const c_char) {
 /// saveact: SA_SAVE, SA_NOSAVE, SA_DEFAULT, SA_SUICIDE
 /// status: exit status
 /// runLast: whether to run .Last()
-pub unsafe fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
+pub fn Rstd_CleanUp(_saveact: c_int, status: c_int, _runLast: c_int) {
     // In the full implementation, this:
     // - Asks about saving workspace (interactive, SA_DEFAULT)
     // - Runs .Last() if runLast is true
