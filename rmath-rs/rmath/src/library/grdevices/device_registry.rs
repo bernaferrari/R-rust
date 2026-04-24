@@ -1,8 +1,9 @@
 use std::os::raw::{c_double, c_int};
 use std::ptr;
-use std::sync::{Mutex, OnceLock};
+
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 
 /// Minimal graphics device descriptor used by the headless Rust registry.
 ///
@@ -58,7 +59,7 @@ impl GEDeviceDesc {
 pub(crate) type pGEDevDesc = *mut GEDeviceDesc;
 pub(crate) type pDevDesc = *mut GEDeviceDesc;
 
-struct DeviceRegistry {
+pub(crate) struct DeviceRegistry {
     null_device: Box<GEDeviceDesc>,
     devices: Vec<Box<GEDeviceDesc>>,
     current_label: c_int,
@@ -225,15 +226,14 @@ impl DeviceRegistry {
     }
 }
 
-static DEVICE_REGISTRY: OnceLock<Mutex<DeviceRegistry>> = OnceLock::new();
-
-fn registry() -> &'static Mutex<DeviceRegistry> {
-    DEVICE_REGISTRY.get_or_init(|| Mutex::new(DeviceRegistry::new()))
+impl Default for DeviceRegistry {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 fn with_registry<R>(f: impl FnOnce(&mut DeviceRegistry) -> R) -> R {
-    let mut guard = registry().lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    f(&mut guard)
+    with_required_current_instance(|instance| f(&mut instance.graphics_device_registry))
 }
 
 pub(crate) fn reset_registry_for_tests() {
@@ -299,14 +299,29 @@ pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
+    use std::sync::{Mutex, MutexGuard};
 
-    fn reset_registry() {
+    static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct DeviceRegistryTestGuard {
+        _lock: MutexGuard<'static, ()>,
+        _session: RSession,
+    }
+
+    fn reset_registry() -> DeviceRegistryTestGuard {
+        let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let session = RSession::new();
         reset_registry_for_tests();
+        DeviceRegistryTestGuard {
+            _lock: lock,
+            _session: session,
+        }
     }
 
     #[test]
     fn starts_on_null_device_only() {
-        reset_registry();
+        let _guard = reset_registry();
         unsafe {
             assert_eq!(NoDevices(), 1);
             assert_eq!(NumDevices(), 1);
@@ -320,7 +335,7 @@ mod tests {
 
     #[test]
     fn open_select_and_wrap_devices() {
-        reset_registry();
+        let _guard = reset_registry();
         with_registry(|registry| {
             assert_eq!(registry.open_new_device(), 2);
             assert_eq!(registry.open_new_device(), 3);
@@ -358,7 +373,7 @@ mod tests {
 
     #[test]
     fn kill_current_device_advances_to_next_or_null() {
-        reset_registry();
+        let _guard = reset_registry();
         with_registry(|registry| {
             assert_eq!(registry.open_new_device(), 2);
             assert_eq!(registry.open_new_device(), 3);
@@ -383,5 +398,36 @@ mod tests {
             killDevice(0);
             assert_eq!(curDevice(), 0);
         }
+    }
+
+    #[test]
+    fn device_registry_is_session_local_on_same_thread() {
+        let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            with_registry(|registry| {
+                assert_eq!(registry.open_new_device(), 2);
+                assert_eq!(registry.open_new_device(), 3);
+            });
+            unsafe {
+                assert_eq!(NoDevices(), 0);
+                assert_eq!(NumDevices(), 3);
+                assert_eq!(curDevice(), 2);
+            }
+        });
+
+        right.with_protected(|| unsafe {
+            assert_eq!(NoDevices(), 1);
+            assert_eq!(NumDevices(), 1);
+            assert_eq!(curDevice(), 0);
+        });
+
+        left.with_protected(|| unsafe {
+            assert_eq!(NoDevices(), 0);
+            assert_eq!(NumDevices(), 3);
+            assert_eq!(curDevice(), 2);
+        });
     }
 }
