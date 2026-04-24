@@ -10,47 +10,12 @@ use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
-use std::sync::{Mutex, OnceLock};
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 
 // ---------------------------------------------------------------------------
-// Global symbol table
+// Symbol table helpers
 // ---------------------------------------------------------------------------
-
-struct SymbolTableInner {
-    symbols: HashMap<String, SEXP>,
-    #[allow(clippy::vec_box)]
-    nodes: Vec<Box<SexprecCore>>,
-}
-
-// Safety: SymbolTableInner is protected by Mutex and only accessed
-// from code that handles pointers safely.
-unsafe impl Send for SymbolTableInner {}
-unsafe impl Sync for SymbolTableInner {}
-
-impl SymbolTableInner {
-    fn new() -> Self {
-        SymbolTableInner {
-            symbols: HashMap::new(),
-            nodes: Vec::new(),
-        }
-    }
-
-    fn intern_with_pname<F>(&mut self, name_str: String, make_pname: F) -> SEXP
-    where
-        F: FnOnce() -> SEXP,
-    {
-        intern_symbol_with_pname(&mut self.symbols, &mut self.nodes, name_str, make_pname)
-    }
-}
-
-/// Global symbol table, lazily initialized.
-static SYMBOL_TABLE: OnceLock<Mutex<SymbolTableInner>> = OnceLock::new();
-
-fn get_symbol_table() -> &'static Mutex<SymbolTableInner> {
-    SYMBOL_TABLE.get_or_init(|| Mutex::new(SymbolTableInner::new()))
-}
 
 fn persistent_charsxp_from_bytes(bytes: &[u8]) -> SEXP {
     unsafe {
@@ -123,20 +88,12 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
     if sym.is_null() {
         return None;
     }
-    if let Some(name) = super::instance::with_current_instance(|inst| {
+    super::instance::with_current_instance(|inst| {
         inst.symbols
             .iter()
             .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
     })
     .flatten()
-    {
-        return Some(name);
-    }
-    let table = get_symbol_table().lock().unwrap_or_else(|e| e.into_inner());
-    table
-        .symbols
-        .iter()
-        .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
 }
 
 // ---------------------------------------------------------------------------
@@ -161,20 +118,14 @@ pub unsafe fn Rf_install(name: *const c_char) -> SEXP {
             Err(_) => return ptr::null_mut(),
         };
 
-        if let Some(symbol) = super::instance::with_current_instance(|inst| {
+        super::instance::with_required_current_instance(|inst| {
             intern_symbol_with_pname(
                 &mut inst.symbols,
                 &mut inst.symbol_nodes,
                 name_str.clone(),
                 || super::constructors::persistent_mkChar(name),
             )
-        }) {
-            return symbol;
-        }
-
-        let mut table = get_symbol_table().lock().unwrap_or_else(|e| e.into_inner());
-
-        table.intern_with_pname(name_str, || super::constructors::persistent_mkChar(name))
+        })
     }
 }
 
@@ -190,20 +141,14 @@ pub unsafe fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
             Err(_) => return ptr::null_mut(),
         };
 
-        if let Some(symbol) = super::instance::with_current_instance(|inst| {
+        super::instance::with_required_current_instance(|inst| {
             intern_symbol_with_pname(
                 &mut inst.symbols,
                 &mut inst.symbol_nodes,
                 name_str.clone(),
                 || persistent_charsxp_from_bytes(bytes),
             )
-        }) {
-            return symbol;
-        }
-
-        let mut table = get_symbol_table().lock().unwrap_or_else(|e| e.into_inner());
-
-        table.intern_with_pname(name_str, || persistent_charsxp_from_bytes(bytes))
+        })
     }
 }
 
@@ -318,38 +263,47 @@ pub unsafe fn R_AsSymbol() -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
+
+    fn with_session<F, T>(f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let session = RSession::new();
+        session.with_protected(f)
+    }
 
     #[test]
     fn test_install_basic() {
-        unsafe {
+        with_session(|| unsafe {
             let s1 = Rf_install(CString::new("hello").unwrap_or_default().as_ptr());
             assert!(!s1.is_null());
             assert_eq!((*s1).sxpinfo.type_of(), SEXPTYPE::SYMSXP);
-        }
+        });
     }
 
     #[test]
     fn test_install_interning() {
-        unsafe {
+        with_session(|| unsafe {
             let s1 = Rf_install(CString::new("myvar").unwrap_or_default().as_ptr());
             let s2 = Rf_install(CString::new("myvar").unwrap_or_default().as_ptr());
             assert_eq!(s1, s2); // Same pointer
-        }
+        });
     }
 
     #[test]
     fn test_install_different() {
-        unsafe {
+        with_session(|| unsafe {
             let s1 = Rf_install(CString::new("x").unwrap_or_default().as_ptr());
             let s2 = Rf_install(CString::new("y").unwrap_or_default().as_ptr());
             assert_ne!(s1, s2);
-        }
+        });
     }
 
     #[test]
     fn test_session_local_symbol_tables() {
-        let mut left = crate::sexp::session::RSession::new();
-        let mut right = crate::sexp::session::RSession::new();
+        let mut left = RSession::new();
+        let mut right = RSession::new();
 
         let left_a = left
             .with_arena(|_| unsafe {
@@ -373,14 +327,14 @@ mod tests {
 
     #[test]
     fn test_install_null() {
-        unsafe {
+        with_session(|| unsafe {
             assert!(Rf_install(ptr::null()).is_null());
-        }
+        });
     }
 
     #[test]
     fn test_pre_interned_symbols() {
-        unsafe {
+        with_session(|| unsafe {
             let base = R_BaseSymbol();
             assert!(!base.is_null());
             assert_eq!((*base).sxpinfo.type_of(), SEXPTYPE::SYMSXP);
@@ -391,17 +345,17 @@ mod tests {
             // Same symbol should always return same pointer
             let base2 = R_BaseSymbol();
             assert_eq!(base, base2);
-        }
+        });
     }
 
     #[test]
     fn test_special_char_symbols() {
-        unsafe {
+        with_session(|| unsafe {
             assert!(!R_BracketSymbol().is_null());
             assert!(!R_Bracket2Symbol().is_null());
             assert!(!R_DollarSymbol().is_null());
             assert!(!R_DotsSymbol().is_null());
             assert!(!R_LeftAssignSymbol().is_null());
-        }
+        });
     }
 }

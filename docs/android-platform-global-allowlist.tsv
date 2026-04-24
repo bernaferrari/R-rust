@@ -81,7 +81,6 @@ rmath-rs/rmath/src/sexp/init.rs	process-startup	sessionize	rport-dg0.2	Init atom
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
 rmath-rs/rmath/src/sexp/memory.rs	session-fallback	sessionize	rport-dg0.2	Arena fallback TLS; Android sessions should use RInstance arena only.
 rmath-rs/rmath/src/sexp/session.rs	documentation	allow-session-dispatch	rport-dg0.2	Module documents thread-local fallback risks; not itself runtime state.
-rmath-rs/rmath/src/sexp/symbol.rs	session-fallback	sessionize	rport-dg0.2	Process symbol table fallback; Android sessions should use RInstance symbols.
 rmath-rs/rmath/src/support/cport/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset constants/scratch buffer; Android locale bridge should own lookup.
 rmath-rs/rmath/src/support/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp clipboard; disabled for Android.
 rmath-rs/rmath/src/support/graphapp/context.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp context; disabled for Android.
