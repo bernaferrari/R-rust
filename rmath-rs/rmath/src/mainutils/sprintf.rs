@@ -16,7 +16,6 @@
 //! the rest of the ecosystem (its parameters mirror the C API where the
 //! actual R machinery provides the arguments vector).
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -111,34 +110,6 @@ impl RStringBuffer {
         }
         self.buf.as_mut_ptr() as *mut c_char
     }
-}
-
-thread_local! { static OUTBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
-
-#[repr(transparent)]
-struct MutPtr<T>(*mut T);
-
-impl<T> std::ops::Deref for MutPtr<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 }
-    }
-}
-
-impl<T> std::ops::DerefMut for MutPtr<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.0 }
-    }
-}
-
-unsafe fn get_outbuff() -> MutPtr<RStringBuffer> {
-    MutPtr(OUTBUFF.with(|v| {
-        if v.get().is_null() {
-            let buf = Box::new(RStringBuffer::new());
-            v.set(Box::into_raw(buf));
-        }
-        v.get()
-    }))
 }
 
 /// Allocate or grow the string buffer to hold at least `buflen` characters.

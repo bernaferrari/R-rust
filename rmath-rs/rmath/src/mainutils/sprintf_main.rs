@@ -17,7 +17,6 @@
 //! they are exported here with `sprintf_` prefixes so they can be reused
 //! by other ports (e.g. formatC in util.c) and by tests.
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -120,34 +119,6 @@ impl RStringBuffer {
         }
         self.buf.as_mut_ptr() as *mut c_char
     }
-}
-
-thread_local! { static OUTBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
-
-#[repr(transparent)]
-struct MutPtr<T>(*mut T);
-
-impl<T> std::ops::Deref for MutPtr<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 }
-    }
-}
-
-impl<T> std::ops::DerefMut for MutPtr<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.0 }
-    }
-}
-
-unsafe fn get_outbuff() -> MutPtr<RStringBuffer> {
-    MutPtr(OUTBUFF.with(|v| {
-        if v.get().is_null() {
-            let buf = Box::new(RStringBuffer::new());
-            v.set(Box::into_raw(buf));
-        }
-        v.get()
-    }))
 }
 
 unsafe fn R_AllocStringBuffer(buflen: i64, buf: &mut RStringBuffer) -> *mut c_char {
@@ -403,7 +374,7 @@ pub unsafe fn do_sprintf(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        let mut outbuff = get_outbuff();
+        let mut outbuff = RStringBuffer::new();
 
         let mut ans: SEXP = ptr::null_mut();
 
