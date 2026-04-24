@@ -1,22 +1,14 @@
 //! R interpreter embedding library.
 //!
-//! Provides the `RSession` type for embedding the R interpreter
-//! into Rust applications. Uses the rmath crate as the backend
-//! interpreter.
-
-use std::ffi::CString;
-use std::ptr;
+//! Provides the `RSession` type for embedding the R interpreter into Rust
+//! applications. This crate is the safe boundary used by desktop hosts and
+//! UniFFI bindings: it exposes owned Rust values and delegates runtime work to
+//! rmath's per-session interpreter, never to process-global `SEXP` state.
 
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, RenderPlot};
 
-use rmath::sexp::ffi::{SEXP, SEXPTYPE};
-use rmath::sexp::globals::{
-    R_GlobalEnv, R_NilValue, set_R_BaseEnv, set_R_EmptyEnv, set_R_GlobalEnv,
-};
-use rmath::sexp::memory::RArena;
-use rmath::sexp::output::{print_value, start_capture, stop_capture};
-use rmath::sexp::safe::Sexp;
+pub use rmath::android::RValue;
 
 use thiserror::Error;
 
@@ -38,57 +30,25 @@ pub enum RSessionError {
 /// crate for the interpreter backend.
 pub struct RSession {
     active: bool,
-    /// The arena allocator that owns all SEXP memory for this session.
-    /// Must outlive any SEXP pointers derived from it.
-    _arena: RArena,
+    inner: rmath::android::RSession,
+}
+
+/// Owned result of an evaluation.
+#[derive(Debug, Clone, PartialEq)]
+pub struct EvalOutput {
+    pub output: String,
+    pub value: RValue,
 }
 
 impl RSession {
     /// Create a new R session.
     ///
-    /// Initializes the rmath interpreter's global environment if it
-    /// hasn't been set up yet.
+    /// Initializes an isolated rmath session with its own arena, protection
+    /// stack, environments, RNG state, and output capture.
     pub fn new() -> Result<Self, RSessionError> {
-        let mut arena = RArena::new();
-
-        // Initialize rmath's global environment hierarchy if needed.
-        // R_EmptyEnv -> R_BaseEnv -> R_GlobalEnv
-        unsafe {
-            if R_GlobalEnv().is_null() {
-                let global_env = arena.alloc_node(SEXPTYPE::ENVSXP);
-                let base_env = arena.alloc_node(SEXPTYPE::ENVSXP);
-                let empty_env = arena.alloc_node(SEXPTYPE::ENVSXP);
-
-                if global_env.is_null() || base_env.is_null() || empty_env.is_null() {
-                    return Err(RSessionError::InitFailed(
-                        "failed to allocate environment nodes".into(),
-                    ));
-                }
-
-                // R_EmptyEnv has no parent
-                (*empty_env).data.envsxp.enclos = ptr::null_mut();
-                (*empty_env).data.envsxp.frame = ptr::null_mut();
-                (*empty_env).data.envsxp.hashtab = ptr::null_mut();
-
-                // R_BaseEnv's parent is R_EmptyEnv
-                (*base_env).data.envsxp.enclos = empty_env;
-                (*base_env).data.envsxp.frame = ptr::null_mut();
-                (*base_env).data.envsxp.hashtab = ptr::null_mut();
-
-                // R_GlobalEnv's parent is R_BaseEnv
-                (*global_env).data.envsxp.enclos = base_env;
-                (*global_env).data.envsxp.frame = ptr::null_mut();
-                (*global_env).data.envsxp.hashtab = ptr::null_mut();
-
-                set_R_EmptyEnv(empty_env);
-                set_R_BaseEnv(base_env);
-                set_R_GlobalEnv(global_env);
-            }
-        }
-
         Ok(RSession {
             active: true,
-            _arena: arena,
+            inner: rmath::android::RSession::new(),
         })
     }
 
@@ -98,24 +58,25 @@ impl RSession {
     /// in the global environment. The result is formatted as a string
     /// using rmath's output subsystem.
     pub fn eval(&mut self, code: &str) -> Result<String, RSessionError> {
+        self.eval_result(code).map(|result| result.output)
+    }
+
+    /// Evaluate an R expression, returning both display output and an owned
+    /// typed value.
+    pub fn eval_result(&mut self, code: &str) -> Result<EvalOutput, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
 
-        let c_code = CString::new(code)
-            .map_err(|e| RSessionError::EvalError(format!("invalid input: {e}")))?;
-
-        let global_env = unsafe { R_GlobalEnv() };
-        if global_env.is_null() {
-            return Err(RSessionError::EvalError(
-                "global environment not initialized".into(),
-            ));
+        let result = self.inner.eval(code);
+        if let Some(message) = result.output.strip_prefix("Error: ") {
+            Err(RSessionError::EvalError(message.to_string()))
+        } else {
+            Ok(EvalOutput {
+                output: result.output,
+                value: result.typed,
+            })
         }
-
-        let result =
-            unsafe { rmath::mainutils::gram_main::R_ParseEvalString(c_code.as_ptr(), global_env) };
-
-        sexp_to_string(result)
     }
 
     /// Render an R expression as a plot, returning pixel data.
@@ -138,7 +99,10 @@ impl RSession {
 
     /// Close the session.
     pub fn close(&mut self) {
-        self.active = false;
+        if self.active {
+            self.inner.close();
+            self.active = false;
+        }
     }
 }
 
@@ -154,32 +118,47 @@ impl Drop for RSession {
     }
 }
 
-/// Convert a raw SEXP pointer to a human-readable string.
-///
-/// Uses rmath's output capture to format the value, with a fallback
-/// to the Sexp Display impl.
-fn sexp_to_string(sexp: SEXP) -> Result<String, RSessionError> {
-    // Null or nil -> "NULL"
-    if sexp.is_null() || std::ptr::eq(sexp, unsafe { R_NilValue() }) {
-        return Ok("NULL".to_string());
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn eval_uses_isolated_session_state() {
+        let mut left = RSession::new().expect("left session");
+        let mut right = RSession::new().expect("right session");
+
+        assert_eq!(left.eval("x <- 11\nx").unwrap(), "[1] 11");
+        assert_eq!(right.eval("x <- 29\nx").unwrap(), "[1] 29");
+        assert_eq!(left.eval("x").unwrap(), "[1] 11");
+        assert_eq!(right.eval("x").unwrap(), "[1] 29");
     }
 
-    let sexp = match Sexp::from_raw(sexp) {
-        Some(s) => s,
-        None => return Ok("NULL".to_string()),
-    };
+    #[test]
+    fn eval_result_returns_owned_typed_value() {
+        let mut session = RSession::new().expect("session");
+        let result = session.eval_result("c(1, 2, 3)").expect("eval");
+        assert_eq!(result.output, "[1] 1 2 3");
+        assert_eq!(
+            result.value,
+            RValue::RealVector(vec![Some(1.0), Some(2.0), Some(3.0)])
+        );
+    }
 
-    // Use rmath's output capture to get a formatted representation.
-    start_capture();
-    print_value(sexp);
-    let captured = stop_capture();
+    #[test]
+    fn eval_reports_errors_without_panicking() {
+        let mut session = RSession::new().expect("session");
+        let err = session
+            .eval("unknown_symbol")
+            .expect_err("undefined symbol");
+        let message = err.to_string();
+        assert!(message.contains("object '"));
+        assert!(message.contains("not found"));
+    }
 
-    let output = if captured.stdout.is_empty() {
-        // Fallback: use the Sexp Display impl
-        format!("{}", sexp)
-    } else {
-        captured.stdout.trim_end().to_string()
-    };
-
-    Ok(output)
+    #[test]
+    fn close_makes_eval_fail() {
+        let mut session = RSession::new().expect("session");
+        session.close();
+        assert!(session.eval("1 + 1").is_err());
+    }
 }

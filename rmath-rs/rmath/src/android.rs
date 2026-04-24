@@ -17,6 +17,7 @@
 use crate::eval::parser;
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
+use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, SEXPTYPE};
 use crate::sexp::output;
 use crate::sexp::safe::Sexp;
 
@@ -39,8 +40,7 @@ pub struct RSession {
 
 unsafe impl Send for RSession {}
 
-fn extract_numeric_value(s: crate::sexp::safe::Sexp<'_>) -> f64 {
-    use crate::sexp::ffi::SEXPTYPE;
+fn extract_numeric_value(s: Sexp<'_>) -> f64 {
     match s.typeof_() {
         SEXPTYPE::INTSXP => s.integer_elt(0).unwrap_or(0) as f64,
         SEXPTYPE::REALSXP => s.real_elt(0).unwrap_or(0.0),
@@ -58,6 +58,23 @@ fn extract_numeric_value(s: crate::sexp::safe::Sexp<'_>) -> f64 {
     }
 }
 
+fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
+    RResult {
+        value: extract_numeric_value(sexp),
+        typed: RValue::from_sexp(sexp),
+        output: output::format_sexp_direct(sexp),
+    }
+}
+
+fn error_result(message: impl Into<String>) -> RResult {
+    RResult {
+        value: 0.0,
+        typed: RValue::Error(message.into()),
+        output: String::new(),
+    }
+    .with_error_output()
+}
+
 impl RSession {
     pub fn new() -> Self {
         RSession {
@@ -65,15 +82,20 @@ impl RSession {
         }
     }
 
+    pub fn close(&mut self) {
+        self.core.close();
+    }
+
+    pub fn is_active(&self) -> bool {
+        self.core.is_active()
+    }
+
     pub fn eval_integer(&mut self, value: i32) -> RResult {
         match self
             .core
             .with_arena(|arena| builder::scalar_integer_in(arena, value))
         {
-            Some(Some(s)) => RResult {
-                value: value as f64,
-                output: output::format_sexp_direct(s),
-            },
+            Some(Some(s)) => result_from_sexp(s),
             _ => allocation_error(),
         }
     }
@@ -83,10 +105,7 @@ impl RSession {
             .core
             .with_arena(|arena| builder::scalar_real_in(arena, value))
         {
-            Some(Some(s)) => RResult {
-                value,
-                output: output::format_sexp_direct(s),
-            },
+            Some(Some(s)) => result_from_sexp(s),
             _ => allocation_error(),
         }
     }
@@ -96,10 +115,7 @@ impl RSession {
             .core
             .with_arena(|arena| builder::int_vec_in(arena, values))
         {
-            Some(Some(s)) => RResult {
-                value: 0.0,
-                output: output::format_sexp_direct(s),
-            },
+            Some(Some(s)) => result_from_sexp(s),
             _ => allocation_error(),
         }
     }
@@ -109,10 +125,7 @@ impl RSession {
             .core
             .with_arena(|arena| builder::real_vec_in(arena, values))
         {
-            Some(Some(s)) => RResult {
-                value: 0.0,
-                output: output::format_sexp_direct(s),
-            },
+            Some(Some(s)) => result_from_sexp(s),
             _ => allocation_error(),
         }
     }
@@ -194,51 +207,34 @@ impl RSession {
     pub fn eval(&mut self, code: &str) -> RResult {
         let sexp = match self.core.with_arena(|arena| parser::parse(code, arena)) {
             Some(Ok(sexp)) => sexp,
-            Some(Err(e)) => {
-                return RResult {
-                    value: 0.0,
-                    output: format!("Error: {}", e),
-                };
-            }
-            None => {
-                return RResult {
-                    value: 0.0,
-                    output: "Error: session is closed".to_string(),
-                };
-            }
+            Some(Err(e)) => return error_result(e.to_string()),
+            None => return error_result("session is closed"),
         };
 
         if sexp.is_null() {
             return RResult {
                 value: 0.0,
+                typed: RValue::Null,
                 output: "NULL".to_string(),
             };
         }
 
         match self.core.eval(sexp) {
             Ok(result) => match Sexp::from_raw(result) {
-                Some(result) => RResult {
-                    value: extract_numeric_value(result),
-                    output: output::format_sexp_direct(result),
-                },
+                Some(result) => result_from_sexp(result),
                 None => RResult {
                     value: 0.0,
+                    typed: RValue::Null,
                     output: "NULL".to_string(),
                 },
             },
-            Err(e) => RResult {
-                value: 0.0,
-                output: format!("Error: {}", e),
-            },
+            Err(e) => error_result(e.to_string()),
         }
     }
 }
 
 fn allocation_error() -> RResult {
-    RResult {
-        value: 0.0,
-        output: "Error: allocation failed".to_string(),
-    }
+    error_result("allocation failed")
 }
 
 impl Default for RSession {
@@ -252,10 +248,170 @@ impl Default for RSession {
 // ---------------------------------------------------------------------------
 
 /// Result of an R evaluation.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RResult {
+    /// Legacy numeric scalar view for existing simple callers.
     pub value: f64,
+    /// Owned typed value for Android/FFI callers that should not parse output.
+    pub typed: RValue,
+    /// R-style display output.
     pub output: String,
+}
+
+impl RResult {
+    fn with_error_output(mut self) -> Self {
+        if let RValue::Error(message) = &self.typed {
+            self.output = format!("Error: {message}");
+        }
+        self
+    }
+}
+
+/// Owned representation of evaluated R values suitable for FFI boundaries.
+#[derive(Debug, Clone, PartialEq)]
+pub enum RValue {
+    Null,
+    Logical(Option<bool>),
+    Integer(Option<i32>),
+    Real(Option<f64>),
+    LogicalVector(Vec<Option<bool>>),
+    IntegerVector(Vec<Option<i32>>),
+    RealVector(Vec<Option<f64>>),
+    StringVector(Vec<String>),
+    List(Vec<RValue>),
+    Unsupported { type_name: String, display: String },
+    Error(String),
+}
+
+impl RValue {
+    pub fn from_sexp(sexp: Sexp<'_>) -> Self {
+        let len = sexp.len();
+        match sexp.typeof_() {
+            SEXPTYPE::NILSXP => RValue::Null,
+            SEXPTYPE::LGLSXP => {
+                let values = logical_values(sexp);
+                if len == 1 {
+                    values
+                        .into_iter()
+                        .next()
+                        .map(RValue::Logical)
+                        .unwrap_or(RValue::Null)
+                } else {
+                    RValue::LogicalVector(values)
+                }
+            }
+            SEXPTYPE::INTSXP => {
+                let values = integer_values(sexp);
+                if len == 1 {
+                    values
+                        .into_iter()
+                        .next()
+                        .map(RValue::Integer)
+                        .unwrap_or(RValue::Null)
+                } else {
+                    RValue::IntegerVector(values)
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let values = real_values(sexp);
+                if len == 1 {
+                    values
+                        .into_iter()
+                        .next()
+                        .map(RValue::Real)
+                        .unwrap_or(RValue::Null)
+                } else {
+                    RValue::RealVector(values)
+                }
+            }
+            SEXPTYPE::STRSXP => RValue::StringVector(string_values(sexp)),
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
+                let mut values = Vec::with_capacity(len as usize);
+                for i in 0..len {
+                    if let Some(value) = sexp.vector_elt(i) {
+                        values.push(RValue::from_sexp(value));
+                    } else {
+                        values.push(RValue::Null);
+                    }
+                }
+                RValue::List(values)
+            }
+            _ => RValue::Unsupported {
+                type_name: sexp_type_name(sexp.typeof_()).to_string(),
+                display: output::format_sexp_direct(sexp),
+            },
+        }
+    }
+}
+
+fn logical_values(sexp: Sexp<'_>) -> Vec<Option<bool>> {
+    (0..sexp.len())
+        .map(|i| match sexp.logical_elt(i) {
+            Some(NA_LOGICAL) | None => None,
+            Some(0) => Some(false),
+            Some(_) => Some(true),
+        })
+        .collect()
+}
+
+fn integer_values(sexp: Sexp<'_>) -> Vec<Option<i32>> {
+    (0..sexp.len())
+        .map(|i| match sexp.integer_elt(i) {
+            Some(NA_INTEGER) | None => None,
+            Some(value) => Some(value),
+        })
+        .collect()
+}
+
+fn real_values(sexp: Sexp<'_>) -> Vec<Option<f64>> {
+    (0..sexp.len())
+        .map(|i| match sexp.real_elt(i) {
+            Some(value) if value.to_bits() == R_NA_BIT_PATTERN => None,
+            Some(value) => Some(value),
+            None => None,
+        })
+        .collect()
+}
+
+fn string_values(sexp: Sexp<'_>) -> Vec<String> {
+    (0..sexp.len())
+        .map(|i| {
+            sexp.string_elt(i)
+                .and_then(|chars| chars.as_str())
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect()
+}
+
+fn sexp_type_name(t: SEXPTYPE) -> &'static str {
+    match t {
+        SEXPTYPE::NILSXP => "NULL",
+        SEXPTYPE::SYMSXP => "symbol",
+        SEXPTYPE::LISTSXP => "pairlist",
+        SEXPTYPE::CLOSXP => "closure",
+        SEXPTYPE::ENVSXP => "environment",
+        SEXPTYPE::PROMSXP => "promise",
+        SEXPTYPE::LANGSXP => "language",
+        SEXPTYPE::SPECIALSXP => "special",
+        SEXPTYPE::BUILTINSXP => "builtin",
+        SEXPTYPE::CHARSXP => "char",
+        SEXPTYPE::LGLSXP => "logical",
+        SEXPTYPE::INTSXP => "integer",
+        SEXPTYPE::REALSXP => "double",
+        SEXPTYPE::CPLXSXP => "complex",
+        SEXPTYPE::STRSXP => "character",
+        SEXPTYPE::DOTSXP => "dots",
+        SEXPTYPE::ANYSXP => "any",
+        SEXPTYPE::VECSXP => "list",
+        SEXPTYPE::EXPRSXP => "expression",
+        SEXPTYPE::BCODESXP => "bytecode",
+        SEXPTYPE::EXTPTRSXP => "externalptr",
+        SEXPTYPE::WEAKREFSXP => "weakref",
+        SEXPTYPE::RAWSXP => "raw",
+        SEXPTYPE::S4SXP => "S4",
+        _ => "unknown",
+    }
 }
 
 /// Supported mathematical functions.
@@ -326,6 +482,7 @@ mod tests {
         let result = session.eval_integer(42);
         assert_eq!(result.value, 42.0);
         assert!(result.output.contains("42"));
+        assert_eq!(result.typed, RValue::Integer(Some(42)));
     }
 
     #[test]
@@ -341,6 +498,31 @@ mod tests {
         let mut session = RSession::new();
         let result = session.eval_int_vector(&[1, 2, 3]);
         assert!(result.output.contains("1"));
+        assert_eq!(
+            result.typed,
+            RValue::IntegerVector(vec![Some(1), Some(2), Some(3)])
+        );
+    }
+
+    #[test]
+    fn test_eval_returns_owned_typed_values() {
+        let mut session = RSession::new();
+        let strings = session.eval("c(\"a\", \"b\")");
+        let logical = session.eval("TRUE");
+        let list = session.eval("list(1, \"x\")");
+
+        assert_eq!(
+            strings.typed,
+            RValue::StringVector(vec!["a".to_string(), "b".to_string()])
+        );
+        assert_eq!(logical.typed, RValue::Logical(Some(true)));
+        assert_eq!(
+            list.typed,
+            RValue::List(vec![
+                RValue::Real(Some(1.0)),
+                RValue::StringVector(vec!["x".to_string()])
+            ])
+        );
     }
 
     #[test]

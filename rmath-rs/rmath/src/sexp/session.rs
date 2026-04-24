@@ -239,11 +239,13 @@ impl RSession {
         if !self.active {
             return;
         }
-        let Some(symbol) = install_symbol(name) else {
-            return;
-        };
-        self.with_active(|| unsafe {
-            crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
+        self.with_active(|| {
+            let Some(symbol) = install_symbol(name) else {
+                return;
+            };
+            unsafe {
+                crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
+            }
         });
     }
 
@@ -480,6 +482,26 @@ mod tests {
             .find_var("session_defined_value")
             .expect("defined value should be found");
         assert_eq!(found.integer_elt(0), Some(42));
+    }
+
+    #[test]
+    fn test_session_define_var_interns_symbol_in_target_session() {
+        let mut older = RSession::new();
+        let newer = RSession::new();
+
+        let value = older
+            .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+            .expect("older session should be active");
+        let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
+        assert!(sexp.set_integer_elt(0, 123));
+
+        older.define_var("session_local_symbol", value);
+
+        let found = older
+            .find_var("session_local_symbol")
+            .expect("older session should own symbol binding");
+        assert_eq!(found.integer_elt(0), Some(123));
+        assert!(newer.find_var("session_local_symbol").is_none());
     }
 
     #[test]
