@@ -834,6 +834,22 @@ mod tests {
     }
 
     #[test]
+    fn test_system_matches_r_output_and_status_shape() {
+        let mut session = RSession::new();
+
+        let streamed = session.eval("system(\"printf hi\")");
+        assert_eq!(streamed.output, "hi");
+        assert_eq!(streamed.typed, RValue::Integer(Some(0)));
+
+        let interned = session.eval("system(\"printf hi\", intern = TRUE)");
+        assert_eq!(interned.output, "[1] \"hi\"");
+        assert_eq!(interned.typed, RValue::StringVector(vec!["hi".to_string()]));
+
+        let status = session.eval("status <- system(\"false\"); status");
+        assert_eq!(status.output, "[1] 1");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

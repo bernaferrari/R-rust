@@ -3192,6 +3192,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "str_wrap",
         "path_package",
         "system.file",
+        "system",
         // Complete R runtime
         "ls_args",
         "deparse1",
@@ -5873,13 +5874,19 @@ pub unsafe fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     result
 }
 
-/// R's `system(command)` — run a system command.
+/// R's `system(command, intern = FALSE)` — run a system command.
 pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let cmd = CAR(args);
     if cmd.is_null() {
         return R_NilValue();
     }
     let cmd_str = elt_to_string(cmd, 0);
+    let intern = if !CDR(args).is_null() && CDR(args) != R_NilValue() {
+        logical_arg(CAR(CDR(args)), false)
+    } else {
+        false
+    };
+
     let output = std::process::Command::new("sh")
         .arg("-c")
         .arg(&cmd_str)
@@ -5887,10 +5894,30 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     match output {
         Ok(out) => {
             let stdout = String::from_utf8_lossy(&out.stdout);
-            let cstr = CString::new(stdout.as_ref()).unwrap_or_default();
-            Rf_mkString(cstr.as_ptr())
+            if intern {
+                let lines: Vec<&str> = stdout.lines().collect();
+                let result = Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as R_xlen_t);
+                for (i, line) in lines.iter().enumerate() {
+                    let cstr = CString::new(*line).unwrap_or_default();
+                    SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+                }
+                result
+            } else {
+                let stderr = String::from_utf8_lossy(&out.stderr);
+                if !stdout.is_empty() {
+                    crate::sexp::output::capture_stdout(&stdout);
+                }
+                if !stderr.is_empty() {
+                    crate::sexp::output::capture_stderr(&stderr);
+                }
+                crate::sexp::globals::set_R_Visible(FALSE);
+                Rf_ScalarInteger(out.status.code().unwrap_or(1))
+            }
         }
-        Err(_) => R_NilValue(),
+        Err(_) => {
+            crate::sexp::globals::set_R_Visible(FALSE);
+            Rf_ScalarInteger(127)
+        }
     }
 }
 

@@ -461,6 +461,7 @@ fn primitive_controls_visibility(name: &str) -> bool {
             | "warning"
             | "message"
             | "stopifnot"
+            | "system"
             | "suppressWarnings"
             | "suppressMessages"
     )
