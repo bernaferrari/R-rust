@@ -139,6 +139,26 @@ pub fn clear_current_instance() {
     });
 }
 
+/// Clear the current thread-local R instance only if it matches `instance`.
+///
+/// Returns `true` when the pointer matched and the thread-local slot was
+/// cleared. This prevents an older session from detaching a newer active
+/// session that became current on the same thread.
+pub fn clear_current_instance_if(instance: *const RInstance) -> bool {
+    CURRENT_INSTANCE.with(|ci| {
+        let mut current = ci.borrow_mut();
+        if current
+            .map(|ptr| std::ptr::eq(ptr as *const RInstance, instance))
+            .unwrap_or(false)
+        {
+            *current = None;
+            true
+        } else {
+            false
+        }
+    })
+}
+
 /// Execute a closure with a reference to the current instance, if active.
 ///
 /// Returns `None` (and does not call `f`) if no instance is currently active.

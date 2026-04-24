@@ -33,7 +33,7 @@ use std::ptr;
 use super::context::{RError, RSignal};
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use super::instance::{RInstance, clear_current_instance, set_current_instance};
+use super::instance::{RInstance, clear_current_instance_if, set_current_instance};
 use super::memory::RArena;
 use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 use super::safe::Sexp;
@@ -256,10 +256,10 @@ impl RSession {
     ///
     /// After closing, [`is_active`](RSession::is_active) returns `false`
     /// and evaluation methods return errors. The current thread-local
-    /// instance is cleared.
+    /// instance is cleared only if this session still owns it.
     pub fn close(&mut self) {
         self.active = false;
-        clear_current_instance();
+        clear_current_instance_if(&*self.instance);
     }
 }
 
@@ -272,7 +272,7 @@ impl Default for RSession {
 impl Drop for RSession {
     fn drop(&mut self) {
         if self.active {
-            clear_current_instance();
+            clear_current_instance_if(&*self.instance);
         }
     }
 }
@@ -284,6 +284,7 @@ impl Drop for RSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::instance::with_current_instance;
     use crate::sexp::memory::with_arena;
 
     #[test]
@@ -300,6 +301,36 @@ mod tests {
         assert!(session.is_active());
         session.close();
         assert!(!session.is_active());
+    }
+
+    #[test]
+    fn test_session_close_non_current_keeps_current_instance() {
+        let mut older = RSession::new();
+        let newer = RSession::new();
+        let newer_instance = &*newer.instance as *const RInstance;
+
+        older.close();
+
+        assert!(
+            with_current_instance(|inst| std::ptr::eq(inst as *const RInstance, newer_instance))
+                .unwrap_or(false)
+        );
+        assert!(newer.is_active());
+    }
+
+    #[test]
+    fn test_session_drop_non_current_keeps_current_instance() {
+        let older = RSession::new();
+        let newer = RSession::new();
+        let newer_instance = &*newer.instance as *const RInstance;
+
+        drop(older);
+
+        assert!(
+            with_current_instance(|inst| std::ptr::eq(inst as *const RInstance, newer_instance))
+                .unwrap_or(false)
+        );
+        assert!(newer.is_active());
     }
 
     #[test]
