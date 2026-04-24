@@ -220,6 +220,8 @@ pub struct RInstance {
     pub(crate) rng_kind: i32,
     /// Per-instance R-level MT RNG state used by mainutils::rng.
     pub(crate) main_rng_state: crate::mainutils::rng::MainRngState,
+    /// Per-instance R RNG.c-style state used by mainutils::random.
+    pub(crate) random_state: crate::mainutils::random::RNGState,
     /// Per-instance stdout capture buffer.
     pub(crate) capture_stdout: Option<String>,
     /// Per-instance stderr capture buffer.
@@ -273,6 +275,7 @@ impl RInstance {
             rng_state: (1234, 5678),
             rng_kind: 0,
             main_rng_state: crate::mainutils::rng::MainRngState::default(),
+            random_state: crate::mainutils::random::RNGState::new(),
             capture_stdout: None,
             capture_stderr: None,
             options: HashMap::new(),

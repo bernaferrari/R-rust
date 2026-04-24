@@ -119,8 +119,8 @@ struct RNGTab {
     i_seed: Vec<Int32>,
 }
 
-/// Thread-local RNG state.
-struct RNGState {
+/// Per-instance RNG state.
+pub(crate) struct RNGState {
     rng_kind: Cell<RNGtype>,
     n01_kind: Cell<N01type>,
     sample_kind: Cell<Sampletype>,
@@ -137,7 +137,7 @@ struct RNGState {
 }
 
 impl RNGState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         let rng_table: [RNGTab; 8] = [
             RNGTab {
                 kind: RNGtype::WICHMANN_HILL,
@@ -202,8 +202,11 @@ impl RNGState {
     }
 }
 
-thread_local! {
-    static RNG: std::cell::RefCell<RNGState> = std::cell::RefCell::new(RNGState::new());
+fn with_rng_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RNGState) -> R,
+{
+    crate::sexp::instance::with_required_current_instance(|instance| f(&mut instance.random_state))
 }
 
 // ---------------------------------------------------------------------------
@@ -564,8 +567,7 @@ fn RNG_Init_KT2(rng: &mut RNGState, seed: i64) {
 // ---------------------------------------------------------------------------
 
 pub fn r_unif_rand() -> f64 {
-    RNG.with(|rng_cell| {
-        let mut rng = rng_cell.borrow_mut();
+    with_rng_state(|rng| {
         let kind = rng.rng_kind.get();
         match kind {
             RNGtype::WICHMANN_HILL => {
@@ -599,8 +601,8 @@ pub fn r_unif_rand() -> f64 {
                 table.i_seed[1] = new_i2;
                 fixup((new_i1 ^ new_i2) as f64 * I2_32M1)
             }
-            RNGtype::MERSENNE_TWISTER => fixup(mt_genrand(&mut rng)),
-            RNGtype::KNUTH_TAOCP | RNGtype::KNUTH_TAOCP2 => fixup(kt_next(&mut rng) as f64 * KT),
+            RNGtype::MERSENNE_TWISTER => fixup(mt_genrand(rng)),
+            RNGtype::KNUTH_TAOCP | RNGtype::KNUTH_TAOCP2 => fixup(kt_next(rng) as f64 * KT),
             RNGtype::LECUYER_CMRG => {
                 let table = &mut rng.rng_table[kind as usize];
                 let i0 = table.i_seed[0];
@@ -647,32 +649,30 @@ pub fn r_norm_rand() -> f64 {
     use crate::dist::normal::qnorm5_inner;
     const BIG: f64 = 134217728.0; /* 2^27 */
 
-    RNG.with(|rng_cell| {
-        let kind = rng_cell.borrow().n01_kind.get();
-        match kind {
-            N01type::BOX_MULLER => {
-                let bm = rng_cell.borrow().bm_norm_keep.get();
-                if bm != 0.0 {
-                    rng_cell.borrow_mut().bm_norm_keep.set(0.0);
-                    bm
-                } else {
-                    let u1 = r_unif_rand();
-                    let u2 = r_unif_rand();
-                    let radius = (-2.0 * u1.ln()).sqrt();
-                    let theta = 2.0 * std::f64::consts::PI * u2;
-                    rng_cell.borrow_mut().bm_norm_keep.set(radius * theta.sin());
-                    radius * theta.cos()
-                }
-            }
-            _ => {
-                // INVERSION, BUGGY_KINDERMAN_RAMAGE, AHRENS_DIETER,
-                // KINDERMAN_RAMAGE, USER_NORM all fall back to inversion
-                let mut u1 = r_unif_rand();
-                u1 = (BIG * u1) as i64 as f64 + r_unif_rand();
-                qnorm5_inner(u1 / BIG, 0.0, 1.0, true, false)
+    let kind = with_rng_state(|rng| rng.n01_kind.get());
+    match kind {
+        N01type::BOX_MULLER => {
+            let bm = with_rng_state(|rng| rng.bm_norm_keep.get());
+            if bm != 0.0 {
+                with_rng_state(|rng| rng.bm_norm_keep.set(0.0));
+                bm
+            } else {
+                let u1 = r_unif_rand();
+                let u2 = r_unif_rand();
+                let radius = (-2.0 * u1.ln()).sqrt();
+                let theta = 2.0 * std::f64::consts::PI * u2;
+                with_rng_state(|rng| rng.bm_norm_keep.set(radius * theta.sin()));
+                radius * theta.cos()
             }
         }
-    })
+        _ => {
+            // INVERSION, BUGGY_KINDERMAN_RAMAGE, AHRENS_DIETER,
+            // KINDERMAN_RAMAGE, USER_NORM all fall back to inversion
+            let mut u1 = r_unif_rand();
+            u1 = (BIG * u1) as i64 as f64 + r_unif_rand();
+            qnorm5_inner(u1 / BIG, 0.0, 1.0, true, false)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -687,8 +687,8 @@ fn ru() -> f64 {
 }
 
 fn r_unif_index_0(dn: f64) -> f64 {
-    let cut = RNG.with(|rc| {
-        let kind = rc.borrow().rng_kind.get();
+    let cut = with_rng_state(|rng| {
+        let kind = rng.rng_kind.get();
         match kind {
             RNGtype::KNUTH_TAOCP | RNGtype::USER_UNIF | RNGtype::KNUTH_TAOCP2 => 33554431.0_f64,
             _ => i32::MAX as f64,
@@ -712,7 +712,7 @@ fn rbits(bits: i32) -> f64 {
 }
 
 pub fn r_R_unif_index(dn: f64) -> f64 {
-    let sample_kind = RNG.with(|rc| rc.borrow().sample_kind.get());
+    let sample_kind = with_rng_state(|rng| rng.sample_kind.get());
     if sample_kind == Sampletype::ROUNDING {
         return r_unif_index_0(dn);
     }
@@ -729,7 +729,7 @@ pub fn r_R_unif_index(dn: f64) -> f64 {
 }
 
 pub fn r_sample_kind() -> Sampletype {
-    RNG.with(|rc| rc.borrow().sample_kind.get())
+    with_rng_state(|rng| rng.sample_kind.get())
 }
 
 // ---------------------------------------------------------------------------
@@ -744,10 +744,9 @@ pub unsafe fn GetRNGstate() {
 
         if seeds == R_UnboundValue() {
             // No .Random.seed -- randomize
-            RNG.with(|rc| {
-                let mut rng = rc.borrow_mut();
+            with_rng_state(|rng| {
                 let kind = rng.rng_kind.get();
-                RNG_Init(&mut rng, kind, TimeToSeed() as i64);
+                RNG_Init(rng, kind, TimeToSeed() as i64);
             });
             return;
         }
@@ -756,18 +755,16 @@ pub unsafe fn GetRNGstate() {
         let ty = TYPEOF(seeds);
         if ty == SEXPTYPE::PROMSXP {
             // Would need eval -- for now just randomize
-            RNG.with(|rc| {
-                let mut rng = rc.borrow_mut();
+            with_rng_state(|rng| {
                 let kind = rng.rng_kind.get();
-                RNG_Init(&mut rng, kind, TimeToSeed() as i64);
+                RNG_Init(rng, kind, TimeToSeed() as i64);
             });
             return;
         }
 
         if ty != SEXPTYPE::INTSXP {
-            RNG.with(|rc| {
-                let mut rng = rc.borrow_mut();
-                RNG_Init(&mut rng, RNG_DEFAULT, TimeToSeed() as i64);
+            with_rng_state(|rng| {
+                RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
                 rng.rng_kind.set(RNG_DEFAULT);
                 rng.n01_kind.set(N01_DEFAULT);
                 rng.sample_kind.set(Sample_DEFAULT);
@@ -778,9 +775,8 @@ pub unsafe fn GetRNGstate() {
         let is = INTEGER(seeds);
         let tmp = *is.add(0);
         if tmp == NA_INTEGER || tmp < 0 || tmp > 11000 {
-            RNG.with(|rc| {
-                let mut rng = rc.borrow_mut();
-                RNG_Init(&mut rng, RNG_DEFAULT, TimeToSeed() as i64);
+            with_rng_state(|rng| {
+                RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
                 rng.rng_kind.set(RNG_DEFAULT);
                 rng.n01_kind.set(N01_DEFAULT);
                 rng.sample_kind.set(Sample_DEFAULT);
@@ -793,9 +789,8 @@ pub unsafe fn GetRNGstate() {
         let new_sample = tmp / 10000;
 
         if new_n01 > 5 || new_sample > 1 {
-            RNG.with(|rc| {
-                let mut rng = rc.borrow_mut();
-                RNG_Init(&mut rng, RNG_DEFAULT, TimeToSeed() as i64);
+            with_rng_state(|rng| {
+                RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
                 rng.rng_kind.set(RNG_DEFAULT);
                 rng.n01_kind.set(N01_DEFAULT);
                 rng.sample_kind.set(Sample_DEFAULT);
@@ -813,9 +808,8 @@ pub unsafe fn GetRNGstate() {
             6 => RNGtype::KNUTH_TAOCP2,
             7 => RNGtype::LECUYER_CMRG,
             _ => {
-                RNG.with(|rc| {
-                    let mut rng = rc.borrow_mut();
-                    RNG_Init(&mut rng, RNG_DEFAULT, TimeToSeed() as i64);
+                with_rng_state(|rng| {
+                    RNG_Init(rng, RNG_DEFAULT, TimeToSeed() as i64);
                 });
                 return;
             }
@@ -849,14 +843,13 @@ pub unsafe fn GetRNGstate() {
 
         let seeds_len = XLENGTH(seeds) as usize;
 
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        with_rng_state(|rng| {
             rng.rng_kind.set(rng_kind);
             rng.n01_kind.set(n01_kind);
             rng.sample_kind.set(sample_kind);
 
             if seeds_len == 1 && rng_kind != RNGtype::USER_UNIF {
-                RNG_Init(&mut rng, rng_kind, TimeToSeed() as i64);
+                RNG_Init(rng, rng_kind, TimeToSeed() as i64);
             } else if seeds_len > 1 {
                 // Copy seeds in
                 for j in 0..len_seed {
@@ -880,7 +873,7 @@ pub unsafe fn GetRNGstate() {
                         }
                     }
                 }
-                FixupSeeds(&mut rng, rng_kind, false);
+                FixupSeeds(rng, rng_kind, false);
             }
         });
     }
@@ -889,8 +882,7 @@ pub unsafe fn GetRNGstate() {
 /// Copy seeds out to .Random.seed.
 pub unsafe fn PutRNGstate() {
     unsafe {
-        let (rng_kind, n01_kind, sample_kind, len_seed, seeds_vec) = RNG.with(|rc| {
-            let rng = rc.borrow();
+        let (rng_kind, n01_kind, sample_kind, len_seed, seeds_vec) = with_rng_state(|rng| {
             let kind = rng.rng_kind.get();
             let n01 = rng.n01_kind.get();
             let samp = rng.sample_kind.get();
@@ -962,9 +954,8 @@ fn r_RNGkind(newkind: RNGtype) {
         (u * u32::MAX as f64) as i64
     };
 
-    RNG.with(|rc| {
-        let mut rng = rc.borrow_mut();
-        RNG_Init(&mut rng, kind, seed);
+    with_rng_state(|rng| {
+        RNG_Init(rng, kind, seed);
         rng.rng_kind.set(kind);
     });
 
@@ -980,10 +971,10 @@ fn r_Norm_kind(kind: N01type) {
     }
 
     if kind == N01type::BOX_MULLER {
-        RNG.with(|rc| rc.borrow_mut().bm_norm_keep.set(0.0));
+        with_rng_state(|rng| rng.bm_norm_keep.set(0.0));
     }
 
-    RNG.with(|rc| rc.borrow_mut().n01_kind.set(kind));
+    with_rng_state(|rng| rng.n01_kind.set(kind));
     unsafe {
         PutRNGstate();
     }
@@ -993,7 +984,7 @@ fn r_Samp_kind(kind: Sampletype) {
     if kind as i32 > 1 {
         return;
     }
-    RNG.with(|rc| rc.borrow_mut().sample_kind.set(kind));
+    with_rng_state(|rng| rng.sample_kind.set(kind));
     unsafe {
         PutRNGstate();
     }
@@ -1115,13 +1106,7 @@ pub fn R_sample_kind() -> c_int {
 // ---------------------------------------------------------------------------
 
 /// One-parameter random generation using a function pointer wrapper.
-fn random1_call(
-    f: fn(f64) -> f64,
-    a: *const f64,
-    na: R_xlen_t,
-    x: *mut f64,
-    n: R_xlen_t,
-) -> bool {
+fn random1_call(f: fn(f64) -> f64, a: *const f64, na: R_xlen_t, x: *mut f64, n: R_xlen_t) -> bool {
     let mut naflag = false;
     let mut ia: R_xlen_t = 0;
     for i in 0..n {
@@ -1685,8 +1670,7 @@ pub unsafe fn do_RNGkind(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         checkArity(op, args);
         GetRNGstate();
 
-        let (rng_kind, n01_kind, sample_kind) = RNG.with(|rc| {
-            let rng = rc.borrow();
+        let (rng_kind, n01_kind, sample_kind) = with_rng_state(|rng| {
             (
                 rng.rng_kind.get() as c_int,
                 rng.n01_kind.get() as c_int,
@@ -1820,10 +1804,9 @@ pub unsafe fn do_setseed(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         // Initialize the RNG with the seed
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        with_rng_state(|rng| {
             let kind = rng.rng_kind.get();
-            RNG_Init(&mut rng, kind, seed);
+            RNG_Init(rng, kind, seed);
         });
         PutRNGstate();
 
@@ -2103,6 +2086,7 @@ pub unsafe fn seed_out(ignored: *mut std::os::raw::c_long) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::RSession;
 
     #[test]
     fn test_FixupProb_basic() {
@@ -2159,19 +2143,19 @@ mod tests {
 
     #[test]
     fn test_rng_init_mt() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+        let _session = RSession::new();
+        with_rng_state(|rng| {
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
             assert_eq!(rng.rng_table[3].i_seed[0], MT_N as u32);
         });
     }
 
     #[test]
     fn test_unif_rand_range() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 12345);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 12345);
         });
         for _ in 0..100 {
             let u = r_unif_rand();
@@ -2181,11 +2165,11 @@ mod tests {
 
     #[test]
     fn test_norm_rand_basic() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
             rng.n01_kind.set(N01type::INVERSION);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 12345);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 12345);
         });
         let mut sum = 0.0;
         let n = 1000;
@@ -2200,17 +2184,16 @@ mod tests {
 
     #[test]
     fn test_unif_rand_reproducibility() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
         });
         let v1: Vec<f64> = (0..10).map(|_| r_unif_rand()).collect();
 
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
         });
         let v2: Vec<f64> = (0..10).map(|_| r_unif_rand()).collect();
 
@@ -2226,10 +2209,10 @@ mod tests {
 
     #[test]
     fn test_marsaglia_multicarry() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MARSAGLIA_MULTICARRY);
-            RNG_Init(&mut rng, RNGtype::MARSAGLIA_MULTICARRY, 42);
+            RNG_Init(rng, RNGtype::MARSAGLIA_MULTICARRY, 42);
         });
         for _ in 0..100 {
             let u = r_unif_rand();
@@ -2239,10 +2222,10 @@ mod tests {
 
     #[test]
     fn test_wichmann_hill() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::WICHMANN_HILL);
-            RNG_Init(&mut rng, RNGtype::WICHMANN_HILL, 42);
+            RNG_Init(rng, RNGtype::WICHMANN_HILL, 42);
         });
         for _ in 0..100 {
             let u = r_unif_rand();
@@ -2252,10 +2235,10 @@ mod tests {
 
     #[test]
     fn test_super_duper() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::SUPER_DUPER);
-            RNG_Init(&mut rng, RNGtype::SUPER_DUPER, 42);
+            RNG_Init(rng, RNGtype::SUPER_DUPER, 42);
         });
         for _ in 0..100 {
             let u = r_unif_rand();
@@ -2265,10 +2248,10 @@ mod tests {
 
     #[test]
     fn test_lecuyer_cmrg() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::LECUYER_CMRG);
-            RNG_Init(&mut rng, RNGtype::LECUYER_CMRG, 42);
+            RNG_Init(rng, RNGtype::LECUYER_CMRG, 42);
         });
         for _ in 0..100 {
             let u = r_unif_rand();
@@ -2279,11 +2262,11 @@ mod tests {
 
     #[test]
     fn test_box_muller() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
             rng.n01_kind.set(N01type::BOX_MULLER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 12345);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 12345);
         });
         let mut sum = 0.0;
         let n = 1000;
@@ -2305,11 +2288,11 @@ mod tests {
 
     #[test]
     fn test_R_unif_index() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
             rng.sample_kind.set(Sampletype::REJECTION);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
         });
         for _ in 0..100 {
             let idx = r_R_unif_index(10.0);
@@ -2319,10 +2302,10 @@ mod tests {
 
     #[test]
     fn test_SampleReplace_r_range() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
         });
         let ans = SampleReplace_r(5, 100);
         for &a in &ans {
@@ -2332,10 +2315,10 @@ mod tests {
 
     #[test]
     fn test_ProbSampleReplace_r_range() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
         });
         let mut p = vec![0.1, 0.2, 0.3, 0.4];
         let ans = ProbSampleReplace_r(4, &mut p, 10);
@@ -2346,10 +2329,10 @@ mod tests {
 
     #[test]
     fn test_ProbSampleNoReplace_r_range() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
-            RNG_Init(&mut rng, RNGtype::MERSENNE_TWISTER, 42);
+            RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
         });
         let mut p = vec![0.1, 0.2, 0.3, 0.4];
         let ans = ProbSampleNoReplace_r(4, &mut p, 2);
@@ -2361,14 +2344,60 @@ mod tests {
 
     #[test]
     fn test_knuth_taocp2() {
-        RNG.with(|rc| {
-            let mut rng = rc.borrow_mut();
+        let _session = RSession::new();
+        with_rng_state(|rng| {
             rng.rng_kind.set(RNGtype::KNUTH_TAOCP2);
-            RNG_Init(&mut rng, RNGtype::KNUTH_TAOCP2, 42);
+            RNG_Init(rng, RNGtype::KNUTH_TAOCP2, 42);
         });
         for _ in 0..100 {
             let u = r_unif_rand();
             assert!(u > 0.0 && u < 1.0, "Knuth TAOCP2 unif_rand returned {}", u);
         }
+    }
+
+    #[test]
+    fn test_rng_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_first = left.with_protected(|| {
+            with_rng_state(|rng| {
+                rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
+                rng.n01_kind.set(N01type::INVERSION);
+                rng.sample_kind.set(Sampletype::REJECTION);
+                RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
+            });
+            r_unif_rand()
+        });
+
+        let right_first = right.with_protected(|| {
+            with_rng_state(|rng| {
+                assert_eq!(rng.rng_kind.get(), RNG_DEFAULT);
+                rng.rng_kind.set(RNGtype::WICHMANN_HILL);
+                RNG_Init(rng, RNGtype::WICHMANN_HILL, 99);
+            });
+            r_unif_rand()
+        });
+
+        let left_second = left.with_protected(|| {
+            with_rng_state(|rng| {
+                assert_eq!(rng.rng_kind.get(), RNGtype::MERSENNE_TWISTER);
+                assert_eq!(rng.n01_kind.get(), N01type::INVERSION);
+                assert_eq!(rng.sample_kind.get(), Sampletype::REJECTION);
+            });
+            r_unif_rand()
+        });
+
+        let left_replayed = left.with_protected(|| {
+            with_rng_state(|rng| {
+                rng.rng_kind.set(RNGtype::MERSENNE_TWISTER);
+                RNG_Init(rng, RNGtype::MERSENNE_TWISTER, 42);
+            });
+            r_unif_rand()
+        });
+
+        assert_eq!(left_first, left_replayed);
+        assert_ne!(left_first, right_first);
+        assert_ne!(left_first, left_second);
     }
 }
