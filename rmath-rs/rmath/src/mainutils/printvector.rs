@@ -18,7 +18,6 @@
 //!   PrintValue, PrintValueEnv, PrintValueRec -- in print.rs
 //!   XLENGTH -- in sexp/accessors.rs
 
-use std::cell::RefCell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -75,20 +74,6 @@ impl Default for R_PrintData {
     }
 }
 
-thread_local! { static R_PRINT_DATA: RefCell<R_PrintData> = RefCell::new(R_PrintData {
-    width: 80,
-    gap: 1,
-    digits: 4,
-    scipen: 0,
-    max: 99999,
-    right: 0,
-    quote: 1,
-    na_width: 2,
-    na_width_noquote: 4,
-    na_string: ptr::null_mut(),
-    na_string_noquote: ptr::null_mut(),
-}); }
-
 #[repr(transparent)]
 pub struct MutPtr<T>(*mut T);
 
@@ -110,7 +95,9 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 /// Named `get_R_PrintData` to avoid collision with `get_R_print` in
 /// printutils.rs (which returns the smaller `RPrint` struct).
 pub unsafe fn get_R_PrintData() -> MutPtr<R_PrintData> {
-    MutPtr(R_PRINT_DATA.with(|v| v.as_ptr() as *mut R_PrintData))
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        MutPtr(&mut inst.eval_state.printvector as *mut R_PrintData)
+    })
 }
 
 // ---------------------------------------------------------------------------
@@ -1277,6 +1264,7 @@ pub unsafe fn GetMatrixDimnames(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_print_vector_null() {
@@ -1287,6 +1275,7 @@ mod tests {
 
     #[test]
     fn test_print_data_default() {
+        let _session = RSession::new();
         unsafe {
             let pd = get_R_PrintData();
             assert_eq!(pd.width, 80);
@@ -1306,6 +1295,7 @@ mod tests {
 
     #[test]
     fn test_print_integer_vector() {
+        let _session = RSession::new();
         unsafe {
             let vals: [c_int; 3] = [1, 2, 3];
             printIntegerVector(vals.as_ptr(), 3, 1);
@@ -1314,6 +1304,7 @@ mod tests {
 
     #[test]
     fn test_print_real_vector() {
+        let _session = RSession::new();
         unsafe {
             let vals: [f64; 2] = [1.5, 2.5];
             printRealVector(vals.as_ptr(), 2, 1);
@@ -1323,6 +1314,7 @@ mod tests {
     #[test]
     fn test_print_complex_vector() {
         use crate::sexp::ffi::Rcomplex;
+        let _session = RSession::new();
         unsafe {
             let vals = [Rcomplex { r: 1.0, i: 2.0 }, Rcomplex { r: 3.0, i: 4.0 }];
             printComplexVector(vals.as_ptr(), 2, 1);
@@ -1331,6 +1323,7 @@ mod tests {
 
     #[test]
     fn test_print_raw_vector() {
+        let _session = RSession::new();
         unsafe {
             let vals: [u8; 4] = [0x00, 0x0a, 0xff, 0x10];
             printRawVector(vals.as_ptr(), 4, 1);
@@ -1458,6 +1451,7 @@ mod tests {
 
     #[test]
     fn test_print_integer_vector_empty() {
+        let _session = RSession::new();
         unsafe {
             let vals: [c_int; 0] = [];
             printIntegerVector(vals.as_ptr(), 0, 0);
@@ -1466,6 +1460,7 @@ mod tests {
 
     #[test]
     fn test_print_real_vector_empty() {
+        let _session = RSession::new();
         unsafe {
             let vals: [f64; 0] = [];
             printRealVector(vals.as_ptr(), 0, 0);
@@ -1474,6 +1469,7 @@ mod tests {
 
     #[test]
     fn test_print_complex_vector_empty() {
+        let _session = RSession::new();
         unsafe {
             let vals: [Rcomplex; 0] = [];
             printComplexVector(vals.as_ptr(), 0, 0);
@@ -1482,6 +1478,7 @@ mod tests {
 
     #[test]
     fn test_print_raw_vector_empty() {
+        let _session = RSession::new();
         unsafe {
             let vals: [u8; 0] = [];
             printRawVector(vals.as_ptr(), 0, 0);
@@ -1490,6 +1487,7 @@ mod tests {
 
     #[test]
     fn test_print_integer_vector_null_ptr() {
+        let _session = RSession::new();
         unsafe {
             printIntegerVector(ptr::null(), 3, 0);
         }
@@ -1497,6 +1495,7 @@ mod tests {
 
     #[test]
     fn test_print_real_vector_null_ptr() {
+        let _session = RSession::new();
         unsafe {
             printRealVector(ptr::null(), 2, 0);
         }
@@ -1504,6 +1503,7 @@ mod tests {
 
     #[test]
     fn test_print_complex_vector_null_ptr() {
+        let _session = RSession::new();
         unsafe {
             printComplexVector(ptr::null(), 2, 0);
         }
@@ -1511,6 +1511,7 @@ mod tests {
 
     #[test]
     fn test_print_raw_vector_null_ptr() {
+        let _session = RSession::new();
         unsafe {
             printRawVector(ptr::null(), 4, 0);
         }
