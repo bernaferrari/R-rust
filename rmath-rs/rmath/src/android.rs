@@ -785,6 +785,34 @@ mod tests {
     }
 
     #[test]
+    fn test_ls_lists_current_frame_like_r() {
+        let mut session = RSession::new();
+
+        let empty = session.eval("ls()");
+        assert_eq!(empty.output, "character(0)");
+        assert_eq!(empty.typed, RValue::StringVector(Vec::new()));
+
+        let mut session = RSession::new();
+        let sorted = session.eval("y <- 2; x <- 1; ls()");
+        assert_eq!(sorted.output, "[1] \"x\" \"y\"");
+        assert_eq!(
+            sorted.typed,
+            RValue::StringVector(vec!["x".to_string(), "y".to_string()])
+        );
+
+        let mut session = RSession::new();
+        let hidden = session.eval(".hidden <- 1; visible <- 2; ls()");
+        assert_eq!(hidden.output, "[1] \"visible\"");
+
+        let all_names = session.eval("ls(all.names = TRUE)");
+        assert_eq!(all_names.output, "[1] \".hidden\" \"visible\"");
+
+        let mut session = RSession::new();
+        let removed = session.eval("x <- 1; rm(\"x\"); length(ls())");
+        assert_eq!(removed.output, "[1] 0");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

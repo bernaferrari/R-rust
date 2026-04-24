@@ -569,6 +569,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     match x.typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
+            if x.len() == 0 {
+                return "integer(0)".to_string();
+            }
             if let Some(output) = format_matrix(x) {
                 return output;
             }
@@ -590,6 +593,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format!("{base}{}", format_regexpr_attributes(x))
         }
         SEXPTYPE::REALSXP => {
+            if x.len() == 0 {
+                return "numeric(0)".to_string();
+            }
             if let Some(output) = format_matrix(x) {
                 return output;
             }
@@ -603,6 +609,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
         }
         SEXPTYPE::LGLSXP => {
+            if x.len() == 0 {
+                return "logical(0)".to_string();
+            }
             if let Some(output) = format_matrix(x) {
                 return output;
             }
@@ -615,6 +624,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             format!("[1] {}{}", format_aligned_values(vals), suffix)
         }
         SEXPTYPE::STRSXP => {
+            if x.len() == 0 {
+                return "character(0)".to_string();
+            }
             if x.len() == 1 {
                 if let Some(charsxp) = x.string_elt(0) {
                     let s = charsxp.as_str().unwrap_or("");
@@ -637,6 +649,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
         }
         SEXPTYPE::RAWSXP => {
+            if x.len() == 0 {
+                return "raw(0)".to_string();
+            }
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             format!("[1] {}{}", vals.join(" "), suffix)

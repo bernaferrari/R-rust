@@ -2,13 +2,13 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
-use std::ffi::CString;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
-    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
+    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -3042,6 +3042,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "globalenv",
         "new.env",
         "environment",
+        "ls",
         "lockBinding",
         "unlockBinding",
         "bindingIsLocked",
@@ -4514,11 +4515,83 @@ pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     val
 }
 
+unsafe fn symbol_name(sym: SEXP) -> Option<String> {
+    if sym.is_null() || sym == R_NilValue() || TYPEOF(sym) != SEXPTYPE::SYMSXP {
+        return None;
+    }
+    let printname = PRINTNAME(sym);
+    if printname.is_null() || printname == R_NilValue() {
+        return None;
+    }
+    let ptr = CHAR(printname);
+    if ptr.is_null() {
+        return None;
+    }
+    Some(CStr::from_ptr(ptr).to_string_lossy().into_owned())
+}
+
+unsafe fn logical_arg(arg: SEXP, default: bool) -> bool {
+    if arg.is_null() || arg == R_NilValue() || XLENGTH(arg) < 1 {
+        return default;
+    }
+    if TYPEOF(arg) == SEXPTYPE::LGLSXP {
+        return *LOGICAL(arg) != FALSE;
+    }
+    if TYPEOF(arg) == SEXPTYPE::INTSXP {
+        return *INTEGER(arg) != 0;
+    }
+    default
+}
+
 /// R's `ls(envir)` — list objects.
-pub unsafe fn do_ls(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    // Simplified: return empty string vector
-    // Full implementation needs R_ls which isn't ported yet
-    Rf_allocVector3(SEXPTYPE::STRSXP, 0)
+pub unsafe fn do_ls(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    let mut env = rho;
+    let mut all_names = false;
+    let mut sorted = true;
+
+    let mut cell = args;
+    while !cell.is_null() && cell != R_NilValue() {
+        let arg = CAR(cell);
+        let name = symbol_name(TAG(cell));
+        match name.as_deref() {
+            Some("name") | Some("pos") | Some("envir") => {
+                if TYPEOF(arg) == SEXPTYPE::ENVSXP {
+                    env = arg;
+                }
+            }
+            Some("all.names") => all_names = logical_arg(arg, all_names),
+            Some("sorted") => sorted = logical_arg(arg, sorted),
+            _ if TYPEOF(arg) == SEXPTYPE::ENVSXP => env = arg,
+            _ => {}
+        }
+        cell = CDR(cell);
+    }
+
+    let mut names = Vec::new();
+    if TYPEOF(env) == SEXPTYPE::ENVSXP {
+        let mut frame = FRAME(env);
+        while !frame.is_null() && frame != R_NilValue() {
+            let value = CAR(frame);
+            if value != crate::sexp::globals::R_UnboundValue()
+                && let Some(name) = symbol_name(TAG(frame))
+                && (all_names || !name.starts_with('.'))
+            {
+                names.push(name);
+            }
+            frame = CDR(frame);
+        }
+    }
+
+    if sorted {
+        names.sort();
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, names.len() as R_xlen_t);
+    for (i, name) in names.iter().enumerate() {
+        let cstr = CString::new(name.as_str()).unwrap_or_default();
+        SET_STRING_ELT(result, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+    }
+    result
 }
 
 /// R's `rm(list, envir)` — remove objects.
