@@ -12,7 +12,6 @@
 //!   PostScript(SEXP args) -> SEXP
 //!   PDF(SEXP args) -> SEXP
 
-use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::io::Write as _;
 use std::os::raw::{c_char, c_double, c_int, c_short, c_uchar, c_uint, c_void};
@@ -26,6 +25,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, R_FINITE, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::*;
 
 // =========================================================================
@@ -378,20 +378,97 @@ type type1fontlist = *mut T1FontList;
 type encodinglist = *mut EncList;
 
 // =========================================================================
-// Global font/encoding lists (session-wide)
+// Font/encoding lists (session-wide)
 // =========================================================================
 
-thread_local! { static loadedCIDFonts: Cell<cidfontlist> = Cell::new(ptr::null_mut()); }
-thread_local! { static loadedFonts: Cell<type1fontlist> = Cell::new(ptr::null_mut()); }
-thread_local! { static loadedEncodings: Cell<encodinglist> = Cell::new(ptr::null_mut()); }
-thread_local! { static PDFloadedCIDFonts: Cell<cidfontlist> = Cell::new(ptr::null_mut()); }
-thread_local! { static PDFloadedFonts: Cell<type1fontlist> = Cell::new(ptr::null_mut()); }
-thread_local! { static PDFloadedEncodings: Cell<encodinglist> = Cell::new(ptr::null_mut()); }
+pub(crate) struct PostScriptFontState {
+    loaded_cid_fonts: cidfontlist,
+    loaded_fonts: type1fontlist,
+    loaded_encodings: encodinglist,
+    pdf_loaded_cid_fonts: cidfontlist,
+    pdf_loaded_fonts: type1fontlist,
+    pdf_loaded_encodings: encodinglist,
+}
 
-thread_local! { static PostScriptFonts: RefCell<[c_char; 20]> = RefCell::new([
+impl Default for PostScriptFontState {
+    fn default() -> Self {
+        PostScriptFontState {
+            loaded_cid_fonts: ptr::null_mut(),
+            loaded_fonts: ptr::null_mut(),
+            loaded_encodings: ptr::null_mut(),
+            pdf_loaded_cid_fonts: ptr::null_mut(),
+            pdf_loaded_fonts: ptr::null_mut(),
+            pdf_loaded_encodings: ptr::null_mut(),
+        }
+    }
+}
+
+impl PostScriptFontState {
+    fn loaded_cid_fonts(&self, is_pdf: bool) -> cidfontlist {
+        if is_pdf {
+            self.pdf_loaded_cid_fonts
+        } else {
+            self.loaded_cid_fonts
+        }
+    }
+
+    fn loaded_cid_fonts_mut(&mut self, is_pdf: bool) -> &mut cidfontlist {
+        if is_pdf {
+            &mut self.pdf_loaded_cid_fonts
+        } else {
+            &mut self.loaded_cid_fonts
+        }
+    }
+
+    fn loaded_fonts(&self, is_pdf: bool) -> type1fontlist {
+        if is_pdf {
+            self.pdf_loaded_fonts
+        } else {
+            self.loaded_fonts
+        }
+    }
+
+    fn loaded_fonts_mut(&mut self, is_pdf: bool) -> &mut type1fontlist {
+        if is_pdf {
+            &mut self.pdf_loaded_fonts
+        } else {
+            &mut self.loaded_fonts
+        }
+    }
+
+    fn loaded_encodings(&self, is_pdf: bool) -> encodinglist {
+        if is_pdf {
+            self.pdf_loaded_encodings
+        } else {
+            self.loaded_encodings
+        }
+    }
+
+    fn loaded_encodings_mut(&mut self, is_pdf: bool) -> &mut encodinglist {
+        if is_pdf {
+            &mut self.pdf_loaded_encodings
+        } else {
+            &mut self.loaded_encodings
+        }
+    }
+}
+
+fn with_postscript_font_state<T>(f: impl FnOnce(&mut PostScriptFontState) -> T) -> T {
+    with_required_current_instance(|instance| f(&mut instance.postscript_font_state))
+}
+
+static POSTSCRIPT_FONTS: [c_char; 20] = [
     46, 80, 111, 115, 116, 83, 99, 114, 105, 112, 116, 46, 70, 111, 110, 116, 115, 0, 0, 0,
-]); }
-thread_local! { static PDFFonts: RefCell<[c_char; 12]> = RefCell::new([46, 80, 68, 70, 46, 70, 111, 110, 116, 115, 0, 0]); }
+];
+static PDF_FONTS: [c_char; 12] = [46, 80, 68, 70, 46, 70, 111, 110, 116, 115, 0, 0];
+
+fn font_database_name(is_pdf: bool) -> *const c_char {
+    if is_pdf {
+        PDF_FONTS.as_ptr()
+    } else {
+        POSTSCRIPT_FONTS.as_ptr()
+    }
+}
 
 // =========================================================================
 // CID font PostScript strings
@@ -1214,11 +1291,7 @@ unsafe fn findEncoding(
     deviceEncodings: encodinglist,
     isPDF: bool,
 ) -> encodinginfo {
-    let enclist = if isPDF {
-        PDFloadedEncodings.with(|v| v.get())
-    } else {
-        loadedEncodings.with(|v| v.get())
-    };
+    let enclist = with_postscript_font_state(|state| state.loaded_encodings(isPDF));
     let mut result: encodinginfo = ptr::null_mut();
     let mut found = false;
 
@@ -1279,19 +1352,11 @@ unsafe fn addEncoding(encpath: *const c_char, isPDF: bool) -> encodinginfo {
             freeEncoding(encoding);
             return ptr::null_mut();
         }
-        let enclist = if isPDF {
-            PDFloadedEncodings.with(|v| v.get())
-        } else {
-            loadedEncodings.with(|v| v.get())
-        };
+        let enclist = with_postscript_font_state(|state| state.loaded_encodings(isPDF));
         safestrcpy((*encoding).encpath.as_mut_ptr(), encpath, R_PATH_MAX);
         (*newenc).encoding = encoding;
         if enclist.is_null() {
-            if isPDF {
-                PDFloadedEncodings.with(|v| v.set(newenc));
-            } else {
-                loadedEncodings.with(|v| v.set(newenc));
-            }
+            with_postscript_font_state(|state| *state.loaded_encodings_mut(isPDF) = newenc);
         } else {
             let mut el = enclist;
             while !(*el).next.is_null() {
@@ -1412,11 +1477,7 @@ unsafe fn findLoadedFont(
     _encoding: *const c_char,
     isPDF: bool,
 ) -> type1fontfamily {
-    let mut fontlist = if isPDF {
-        PDFloadedFonts.with(|v| v.get())
-    } else {
-        loadedFonts.with(|v| v.get())
-    };
+    let mut fontlist = with_postscript_font_state(|state| state.loaded_fonts(isPDF));
     while !fontlist.is_null() {
         if streql(name, (*(*fontlist).family).fxname.as_ptr()) {
             return (*fontlist).family;
@@ -1427,11 +1488,7 @@ unsafe fn findLoadedFont(
 }
 
 unsafe fn findLoadedCIDFont(family: *const c_char, isPDF: bool) -> cidfontfamily {
-    let mut fontlist = if isPDF {
-        PDFloadedCIDFonts.with(|v| v.get())
-    } else {
-        loadedCIDFonts.with(|v| v.get())
-    };
+    let mut fontlist = with_postscript_font_state(|state| state.loaded_cid_fonts(isPDF));
     while !fontlist.is_null() {
         if !(*(*fontlist).cidfamily).cidfonts[0].is_null()
             && streql(
@@ -1508,17 +1565,9 @@ unsafe fn addLoadedCIDFont(font: cidfontfamily, isPDF: bool) -> cidfontfamily {
         return ptr::null_mut();
     }
     (*newfont).cidfamily = font;
-    let fontlist = if isPDF {
-        PDFloadedCIDFonts.with(|v| v.get())
-    } else {
-        loadedCIDFonts.with(|v| v.get())
-    };
+    let fontlist = with_postscript_font_state(|state| state.loaded_cid_fonts(isPDF));
     if fontlist.is_null() {
-        if isPDF {
-            PDFloadedCIDFonts.with(|v| v.set(newfont));
-        } else {
-            loadedCIDFonts.with(|v| v.set(newfont));
-        }
+        with_postscript_font_state(|state| *state.loaded_cid_fonts_mut(isPDF) = newfont);
     } else {
         let mut fl = fontlist;
         while !(*fl).next.is_null() {
@@ -1539,17 +1588,9 @@ unsafe fn addLoadedFont(font: type1fontfamily, isPDF: bool) -> type1fontfamily {
         return ptr::null_mut();
     }
     (*newfont).family = font;
-    let fontlist = if isPDF {
-        PDFloadedFonts.with(|v| v.get())
-    } else {
-        loadedFonts.with(|v| v.get())
-    };
+    let fontlist = with_postscript_font_state(|state| state.loaded_fonts(isPDF));
     if fontlist.is_null() {
-        if isPDF {
-            PDFloadedFonts.with(|v| v.set(newfont));
-        } else {
-            loadedFonts.with(|v| v.set(newfont));
-        }
+        with_postscript_font_state(|state| *state.loaded_fonts_mut(isPDF) = newfont);
     } else {
         let mut fl = fontlist;
         while !(*fl).next.is_null() {
@@ -1567,11 +1608,7 @@ unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
     }
     let cmap = getFontCMap(
         name,
-        if isPDF {
-            PDFFonts.with(|v| v.as_ptr() as *const c_char)
-        } else {
-            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
-        },
+        font_database_name(isPDF),
     );
     if cmap.is_null() {
         freeCIDFontFamily(fontfamily);
@@ -1581,22 +1618,14 @@ unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
     safestrcpy((*fontfamily).cmap.as_mut_ptr(), cmap, 50);
     let enc = getCIDFontEncoding(
         name,
-        if isPDF {
-            PDFFonts.with(|v| v.as_ptr() as *const c_char)
-        } else {
-            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
-        },
+        font_database_name(isPDF),
     );
     if !enc.is_null() {
         safestrcpy((*fontfamily).encoding.as_mut_ptr(), enc, 50);
     }
     let fname = getFontName(
         name,
-        if isPDF {
-            PDFFonts.with(|v| v.as_ptr() as *const c_char)
-        } else {
-            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
-        },
+        font_database_name(isPDF),
     );
     for i in 0..4 {
         (*fontfamily).cidfonts[i] = makeCIDFont();
@@ -1620,11 +1649,7 @@ unsafe fn addFont(
     }
     let encpath = getFontEncoding(
         name,
-        if isPDF {
-            PDFFonts.with(|v| v.as_ptr() as *const c_char)
-        } else {
-            PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
-        },
+        font_database_name(isPDF),
     );
     if encpath.is_null() {
         freeFontFamily(fontfamily);
@@ -1653,11 +1678,7 @@ unsafe fn addFont(
         let afmpath = fontMetricsFileName(
             name,
             i as c_int,
-            if isPDF {
-                PDFFonts.with(|v| v.as_ptr() as *const c_char)
-            } else {
-                PostScriptFonts.with(|v| v.as_ptr() as *const c_char)
-            },
+            font_database_name(isPDF),
         );
         if afmpath.is_null() {
             freeFontFamily(fontfamily);
@@ -1947,4 +1968,50 @@ pub unsafe fn PostScript(args: SEXP) -> SEXP {
 pub unsafe fn PDF(args: SEXP) -> SEXP {
     let _ = args;
     R_NilValue()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+    use std::ptr::NonNull;
+
+    #[test]
+    fn postscript_font_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let ps_font = NonNull::<T1FontList>::dangling().as_ptr();
+        let pdf_cid_font = NonNull::<CIDFontList>::dangling().as_ptr();
+        let ps_encoding = NonNull::<EncList>::dangling().as_ptr();
+
+        left.with_protected(|| {
+            with_postscript_font_state(|state| {
+                state.loaded_fonts = ps_font;
+                state.pdf_loaded_cid_fonts = pdf_cid_font;
+                state.loaded_encodings = ps_encoding;
+            });
+        });
+
+        right.with_protected(|| {
+            with_postscript_font_state(|state| {
+                assert!(state.loaded_fonts.is_null());
+                assert!(state.pdf_loaded_cid_fonts.is_null());
+                assert!(state.loaded_encodings.is_null());
+            });
+        });
+
+        left.with_protected(|| {
+            with_postscript_font_state(|state| {
+                assert_eq!(state.loaded_fonts, ps_font);
+                assert_eq!(state.pdf_loaded_cid_fonts, pdf_cid_font);
+                assert_eq!(state.loaded_encodings, ps_encoding);
+                assert_eq!(
+                    font_database_name(false),
+                    POSTSCRIPT_FONTS.as_ptr() as *const c_char
+                );
+                assert_eq!(font_database_name(true), PDF_FONTS.as_ptr() as *const c_char);
+            });
+        });
+    }
 }

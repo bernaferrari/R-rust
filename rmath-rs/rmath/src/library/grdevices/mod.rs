@@ -80,7 +80,7 @@ mod devpictex;
     unused_assignments,
     non_camel_case_types
 )]
-mod devps;
+pub(crate) mod devps;
 #[allow(
     dead_code,
     unused_imports,
