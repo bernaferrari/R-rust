@@ -16,6 +16,7 @@ use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::{lgammafn, lgammafn1p, log1pmx};
 use crate::special::stirlerr::stirlerr;
@@ -785,18 +786,40 @@ pub fn qgamma_inner(p: f64, alpha: f64, scale: f64, lower_tail: bool, log_p: boo
 // rgamma
 // =====================================================================
 
-use std::cell::Cell;
+#[derive(Clone, Copy)]
+pub(crate) struct GammaState {
+    aa: f64,
+    aaa: f64,
+    s: f64,
+    s2: f64,
+    d: f64,
+    q0: f64,
+    b: f64,
+    si: f64,
+    c: f64,
+}
 
-thread_local! {
-    static RG_AA: Cell<f64> = Cell::new(0.0);
-    static RG_AAA: Cell<f64> = Cell::new(0.0);
-    static RG_S: Cell<f64> = Cell::new(0.0);
-    static RG_S2: Cell<f64> = Cell::new(0.0);
-    static RG_D: Cell<f64> = Cell::new(0.0);
-    static RG_Q0: Cell<f64> = Cell::new(0.0);
-    static RG_B: Cell<f64> = Cell::new(0.0);
-    static RG_SI: Cell<f64> = Cell::new(0.0);
-    static RG_C: Cell<f64> = Cell::new(0.0);
+impl Default for GammaState {
+    fn default() -> Self {
+        GammaState {
+            aa: 0.0,
+            aaa: 0.0,
+            s: 0.0,
+            s2: 0.0,
+            d: 0.0,
+            q0: 0.0,
+            b: 0.0,
+            si: 0.0,
+            c: 0.0,
+        }
+    }
+}
+
+fn with_gamma_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut GammaState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.dist_gamma_state))
 }
 
 #[must_use]
@@ -859,15 +882,12 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     // --- a >= 1 : GD algorithm ---
 
     // Step 1: Recalculations of s2, s, d if a has changed
-    RG_AA.with(|aa| {
-        if a != aa.get() {
-            aa.set(a);
-            let s2 = a - 0.5;
-            let s = sqrt(s2);
-            let d = SQRT32 - s * 12.0;
-            RG_S2.with(|v| v.set(s2));
-            RG_S.with(|v| v.set(s));
-            RG_D.with(|v| v.set(d));
+    with_gamma_state(|state| {
+        if a != state.aa {
+            state.aa = a;
+            state.s2 = a - 0.5;
+            state.s = sqrt(state.s2);
+            state.d = SQRT32 - state.s * 12.0;
         }
     });
 
@@ -875,7 +895,8 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     //         x = (s,1/2) -normal deviate.
     // immediate acceptance (i)
     let t = norm_rand();
-    let mut x = RG_S.with(|v| v.get()) + 0.5 * t;
+    let state = with_gamma_state(|state| *state);
+    let mut x = state.s + 0.5 * t;
     let ret_val = x * x;
     if t >= 0.0 {
         return scale * ret_val;
@@ -883,41 +904,47 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
 
     // Step 3: u = 0,1 - uniform sample. squeeze acceptance (s)
     let u = unif_rand();
-    if RG_D.with(|v| v.get()) * u <= t * t * t {
+    if state.d * u <= t * t * t {
         return scale * ret_val;
     }
 
     // Step 4: recalculations of q0, b, si, c if necessary
-    RG_AAA.with(|aaa| {
-        if a != aaa.get() {
-            aaa.set(a);
+    with_gamma_state(|state| {
+        if a != state.aaa {
+            state.aaa = a;
             let r = 1.0 / a;
             let q0 = ((((((Q7 * r + Q6) * r + Q5) * r + Q4) * r + Q3) * r + Q2) * r + Q1) * r;
 
-            let s2 = RG_S2.with(|v| v.get());
-            let s = RG_S.with(|v| v.get());
-
             let (b, si, c) = if a <= 3.686 {
-                (0.463 + s + 0.178 * s2, 1.235, 0.195 / s - 0.079 + 0.16 * s)
+                (
+                    0.463 + state.s + 0.178 * state.s2,
+                    1.235,
+                    0.195 / state.s - 0.079 + 0.16 * state.s,
+                )
             } else if a <= 13.022 {
-                (1.654 + 0.0076 * s2, 1.68 / s + 0.275, 0.062 / s + 0.024)
+                (
+                    1.654 + 0.0076 * state.s2,
+                    1.68 / state.s + 0.275,
+                    0.062 / state.s + 0.024,
+                )
             } else {
-                (1.77, 0.75, 0.1515 / s)
+                (1.77, 0.75, 0.1515 / state.s)
             };
 
-            RG_Q0.with(|v| v.set(q0));
-            RG_B.with(|v| v.set(b));
-            RG_SI.with(|v| v.set(si));
-            RG_C.with(|v| v.set(c));
+            state.q0 = q0;
+            state.b = b;
+            state.si = si;
+            state.c = c;
         }
     });
 
-    let q0 = RG_Q0.with(|v| v.get());
-    let s = RG_S.with(|v| v.get());
-    let s2 = RG_S2.with(|v| v.get());
-    let b_val = RG_B.with(|v| v.get());
-    let si = RG_SI.with(|v| v.get());
-    let c_val = RG_C.with(|v| v.get());
+    let state = with_gamma_state(|state| *state);
+    let q0 = state.q0;
+    let s = state.s;
+    let s2 = state.s2;
+    let b_val = state.b;
+    let si = state.si;
+    let c_val = state.c;
 
     // Step 5: no quotient test if x not positive
     if x > 0.0 {
@@ -1018,4 +1045,29 @@ pub fn Rf_rgamma(shape: f64, scale: f64) -> f64 {
 #[must_use]
 pub fn rgamma(shape: f64, scale: f64) -> f64 {
     rgamma_inner(shape, scale)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rgamma_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rgamma_inner(2.5, 1.0);
+            with_gamma_state(|state| {
+                assert_eq!(state.aa, 2.5);
+            });
+        });
+
+        right.with_protected(|| {
+            with_gamma_state(|state| {
+                assert_eq!(state.aa, 0.0);
+            });
+        });
+    }
 }

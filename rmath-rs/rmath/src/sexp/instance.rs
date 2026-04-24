@@ -248,6 +248,10 @@ pub struct RInstance {
     pub(crate) dist_hyper_state: crate::dist::hypergeometric::RhyperState,
     /// Per-instance nmath::dist::hypergeometric sampler cache.
     pub(crate) nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState,
+    /// Per-instance dist::gamma sampler cache.
+    pub(crate) dist_gamma_state: crate::dist::gamma::GammaState,
+    /// Per-instance nmath::dist::gamma sampler cache.
+    pub(crate) nmath_gamma_state: crate::nmath::dist::gamma::GammaState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -305,6 +309,8 @@ impl RInstance {
             nmath_pois_state: crate::nmath::dist::poisson::RpoisState::new(),
             dist_hyper_state: crate::dist::hypergeometric::RhyperState::new(),
             nmath_hyper_state: crate::nmath::dist::hypergeometric::RhyperState::new(),
+            dist_gamma_state: crate::dist::gamma::GammaState::default(),
+            nmath_gamma_state: crate::nmath::dist::gamma::GammaState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };

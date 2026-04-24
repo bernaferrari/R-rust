@@ -19,6 +19,7 @@ use crate::nmath::special::bd0::ebd0;
 use crate::nmath::special::gamma::{lgammafn, lgammafn1p, log1pmx, logcf};
 use crate::nmath::special::stirlerr::stirlerr;
 use crate::nmath::utils::*;
+use crate::sexp::instance::with_required_current_instance;
 use libm::{exp, expm1, fabs, floor, log, log1p, pow, sqrt};
 
 const X_LRG: f64 = 2.86111748575702815380240589208115399625e+307; // = 2^1023 / pi
@@ -811,12 +812,9 @@ pub fn qgamma_inner(p: f64, alpha: f64, scale: f64, lower_tail: bool, log_p: boo
 // rgamma
 // =====================================================================
 
-use std::cell::Cell;
-
-/// Thread-local state for the rgamma GD algorithm.
-/// Combines 9 separate thread_local! cells into a single struct to reduce TLS lookup overhead.
+/// Per-session state for the rgamma GD algorithm.
 #[derive(Clone, Copy)]
-struct GammaState {
+pub(crate) struct GammaState {
     aa: f64,
     aaa: f64,
     s: f64,
@@ -844,8 +842,11 @@ impl Default for GammaState {
     }
 }
 
-thread_local! {
-    static GAMMA_STATE: Cell<GammaState> = Cell::new(GammaState::default());
+fn with_gamma_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut GammaState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.nmath_gamma_state))
 }
 
 #[must_use]
@@ -908,14 +909,12 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     // --- a >= 1 : GD algorithm ---
 
     // Step 1: Recalculations of s2, s, d if a has changed
-    GAMMA_STATE.with(|cell| {
-        let mut state = cell.get();
+    with_gamma_state(|state| {
         if a != state.aa {
             state.aa = a;
             state.s2 = a - 0.5;
             state.s = sqrt(state.s2);
             state.d = SQRT32 - state.s * 12.0;
-            cell.set(state);
         }
     });
 
@@ -923,7 +922,7 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     //         x = (s,1/2) -normal deviate.
     // immediate acceptance (i)
     let t = norm_rand();
-    let state = GAMMA_STATE.with(|c| c.get());
+    let state = with_gamma_state(|state| *state);
     let mut x = state.s + 0.5 * t;
     let ret_val = x * x;
     if t >= 0.0 {
@@ -937,8 +936,7 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
     }
 
     // Step 4: recalculations of q0, b, si, c if necessary
-    GAMMA_STATE.with(|cell| {
-        let mut state = cell.get();
+    with_gamma_state(|state| {
         if a != state.aaa {
             state.aaa = a;
             let r = 1.0 / a;
@@ -963,11 +961,10 @@ pub fn rgamma_inner(a: f64, scale: f64) -> f64 {
             state.b = b;
             state.si = si;
             state.c = c;
-            cell.set(state);
         }
     });
 
-    let state = GAMMA_STATE.with(|c| c.get());
+    let state = with_gamma_state(|state| *state);
     let q0 = state.q0;
     let s = state.s;
     let s2 = state.s2;
