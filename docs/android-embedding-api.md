@@ -7,6 +7,8 @@ The Android-facing API is intentionally an owned-value boundary.
 - No public Android or embedding method returns raw `SEXP`.
 - `r_embed::RSession::eval_result()` returns display output plus an owned `RValue`.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
+- Long-running evaluations can opt into cooperative cancellation with
+  `r_embed::CancellationToken`; the token is explicit and per evaluation.
 
 `SEXP` remains inside the runtime core. Code that crosses into Android, Kotlin,
 or other FFI callers should convert immediately into `RValue`, `String`,

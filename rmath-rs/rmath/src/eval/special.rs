@@ -1,9 +1,4 @@
-#![allow(
-    non_snake_case,
-    non_upper_case_globals,
-    dead_code,
-    unused_variables
-)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Special form implementations — ports R's special functions from eval.c.
 //!
@@ -146,6 +141,7 @@ unsafe fn do_while(args: SEXP, rho: SEXP) -> SEXP {
     let body = CADR(args);
 
     loop {
+        crate::sexp::instance::check_cancellation();
         let cond_val = Rf_eval(cond, rho);
 
         let should_continue = if TYPEOF(cond_val) == SEXPTYPE::LGLSXP {
@@ -212,8 +208,8 @@ unsafe fn do_for(args: SEXP, rho: SEXP) -> SEXP {
     let n = crate::sexp::constructors::Rf_length(seq_val);
 
     for i in 0..n {
-        let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP
-        {
+        crate::sexp::instance::check_cancellation();
+        let val = if TYPEOF(seq_val) == SEXPTYPE::VECSXP || TYPEOF(seq_val) == SEXPTYPE::EXPRSXP {
             crate::sexp::accessors::VECTOR_ELT(seq_val, i as i64)
         } else {
             let mut current = seq_val;
@@ -249,6 +245,7 @@ unsafe fn do_repeat(args: SEXP, rho: SEXP) -> SEXP {
     let body = CAR(args);
 
     loop {
+        crate::sexp::instance::check_cancellation();
         let body_result =
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| Rf_eval(body, rho)));
 

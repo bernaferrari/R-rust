@@ -20,6 +20,7 @@ use crate::sexp::builder;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, SEXPTYPE};
 use crate::sexp::output;
 use crate::sexp::safe::Sexp;
+use crate::sexp::session::CancellationFlag;
 
 // ---------------------------------------------------------------------------
 // RSession — per-thread interpreter context
@@ -88,6 +89,10 @@ impl RSession {
 
     pub fn is_active(&self) -> bool {
         self.core.is_active()
+    }
+
+    pub fn set_cancellation_flag(&mut self, flag: Option<CancellationFlag>) {
+        self.core.set_cancellation_flag(flag);
     }
 
     pub fn eval_integer(&mut self, value: i32) -> RResult {

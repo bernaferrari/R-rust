@@ -7,6 +7,7 @@
 
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, RenderPlot};
+use std::sync::{Arc, atomic::AtomicBool};
 
 pub use rmath::android::RValue;
 
@@ -40,6 +41,46 @@ pub struct EvalOutput {
     pub value: RValue,
 }
 
+/// Cooperative cancellation handle for an embedded evaluation.
+///
+/// The token is cheap to clone and can be cancelled from another thread. It is
+/// scoped to explicit evaluations that receive it; cancelling one token does
+/// not affect other sessions.
+#[derive(Debug, Clone)]
+pub struct CancellationToken {
+    inner: Arc<AtomicBool>,
+}
+
+impl CancellationToken {
+    pub fn new() -> Self {
+        Self {
+            inner: Arc::new(AtomicBool::new(false)),
+        }
+    }
+
+    pub fn cancel(&self) {
+        self.inner.store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn reset(&self) {
+        self.inner.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    pub fn is_cancelled(&self) -> bool {
+        self.inner.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn flag(&self) -> Arc<AtomicBool> {
+        self.inner.clone()
+    }
+}
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl RSession {
     /// Create a new R session.
     ///
@@ -64,13 +105,37 @@ impl RSession {
     /// Evaluate an R expression, returning both display output and an owned
     /// typed value.
     pub fn eval_result(&mut self, code: &str) -> Result<EvalOutput, RSessionError> {
+        self.eval_result_with_cancel(code, None)
+    }
+
+    /// Evaluate an R expression with a cooperative cancellation token.
+    pub fn eval_result_cancellable(
+        &mut self,
+        code: &str,
+        cancellation: &CancellationToken,
+    ) -> Result<EvalOutput, RSessionError> {
+        self.eval_result_with_cancel(code, Some(cancellation.flag()))
+    }
+
+    fn eval_result_with_cancel(
+        &mut self,
+        code: &str,
+        cancellation: Option<Arc<AtomicBool>>,
+    ) -> Result<EvalOutput, RSessionError> {
         if !self.active {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
 
+        self.inner.set_cancellation_flag(cancellation);
         let result = self.inner.eval(code);
+        self.inner.set_cancellation_flag(None);
+
         if let Some(message) = result.output.strip_prefix("Error: ") {
-            Err(RSessionError::EvalError(message.to_string()))
+            if message == "operation cancelled" {
+                Err(RSessionError::EvalError("operation cancelled".to_string()))
+            } else {
+                Err(RSessionError::EvalError(message.to_string()))
+            }
         } else {
             Ok(EvalOutput {
                 output: result.output,
@@ -160,5 +225,51 @@ mod tests {
         let mut session = RSession::new().expect("session");
         session.close();
         assert!(session.eval("1 + 1").is_err());
+    }
+
+    #[test]
+    fn eval_observes_pre_cancelled_token() {
+        let mut session = RSession::new().expect("session");
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        let err = session
+            .eval_result_cancellable("repeat { 1 + 1 }", &cancellation)
+            .expect_err("cancelled");
+        assert!(err.to_string().contains("operation cancelled"));
+    }
+
+    #[test]
+    fn eval_can_be_cancelled_from_another_thread() {
+        let cancellation = CancellationToken::new();
+        let worker_flag = cancellation.clone();
+        let worker = std::thread::spawn(move || {
+            let mut session = RSession::new().expect("session");
+            session.eval_result_cancellable("repeat { 1 + 1 }", &worker_flag)
+        });
+
+        std::thread::sleep(std::time::Duration::from_millis(10));
+        cancellation.cancel();
+
+        let err = worker
+            .join()
+            .expect("worker should not panic")
+            .expect_err("eval should be cancelled");
+        assert!(err.to_string().contains("operation cancelled"));
+    }
+
+    #[test]
+    fn cancellation_does_not_poison_sessions() {
+        let mut cancelled_session = RSession::new().expect("cancelled session");
+        let mut other_session = RSession::new().expect("other session");
+
+        let cancellation = CancellationToken::new();
+        cancellation.cancel();
+        let err = cancelled_session
+            .eval_result_cancellable("repeat { 1 + 1 }", &cancellation)
+            .expect_err("cancelled");
+        assert!(err.to_string().contains("operation cancelled"));
+
+        assert_eq!(other_session.eval("1 + 1").unwrap(), "[1] 2");
+        assert_eq!(cancelled_session.eval("2 + 2").unwrap(), "[1] 4");
     }
 }

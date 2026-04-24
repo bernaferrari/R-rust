@@ -6,10 +6,11 @@
 use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{
     Arc, Mutex,
-    atomic::{AtomicBool, AtomicU64, Ordering},
+    atomic::{AtomicU64, Ordering},
 };
 use std::thread;
 
+use r_embed::CancellationToken;
 use uniffi::Object;
 
 // ---------------------------------------------------------------------------
@@ -85,7 +86,6 @@ enum SessionCommand {
         height: u32,
         reply: Sender<Result<PlotResult, RError>>,
     },
-    Cancel,
     Shutdown,
 }
 
@@ -96,7 +96,7 @@ enum SessionCommand {
 #[derive(Object)]
 pub struct RSession {
     cmd_tx: Mutex<Option<Sender<SessionCommand>>>,
-    cancelled: Arc<AtomicBool>,
+    cancelled: CancellationToken,
     callback: Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
     operation_id: AtomicU64,
 }
@@ -110,7 +110,7 @@ fn current_callback(
 fn spawn_worker(
     cmd_rx: Receiver<SessionCommand>,
     callback: Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
-    cancelled: Arc<AtomicBool>,
+    cancelled: CancellationToken,
 ) {
     thread::spawn(move || {
         let mut session = match r_embed::RSession::new() {
@@ -124,16 +124,19 @@ fn spawn_worker(
         };
 
         while let Ok(cmd) = cmd_rx.recv() {
-            if cancelled.load(Ordering::SeqCst) {
-                cancelled.store(false, Ordering::SeqCst);
-                continue;
-            }
-
             match cmd {
                 SessionCommand::Eval { code, reply } => {
                     let result = session
-                        .eval(&code)
-                        .map_err(|e| RError::EvalError(e.to_string()));
+                        .eval_result_cancellable(&code, &cancelled)
+                        .map(|result| result.output)
+                        .map_err(|e| {
+                            if e.to_string().contains("operation cancelled") {
+                                RError::Cancelled
+                            } else {
+                                RError::EvalError(e.to_string())
+                            }
+                        });
+                    cancelled.reset();
 
                     if let Some(cb) = current_callback(&callback) {
                         match &result {
@@ -168,9 +171,6 @@ fn spawn_worker(
 
                     let _ = reply.send(result);
                 }
-                SessionCommand::Cancel => {
-                    cancelled.store(true, Ordering::SeqCst);
-                }
                 SessionCommand::Shutdown => {
                     session.close();
                     break;
@@ -185,7 +185,7 @@ impl RSession {
     #[uniffi::constructor]
     pub fn new() -> Result<Self, RError> {
         let (cmd_tx, cmd_rx) = channel();
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled = CancellationToken::new();
 
         let callback = Arc::new(Mutex::new(None));
 
@@ -207,6 +207,7 @@ impl RSession {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, reply_rx) = channel();
+        self.cancelled.reset();
         tx.send(SessionCommand::Eval {
             code,
             reply: reply_tx,
@@ -220,6 +221,7 @@ impl RSession {
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
         let op_id = self.operation_id.fetch_add(1, Ordering::Relaxed);
+        self.cancelled.reset();
         tx.send(SessionCommand::Eval {
             code,
             reply: reply_tx,
@@ -256,11 +258,7 @@ impl RSession {
     }
 
     pub fn cancel(&self) {
-        self.cancelled.store(true, Ordering::SeqCst);
-        let tx_guard = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(tx) = tx_guard.as_ref() {
-            let _ = tx.send(SessionCommand::Cancel);
-        }
+        self.cancelled.cancel();
     }
 
     pub fn destroy(&self) {
@@ -275,6 +273,39 @@ impl RSession {
 impl Drop for RSession {
     fn drop(&mut self) {
         self.destroy();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[test]
+    fn cancel_without_active_eval_does_not_poison_next_eval() {
+        let session = RSession::new().expect("session");
+
+        session.cancel();
+
+        assert_eq!(session.eval("1 + 1".to_string()).unwrap(), "[1] 2");
+    }
+
+    #[test]
+    fn cancel_stops_running_eval() {
+        let session = Arc::new(RSession::new().expect("session"));
+        let worker_session = session.clone();
+        let worker =
+            std::thread::spawn(move || worker_session.eval("repeat { 1 + 1 }".to_string()));
+
+        std::thread::sleep(Duration::from_millis(10));
+        session.cancel();
+
+        let err = worker
+            .join()
+            .expect("worker should not panic")
+            .expect_err("eval should be cancelled");
+        assert!(matches!(err, RError::Cancelled));
     }
 }
 

@@ -5352,6 +5352,7 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 #[must_use]
 #[unsafe(no_mangle)]
 pub unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
+    crate::sexp::instance::check_cancellation();
     set_R_Visible(TRUE);
 
     match (Sexp::from_raw(e), Sexp::from_raw(rho)) {

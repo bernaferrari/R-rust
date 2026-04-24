@@ -19,6 +19,10 @@ use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::raw::{c_char, c_int};
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
@@ -141,6 +145,7 @@ pub(crate) struct EvalControlState {
     pub check_constants: c_int,
     pub exec_token: SEXP,
     pub profiling: ProfilingState,
+    pub cancellation: Option<Arc<AtomicBool>>,
 }
 
 impl Default for EvalControlState {
@@ -169,6 +174,7 @@ impl Default for EvalControlState {
             check_constants: 0,
             exec_token: std::ptr::null_mut(),
             profiling: ProfilingState::default(),
+            cancellation: None,
         }
     }
 }
@@ -343,8 +349,7 @@ impl RInstance {
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
             graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
-            postscript_font_state:
-                crate::library::grdevices::devps::PostScriptFontState::default(),
+            postscript_font_state: crate::library::grdevices::devps::PostScriptFontState::default(),
             windows_device_state:
                 crate::library::grdevices::devwindows::WindowsDeviceState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
@@ -523,4 +528,26 @@ where
 #[inline]
 pub fn has_current_instance() -> bool {
     CURRENT_INSTANCE.with(|ci| ci.borrow().is_some())
+}
+
+/// Return whether the active session has requested cooperative cancellation.
+#[inline]
+pub fn is_cancellation_requested() -> bool {
+    with_current_instance(|inst| {
+        inst.eval_state
+            .cancellation
+            .as_ref()
+            .is_some_and(|flag| flag.load(Ordering::Relaxed))
+    })
+    .unwrap_or(false)
+}
+
+/// Raise an R error if the active session has requested cancellation.
+#[inline]
+pub fn check_cancellation() {
+    if is_cancellation_requested() {
+        std::panic::panic_any(crate::sexp::context::RSignal::Error {
+            message: "operation cancelled".to_string(),
+        });
+    }
 }

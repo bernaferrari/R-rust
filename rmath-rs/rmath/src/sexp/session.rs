@@ -29,6 +29,7 @@ use std::ffi::CString;
 use std::os::raw::c_int;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
+use std::sync::{Arc, atomic::AtomicBool};
 
 use super::context::{RError, RSignal};
 use super::ffi::{SEXP, SEXPTYPE};
@@ -55,6 +56,7 @@ impl std::fmt::Display for REvalError {
 impl std::error::Error for REvalError {}
 
 pub type RResult<T> = Result<T, REvalError>;
+pub type CancellationFlag = Arc<AtomicBool>;
 
 fn install_symbol(name: &str) -> Option<SEXP> {
     let name = CString::new(name).ok()?;
@@ -312,6 +314,15 @@ impl RSession {
     /// Set this session's RNG seed state.
     pub fn set_seed(&self, i1: u32, i2: u32) {
         self.with_active(|| crate::rng::set_seed(i1, i2));
+    }
+
+    /// Set or clear this session's cooperative cancellation flag.
+    ///
+    /// Evaluator loop checks read this flag through the active `RInstance`.
+    /// Sharing an `Arc<AtomicBool>` lets an embedding host request cancellation
+    /// from another thread without exposing runtime internals.
+    pub fn set_cancellation_flag(&mut self, flag: Option<CancellationFlag>) {
+        self.instance.eval_state.cancellation = flag;
     }
 
     /// Generate a standard normal random number using this session's RNG state.
