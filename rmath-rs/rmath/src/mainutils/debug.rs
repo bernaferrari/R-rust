@@ -6,7 +6,6 @@
 //! .Internal(trace()), .primTrace/.primUntrace,
 //! tracingState/debuggingState, and memory profiling stubs.
 
-use std::cell::Cell;
 use std::os::raw::c_int;
 
 use crate::mainutils::errors::Rf_error;
@@ -75,14 +74,6 @@ unsafe fn RTRACE(x: SEXP) -> c_int {
 unsafe fn PRIMVAL(op: SEXP) -> c_int {
     unsafe { crate::mainutils::relop::PRIMVAL(op) }
 }
-
-// ---------------------------------------------------------------------------
-// Static state for tracing/debugging toggles
-// ---------------------------------------------------------------------------
-
-thread_local! { static tracing_state: Cell<c_int> = Cell::new(TRUE); }
-
-thread_local! { static debugging_state: Cell<c_int> = Cell::new(TRUE); }
 
 // ---------------------------------------------------------------------------
 // do_debug — debug / undebug / isdebugged / debugonce
@@ -188,14 +179,20 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         match PRIMVAL(op) {
             0 => {
                 // tracingState
-                let prev = tracing_state.with(|v| v.get());
-                tracing_state.with(|v| v.set(state));
+                let prev = crate::sexp::instance::with_required_current_instance(|inst| {
+                    let prev = inst.eval_state.tracing_state;
+                    inst.eval_state.tracing_state = state;
+                    prev
+                });
                 return Rf_ScalarLogical(prev);
             }
             1 => {
                 // debuggingState
-                let prev = debugging_state.with(|v| v.get());
-                debugging_state.with(|v| v.set(state));
+                let prev = crate::sexp::instance::with_required_current_instance(|inst| {
+                    let prev = inst.eval_state.debugging_state;
+                    inst.eval_state.debugging_state = state;
+                    prev
+                });
                 return Rf_ScalarLogical(prev);
             }
             _ => {} // intentionally unhandled: unknown debug state operation
@@ -206,19 +203,21 @@ pub unsafe fn do_traceOnOff(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 }
 
 // ---------------------------------------------------------------------------
-// R_current_debug_state — return the global debugging state
+// R_current_debug_state — return this session's debugging state
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_debug_state() -> c_int {
-    debugging_state.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.debugging_state)
+        .unwrap_or(TRUE)
 }
 
 // ---------------------------------------------------------------------------
-// R_current_trace_state — return the global tracing state
+// R_current_trace_state — return this session's tracing state
 // ---------------------------------------------------------------------------
 
 pub extern "C" fn R_current_trace_state() -> c_int {
-    tracing_state.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.tracing_state)
+        .unwrap_or(TRUE)
 }
 
 // ---------------------------------------------------------------------------
@@ -274,6 +273,7 @@ mod tests {
     use std::ptr;
 
     use super::*;
+    use crate::sexp::session::RSession;
 
     /// Test that do_debug does not panic when called with null pointers.
     /// In real usage, null CAR(args) would be caught by the TYPEOF check
@@ -292,22 +292,29 @@ mod tests {
     /// Test that the tracing/debugging state functions work correctly.
     #[test]
     fn test_trace_state() {
-        // Initial state should be TRUE
-        assert_eq!(R_current_trace_state(), TRUE);
-        assert_eq!(R_current_debug_state(), TRUE);
+        let session = RSession::new();
+        session.with_protected(|| {
+            // Initial state should be TRUE
+            assert_eq!(R_current_trace_state(), TRUE);
+            assert_eq!(R_current_debug_state(), TRUE);
 
-        // Mutate state directly and verify
-        tracing_state.with(|v| v.set(FALSE));
-        assert_eq!(R_current_trace_state(), FALSE);
+            crate::sexp::instance::with_required_current_instance(|inst| {
+                inst.eval_state.tracing_state = FALSE;
+            });
+            assert_eq!(R_current_trace_state(), FALSE);
 
-        debugging_state.with(|v| v.set(FALSE));
-        assert_eq!(R_current_debug_state(), FALSE);
+            crate::sexp::instance::with_required_current_instance(|inst| {
+                inst.eval_state.debugging_state = FALSE;
+            });
+            assert_eq!(R_current_debug_state(), FALSE);
 
-        // Restore defaults
-        tracing_state.with(|v| v.set(TRUE));
-        debugging_state.with(|v| v.set(TRUE));
-        assert_eq!(R_current_trace_state(), TRUE);
-        assert_eq!(R_current_debug_state(), TRUE);
+            crate::sexp::instance::with_required_current_instance(|inst| {
+                inst.eval_state.tracing_state = TRUE;
+                inst.eval_state.debugging_state = TRUE;
+            });
+            assert_eq!(R_current_trace_state(), TRUE);
+            assert_eq!(R_current_debug_state(), TRUE);
+        });
     }
 
     /// Test that do_tracemem is defined (actual error behavior tested
@@ -339,7 +346,8 @@ mod tests {
     /// Test that do_retracemem returns without panicking.
     #[test]
     fn test_retracemem_no_panic() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let result = do_retracemem(
                 ptr::null_mut(),
                 ptr::null_mut(),
@@ -347,7 +355,7 @@ mod tests {
                 ptr::null_mut(),
             );
             assert!(result.is_null() || result == R_NilValue());
-        }
+        });
     }
 
     /// Test that memtrace_report is a safe no-op.
