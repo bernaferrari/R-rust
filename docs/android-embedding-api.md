@@ -6,6 +6,8 @@ The Android-facing API is intentionally an owned-value boundary.
 - `r_embed::RSession` is the public embedding wrapper used by desktop and UniFFI.
 - No public Android or embedding method returns raw `SEXP`.
 - `r_embed::RSession::eval_result()` returns display output plus an owned `RValue`.
+- UniFFI `RSession::eval_result()` returns the same boundary shape as an
+  `EvalResult { output, value }` record for Kotlin/Java callers.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
 - Long-running evaluations can opt into cooperative cancellation with
   `r_embed::CancellationToken`; the token is explicit and per evaluation.
