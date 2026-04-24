@@ -36,6 +36,13 @@ impl SymbolTableInner {
             nodes: Vec::new(),
         }
     }
+
+    fn intern_with_pname<F>(&mut self, name_str: String, make_pname: F) -> SEXP
+    where
+        F: FnOnce() -> SEXP,
+    {
+        intern_symbol_with_pname(&mut self.symbols, &mut self.nodes, name_str, make_pname)
+    }
 }
 
 /// Global symbol table, lazily initialized.
@@ -45,6 +52,69 @@ fn get_symbol_table() -> &'static Mutex<SymbolTableInner> {
     SYMBOL_TABLE.get_or_init(|| Mutex::new(SymbolTableInner::new()))
 }
 
+fn persistent_charsxp_from_bytes(bytes: &[u8]) -> SEXP {
+    unsafe {
+        use std::alloc::{Layout, alloc};
+
+        let len = bytes.len() as R_xlen_t;
+        let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
+        boxed.data = SexprecData {
+            charsxp_truelen: len,
+        };
+        let charsxp: SEXP = &mut *boxed as *mut _;
+        let total = bytes.len() + 1;
+        let Ok(layout) = Layout::from_size_align(total, 1) else {
+            return ptr::null_mut();
+        };
+        let data_ptr = alloc(layout);
+        if data_ptr.is_null() {
+            return ptr::null_mut();
+        }
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), data_ptr, bytes.len());
+        *data_ptr.add(bytes.len()) = 0;
+        (*charsxp).gengc_next_node = data_ptr as SEXP;
+        Box::leak(boxed)
+    }
+}
+
+fn intern_symbol_with_pname<F>(
+    symbols: &mut HashMap<String, SEXP>,
+    nodes: &mut Vec<Box<SexprecCore>>,
+    name_str: String,
+    make_pname: F,
+) -> SEXP
+where
+    F: FnOnce() -> SEXP,
+{
+    if let Some(&existing) = symbols.get(&name_str) {
+        return existing;
+    }
+
+    let pname = make_pname();
+    if pname.is_null() {
+        return ptr::null_mut();
+    }
+
+    let mut boxed = Box::new(SexprecCore {
+        sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
+        attrib: ptr::null_mut(),
+        gengc_next_node: ptr::null_mut(),
+        gengc_prev_node: ptr::null_mut(),
+        data: SexprecData {
+            symsxp: super::ffi::Symsxp {
+                pname,
+                value: ptr::null_mut(),
+                internal: ptr::null_mut(),
+            },
+        },
+    });
+
+    let sexp: SEXP = &mut *boxed as *mut _;
+    symbols.insert(name_str, sexp);
+    nodes.push(boxed);
+    sexp
+}
+
 /// Best-effort reverse lookup: get the interned name for a symbol pointer.
 ///
 /// This avoids dereferencing SYMSXP internals when callers only need the
@@ -52,6 +122,15 @@ fn get_symbol_table() -> &'static Mutex<SymbolTableInner> {
 pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
     if sym.is_null() {
         return None;
+    }
+    if let Some(name) = super::instance::with_current_instance(|inst| {
+        inst.symbols
+            .iter()
+            .find_map(|(name, &ptr)| if ptr == sym { Some(name.clone()) } else { None })
+    })
+    .flatten()
+    {
+        return Some(name);
     }
     let table = get_symbol_table().lock().unwrap_or_else(|e| e.into_inner());
     table
@@ -82,40 +161,20 @@ pub unsafe fn Rf_install(name: *const c_char) -> SEXP {
             Err(_) => return ptr::null_mut(),
         };
 
+        if let Some(symbol) = super::instance::with_current_instance(|inst| {
+            intern_symbol_with_pname(
+                &mut inst.symbols,
+                &mut inst.symbol_nodes,
+                name_str.clone(),
+                || super::constructors::persistent_mkChar(name),
+            )
+        }) {
+            return symbol;
+        }
+
         let mut table = get_symbol_table().lock().unwrap_or_else(|e| e.into_inner());
 
-        if let Some(&existing) = table.symbols.get(&name_str) {
-            return existing;
-        }
-
-        // Create a CHARSXP for the print name
-        let pname = super::constructors::persistent_mkChar(name);
-        if pname.is_null() {
-            return ptr::null_mut();
-        }
-
-        // Create new SYMSXP node
-        let mut boxed = Box::new(SexprecCore {
-            sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData {
-                symsxp: super::ffi::Symsxp {
-                    pname,
-                    value: ptr::null_mut(),
-                    internal: ptr::null_mut(),
-                },
-            },
-        });
-
-        let sexp: SEXP = &mut *boxed as *mut _;
-
-        // Store in table
-        table.symbols.insert(name_str, sexp);
-        table.nodes.push(boxed);
-
-        sexp
+        table.intern_with_pname(name_str, || super::constructors::persistent_mkChar(name))
     }
 }
 
@@ -131,38 +190,20 @@ pub unsafe fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
             Err(_) => return ptr::null_mut(),
         };
 
+        if let Some(symbol) = super::instance::with_current_instance(|inst| {
+            intern_symbol_with_pname(
+                &mut inst.symbols,
+                &mut inst.symbol_nodes,
+                name_str.clone(),
+                || persistent_charsxp_from_bytes(bytes),
+            )
+        }) {
+            return symbol;
+        }
+
         let mut table = get_symbol_table().lock().unwrap_or_else(|e| e.into_inner());
 
-        if let Some(&existing) = table.symbols.get(&name_str) {
-            return existing;
-        }
-
-        // Create a CHARSXP for the print name
-        let pname = super::constructors::Rf_mkCharLen(name, len as std::os::raw::c_int);
-        if pname.is_null() {
-            return ptr::null_mut();
-        }
-
-        let mut boxed = Box::new(SexprecCore {
-            sxpinfo: super::ffi::SxpInfo::new(SEXPTYPE::SYMSXP),
-            attrib: ptr::null_mut(),
-            gengc_next_node: ptr::null_mut(),
-            gengc_prev_node: ptr::null_mut(),
-            data: SexprecData {
-                symsxp: super::ffi::Symsxp {
-                    pname,
-                    value: ptr::null_mut(),
-                    internal: ptr::null_mut(),
-                },
-            },
-        });
-
-        let sexp: SEXP = &mut *boxed as *mut _;
-
-        table.symbols.insert(name_str, sexp);
-        table.nodes.push(boxed);
-
-        sexp
+        table.intern_with_pname(name_str, || persistent_charsxp_from_bytes(bytes))
     }
 }
 
@@ -303,6 +344,31 @@ mod tests {
             let s2 = Rf_install(CString::new("y").unwrap_or_default().as_ptr());
             assert_ne!(s1, s2);
         }
+    }
+
+    #[test]
+    fn test_session_local_symbol_tables() {
+        let mut left = crate::sexp::session::RSession::new();
+        let mut right = crate::sexp::session::RSession::new();
+
+        let left_a = left
+            .with_arena(|_| unsafe {
+                Rf_install(CString::new("session_local_symbol").unwrap().as_ptr())
+            })
+            .unwrap();
+        let left_b = left
+            .with_arena(|_| unsafe {
+                Rf_install(CString::new("session_local_symbol").unwrap().as_ptr())
+            })
+            .unwrap();
+        let right_a = right
+            .with_arena(|_| unsafe {
+                Rf_install(CString::new("session_local_symbol").unwrap().as_ptr())
+            })
+            .unwrap();
+
+        assert_eq!(left_a, left_b);
+        assert_ne!(left_a, right_a);
     }
 
     #[test]

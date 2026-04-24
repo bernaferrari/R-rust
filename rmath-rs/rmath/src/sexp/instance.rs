@@ -48,6 +48,11 @@ pub struct RInstance {
     pub empty_env: SEXP,
     /// The protection stack for this instance.
     pub protect_stack: Vec<SEXP>,
+    /// Per-instance symbol table for session-local interning.
+    pub(crate) symbols: HashMap<String, SEXP>,
+    /// Owned SYMSXP nodes for the per-instance symbol table.
+    #[allow(clippy::vec_box)]
+    pub(crate) symbol_nodes: Vec<Box<SexprecCore>>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub options: HashMap<String, SEXP>,
     /// Whether the instance options have been initialized with defaults.
@@ -74,18 +79,28 @@ impl RInstance {
         let base_env = Self::make_env(nil, empty_env, nil);
         let global_env = Self::make_env(nil, base_env, nil);
 
-        unsafe {
-            super::init::initialize_base_bindings(base_env);
-        }
-
-        RInstance {
+        let mut instance = RInstance {
             arena: RArena::new(),
             global_env,
             base_env,
             empty_env,
             protect_stack: Vec::new(),
+            symbols: HashMap::new(),
+            symbol_nodes: Vec::new(),
             options: HashMap::new(),
             options_initialized: false,
+        };
+
+        instance.initialize_base_bindings();
+        instance
+    }
+
+    /// Install core base bindings with this instance active.
+    pub fn initialize_base_bindings(&mut self) {
+        let previous = unsafe { replace_current_instance(Some(self as *mut RInstance)) };
+        unsafe {
+            super::init::initialize_base_bindings(self.base_env);
+            replace_current_instance(previous);
         }
     }
 
