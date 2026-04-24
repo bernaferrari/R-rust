@@ -5,7 +5,6 @@
  *  unit -- unit objects and coordinate transformation for grid.
  */
 
-use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -333,14 +332,6 @@ unsafe fn transformArithmeticUnitToINCHES(
     }
     combineArithmeticUnitValues(op, value, &values)
 }
-
-/* ==============================
- * Global null layout mode
- * ============================== */
-
-thread_local! { static L_nullLayoutMode: Cell<c_int> = Cell::new(0); }
-
-thread_local! { pub static L_nullLayoutMode_ptr: Cell<c_int> = Cell::new(0); }
 
 /* ==============================
  * unit() -- construct a unit object
