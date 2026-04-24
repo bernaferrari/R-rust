@@ -51,14 +51,25 @@ pub unsafe fn initialize_r() {
         let global_env = NewPersistentEnvironment(nil, base_env, nil);
         set_R_GlobalEnv(global_env);
 
+        initialize_base_bindings(base_env);
+
+        R_INITIALIZED.store(true, Ordering::Release);
+    }
+}
+
+/// Install the core bindings needed by a base environment.
+///
+/// This is used both by the legacy process-global initializer and by
+/// per-session `RInstance` construction. It intentionally does not mutate the
+/// process-global environment pointers.
+pub unsafe fn initialize_base_bindings(base_env: super::ffi::SEXP) {
+    unsafe {
         pre_intern_symbols();
 
         crate::eval::arithmetic::register_arithmetic_builtins(base_env);
         crate::eval::arithmetic::register_special_forms(base_env);
         crate::mainutils::essentials::register_essentials_builtins(base_env);
         crate::mainutils::rng_dispatch::register_rng_builtins(base_env);
-
-        R_INITIALIZED.store(true, Ordering::Release);
     }
 }
 

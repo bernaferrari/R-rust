@@ -17,7 +17,6 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::memory::RArena;
@@ -67,13 +66,17 @@ impl RInstance {
     /// global) using leaked `Box`es (same pattern as `init.rs`) and an empty
     /// arena and protect stack.
     pub fn new() -> Self {
-        let nil = ptr::null_mut::<SexprecCore>();
+        let nil = unsafe { super::globals::R_NilValue() };
 
         // Create environment chain: empty -> base -> global, using leaked
         // Boxes so they outlive the instance (matching the process-wide pattern).
         let empty_env = Self::make_env(nil, nil, nil);
         let base_env = Self::make_env(nil, empty_env, nil);
         let global_env = Self::make_env(nil, base_env, nil);
+
+        unsafe {
+            super::init::initialize_base_bindings(base_env);
+        }
 
         RInstance {
             arena: RArena::new(),

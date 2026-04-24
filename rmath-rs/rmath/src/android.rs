@@ -15,11 +15,10 @@
 //!   as the internal code.
 
 use crate::eval::parser;
+use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
-use crate::sexp::globals::R_GlobalEnv;
-use crate::sexp::init;
-use crate::sexp::memory::RArena;
 use crate::sexp::output;
+use crate::sexp::safe::Sexp;
 
 // ---------------------------------------------------------------------------
 // RSession — per-thread interpreter context
@@ -35,7 +34,7 @@ use crate::sexp::output;
 /// `RSession` is `Send` but not `Sync`. Each thread should create its
 /// own session. Internally, the arena uses `RefCell` which is not `Sync`.
 pub struct RSession {
-    arena: RArena,
+    core: CoreRSession,
 }
 
 unsafe impl Send for RSession {}
@@ -62,39 +61,60 @@ fn extract_numeric_value(s: crate::sexp::safe::Sexp<'_>) -> f64 {
 impl RSession {
     pub fn new() -> Self {
         RSession {
-            arena: RArena::new(),
+            core: CoreRSession::new(),
         }
     }
 
     pub fn eval_integer(&mut self, value: i32) -> RResult {
-        let s = builder::scalar_integer_in(&mut self.arena, value)
-            .unwrap_or_else(|| panic!("alloc failed"));
-        let output = output::format_sexp_direct(s);
-        RResult {
-            value: value as f64,
-            output,
+        match self
+            .core
+            .with_arena(|arena| builder::scalar_integer_in(arena, value))
+        {
+            Some(Some(s)) => RResult {
+                value: value as f64,
+                output: output::format_sexp_direct(s),
+            },
+            _ => allocation_error(),
         }
     }
 
     pub fn eval_real(&mut self, value: f64) -> RResult {
-        let s = builder::scalar_real_in(&mut self.arena, value)
-            .unwrap_or_else(|| panic!("alloc failed"));
-        let output = output::format_sexp_direct(s);
-        RResult { value, output }
+        match self
+            .core
+            .with_arena(|arena| builder::scalar_real_in(arena, value))
+        {
+            Some(Some(s)) => RResult {
+                value,
+                output: output::format_sexp_direct(s),
+            },
+            _ => allocation_error(),
+        }
     }
 
     pub fn eval_int_vector(&mut self, values: &[i32]) -> RResult {
-        let s =
-            builder::int_vec_in(&mut self.arena, &values).unwrap_or_else(|| panic!("alloc failed"));
-        let output = output::format_sexp_direct(s);
-        RResult { value: 0.0, output }
+        match self
+            .core
+            .with_arena(|arena| builder::int_vec_in(arena, values))
+        {
+            Some(Some(s)) => RResult {
+                value: 0.0,
+                output: output::format_sexp_direct(s),
+            },
+            _ => allocation_error(),
+        }
     }
 
     pub fn eval_real_vector(&mut self, values: &[f64]) -> RResult {
-        let s = builder::real_vec_in(&mut self.arena, &values)
-            .unwrap_or_else(|| panic!("alloc failed"));
-        let output = output::format_sexp_direct(s);
-        RResult { value: 0.0, output }
+        match self
+            .core
+            .with_arena(|arena| builder::real_vec_in(arena, values))
+        {
+            Some(Some(s)) => RResult {
+                value: 0.0,
+                output: output::format_sexp_direct(s),
+            },
+            _ => allocation_error(),
+        }
     }
 
     /// Compute a mathematical function on a single value.
@@ -165,50 +185,55 @@ impl RSession {
 
     /// Parse and evaluate an R expression.
     ///
-    /// Initializes the R environment on first call, then parses the code
-    /// and evaluates it against the global environment.
+    /// Parses and evaluates code against this session's isolated global
+    /// environment.
     pub fn eval(&mut self, code: &str) -> RResult {
-        unsafe {
-            init::initialize_r();
+        let sexp = match self.core.with_arena(|arena| parser::parse(code, arena)) {
+            Some(Ok(sexp)) => sexp,
+            Some(Err(e)) => {
+                return RResult {
+                    value: 0.0,
+                    output: format!("Error: {}", e),
+                };
+            }
+            None => {
+                return RResult {
+                    value: 0.0,
+                    output: "Error: session is closed".to_string(),
+                };
+            }
+        };
+
+        if sexp.is_null() {
+            return RResult {
+                value: 0.0,
+                output: "NULL".to_string(),
+            };
         }
 
-        match parser::parse(code, &mut self.arena) {
-            Ok(sexp) => {
-                if sexp.is_null() {
-                    return RResult {
-                        value: 0.0,
-                        output: "NULL".to_string(),
-                    };
-                }
-
-                let global_env = unsafe { R_GlobalEnv() };
-                if global_env.is_null() {
-                    return RResult {
-                        value: 0.0,
-                        output: "Error: R not initialized".to_string(),
-                    };
-                }
-
-                let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
-                let expr = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(sexp) };
-
-                match crate::eval::eval::eval_safe(expr, env) {
-                    Ok(result) => {
-                        let output = output::format_sexp_direct(result);
-                        let value = extract_numeric_value(result);
-                        RResult { value, output }
-                    }
-                    Err(e) => RResult {
-                        value: 0.0,
-                        output: format!("Error: {}", e),
-                    },
-                }
-            }
+        match self.core.eval(sexp) {
+            Ok(result) => match Sexp::from_raw(result) {
+                Some(result) => RResult {
+                    value: extract_numeric_value(result),
+                    output: output::format_sexp_direct(result),
+                },
+                None => RResult {
+                    value: 0.0,
+                    output: "NULL".to_string(),
+                },
+            },
             Err(e) => RResult {
                 value: 0.0,
                 output: format!("Error: {}", e),
             },
         }
+    }
+}
+
+fn allocation_error() -> RResult {
+    RResult {
+        value: 0.0,
+        output: "Error: allocation failed".to_string(),
     }
 }
 
@@ -287,8 +312,8 @@ mod tests {
 
     #[test]
     fn test_session_new() {
-        let session = RSession::new();
-        assert_eq!(session.arena.node_count(), 0);
+        let mut session = RSession::new();
+        assert_eq!(session.core.with_arena(|arena| arena.node_count()), Some(0));
     }
 
     #[test]
