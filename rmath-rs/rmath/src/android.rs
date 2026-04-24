@@ -685,6 +685,19 @@ mod tests {
     }
 
     #[test]
+    fn test_capture_output_evaluates_expression_under_capture() {
+        let mut session = RSession::new();
+
+        let printed = session.eval("capture.output(print(1))");
+        assert_eq!(printed.output, "[1] \"[1] 1\"");
+        assert_eq!(printed.typed, RValue::StringVector(vec!["[1] 1".to_string()]));
+
+        let cat = session.eval("capture.output(cat(\"hello\"))");
+        assert_eq!(cat.output, "[1] \"hello\"");
+        assert_eq!(cat.typed, RValue::StringVector(vec!["hello".to_string()]));
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

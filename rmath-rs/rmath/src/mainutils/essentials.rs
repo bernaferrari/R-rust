@@ -11394,27 +11394,39 @@ pub unsafe fn do_as(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // Complete I/O — capture.output, withVisible, invisible, suppress*,
 // ---------------------------------------------------------------------------
 
-/// R's `capture.output(expr)` — capture printed output as a character string (simplified).
+/// R's `capture.output(expr)` — capture printed stdout as a character vector.
 pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let expr = CAR(args);
     if expr.is_null() || expr == R_NilValue() {
-        let s = CString::new("").unwrap_or_default();
-        return Rf_mkString(s.as_ptr());
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
     }
-    // Simplified: evaluate the expression and convert result to string
-    let result = crate::eval::eval::Rf_eval(expr, rho);
-    let mut buf = String::new();
-    if !result.is_null() && result != R_NilValue() {
-        let n = XLENGTH(result).max(1);
-        for i in 0..n {
-            if i > 0 {
-                buf.push(' ');
-            }
-            buf.push_str(&elt_to_string(result, i));
+
+    crate::sexp::output::start_capture();
+    crate::eval::eval::Rf_eval(expr, rho);
+    let captured = crate::sexp::output::stop_capture();
+
+    let stdout = captured.stdout.trim_end_matches('\n');
+    let lines: Vec<&str> = if stdout.is_empty() {
+        Vec::new()
+    } else {
+        stdout.split('\n').collect()
+    };
+
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, lines.len() as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    for (i, line) in lines.iter().enumerate() {
+        let cstr = CString::new(*line).unwrap_or_default();
+        let charsxp = Rf_mkChar(cstr.as_ptr());
+        if !charsxp.is_null() {
+            SET_STRING_ELT(result, i as R_xlen_t, charsxp);
         }
     }
-    let s = CString::new(buf).unwrap_or_default();
-    Rf_mkString(s.as_ptr())
+    crate::sexp::protect::Rf_unprotect(1);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
+    result
 }
 
 /// R's `withVisible(x)` — returns a list with $value and $visible.

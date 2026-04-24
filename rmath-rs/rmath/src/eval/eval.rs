@@ -524,6 +524,21 @@ fn apply_builtin_safe<'a>(
         return Ok(unsafe { Sexp::from_raw_unchecked(tmp) });
     }
 
+    if op_name == "capture.output" {
+        let tmp = unsafe {
+            crate::mainutils::essentials::do_capture_output(
+                call.as_raw(),
+                fun.as_raw(),
+                args.as_raw(),
+                rho.as_raw(),
+            )
+        };
+        if flag < 2 && !primitive_controls_visibility(&op_name) {
+            unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+        }
+        return Ok(unsafe { Sexp::from_raw_unchecked(tmp) });
+    }
+
     let evaled_args =
         unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), -1) };
 
