@@ -216,6 +216,10 @@ pub struct RInstance {
     pub(crate) symbol_nodes: Vec<Box<SexprecCore>>,
     /// Per-instance Marsaglia-MultiCarry RNG seed state.
     pub(crate) rng_state: (u32, u32),
+    /// Per-instance R-level RNG kind selected by RNGkind().
+    pub(crate) rng_kind: i32,
+    /// Per-instance R-level MT RNG state used by mainutils::rng.
+    pub(crate) main_rng_state: crate::mainutils::rng::MainRngState,
     /// Per-instance stdout capture buffer.
     pub(crate) capture_stdout: Option<String>,
     /// Per-instance stderr capture buffer.
@@ -267,6 +271,8 @@ impl RInstance {
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),
+            rng_kind: 0,
+            main_rng_state: crate::mainutils::rng::MainRngState::default(),
             capture_stdout: None,
             capture_stderr: None,
             options: HashMap::new(),

@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicI32, Ordering};
-
 // Local error type and error() helper
 #[derive(Debug)]
 struct RError(String);
@@ -16,12 +14,9 @@ fn error(msg: &str) -> ! {
     panic!("{}", RError(msg.to_owned()));
 }
 
-// Global seed (thread-local RNG state is used per-thread, as in R)
-static GLOBAL_SEED: AtomicI32 = AtomicI32::new(123456789);
-
 // Minimal but faithful MT19937 implementation for the RNG family exposure
-// Supports next_f64() and next_u32() through a thread-local state
-struct MT19937 {
+// Supports next_f64() and next_u32() through RInstance-owned state.
+pub(crate) struct MT19937 {
     mt: [u32; 624],
     index: usize,
 }
@@ -68,25 +63,46 @@ impl MT19937 {
     }
 }
 
-thread_local! {
-    static MT_STATE: std::cell::RefCell<MT19937> = std::cell::RefCell::new(MT19937::new(5489));
+pub(crate) struct MainRngState {
+    seed: i32,
+    mt: MT19937,
+}
+
+impl Default for MainRngState {
+    fn default() -> Self {
+        MainRngState {
+            seed: 123456789,
+            mt: MT19937::new(5489),
+        }
+    }
+}
+
+fn with_main_rng_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut MainRngState) -> R,
+{
+    crate::sexp::instance::with_required_current_instance(
+        |instance| f(&mut instance.main_rng_state),
+    )
 }
 
 pub fn rng_next_double() -> f64 {
-    MT_STATE.with(|mt| mt.borrow_mut().next_f64())
+    with_main_rng_state(|state| state.mt.next_f64())
 }
 
 pub fn rng_next_u32() -> u32 {
-    MT_STATE.with(|mt| mt.borrow_mut().next_u32())
+    with_main_rng_state(|state| state.mt.next_u32())
 }
 
 pub fn set_rng_seed(seed: i32) {
-    GLOBAL_SEED.store(seed, Ordering::SeqCst);
-    MT_STATE.with(|mt| *mt.borrow_mut() = MT19937::new(seed as u32));
+    with_main_rng_state(|state| {
+        state.seed = seed;
+        state.mt = MT19937::new(seed as u32);
+    });
 }
 
 pub fn get_rng_seed() -> i32 {
-    GLOBAL_SEED.load(Ordering::SeqCst)
+    with_main_rng_state(|state| state.seed)
 }
 
 // Public API surface expected to resemble the C RNG.c port surface for the subset

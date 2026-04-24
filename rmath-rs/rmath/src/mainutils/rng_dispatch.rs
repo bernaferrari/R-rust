@@ -21,16 +21,16 @@ use crate::sexp::symbol::Rf_install;
 // ---------------------------------------------------------------------------
 
 /// Current RNG kind (0 = Marsaglia-MultiCarry default).
-static RNG_KIND: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
-
 /// Get the current RNG kind.
 pub fn get_rng_kind() -> i32 {
-    RNG_KIND.load(std::sync::atomic::Ordering::Relaxed)
+    crate::sexp::instance::with_required_current_instance(|instance| instance.rng_kind)
 }
 
 /// Set the RNG kind.
 pub fn set_rng_kind(kind: i32) {
-    RNG_KIND.store(kind, std::sync::atomic::Ordering::Relaxed);
+    crate::sexp::instance::with_required_current_instance(|instance| {
+        instance.rng_kind = kind;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -437,11 +437,13 @@ fn parse_double_scalar(arg: SEXP, default: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::RSession;
     use crate::sexp::constructors::Rf_cons;
 
     #[test]
     fn test_runif_returns_vector() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let n = Rf_ScalarInteger(10);
             let min = Rf_ScalarReal(0.0);
             let max = Rf_ScalarReal(1.0);
@@ -461,12 +463,13 @@ mod tests {
                 let v = *data.add(i);
                 assert!(v >= 0.0 && v < 1.0, "runif value {} out of range", v);
             }
-        }
+        });
     }
 
     #[test]
     fn test_rnorm_returns_vector() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let n = Rf_ScalarInteger(5);
             let mean = Rf_ScalarReal(0.0);
             let sd = Rf_ScalarReal(1.0);
@@ -478,24 +481,26 @@ mod tests {
             assert!(!result.is_null());
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert_eq!(LENGTH(result), 5);
-        }
+        });
     }
 
     #[test]
     fn test_set_seed() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let seed = Rf_ScalarInteger(42);
             let nil = R_NilValue();
             let args = Rf_cons(seed, Rf_cons(nil, nil));
 
             let result = do_set_seed(R_NilValue(), R_NilValue(), args, R_NilValue());
             assert_eq!(result, R_NilValue());
-        }
+        });
     }
 
     #[test]
     fn test_runif_seeded_reproducible() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let nil = R_NilValue();
             let seed_args = Rf_cons(Rf_ScalarInteger(123), Rf_cons(nil, nil));
             do_set_seed(R_NilValue(), R_NilValue(), seed_args, R_NilValue());
@@ -522,6 +527,27 @@ mod tests {
             for i in 0..3 {
                 assert_eq!(*d1.add(i), *d2.add(i), "seeded runif not reproducible");
             }
-        }
+        });
+    }
+
+    #[test]
+    fn test_rng_kind_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            set_rng_kind(2);
+            assert_eq!(get_rng_kind(), 2);
+        });
+
+        right.with_protected(|| {
+            assert_eq!(get_rng_kind(), 0);
+            set_rng_kind(1);
+            assert_eq!(get_rng_kind(), 1);
+        });
+
+        left.with_protected(|| {
+            assert_eq!(get_rng_kind(), 2);
+        });
     }
 }
