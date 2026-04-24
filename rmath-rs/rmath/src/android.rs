@@ -711,6 +711,18 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_numeric_subset_preserves_na_and_negative_exclusion() {
+        let mut session = RSession::new();
+        let positive = session.eval("(1:3)[c(1, 0, NA, 4)]");
+        let integer = session.eval("(1:3)[c(1L, 0L, NA_integer_, 4L)]");
+        let negative = session.eval("(1:3)[-2]");
+
+        assert_eq!(positive.output, "[1]  1 NA NA");
+        assert_eq!(integer.output, "[1]  1 NA NA");
+        assert_eq!(negative.output, "[1] 1 3");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");

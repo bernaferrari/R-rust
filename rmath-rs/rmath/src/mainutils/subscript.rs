@@ -819,8 +819,7 @@ unsafe fn negativeSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t, call: SEXP) -> 
         }
 
         // Mark excluded indices from the subscript
-        let slen = if ns > nx { nx } else { ns };
-        for i in 0..slen {
+        for i in 0..ns {
             let v = INTEGER_ELT(s, i as c_int);
             if v == NA_INTEGER {
                 error("NA's in subscript are not allowed");
@@ -853,11 +852,10 @@ unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t) -> SEXP {
         }
 
         // Count non-zero values
-        let slen = if ns > nx { nx } else { ns };
         let mut count: R_xlen_t = 0;
-        for i in 0..slen {
+        for i in 0..ns {
             let v = INTEGER_ELT(s, i as c_int);
-            if v != 0 && v != NA_INTEGER {
+            if v != 0 {
                 count += 1;
             }
         }
@@ -866,9 +864,9 @@ unsafe fn positiveSubscript(s: SEXP, ns: R_xlen_t, nx: R_xlen_t) -> SEXP {
         let ap = INTEGER(ans);
 
         let mut j: R_xlen_t = 0;
-        for i in 0..slen {
+        for i in 0..ns {
             let v = INTEGER_ELT(s, i as c_int);
-            if v != 0 && v != NA_INTEGER {
+            if v != 0 {
                 *ap.add(j as usize) = v;
                 j += 1;
             }
@@ -897,24 +895,15 @@ unsafe fn integerSubscript(
 ) -> SEXP {
     unsafe {
         let _ = (call, x);
-        let slen = if ns > nx { nx } else { ns };
-
         // Check for negative values
         let mut has_neg = false;
         let mut has_pos = false;
-        for i in 0..slen {
+        let mut has_na = false;
+        for i in 0..ns {
             let v = INTEGER_ELT(s, i as c_int);
             if v == NA_INTEGER {
-                // NA in integer subscript: return all-NA result
-                let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-                let ap = INTEGER(ans);
-                for i in 0..ns as usize {
-                    *ap.add(i) = NA_INTEGER;
-                }
-                if !stretch.is_null() {
-                    *stretch = ns;
-                }
-                return ans;
+                has_na = true;
+                continue;
             }
             if v < 0 {
                 has_neg = true;
@@ -924,7 +913,7 @@ unsafe fn integerSubscript(
             }
         }
 
-        if has_neg && has_pos {
+        if has_neg && (has_pos || has_na) {
             error("only 0's may be mixed with negative subscripts");
         }
 
@@ -955,31 +944,13 @@ unsafe fn realSubscript(
     unsafe {
         let _ = (call, x);
         // Convert real to integer first, then use integerSubscript
-        let slen = if ns > nx { nx } else { ns };
-
         // Check for negative values in real subscript
         let mut has_neg = false;
-        let mut has_na = false;
-        for i in 0..slen {
+        for i in 0..ns {
             let v = REAL_ELT(s, i as c_int);
-            if v.is_nan() {
-                has_na = true;
-            } else if v < 0.0 {
+            if !v.is_nan() && v < 0.0 {
                 has_neg = true;
             }
-        }
-
-        if has_na {
-            // NA in real subscript: return all-NA result
-            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, ns);
-            let ap = INTEGER(ans);
-            for i in 0..ns as usize {
-                *ap.add(i) = NA_INTEGER;
-            }
-            if !stretch.is_null() {
-                *stretch = ns;
-            }
-            return ans;
         }
 
         // Convert to integer vector
@@ -990,7 +961,7 @@ unsafe fn realSubscript(
             if v.is_nan() {
                 *ip.add(i) = NA_INTEGER;
             } else if has_neg && v < 0.0 {
-                *ip.add(i) = (v as c_int).wrapping_sub(1); // -1 adjustment already done
+                *ip.add(i) = v as c_int;
             } else {
                 *ip.add(i) = v as c_int;
             }
