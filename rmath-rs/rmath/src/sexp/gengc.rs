@@ -358,19 +358,11 @@ impl Default for GcState {
     }
 }
 
-thread_local! {
-    static FALLBACK_GC_STATE: std::cell::RefCell<GcState> = std::cell::RefCell::new(GcState::default());
-}
-
 fn with_gc_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut GcState) -> R,
 {
-    if instance::has_current_instance() {
-        instance::with_current_instance(|instance| f(&mut instance.gc_state)).unwrap()
-    } else {
-        FALLBACK_GC_STATE.with(|state| f(&mut state.borrow_mut()))
-    }
+    instance::with_required_current_instance(|instance| f(&mut instance.gc_state))
 }
 
 // ---------------------------------------------------------------------------
@@ -1085,6 +1077,8 @@ mod tests {
 
     #[test]
     fn test_write_barrier_detects_old_to_young() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
             let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
@@ -1123,6 +1117,8 @@ mod tests {
 
     #[test]
     fn test_gc_with_empty_arena() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
         });
@@ -1133,6 +1129,8 @@ mod tests {
 
     #[test]
     fn test_gc_with_only_young_objects() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
             arena.alloc_node(SEXPTYPE::INTSXP);
@@ -1145,6 +1143,8 @@ mod tests {
 
     #[test]
     fn test_gc_with_only_old_objects() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
             let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
@@ -1161,6 +1161,8 @@ mod tests {
 
     #[test]
     fn test_gc_with_mixed_objects() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
             let old_obj = arena.alloc_node(SEXPTYPE::INTSXP);
@@ -1177,6 +1179,8 @@ mod tests {
 
     #[test]
     fn test_gc_reentrancy_guard() {
+        let _session = RSession::new();
+
         let guard1 = GcGuard::new();
         assert!(guard1.is_active());
 
@@ -1192,6 +1196,8 @@ mod tests {
 
     #[test]
     fn test_gc_stats_tracking() {
+        let _session = RSession::new();
+
         reset_gc_stats();
         with_arena(|arena| {
             *arena = RArena::new();
@@ -1205,12 +1211,13 @@ mod tests {
 
     #[test]
     fn test_gc_callback_invocation() {
-        reset_gc_stats();
-        use std::sync::atomic::{AtomicUsize, Ordering};
-        static CALLBACK_COUNT: AtomicUsize = AtomicUsize::new(0);
+        let _session = RSession::new();
 
-        register_gc_callback(Box::new(|_| {
-            CALLBACK_COUNT.fetch_add(1, Ordering::SeqCst);
+        reset_gc_stats();
+        let (tx, rx) = std::sync::mpsc::channel();
+
+        register_gc_callback(Box::new(move |_| {
+            let _ = tx.send(());
         }));
 
         with_arena(|arena| {
@@ -1219,7 +1226,7 @@ mod tests {
         });
         minor_gc();
 
-        assert!(CALLBACK_COUNT.load(Ordering::SeqCst) >= 1);
+        assert!(rx.try_recv().is_ok());
     }
 
     #[test]
@@ -1248,6 +1255,8 @@ mod tests {
 
     #[test]
     fn test_full_gc_empty_arena() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
         });
@@ -1259,6 +1268,8 @@ mod tests {
 
     #[test]
     fn test_gc_stats_reset() {
+        let _session = RSession::new();
+
         reset_gc_stats();
         with_arena(|arena| {
             *arena = RArena::new();
@@ -1379,6 +1390,8 @@ mod tests {
 
     #[test]
     fn test_gc_deterministic_behavior() {
+        let _session = RSession::new();
+
         for _ in 0..5 {
             with_arena(|arena| {
                 *arena = RArena::new();
@@ -1397,6 +1410,8 @@ mod tests {
 
     #[test]
     fn test_gc_with_protected_objects() {
+        let _session = RSession::new();
+
         use super::super::protect::Rf_protect;
 
         with_arena(|arena| {
@@ -1419,6 +1434,8 @@ mod tests {
 
     #[test]
     fn test_compact_if_needed_low_threshold() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
         });
@@ -1428,6 +1445,8 @@ mod tests {
 
     #[test]
     fn test_get_fragmentation_ratio_empty() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
         });
@@ -1437,6 +1456,8 @@ mod tests {
 
     #[test]
     fn test_force_compact_empty_arena() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
         });
@@ -1445,6 +1466,8 @@ mod tests {
 
     #[test]
     fn test_minor_gc_does_not_refree_nodes_on_free_list() {
+        let _session = RSession::new();
+
         with_arena(|arena| {
             *arena = RArena::new();
             arena.alloc_vector(SEXPTYPE::REALSXP, 2);
@@ -1462,6 +1485,8 @@ mod tests {
 
     #[test]
     fn test_update_object_references_skips_atomic_vector_payloads() {
+        let _session = RSession::new();
+
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
         with_arena(|arena| {
@@ -1486,6 +1511,8 @@ mod tests {
 
     #[test]
     fn test_update_object_references_updates_pointer_vector_payloads() {
+        let _session = RSession::new();
+
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
         with_arena(|arena| {

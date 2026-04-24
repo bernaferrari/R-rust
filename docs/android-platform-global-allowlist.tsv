@@ -58,11 +58,9 @@ rmath-rs/rmath/src/modules/internet/rsock.rs	network-runtime	platform-replace	rp
 rmath-rs/rmath/src/modules/x11/dev_x11.rs	desktop-ui	disabled-android	rport-dg0.2	X11 device globals; Android uses headless/device bridge.
 rmath-rs/rmath/src/modules/x11/rotated.rs	desktop-ui	disabled-android	rport-dg0.2	X11 text style state; Android text metrics belong in device backend.
 rmath-rs/rmath/src/sexp/context.rs	process-panic-hook	allow-process	rport-t57	Only the Rust panic hook installation guard remains process-global; context and in-error stacks are session-owned.
-rmath-rs/rmath/src/sexp/gengc.rs	session-fallback	sessionize	rport-dg0.2	GC state fallback and test atomics; Android sessions should use RInstance GC state.
 rmath-rs/rmath/src/sexp/globals.rs	process-sentinels	allow-immutable	rport-dg0.2	R_NilValue and global fallback sentinels; do not use fallback env pointers in Android sessions.
 rmath-rs/rmath/src/sexp/init.rs	process-startup	sessionize	rport-dg0.2	Init atomic/lock protects process fallback init; Android should initialize per-session explicitly.
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
-rmath-rs/rmath/src/sexp/memory.rs	session-fallback	sessionize	rport-dg0.2	Arena fallback TLS; Android sessions should use RInstance arena only.
 rmath-rs/rmath/src/sexp/session.rs	documentation	allow-session-dispatch	rport-dg0.2	Module documents thread-local fallback risks; not itself runtime state.
 rmath-rs/rmath/src/support/cport/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset constants/scratch buffer; Android locale bridge should own lookup.
 rmath-rs/rmath/src/support/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp clipboard; disabled for Android.

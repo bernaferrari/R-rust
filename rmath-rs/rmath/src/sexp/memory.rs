@@ -104,6 +104,12 @@ impl ArenaBudget {
     }
 }
 
+#[derive(Clone, Copy)]
+struct DataBuffer {
+    ptr: *mut u8,
+    layout: Layout,
+}
+
 // ---------------------------------------------------------------------------
 // RArena: arena allocator for R objects
 // ---------------------------------------------------------------------------
@@ -118,7 +124,7 @@ pub struct RArena {
     #[allow(clippy::vec_box)]
     nodes: Vec<Box<SexprecCore>>,
     /// All allocated data buffers (pointer, layout).
-    data_bufs: Vec<(*mut u8, Layout)>,
+    data_bufs: Vec<DataBuffer>,
     /// Free list of reclaimed SEXP pointers available for reuse.
     free_list: Vec<SEXP>,
     /// Total bytes allocated for tracking.
@@ -158,6 +164,18 @@ impl RArena {
     /// Set a new budget. Does not retroactively reject existing allocations.
     pub fn set_budget(&mut self, budget: ArenaBudget) {
         self.budget = budget;
+    }
+
+    fn register_data_buffer(&mut self, ptr: *mut u8, layout: Layout) {
+        self.total_bytes_allocated += layout.size();
+        self.data_bufs.push(DataBuffer { ptr, layout });
+    }
+
+    fn take_data_buffer(&mut self, ptr: *mut u8) -> Option<Layout> {
+        let index = self.data_bufs.iter().position(|buf| buf.ptr == ptr)?;
+        let buf = self.data_bufs.swap_remove(index);
+        self.total_bytes_allocated = self.total_bytes_allocated.saturating_sub(buf.layout.size());
+        Some(buf.layout)
     }
 
     /// Allocate a scalar SexprecCore node.
@@ -242,8 +260,7 @@ impl RArena {
                 (*ptr).gengc_next_node = data_ptr as SEXP;
             }
 
-            self.total_bytes_allocated += total_bytes;
-            self.data_bufs.push((data_ptr, layout));
+            self.register_data_buffer(data_ptr, layout);
         }
 
         let ptr: SEXP = &mut *boxed as *mut _;
@@ -326,8 +343,7 @@ impl RArena {
             unsafe {
                 (*ptr).gengc_next_node = data_ptr as SEXP;
             }
-            self.total_bytes_allocated += data_bytes;
-            self.data_bufs.push((data_ptr, layout));
+            self.register_data_buffer(data_ptr, layout);
         }
 
         let ptr: SEXP = &mut *boxed as *mut _;
@@ -372,8 +388,8 @@ impl RArena {
             (*ptr).gengc_next_node = data_ptr as SEXP;
         }
 
-        self.total_bytes_allocated += total_bytes + std::mem::size_of::<SexprecCore>();
-        self.data_bufs.push((data_ptr, layout));
+        self.register_data_buffer(data_ptr, layout);
+        self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
         ptr
     }
@@ -446,37 +462,8 @@ impl RArena {
         unsafe {
             let data_ptr = (*ptr).gengc_next_node as *mut u8;
             if !data_ptr.is_null() {
-                let sexptype = (*ptr).sxpinfo.type_of();
-                let is_vector = matches!(
-                    sexptype,
-                    SEXPTYPE::INTSXP
-                        | SEXPTYPE::REALSXP
-                        | SEXPTYPE::LGLSXP
-                        | SEXPTYPE::CPLXSXP
-                        | SEXPTYPE::STRSXP
-                        | SEXPTYPE::VECSXP
-                        | SEXPTYPE::RAWSXP
-                );
-                if is_vector {
-                    let len = (*ptr).vecsxp_length();
-                    let elem_size = sexp_elem_size(sexptype);
-                    let total_bytes = (len as usize).saturating_mul(elem_size);
-                    if total_bytes > 0
-                        && let Ok(layout) =
-                            Layout::from_size_align(total_bytes, std::mem::align_of::<u64>())
-                    {
-                        dealloc(data_ptr, layout);
-                        self.data_bufs.retain(|(p, _)| *p != data_ptr);
-                    }
-                } else if sexptype == SEXPTYPE::CHARSXP {
-                    let truelen = (*ptr).data.charsxp_truelen;
-                    let total_bytes = (truelen as usize).saturating_add(1);
-                    if total_bytes > 0
-                        && let Ok(layout) = Layout::from_size_align(total_bytes, 1)
-                    {
-                        dealloc(data_ptr, layout);
-                        self.data_bufs.retain(|(p, _)| *p != data_ptr);
-                    }
+                if let Some(layout) = self.take_data_buffer(data_ptr) {
+                    dealloc(data_ptr, layout);
                 }
             }
             (*ptr).gengc_next_node = ptr::null_mut();
@@ -517,10 +504,9 @@ impl RArena {
     /// Verify arena invariants (debug only).
     fn verify_invariants(&self) {
         debug_assert!({
-            for &buf in &self.data_bufs {
-                let (ptr, layout) = buf;
-                if !ptr.is_null() {
-                    debug_assert!(layout.size() > 0);
+            for buf in &self.data_bufs {
+                if !buf.ptr.is_null() {
+                    debug_assert!(buf.layout.size() > 0);
                 }
             }
             for &free_ptr in &self.free_list {
@@ -539,10 +525,10 @@ impl Default for RArena {
 
 impl Drop for RArena {
     fn drop(&mut self) {
-        for (ptr, layout) in &self.data_bufs {
-            if !ptr.is_null() && layout.size() > 0 {
+        for buf in &self.data_bufs {
+            if !buf.ptr.is_null() && buf.layout.size() > 0 {
                 unsafe {
-                    dealloc(*ptr, *layout);
+                    dealloc(buf.ptr, buf.layout);
                 }
             }
         }
@@ -552,36 +538,29 @@ impl Drop for RArena {
 }
 
 // ---------------------------------------------------------------------------
-// Thread-local evaluation arena
+// Instance evaluation arena
 // ---------------------------------------------------------------------------
 
-/// Get or create the thread-local evaluation arena.
-/// This is the default arena used by FFI constructor functions.
+/// Access the active instance evaluation arena.
+///
+/// Allocation is intentionally scoped to an `RInstance`: unscoped arena
+/// fallback would let objects escape the session that owns evaluator state,
+/// which breaks Android multi-instance isolation.
 pub fn with_arena<F, R>(f: F) -> R
 where
     F: FnOnce(&mut RArena) -> R,
 {
-    thread_local! {
-        static EVAL_ARENA: std::cell::RefCell<RArena> = std::cell::RefCell::new(RArena::new());
-    }
-    if super::instance::has_current_instance() {
-        super::instance::with_current_instance(|inst| f(&mut inst.arena)).unwrap()
-    } else {
-        EVAL_ARENA.with(|arena| {
-            let mut arena = arena.borrow_mut();
-            f(&mut arena)
-        })
-    }
+    super::instance::with_required_current_instance(|inst| f(&mut inst.arena))
 }
 
-/// Reset the thread-local evaluation arena, freeing all allocations.
+/// Reset the active instance evaluation arena, freeing all allocations.
 pub fn reset_arena() {
     with_arena(|arena| {
         *arena = RArena::new();
     });
 }
 
-/// Access the thread-local arena for GC operations.
+/// Access the active instance arena for GC operations.
 /// This is identical to with_arena but named for clarity in GC context.
 pub fn with_arena_for_gc<F, R>(f: F) -> R
 where
@@ -828,6 +807,21 @@ mod tests {
             assert!(!(*ptr).gengc_next_node.is_null());
         }
         arena.free_node(ptr);
+        unsafe {
+            assert!((*ptr).gengc_next_node.is_null());
+        }
+    }
+
+    #[test]
+    fn test_arena_free_expression_vector_uses_tracked_layout() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::EXPRSXP, 2);
+        assert!(!ptr.is_null());
+        unsafe {
+            assert!(!(*ptr).gengc_next_node.is_null());
+        }
+        arena.free_node(ptr);
+        assert_eq!(arena.free_count(), 1);
         unsafe {
             assert!((*ptr).gengc_next_node.is_null());
         }
