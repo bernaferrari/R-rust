@@ -7,7 +7,6 @@
 //! - PRIMFUN/PRIMNAME/PRIMPRINT accessors
 //! - R_InitBuiltinSlots: initialize builtin function slots
 
-use std::cell::RefCell;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{PRIMOFFSET, SET_PRIMOFFSET, TYPEOF};
@@ -38,19 +37,17 @@ pub struct FunTabEntry {
 }
 
 // ---------------------------------------------------------------------------
-// Function table (stub — populated at runtime)
+// Function table (stub)
 // ---------------------------------------------------------------------------
-
-thread_local! { static FUN_TAB: RefCell<[FunTabEntry; 0]> = RefCell::new([]); }
 
 /// Get the function table.
 pub unsafe fn R_FunTab() -> *const FunTabEntry {
-    FUN_TAB.with(|v| v.borrow().as_ptr())
+    std::ptr::null()
 }
 
 /// Get the function table length.
 pub unsafe fn R_FunTabSize() -> usize {
-    FUN_TAB.with(|v| v.borrow().len())
+    0
 }
 
 // ---------------------------------------------------------------------------
@@ -71,11 +68,10 @@ pub unsafe fn PRIMFUN(op: SEXP) -> Option<unsafe extern "C" fn(SEXP, SEXP, SEXP,
             return None;
         }
         let offset = PRIMOFFSET(op);
-        let len = FUN_TAB.with(|v| v.borrow().len());
-        if offset < 0 || offset as usize >= len {
+        if offset < 0 {
             return None;
         }
-        FUN_TAB.with(|v| v.borrow()[offset as usize].fun)
+        None
     }
 }
 
@@ -92,11 +88,10 @@ pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
             return "unknown";
         }
         let offset = PRIMOFFSET(op);
-        let len = FUN_TAB.with(|v| v.borrow().len());
-        if offset < 0 || offset as usize >= len {
+        if offset < 0 {
             return "unknown";
         }
-        FUN_TAB.with(|v| v.borrow()[offset as usize].name)
+        "unknown"
     }
 }
 
