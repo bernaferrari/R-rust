@@ -813,6 +813,27 @@ mod tests {
     }
 
     #[test]
+    fn test_runtime_predicates_match_public_r_surface() {
+        let mut session = RSession::new();
+
+        let primitive = session.eval("is.primitive(sum)");
+        assert_eq!(primitive.output, "[1] TRUE");
+        assert_eq!(primitive.typed, RValue::Logical(Some(true)));
+
+        let closure = session.eval("is.primitive(function(x) x)");
+        assert_eq!(closure.output, "[1] FALSE");
+        assert_eq!(closure.typed, RValue::Logical(Some(false)));
+
+        let loaded = session.eval("is.loaded(\"R_init_base\")");
+        assert_eq!(loaded.output, "[1] FALSE");
+        assert_eq!(loaded.typed, RValue::Logical(Some(false)));
+
+        let single = session.eval("is.single(1)");
+        assert!(matches!(single.typed, RValue::Error(_)));
+        assert_eq!(single.output, "Error: type \"single\" unimplemented in R");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

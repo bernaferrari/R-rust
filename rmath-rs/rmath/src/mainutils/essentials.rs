@@ -3007,6 +3007,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "is.vector",
         "is.data.frame",
         "is.unsorted",
+        "is.primitive",
+        "is.loaded",
+        "is.single",
         "file",
         "url",
         "close",
@@ -11302,10 +11305,12 @@ pub unsafe fn do_summary_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
 // Complete R runtime — type checking utilities
 // ---------------------------------------------------------------------------
 
-/// R's `is.single(x)` — check if x is single precision (simplified: always FALSE).
+/// R's `is.single(x)` — stock R exposes this but errors because single is unimplemented.
 pub unsafe fn do_is_single(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _x = CAR(args);
-    Rf_ScalarLogical(FALSE) // We don't support single precision
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: "type \"single\" unimplemented in R".to_string(),
+    });
 }
 
 /// R's `is.vector(x, mode="any")` — check if x is an atomic or list vector without attributes.
