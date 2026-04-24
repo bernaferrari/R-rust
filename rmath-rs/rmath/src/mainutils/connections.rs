@@ -8,7 +8,7 @@
 //! files, pipes, URLs, text connections, raw connections, and the
 //! associated open/close/read/write/seek/flush operations.
 //!
-//! Connection objects are stored in a global table behind a Mutex.
+//! Connection objects are stored in the active `RSession`'s connection table.
 //! Each connection is identified by an integer index.
 //!
 //! The connection SEXP is an INTSXP scalar with class c("file","connection")
@@ -21,13 +21,13 @@ use std::io::{self, BufRead, BufReader, BufWriter, Read, Seek, SeekFrom, Write};
 use std::os::raw::{c_double, c_int};
 use std::process::{Child, Command, Stdio};
 use std::ptr;
-use std::sync::Mutex;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::*;
 
 // ---------------------------------------------------------------------------
@@ -141,11 +141,8 @@ impl RConn {
 }
 
 // ---------------------------------------------------------------------------
-// Global connection table
+// Per-session connection table
 // ---------------------------------------------------------------------------
-
-/// The global connection table.
-static CONNECTIONS: Mutex<Vec<Option<Box<RConn>>>> = Mutex::new(Vec::new());
 
 /// Sink state.
 struct SinkState {
@@ -163,61 +160,139 @@ struct SinkState {
     error_con: c_int,
 }
 
-static SINK_STATE: Mutex<SinkState> = Mutex::new(SinkState {
-    sink_cons: Vec::new(),
-    sink_close: Vec::new(),
-    sink_split: Vec::new(),
-    sink_number: 0,
-    output_con: 1,
-    error_con: 2,
-});
+impl Default for SinkState {
+    fn default() -> Self {
+        SinkState {
+            sink_cons: Vec::new(),
+            sink_close: Vec::new(),
+            sink_split: Vec::new(),
+            sink_number: 0,
+            output_con: 1,
+            error_con: 2,
+        }
+    }
+}
+
+/// Connection and sink state owned by one `RInstance`.
+pub(crate) struct ConnectionsState {
+    table: Vec<Option<Box<RConn>>>,
+    sink: SinkState,
+}
+
+impl Default for ConnectionsState {
+    fn default() -> Self {
+        ConnectionsState {
+            table: Vec::new(),
+            sink: SinkState::default(),
+        }
+    }
+}
+
+struct ConnectionTableGuard {
+    table: *mut Vec<Option<Box<RConn>>>,
+}
+
+impl std::ops::Deref for ConnectionTableGuard {
+    type Target = Vec<Option<Box<RConn>>>;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.table }
+    }
+}
+
+impl std::ops::DerefMut for ConnectionTableGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.table }
+    }
+}
+
+struct SinkStateGuard {
+    sink: *mut SinkState,
+}
+
+impl std::ops::Deref for SinkStateGuard {
+    type Target = SinkState;
+
+    fn deref(&self) -> &Self::Target {
+        unsafe { &*self.sink }
+    }
+}
+
+impl std::ops::DerefMut for SinkStateGuard {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        unsafe { &mut *self.sink }
+    }
+}
+
+#[inline]
+fn with_connections_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut ConnectionsState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.connections_state))
+}
+
+fn connection_table() -> ConnectionTableGuard {
+    init_connections_table();
+    with_connections_state(|state| ConnectionTableGuard {
+        table: &mut state.table,
+    })
+}
+
+fn sink_state() -> SinkStateGuard {
+    with_connections_state(|state| SinkStateGuard {
+        sink: &mut state.sink,
+    })
+}
 
 /// Initialize the connection system with stdin/stdout/stderr.
 fn init_connections_table() {
-    let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-    if !table.is_empty() {
-        return;
-    }
-    table.clear();
-    // Slot 0: stdin
-    table.push(Some(Box::new(RConn::new(
-        "terminal",
-        "stdin",
-        "r",
-        ConnKind::Terminal("stdin".to_string()),
-    ))));
-    // Slot 1: stdout
-    table.push(Some(Box::new(RConn::new(
-        "terminal",
-        "stdout",
-        "w",
-        ConnKind::Terminal("stdout".to_string()),
-    ))));
-    // Slot 2: stderr
-    table.push(Some(Box::new(RConn::new(
-        "terminal",
-        "stderr",
-        "w",
-        ConnKind::Terminal("stderr".to_string()),
-    ))));
-    // Mark standard connections as open
-    for i in 0..3 {
-        if let Some(ref mut conn) = table[i] {
-            conn.isopen = true;
-            conn.canread = i == 0;
-            conn.canwrite = i != 0;
+    with_connections_state(|state| {
+        let table = &mut state.table;
+        if !table.is_empty() {
+            return;
         }
-    }
-    // Pre-allocate remaining slots as None
-    for _ in 3..NCONNECTIONS {
-        table.push(None);
-    }
+        table.clear();
+        // Slot 0: stdin
+        table.push(Some(Box::new(RConn::new(
+            "terminal",
+            "stdin",
+            "r",
+            ConnKind::Terminal("stdin".to_string()),
+        ))));
+        // Slot 1: stdout
+        table.push(Some(Box::new(RConn::new(
+            "terminal",
+            "stdout",
+            "w",
+            ConnKind::Terminal("stdout".to_string()),
+        ))));
+        // Slot 2: stderr
+        table.push(Some(Box::new(RConn::new(
+            "terminal",
+            "stderr",
+            "w",
+            ConnKind::Terminal("stderr".to_string()),
+        ))));
+        // Mark standard connections as open
+        for i in 0..3 {
+            if let Some(ref mut conn) = table[i] {
+                conn.isopen = true;
+                conn.canread = i == 0;
+                conn.canwrite = i != 0;
+            }
+        }
+        // Pre-allocate remaining slots as None
+        for _ in 3..NCONNECTIONS {
+            table.push(None);
+        }
+    });
 }
 
 /// Find the next available connection slot.
 fn next_connection() -> usize {
     init_connections_table();
-    let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let table = connection_table();
     for i in 3..table.len() {
         if table[i].is_none() {
             return i;
@@ -227,9 +302,9 @@ fn next_connection() -> usize {
 }
 
 /// Get a connection by index. Returns a reference to the connection.
-fn get_connection(n: usize) -> std::sync::MutexGuard<'static, Vec<Option<Box<RConn>>>> {
+fn get_connection(n: usize) -> ConnectionTableGuard {
     init_connections_table();
-    let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let table = connection_table();
     if n >= table.len() || table[n].is_none() {
         panic!("invalid connection");
     }
@@ -239,7 +314,7 @@ fn get_connection(n: usize) -> std::sync::MutexGuard<'static, Vec<Option<Box<RCo
 /// Get a mutable reference to a connection by index.
 fn get_connection_mut(n: usize) {
     init_connections_table();
-    let mut _table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+    let _table = connection_table();
     if n >= _table.len() || _table[n].is_none() {
         panic!("invalid connection");
     }
@@ -406,7 +481,7 @@ unsafe fn inherits_class(x: SEXP, class_name: &str) -> bool {
                     let idx = *data;
                     if idx >= 0 {
                         init_connections_table();
-                        let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+                        let table = connection_table();
                         let ui = idx as usize;
                         if ui < table.len() && table[ui].is_some() {
                             return true;
@@ -534,7 +609,7 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -631,7 +706,7 @@ pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -715,7 +790,7 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -751,7 +826,7 @@ pub unsafe fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         let mut conn = RConn::new("fifo", &description, &open_mode, ConnKind::Fifo);
         conn.canseek = false;
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -806,7 +881,7 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -859,7 +934,7 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -912,7 +987,7 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -952,7 +1027,7 @@ pub unsafe fn do_open(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             open_str
         };
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -1040,7 +1115,7 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 
         // Check if it's a sink connection
         {
-            let sink = SINK_STATE.lock().unwrap_or_else(|e| e.into_inner());
+            let sink = sink_state();
             for j in 0..sink.sink_number {
                 if i as c_int == sink.sink_cons[j] {
                     r_error("cannot close 'output' sink connection");
@@ -1051,7 +1126,7 @@ pub unsafe fn do_close(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         if let Some(ref mut conn) = table[i] {
             close_connection_inner(conn);
         }
@@ -1109,7 +1184,7 @@ pub unsafe fn do_isopen(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
 
         let i = as_integer(scon) as usize;
         init_connections_table();
-        let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let table = connection_table();
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
@@ -1146,7 +1221,7 @@ pub unsafe fn do_isincomplete(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) ->
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let table = connection_table();
         if i >= table.len() || table[i].is_none() {
             return Rf_ScalarLogical(0);
         }
@@ -1193,7 +1268,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -
             n_val as usize
         };
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -1357,7 +1432,7 @@ pub unsafe fn do_writeLines(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) 
         let text_len = LENGTH(text) as R_xlen_t;
 
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -1448,7 +1523,7 @@ pub unsafe fn do_seek(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -1528,7 +1603,7 @@ pub unsafe fn do_flush(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -1610,7 +1685,7 @@ pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEX
         }
         conn.raw_data = raw_data;
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -1676,7 +1751,7 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
             conn.canwrite = true;
         }
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         table[ncon] = Some(Box::new(conn));
         drop(table);
 
@@ -1700,7 +1775,7 @@ pub unsafe fn do_textConnectionValue(_call: SEXP, _op: SEXP, args: SEXP, _env: S
             r_error("'con' is not a connection");
         }
         let i = as_integer(scon) as usize;
-        let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let table = connection_table();
         let Some(conn) = table[i].as_ref() else {
             r_error("invalid connection");
         };
@@ -1759,7 +1834,7 @@ pub unsafe fn do_getConnection(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -
         let n = as_integer(sn) as usize;
 
         init_connections_table();
-        let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let table = connection_table();
 
         if n >= table.len() || table[n].is_none() {
             r_error("invalid connection");
@@ -1785,7 +1860,7 @@ pub unsafe fn do_showConnections(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP)
         let _all = check_logical_arg(CAR(args), "all");
 
         init_connections_table();
-        let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let table = connection_table();
 
         // Count active connections
         let mut count = 0usize;
@@ -1838,7 +1913,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 
         let icon = as_integer(sn);
 
-        let mut sink = SINK_STATE.lock().unwrap_or_else(|e| e.into_inner());
+        let mut sink = sink_state();
 
         if errcon == 0 {
             // Output sink
@@ -1885,7 +1960,7 @@ pub unsafe fn do_sink(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
 pub unsafe fn do_sinkNumber(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let errcon = check_logical_arg(CAR(args), "type");
-        let sink = SINK_STATE.lock().unwrap_or_else(|e| e.into_inner());
+        let sink = sink_state();
         if errcon != 0 {
             Rf_ScalarInteger(sink.error_con)
         } else {
@@ -2036,7 +2111,7 @@ pub unsafe fn do_readBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> 
         }
         let i = as_integer(scon) as usize;
 
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -2240,7 +2315,7 @@ pub unsafe fn do_writeBin(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) ->
         }
 
         let i = as_integer(scon) as usize;
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+        let mut table = connection_table();
         let Some(conn) = table[i].as_mut() else {
             r_error("invalid connection");
         };
@@ -2365,11 +2440,18 @@ pub unsafe fn R_GetConnection(_n: c_int) -> SEXP {
 #[cfg(test)]
 mod tests {
     use std::fs;
+    use std::sync::{Mutex, MutexGuard};
 
     use super::*;
+    use crate::sexp::session::RSession;
     use std::io::Write;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    struct ConnectionTestGuard {
+        _lock: MutexGuard<'static, ()>,
+        _session: RSession,
+    }
 
     fn test_ok<T, E: std::fmt::Display>(result: Result<T, E>) -> T {
         match result {
@@ -2378,22 +2460,22 @@ mod tests {
         }
     }
 
-    /// Reset global connection state and return a lock guard that serializes
-    /// tests. The guard must be held for the duration of the test to prevent
-    /// race conditions on the shared CONNECTIONS table.
-    fn reset_connections() -> std::sync::MutexGuard<'static, ()> {
+    /// Reset session-local connection state and return a guard that keeps an
+    /// active session installed for the duration of the test.
+    fn reset_connections() -> ConnectionTestGuard {
         let lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        let mut table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
-        table.clear();
-        drop(table);
-        let mut sink = SINK_STATE.lock().unwrap_or_else(|e| e.into_inner());
-        sink.sink_number = 0;
-        sink.output_con = 1;
-        sink.error_con = 2;
-        sink.sink_cons = vec![1];
-        sink.sink_close = vec![false];
-        sink.sink_split = vec![false];
-        lock
+        let session = RSession::new();
+        with_connections_state(|state| {
+            state.table.clear();
+            state.sink = SinkState::default();
+            state.sink.sink_cons = vec![1];
+            state.sink.sink_close = vec![false];
+            state.sink.sink_split = vec![false];
+        });
+        ConnectionTestGuard {
+            _lock: lock,
+            _session: session,
+        }
     }
 
     #[test]
@@ -2401,7 +2483,7 @@ mod tests {
         let _lock = reset_connections();
         unsafe {
             R_InitConnections();
-            let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+            let table = connection_table();
             assert!(table.len() >= 3);
             assert!(table[0].is_some()); // stdin
             assert!(table[1].is_some()); // stdout
@@ -2537,7 +2619,7 @@ mod tests {
             assert!(idx >= 3);
 
             // Verify the connection was created
-            let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+            let table = connection_table();
             let Some(conn) = table[idx as usize].as_ref() else {
                 panic!("expected connection to exist");
             };
@@ -2734,7 +2816,7 @@ mod tests {
             assert_eq!(result, R_NilValue());
 
             // Verify the raw data was written
-            let table = CONNECTIONS.lock().unwrap_or_else(|e| e.into_inner());
+            let table = connection_table();
             let Some(conn) = table[conn_idx as usize].as_ref() else {
                 panic!("expected connection to exist");
             };
@@ -2776,6 +2858,46 @@ mod tests {
             drop(get_connection(1));
             drop(get_connection(2));
         }
+    }
+
+    #[test]
+    fn test_connection_state_is_session_local_on_same_thread() {
+        let _lock = TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            init_connections_table();
+            with_connections_state(|state| {
+                state.table[3] = Some(Box::new(RConn::new(
+                    "textConnection",
+                    "left-only",
+                    "w",
+                    ConnKind::TextConnection,
+                )));
+                state.sink.output_con = 3;
+                assert_eq!(state.table.iter().filter(|conn| conn.is_some()).count(), 4);
+            });
+        });
+
+        right.with_protected(|| {
+            with_connections_state(|state| {
+                assert!(state.table.is_empty());
+                assert_eq!(state.sink.output_con, 1);
+            });
+            init_connections_table();
+            with_connections_state(|state| {
+                assert_eq!(state.table.iter().filter(|conn| conn.is_some()).count(), 3);
+                assert!(state.table[3].is_none());
+            });
+        });
+
+        left.with_protected(|| {
+            with_connections_state(|state| {
+                assert!(state.table[3].is_some());
+                assert_eq!(state.sink.output_con, 3);
+            });
+        });
     }
 
     #[test]

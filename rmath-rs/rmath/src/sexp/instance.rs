@@ -258,6 +258,8 @@ pub struct RInstance {
     pub(crate) nmath_beta_state: crate::nmath::dist::beta::BetaState,
     /// Per-instance dynamic loader and native package registry state.
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
+    /// Per-instance connection table and sink state.
+    pub(crate) connections_state: crate::mainutils::connections::ConnectionsState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -320,6 +322,7 @@ impl RInstance {
             dist_beta_state: crate::dist::beta::BetaState::default(),
             nmath_beta_state: crate::nmath::dist::beta::BetaState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
+            connections_state: crate::mainutils::connections::ConnectionsState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };
