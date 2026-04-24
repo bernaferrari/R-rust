@@ -11,7 +11,9 @@
 
 use std::ffi::CString;
 
-use crate::sexp::accessors::{CAR, CDR, INTEGER, LENGTH, LOGICAL, REAL, TYPEOF, XLENGTH};
+use crate::sexp::accessors::{
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, TAG, TYPEOF, XLENGTH,
+};
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
@@ -642,6 +644,123 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     }
 }
 
+fn tag_name_is(tag: SEXP, expected: &str) -> bool {
+    unsafe {
+        if tag.is_null() {
+            return false;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() {
+            return false;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            return false;
+        }
+        std::ffi::CStr::from_ptr(chars)
+            .to_str()
+            .is_ok_and(|name| name == expected)
+    }
+}
+
+unsafe fn logical_arg_is_true(x: SEXP) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || LENGTH(x) == 0 {
+            return false;
+        }
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x) == TRUE,
+            t if t == SEXPTYPE::INTSXP => *INTEGER(x) != 0 && *INTEGER(x) != NA_INTEGER,
+            t if t == SEXPTYPE::REALSXP => {
+                let value = *REAL(x);
+                value != 0.0 && value.to_bits() != R_NA_BIT_PATTERN && !value.is_nan()
+            }
+            _ => false,
+        }
+    }
+}
+
+/// Handle `mean(x, na.rm = FALSE)` for atomic numeric vectors.
+///
+/// Full R reaches this through `mean.default`; the embedded evaluator keeps it
+/// as a primitive while preserving the C-level numeric behavior.
+pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        let mut x = R_NilValue();
+        let mut na_rm = false;
+
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            let arg = CAR(current);
+            if tag_name_is(TAG(current), "na.rm") {
+                na_rm = logical_arg_is_true(arg);
+            } else if x == R_NilValue() {
+                x = arg;
+            }
+            current = CDR(current);
+        }
+
+        if x.is_null() || x == R_NilValue() {
+            return Rf_ScalarReal(f64::NAN);
+        }
+
+        let mut total = 0.0;
+        let mut count = 0usize;
+        let n = XLENGTH(x);
+
+        match TYPEOF(x) {
+            t if t == SEXPTYPE::REALSXP => {
+                for i in 0..n {
+                    let value = *REAL(x).add(i as usize);
+                    let is_na = value.to_bits() == R_NA_BIT_PATTERN;
+                    let is_nan = value.is_nan() && !is_na;
+                    if is_na || is_nan {
+                        if na_rm {
+                            continue;
+                        }
+                        return Rf_ScalarReal(if is_na { NA_REAL } else { f64::NAN });
+                    }
+                    total += value;
+                    count += 1;
+                }
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                for i in 0..n {
+                    let value = *INTEGER(x).add(i as usize);
+                    if value == NA_INTEGER {
+                        if na_rm {
+                            continue;
+                        }
+                        return Rf_ScalarReal(NA_REAL);
+                    }
+                    total += value as f64;
+                    count += 1;
+                }
+            }
+            t if t == SEXPTYPE::LGLSXP => {
+                for i in 0..n {
+                    let value = *LOGICAL(x).add(i as usize);
+                    if value == NA_LOGICAL {
+                        if na_rm {
+                            continue;
+                        }
+                        return Rf_ScalarReal(NA_REAL);
+                    }
+                    total += value as f64;
+                    count += 1;
+                }
+            }
+            _ => return Rf_ScalarReal(f64::NAN),
+        }
+
+        if count == 0 {
+            Rf_ScalarReal(f64::NAN)
+        } else {
+            Rf_ScalarReal(total / count as f64)
+        }
+    }
+}
+
 /// Handle type-checking functions: is.numeric, is.integer, is.double,
 /// is.logical, is.character, is.null.
 pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
@@ -698,6 +817,7 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
                 "^" => "^",
                 "%%" => "%%",
                 "%/%" => "%/%",
+                ":" => ":",
                 "<" => "<",
                 ">" => ">",
                 "<=" => "<=",
@@ -718,6 +838,7 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
                 "sign" => "sign",
                 "length" => "length",
                 "sum" => "sum",
+                "mean" => "mean",
                 "min" => "min",
                 "max" => "max",
                 "prod" => "prod",
@@ -760,6 +881,7 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
             "^",
             "%%",
             "%/%",
+            ":",
             "<",
             ">",
             "<=",
@@ -779,6 +901,7 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
             "sign",
             "length",
             "sum",
+            "mean",
             "min",
             "max",
             "prod",

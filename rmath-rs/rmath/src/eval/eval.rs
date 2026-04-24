@@ -505,6 +505,9 @@ fn apply_builtin_safe<'a>(
         "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => unsafe {
             super::arithmetic::do_arith(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
+        ":" => unsafe {
+            crate::mainutils::seq::do_colon(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
         "<" | ">" | "<=" | ">=" | "==" | "!=" => unsafe {
             super::arithmetic::do_relop(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
@@ -532,6 +535,9 @@ fn apply_builtin_safe<'a>(
         },
         "sum" | "min" | "max" | "prod" | "range" => unsafe {
             super::arithmetic::do_summary(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
+        },
+        "mean" => unsafe {
+            super::arithmetic::do_mean(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())
         },
         "is.numeric" | "is.integer" | "is.double" | "is.logical" | "is.character" | "is.null" => unsafe {
             super::arithmetic::do_is_type(call.as_raw(), fun.as_raw(), evaled_args, rho.as_raw())

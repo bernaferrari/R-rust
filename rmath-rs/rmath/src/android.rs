@@ -537,6 +537,19 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_mean_numeric() {
+        let mut session = RSession::new();
+        let numeric = session.eval("mean(c(1, 2, 3))");
+        let sequence = session.eval("mean(1:4)");
+        let na = session.eval("mean(c(1, NA))");
+        let na_removed = session.eval("mean(c(1, NA), na.rm = TRUE)");
+        assert_eq!(numeric.output, "[1] 2");
+        assert_eq!(sequence.output, "[1] 2.5");
+        assert_eq!(na.output, "[1] NA");
+        assert_eq!(na_removed.output, "[1] 1");
+    }
+
+    #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");
