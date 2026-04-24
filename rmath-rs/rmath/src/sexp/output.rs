@@ -190,6 +190,10 @@ fn format_logical_value(v: i32) -> String {
     }
 }
 
+fn format_raw_value(v: u8) -> String {
+    format!("{v:02x}")
+}
+
 fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(
@@ -457,6 +461,11 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
             }
         }
+        SEXPTYPE::RAWSXP => {
+            let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+        }
         SEXPTYPE::VECSXP => {
             emit(&format!("{}\n", format_list(x)));
         }
@@ -564,6 +573,11 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", vals.join(" "), suffix)
             }
+        }
+        SEXPTYPE::RAWSXP => {
+            let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            format!("[1] {}{}", vals.join(" "), suffix)
         }
         SEXPTYPE::VECSXP => format_list(x),
         tp => {

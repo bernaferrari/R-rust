@@ -3030,6 +3030,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         // String/vector completion
         "charmatch",
         "pmatch",
+        "charToRaw",
+        "rawToChar",
         "strtoi",
         "strtrim",
         // Data manipulation

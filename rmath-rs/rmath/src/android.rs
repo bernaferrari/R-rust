@@ -851,6 +851,18 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_raw_string_helpers() {
+        let mut session = RSession::new();
+        let as_raw = session.eval("as.raw(c(65, 90))");
+        let char_to_raw = session.eval("charToRaw(\"AZ\")");
+        let raw_to_char = session.eval("rawToChar(as.raw(c(65, 90)))");
+
+        assert_eq!(as_raw.output, "[1] 41 5a");
+        assert_eq!(char_to_raw.output, "[1] 41 5a");
+        assert_eq!(raw_to_char.output, "[1] \"AZ\"");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
