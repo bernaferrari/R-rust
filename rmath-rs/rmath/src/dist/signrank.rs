@@ -7,21 +7,24 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
-use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};
 
 // Constants
 const M_LN2: f64 = 0.693147180559945309417232121458;
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
 
-// Thread-local cached workspace for csignrank.
+// Per-session cached workspace for csignrank.
 // w[n] is a Vec<f64> of size (c+1) where c = n*(n+1)/4 (truncated).
 // A value of -1.0 means "not yet computed".
-use std::collections::HashMap;
-thread_local! {
-    static W_SIGNRANK: RefCell<HashMap<i32, Vec<f64>>> = RefCell::new(HashMap::new());
+fn with_signrank_cache<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut HashMap<i32, Vec<f64>>) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.signrank_cache))
 }
 
 /// csignrank: counts for the signed rank distribution.
@@ -42,9 +45,7 @@ fn csignrank(k: i32, n: i32) -> f64 {
         return 1.0;
     }
 
-    W_SIGNRANK.with(|cache| {
-        let mut cache = cache.borrow_mut();
-
+    with_signrank_cache(|cache| {
         let entry = cache
             .entry(n)
             .or_insert_with(|| vec![-1.0_f64; (c + 1) as usize]);
@@ -279,12 +280,7 @@ pub fn dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
     dsignrank_inner(x, n, give_log != 0)
 }
 
-pub fn Rf_psignrank(
-    x: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
@@ -293,12 +289,7 @@ pub fn psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
-pub fn Rf_qsignrank(
-    p: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
 }
 
@@ -315,4 +306,26 @@ pub fn Rf_rsignrank(n: c_double) -> c_double {
 #[must_use]
 pub fn rsignrank(n: c_double) -> c_double {
     rsignrank_inner(n)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn signrank_cache_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_value = left.with_protected(|| csignrank(3, 4));
+        right.with_protected(|| {
+            with_signrank_cache(|cache| assert!(!cache.contains_key(&4)));
+            assert_eq!(csignrank(3, 4), left_value);
+        });
+
+        left.with_protected(|| {
+            with_signrank_cache(|cache| assert!(cache.contains_key(&4)));
+        });
+    }
 }

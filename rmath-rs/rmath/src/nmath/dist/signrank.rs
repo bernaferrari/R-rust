@@ -8,20 +8,23 @@ use crate::nmath::dpq::*;
 use crate::nmath::error::*;
 use crate::nmath::rng::*;
 use crate::nmath::utils::*;
+use crate::sexp::instance::with_required_current_instance;
 use libm::*;
-use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};
 
 // Constants
 const M_LN2: f64 = 0.693147180559945309417232121458;
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
 
-// Thread-local cached workspace for csignrank.
+// Per-session cached workspace for csignrank.
 // w[n] is a Vec<f64> of size (c+1) where c = n*(n+1)/4 (truncated).
 // A value of -1.0 means "not yet computed".
-use std::collections::HashMap;
-thread_local! {
-    static W_SIGNRANK: RefCell<HashMap<i32, Vec<f64>>> = RefCell::new(HashMap::new());
+fn with_signrank_cache<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut HashMap<i32, Vec<f64>>) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.signrank_cache))
 }
 
 /// csignrank: counts for the signed rank distribution.
@@ -42,9 +45,7 @@ fn csignrank(k: i32, n: i32) -> f64 {
         return 1.0;
     }
 
-    W_SIGNRANK.with(|cache| {
-        let mut cache = cache.borrow_mut();
-
+    with_signrank_cache(|cache| {
         let entry = cache
             .entry(n)
             .or_insert_with(|| vec![-1.0_f64; (c + 1) as usize]);
@@ -279,12 +280,7 @@ pub fn dsignrank(x: c_double, n: c_double, give_log: c_int) -> c_double {
     dsignrank_inner(x, n, give_log != 0)
 }
 
-pub fn Rf_psignrank(
-    x: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
@@ -293,12 +289,7 @@ pub fn psignrank(x: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c
     psignrank_inner(x, n, lower_tail != 0, log_p != 0)
 }
 
-pub fn Rf_qsignrank(
-    p: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_qsignrank(p: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     qsignrank_inner(p, n, lower_tail != 0, log_p != 0)
 }
 

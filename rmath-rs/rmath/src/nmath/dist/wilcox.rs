@@ -9,21 +9,24 @@ use crate::nmath::error::*;
 use crate::nmath::rng::*;
 use crate::nmath::special::gamma::lgammafn;
 use crate::nmath::utils::*;
+use crate::sexp::instance::with_required_current_instance;
 use libm::*;
-use std::cell::RefCell;
+use std::collections::HashMap;
 use std::os::raw::{c_double, c_int};
 
 // Constants
 const WILCOX_MAX: i32 = 50;
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
 
-// Thread-local cached workspace for cwilcox.
+// Per-session cached workspace for cwilcox.
 // w[i][j] is a Vec<f64> of size (c+1) where c = m*n/2 (when i,j are swapped to i<=j).
 // A value of -1.0 means "not yet computed".
 // We store a HashMap keyed by (i, j) pairs.
-use std::collections::HashMap;
-thread_local! {
-    static W_CACHE: RefCell<HashMap<(i32, i32), Vec<f64>>> = RefCell::new(HashMap::new());
+fn with_wilcox_cache<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut HashMap<(i32, i32), Vec<f64>>) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.wilcox_cache))
 }
 
 /// Compute log(choose(n, k)) = lgammafn(n+1) - lgammafn(k+1) - lgammafn(n-k+1)
@@ -59,8 +62,7 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
     }
 
     // Check cache first
-    let cached = W_CACHE.with(|cache| {
-        let cache = cache.borrow();
+    let cached = with_wilcox_cache(|cache| {
         if let Some(entry) = cache.get(&(i, j)) {
             if entry.len() > k as usize && entry[k as usize] >= 0.0 {
                 return Some(entry[k as usize]);
@@ -80,8 +82,7 @@ fn cwilcox(k: i32, m: i32, n: i32) -> f64 {
     };
 
     // Store in cache
-    W_CACHE.with(|cache| {
-        let mut cache = cache.borrow_mut();
+    with_wilcox_cache(|cache| {
         let entry = cache
             .entry((i, j))
             .or_insert_with(|| vec![-1.0_f64; (c + 1) as usize]);
@@ -358,13 +359,7 @@ pub fn Rf_pwilcox(
     pwilcox_inner(q, m, n, lower_tail != 0, log_p != 0)
 }
 
-pub fn pwilcox(
-    q: c_double,
-    m: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn pwilcox(q: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     pwilcox_inner(q, m, n, lower_tail != 0, log_p != 0)
 }
 
@@ -378,13 +373,7 @@ pub fn Rf_qwilcox(
     qwilcox_inner(p, m, n, lower_tail != 0, log_p != 0)
 }
 
-pub fn qwilcox(
-    p: c_double,
-    m: c_double,
-    n: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn qwilcox(p: c_double, m: c_double, n: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     qwilcox_inner(p, m, n, lower_tail != 0, log_p != 0)
 }
 

@@ -232,6 +232,10 @@ pub struct RInstance {
     pub options_initialized: bool,
     /// Per-instance environment hash side tables.
     pub(crate) env_hash_tables: hashbrown::HashMap<usize, hashbrown::HashMap<usize, SEXP>>,
+    /// Per-instance signed-rank distribution memo table.
+    pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
+    /// Per-instance Wilcoxon rank-sum distribution memo table.
+    pub(crate) wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -281,6 +285,8 @@ impl RInstance {
             options: HashMap::new(),
             options_initialized: false,
             env_hash_tables: hashbrown::HashMap::new(),
+            signrank_cache: HashMap::new(),
+            wilcox_cache: HashMap::new(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };
