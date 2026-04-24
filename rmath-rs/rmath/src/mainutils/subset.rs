@@ -29,6 +29,7 @@
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
+use crate::eval::eval::Rf_eval;
 use crate::mainutils::subscript::{get1index, int_arraySubscript, makeSubscript};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -1948,6 +1949,7 @@ pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> S
 pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEXP) -> SEXP {
     unsafe {
         let input = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let x = Rf_eval(CAR(args), env);
         let mut nlist = CADR(args);
 
         /* Evaluate if promise */
@@ -1973,7 +1975,8 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
 
         /* Replace the second argument with a string */
         let new_args = crate::mainutils::duplicate::shallow_duplicate(args);
-        SETCDR(CAR(new_args), input);
+        SETCAR(new_args, x);
+        SETCAR(CDR(new_args), input);
         Rf_unprotect(1); /* input */
         new_args
     }

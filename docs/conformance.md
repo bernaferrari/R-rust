@@ -58,6 +58,9 @@ Rust artifact after source edits.
 - `027_list_print.R` checks unnamed list output
 - `028_named_list_print.R` checks named list output
 - `029_lapply_closure.R` checks `lapply()` with closure results
+- `030_dollar_exact_list.R` checks exact `$` list extraction
+- `031_dollar_partial_list.R` checks partial `$` list extraction
+- `032_dollar_missing_list.R` checks missing `$` list extraction
 
 ## Domain Matrix
 
@@ -84,7 +87,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 29 passing cases and 0 expected failures.
+Current parity status is 32 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 

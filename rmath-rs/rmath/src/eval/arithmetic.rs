@@ -838,6 +838,7 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "next",
             "return",
             "invisible",
+            "$",
         ];
 
         let specials = SPECIAL_SEXPS.get_or_init(|| {

@@ -71,6 +71,7 @@ unsafe fn dispatch_special_by_name(
             "function" => do_function(CDR(call), rho),
             "return" => do_return(CDR(call), rho),
             "=" | "<-" | "<<-" => super::assignment::do_set(call, op, CDR(call), rho),
+            "$" => crate::mainutils::subset::do_subset3(call, op, args, rho),
             _ => {
                 eprintln!("Warning: unimplemented special form '{}'", name);
                 R_NilValue()

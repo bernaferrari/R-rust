@@ -526,6 +526,17 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_dollar_list_access() {
+        let mut session = RSession::new();
+        let exact = session.eval("x <- list(a = 1, b = 2)\nx$a");
+        let partial = session.eval("x <- list(alpha = 11, beta = 22)\nx$al");
+        let missing = session.eval("x <- list(a = 1)\nx$b");
+        assert_eq!(exact.output, "[1] 1");
+        assert_eq!(partial.output, "[1] 11");
+        assert_eq!(missing.output, "NULL");
+    }
+
+    #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");
