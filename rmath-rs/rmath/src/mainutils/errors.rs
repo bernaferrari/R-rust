@@ -23,6 +23,7 @@ use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 use crate::sexp::context::{RError, RSignal};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
 use crate::sexp::globals;
+use crate::sexp::instance::{self, ErrorState};
 
 // Re-export common accessors/constructors for convenience
 use crate::eval::attrib_core::{R_ClassSymbol, R_NamesSymbol, getAttrib};
@@ -105,6 +106,184 @@ static R_NWARNINGS: AtomicI32 = AtomicI32::new(R_NWARNINGS_DEFAULT);
 
 /// R_Warnings: the vector of collected warning calls.
 static R_WARNINGS: AtomicPtr<SexprecCore> = AtomicPtr::new(ptr::null_mut());
+
+fn with_error_state<F, R>(f: F) -> Option<R>
+where
+    F: FnOnce(&mut ErrorState) -> R,
+{
+    instance::with_current_instance(|instance| f(&mut instance.error_state))
+}
+
+fn r_warn_length() -> c_int {
+    with_error_state(|state| state.warn_length)
+        .unwrap_or_else(|| R_WARN_LENGTH.load(Ordering::Relaxed))
+}
+
+fn set_r_warn_length(val: c_int) {
+    if with_error_state(|state| state.warn_length = val).is_none() {
+        R_WARN_LENGTH.store(val, Ordering::Relaxed);
+    }
+}
+
+fn r_show_error_messages() -> bool {
+    with_error_state(|state| state.show_error_messages)
+        .unwrap_or_else(|| R_SHOW_ERROR_MESSAGES.load(Ordering::Relaxed))
+}
+
+fn set_r_show_error_messages(val: bool) {
+    if with_error_state(|state| state.show_error_messages = val).is_none() {
+        R_SHOW_ERROR_MESSAGES.store(val, Ordering::Relaxed);
+    }
+}
+
+fn r_show_error_calls() -> bool {
+    with_error_state(|state| state.show_error_calls)
+        .unwrap_or_else(|| R_SHOW_ERROR_CALLS.load(Ordering::Relaxed))
+}
+
+fn set_r_show_error_calls(val: bool) {
+    if with_error_state(|state| state.show_error_calls = val).is_none() {
+        R_SHOW_ERROR_CALLS.store(val, Ordering::Relaxed);
+    }
+}
+
+fn r_show_warn_calls() -> bool {
+    with_error_state(|state| state.show_warn_calls)
+        .unwrap_or_else(|| R_SHOW_WARN_CALLS.load(Ordering::Relaxed))
+}
+
+fn set_r_show_warn_calls(val: bool) {
+    if with_error_state(|state| state.show_warn_calls = val).is_none() {
+        R_SHOW_WARN_CALLS.store(val, Ordering::Relaxed);
+    }
+}
+
+fn in_error() -> c_int {
+    with_error_state(|state| state.in_error).unwrap_or_else(|| IN_ERROR.load(Ordering::Relaxed))
+}
+
+fn set_in_error(val: c_int) {
+    if with_error_state(|state| state.in_error = val).is_none() {
+        IN_ERROR.store(val, Ordering::Relaxed);
+    }
+}
+
+fn in_warning() -> c_int {
+    with_error_state(|state| state.in_warning).unwrap_or_else(|| IN_WARNING.load(Ordering::Relaxed))
+}
+
+fn set_in_warning(val: c_int) {
+    if with_error_state(|state| state.in_warning = val).is_none() {
+        IN_WARNING.store(val, Ordering::Relaxed);
+    }
+}
+
+fn in_print_warnings() -> c_int {
+    with_error_state(|state| state.in_print_warnings)
+        .unwrap_or_else(|| IN_PRINT_WARNINGS.load(Ordering::Relaxed))
+}
+
+fn set_in_print_warnings(val: c_int) {
+    if with_error_state(|state| state.in_print_warnings = val).is_none() {
+        IN_PRINT_WARNINGS.store(val, Ordering::Relaxed);
+    }
+}
+
+fn immediate_warning() -> bool {
+    with_error_state(|state| state.immediate_warning)
+        .unwrap_or_else(|| IMMEDIATE_WARNING.load(Ordering::Relaxed))
+}
+
+fn set_immediate_warning(val: bool) {
+    if with_error_state(|state| state.immediate_warning = val).is_none() {
+        IMMEDIATE_WARNING.store(val, Ordering::Relaxed);
+    }
+}
+
+fn set_no_break_warning(val: bool) {
+    if with_error_state(|state| state.no_break_warning = val).is_none() {
+        NO_BREAK_WARNING.store(val, Ordering::Relaxed);
+    }
+}
+
+fn interrupts_suspended() -> bool {
+    with_error_state(|state| state.interrupts_suspended)
+        .unwrap_or_else(|| R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed))
+}
+
+fn set_interrupts_suspended(val: bool) {
+    if with_error_state(|state| state.interrupts_suspended = val).is_none() {
+        R_INTERRUPTS_SUSPENDED.store(val, Ordering::Relaxed);
+    }
+}
+
+fn interrupts_pending() -> bool {
+    with_error_state(|state| state.interrupts_pending)
+        .unwrap_or_else(|| R_INTERRUPTS_PENDING.load(Ordering::Relaxed))
+}
+
+fn set_interrupts_pending(val: bool) {
+    if with_error_state(|state| state.interrupts_pending = val).is_none() {
+        R_INTERRUPTS_PENDING.store(val, Ordering::Relaxed);
+    }
+}
+
+fn collect_warnings() -> c_int {
+    with_error_state(|state| state.collect_warnings)
+        .unwrap_or_else(|| R_COLLECT_WARNINGS.load(Ordering::Relaxed))
+}
+
+fn set_collect_warnings(val: c_int) {
+    if with_error_state(|state| state.collect_warnings = val).is_none() {
+        R_COLLECT_WARNINGS.store(val, Ordering::Relaxed);
+    }
+}
+
+fn increment_collect_warnings() {
+    if with_error_state(|state| state.collect_warnings += 1).is_none() {
+        R_COLLECT_WARNINGS.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+fn nwarnings() -> c_int {
+    with_error_state(|state| state.nwarnings).unwrap_or_else(|| R_NWARNINGS.load(Ordering::Relaxed))
+}
+
+fn warnings_ptr() -> SEXP {
+    with_error_state(|state| state.warnings).unwrap_or_else(|| R_WARNINGS.load(Ordering::Relaxed))
+}
+
+fn set_warnings_ptr(val: SEXP) {
+    if with_error_state(|state| state.warnings = val).is_none() {
+        R_WARNINGS.store(val, Ordering::Relaxed);
+    }
+}
+
+fn handler_stack() -> SEXP {
+    with_error_state(|state| state.handler_stack)
+        .unwrap_or_else(|| R_HANDLER_STACK.with(|stack| *stack.borrow()))
+}
+
+fn set_handler_stack(val: SEXP) {
+    if with_error_state(|state| state.handler_stack = val).is_none() {
+        R_HANDLER_STACK.with(|stack| {
+            *stack.borrow_mut() = val;
+        });
+    }
+}
+
+fn restart_stack() -> SEXP {
+    with_error_state(|state| state.restart_stack)
+        .unwrap_or_else(|| R_RESTART_STACK.with(|stack| *stack.borrow()))
+}
+
+fn set_restart_stack(val: SEXP) {
+    if with_error_state(|state| state.restart_stack = val).is_none() {
+        R_RESTART_STACK.with(|stack| {
+            *stack.borrow_mut() = val;
+        });
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Handler/restart stacks (thread-local for now)
@@ -281,7 +460,7 @@ unsafe fn format_varargs_to_buf(format: *const c_char, ap: *mut c_void) -> (Stri
             let s = CStr::from_ptr(format).to_str().unwrap_or("").to_string();
             return (s, false);
         }
-        let psize = std::cmp::min(BUFSIZE, R_WARN_LENGTH.load(Ordering::Relaxed) as usize) + 1;
+        let psize = std::cmp::min(BUFSIZE, r_warn_length() as usize) + 1;
         let mut buf = vec![0u8; psize];
         let pval = vsnprintf_c(buf.as_mut_ptr() as *mut c_char, psize, format, ap);
         let truncated = pval >= psize as i32;
@@ -560,14 +739,14 @@ struct RestoreInError {
 
 impl Drop for RestoreInError {
     fn drop(&mut self) {
-        IN_ERROR.store(self.old_in_error, Ordering::Relaxed);
+        set_in_error(self.old_in_error);
         R_SetExpressions(self.old_expressions);
     }
 }
 
 unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
-        let old_in_err = IN_ERROR.load(Ordering::Relaxed);
+        let old_in_err = in_error();
         if old_in_err > 0 {
             // fail-safe handler for recursive errors
             if old_in_err >= 3 {
@@ -592,8 +771,8 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
                 }
             }
             // Clean up warnings
-            R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
-            R_WARNINGS.store(ptr::null_mut(), Ordering::Relaxed);
+            set_collect_warnings(0);
+            set_warnings_ptr(ptr::null_mut());
             eprintln!(
                 "Error: no more error handlers available (recursive errors?); invoking 'abort' restart"
             );
@@ -609,7 +788,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
             old_in_error: old_in_err,
             old_expressions: R_Expressions(),
         };
-        IN_ERROR.store(1, Ordering::Relaxed);
+        set_in_error(1);
 
         // Format the variadic message
         let tmp_str = format_varargs(format, ap);
@@ -652,7 +831,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
         }
 
         // Show error call trace if configured
-        if R_SHOW_ERROR_CALLS.load(Ordering::Relaxed) && !call.is_null() && !isNull(call) != 0 {
+        if r_show_error_calls() && !call.is_null() && !isNull(call) != 0 {
             let tr = R_ConciseTraceback(call, 0);
             if !tr.is_empty() && err_msg.len() + tr.len() + 10 < BUFSIZE {
                 err_msg.push_str("Calls: ");
@@ -665,14 +844,12 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
         R_SetErrmessage(&err_msg);
 
         // Print the error message
-        if R_SHOW_ERROR_MESSAGES.load(Ordering::Relaxed) {
+        if r_show_error_messages() {
             eprint!("{}", R_GetErrorBuf());
         }
 
         // Print deferred warnings if any
-        if R_SHOW_ERROR_MESSAGES.load(Ordering::Relaxed)
-            && R_COLLECT_WARNINGS.load(Ordering::Relaxed) > 0
-        {
+        if r_show_error_messages() && collect_warnings() > 0 {
             eprint!("In addition: ");
             PrintWarnings();
         }
@@ -690,7 +867,7 @@ unsafe fn verrorcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
 
 unsafe fn findSimpleErrorHandler() -> SEXP {
     unsafe {
-        let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
+        let mut list = handler_stack();
         while !list.is_null() && list != globals::R_NilValue() {
             let entry = CAR(list);
             let class_ptr = CHAR(ENTRY_CLASS(entry));
@@ -732,9 +909,7 @@ unsafe fn vsignalError(call: SEXP, format: *const c_char) {
         let mut list = findSimpleErrorHandler();
         while !list.is_null() && list != globals::R_NilValue() {
             let entry = CAR(list);
-            R_HANDLER_STACK.with(|s| {
-                *s.borrow_mut() = CDR(list);
-            });
+            set_handler_stack(CDR(list));
             if IS_CALLING_ENTRY(entry) != 0 {
                 if ENTRY_HANDLER(entry) == globals::R_RestartToken() {
                     break;
@@ -920,7 +1095,7 @@ pub unsafe fn WrongArgCount(s: *const c_char) {
 unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) {
     unsafe {
         // Guard against recursive warnings
-        if IN_WARNING.load(Ordering::Relaxed) != 0 {
+        if in_warning() != 0 {
             return;
         }
 
@@ -942,19 +1117,18 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
         let w = asLogical(GetOption1(warn_sym));
         if w == crate::sexp::ffi::NA_INTEGER {
             // Set to sensible default
-            if IMMEDIATE_WARNING.load(Ordering::Relaxed) {
+            if immediate_warning() {
                 // w = 1 — print immediately
             } else {
                 // w = 0 — default, handled below
             }
         }
 
-        if w < 0 || IN_WARNING.load(Ordering::Relaxed) != 0 || IN_ERROR.load(Ordering::Relaxed) != 0
-        {
+        if w < 0 || in_warning() != 0 || in_error() != 0 {
             return;
         }
 
-        IN_WARNING.store(1, Ordering::Relaxed);
+        set_in_warning(1);
 
         // Format the variadic message into a string
         let (mut fmt_str, truncated) = format_varargs_to_buf(format, ap);
@@ -968,11 +1142,11 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
 
         if w >= 2 {
             // Convert warning to error
-            IN_WARNING.store(0, Ordering::Relaxed);
+            set_in_warning(0);
             let full_msg = format!("(converted from warning) {}", fmt_str);
             let c_msg = std::ffi::CString::new(full_msg).unwrap_or_default();
             errorcall(call, c_msg.as_ptr());
-        } else if w == 1 || IMMEDIATE_WARNING.load(Ordering::Relaxed) {
+        } else if w == 1 || immediate_warning() {
             // Print warnings immediately
             let dcall = if !call.is_null() && !isNull(call) != 0 {
                 "<call>" // Simplified — full version needs deparse1s
@@ -996,7 +1170,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             }
             eprintln!(" {}", fmt_str);
 
-            if R_SHOW_WARN_CALLS.load(Ordering::Relaxed) && !call.is_null() && !isNull(call) != 0 {
+            if r_show_warn_calls() && !call.is_null() && !isNull(call) != 0 {
                 // Respect .signalSimpleWarning hook if present by filtering the traceback accordingly
                 let sigsym = Rf_install(b".signalSimpleWarning\0".as_ptr() as *const c_char);
                 let tr = if SYMVALUE(sigsym) != globals::R_UnboundValue() {
@@ -1010,14 +1184,14 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
             }
         } else {
             // w == 0: collect warnings
-            if R_COLLECT_WARNINGS.load(Ordering::Relaxed) == 0 {
+            if collect_warnings() == 0 {
                 setup_warnings();
             }
-            let cw = R_COLLECT_WARNINGS.load(Ordering::Relaxed);
-            let nw = R_NWARNINGS.load(Ordering::Relaxed);
+            let cw = collect_warnings();
+            let nw = nwarnings();
             if cw < nw {
                 // Store the warning
-                let warnings_ptr = R_WARNINGS.load(Ordering::Relaxed);
+                let warnings_ptr = warnings_ptr();
                 if !warnings_ptr.is_null() && TYPEOF(warnings_ptr) == SEXPTYPE::VECSXP {
                     SET_VECTOR_ELT(warnings_ptr, cw as R_xlen_t, call);
                     let names = CAR(ATTRIB(warnings_ptr));
@@ -1025,10 +1199,7 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
                         // Append traceback if requested
                         #[allow(clippy::implicit_clone)]
                         let mut msg_to_store = fmt_str.to_string();
-                        if R_SHOW_WARN_CALLS.load(Ordering::Relaxed)
-                            && !call.is_null()
-                            && !isNull(call) != 0
-                        {
+                        if r_show_warn_calls() && !call.is_null() && !isNull(call) != 0 {
                             let tr = R_ConciseTraceback(call, 0);
                             if !tr.is_empty() && msg_to_store.len() + tr.len() + 8 < BUFSIZE {
                                 msg_to_store.push_str("\nCalls: ");
@@ -1039,24 +1210,24 @@ unsafe fn vwarningcall_dflt(call: SEXP, format: *const c_char, ap: *mut c_void) 
                         let ch = Rf_mkChar(c_msg.as_ptr());
                         SET_STRING_ELT(names, cw as R_xlen_t, ch);
                     }
-                    R_COLLECT_WARNINGS.fetch_add(1, Ordering::Relaxed);
+                    increment_collect_warnings();
                 }
             }
         }
 
-        IN_WARNING.store(0, Ordering::Relaxed);
+        set_in_warning(0);
     }
 }
 
 /// Setup the warnings collection vector.
 unsafe fn setup_warnings() {
     unsafe {
-        let nw = R_NWARNINGS.load(Ordering::Relaxed);
+        let nw = nwarnings();
         let w = Rf_allocVector(SEXPTYPE::VECSXP, nw);
         let names = Rf_allocVector(SEXPTYPE::STRSXP, nw);
         setAttrib_wrap(w, R_NamesSymbol(), names);
-        R_WARNINGS.store(w, Ordering::Relaxed);
-        R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
+        set_warnings_ptr(w);
+        set_collect_warnings(0);
     }
 }
 
@@ -1093,10 +1264,10 @@ unsafe fn vsignalWarning(call: SEXP, format: *const c_char) {
 /// Issue an immediate warning (bypass collection).
 pub unsafe fn warningcall_immediate(call: SEXP, format: *const c_char) {
     unsafe {
-        let prev = IMMEDIATE_WARNING.load(Ordering::Relaxed);
-        IMMEDIATE_WARNING.store(true, Ordering::Relaxed);
+        let prev = immediate_warning();
+        set_immediate_warning(true);
         vwarningcall_dflt(call, format, ptr::null_mut());
-        IMMEDIATE_WARNING.store(prev, Ordering::Relaxed);
+        set_immediate_warning(prev);
     }
 }
 
@@ -1231,23 +1402,23 @@ pub unsafe fn do_message(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 #[allow(clippy::if_same_then_else)]
 pub unsafe fn PrintWarnings() {
     unsafe {
-        let cw = R_COLLECT_WARNINGS.load(Ordering::Relaxed);
+        let cw = collect_warnings();
         if cw == 0 {
             return;
         }
 
-        if IN_PRINT_WARNINGS.load(Ordering::Relaxed) != 0 {
-            R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
-            R_WARNINGS.store(ptr::null_mut(), Ordering::Relaxed);
+        if in_print_warnings() != 0 {
+            set_collect_warnings(0);
+            set_warnings_ptr(ptr::null_mut());
             eprintln!("Lost warning messages");
             return;
         }
 
-        IN_PRINT_WARNINGS.store(1, Ordering::Relaxed);
+        set_in_print_warnings(1);
 
-        let warnings_ptr = R_WARNINGS.load(Ordering::Relaxed);
+        let warnings_ptr = warnings_ptr();
         if warnings_ptr.is_null() || TYPEOF(warnings_ptr) != SEXPTYPE::VECSXP {
-            IN_PRINT_WARNINGS.store(0, Ordering::Relaxed);
+            set_in_print_warnings(0);
             return;
         }
 
@@ -1283,7 +1454,7 @@ pub unsafe fn PrintWarnings() {
                 }
             }
         } else {
-            let nw = R_NWARNINGS.load(Ordering::Relaxed);
+            let nw = nwarnings();
             if cw < nw {
                 eprintln!("There were {} warnings (use warnings() to see them)\n", cw);
             } else {
@@ -1298,9 +1469,9 @@ pub unsafe fn PrintWarnings() {
         let sym = Rf_install(b"last.warning\0".as_ptr() as *const c_char);
         SET_SYMVALUE(sym, warnings_ptr);
 
-        IN_PRINT_WARNINGS.store(0, Ordering::Relaxed);
-        R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
-        R_WARNINGS.store(ptr::null_mut(), Ordering::Relaxed);
+        set_in_print_warnings(0);
+        set_collect_warnings(0);
+        set_warnings_ptr(ptr::null_mut());
     }
 }
 
@@ -1350,10 +1521,10 @@ pub unsafe fn R_CheckStack2(_extra: usize) {
 pub unsafe fn R_CheckUserInterrupt() {
     unsafe {
         R_CheckStack();
-        if R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed) {
+        if interrupts_suspended() {
             return;
         }
-        if R_INTERRUPTS_PENDING.load(Ordering::Relaxed) {
+        if interrupts_pending() {
             onintr();
         }
     }
@@ -1373,12 +1544,12 @@ pub unsafe fn jump_to_top_ex(
     ignore_restart: c_int,
 ) {
     unsafe {
-        let old_in_error = IN_ERROR.load(Ordering::Relaxed);
+        let old_in_error = in_error();
         let mut have_handler = false;
 
         if try_user_handler != 0 && old_in_error < 3 {
             if old_in_error == 0 {
-                IN_ERROR.store(1, Ordering::Relaxed);
+                set_in_error(1);
             }
             let err_opt = GetOption1(Rf_install(b"error\0".as_ptr() as *const c_char));
             have_handler = !err_opt.is_null() && err_opt != globals::R_NilValue();
@@ -1388,7 +1559,7 @@ pub unsafe fn jump_to_top_ex(
                 if !is_lang && !is_expr {
                     eprintln!("invalid option \"error\"");
                 } else {
-                    IN_ERROR.store(3, Ordering::Relaxed);
+                    set_in_error(3);
                     if is_lang {
                         let _ = crate::eval::eval::Rf_eval(err_opt, globals::R_GlobalEnv());
                     } else {
@@ -1400,13 +1571,13 @@ pub unsafe fn jump_to_top_ex(
                             );
                         }
                     }
-                    IN_ERROR.store(old_in_error, Ordering::Relaxed);
+                    set_in_error(old_in_error);
                 }
             }
-            IN_ERROR.store(old_in_error, Ordering::Relaxed);
+            set_in_error(old_in_error);
         }
 
-        if process_warnings != 0 && R_COLLECT_WARNINGS.load(Ordering::Relaxed) > 0 {
+        if process_warnings != 0 && collect_warnings() > 0 {
             PrintWarnings();
         }
 
@@ -1415,14 +1586,14 @@ pub unsafe fn jump_to_top_ex(
         }
 
         if traceback != 0 && old_in_error < 2 {
-            IN_ERROR.store(2, Ordering::Relaxed);
+            set_in_error(2);
             let tb = R_GetTracebackOnly(0);
             let sym = Rf_install(b".Traceback\0".as_ptr() as *const c_char);
             SET_SYMVALUE(sym, tb);
-            IN_ERROR.store(old_in_error, Ordering::Relaxed);
+            set_in_error(old_in_error);
         }
 
-        IN_ERROR.store(0, Ordering::Relaxed);
+        set_in_error(0);
         std::panic::panic_any(RSignal::Error {
             message: "jump_to_top".to_string(),
         });
@@ -1431,7 +1602,7 @@ pub unsafe fn jump_to_top_ex(
 
 unsafe fn try_jump_to_restart() {
     unsafe {
-        let mut list = R_RESTART_STACK.with(|s| *s.borrow());
+        let mut list = restart_stack();
         while !list.is_null() && list != globals::R_NilValue() {
             let restart = CAR(list);
             if TYPEOF(restart) == SEXPTYPE::VECSXP && LENGTH(restart) > 1 {
@@ -1523,16 +1694,16 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let mut args = CDR(args);
 
         if asLogical(CAR(args)) != 0 {
-            IMMEDIATE_WARNING.store(true, Ordering::Relaxed);
+            set_immediate_warning(true);
         } else {
-            IMMEDIATE_WARNING.store(false, Ordering::Relaxed);
+            set_immediate_warning(false);
         }
         args = CDR(args);
 
         if asLogical(CAR(args)) != 0 {
-            NO_BREAK_WARNING.store(true, Ordering::Relaxed);
+            set_no_break_warning(true);
         } else {
-            NO_BREAK_WARNING.store(false, Ordering::Relaxed);
+            set_no_break_warning(false);
         }
         args = CDR(args);
 
@@ -1553,8 +1724,8 @@ pub unsafe fn do_warning(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             warningcall(c_call, b"\0".as_ptr() as *const c_char);
         }
 
-        IMMEDIATE_WARNING.store(false, Ordering::Relaxed);
-        NO_BREAK_WARNING.store(false, Ordering::Relaxed);
+        set_immediate_warning(false);
+        set_no_break_warning(false);
 
         globals::R_NilValue()
     }
@@ -1598,10 +1769,10 @@ pub unsafe fn do_printDeferredWarnings(call: SEXP, op: SEXP, args: SEXP, env: SE
 /// do_interruptsSuspended — get/set interrupts suspended flag.
 pub unsafe fn do_interruptsSuspended(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let orig = R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed);
+        let orig = interrupts_suspended();
         if !args.is_null() && isNull(args) == 0 {
             let val = asLogical(CAR(args));
-            R_INTERRUPTS_SUSPENDED.store(val != 0, Ordering::Relaxed);
+            set_interrupts_suspended(val != 0);
         }
         ScalarLogical(orig as c_int)
     }
@@ -1969,13 +2140,13 @@ pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         let calling = asLogical(CAR(rest));
 
         if isNull(classes) != 0 || isNull(handlers) != 0 {
-            return R_HANDLER_STACK.with(|s| *s.borrow());
+            return handler_stack();
         }
 
         let n = LENGTH(handlers);
 
-        R_HANDLER_STACK.with(|stack| {
-            let oldstack = *stack.borrow();
+        {
+            let oldstack = handler_stack();
 
             let result = Rf_allocVector(SEXPTYPE::VECSXP, RESULT_SIZE as c_int);
             let mut newstack = oldstack;
@@ -1987,9 +2158,9 @@ pub unsafe fn do_addCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
                 newstack = Rf_cons(entry, newstack);
             }
 
-            *stack.borrow_mut() = newstack;
+            set_handler_stack(newstack);
             oldstack
-        })
+        }
     }
 }
 
@@ -1998,9 +2169,7 @@ pub unsafe fn do_resetCondHands(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> 
     unsafe {
         checkArity(op, args);
         let old = CAR(args);
-        R_HANDLER_STACK.with(|stack| {
-            *stack.borrow_mut() = old;
-        });
+        set_handler_stack(old);
         globals::R_NilValue()
     }
 }
@@ -2019,30 +2188,28 @@ pub unsafe fn do_getRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
             crate::sexp::ffi::NA_INTEGER
         };
 
-        R_RESTART_STACK.with(|stack| {
-            let mut list = *stack.borrow();
-            while !list.is_null() && i > 1 {
-                list = CDR(list);
-                i -= 1;
-            }
-            if !list.is_null() {
-                CAR(list)
-            } else if i == 1 {
-                // Return abort restart
-                let name = Rf_mkString(b"abort\x00".as_ptr() as *const c_char);
-                let entry = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-                SET_VECTOR_ELT(entry, 0, name);
-                SET_VECTOR_ELT(entry, 1, globals::R_NilValue());
-                setAttrib_wrap(
-                    entry,
-                    R_ClassSymbol(),
-                    Rf_mkString(b"restart\x00".as_ptr() as *const c_char),
-                );
-                entry
-            } else {
-                globals::R_NilValue()
-            }
-        })
+        let mut list = restart_stack();
+        while !list.is_null() && i > 1 {
+            list = CDR(list);
+            i -= 1;
+        }
+        if !list.is_null() {
+            CAR(list)
+        } else if i == 1 {
+            // Return abort restart
+            let name = Rf_mkString(b"abort\x00".as_ptr() as *const c_char);
+            let entry = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            SET_VECTOR_ELT(entry, 0, name);
+            SET_VECTOR_ELT(entry, 1, globals::R_NilValue());
+            setAttrib_wrap(
+                entry,
+                R_ClassSymbol(),
+                Rf_mkString(b"restart\x00".as_ptr() as *const c_char),
+            );
+            entry
+        } else {
+            globals::R_NilValue()
+        }
     }
 }
 
@@ -2054,10 +2221,7 @@ pub unsafe fn do_addRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         if TYPEOF(r) != SEXPTYPE::VECSXP || LENGTH(r) < 2 {
             errorcall(call, b"bad restart\x00".as_ptr() as *const c_char);
         }
-        R_RESTART_STACK.with(|stack| {
-            let new = Rf_cons(r, *stack.borrow());
-            *stack.borrow_mut() = new;
-        });
+        set_restart_stack(Rf_cons(r, restart_stack()));
         globals::R_NilValue()
     }
 }
@@ -2073,9 +2237,7 @@ pub unsafe fn do_invokeRestart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> S
         // invokeRestart would jump to the restart; for now just panic
         let exit = VECTOR_ELT(r, 1);
         if isNull(exit) != 0 {
-            R_RESTART_STACK.with(|stack| {
-                *stack.borrow_mut() = globals::R_NilValue();
-            });
+            set_restart_stack(globals::R_NilValue());
             jump_to_top_ex(0, 0, 1, 1, 1);
         }
         ptr::null_mut() // unreachable
@@ -2112,11 +2274,9 @@ unsafe fn R_InsertRestartHandlers(cptr: *mut crate::sexp::context::RCNTXT, cname
         let klass = Rf_mkChar(b"error\0".as_ptr() as *const c_char);
         crate::sexp::protect::Rf_protect(klass);
         let entry = mkHandlerEntry(klass, rho, h, rho, globals::R_NilValue(), 1);
-        let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+        let old_stack = handler_stack();
         let new_top = Rf_cons(entry, old_stack);
-        R_HANDLER_STACK.with(|s| {
-            *s.borrow_mut() = new_top;
-        });
+        set_handler_stack(new_top);
         crate::sexp::protect::Rf_unprotect(1);
 
         addInternalRestart(cptr, cname);
@@ -2146,11 +2306,9 @@ unsafe fn addInternalRestart(cptr: *mut crate::sexp::context::RCNTXT, cname: *co
             R_ClassSymbol(),
             Rf_mkString(b"restart\0".as_ptr() as *const c_char),
         );
-        let old_stack = R_RESTART_STACK.with(|s| *s.borrow());
+        let old_stack = restart_stack();
         let new_top = Rf_cons(entry, old_stack);
-        R_RESTART_STACK.with(|s| {
-            *s.borrow_mut() = new_top;
-        });
+        set_restart_stack(new_top);
         crate::sexp::protect::Rf_unprotect(2);
     }
 }
@@ -2166,7 +2324,7 @@ unsafe fn findConditionHandler(cond: SEXP) -> SEXP {
             return globals::R_NilValue();
         }
         let n_classes = LENGTH(classes);
-        let mut list = R_HANDLER_STACK.with(|s| *s.borrow());
+        let mut list = handler_stack();
         while !list.is_null() && list != globals::R_NilValue() {
             let entry = CAR(list);
             let entry_class = ENTRY_CLASS(entry);
@@ -2202,15 +2360,13 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
         let msg = CADR(args);
         let ecall = CADDR(args);
 
-        let oldstack = R_HANDLER_STACK.with(|s| *s.borrow());
+        let oldstack = handler_stack();
         crate::sexp::protect::Rf_protect(oldstack);
 
         let mut list = findConditionHandler(cond);
         while !list.is_null() && list != globals::R_NilValue() {
             let entry = CAR(list);
-            R_HANDLER_STACK.with(|s| {
-                *s.borrow_mut() = CDR(list);
-            });
+            set_handler_stack(CDR(list));
             if IS_CALLING_ENTRY(entry) != 0 {
                 let h = ENTRY_HANDLER(entry);
                 if h == globals::R_RestartToken() {
@@ -2234,9 +2390,7 @@ pub unsafe fn do_signalCondition(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
             list = findConditionHandler(cond);
         }
 
-        R_HANDLER_STACK.with(|s| {
-            *s.borrow_mut() = oldstack;
-        });
+        set_handler_stack(oldstack);
         crate::sexp::protect::Rf_unprotect(1);
         globals::R_NilValue()
     }
@@ -2423,12 +2577,10 @@ pub unsafe fn R_tryCatchError(
         );
         crate::sexp::protect::Rf_protect(entry);
 
-        let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+        let old_stack = handler_stack();
         crate::sexp::protect::Rf_protect(old_stack);
         let new_top = Rf_cons(entry, old_stack);
-        R_HANDLER_STACK.with(|s| {
-            *s.borrow_mut() = new_top;
-        });
+        set_handler_stack(new_top);
 
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if let Some(f) = body {
@@ -2438,9 +2590,7 @@ pub unsafe fn R_tryCatchError(
             }
         }));
 
-        R_HANDLER_STACK.with(|s| {
-            *s.borrow_mut() = old_stack;
-        });
+        set_handler_stack(old_stack);
 
         crate::sexp::protect::Rf_unprotect(3);
 
@@ -2550,19 +2700,29 @@ pub unsafe fn R_InitConditions() {
 static R_EXPRESSIONS: AtomicI32 = AtomicI32::new(500);
 static R_EXPRESSIONS_KEEP: AtomicI32 = AtomicI32::new(500);
 
+fn expressions_keep() -> c_int {
+    with_error_state(|state| state.expressions_keep)
+        .unwrap_or_else(|| R_EXPRESSIONS_KEEP.load(Ordering::Relaxed))
+}
+
 /// Get the current expression limit.
 pub fn R_Expressions() -> c_int {
-    R_EXPRESSIONS.load(Ordering::Relaxed)
+    with_error_state(|state| state.expressions)
+        .unwrap_or_else(|| R_EXPRESSIONS.load(Ordering::Relaxed))
 }
 
 /// Set the expression limit.
 pub fn R_SetExpressions(val: c_int) {
-    R_EXPRESSIONS.store(val, Ordering::Relaxed);
+    if with_error_state(|state| state.expressions = val).is_none() {
+        R_EXPRESSIONS.store(val, Ordering::Relaxed);
+    }
 }
 
 /// Set the expression keep value.
 pub fn R_SetExpressionsKeep(val: c_int) {
-    R_EXPRESSIONS_KEEP.store(val, Ordering::Relaxed);
+    if with_error_state(|state| state.expressions_keep = val).is_none() {
+        R_EXPRESSIONS_KEEP.store(val, Ordering::Relaxed);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -2571,56 +2731,53 @@ pub fn R_SetExpressionsKeep(val: c_int) {
 
 /// Set the WarnLength.
 pub fn R_SetWarnLength(val: c_int) {
-    R_WARN_LENGTH.store(val, Ordering::Relaxed);
+    set_r_warn_length(val);
 }
 
 /// Set whether to show error messages.
 pub fn R_SetShowErrorMessages(val: bool) {
-    R_SHOW_ERROR_MESSAGES.store(val, Ordering::Relaxed);
+    set_r_show_error_messages(val);
 }
 
 /// Set whether to show error call traces.
 pub fn R_SetShowErrorCalls(val: bool) {
-    R_SHOW_ERROR_CALLS.store(val, Ordering::Relaxed);
+    set_r_show_error_calls(val);
 }
 
 /// Set whether to show warning call traces.
 pub fn R_SetShowWarnCalls(val: bool) {
-    R_SHOW_WARN_CALLS.store(val, Ordering::Relaxed);
+    set_r_show_warn_calls(val);
 }
 
 /// Get the inError flag.
 pub fn R_GetInError() -> i32 {
-    IN_ERROR.load(Ordering::Relaxed)
+    in_error()
 }
 
 /// Set the inError flag.
 pub fn R_SetInError(val: i32) {
-    IN_ERROR.store(val, Ordering::Relaxed);
+    set_in_error(val);
 }
 
 /// Get the interrupts suspended flag.
 pub fn R_InterruptsSuspended() -> bool {
-    R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed)
+    interrupts_suspended()
 }
 
 /// Set the interrupts suspended flag.
 pub fn R_SetInterruptsSuspended(val: bool) {
-    R_INTERRUPTS_SUSPENDED.store(val, Ordering::Relaxed);
+    set_interrupts_suspended(val);
 }
 
 /// Set interrupts pending.
 pub fn R_SetInterruptsPending(val: bool) {
-    R_INTERRUPTS_PENDING.store(val, Ordering::Relaxed);
+    set_interrupts_pending(val);
 }
 
 /// Restore expression limit to keep value (called during error recovery).
 /// Matches C's `R_Expressions = R_Expressions_keep` in error cleanup.
 pub fn R_Expressions_keep() {
-    R_EXPRESSIONS.store(
-        R_EXPRESSIONS_KEEP.load(Ordering::Relaxed),
-        Ordering::Relaxed,
-    );
+    R_SetExpressions(expressions_keep());
 }
 
 /// jump_to_toplevel — jump to top level without traceback, user error handler,
@@ -3021,12 +3178,10 @@ pub unsafe fn R_withCallingErrorHandler(
         );
         crate::sexp::protect::Rf_protect(entry);
 
-        let old_stack = R_HANDLER_STACK.with(|s| *s.borrow());
+        let old_stack = handler_stack();
         crate::sexp::protect::Rf_protect(old_stack);
         let new_top = Rf_cons(entry, old_stack);
-        R_HANDLER_STACK.with(|s| {
-            *s.borrow_mut() = new_top;
-        });
+        set_handler_stack(new_top);
 
         let val = if let Some(f) = body {
             f(bdata)
@@ -3034,9 +3189,7 @@ pub unsafe fn R_withCallingErrorHandler(
             globals::R_NilValue()
         };
 
-        R_HANDLER_STACK.with(|s| {
-            *s.borrow_mut() = old_stack;
-        });
+        set_handler_stack(old_stack);
         crate::sexp::protect::Rf_unprotect(3);
         val
     }
@@ -3046,9 +3199,7 @@ pub unsafe fn R_withCallingErrorHandler(
 /// Matches C's `static void R_PrintDeferredWarnings(void)`
 pub unsafe fn R_PrintDeferredWarnings() {
     unsafe {
-        if R_SHOW_ERROR_MESSAGES.load(Ordering::Relaxed)
-            && R_COLLECT_WARNINGS.load(Ordering::Relaxed) > 0
-        {
+        if r_show_error_messages() && collect_warnings() > 0 {
             eprint!("In addition: ");
             PrintWarnings();
         }
@@ -3120,6 +3271,8 @@ fn count_format_args(s: &str) -> usize {
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::session::RSession;
+
     use super::*;
 
     fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {
@@ -3169,6 +3322,131 @@ mod tests {
         R_SetInError(1);
         assert_eq!(R_GetInError(), 1);
         R_SetInError(0);
+    }
+
+    #[test]
+    fn test_session_error_flags_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|_| {
+            R_SetInError(7);
+            R_SetExpressions(900);
+            R_SetExpressionsKeep(901);
+            R_SetWarnLength(123);
+            R_SetInterruptsSuspended(true);
+            R_SetInterruptsPending(true);
+            assert_eq!(R_GetInError(), 7);
+            assert_eq!(R_Expressions(), 900);
+            assert_eq!(r_warn_length(), 123);
+            assert!(R_InterruptsSuspended());
+            assert!(interrupts_pending());
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| {
+                assert_eq!(R_GetInError(), 0);
+                assert_eq!(R_Expressions(), 500);
+                assert_eq!(r_warn_length(), 1000);
+                assert!(!R_InterruptsSuspended());
+                assert!(!interrupts_pending());
+
+                R_SetInError(2);
+                R_SetExpressions(600);
+                R_SetWarnLength(456);
+                R_SetInterruptsSuspended(false);
+                R_SetInterruptsPending(false);
+                assert_eq!(R_GetInError(), 2);
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert_eq!(R_GetInError(), 7);
+            assert_eq!(R_Expressions(), 900);
+            R_Expressions_keep();
+            assert_eq!(R_Expressions(), 901);
+            assert_eq!(r_warn_length(), 123);
+            assert!(R_InterruptsSuspended());
+            assert!(interrupts_pending());
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_session_warning_collection_is_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|_| {
+            set_collect_warnings(3);
+            unsafe {
+                setup_warnings();
+            }
+            assert_eq!(collect_warnings(), 0);
+            assert!(!warnings_ptr().is_null());
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| {
+                assert_eq!(collect_warnings(), 0);
+                assert!(warnings_ptr().is_null());
+                set_collect_warnings(1);
+                unsafe {
+                    setup_warnings();
+                }
+                assert_eq!(collect_warnings(), 0);
+                assert!(!warnings_ptr().is_null());
+                set_warnings_ptr(ptr::null_mut());
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert!(!warnings_ptr().is_null());
+            set_warnings_ptr(ptr::null_mut());
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_session_handler_and_restart_stacks_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        let mut left_handler = ptr::null_mut();
+        let mut left_restart = ptr::null_mut();
+
+        left.with_arena(|_| unsafe {
+            left_handler = Rf_allocVector(SEXPTYPE::VECSXP, 5);
+            left_restart = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            set_handler_stack(Rf_cons(left_handler, ptr::null_mut()));
+            set_restart_stack(Rf_cons(left_restart, ptr::null_mut()));
+            assert_eq!(CAR(handler_stack()), left_handler);
+            assert_eq!(CAR(restart_stack()), left_restart);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| unsafe {
+                assert!(handler_stack().is_null());
+                assert!(restart_stack().is_null());
+                let right_handler = Rf_allocVector(SEXPTYPE::VECSXP, 5);
+                let right_restart = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+                set_handler_stack(Rf_cons(right_handler, ptr::null_mut()));
+                set_restart_stack(Rf_cons(right_restart, ptr::null_mut()));
+                assert_eq!(CAR(handler_stack()), right_handler);
+                assert_eq!(CAR(restart_stack()), right_restart);
+            })
+            .unwrap();
+
+        left.with_arena(|_| unsafe {
+            assert_eq!(CAR(handler_stack()), left_handler);
+            assert_eq!(CAR(restart_stack()), left_restart);
+            set_handler_stack(ptr::null_mut());
+            set_restart_stack(ptr::null_mut());
+        })
+        .unwrap();
     }
 
     #[test]
@@ -3312,59 +3590,44 @@ mod tests {
     #[test]
     fn test_warning_collection() {
         unsafe {
-            R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
-            R_WARNINGS.store(ptr::null_mut(), Ordering::Relaxed);
+            set_collect_warnings(0);
+            set_warnings_ptr(ptr::null_mut());
 
             // setup_warnings should create the vector
             setup_warnings();
-            assert!(
-                R_WARNINGS.load(Ordering::Relaxed).is_null()
-                    || TYPEOF(R_WARNINGS.load(Ordering::Relaxed)) == SEXPTYPE::VECSXP
-            );
+            assert!(warnings_ptr().is_null() || TYPEOF(warnings_ptr()) == SEXPTYPE::VECSXP);
 
             // Reset
-            R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
-            R_WARNINGS.store(ptr::null_mut(), Ordering::Relaxed);
+            set_collect_warnings(0);
+            set_warnings_ptr(ptr::null_mut());
         }
     }
 
     #[test]
     fn test_handler_stack_operations() {
-        R_HANDLER_STACK.with(|stack| {
-            *stack.borrow_mut() = ptr::null_mut();
-        });
+        set_handler_stack(ptr::null_mut());
 
         unsafe {
             let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
-            R_HANDLER_STACK.with(|stack| {
-                *stack.borrow_mut() = Rf_cons(entry, ptr::null_mut());
-                assert!(!(*stack.borrow()).is_null());
-            });
+            set_handler_stack(Rf_cons(entry, ptr::null_mut()));
+            assert!(!handler_stack().is_null());
 
             // Reset
-            R_HANDLER_STACK.with(|stack| {
-                *stack.borrow_mut() = ptr::null_mut();
-            });
+            set_handler_stack(ptr::null_mut());
         }
     }
 
     #[test]
     fn test_restart_stack_operations() {
-        R_RESTART_STACK.with(|stack| {
-            *stack.borrow_mut() = ptr::null_mut();
-        });
+        set_restart_stack(ptr::null_mut());
 
         unsafe {
             let entry = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-            R_RESTART_STACK.with(|stack| {
-                *stack.borrow_mut() = Rf_cons(entry, ptr::null_mut());
-                assert!(!(*stack.borrow()).is_null());
-            });
+            set_restart_stack(Rf_cons(entry, ptr::null_mut()));
+            assert!(!restart_stack().is_null());
 
             // Reset
-            R_RESTART_STACK.with(|stack| {
-                *stack.borrow_mut() = ptr::null_mut();
-            });
+            set_restart_stack(ptr::null_mut());
         }
     }
 
@@ -3537,7 +3800,7 @@ mod tests {
     fn test_warn_length() {
         R_SetWarnLength(500);
         // Just verify it doesn't panic
-        let val = R_WARN_LENGTH.load(Ordering::Relaxed);
+        let val = r_warn_length();
         assert_eq!(val, 500);
         // Reset to default
         R_SetWarnLength(1000);
@@ -3554,8 +3817,8 @@ mod tests {
     #[test]
     fn test_r_print_deferred_warnings_no_warnings() {
         unsafe {
-            R_COLLECT_WARNINGS.store(0, Ordering::Relaxed);
-            R_WARNINGS.store(ptr::null_mut(), Ordering::Relaxed);
+            set_collect_warnings(0);
+            set_warnings_ptr(ptr::null_mut());
             R_PrintDeferredWarnings();
             // Should not panic
         }

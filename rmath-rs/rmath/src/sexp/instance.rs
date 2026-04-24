@@ -17,6 +17,7 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::os::raw::c_int;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::memory::RArena;
@@ -24,6 +25,52 @@ use super::memory::RArena;
 // ---------------------------------------------------------------------------
 // RInstance
 // ---------------------------------------------------------------------------
+
+pub(crate) struct ErrorState {
+    pub warn_length: c_int,
+    pub show_error_messages: bool,
+    pub show_error_calls: bool,
+    pub show_warn_calls: bool,
+    pub in_error: c_int,
+    pub in_warning: c_int,
+    pub in_print_warnings: c_int,
+    pub immediate_warning: bool,
+    pub no_break_warning: bool,
+    pub interrupts_suspended: bool,
+    pub interrupts_pending: bool,
+    pub collect_warnings: c_int,
+    pub nwarnings: c_int,
+    pub warnings: SEXP,
+    pub handler_stack: SEXP,
+    pub restart_stack: SEXP,
+    pub expressions: c_int,
+    pub expressions_keep: c_int,
+}
+
+impl Default for ErrorState {
+    fn default() -> Self {
+        ErrorState {
+            warn_length: 1000,
+            show_error_messages: true,
+            show_error_calls: false,
+            show_warn_calls: false,
+            in_error: 0,
+            in_warning: 0,
+            in_print_warnings: 0,
+            immediate_warning: false,
+            no_break_warning: false,
+            interrupts_suspended: false,
+            interrupts_pending: false,
+            collect_warnings: 0,
+            nwarnings: 50,
+            warnings: std::ptr::null_mut(),
+            handler_stack: std::ptr::null_mut(),
+            restart_stack: std::ptr::null_mut(),
+            expressions: 500,
+            expressions_keep: 500,
+        }
+    }
+}
 
 /// All per-instance state for one independent R session.
 ///
@@ -57,6 +104,8 @@ pub struct RInstance {
     pub(crate) in_error: bool,
     /// Per-instance generational GC state.
     pub(crate) gc_state: super::gengc::GcState,
+    /// Per-instance error, warning, interrupt, and expression-limit state.
+    pub(crate) error_state: ErrorState,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -104,6 +153,7 @@ impl RInstance {
             context_stack: Vec::new(),
             in_error: false,
             gc_state: super::gengc::GcState::default(),
+            error_state: ErrorState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),
