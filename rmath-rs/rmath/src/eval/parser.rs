@@ -146,10 +146,11 @@ impl Lexer {
 
     fn skip_comment(&mut self) {
         if self.peek_char() == Some('#') {
-            while let Some(ch) = self.advance() {
+            while let Some(ch) = self.peek_char() {
                 if ch == '\n' {
                     break;
                 }
+                self.advance();
             }
         }
     }
@@ -596,6 +597,7 @@ impl Parser {
         match self.peek() {
             Token::LeftAssign | Token::Assign | Token::LeftSuper => {
                 let _op = self.advance();
+                self.skip_newlines();
                 let right = self.parse_assignment()?;
                 unsafe {
                     let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
@@ -604,6 +606,7 @@ impl Parser {
             }
             Token::RightAssign => {
                 let _op = self.advance();
+                self.skip_newlines();
                 let right = self.parse_assignment()?;
                 // x -> y is equivalent to y <- x
                 unsafe {
@@ -621,6 +624,7 @@ impl Parser {
         loop {
             if self.peek() == &Token::Tilde {
                 self.advance();
+                self.skip_newlines();
                 let right = self.parse_or()?;
                 unsafe {
                     let op = Rf_install(CString::new("~").unwrap_or_default().as_ptr());
@@ -639,6 +643,7 @@ impl Parser {
             match self.peek() {
                 Token::Or2 => {
                     self.advance();
+                    self.skip_newlines();
                     let right = self.parse_and()?;
                     unsafe {
                         let op = Rf_install(CString::new("||").unwrap_or_default().as_ptr());
@@ -647,6 +652,7 @@ impl Parser {
                 }
                 Token::Or => {
                     self.advance();
+                    self.skip_newlines();
                     let right = self.parse_and()?;
                     unsafe {
                         let op = Rf_install(CString::new("|").unwrap_or_default().as_ptr());
@@ -664,6 +670,7 @@ impl Parser {
             match self.peek() {
                 Token::And2 => {
                     self.advance();
+                    self.skip_newlines();
                     let right = self.parse_not()?;
                     unsafe {
                         let op = Rf_install(CString::new("&&").unwrap_or_default().as_ptr());
@@ -672,6 +679,7 @@ impl Parser {
                 }
                 Token::And => {
                     self.advance();
+                    self.skip_newlines();
                     let right = self.parse_not()?;
                     unsafe {
                         let op = Rf_install(CString::new("&").unwrap_or_default().as_ptr());
@@ -709,6 +717,7 @@ impl Parser {
                 _ => return Ok(left),
             };
             self.advance();
+            self.skip_newlines();
             let right = self.parse_addition()?;
             unsafe {
                 let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
@@ -726,6 +735,7 @@ impl Parser {
                 _ => return Ok(left),
             };
             self.advance();
+            self.skip_newlines();
             let right = self.parse_multiplication()?;
             unsafe {
                 let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
@@ -744,6 +754,7 @@ impl Parser {
                 _ => return Ok(left),
             };
             self.advance();
+            self.skip_newlines();
             let right = self.parse_power()?;
             unsafe {
                 let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
@@ -756,6 +767,7 @@ impl Parser {
         let base = self.parse_colon()?;
         if self.peek() == &Token::Caret {
             self.advance();
+            self.skip_newlines();
             let exp = self.parse_colon()?;
             unsafe {
                 let op = Rf_install(CString::new("^").unwrap_or_default().as_ptr());
@@ -772,6 +784,7 @@ impl Parser {
         loop {
             if self.peek() == &Token::Colon {
                 self.advance();
+                self.skip_newlines();
                 let right = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(CString::new(":").unwrap_or_default().as_ptr());
@@ -1644,6 +1657,22 @@ mod tests {
     fn test_multi_expr() {
         unsafe {
             let result = must(parse_str("x <- 1; y <- 2"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+        }
+    }
+
+    #[test]
+    fn test_comment_preserves_newline_terminator() {
+        unsafe {
+            let result = must(parse_str("x <- 1 # comment\ny <- 2\nx + y"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+        }
+    }
+
+    #[test]
+    fn test_newline_after_infix_continues_expression() {
+        unsafe {
+            let result = must(parse_str("x <- 1 +\n 2 *\n 3"));
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
         }
     }
