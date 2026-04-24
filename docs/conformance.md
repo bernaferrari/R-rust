@@ -45,13 +45,15 @@ Rust artifact after source edits.
 - `016_closure_return.R` checks return unwinding inside closures
 - `017_missing_arg_true.R` checks `missing(x)` for absent formals
 - `018_missing_arg_false.R` checks `missing(x)` for supplied formals
+- `019_while_break.R` checks loop break unwinding
+- `020_while_next.R` checks loop next unwinding
 
 ## Domain Matrix
 
 | Domain | Status | Gate | Owner |
 | --- | --- | --- | --- |
 | Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
-| Evaluator/scoping/promises | Seeded | parity cases 011-018 plus Android closure tests | `rport-t57` |
+| Evaluator/scoping/promises | Seeded | parity cases 011-020 plus Android closure tests | `rport-t57` |
 | Vector semantics | Seeded | parity cases 003, 008, 009 | `rport-c2w` |
 | Base functions | Early | parity case 002 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
@@ -71,7 +73,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 18 passing cases and 0 expected failures.
+Current parity status is 20 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 
