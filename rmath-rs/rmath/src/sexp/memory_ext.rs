@@ -16,7 +16,6 @@ use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::globals::{R_NilValue, R_UnboundValue};
-use super::instance;
 use super::memory;
 
 // ---------------------------------------------------------------------------
@@ -119,20 +118,11 @@ pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
 // Raw cons cell (not arena-tracked)
 // ---------------------------------------------------------------------------
 
-// Registry of raw cons cells allocated outside the arena.
-thread_local! {
-    static RAW_CONS: std::cell::RefCell<Vec<*mut SexprecCore>> = std::cell::RefCell::new(Vec::new());
-}
-
 fn with_raw_cons<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Vec<*mut SexprecCore>) -> R,
 {
-    if instance::has_current_instance() {
-        instance::with_current_instance(|instance| f(&mut instance.raw_cons)).unwrap()
-    } else {
-        RAW_CONS.with(|rc| f(&mut rc.borrow_mut()))
-    }
+    super::instance::with_required_current_instance(|instance| f(&mut instance.raw_cons))
 }
 
 /// Create a cons cell tracked for cleanup.
@@ -280,27 +270,18 @@ pub unsafe fn allocLang(n: c_int) -> SEXP {
 // R_alloc / vmaxget / vmaxset — transient memory (C stack-like)
 // ---------------------------------------------------------------------------
 
-thread_local! {
-    /// Transient allocation buffer (like C stack allocation).
-    static VMAX: std::cell::RefCell<Vec<(*mut u8, Layout)>> =
-        std::cell::RefCell::new(Vec::new());
-}
-
 fn with_vmax<F, R>(f: F) -> R
 where
     F: FnOnce(&mut Vec<(*mut u8, Layout)>) -> R,
 {
-    if instance::has_current_instance() {
-        instance::with_current_instance(|instance| f(&mut instance.vmax)).unwrap()
-    } else {
-        VMAX.with(|vmax| f(&mut vmax.borrow_mut()))
-    }
+    super::instance::with_required_current_instance(|instance| f(&mut instance.vmax))
 }
 
 /// Allocate transient memory (freed by vmaxset).
 ///
 /// This is the equivalent of R's `R_alloc()` which allocates on the C stack.
-/// In Rust, we use a thread-local buffer that's freed on vmaxset().
+/// In Rust, the active session owns a transient allocation buffer that's freed
+/// on vmaxset().
 #[unsafe(no_mangle)]
 pub unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
     unsafe {
@@ -420,6 +401,7 @@ mod tests {
 
     #[test]
     fn test_r_alloc_and_vmaxset() {
+        let _session = RSession::new();
         unsafe {
             let mark = vmaxget();
             let ptr = R_alloc(std::mem::size_of::<i32>(), 10);
