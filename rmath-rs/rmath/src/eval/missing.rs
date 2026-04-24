@@ -23,7 +23,6 @@
 //! - R_initEvalSymbols: initialize eval symbols
 //! - Various helper functions
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
@@ -39,6 +38,7 @@ use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
     R_BaseEnv, R_MissingArg, R_NilValue, R_UnboundValue, R_Visible, set_R_Visible,
 };
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::{NewEnvironment, allocLang, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
@@ -989,19 +989,16 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
 // R_BCIntActive -- bytecode interpreter reentrancy flag
 // ---------------------------------------------------------------------------
 
-// Whether the bytecode interpreter is active (to prevent recursion).
-thread_local! { static R_BCIntActive: Cell<c_int> = Cell::new(0); }
-
 /// Get whether the bytecode interpreter is active.
 #[inline]
 pub fn get_R_BCIntActive() -> c_int {
-    R_BCIntActive.with(|v| v.get())
+    with_required_current_instance(|inst| inst.eval_state.bc_int_active)
 }
 
 /// Set whether the bytecode interpreter is active.
 #[inline]
 pub fn set_R_BCIntActive(val: c_int) {
-    R_BCIntActive.with(|v| v.set(val))
+    with_required_current_instance(|inst| inst.eval_state.bc_int_active = val);
 }
 
 // ---------------------------------------------------------------------------
@@ -1179,5 +1176,38 @@ pub unsafe fn R_ensureNamed(x: SEXP, n: c_int) {
 pub unsafe fn R_ensureNamedMax(x: SEXP) {
     unsafe {
         R_ensureNamed(x, 2);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sexp::session::RSession;
+
+    use super::*;
+
+    #[test]
+    fn test_session_bc_int_active_is_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|_| {
+            set_R_BCIntActive(1);
+            assert_eq!(get_R_BCIntActive(), 1);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| {
+                assert_eq!(get_R_BCIntActive(), 0);
+                set_R_BCIntActive(2);
+                assert_eq!(get_R_BCIntActive(), 2);
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert_eq!(get_R_BCIntActive(), 1);
+            set_R_BCIntActive(0);
+        })
+        .unwrap();
     }
 }

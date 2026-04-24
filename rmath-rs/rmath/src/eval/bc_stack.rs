@@ -7,6 +7,7 @@
 use std::ptr;
 
 use crate::sexp::ffi::SEXP;
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // R_bcstack_t — bytecode interpreter stack
@@ -101,25 +102,12 @@ impl Default for R_bcstack_t {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Thread-local bytecode stack
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    /// The thread-local bytecode evaluation stack.
-    pub static BC_STACK: std::cell::RefCell<R_bcstack_t> =
-        std::cell::RefCell::new(R_bcstack_t::new(256));
-}
-
 /// Get a reference to the current bytecode stack.
 pub fn with_bc_stack<F, R>(f: F) -> R
 where
     F: FnOnce(&mut R_bcstack_t) -> R,
 {
-    BC_STACK.with(|stack| {
-        let mut stack = stack.borrow_mut();
-        f(&mut stack)
-    })
+    with_required_current_instance(|inst| f(&mut inst.eval_state.bc_stack))
 }
 
 // ---------------------------------------------------------------------------
@@ -128,6 +116,8 @@ where
 
 #[cfg(test)]
 mod tests {
+    use crate::sexp::session::RSession;
+
     use super::*;
 
     #[test]
@@ -180,5 +170,37 @@ mod tests {
         unsafe {
             assert_eq!(stack.pop(), ptr::null_mut());
         }
+    }
+
+    #[test]
+    fn test_session_bc_stacks_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|_| unsafe {
+            with_bc_stack(|stack| {
+                stack.push(0x1 as SEXP);
+                assert_eq!(stack.depth(), 1);
+            });
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| unsafe {
+                with_bc_stack(|stack| {
+                    assert_eq!(stack.depth(), 0);
+                    stack.push(0x2 as SEXP);
+                    assert_eq!(stack.pop(), 0x2 as SEXP);
+                });
+            })
+            .unwrap();
+
+        left.with_arena(|_| unsafe {
+            with_bc_stack(|stack| {
+                assert_eq!(stack.depth(), 1);
+                assert_eq!(stack.pop(), 0x1 as SEXP);
+            });
+        })
+        .unwrap();
     }
 }

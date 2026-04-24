@@ -88,6 +88,15 @@ pub(crate) struct EvalControlState {
     pub parse_error_msg: [u8; 256],
     pub limits: crate::eval::eval::EvalLimits,
     pub start_time: Option<Instant>,
+    pub bc_stack: crate::eval::bc_stack::R_bcstack_t,
+    pub bc_int_active: c_int,
+    pub min_jit_score: c_int,
+    pub loop_jit_score: c_int,
+    pub jit_enabled: c_int,
+    pub compile_pkgs: c_int,
+    pub disable_bytecode: c_int,
+    pub check_constants: c_int,
+    pub exec_token: SEXP,
 }
 
 impl Default for EvalControlState {
@@ -106,6 +115,15 @@ impl Default for EvalControlState {
             parse_error_msg: [0; 256],
             limits: crate::eval::eval::EvalLimits::default(),
             start_time: None,
+            bc_stack: crate::eval::bc_stack::R_bcstack_t::new(256),
+            bc_int_active: 0,
+            min_jit_score: 50,
+            loop_jit_score: 50,
+            jit_enabled: 0,
+            compile_pkgs: 0,
+            disable_bytecode: 0,
+            check_constants: 0,
+            exec_token: std::ptr::null_mut(),
         }
     }
 }
