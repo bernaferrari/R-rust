@@ -237,12 +237,20 @@ pub fn update_preserve_stack_refs<F>(mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    PRESERVE_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
-        for slot in stack.iter_mut() {
+    if super::instance::with_current_instance(|inst| {
+        for slot in inst.preserve_stack.iter_mut() {
             *slot = update_fn(*slot);
         }
-    });
+    })
+    .is_none()
+    {
+        PRESERVE_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            for slot in stack.iter_mut() {
+                *slot = update_fn(*slot);
+            }
+        });
+    }
 }
 
 /// Iterate over all preserved SEXP values.
@@ -251,10 +259,14 @@ pub fn with_preserved_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    PRESERVE_STACK.with(|ps| {
-        let stack = ps.borrow();
-        f(&stack)
-    })
+    if super::instance::has_current_instance() {
+        super::instance::with_current_instance(|inst| f(&inst.preserve_stack)).unwrap()
+    } else {
+        PRESERVE_STACK.with(|ps| {
+            let stack = ps.borrow();
+            f(&stack)
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -338,11 +350,18 @@ thread_local! {
 /// This is the equivalent of R's `R_PreserveObject()`.
 pub unsafe fn R_PreserveObject(s: SEXP) {
     if !s.is_null() {
-        PRESERVE_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            reserve_slot_or_fail(&mut stack, "R_PreserveObject");
-            stack.push(s);
-        });
+        if super::instance::with_current_instance(|inst| {
+            reserve_slot_or_fail(&mut inst.preserve_stack, "R_PreserveObject");
+            inst.preserve_stack.push(s);
+        })
+        .is_none()
+        {
+            PRESERVE_STACK.with(|ps| {
+                let mut stack = ps.borrow_mut();
+                reserve_slot_or_fail(&mut stack, "R_PreserveObject");
+                stack.push(s);
+            });
+        }
     }
 }
 
@@ -353,12 +372,20 @@ pub unsafe fn R_ReleaseObject(s: SEXP) {
     if s.is_null() {
         return;
     }
-    PRESERVE_STACK.with(|ps| {
-        let mut stack = ps.borrow_mut();
-        if let Some(pos) = stack.iter().position(|&x| x == s) {
-            stack.remove(pos);
+    if super::instance::with_current_instance(|inst| {
+        if let Some(pos) = inst.preserve_stack.iter().position(|&x| x == s) {
+            inst.preserve_stack.remove(pos);
         }
-    });
+    })
+    .is_none()
+    {
+        PRESERVE_STACK.with(|ps| {
+            let mut stack = ps.borrow_mut();
+            if let Some(pos) = stack.iter().position(|&x| x == s) {
+                stack.remove(pos);
+            }
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------

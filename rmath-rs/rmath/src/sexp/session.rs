@@ -363,6 +363,7 @@ mod tests {
     use super::*;
     use crate::sexp::instance::{current_instance_ptr, with_current_instance};
     use crate::sexp::memory::with_arena;
+    use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject, with_preserved_objects};
 
     #[test]
     fn test_session_creation() {
@@ -503,6 +504,33 @@ mod tests {
         });
         let depth_after = R_ProtectCount();
         assert_eq!(depth_before, depth_after);
+    }
+
+    #[test]
+    fn test_session_protect_and_preserve_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+        let protected = 0x1 as SEXP;
+        let preserved = 0x2 as SEXP;
+
+        left.with_arena(|_| unsafe {
+            Rf_protect(protected);
+            R_PreserveObject(preserved);
+            assert_eq!(R_ProtectCount(), 1);
+            with_preserved_objects(|objects| assert_eq!(objects, &[preserved]));
+        });
+
+        right.with_arena(|_| {
+            assert_eq!(R_ProtectCount(), 0);
+            with_preserved_objects(|objects| assert!(objects.is_empty()));
+        });
+
+        left.with_arena(|_| unsafe {
+            Rf_unprotect(1);
+            R_ReleaseObject(preserved);
+            assert_eq!(R_ProtectCount(), 0);
+            with_preserved_objects(|objects| assert!(objects.is_empty()));
+        });
     }
 
     #[test]

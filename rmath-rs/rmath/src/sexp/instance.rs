@@ -48,6 +48,8 @@ pub struct RInstance {
     pub empty_env: SEXP,
     /// The protection stack for this instance.
     pub protect_stack: Vec<SEXP>,
+    /// The permanent preserve stack for this instance.
+    pub preserve_stack: Vec<SEXP>,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -91,6 +93,7 @@ impl RInstance {
             base_env,
             empty_env,
             protect_stack: Vec::new(),
+            preserve_stack: Vec::new(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),
