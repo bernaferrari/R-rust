@@ -3,14 +3,13 @@
 //! Port of R's src/main/options.c
 //!
 //! This file implements the interface to the R `options(...)` command.
-//! Options are stored in a global HashMap<String, SEXP> protected by a Mutex,
-//! mirroring R's .Options dotted-pair list but using a Rust-native storage.
+//! Options are stored on the active R instance, mirroring R's .Options
+//! dotted-pair list but using Rust-native storage.
 
 use std::collections::HashMap;
 use std::ffi::CString;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
-use std::sync::{Mutex, OnceLock};
 
 use crate::eval::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::accessors::*;
@@ -60,28 +59,6 @@ pub const iERROR: warn_type = 2;
 // ---------------------------------------------------------------------------
 // Options storage
 // ---------------------------------------------------------------------------
-
-/// Global options storage: maps option name (String) to SEXP value.
-struct OptionsStorage {
-    options: HashMap<String, SEXP>,
-    /// Track initialization state
-    initialized: bool,
-}
-
-// Safety: OptionsStorage is protected by Mutex.
-unsafe impl Send for OptionsStorage {}
-unsafe impl Sync for OptionsStorage {}
-
-static OPTIONS_TABLE: OnceLock<Mutex<OptionsStorage>> = OnceLock::new();
-
-fn get_options_table() -> &'static Mutex<OptionsStorage> {
-    OPTIONS_TABLE.get_or_init(|| {
-        Mutex::new(OptionsStorage {
-            options: HashMap::new(),
-            initialized: false,
-        })
-    })
-}
 
 /// Get the symbol for ".Options" -- cached via Rf_install.
 fn options_symbol() -> SEXP {
@@ -469,28 +446,10 @@ unsafe fn GetOptionByName(name: &str) -> SEXP {
         InitOptions();
         let nil = R_NilValue();
 
-        if crate::sexp::instance::has_current_instance() {
-            return crate::sexp::instance::with_current_instance(|inst| {
-                match inst.options.get(name) {
-                    Some(&val) if (val as usize) > 0x1000 && (val as usize).trailing_zeros() >= 3 => val,
-                    _ => nil,
-                }
-            }).unwrap_or(nil);
-        }
-
-        let table = get_options_table()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some(&val) = table.options.get(name) {
-            let addr = val as usize;
-            if addr > 0x1000 && addr.trailing_zeros() >= 3 {
-                val
-            } else {
-                R_NilValue()
-            }
-        } else {
-            R_NilValue()
-        }
+        crate::sexp::instance::with_required_current_instance(|inst| match inst.options.get(name) {
+            Some(&val) if (val as usize) > 0x1000 && (val as usize).trailing_zeros() >= 3 => val,
+            _ => nil,
+        })
     }
 }
 
@@ -551,48 +510,24 @@ pub unsafe fn R_Options() -> SEXP {
     unsafe {
         let nil = R_NilValue();
 
-        if crate::sexp::instance::has_current_instance() {
-            return crate::sexp::instance::with_current_instance(|inst| {
-                let n = inst.options.len();
-                if n == 0 {
-                    return nil;
-                }
-                let mut keys: Vec<String> = inst.options.keys().cloned().collect();
-                keys.sort();
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let n = inst.options.len();
+            if n == 0 {
+                return nil;
+            }
+            let mut keys: Vec<String> = inst.options.keys().cloned().collect();
+            keys.sort();
 
-                let mut result: SEXP = nil;
-                for key in keys.iter().rev() {
-                    let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-                    let val = *inst.options.get(key.as_str()).unwrap_or(&nil);
-                    let cell = Rf_cons(val, result);
-                    SETTAG(cell, tag);
-                    result = cell;
-                }
-                result
-            }).unwrap_or(nil);
-        }
-
-        let table = get_options_table()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        let n = table.options.len();
-        if n == 0 {
-            return R_NilValue();
-        }
-        // Build a pairlist from the HashMap
-        // Collect and sort keys for deterministic order
-        let mut keys: Vec<String> = table.options.keys().cloned().collect();
-        keys.sort();
-
-        let mut result: SEXP = R_NilValue();
-        for key in keys.iter().rev() {
-            let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-            let val = *table.options.get(key.as_str()).unwrap_or(&R_NilValue());
-            let cell = Rf_cons(val, result);
-            SETTAG(cell, tag);
-            result = cell;
-        }
-        result
+            let mut result: SEXP = nil;
+            for key in keys.iter().rev() {
+                let tag = Rf_install(CString::new(key.as_str()).unwrap_or_default().as_ptr());
+                let val = *inst.options.get(key.as_str()).unwrap_or(&nil);
+                let cell = Rf_cons(val, result);
+                SETTAG(cell, tag);
+                result = cell;
+            }
+            result
+        })
     }
 }
 
@@ -608,34 +543,18 @@ pub unsafe fn FindTaggedItem(_lst: SEXP, tag: SEXP) -> SEXP {
             None => return nil,
         };
 
-        if crate::sexp::instance::has_current_instance() {
-            return crate::sexp::instance::with_current_instance(|inst| {
-                match inst.options.get(name_str.as_str()) {
-                    Some(&val) => {
-                        let cell = Rf_cons(val, nil);
-                        if !cell.is_null() {
-                            SETTAG(cell, tag);
-                        }
-                        cell
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            match inst.options.get(name_str.as_str()) {
+                Some(&val) => {
+                    let cell = Rf_cons(val, nil);
+                    if !cell.is_null() {
+                        SETTAG(cell, tag);
                     }
-                    None => nil,
+                    cell
                 }
-            }).unwrap_or(nil);
-        }
-
-        let table = get_options_table()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if let Some(&val) = table.options.get(name_str.as_str()) {
-            // Return a cons cell (tag, value) to match C semantics
-            let cell = Rf_cons(val, R_NilValue());
-            if !cell.is_null() {
-                SETTAG(cell, tag);
+                None => nil,
             }
-            cell
-        } else {
-            R_NilValue()
-        }
+        })
     }
 }
 
@@ -656,40 +575,14 @@ unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
         let nil = R_NilValue();
         InitOptions();
 
-        if crate::sexp::instance::has_current_instance() {
-            return crate::sexp::instance::with_current_instance(|inst| {
+        crate::sexp::instance::with_required_current_instance(|inst| {
                 if value == nil {
                     inst.options.remove(name).unwrap_or(nil)
                 } else {
                     R_PreserveObject(value);
                     inst.options.insert(name.to_string(), value).unwrap_or(nil)
                 }
-            }).unwrap_or(nil);
-        }
-
-        // Fall back to global
-        let mut table = get_options_table()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-
-        if value == nil {
-            // Remove the option, returning the old value
-            if let Some(old) = table.options.remove(name) {
-                old
-            } else {
-                R_NilValue()
-            }
-        } else {
-            // Keep option values permanently rooted while they are (or were) in
-            // the global table; callers may inspect the returned previous value.
-            R_PreserveObject(value);
-            // Set or add the option, returning the old value
-            let old = table
-                .options
-                .insert(name.to_string(), value)
-                .unwrap_or(R_NilValue());
-            old
-        }
+        })
     }
 }
 
@@ -868,26 +761,13 @@ unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
 /// Initialize the default options list.
 pub unsafe fn InitOptions() {
     unsafe {
-        // Check for active instance first
-        if crate::sexp::instance::has_current_instance() {
-            crate::sexp::instance::with_current_instance(|inst| {
-                if inst.options_initialized {
-                    return;
-                }
-                populate_options(&mut inst.options);
-                inst.options_initialized = true;
-            });
-            return;
-        }
-        // Fall back to global table
-        let mut table = get_options_table()
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        if table.initialized {
-            return;
-        }
-        populate_options(&mut table.options);
-        table.initialized = true;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            if inst.options_initialized {
+                return;
+            }
+            populate_options(&mut inst.options);
+            inst.options_initialized = true;
+        });
     }
 }
 
@@ -947,57 +827,29 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if args == R_NilValue() {
             let nil = R_NilValue();
 
-            if crate::sexp::instance::has_current_instance() {
-                return crate::sexp::instance::with_current_instance(|inst| {
-                    let n = inst.options.len() as c_int;
+            return crate::sexp::instance::with_required_current_instance(|inst| {
+                let n = inst.options.len() as c_int;
 
-                    let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
-                    let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
+                let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
 
-                    let mut keys: Vec<String> = inst.options.keys().cloned().collect();
-                    keys.sort();
+                let mut keys: Vec<String> = inst.options.keys().cloned().collect();
+                keys.sort();
 
-                    for (i, key) in keys.iter().enumerate() {
-                        let name_charsxp =
-                            Rf_mkChar(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-                        SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
-                        if let Some(&val) = inst.options.get(key) {
-                            SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
-                        }
+                for (i, key) in keys.iter().enumerate() {
+                    let name_charsxp =
+                        Rf_mkChar(CString::new(key.as_str()).unwrap_or_default().as_ptr());
+                    SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
+                    if let Some(&val) = inst.options.get(key) {
+                        SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
                     }
-
-                    setAttrib(value, R_NamesSymbol(), names);
-                    Rf_unprotect(2);
-                    set_R_Visible(TRUE);
-                    value
-                }).unwrap_or(nil);
-            }
-
-            let table = get_options_table()
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
-            let n = table.options.len() as c_int;
-
-            let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
-            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
-
-            // Collect and sort option names
-            let mut keys: Vec<String> = table.options.keys().cloned().collect();
-            keys.sort();
-
-            for (i, key) in keys.iter().enumerate() {
-                let name_charsxp =
-                    Rf_mkChar(CString::new(key.as_str()).unwrap_or_default().as_ptr());
-                SET_STRING_ELT(names, i as R_xlen_t, name_charsxp);
-                if let Some(&val) = table.options.get(key) {
-                    SET_VECTOR_ELT(value, i as R_xlen_t, duplicate_sexp(val));
                 }
-            }
 
-            setAttrib(value, R_NamesSymbol(), names);
-            Rf_unprotect(2);
-            set_R_Visible(TRUE);
-            return value;
+                setAttrib(value, R_NamesSymbol(), names);
+                Rf_unprotect(2);
+                set_R_Visible(TRUE);
+                value
+            });
         }
 
         // The arguments to "options" can either be a sequence of
@@ -1657,6 +1509,9 @@ mod tests {
     use std::ffi::CString;
 
     fn reset_protect_stack() {
+        if !crate::sexp::instance::has_current_instance() {
+            return;
+        }
         unsafe {
             let n = R_ProtectCount();
             if n > 0 {

@@ -56,7 +56,6 @@ rmath-rs/rmath/src/mainutils/localecharset.rs	platform-locale	platform-replace	r
 rmath-rs/rmath/src/mainutils/memory_main.rs	memory-runtime	sessionize	rport-dg0.2	GC reporting/forcing state; move into RInstance GC state.
 rmath-rs/rmath/src/mainutils/names.rs	immutable-symbol-cache	allow-immutable	rport-t57	Symbol initialization cache; verify immutable/session split.
 rmath-rs/rmath/src/mainutils/objects.rs	method-cache	sessionize	rport-97s	Primitive method cache state; sessionize with methods support.
-rmath-rs/rmath/src/mainutils/options.rs	session-fallback	sessionize	rport-dg0.2	Process fallback options table; Android path should use RInstance options only.
 rmath-rs/rmath/src/mainutils/paste_impl.rs	printing-runtime	sessionize	rport-c2w	Paste scratch buffer; move into session or call-local state.
 rmath-rs/rmath/src/mainutils/platform.rs	platform-locale	platform-replace	rport-dg0.2	Native encoding buffers; Android locale bridge should own them.
 rmath-rs/rmath/src/mainutils/print.rs	printing-runtime	sessionize	rport-c2w	Print data globals; move into session print state.
