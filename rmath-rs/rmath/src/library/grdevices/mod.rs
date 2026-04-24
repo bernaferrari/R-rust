@@ -98,7 +98,7 @@ mod devquartz;
     unused_assignments,
     non_camel_case_types
 )]
-mod devwindows;
+pub(crate) mod devwindows;
 #[allow(
     dead_code,
     unused_imports,

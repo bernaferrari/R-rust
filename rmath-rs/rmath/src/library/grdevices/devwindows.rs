@@ -11,7 +11,6 @@
 //! are only exported on Windows here. On non-Windows they are provided
 //! by devcairo.rs.
 
-use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_uchar, c_uint, c_void};
 use std::ptr;
@@ -22,6 +21,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 // ===========================================================================
@@ -331,17 +331,38 @@ impl Default for gadesc {
 }
 
 // ===========================================================================
-// Module-level state
+// Backend state
 // ===========================================================================
 
-thread_local! { static fontnum: Cell<c_int> = Cell::new(0); }
-thread_local! { static fontinitdone: Cell<c_int> = Cell::new(0); }
-thread_local! { static fontname: RefCell<[[c_char; 256]; MAXFONT as usize]> = RefCell::new([[0; 256]; MAXFONT as usize]); }
-thread_local! { static fontstyle: RefCell<[c_int; MAXFONT as usize]> = RefCell::new([0; MAXFONT as usize]); }
-thread_local! { static GA_xd: Cell<*mut gadesc> = Cell::new(ptr::null_mut()); }
-thread_local! { static GALastUpdate: Cell<u32> = Cell::new(0); }
-thread_local! { static TimerNo: Cell<usize> = Cell::new(0); }
-thread_local! { static png_rows: Cell<c_int> = Cell::new(0); }
+pub(crate) struct WindowsDeviceState {
+    fontnum: c_int,
+    fontinitdone: c_int,
+    fontname: [[c_char; 256]; MAXFONT as usize],
+    fontstyle: [c_int; MAXFONT as usize],
+    ga_xd: *mut gadesc,
+    ga_last_update: u32,
+    timer_no: usize,
+    png_rows: c_int,
+}
+
+impl Default for WindowsDeviceState {
+    fn default() -> Self {
+        WindowsDeviceState {
+            fontnum: 0,
+            fontinitdone: 0,
+            fontname: [[0; 256]; MAXFONT as usize],
+            fontstyle: [0; MAXFONT as usize],
+            ga_xd: ptr::null_mut(),
+            ga_last_update: 0,
+            timer_no: 0,
+            png_rows: 0,
+        }
+    }
+}
+
+fn with_windows_device_state<T>(f: impl FnOnce(&mut WindowsDeviceState) -> T) -> T {
+    with_required_current_instance(|instance| f(&mut instance.windows_device_state))
+}
 
 // ===========================================================================
 // Helper functions
@@ -434,28 +455,27 @@ unsafe fn cstr_or_empty(p: *const c_char) -> *const c_char {
 unsafe fn RStandardFonts() {
     let arial = b"Arial\0";
     let symbol = b"Symbol\0";
-    for i in 0..4 {
+    with_windows_device_state(|state| {
+        for i in 0..4 {
+            ptr::copy_nonoverlapping(
+                arial.as_ptr() as *const c_char,
+                state.fontname[i as usize].as_mut_ptr(),
+                arial.len(),
+            );
+        }
         ptr::copy_nonoverlapping(
-            arial.as_ptr() as *const c_char,
-            fontname.with(|v| v.borrow_mut()[i as usize].as_mut_ptr()),
-            arial.len(),
+            symbol.as_ptr() as *const c_char,
+            state.fontname[4].as_mut_ptr(),
+            symbol.len(),
         );
-    }
-    ptr::copy_nonoverlapping(
-        symbol.as_ptr() as *const c_char,
-        fontname.with(|v| v.borrow_mut()[4].as_mut_ptr()),
-        symbol.len(),
-    );
-    fontstyle.with(|v| {
-        let mut v = v.borrow_mut();
-        v[0] = Plain;
-        v[4] = Plain;
-        v[1] = Bold;
-        v[2] = Italic;
-        v[3] = BoldItalic;
+        state.fontstyle[0] = Plain;
+        state.fontstyle[4] = Plain;
+        state.fontstyle[1] = Bold;
+        state.fontstyle[2] = Italic;
+        state.fontstyle[3] = BoldItalic;
+        state.fontnum = 5;
+        state.fontinitdone = 2;
     });
-    fontnum.with(|v| v.set(5));
-    fontinitdone.with(|v| v.set(2));
 }
 
 unsafe fn RFontInit() {
@@ -1521,3 +1541,55 @@ mod win_impl {
 // ===========================================================================
 
 pub use win_impl::*;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn windows_device_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| unsafe {
+            RStandardFonts();
+            with_windows_device_state(|state| {
+                state.ga_last_update = 42;
+                state.timer_no = 7;
+                state.png_rows = 11;
+            });
+        });
+
+        right.with_protected(|| {
+            with_windows_device_state(|state| {
+                assert_eq!(state.fontnum, 0);
+                assert_eq!(state.fontinitdone, 0);
+                assert_eq!(state.fontstyle[0], 0);
+                assert_eq!(state.ga_last_update, 0);
+                assert_eq!(state.timer_no, 0);
+                assert_eq!(state.png_rows, 0);
+                assert!(state.ga_xd.is_null());
+            });
+        });
+
+        left.with_protected(|| {
+            with_windows_device_state(|state| {
+                assert_eq!(state.fontnum, 5);
+                assert_eq!(state.fontinitdone, 2);
+                assert_eq!(state.fontstyle[0], Plain);
+                assert_eq!(state.fontstyle[1], Bold);
+                assert_eq!(state.fontstyle[2], Italic);
+                assert_eq!(state.fontstyle[3], BoldItalic);
+                assert_eq!(state.fontstyle[4], Plain);
+                assert_eq!(state.ga_last_update, 42);
+                assert_eq!(state.timer_no, 7);
+                assert_eq!(state.png_rows, 11);
+                let arial = unsafe { CStr::from_ptr(state.fontname[0].as_ptr()) };
+                let symbol = unsafe { CStr::from_ptr(state.fontname[4].as_ptr()) };
+                assert_eq!(arial.to_bytes(), b"Arial");
+                assert_eq!(symbol.to_bytes(), b"Symbol");
+            });
+        });
+    }
+}

@@ -268,6 +268,8 @@ pub struct RInstance {
     pub(crate) graphics_color_state: crate::library::grdevices::colors::GraphicsColorState,
     /// Per-instance grDevices PostScript/PDF font registry state.
     pub(crate) postscript_font_state: crate::library::grdevices::devps::PostScriptFontState,
+    /// Per-instance grDevices Windows backend scratch state.
+    pub(crate) windows_device_state: crate::library::grdevices::devwindows::WindowsDeviceState,
     /// Per-instance grid runtime state.
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
     /// Per-instance graphics::plot3d scratch transformation state.
@@ -343,6 +345,8 @@ impl RInstance {
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             postscript_font_state:
                 crate::library::grdevices::devps::PostScriptFontState::default(),
+            windows_device_state:
+                crate::library::grdevices::devwindows::WindowsDeviceState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
             plot3d_state: crate::library::graphics::plot3d::Plot3dState::default(),
             dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
