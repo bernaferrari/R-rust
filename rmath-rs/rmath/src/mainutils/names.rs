@@ -10,7 +10,6 @@
 use std::os::raw::{c_char, c_int};
 use std::panic::panic_any;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::eval::attrib_core::setAttrib;
 use crate::mainutils::dstruct::mkPRIMSXP;
@@ -23,6 +22,7 @@ use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance;
 use crate::sexp::memory::with_arena;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
@@ -157,6 +157,12 @@ impl FunTabEntry {
 // ---------------------------------------------------------------------------
 
 const NULL_NAME: &[u8] = b"";
+
+#[derive(Default)]
+pub(crate) struct NamesRuntimeState {
+    pub init_names_done: bool,
+    pub ddval_symbols: Vec<SEXP>,
+}
 
 // ---------------------------------------------------------------------------
 // R_FunTab: Master dispatch table
@@ -4696,35 +4702,37 @@ pub unsafe fn SymbolShortcuts() {
 
 const N_DDVAL_SYMBOLS: usize = 65;
 
-/// Pre-allocated DDVAL symbols (..0 through ..64).
-///
-/// SEXP (raw pointers) are not Send/Sync, so we wrap in a newtype
-/// that asserts safety. All access is through unsafe installDDVAL anyway.
-struct DDVALSymbolsInner(Vec<SEXP>);
-unsafe impl Send for DDVALSymbolsInner {}
-unsafe impl Sync for DDVALSymbolsInner {}
-
-static DDVAL_SYMBOLS: std::sync::OnceLock<DDVALSymbolsInner> = std::sync::OnceLock::new();
-
 /// Get or create a DDVAL symbol for index n.
 pub unsafe fn installDDVAL(n: c_int) -> SEXP {
     unsafe {
-        let symbols = DDVAL_SYMBOLS.get_or_init(|| {
-            let mut v: Vec<SEXP> = Vec::with_capacity(N_DDVAL_SYMBOLS);
+        if n >= 0 {
+            let n = n as usize;
+            let cached = instance::with_required_current_instance(|inst| {
+                inst.names_state.ddval_symbols.get(n).copied()
+            });
+            if let Some(sym) = cached {
+                return sym;
+            }
+        }
+
+        if n >= 0 && (n as usize) < N_DDVAL_SYMBOLS {
+            let mut symbols = Vec::with_capacity(N_DDVAL_SYMBOLS);
             for i in 0..N_DDVAL_SYMBOLS {
                 let name = format!("..{}", i);
                 let sym = Rf_install(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
-                v.push(sym);
+                symbols.push(sym);
             }
-            DDVALSymbolsInner(v)
-        });
-        let n = n as usize;
-        if n < symbols.0.len() {
-            symbols.0[n]
-        } else {
-            let name = format!("..{}", n);
-            Rf_install(std::ffi::CString::new(name).unwrap_or_default().as_ptr())
+            let sym = symbols[n as usize];
+            instance::with_required_current_instance(|inst| {
+                if inst.names_state.ddval_symbols.len() < N_DDVAL_SYMBOLS {
+                    inst.names_state.ddval_symbols = symbols;
+                }
+            });
+            return sym;
         }
+
+        let name = format!("..{}", n);
+        Rf_install(std::ffi::CString::new(name).unwrap_or_default().as_ptr())
     }
 }
 
@@ -4747,14 +4755,11 @@ unsafe fn mkSymMarker(pname: SEXP) -> SEXP {
 // InitNames: initialize the symbol table
 // ---------------------------------------------------------------------------
 
-/// Flag indicating whether the symbol table has been initialized.
-static INIT_NAMES_DONE: AtomicBool = AtomicBool::new(false);
-
 /// Initialize the R symbol table.
 /// This must be called once before any symbol lookup operations.
 pub unsafe fn InitNames() {
     unsafe {
-        if INIT_NAMES_DONE.load(Ordering::Relaxed) {
+        if instance::with_required_current_instance(|inst| inst.names_state.init_names_done) {
             return;
         }
 
@@ -4772,10 +4777,12 @@ pub unsafe fn InitNames() {
             installFunTab(i);
         }
 
-        // Initialize DDVAL symbols
-        let _ = installDDVAL(0); // Force initialization of DDVAL_SYMBOLS
+        // Initialize pre-allocated DDVAL symbols for this instance.
+        let _ = installDDVAL(0);
 
-        INIT_NAMES_DONE.store(true, Ordering::Relaxed);
+        instance::with_required_current_instance(|inst| {
+            inst.names_state.init_names_done = true;
+        });
     }
 }
 
@@ -4955,6 +4962,7 @@ pub unsafe fn getPRIMNAME(object: SEXP) -> *const c_char {
 mod tests {
     use crate::sexp::accessors::*;
     use crate::sexp::constructors::*;
+    use crate::sexp::session::RSession;
 
     use super::*;
 
@@ -5016,6 +5024,8 @@ mod tests {
 
     #[test]
     fn test_r_primitive_not_found() {
+        let _session = RSession::new();
+
         unsafe {
             let result = R_Primitive(b"nonexistent\0".as_ptr() as *const c_char);
             assert!(Rf_isNull(result) != 0 || result.is_null());
@@ -5024,6 +5034,8 @@ mod tests {
 
     #[test]
     fn test_r_primitive_is_internal() {
+        let _session = RSession::new();
+
         unsafe {
             // "stop" is a .Internal (eval=11, 11/10=1)
             let result = R_Primitive(b"stop\0".as_ptr() as *const c_char);
@@ -5049,6 +5061,8 @@ mod tests {
 
     #[test]
     fn test_install_s3_signature() {
+        let _session = RSession::new();
+
         unsafe {
             let sym = installS3Signature(
                 b"foo\0".as_ptr() as *const c_char,
@@ -5060,6 +5074,8 @@ mod tests {
 
     #[test]
     fn test_init_names() {
+        let _session = RSession::new();
+
         unsafe {
             InitNames();
             // Verify that a few symbols exist in the table
@@ -5072,6 +5088,8 @@ mod tests {
 
     #[test]
     fn test_init_names_idempotent() {
+        let _session = RSession::new();
+
         unsafe {
             InitNames();
             InitNames();
@@ -5102,6 +5120,8 @@ mod tests {
 
     #[test]
     fn test_ddval_symbols() {
+        let _session = RSession::new();
+
         unsafe {
             let sym0 = installDDVAL(0);
             assert!(!sym0.is_null());
@@ -5113,7 +5133,37 @@ mod tests {
     }
 
     #[test]
+    fn test_ddval_symbols_are_session_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        let mut left_sym0 = ptr::null_mut();
+        left.with_arena(|_| unsafe {
+            InitNames();
+            left_sym0 = installDDVAL(0);
+            assert_eq!(installDDVAL(0), left_sym0);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| unsafe {
+                InitNames();
+                let right_sym0 = installDDVAL(0);
+                assert_eq!(installDDVAL(0), right_sym0);
+                assert_ne!(right_sym0, left_sym0);
+            })
+            .unwrap();
+
+        left.with_arena(|_| unsafe {
+            assert_eq!(installDDVAL(0), left_sym0);
+        })
+        .unwrap();
+    }
+
+    #[test]
     fn test_mk_sym_marker() {
+        let _session = RSession::new();
+
         unsafe {
             let pname = Rf_mkChar(b"test\0".as_ptr() as *const c_char);
             let sym = mkSymMarker(pname);

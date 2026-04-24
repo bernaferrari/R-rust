@@ -245,6 +245,8 @@ pub struct RInstance {
     pub(crate) memory_state: crate::mainutils::memory_main::MemoryRuntimeState,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
+    /// Per-instance names.c runtime caches and initialization marker.
+    pub(crate) names_state: crate::mainutils::names::NamesRuntimeState,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -353,6 +355,7 @@ impl RInstance {
             error_state: ErrorState::default(),
             memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
             eval_state: EvalControlState::default(),
+            names_state: crate::mainutils::names::NamesRuntimeState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),

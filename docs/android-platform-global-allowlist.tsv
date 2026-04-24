@@ -49,7 +49,6 @@ rmath-rs/rmath/src/mainutils/dotcode.rs	runtime-policy	sessionize	rport-97s	DotC
 rmath-rs/rmath/src/mainutils/edit.rs	desktop-ui	disabled-android	rport-dg0.2	Editor temp-file state; Android editor is host-owned.
 rmath-rs/rmath/src/mainutils/lapack.rs	native-dispatch	platform-replace	rport-pm0	LAPACK dispatch lock; Android should use pure Rust backend or explicit host policy.
 rmath-rs/rmath/src/mainutils/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset scratch buffer; Android locale bridge should own it.
-rmath-rs/rmath/src/mainutils/names.rs	immutable-symbol-cache	allow-immutable	rport-t57	Symbol initialization cache; verify immutable/session split.
 rmath-rs/rmath/src/mainutils/objects.rs	method-cache	sessionize	rport-97s	Primitive method cache state; sessionize with methods support.
 rmath-rs/rmath/src/mainutils/platform.rs	platform-locale	platform-replace	rport-dg0.2	Native encoding buffers; Android locale bridge should own them.
 rmath-rs/rmath/src/mainutils/serialize.rs	serialization-runtime	sessionize	rport-97s	Serialization name/depth caches; move into session serialization state.
