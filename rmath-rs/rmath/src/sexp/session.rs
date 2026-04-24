@@ -301,6 +301,21 @@ impl RSession {
         self.with_active(super::gengc::minor_gc);
     }
 
+    /// Generate a uniform random number using this session's RNG state.
+    pub fn unif_rand(&self) -> f64 {
+        self.with_active(crate::rng::unif_rand)
+    }
+
+    /// Set this session's RNG seed state.
+    pub fn set_seed(&self, i1: u32, i2: u32) {
+        self.with_active(|| crate::rng::set_seed(i1, i2));
+    }
+
+    /// Generate a standard normal random number using this session's RNG state.
+    pub fn norm_rand(&self) -> f64 {
+        self.with_active(crate::dist::normal::norm_rand)
+    }
+
     /// Close this session.
     ///
     /// After closing, [`is_active`](RSession::is_active) returns `false`

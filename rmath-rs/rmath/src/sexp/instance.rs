@@ -53,6 +53,8 @@ pub struct RInstance {
     /// Owned SYMSXP nodes for the per-instance symbol table.
     #[allow(clippy::vec_box)]
     pub(crate) symbol_nodes: Vec<Box<SexprecCore>>,
+    /// Per-instance Marsaglia-MultiCarry RNG seed state.
+    pub(crate) rng_state: (u32, u32),
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub options: HashMap<String, SEXP>,
     /// Whether the instance options have been initialized with defaults.
@@ -87,6 +89,7 @@ impl RInstance {
             protect_stack: Vec::new(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
+            rng_state: (1234, 5678),
             options: HashMap::new(),
             options_initialized: false,
         };

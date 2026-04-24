@@ -176,11 +176,15 @@ impl RSession {
     }
 
     pub fn unif_rand(&self) -> f64 {
-        crate::rng::unif_rand()
+        self.core.unif_rand()
+    }
+
+    pub fn set_seed(&self, i1: u32, i2: u32) {
+        self.core.set_seed(i1, i2);
     }
 
     pub fn norm_rand(&self) -> f64 {
-        crate::dist::normal::norm_rand()
+        self.core.norm_rand()
     }
 
     /// Parse and evaluate an R expression.
@@ -523,6 +527,34 @@ mod tests {
 
         assert!((left.join().expect("left session panicked") - 101.0).abs() < 1e-10);
         assert!((right.join().expect("right session panicked") - 202.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_sessions_keep_rng_isolated_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_first = left.unif_rand();
+        let right_first = right.unif_rand();
+        let left_second = left.unif_rand();
+        let right_second = right.unif_rand();
+
+        assert_eq!(left_first, right_first);
+        assert_eq!(left_second, right_second);
+        assert_ne!(left_first, left_second);
+    }
+
+    #[test]
+    fn test_session_seed_is_local() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.set_seed(10, 20);
+        right.set_seed(10, 20);
+        assert_eq!(left.unif_rand(), right.unif_rand());
+
+        left.set_seed(30, 40);
+        assert_ne!(left.unif_rand(), right.unif_rand());
     }
 
     #[test]
