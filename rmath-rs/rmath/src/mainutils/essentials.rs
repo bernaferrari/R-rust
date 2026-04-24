@@ -3227,6 +3227,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "stopifnot",
         "suppressWarnings",
         "suppressMessages",
+        "tryCatch",
         "force",
         // Complete R runtime
         "isTRUE",
@@ -4348,20 +4349,128 @@ pub unsafe fn do_inherits(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     Rf_ScalarLogical(FALSE)
 }
 
-/// R's `tryCatch(expr)` — basic try/catch.
-pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let expr = CAR(args);
-    if expr.is_null() {
-        return R_NilValue();
+fn tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() {
+            return None;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            None
+        } else {
+            Some(std::ffi::CStr::from_ptr(chars).to_str().ok()?.to_string())
+        }
     }
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::eval::eval::Rf_eval(expr, rho)
-    }));
-    match result {
-        Ok(val) => val,
-        Err(_) => {
-            eprintln!("Error caught");
-            R_NilValue()
+}
+
+unsafe fn simple_error_condition(message: &str) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::VECSXP, 1);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        let msg = Rf_mkString(CString::new(message).unwrap_or_default().as_ptr());
+        SET_VECTOR_ELT(result, 0, msg);
+
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
+        if !names.is_null() {
+            let _np = Rf_protect(names);
+            SET_STRING_ELT(
+                names,
+                0,
+                Rf_mkChar(CString::new("message").unwrap_or_default().as_ptr()),
+            );
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+                names,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("message").unwrap_or_default().as_ptr()),
+            msg,
+        );
+
+        let class = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
+        if !class.is_null() {
+            let _cp = Rf_protect(class);
+            for (i, name) in ["simpleError", "error", "condition"].iter().enumerate() {
+                SET_STRING_ELT(
+                    class,
+                    i as R_xlen_t,
+                    Rf_mkChar(CString::new(*name).unwrap_or_default().as_ptr()),
+                );
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+                class,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+unsafe fn find_try_catch_error_handler(args: SEXP, rho: SEXP) -> Option<SEXP> {
+    unsafe {
+        let mut current = CDR(args);
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some("error") {
+                let handler = crate::eval::eval::Rf_eval(CAR(current), rho);
+                if !handler.is_null() && handler != R_NilValue() {
+                    return Some(handler);
+                }
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+/// R's `tryCatch(expr, error = function(e) ...)` — basic error handler support.
+pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = CAR(args);
+        if expr.is_null() {
+            return R_NilValue();
+        }
+
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }));
+        match result {
+            Ok(val) => val,
+            Err(payload) => {
+                let message = match payload.downcast::<crate::sexp::context::RSignal>() {
+                    Ok(signal) => match *signal {
+                        crate::sexp::context::RSignal::Error { message } => message,
+                        other => std::panic::panic_any(other),
+                    },
+                    Err(payload) => match payload.downcast::<crate::sexp::context::RError>() {
+                        Ok(err) => err.message.clone(),
+                        Err(payload) => std::panic::resume_unwind(payload),
+                    },
+                };
+
+                let Some(handler) = find_try_catch_error_handler(args, rho) else {
+                    std::panic::panic_any(crate::sexp::context::RError { message });
+                };
+                let condition = simple_error_condition(&message);
+                let call = crate::sexp::constructors::Rf_lang2(handler, condition);
+                crate::eval::eval::Rf_eval(call, rho)
+            }
         }
     }
 }

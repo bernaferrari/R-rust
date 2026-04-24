@@ -770,6 +770,21 @@ mod tests {
     }
 
     #[test]
+    fn test_try_catch_error_handler_subset() {
+        let mut session = RSession::new();
+
+        let pass = session.eval("tryCatch(1 + 2, error=function(e) \"caught\")");
+        assert_eq!(pass.output, "[1] 3");
+
+        let caught = session.eval("tryCatch(stop(\"boom\"), error=function(e) \"caught\")");
+        assert_eq!(caught.output, "[1] \"caught\"");
+
+        let message =
+            session.eval("tryCatch(stop(\"boom\"), error=function(e) conditionMessage(e))");
+        assert_eq!(message.output, "[1] \"boom\"");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");
