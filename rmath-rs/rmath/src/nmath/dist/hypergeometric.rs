@@ -15,6 +15,7 @@ use crate::nmath::error::*;
 use crate::nmath::rng::*;
 use crate::nmath::special::gamma::lgammafn;
 use crate::nmath::utils::*;
+use crate::sexp::instance::with_required_current_instance;
 use libm::*;
 
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
@@ -252,9 +253,7 @@ fn afc(i: i32) -> f64 {
     (di + 0.5) * log(di) - di + M_LN_SQRT_2PI + (0.0833333333333333 - 0.00277777777777778 / i2) / di
 }
 
-use std::cell::RefCell;
-
-struct RhyperState {
+pub(crate) struct RhyperState {
     ks: i32,
     n1s: i32,
     n2s: i32,
@@ -279,7 +278,7 @@ struct RhyperState {
 }
 
 impl RhyperState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         RhyperState {
             ks: -1,
             n1s: -1,
@@ -304,7 +303,12 @@ impl RhyperState {
     }
 }
 
-thread_local!(static RHYPER_STATE: RefCell<RhyperState> = RefCell::new(RhyperState::new()));
+fn with_rhyper_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RhyperState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.nmath_hyper_state))
+}
 
 #[must_use]
 pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
@@ -334,9 +338,7 @@ pub fn rhyper_inner(nn1in: f64, nn2in: f64, kkin: f64) -> f64 {
     let nn2 = nn2in as i32;
     let kk = kkin as i32;
 
-    RHYPER_STATE.with(|state| {
-        let mut st = state.borrow_mut();
-
+    with_rhyper_state(|st| {
         // Setup based on parameter changes
         let setup1 = nn1 != st.n1s || nn2 != st.n2s;
         let setup2 = kk != st.ks;
