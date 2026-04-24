@@ -919,7 +919,7 @@ fn apply_builtin_safe<'a>(
             )
         },
         "[" => unsafe {
-            crate::mainutils::essentials::do_subset(
+            crate::mainutils::subset::do_subset_dflt(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,

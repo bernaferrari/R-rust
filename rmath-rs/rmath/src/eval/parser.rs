@@ -27,7 +27,7 @@ use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_lang2, Rf_lang3, Rf_mkNAString,
     Rf_mkString,
 };
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory::RArena;
 use crate::sexp::symbol::Rf_install;
@@ -1296,7 +1296,7 @@ impl Parser {
                     "TRUE" => unsafe { Ok(Rf_ScalarLogical(TRUE)) },
                     "FALSE" => unsafe { Ok(Rf_ScalarLogical(FALSE)) },
                     "NULL" => unsafe { Ok(R_NilValue()) },
-                    "NA" => unsafe { Ok(Rf_ScalarInteger(crate::sexp::ffi::NA_INTEGER)) },
+                    "NA" => unsafe { Ok(Rf_ScalarLogical(NA_LOGICAL)) },
                     "Inf" => unsafe { Ok(Rf_ScalarReal(f64::INFINITY)) },
                     "NaN" => unsafe { Ok(Rf_ScalarReal(f64::NAN)) },
                     "NA_real_" => unsafe { Ok(Rf_ScalarReal(crate::sexp::ffi::NA_REAL)) },
@@ -1474,7 +1474,7 @@ mod tests {
     fn test_na_inf_nan() {
         unsafe {
             let na = must(parse_str("NA"));
-            assert_eq!(TYPEOF(na), SEXPTYPE::INTSXP);
+            assert_eq!(TYPEOF(na), SEXPTYPE::LGLSXP);
 
             let inf = must(parse_str("Inf"));
             assert_eq!(TYPEOF(inf), SEXPTYPE::REALSXP);

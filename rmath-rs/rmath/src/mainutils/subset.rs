@@ -275,7 +275,7 @@ unsafe fn xlength(x: SEXP) -> R_xlen_t {
 /// Get the length as c_int.
 #[inline]
 unsafe fn length_int(x: SEXP) -> c_int {
-    unsafe { LENGTH(x) }
+    unsafe { crate::sexp::constructors::Rf_length(x) }
 }
 
 // ---------------------------------------------------------------------------

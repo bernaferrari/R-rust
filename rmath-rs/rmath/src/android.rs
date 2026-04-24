@@ -699,6 +699,18 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_logical_subset_recycles_and_preserves_na() {
+        let mut session = RSession::new();
+        let recycled = session.eval("(1:5)[c(TRUE, FALSE)]");
+        let with_na = session.eval("(1:3)[c(TRUE, NA)]");
+        let longer = session.eval("(1:3)[c(TRUE, FALSE, TRUE, TRUE)]");
+
+        assert_eq!(recycled.output, "[1] 1 3 5");
+        assert_eq!(with_na.output, "[1]  1 NA  3");
+        assert_eq!(longer.output, "[1]  1  3 NA");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");

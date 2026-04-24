@@ -756,16 +756,19 @@ unsafe fn logicalSubscript(
 ) -> SEXP {
     unsafe {
         let _ = call;
-        if nx == 0 {
+        if ns <= 0 {
             return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
         }
 
-        // Count TRUE values (determine result length)
+        let out_len = if ns < nx { nx } else { ns };
+
+        // Count TRUE and NA values to determine result length. R logical
+        // subscripts recycle to the target length when shorter; NA selects an
+        // NA slot in the result, just like stock subscript.c.
         let mut count: R_xlen_t = 0;
-        let slen = if ns > nx { nx } else { ns };
-        for i in 0..slen {
-            let v = LOGICAL_ELT(s, i as c_int);
-            if v == 1 {
+        for i in 0..out_len {
+            let v = LOGICAL_ELT(s, (i % ns) as c_int);
+            if v == 1 || v == NA_LOGICAL {
                 count += 1;
             }
         }
@@ -776,8 +779,8 @@ unsafe fn logicalSubscript(
 
         // Fill in indices
         let mut j: R_xlen_t = 0;
-        for i in 0..slen {
-            let v = LOGICAL_ELT(s, i as c_int);
+        for i in 0..out_len {
+            let v = LOGICAL_ELT(s, (i % ns) as c_int);
             if v == 1 {
                 *ap.add(j as usize) = (i + 1) as c_int;
                 j += 1;
