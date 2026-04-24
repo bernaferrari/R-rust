@@ -2813,10 +2813,8 @@ pub unsafe fn do_example(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// Register essential builtins in the base environment.
 pub unsafe fn register_essentials_builtins(env: SEXP) {
     use crate::sexp::accessors::SET_FRAME;
-    use crate::sexp::constructors::persistent_cons;
-    use crate::sexp::ffi::SexprecCore;
+    use crate::sexp::memory_ext::allocSExp;
 
-    static BUILTIN_SEXPS: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
     let all_fns = [
         "c",
         "seq",
@@ -3427,23 +3425,13 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "besselY",
     ];
 
-    let builtins = BUILTIN_SEXPS.get_or_init(|| {
-        all_fns
-            .iter()
-            .map(|_| {
-                let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::BUILTINSXP));
-                boxed.sxpinfo.set_gp(1);
-                Box::into_raw(boxed) as usize
-            })
-            .collect::<Vec<usize>>()
-    });
-
     let frame = (*env).data.envsxp.frame;
     let mut chain = frame;
-    for (i, name) in all_fns.iter().enumerate() {
-        let prim: SEXP = builtins[i] as SEXP;
-        let sym = Rf_install(CString::new(*name).unwrap_or_default().as_ptr());
-        let cell = persistent_cons(prim, chain);
+    for name in all_fns {
+        let prim = allocSExp(SEXPTYPE::BUILTINSXP);
+        (*prim).sxpinfo.set_gp(1);
+        let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        let cell = Rf_cons(prim, chain);
         (*cell).data.listsxp.tagval = sym;
         chain = cell;
     }

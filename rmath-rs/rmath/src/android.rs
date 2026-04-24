@@ -500,7 +500,13 @@ mod tests {
     #[test]
     fn test_session_new() {
         let mut session = RSession::new();
-        assert_eq!(session.core.with_arena(|arena| arena.node_count()), Some(0));
+        assert!(
+            session
+                .core
+                .with_arena(|arena| arena.node_count() > 0)
+                .unwrap_or(false)
+        );
+        assert_eq!(session.eval("1 + 1").output, "[1] 2");
     }
 
     #[test]

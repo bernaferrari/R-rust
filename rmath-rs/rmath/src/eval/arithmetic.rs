@@ -881,17 +881,14 @@ unsafe fn get_op_name(call: SEXP) -> &'static str {
 
 /// Register arithmetic and comparison builtins in the base environment.
 ///
-/// Creates BUILTINSXP nodes for each operator and binds them as symbols
-/// in the base environment. The nodes themselves are created once and
-/// reused across calls to avoid leaking memory.
+/// Creates session-owned BUILTINSXP nodes for each operator and binds them as
+/// symbols in the base environment.
 pub unsafe fn register_arithmetic_builtins(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
-        use crate::sexp::constructors::persistent_cons;
-        use crate::sexp::ffi::SexprecCore;
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::memory_ext::allocSExp;
 
-        // Create builtin nodes once and reuse
-        static BUILTIN_SEXPS: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
         let all_ops = [
             "+",
             "-",
@@ -933,23 +930,13 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
             "is.null",
         ];
 
-        let builtins = BUILTIN_SEXPS.get_or_init(|| {
-            all_ops
-                .iter()
-                .map(|_| {
-                    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::BUILTINSXP));
-                    boxed.sxpinfo.set_gp(1);
-                    Box::into_raw(boxed) as usize
-                })
-                .collect::<Vec<usize>>()
-        });
-
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
-        for (i, op_name) in all_ops.iter().enumerate() {
-            let prim: SEXP = builtins[i] as SEXP;
-            let sym = Rf_install(CString::new(*op_name).unwrap_or_default().as_ptr());
-            let cell = persistent_cons(prim, chain);
+        for op_name in all_ops {
+            let prim = allocSExp(SEXPTYPE::BUILTINSXP);
+            (*prim).sxpinfo.set_gp(1);
+            let sym = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
+            let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
             chain = cell;
         }
@@ -960,11 +947,9 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
 pub unsafe fn register_special_forms(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
-        use crate::sexp::constructors::persistent_cons;
-        use crate::sexp::ffi::SexprecCore;
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::memory_ext::allocSExp;
 
-        // Create special form nodes once and reuse
-        static SPECIAL_SEXPS: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
         let special_forms = [
             "<-",
             "<<-",
@@ -983,23 +968,13 @@ pub unsafe fn register_special_forms(env: SEXP) {
             "$",
         ];
 
-        let specials = SPECIAL_SEXPS.get_or_init(|| {
-            special_forms
-                .iter()
-                .map(|_| {
-                    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::SPECIALSXP));
-                    boxed.sxpinfo.set_gp(1);
-                    Box::into_raw(boxed) as usize
-                })
-                .collect::<Vec<usize>>()
-        });
-
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
-        for (i, op_name) in special_forms.iter().enumerate() {
-            let prim: SEXP = specials[i] as SEXP;
-            let sym = Rf_install(CString::new(*op_name).unwrap_or_default().as_ptr());
-            let cell = persistent_cons(prim, chain);
+        for op_name in special_forms {
+            let prim = allocSExp(SEXPTYPE::SPECIALSXP);
+            (*prim).sxpinfo.set_gp(1);
+            let sym = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
+            let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
             chain = cell;
         }

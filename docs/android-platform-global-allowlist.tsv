@@ -1,6 +1,5 @@
 # path	class	android_policy	owner	notes
 rmath-rs/rmath/src/appl/lbfgsb.rs	numeric-workspace	sessionize	rport-pm0	L-BFGS-B translated scratch state; move into session before exposing optim on Android.
-rmath-rs/rmath/src/eval/arithmetic.rs	immutable-symbol-cache	allow-immutable	rport-t57	OnceLock caches immutable builtin symbol handles; session-local symbols are preferred long term.
 rmath-rs/rmath/src/eval/builtin.rs	immutable-dispatch	allow-immutable	rport-t57	Empty builtin table placeholder; no Android mutable runtime behavior.
 rmath-rs/rmath/src/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp desktop clipboard state; Android uses platform clipboard bridge.
 rmath-rs/rmath/src/graphapp/context.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp drawing/context state; Android headless device owns rendering state.
@@ -52,7 +51,6 @@ rmath-rs/rmath/src/mainutils/deparse.rs	printing-runtime	sessionize	rport-t57	De
 rmath-rs/rmath/src/mainutils/dotcode.rs	runtime-policy	sessionize	rport-97s	DotCode policy cache; native package policy must be session/host controlled.
 rmath-rs/rmath/src/mainutils/edit.rs	desktop-ui	disabled-android	rport-dg0.2	Editor temp-file state; Android editor is host-owned.
 rmath-rs/rmath/src/mainutils/errors.rs	evaluator-runtime	sessionize	rport-t57	Error/warning globals have session fallbacks but atomics remain as process fallback.
-rmath-rs/rmath/src/mainutils/essentials.rs	immutable-symbol-cache	allow-immutable	rport-t57	Builtin SEXP cache; verify immutable/session symbol semantics.
 rmath-rs/rmath/src/mainutils/format.rs	printing-runtime	sessionize	rport-c2w	Print format state; move into session print state.
 rmath-rs/rmath/src/mainutils/lapack.rs	native-dispatch	platform-replace	rport-pm0	LAPACK dispatch lock; Android should use pure Rust backend or explicit host policy.
 rmath-rs/rmath/src/mainutils/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset scratch buffer; Android locale bridge should own it.
@@ -68,7 +66,6 @@ rmath-rs/rmath/src/mainutils/printutils.rs	printing-runtime	sessionize	rport-c2w
 rmath-rs/rmath/src/mainutils/printvector.rs	printing-runtime	sessionize	rport-c2w	Vector print data; move into session print state.
 rmath-rs/rmath/src/mainutils/radixsort.rs	numeric-workspace	sessionize	rport-c2w	Radix sort scratch/cache; move into call-local/session workspace.
 rmath-rs/rmath/src/mainutils/relop.rs	evaluator-runtime	sessionize	rport-c2w	Relop language option; move into session options/eval state.
-rmath-rs/rmath/src/mainutils/rng_dispatch.rs	immutable-symbol-cache	allow-immutable	rport-pm0	RNG SEXP cache; RNG state itself is session-owned.
 rmath-rs/rmath/src/mainutils/serialize.rs	serialization-runtime	sessionize	rport-97s	Serialization name/depth caches; move into session serialization state.
 rmath-rs/rmath/src/mainutils/source.rs	parser-runtime	sessionize	rport-ur1	Parse error context globals; move into session parser state.
 rmath-rs/rmath/src/mainutils/sprintf.rs	printing-runtime	sessionize	rport-c2w	sprintf output buffer; move into call-local/session state.

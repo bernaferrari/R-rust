@@ -347,31 +347,20 @@ pub unsafe fn do_sample(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 pub unsafe fn register_rng_builtins(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
-        use crate::sexp::constructors::persistent_cons;
-        use crate::sexp::ffi::SexprecCore;
+        use crate::sexp::constructors::Rf_cons;
+        use crate::sexp::memory_ext::allocSExp;
 
-        static RNG_SEXPS: std::sync::OnceLock<Vec<usize>> = std::sync::OnceLock::new();
         let rng_fns = [
             "set.seed", "RNGkind", "runif", "rnorm", "rpois", "rexp", "sample",
         ];
 
-        let builtins = RNG_SEXPS.get_or_init(|| {
-            rng_fns
-                .iter()
-                .map(|_| {
-                    let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::BUILTINSXP));
-                    boxed.sxpinfo.set_gp(1);
-                    Box::into_raw(boxed) as usize
-                })
-                .collect::<Vec<usize>>()
-        });
-
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
-        for (i, name) in rng_fns.iter().enumerate() {
-            let prim: SEXP = builtins[i] as SEXP;
-            let sym = Rf_install(CString::new(*name).unwrap_or_default().as_ptr());
-            let cell = persistent_cons(prim, chain);
+        for name in rng_fns {
+            let prim = allocSExp(SEXPTYPE::BUILTINSXP);
+            (*prim).sxpinfo.set_gp(1);
+            let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+            let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
             chain = cell;
         }
