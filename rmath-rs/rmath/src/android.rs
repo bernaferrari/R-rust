@@ -753,6 +753,23 @@ mod tests {
     }
 
     #[test]
+    fn test_proc_time_shape_matches_r_contract() {
+        let mut session = RSession::new();
+
+        let len = session.eval("length(proc.time())");
+        assert_eq!(len.output, "[1] 5");
+
+        let names = session.eval("toString(names(proc.time()))");
+        assert_eq!(
+            names.output,
+            "[1] \"user.self, sys.self, elapsed, user.child, sys.child\""
+        );
+
+        let class = session.eval("class(proc.time())");
+        assert_eq!(class.output, "[1] \"proc_time\"");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

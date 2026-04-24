@@ -3220,6 +3220,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "capture.output",
         "withVisible",
         "invisible",
+        "proc.time",
         "stop",
         "warning",
         "message",
@@ -13246,6 +13247,29 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
         for i in 0..5 {
             *REAL(result).add(i) = 0.0;
         }
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
+        if !names.is_null() {
+            let _np = Rf_protect(names);
+            for (i, name) in ["user.self", "sys.self", "elapsed", "user.child", "sys.child"]
+                .iter()
+                .enumerate()
+            {
+                let cstr = CString::new(*name).unwrap_or_default();
+                SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+            }
+            crate::sexp::attrib_core::setAttrib(
+                result,
+                Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
+                names,
+            );
+            crate::sexp::protect::Rf_unprotect(1);
+        }
+        let class = Rf_mkString(CString::new("proc_time").unwrap_or_default().as_ptr());
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
+            class,
+        );
         crate::sexp::protect::Rf_unprotect(1);
         result
     }
