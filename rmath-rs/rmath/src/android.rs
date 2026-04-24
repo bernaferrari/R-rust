@@ -512,6 +512,13 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_named_vector_names() {
+        let mut session = RSession::new();
+        let result = session.eval("names(c(a = 1, b = 2))");
+        assert_eq!(result.output, "[1] \"a\" \"b\"");
+    }
+
+    #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");

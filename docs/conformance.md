@@ -50,6 +50,11 @@ Rust artifact after source edits.
 - `019_while_break.R` checks loop break unwinding
 - `020_while_next.R` checks loop next unwinding
 - `021_missing_arg_error.R` checks missing formal argument errors
+- `022_vector_recycling_scalar.R` checks scalar recycling in vector arithmetic
+- `023_vector_pairwise_add.R` checks pairwise vector arithmetic
+- `024_logical_numeric_coercion.R` checks logical-to-numeric arithmetic coercion
+- `025_vector_multi_subset.R` checks integer vector subsetting
+- `026_named_vector_names.R` checks named vector construction via `c()`
 
 ## Domain Matrix
 
@@ -57,7 +62,7 @@ Rust artifact after source edits.
 | --- | --- | --- | --- |
 | Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
 | Evaluator/scoping/promises | Seeded | parity cases 011-020 plus Android closure tests | `rport-t57` |
-| Vector semantics | Seeded | parity cases 003, 008, 009 | `rport-c2w` |
+| Vector semantics | Seeded | parity cases 003, 008, 009, 022-026 | `rport-c2w` |
 | Base functions | Early | parity case 002 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
 | Packages/namespaces | Open | no parity gate yet | `rport-97s` |
@@ -76,7 +81,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 21 passing cases and 0 expected failures.
+Current parity status is 26 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 

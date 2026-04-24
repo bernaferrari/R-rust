@@ -7,8 +7,8 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
-    STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
+    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -32,10 +32,15 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     // First pass: determine result type and total length
     let mut result_type = SEXPTYPE::LGLSXP.as_c_int();
     let mut total_len: R_xlen_t = 0;
+    let mut has_names = false;
     let mut current = args;
     while !current.is_null() && current != R_NilValue() {
         let arg = CAR(current);
         if !arg.is_null() && arg != R_NilValue() {
+            let tag = TAG(current);
+            if !tag.is_null() && tag != R_NilValue() {
+                has_names = true;
+            }
             let t = TYPEOF(arg);
             if t == SEXPTYPE::STRSXP {
                 result_type = SEXPTYPE::STRSXP.as_c_int();
@@ -69,6 +74,25 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let _p = Rf_protect(result);
     let mut offset: R_xlen_t = 0;
+    let names = if has_names {
+        let names = Rf_allocVector3(SEXPTYPE::STRSXP, total_len);
+        if names.is_null() {
+            return R_NilValue();
+        }
+        let empty = Rf_mkChar(CString::new("").unwrap_or_default().as_ptr());
+        for i in 0..total_len {
+            SET_STRING_ELT(names, i, empty);
+        }
+        names
+    } else {
+        R_NilValue()
+    };
+    let _names_protect = if has_names {
+        Rf_protect(names);
+        true
+    } else {
+        false
+    };
 
     current = args;
     while !current.is_null() && current != R_NilValue() {
@@ -122,11 +146,28 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
             // CPLXSXP requires COMPLEX support which needs more work.
+            if has_names {
+                let tag = TAG(current);
+                if !tag.is_null() && tag != R_NilValue() {
+                    let printname = PRINTNAME(tag);
+                    if !printname.is_null() {
+                        SET_STRING_ELT(names, offset, printname);
+                    }
+                }
+            }
             offset += n;
         }
         current = CDR(current);
     }
 
+    if has_names {
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
     crate::sexp::protect::Rf_unprotect(1);
     result
 }
