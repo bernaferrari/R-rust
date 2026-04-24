@@ -5,7 +5,6 @@
 //! Provides do_parse() for .Internal(parse(...)).
 //! Currently stubbed since it depends on the parser (gram.y).
 
-use std::cell::Cell;
 use std::os::raw::c_int;
 use std::ptr;
 
@@ -37,32 +36,29 @@ pub unsafe fn getParseContext() -> SEXP {
 /// Parse context buffer size.
 pub const PARSE_CONTEXT_SIZE: c_int = 256;
 
-thread_local! { static R_ParseError_val: Cell<c_int> = Cell::new(0); }
-
 pub unsafe fn R_GetParseError() -> c_int {
-    R_ParseError_val.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_error).unwrap_or(0)
 }
 
 pub unsafe fn R_SetParseError(val: c_int) {
-    R_ParseError_val.with(|v| v.set(val));
+    crate::sexp::instance::with_current_instance(|inst| {
+        inst.eval_state.parse_error = val;
+    });
 }
-
-thread_local! { static R_ParseErrorCol_val: Cell<c_int> = Cell::new(0); }
 
 pub unsafe fn R_GetParseErrorCol() -> c_int {
-    R_ParseErrorCol_val.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_error_col)
+        .unwrap_or(0)
 }
-
-thread_local! { static R_ParseErrorFile_val: Cell<SEXP> = Cell::new(ptr::null_mut()); }
 
 pub unsafe fn R_GetParseErrorFile() -> SEXP {
-    R_ParseErrorFile_val.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_error_file)
+        .unwrap_or(ptr::null_mut())
 }
 
-thread_local! { static R_ParseContextLine_val: Cell<c_int> = Cell::new(0); }
-
 pub unsafe fn R_GetParseContextLine() -> c_int {
-    R_ParseContextLine_val.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.parse_context_line)
+        .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -84,6 +80,7 @@ mod tests {
 
     #[test]
     fn test_parse_error_state() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_SetParseError(42);
         }
