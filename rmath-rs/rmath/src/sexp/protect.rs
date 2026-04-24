@@ -7,11 +7,7 @@
 //! same stack, even though we don't have GC yet — this ensures correctness
 //! and compatibility when GC is eventually implemented.
 
-use std::cell::RefCell;
 use std::os::raw::c_int;
-
-#[cfg(test)]
-use std::cell::Cell;
 
 use super::ffi::SEXP;
 
@@ -62,37 +58,7 @@ pub fn protect_n(n: usize) -> ProtectGuard {
     ProtectGuard { count: n }
 }
 
-// ---------------------------------------------------------------------------
-// Thread-local protection stack
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    /// The thread-local protection stack.
-    pub static PROTECT_STACK: RefCell<ProtectStack> = RefCell::new(ProtectStack::new());
-}
-
-/// The protection stack state.
-struct ProtectStack {
-    /// Stack of protected SEXP pointers.
-    pub stack: Vec<SEXP>,
-}
-
-impl ProtectStack {
-    fn new() -> Self {
-        ProtectStack { stack: Vec::new() }
-    }
-}
-
-#[cfg(test)]
-thread_local! {
-    static FORCE_RESERVE_FAIL: Cell<bool> = const { Cell::new(false) };
-}
-
 fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
-    #[cfg(test)]
-    if FORCE_RESERVE_FAIL.with(|flag| flag.get()) {
-        panic!("{api}: protection stack allocation failed");
-    }
     if stack.try_reserve(1).is_err() {
         panic!("{api}: protection stack allocation failed");
     }
@@ -109,18 +75,10 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
 #[unsafe(no_mangle)]
 pub unsafe fn Rf_protect(s: SEXP) -> SEXP {
     if !s.is_null() {
-        if super::instance::with_current_instance(|inst| {
+        super::instance::with_required_current_instance(|inst| {
             reserve_slot_or_fail(&mut inst.protect_stack, "Rf_protect");
             inst.protect_stack.push(s);
-        })
-        .is_none()
-        {
-            PROTECT_STACK.with(|ps| {
-                let mut stack = ps.borrow_mut();
-                reserve_slot_or_fail(&mut stack.stack, "Rf_protect");
-                stack.stack.push(s);
-            });
-        }
+        });
     }
     s
 }
@@ -139,27 +97,14 @@ pub unsafe fn Rf_unprotect(n: c_int) {
         return;
     }
     let to_remove = n as usize;
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         let len = inst.protect_stack.len();
         if to_remove >= len {
             inst.protect_stack.clear();
         } else {
             inst.protect_stack.truncate(len - to_remove);
         }
-    })
-    .is_none()
-    {
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            let len = stack.stack.len();
-            if to_remove >= len {
-                stack.stack.clear();
-            } else {
-                let new_len = len - to_remove;
-                stack.stack.truncate(new_len);
-            }
-        });
-    }
+    });
 }
 
 /// Unprotect the top entry from the protection stack.
@@ -169,28 +114,18 @@ pub unsafe fn Rf_unprotect_ptr(s: SEXP) {
     if s.is_null() {
         return;
     }
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         if let Some(pos) = inst.protect_stack.iter().rposition(|&x| x == s) {
             inst.protect_stack.remove(pos);
         }
-    })
-    .is_none()
-    {
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            if let Some(pos) = stack.stack.iter().rposition(|&x| x == s) {
-                stack.stack.remove(pos);
-            }
-        });
-    }
+    });
 }
 
 /// Get the current number of entries on the protection stack.
 ///
 /// Used by the context system to track protect depth.
 pub fn R_ProtectCount() -> usize {
-    super::instance::with_current_instance(|inst| inst.protect_stack.len())
-        .unwrap_or_else(|| PROTECT_STACK.with(|ps| ps.borrow().stack.len()))
+    super::instance::with_required_current_instance(|inst| inst.protect_stack.len())
 }
 
 /// Iterate over all protected SEXP values on the stack.
@@ -199,14 +134,7 @@ pub fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    if super::instance::has_current_instance() {
-        super::instance::with_current_instance(|inst| f(&inst.protect_stack)).unwrap()
-    } else {
-        PROTECT_STACK.with(|ps| {
-            let stack = ps.borrow();
-            f(&stack.stack)
-        })
-    }
+    super::instance::with_required_current_instance(|inst| f(&inst.protect_stack))
 }
 
 /// Update all protect stack references using the given mapping function.
@@ -215,20 +143,11 @@ pub fn update_protect_stack_refs<F>(mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         for slot in inst.protect_stack.iter_mut() {
             *slot = update_fn(*slot);
         }
-    })
-    .is_none()
-    {
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            for slot in stack.stack.iter_mut() {
-                *slot = update_fn(*slot);
-            }
-        });
-    }
+    });
 }
 
 /// Update all preserve stack references using the given mapping function.
@@ -237,20 +156,11 @@ pub fn update_preserve_stack_refs<F>(mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         for slot in inst.preserve_stack.iter_mut() {
             *slot = update_fn(*slot);
         }
-    })
-    .is_none()
-    {
-        PRESERVE_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            for slot in stack.iter_mut() {
-                *slot = update_fn(*slot);
-            }
-        });
-    }
+    });
 }
 
 /// Iterate over all preserved SEXP values.
@@ -259,14 +169,7 @@ pub fn with_preserved_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
-    if super::instance::has_current_instance() {
-        super::instance::with_current_instance(|inst| f(&inst.preserve_stack)).unwrap()
-    } else {
-        PRESERVE_STACK.with(|ps| {
-            let stack = ps.borrow();
-            f(&stack)
-        })
-    }
+    super::instance::with_required_current_instance(|inst| f(&inst.preserve_stack))
 }
 
 // ---------------------------------------------------------------------------
@@ -282,7 +185,7 @@ pub struct ProtectIndex {
 ///
 /// This is the equivalent of R's `R_ProtectWithIndex()`.
 pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
-    let index = super::instance::with_current_instance(|inst| {
+    let index = super::instance::with_required_current_instance(|inst| {
         if !s.is_null() {
             reserve_slot_or_fail(&mut inst.protect_stack, "R_ProtectWithIndex");
             inst.protect_stack.push(s);
@@ -290,18 +193,6 @@ pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
         } else {
             0
         }
-    })
-    .unwrap_or_else(|| {
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            if !s.is_null() {
-                reserve_slot_or_fail(&mut stack.stack, "R_ProtectWithIndex");
-                stack.stack.push(s);
-                (stack.stack.len() - 1) + 1
-            } else {
-                0
-            }
-        })
     });
     index as *mut ProtectIndex
 }
@@ -319,30 +210,16 @@ pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
         return;
     }
     let idx = (index as usize).wrapping_sub(1);
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         if idx < inst.protect_stack.len() {
             inst.protect_stack[idx] = s;
         }
-    })
-    .is_none()
-    {
-        PROTECT_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            if idx < stack.stack.len() {
-                stack.stack[idx] = s;
-            }
-        });
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
 // R_PreserveObject / R_ReleaseObject — permanent protection
 // ---------------------------------------------------------------------------
-
-thread_local! {
-    /// Stack of permanently preserved objects.
-    pub static PRESERVE_STACK: RefCell<Vec<SEXP>> = RefCell::new(Vec::new());
-}
 
 /// Permanently protect an SEXP from garbage collection.
 ///
@@ -350,18 +227,10 @@ thread_local! {
 /// This is the equivalent of R's `R_PreserveObject()`.
 pub unsafe fn R_PreserveObject(s: SEXP) {
     if !s.is_null() {
-        if super::instance::with_current_instance(|inst| {
+        super::instance::with_required_current_instance(|inst| {
             reserve_slot_or_fail(&mut inst.preserve_stack, "R_PreserveObject");
             inst.preserve_stack.push(s);
-        })
-        .is_none()
-        {
-            PRESERVE_STACK.with(|ps| {
-                let mut stack = ps.borrow_mut();
-                reserve_slot_or_fail(&mut stack, "R_PreserveObject");
-                stack.push(s);
-            });
-        }
+        });
     }
 }
 
@@ -372,20 +241,11 @@ pub unsafe fn R_ReleaseObject(s: SEXP) {
     if s.is_null() {
         return;
     }
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         if let Some(pos) = inst.preserve_stack.iter().position(|&x| x == s) {
             inst.preserve_stack.remove(pos);
         }
-    })
-    .is_none()
-    {
-        PRESERVE_STACK.with(|ps| {
-            let mut stack = ps.borrow_mut();
-            if let Some(pos) = stack.iter().position(|&x| x == s) {
-                stack.remove(pos);
-            }
-        });
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -394,58 +254,38 @@ pub unsafe fn R_ReleaseObject(s: SEXP) {
 
 #[cfg(test)]
 mod tests {
-    use std::panic::{AssertUnwindSafe, catch_unwind};
     use std::ptr;
+
+    use crate::sexp::session::RSession;
 
     use super::*;
 
-    fn reset_protect_stack() {
-        PROTECT_STACK.with(|ps| {
-            ps.borrow_mut().stack.clear();
-        });
-        PRESERVE_STACK.with(|ps| {
-            ps.borrow_mut().clear();
-        });
-        #[cfg(test)]
-        FORCE_RESERVE_FAIL.with(|flag| flag.set(false));
-    }
-
-    fn with_forced_reserve_failure<F>(f: F)
-    where
-        F: FnOnce(),
-    {
-        FORCE_RESERVE_FAIL.with(|flag| flag.set(true));
-        let result = catch_unwind(AssertUnwindSafe(f));
-        FORCE_RESERVE_FAIL.with(|flag| flag.set(false));
-        assert!(result.is_err());
-    }
-
     #[test]
     fn test_protect_unprotect() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
             let result = Rf_protect(fake);
             assert_eq!(result, fake);
             assert_eq!(R_ProtectCount(), 1);
             Rf_unprotect(1);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_protect_null() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             Rf_protect(ptr::null_mut());
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_protect_multiple() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
             let c = 0x3 as SEXP;
@@ -457,13 +297,13 @@ mod tests {
             assert_eq!(R_ProtectCount(), 1);
             Rf_unprotect(1);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_unprotect_ptr() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
             Rf_protect(a);
@@ -473,100 +313,96 @@ mod tests {
             assert_eq!(R_ProtectCount(), 1);
             Rf_unprotect_ptr(b);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_unprotect_ptr_null() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             Rf_unprotect_ptr(ptr::null_mut());
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_unprotect_negative() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             Rf_unprotect(-1);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_unprotect_exceeds_stack() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             Rf_protect(0x1 as SEXP);
             Rf_unprotect(5);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_preserve_release() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
             R_PreserveObject(fake);
-            PRESERVE_STACK.with(|ps| {
-                assert_eq!(ps.borrow().len(), 1);
-            });
+            with_preserved_objects(|objects| assert_eq!(objects.len(), 1));
             R_ReleaseObject(fake);
-            PRESERVE_STACK.with(|ps| {
-                assert_eq!(ps.borrow().len(), 0);
-            });
-        }
+            with_preserved_objects(|objects| assert_eq!(objects.len(), 0));
+        });
     }
 
     #[test]
     fn test_preserve_null() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_PreserveObject(ptr::null_mut());
-            PRESERVE_STACK.with(|ps| {
-                assert_eq!(ps.borrow().len(), 0);
-            });
-        }
+            with_preserved_objects(|objects| assert_eq!(objects.len(), 0));
+        });
     }
 
     #[test]
     fn test_release_null() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_ReleaseObject(ptr::null_mut());
-        }
+        });
     }
 
     #[test]
     fn test_protect_guard() {
-        reset_protect_stack();
-        let depth_before = R_ProtectCount();
-        {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
             let a = 0x1 as SEXP;
             let _guard = protect(a);
             assert_eq!(R_ProtectCount(), depth_before + 1);
-        }
-        assert_eq!(R_ProtectCount(), depth_before);
+            drop(_guard);
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
     }
 
     #[test]
     fn test_protect_guard_null() {
-        reset_protect_stack();
-        let depth_before = R_ProtectCount();
-        {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
             let _guard = protect(ptr::null_mut());
             assert_eq!(R_ProtectCount(), depth_before);
-        }
-        assert_eq!(R_ProtectCount(), depth_before);
+            drop(_guard);
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
     }
 
     #[test]
     fn test_protect_n_guard() {
-        reset_protect_stack();
-        let depth_before = R_ProtectCount();
-        {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
             unsafe {
                 Rf_protect(0x1 as SEXP);
                 Rf_protect(0x2 as SEXP);
@@ -574,55 +410,53 @@ mod tests {
             }
             let _guard = protect_n(3);
             assert_eq!(R_ProtectCount(), depth_before + 3);
-        }
-        assert_eq!(R_ProtectCount(), depth_before);
+            drop(_guard);
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
     }
 
     #[test]
     fn test_protect_with_index() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let fake = 0x1 as SEXP;
             let idx = R_ProtectWithIndex(fake);
             assert!(!idx.is_null());
             assert_eq!(R_ProtectCount(), 1);
             Rf_unprotect(1);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_protect_with_index_null() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let idx = R_ProtectWithIndex(ptr::null_mut());
             assert!((idx as usize) == 0);
             assert_eq!(R_ProtectCount(), 0);
-        }
+        });
     }
 
     #[test]
     fn test_reprotect() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let a = 0x1 as SEXP;
             let b = 0x2 as SEXP;
             let idx = R_ProtectWithIndex(a);
             R_Reprotect(b, idx);
-            PROTECT_STACK.with(|ps| {
-                let stack = ps.borrow();
-                assert_eq!(stack.stack[0], b);
-            });
+            with_protected_objects(|objects| assert_eq!(objects[0], b));
             Rf_unprotect(1);
-        }
+        });
     }
 
     #[test]
     fn test_reprotect_null_index() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_Reprotect(0x1 as SEXP, ptr::null_mut());
-        }
+        });
     }
 
     #[test]
@@ -635,99 +469,62 @@ mod tests {
 
     #[test]
     fn test_with_protected_objects() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             Rf_protect(0x1 as SEXP);
             Rf_protect(0x2 as SEXP);
-        }
-        with_protected_objects(|objects| {
-            assert_eq!(objects.len(), 2);
-        });
-        unsafe {
+            with_protected_objects(|objects| {
+                assert_eq!(objects.len(), 2);
+            });
             Rf_unprotect(2);
-        }
+        });
     }
 
     #[test]
     fn test_with_preserved_objects() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_PreserveObject(0x1 as SEXP);
             R_PreserveObject(0x2 as SEXP);
-        }
-        with_preserved_objects(|objects| {
-            assert_eq!(objects.len(), 2);
-        });
-        unsafe {
+            with_preserved_objects(|objects| {
+                assert_eq!(objects.len(), 2);
+            });
             R_ReleaseObject(0x1 as SEXP);
             R_ReleaseObject(0x2 as SEXP);
-        }
+        });
     }
 
     #[test]
     fn test_update_protect_stack_refs() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             Rf_protect(0x1 as SEXP);
             Rf_protect(0x2 as SEXP);
-        }
-        update_protect_stack_refs(|ptr| {
-            if ptr as usize == 0x1 {
-                0x100 as SEXP
-            } else {
-                ptr
-            }
-        });
-        with_protected_objects(|objects| {
-            assert_eq!(objects[0] as usize, 0x100);
-            assert_eq!(objects[1] as usize, 0x2);
-        });
-        unsafe {
+            update_protect_stack_refs(|ptr| {
+                if ptr as usize == 0x1 {
+                    0x100 as SEXP
+                } else {
+                    ptr
+                }
+            });
+            with_protected_objects(|objects| {
+                assert_eq!(objects[0] as usize, 0x100);
+                assert_eq!(objects[1] as usize, 0x2);
+            });
             Rf_unprotect(2);
-        }
+        });
     }
 
     #[test]
     fn test_update_preserve_stack_refs() {
-        reset_protect_stack();
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_PreserveObject(0x1 as SEXP);
-        }
-        update_preserve_stack_refs(|ptr| 0x200 as SEXP);
-        with_preserved_objects(|objects| {
-            assert_eq!(objects[0] as usize, 0x200);
-        });
-        unsafe {
+            update_preserve_stack_refs(|ptr| 0x200 as SEXP);
+            with_preserved_objects(|objects| {
+                assert_eq!(objects[0] as usize, 0x200);
+            });
             R_ReleaseObject(0x200 as SEXP);
-        }
-    }
-
-    #[test]
-    fn test_protect_reserve_failure_panics() {
-        reset_protect_stack();
-        with_forced_reserve_failure(|| unsafe {
-            Rf_protect(0x1 as SEXP);
-        });
-        assert_eq!(R_ProtectCount(), 0);
-    }
-
-    #[test]
-    fn test_protect_with_index_reserve_failure_panics() {
-        reset_protect_stack();
-        with_forced_reserve_failure(|| unsafe {
-            let _ = R_ProtectWithIndex(0x1 as SEXP);
-        });
-        assert_eq!(R_ProtectCount(), 0);
-    }
-
-    #[test]
-    fn test_preserve_reserve_failure_panics() {
-        reset_protect_stack();
-        with_forced_reserve_failure(|| unsafe {
-            R_PreserveObject(0x1 as SEXP);
-        });
-        PRESERVE_STACK.with(|ps| {
-            assert!(ps.borrow().is_empty());
         });
     }
 }
