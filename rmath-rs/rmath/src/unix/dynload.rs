@@ -7,7 +7,6 @@
 //! Implements `InitFunctionHashing` which sets up the OS-specific dynamic
 //! loading vtable using POSIX dlopen/dlsym/dlclose.
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
@@ -48,10 +47,8 @@ const RTLD_GLOBAL: c_int = 0x8;
 const RTLD_LOCAL: c_int = 0x4;
 
 // ---------------------------------------------------------------------------
-// Static OS dynamic symbol vtable
+// OS dynamic symbol vtable
 // ---------------------------------------------------------------------------
-
-thread_local! { static R_osDynSymbol_table: RefCell<OsDynSymbolTable> = RefCell::new(OsDynSymbolTable::new()); }
 
 struct OsDynSymbolTable {
     loadLibrary:
@@ -61,14 +58,12 @@ struct OsDynSymbolTable {
     getError: Option<unsafe extern "C" fn(*mut c_char, c_int)>,
 }
 
-impl OsDynSymbolTable {
-    const fn new() -> Self {
-        OsDynSymbolTable {
-            loadLibrary: None,
-            dlsym_fn: None,
-            closeLibrary: None,
-            getError: None,
-        }
+fn os_dyn_symbol_table() -> OsDynSymbolTable {
+    OsDynSymbolTable {
+        loadLibrary: Some(load_library),
+        dlsym_fn: Some(local_dlsym),
+        closeLibrary: Some(close_library),
+        getError: Some(get_system_error),
     }
 }
 
@@ -178,15 +173,11 @@ unsafe fn libc_dlerror() -> *mut c_char {
 // ---------------------------------------------------------------------------
 
 /// Initialize the function hashing / dynamic loading subsystem.
-/// Sets up the OS-specific vtable for dlopen/dlsym/dlclose.
+/// Compatibility entrypoint for R startup. The OS-specific vtable is immutable
+/// in this port because it contains fixed platform function pointers.
 #[unsafe(no_mangle)]
 pub fn InitFunctionHashing() {
-    R_osDynSymbol_table.with(|v| {
-        v.borrow_mut().loadLibrary = Some(load_library);
-        v.borrow_mut().dlsym_fn = Some(local_dlsym);
-        v.borrow_mut().closeLibrary = Some(close_library);
-        v.borrow_mut().getError = Some(get_system_error);
-    });
+    let _ = os_dyn_symbol_table();
 }
 
 /// Delete cached symbols for a DLL (stub).
@@ -231,14 +222,11 @@ mod tests {
 
     #[test]
     fn test_init_function_hashing_runs() {
-        unsafe {
-            InitFunctionHashing();
-            R_osDynSymbol_table.with(|v| {
-                assert!(v.borrow().loadLibrary.is_some());
-                assert!(v.borrow().dlsym_fn.is_some());
-                assert!(v.borrow().closeLibrary.is_some());
-                assert!(v.borrow().getError.is_some());
-            });
-        }
+        InitFunctionHashing();
+        let table = os_dyn_symbol_table();
+        assert!(table.loadLibrary.is_some());
+        assert!(table.dlsym_fn.is_some());
+        assert!(table.closeLibrary.is_some());
+        assert!(table.getError.is_some());
     }
 }
