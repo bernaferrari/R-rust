@@ -120,6 +120,7 @@ impl RSession {
     /// Initializes a fresh [`RInstance`] with its own arena and environment
     /// chain, and sets it as the current thread-local instance.
     pub fn new() -> Self {
+        super::context::install_r_panic_hook();
         let mut instance = Box::new(RInstance::new());
         unsafe {
             set_current_instance(&mut *instance as *mut RInstance);

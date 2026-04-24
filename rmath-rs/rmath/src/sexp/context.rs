@@ -11,6 +11,7 @@
 use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::ptr;
+use std::sync::OnceLock;
 
 use super::ffi::{SEXP, SexprecCore};
 use super::instance;
@@ -371,6 +372,25 @@ pub enum RSignal {
 }
 
 unsafe impl Send for RSignal {}
+
+static R_PANIC_HOOK: OnceLock<()> = OnceLock::new();
+
+/// Suppress stderr noise for Rust panics used as R control-flow signals.
+///
+/// Real Rust panics still go through the previously installed hook.
+pub fn install_r_panic_hook() {
+    R_PANIC_HOOK.get_or_init(|| {
+        let default_hook = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |info| {
+            if info.payload().downcast_ref::<RSignal>().is_some()
+                || info.payload().downcast_ref::<RError>().is_some()
+            {
+                return;
+            }
+            default_hook(info);
+        }));
+    });
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LoopAction {

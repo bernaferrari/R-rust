@@ -30,6 +30,8 @@ pub fn is_initialized() -> bool {
 
 pub unsafe fn initialize_r() {
     unsafe {
+        super::context::install_r_panic_hook();
+
         if R_INITIALIZED.load(Ordering::Acquire) {
             return;
         }

@@ -28,7 +28,7 @@ use crate::sexp::accessors::{CAR, CDR, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
-    R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_NilValue, R_UnboundValue, set_R_Visible,
+    R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible,
 };
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::RArena;
@@ -368,6 +368,12 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
                 && tag == symbol
             {
                 let val = cell.car()?;
+                if val.as_raw() == unsafe { R_MissingArg() } {
+                    let name = unsafe { get_symbol_name(symbol.as_raw()) };
+                    std::panic::panic_any(crate::sexp::context::RSignal::Error {
+                        message: format!("argument \"{}\" is missing, with no default", name),
+                    });
+                }
                 if val.typeof_() == SEXPTYPE::PROMSXP {
                     let forced = unsafe { forcePromise(val.as_raw()) };
                     return Sexp::from_raw(forced);
@@ -459,9 +465,6 @@ fn apply_builtin_safe<'a>(
     let flag = unsafe { PRIMPRINT(fun.as_raw()) };
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
-    let evaled_args =
-        unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), -1) };
-
     let op_name = unsafe {
         let fun_sym = crate::sexp::accessors::CAR(call.as_raw());
         let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
@@ -479,6 +482,24 @@ fn apply_builtin_safe<'a>(
             String::new()
         }
     };
+
+    if op_name == "missing" {
+        let tmp = unsafe {
+            crate::eval::missing::do_missing(
+                call.as_raw(),
+                fun.as_raw(),
+                args.as_raw(),
+                rho.as_raw(),
+            )
+        };
+        if flag < 2 {
+            unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+        }
+        return Ok(unsafe { Sexp::from_raw_unchecked(tmp) });
+    }
+
+    let evaled_args =
+        unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), -1) };
 
     let tmp = match op_name.as_str() {
         "+" | "-" | "*" | "/" | "^" | "%%" | "%/%" => unsafe {

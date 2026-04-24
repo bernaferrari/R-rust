@@ -555,6 +555,32 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_closure_return() {
+        let mut session = RSession::new();
+        let result = session.eval("f <- function() return(42)\nf()");
+        assert_eq!(result.output, "[1] 42");
+    }
+
+    #[test]
+    fn test_eval_missing_arg() {
+        let mut session = RSession::new();
+        let missing = session.eval("f <- function(x) missing(x)\nf()");
+        let present = session.eval("f <- function(x) missing(x)\nf(1)");
+        assert_eq!(missing.output, "[1] TRUE");
+        assert_eq!(present.output, "[1] FALSE");
+    }
+
+    #[test]
+    fn test_eval_missing_arg_error() {
+        let mut session = RSession::new();
+        let result = session.eval("f <- function(x) x\nf()");
+        assert_eq!(
+            result.output,
+            "Error: argument \"x\" is missing, with no default"
+        );
+    }
+
+    #[test]
     fn test_sessions_keep_globals_isolated_on_same_thread() {
         let mut left = RSession::new();
         let mut right = RSession::new();
