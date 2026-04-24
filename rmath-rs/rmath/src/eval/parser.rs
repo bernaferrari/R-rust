@@ -573,7 +573,11 @@ impl Parser {
                 let cell = Rf_cons(e, list);
                 list = cell;
             }
-            Ok(Rf_lang2(brace_sym, list))
+            let call = Rf_cons(brace_sym, list);
+            if !call.is_null() {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+            Ok(call)
         }
     }
 
@@ -867,11 +871,11 @@ impl Parser {
                         let bracket_sym =
                             Rf_install(CString::new("[").unwrap_or_default().as_ptr());
                         let nil = R_NilValue();
-                        let mut args = Rf_cons(expr, nil);
-                        // Build args in reverse
+                        let mut args = nil;
                         for idx in indices.into_iter().rev() {
                             args = Rf_cons(idx, args);
                         }
+                        args = Rf_cons(expr, args);
                         let call = Rf_cons(bracket_sym, args);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
@@ -1235,7 +1239,11 @@ impl Parser {
                 while let Some(e) = exprs.pop() {
                     list = Rf_cons(e, list);
                 }
-                Ok(Rf_lang2(brace_sym, list))
+                let call = Rf_cons(brace_sym, list);
+                if !call.is_null() {
+                    (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                Ok(call)
             }
         }
     }
@@ -1375,7 +1383,7 @@ pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::{CAR, TYPEOF};
+    use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::memory::RArena;
@@ -1576,6 +1584,17 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
             let fun = CAR(result);
             assert_eq!(TYPEOF(fun), SEXPTYPE::SYMSXP);
+        }
+    }
+
+    #[test]
+    fn test_subscript_argument_order() {
+        unsafe {
+            let result = must(parse_str("x[2]"));
+            assert_eq!(TYPEOF(result), SEXPTYPE::LANGSXP);
+            let args = CDR(result);
+            assert_eq!(TYPEOF(CAR(args)), SEXPTYPE::SYMSXP);
+            assert_eq!(TYPEOF(CADR(args)), SEXPTYPE::REALSXP);
         }
     }
 

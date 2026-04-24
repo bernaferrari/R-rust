@@ -5,7 +5,10 @@
 //! Handles `<-`, `<<-`, and `=` assignment operators.
 
 use crate::sexp::accessors::ENCLOS;
-use crate::sexp::accessors::{CADR, CAR, CDDR, CDR, STRING_ELT, TYPEOF};
+use crate::sexp::accessors::{
+    CADR, CAR, CDDR, CDR, INTEGER_ELT, LOGICAL_ELT, REAL_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT,
+    SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
+};
 use crate::sexp::envir::{defineVar, setVar};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
@@ -144,12 +147,12 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let target_val = CAR(current_lhs);
                 let rest_args = CDDR(current_expr);
 
-                let arg_list = crate::sexp::constructors::Rf_cons(
-                    target_val,
-                    crate::sexp::constructors::Rf_cons(current_rhs, rest_args),
-                );
+                let arg_list = build_replacement_args(target_val, rest_args, current_rhs);
                 Rf_protect(arg_list);
                 let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                if !repl_call.is_null() {
+                    (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
                 Rf_protect(repl_call);
 
                 current_rhs = Rf_eval(repl_call, rho);
@@ -167,12 +170,12 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let target_val = CAR(current_lhs);
                 let rest_args = CDDR(expr);
 
-                let arg_list = crate::sexp::constructors::Rf_cons(
-                    target_val,
-                    crate::sexp::constructors::Rf_cons(current_rhs, rest_args),
-                );
+                let arg_list = build_replacement_args(target_val, rest_args, current_rhs);
                 Rf_protect(arg_list);
                 let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                if !repl_call.is_null() {
+                    (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
                 Rf_protect(repl_call);
 
                 let result = Rf_eval(repl_call, rho);
@@ -221,16 +224,29 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             Rf_protect(target_expr);
 
             let call_args = CDDR(lhs);
-            let arg_list = crate::sexp::constructors::Rf_cons(
-                target_expr,
-                crate::sexp::constructors::Rf_cons(rhs, call_args),
-            );
-            Rf_protect(arg_list);
-            let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
-            Rf_protect(repl_call);
+            let evaluated_subs = super::dispatch::evalList(call_args, rho, lhs, -1);
+            Rf_protect(evaluated_subs);
 
-            let result = Rf_eval(repl_call, rho);
+            let mut protected = 3;
+            let result = if let Some(result) =
+                try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
+            {
+                result
+            } else {
+                let arg_list = build_replacement_args(target_expr, evaluated_subs, rhs);
+                Rf_protect(arg_list);
+                protected += 1;
+                let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
+                if !repl_call.is_null() {
+                    (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+                }
+                Rf_protect(repl_call);
+                protected += 1;
+
+                apply_replacement_call(assign_fn, repl_call, arg_list, rho)
+            };
             Rf_protect(result);
+            protected += 1;
 
             let var_sym = CADR(lhs);
             if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
@@ -242,9 +258,116 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
             set_R_Visible(FALSE);
-            crate::sexp::protect::Rf_unprotect(5);
+            crate::sexp::protect::Rf_unprotect(protected);
             rhs
         }
+    }
+}
+
+unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
+    unsafe {
+        let mut tail = crate::sexp::constructors::Rf_cons(value, R_NilValue());
+        let mut sub_args = Vec::new();
+        let mut current = subs;
+        while current != R_NilValue() && !current.is_null() {
+            sub_args.push((CAR(current), TAG(current)));
+            current = CDR(current);
+        }
+        for (arg, tag) in sub_args.into_iter().rev() {
+            let cell = crate::sexp::constructors::Rf_cons(arg, tail);
+            if !tag.is_null() {
+                SETTAG(cell, tag);
+            }
+            tail = cell;
+        }
+        crate::sexp::constructors::Rf_cons(target, tail)
+    }
+}
+
+unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let name = crate::sexp::accessors::CHAR(crate::sexp::accessors::PRINTNAME(assign_fn));
+        if name.is_null() {
+            return Rf_eval(call, rho);
+        }
+
+        match std::ffi::CStr::from_ptr(name).to_str().unwrap_or("") {
+            "[<-" => crate::mainutils::subassign::do_subassign_dflt(call, assign_fn, args, rho),
+            "[[<-" => crate::mainutils::subassign::do_subassign2_dflt(call, assign_fn, args, rho),
+            _ => Rf_eval(call, rho),
+        }
+    }
+}
+
+unsafe fn try_simple_vector_subassign(target: SEXP, subs: SEXP, value: SEXP) -> Option<SEXP> {
+    unsafe {
+        if subs == R_NilValue() || subs.is_null() || CDR(subs) != R_NilValue() {
+            return None;
+        }
+        if XLENGTH(value) < 1 {
+            return None;
+        }
+
+        let index = scalar_positive_index(CAR(subs))?;
+        if index >= XLENGTH(target) {
+            return None;
+        }
+
+        match TYPEOF(target) {
+            t if t == SEXPTYPE::REALSXP => {
+                let replacement = match TYPEOF(value) {
+                    vt if vt == SEXPTYPE::REALSXP => REAL_ELT(value, 0),
+                    vt if vt == SEXPTYPE::INTSXP || vt == SEXPTYPE::LGLSXP => {
+                        let v = INTEGER_ELT(value, 0);
+                        if v == crate::sexp::ffi::NA_INTEGER {
+                            crate::sexp::ffi::NA_REAL
+                        } else {
+                            v as f64
+                        }
+                    }
+                    _ => return None,
+                };
+                SET_REAL_ELT(target, index as i32, replacement);
+                Some(target)
+            }
+            t if t == SEXPTYPE::INTSXP => {
+                let replacement = match TYPEOF(value) {
+                    vt if vt == SEXPTYPE::INTSXP || vt == SEXPTYPE::LGLSXP => INTEGER_ELT(value, 0),
+                    _ => return None,
+                };
+                SET_INTEGER_ELT(target, index as i32, replacement);
+                Some(target)
+            }
+            t if t == SEXPTYPE::LGLSXP => {
+                let replacement = match TYPEOF(value) {
+                    vt if vt == SEXPTYPE::LGLSXP => LOGICAL_ELT(value, 0),
+                    _ => return None,
+                };
+                SET_LOGICAL_ELT(target, index as i32, replacement);
+                Some(target)
+            }
+            _ => None,
+        }
+    }
+}
+
+unsafe fn scalar_positive_index(index: SEXP) -> Option<crate::sexp::ffi::R_xlen_t> {
+    unsafe {
+        if index.is_null() || index == R_NilValue() || XLENGTH(index) != 1 {
+            return None;
+        }
+        let raw = match TYPEOF(index) {
+            t if t == SEXPTYPE::INTSXP => INTEGER_ELT(index, 0) as crate::sexp::ffi::R_xlen_t,
+            t if t == SEXPTYPE::REALSXP => {
+                let value = REAL_ELT(index, 0);
+                if !value.is_finite() || value.fract() != 0.0 {
+                    return None;
+                }
+                value as crate::sexp::ffi::R_xlen_t
+            }
+            _ => return None,
+        };
+        if raw < 1 { None } else { Some(raw - 1) }
     }
 }
 

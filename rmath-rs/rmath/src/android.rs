@@ -498,6 +498,20 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_multiple_expressions_returns_last_value() {
+        let mut session = RSession::new();
+        let result = session.eval("x <- c(10, 20, 30)\nx");
+        assert_eq!(result.output, "[1] 10 20 30");
+    }
+
+    #[test]
+    fn test_eval_integer_subassignment() {
+        let mut session = RSession::new();
+        let result = session.eval("x <- c(10, 20, 30)\nx[2] <- 99\nx");
+        assert_eq!(result.output, "[1] 10 99 30");
+    }
+
+    #[test]
     fn test_sessions_keep_globals_isolated_on_same_thread() {
         let mut left = RSession::new();
         let mut right = RSession::new();
