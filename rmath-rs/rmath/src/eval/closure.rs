@@ -1,9 +1,4 @@
-#![allow(
-    non_snake_case,
-    non_upper_case_globals,
-    dead_code,
-    unused_variables
-)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Closure application — ports R's applyClosure from eval.c.
 //!
@@ -15,12 +10,13 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{BODY, TYPEOF};
+use crate::sexp::accessors::{BODY, CAR, CDR, SETCAR, SETCDR, SETTAG, TAG, TYPEOF};
 use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
-use crate::sexp::memory_ext::NewEnvironment;
+use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
 use crate::sexp::safe::{PairlistIter, Sexp};
+use crate::sexp::symbol::R_DotsSymbol;
 
 use super::eval::Rf_eval;
 
@@ -227,30 +223,18 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                     None => return R_NilValue(),
                 };
 
-                let matched = match match_args_safe(formals, args) {
+                let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);
+                let matched = match match_closure_args(formals.as_raw(), promised_args) {
                     Ok(m) => m,
                     Err(_) => return R_NilValue(),
                 };
 
-                let new_env = match create_env_safe(matched, cloenv) {
+                let new_env = match create_env_safe(Sexp::from_raw_unchecked(matched), cloenv) {
                     Ok(e) => e,
                     Err(_) => return R_NilValue(),
                 };
 
-                // Bind arguments
-                if let Some(frame) = new_env.frame() {
-                    for cell in PairlistIter::new(frame) {
-                        if let Some(sym) = cell.tag()
-                            && let Some(val) = cell.car()
-                        {
-                            defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
-                        }
-                    }
-                }
-
-                unsafe {
-                    addMissingVarsToNewEnv(formals.as_raw(), args.as_raw(), new_env.as_raw());
-                }
+                install_default_promises(formals.as_raw(), matched, new_env.as_raw());
 
                 new_env.as_raw()
             }
@@ -258,6 +242,142 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
         }
     }))
     .unwrap_or_else(|_| R_NilValue())
+}
+
+unsafe fn exact_tag_name_equal(left: SEXP, right: SEXP) -> bool {
+    unsafe {
+        if left.is_null() || right.is_null() || left == R_NilValue() || right == R_NilValue() {
+            return false;
+        }
+
+        let left_name = crate::sexp::accessors::PRINTNAME(left);
+        let right_name = crate::sexp::accessors::PRINTNAME(right);
+        if left_name.is_null() || right_name.is_null() {
+            return false;
+        }
+
+        crate::sexp::accessors::CHAR(left_name) == crate::sexp::accessors::CHAR(right_name)
+    }
+}
+
+unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> {
+    unsafe {
+        let mut supplied_cells = Vec::new();
+        let mut cur = supplied;
+        while !cur.is_null() && cur != R_NilValue() {
+            supplied_cells.push(cur);
+            cur = CDR(cur);
+        }
+        let mut used = vec![false; supplied_cells.len()];
+
+        let mut result = R_NilValue();
+        let mut tail = R_NilValue();
+        let mut positional = 0usize;
+
+        let mut formal = formals;
+        while !formal.is_null() && formal != R_NilValue() {
+            let formal_tag = TAG(formal);
+            let mut value = R_MissingArg();
+            let mut matched_index = None;
+
+            if formal_tag == R_DotsSymbol() {
+                value = collect_unused_args(&supplied_cells, &mut used);
+            } else {
+                for (idx, supplied_cell) in supplied_cells.iter().enumerate() {
+                    if !used[idx] && exact_tag_name_equal(formal_tag, TAG(*supplied_cell)) {
+                        matched_index = Some(idx);
+                        break;
+                    }
+                }
+
+                if matched_index.is_none() {
+                    while positional < supplied_cells.len() {
+                        let supplied_cell = supplied_cells[positional];
+                        let supplied_tag = TAG(supplied_cell);
+                        if !used[positional]
+                            && (supplied_tag.is_null() || supplied_tag == R_NilValue())
+                        {
+                            matched_index = Some(positional);
+                            positional += 1;
+                            break;
+                        }
+                        positional += 1;
+                    }
+                }
+
+                if let Some(idx) = matched_index {
+                    used[idx] = true;
+                    value = CAR(supplied_cells[idx]);
+                }
+            }
+
+            let cell = crate::sexp::constructors::Rf_cons(value, R_NilValue());
+            if cell.is_null() {
+                return Err(());
+            }
+            SETTAG(cell, formal_tag);
+
+            if result == R_NilValue() {
+                result = cell;
+            } else {
+                SETCDR(tail, cell);
+            }
+            tail = cell;
+            formal = CDR(formal);
+        }
+
+        if used.iter().any(|used| !*used) {
+            return Err(());
+        }
+
+        Ok(result)
+    }
+}
+
+unsafe fn collect_unused_args(supplied_cells: &[SEXP], used: &mut [bool]) -> SEXP {
+    unsafe {
+        let mut dots = R_NilValue();
+        let mut tail = R_NilValue();
+
+        for (idx, supplied_cell) in supplied_cells.iter().enumerate() {
+            if used[idx] {
+                continue;
+            }
+            used[idx] = true;
+            let cell = crate::sexp::constructors::Rf_cons(CAR(*supplied_cell), R_NilValue());
+            SETTAG(cell, TAG(*supplied_cell));
+            if dots == R_NilValue() {
+                dots = cell;
+            } else {
+                SETCDR(tail, cell);
+            }
+            tail = cell;
+        }
+
+        if dots != R_NilValue() {
+            (*dots).sxpinfo.set_type(SEXPTYPE::DOTSXP);
+        }
+        dots
+    }
+}
+
+unsafe fn install_default_promises(formals: SEXP, frame: SEXP, new_env: SEXP) {
+    unsafe {
+        let mut formal = formals;
+        let mut actual = frame;
+
+        while !formal.is_null()
+            && formal != R_NilValue()
+            && !actual.is_null()
+            && actual != R_NilValue()
+        {
+            if CAR(actual) == R_MissingArg() && CAR(formal) != R_MissingArg() {
+                SETCAR(actual, mkPROMISE(CAR(formal), new_env));
+            }
+            formal = CDR(formal);
+            actual = CDR(actual);
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

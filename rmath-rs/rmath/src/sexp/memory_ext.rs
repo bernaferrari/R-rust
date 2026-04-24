@@ -15,7 +15,7 @@ use std::os::raw::{c_int, c_void};
 use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
-use super::globals::R_NilValue;
+use super::globals::{R_NilValue, R_UnboundValue};
 use super::instance;
 use super::memory;
 
@@ -63,7 +63,7 @@ pub unsafe fn mkPROMISE(expr: SEXP, env: SEXP) -> SEXP {
         memory::with_arena(|arena| {
             let prom = arena.alloc_node(SEXPTYPE::PROMSXP);
             if !prom.is_null() {
-                (*prom).data.promsxp.value = R_NilValue();
+                (*prom).data.promsxp.value = R_UnboundValue();
                 (*prom).data.promsxp.expr = expr;
                 (*prom).data.promsxp.env = env;
             }
@@ -107,7 +107,7 @@ pub unsafe fn mkPROMSXP(expr: SEXP, env: SEXP) -> SEXP {
     unsafe {
         let p = allocSExp(SEXPTYPE::PROMSXP);
         if !p.is_null() {
-            (*p).data.promsxp.value = R_NilValue();
+            (*p).data.promsxp.value = R_UnboundValue();
             (*p).data.promsxp.expr = expr;
             (*p).data.promsxp.env = env;
         }

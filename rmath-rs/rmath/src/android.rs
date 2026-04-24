@@ -519,6 +519,42 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_closure_positional_arg() {
+        let mut session = RSession::new();
+        let result = session.eval("f <- function(x) x + 1\nf(41)");
+        assert_eq!(result.output, "[1] 42");
+    }
+
+    #[test]
+    fn test_eval_closure_lexical_scope() {
+        let mut session = RSession::new();
+        let result =
+            session.eval("make <- function(x) function(y) x + y\nadd2 <- make(2)\nadd2(40)");
+        assert_eq!(result.output, "[1] 42");
+    }
+
+    #[test]
+    fn test_eval_closure_default_arg() {
+        let mut session = RSession::new();
+        let result = session.eval("f <- function(x, y = x + 1) y\nf(41)");
+        assert_eq!(result.output, "[1] 42");
+    }
+
+    #[test]
+    fn test_eval_closure_lazy_unused_arg() {
+        let mut session = RSession::new();
+        let result = session.eval("f <- function(x) 1\nf(unknown_symbol)");
+        assert_eq!(result.output, "[1] 1");
+    }
+
+    #[test]
+    fn test_eval_closure_named_args() {
+        let mut session = RSession::new();
+        let result = session.eval("f <- function(x, y) x + y\nf(y = 40, x = 2)");
+        assert_eq!(result.output, "[1] 42");
+    }
+
+    #[test]
     fn test_sessions_keep_globals_isolated_on_same_thread() {
         let mut left = RSession::new();
         let mut right = RSession::new();

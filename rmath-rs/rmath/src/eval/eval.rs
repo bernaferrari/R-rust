@@ -27,7 +27,9 @@ use std::time::{Duration, Instant};
 use crate::sexp::accessors::{CAR, CDR, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT, TYPEOF};
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_NilValue, set_R_Visible};
+use crate::sexp::globals::{
+    R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_NilValue, R_UnboundValue, set_R_Visible,
+};
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
@@ -365,7 +367,12 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
             if let Some(tag) = cell.tag()
                 && tag == symbol
             {
-                return cell.car();
+                let val = cell.car()?;
+                if val.typeof_() == SEXPTYPE::PROMSXP {
+                    let forced = unsafe { forcePromise(val.as_raw()) };
+                    return Sexp::from_raw(forced);
+                }
+                return Some(val);
             }
         }
         current = current.enclos()?;
@@ -376,7 +383,7 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
 fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
     if let Some(val) = prom.prvalue()
-        && val.typeof_() != SEXPTYPE::PROMSXP
+        && val.as_raw() != unsafe { R_UnboundValue() }
     {
         return Ok(val);
     }

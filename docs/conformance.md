@@ -37,13 +37,18 @@ Rust artifact after source edits.
 - `008_na_arithmetic.R` checks scalar `NA` arithmetic behavior
 - `009_index_assignment.R` checks basic index assignment behavior
 - `010_factor_labels.R` checks factor label formatting
+- `011_closure_positional.R` checks positional closure arguments
+- `012_closure_lexical_scope.R` checks closure environment capture
+- `013_closure_default_arg.R` checks default argument promises
+- `014_closure_lazy_unused_arg.R` checks lazy unused arguments
+- `015_closure_named_args.R` checks exact named argument matching
 
 ## Domain Matrix
 
 | Domain | Status | Gate | Owner |
 | --- | --- | --- | --- |
 | Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
-| Evaluator/scoping/promises | Early | Android unit eval tests plus scalar parity cases | `rport-t57` |
+| Evaluator/scoping/promises | Seeded | parity cases 011-015 plus Android closure tests | `rport-t57` |
 | Vector semantics | Seeded | parity cases 003, 008, 009 | `rport-c2w` |
 | Base functions | Early | parity case 002 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
@@ -63,7 +68,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 10 passing cases and 0 expected failures.
+Current parity status is 15 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 

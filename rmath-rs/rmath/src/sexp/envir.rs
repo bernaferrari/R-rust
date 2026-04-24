@@ -22,7 +22,9 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use super::accessors::{CHAR, PRINTNAME, SET_FRAME, SET_PRVALUE, SETCAR, SETCDR, SETTAG};
+use super::accessors::{
+    CHAR, PRINTNAME, SET_FRAME, SET_PRENV, SET_PRVALUE, SETCAR, SETCDR, SETTAG,
+};
 use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
@@ -121,11 +123,15 @@ pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
     }
 
     let val = prom.prvalue()?;
-    if val.typeof_() != SEXPTYPE::SPECIALSXP {
+    if val.as_raw() != unsafe { R_UnboundValue() } {
         return Some(val);
     }
 
     let expr = prom.prcode()?;
+    if expr.as_raw() == unsafe { R_MissingArg() } {
+        return Some(expr);
+    }
+    let env = prom.prenv()?;
 
     unsafe {
         SET_PRVALUE(prom.as_raw(), R_UnboundValue());
@@ -134,14 +140,12 @@ pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
             .set_gp((*prom.as_raw()).sxpinfo.gp() | 0x02);
     }
 
-    let value = if !expr.as_raw().is_null() {
-        expr
-    } else {
-        unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
-    };
+    let value = unsafe { crate::eval::eval::Rf_eval(expr.as_raw(), env.as_raw()) };
+    let value = unsafe { Sexp::from_raw_unchecked(value) };
 
     unsafe {
         SET_PRVALUE(prom.as_raw(), value.as_raw());
+        SET_PRENV(prom.as_raw(), R_NilValue());
     }
     Some(value)
 }
