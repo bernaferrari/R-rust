@@ -55,6 +55,10 @@ pub struct RInstance {
     pub(crate) symbol_nodes: Vec<Box<SexprecCore>>,
     /// Per-instance Marsaglia-MultiCarry RNG seed state.
     pub(crate) rng_state: (u32, u32),
+    /// Per-instance stdout capture buffer.
+    pub(crate) capture_stdout: Option<String>,
+    /// Per-instance stderr capture buffer.
+    pub(crate) capture_stderr: Option<String>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub options: HashMap<String, SEXP>,
     /// Whether the instance options have been initialized with defaults.
@@ -90,6 +94,8 @@ impl RInstance {
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),
+            capture_stdout: None,
+            capture_stderr: None,
             options: HashMap::new(),
             options_initialized: false,
         };

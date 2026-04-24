@@ -316,6 +316,19 @@ impl RSession {
         self.with_active(crate::dist::normal::norm_rand)
     }
 
+    /// Run a closure while capturing this session's stdout/stderr buffers.
+    pub fn with_output_capture<F, T>(&self, f: F) -> (T, super::output::RCapturedOutput)
+    where
+        F: FnOnce() -> T,
+    {
+        self.with_active(|| {
+            super::output::start_capture();
+            let value = f();
+            let output = super::output::stop_capture();
+            (value, output)
+        })
+    }
+
     /// Close this session.
     ///
     /// After closing, [`is_active`](RSession::is_active) returns `false`
@@ -422,6 +435,26 @@ mod tests {
                 .map(|ptr| std::ptr::eq(ptr as *const RInstance, newer_instance))
                 .unwrap_or(false)
         );
+    }
+
+    #[test]
+    fn test_session_output_capture_is_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let (_, left_output) = left.with_output_capture(|| {
+            crate::sexp::output::capture_stdout("left out");
+            crate::sexp::output::capture_stderr("left err");
+        });
+        let (_, right_output) = right.with_output_capture(|| {
+            crate::sexp::output::capture_stdout("right out");
+            crate::sexp::output::capture_stderr("right err");
+        });
+
+        assert_eq!(left_output.stdout, "left out");
+        assert_eq!(left_output.stderr, "left err");
+        assert_eq!(right_output.stdout, "right out");
+        assert_eq!(right_output.stderr, "right err");
     }
 
     #[test]

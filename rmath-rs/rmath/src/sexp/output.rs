@@ -4,8 +4,7 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
-use std::cell::Cell;
-use std::sync::Mutex;
+use std::cell::{Cell, RefCell};
 
 use super::ffi::{SEXP, SEXPTYPE};
 use super::safe::Sexp;
@@ -18,46 +17,64 @@ pub struct RCapturedOutput {
 }
 
 thread_local! {
-    static CAPTURE_STDOUT: Mutex<Option<String>> = const { Mutex::new(None) };
-    static CAPTURE_STDERR: Mutex<Option<String>> = const { Mutex::new(None) };
+    static CAPTURE_STDOUT: RefCell<Option<String>> = const { RefCell::new(None) };
+    static CAPTURE_STDERR: RefCell<Option<String>> = const { RefCell::new(None) };
     static IS_CAPTURING: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Start capturing R output.
 pub fn start_capture() {
-    CAPTURE_STDOUT.with(|c| *c.lock().unwrap_or_else(|e| e.into_inner()) = Some(String::new()));
-    CAPTURE_STDERR.with(|c| *c.lock().unwrap_or_else(|e| e.into_inner()) = Some(String::new()));
+    if super::instance::with_current_instance(|inst| {
+        inst.capture_stdout = Some(String::new());
+        inst.capture_stderr = Some(String::new());
+    })
+    .is_some()
+    {
+        return;
+    }
+    CAPTURE_STDOUT.with(|c| *c.borrow_mut() = Some(String::new()));
+    CAPTURE_STDERR.with(|c| *c.borrow_mut() = Some(String::new()));
     IS_CAPTURING.with(|c| c.set(true));
 }
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    let stdout = CAPTURE_STDOUT.with(|c| {
-        c.lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-            .unwrap_or_default()
-    });
-    let stderr = CAPTURE_STDERR.with(|c| {
-        c.lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .take()
-            .unwrap_or_default()
-    });
+    if let Some(output) = super::instance::with_current_instance(|inst| RCapturedOutput {
+        stdout: inst.capture_stdout.take().unwrap_or_default(),
+        stderr: inst.capture_stderr.take().unwrap_or_default(),
+    }) {
+        return output;
+    }
+    let stdout = CAPTURE_STDOUT.with(|c| c.borrow_mut().take().unwrap_or_default());
+    let stderr = CAPTURE_STDERR.with(|c| c.borrow_mut().take().unwrap_or_default());
     IS_CAPTURING.with(|c| c.set(false));
     RCapturedOutput { stdout, stderr }
 }
 
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
+    if let Some(is_capturing) = super::instance::with_current_instance(|inst| {
+        inst.capture_stdout.is_some() || inst.capture_stderr.is_some()
+    }) {
+        return is_capturing;
+    }
     IS_CAPTURING.with(|c| c.get())
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
     if is_capturing() {
+        if super::instance::with_current_instance(|inst| {
+            if let Some(s) = inst.capture_stdout.as_mut() {
+                s.push_str(msg);
+            }
+        })
+        .is_some()
+        {
+            return;
+        }
         CAPTURE_STDOUT.with(|c| {
-            if let Some(s) = c.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            if let Some(s) = c.borrow_mut().as_mut() {
                 s.push_str(msg);
             }
         });
@@ -67,8 +84,17 @@ pub fn capture_stdout(msg: &str) {
 /// Append to captured stderr. Called by the REprintf hook.
 pub fn capture_stderr(msg: &str) {
     if is_capturing() {
+        if super::instance::with_current_instance(|inst| {
+            if let Some(s) = inst.capture_stderr.as_mut() {
+                s.push_str(msg);
+            }
+        })
+        .is_some()
+        {
+            return;
+        }
         CAPTURE_STDERR.with(|c| {
-            if let Some(s) = c.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+            if let Some(s) = c.borrow_mut().as_mut() {
                 s.push_str(msg);
             }
         });
