@@ -6,6 +6,8 @@ TARGET="${ANDROID_TARGET:-aarch64-linux-android}"
 
 cd "$ROOT_DIR"
 
+scripts/check_android_globals.sh
+
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "$SDK_ROOT" ]]; then
     for candidate in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do

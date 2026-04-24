@@ -1,0 +1,127 @@
+# path	class	android_policy	owner	notes
+rmath-rs/rmath/src/appl/lbfgsb.rs	numeric-workspace	sessionize	rport-pm0	L-BFGS-B translated scratch state; move into session before exposing optim on Android.
+rmath-rs/rmath/src/eval/arithmetic.rs	immutable-symbol-cache	allow-immutable	rport-t57	OnceLock caches immutable builtin symbol handles; session-local symbols are preferred long term.
+rmath-rs/rmath/src/eval/builtin.rs	immutable-dispatch	allow-immutable	rport-t57	Empty builtin table placeholder; no Android mutable runtime behavior.
+rmath-rs/rmath/src/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp desktop clipboard state; Android uses platform clipboard bridge.
+rmath-rs/rmath/src/graphapp/context.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp drawing/context state; Android headless device owns rendering state.
+rmath-rs/rmath/src/graphapp/controls.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp controls; not linked into Android UI surface.
+rmath-rs/rmath/src/graphapp/cursors.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp cursors; not used by Android headless graphics.
+rmath-rs/rmath/src/graphapp/dialogs.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp dialogs; Android must use app-native dialogs.
+rmath-rs/rmath/src/graphapp/drawing.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp draw state; Android graphics device is separate.
+rmath-rs/rmath/src/graphapp/events.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp event loop state; Android event loop is host-owned.
+rmath-rs/rmath/src/graphapp/fonts.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp font globals; Android font handling belongs in device backend.
+rmath-rs/rmath/src/graphapp/gdraw.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp drawing buffers; Android uses headless device.
+rmath-rs/rmath/src/graphapp/init.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp app/window globals; Android app owns lifecycle.
+rmath-rs/rmath/src/graphapp/menus.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp menu state; Android menus are host UI state.
+rmath-rs/rmath/src/graphapp/objects.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp object registry; not part of Android embedding path.
+rmath-rs/rmath/src/graphapp/rgb.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp color name buffer; not part of Android embedding path.
+rmath-rs/rmath/src/graphapp/strings.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp string scratch buffers; not part of Android embedding path.
+rmath-rs/rmath/src/graphapp/windows.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp window state; Android app owns windows.
+rmath-rs/rmath/src/intl/bindtextdom.rs	intl-cache	platform-replace	rport-dg0.2	gettext binding state; replace or process-scope after Android localization decision.
+rmath-rs/rmath/src/intl/dcigettext.rs	intl-cache	platform-replace	rport-dg0.2	gettext message/domain caches; Android localization bridge needed before enablement.
+rmath-rs/rmath/src/intl/finddomain.rs	intl-cache	platform-replace	rport-dg0.2	gettext loaded-domain cache; not session-safe yet.
+rmath-rs/rmath/src/intl/langprefs.rs	intl-cache	platform-replace	rport-dg0.2	Language preference cache; Android locale bridge should own it.
+rmath-rs/rmath/src/intl/loadmsgcat.rs	intl-cache	platform-replace	rport-dg0.2	Message catalog counter/lock shim; Android replacement pending.
+rmath-rs/rmath/src/intl/localename.rs	intl-cache	platform-replace	rport-dg0.2	Locale name cache; Android locale bridge should own it.
+rmath-rs/rmath/src/intl/lock.rs	intl-cache	platform-replace	rport-dg0.2	gettext lock shim; Android replacement pending.
+rmath-rs/rmath/src/intl/plural_exp.rs	intl-cache	platform-replace	rport-dg0.2	Plural expression globals; Android localization replacement pending.
+rmath-rs/rmath/src/intl/tsearch.rs	intl-cache	platform-replace	rport-dg0.2	gettext tree traversal scratch; Android localization replacement pending.
+rmath-rs/rmath/src/intl/types.rs	intl-cache	platform-replace	rport-dg0.2	gettext global domain state; Android localization replacement pending.
+rmath-rs/rmath/src/library/graphics/xspline.rs	orphan-source	disabled-android	rport-dg0.1	Not declared in graphics::mod.rs; do not wire until session-owned or removed.
+rmath-rs/rmath/src/library/grdevices/device_registry.rs	test-only	allow-test	rport-dg0.1	Remaining Mutex is a unit-test serialization lock.
+rmath-rs/rmath/src/library/methods/methods_list_dispatch.rs	method-cache	sessionize	rport-97s	S4 dispatch cache state; sessionize before methods/package support is Android-facing.
+rmath-rs/rmath/src/library/parallel/fork.rs	unsupported-platform	disabled-android	rport-dg0.2	Fork process state; Android embedding should not expose fork backend.
+rmath-rs/rmath/src/library/stats/bspline.rs	numeric-workspace	sessionize	rport-pm0	Stats spline scratch state; move into session for stats conformance.
+rmath-rs/rmath/src/library/stats/deriv.rs	immutable-symbol-cache	allow-immutable	rport-pm0	Derivative symbol/cache state; check immutability before Android stats surface.
+rmath-rs/rmath/src/library/stats/fexact.rs	numeric-workspace	sessionize	rport-pm0	Fisher exact scratch/workspace state; sessionize for parallel stats calls.
+rmath-rs/rmath/src/library/stats/fft.rs	numeric-workspace	sessionize	rport-pm0	FFT factorization cache; move into session or call-local workspace.
+rmath-rs/rmath/src/library/stats/loessc.rs	numeric-workspace	sessionize	rport-pm0	LOESS workspace pointers; move into session or call-local workspace.
+rmath-rs/rmath/src/library/stats/model.rs	stats-runtime	sessionize	rport-pm0	Model frame/runtime scratch state; sessionize before model helpers are exposed.
+rmath-rs/rmath/src/library/stats/pacf.rs	immutable-symbol-cache	allow-immutable	rport-pm0	PACF tag cache; verify immutable symbol handling.
+rmath-rs/rmath/src/library/tcltk/tcltk.rs	desktop-ui	disabled-android	rport-dg0.2	Tcl/Tk interpreter pointer; disabled for Android.
+rmath-rs/rmath/src/mainutils/CommandLineArgs.rs	process-startup	disabled-android	rport-dg0.2	Command-line startup state; Android host config should pass explicit session options.
+rmath-rs/rmath/src/mainutils/Rmain.rs	process-startup	disabled-android	rport-dg0.2	Standalone R main flag; not part of embedded Android runtime.
+rmath-rs/rmath/src/mainutils/altrep.rs	runtime-registry	sessionize	rport-c2w	ALTREP class registries; move into session or immutable registry before package-facing use.
+rmath-rs/rmath/src/mainutils/bind.rs	runtime-cache	sessionize	rport-t57	Binding sentinels/cache; audit for session-local environment semantics.
+rmath-rs/rmath/src/mainutils/character.rs	immutable-symbol-cache	allow-immutable	rport-c2w	NA string cache; should remain immutable or instance-owned.
+rmath-rs/rmath/src/mainutils/coerce.rs	immutable-symbol-cache	allow-immutable	rport-c2w	NA string cache for coercion; should remain immutable or instance-owned.
+rmath-rs/rmath/src/mainutils/colors.rs	graphics-callbacks	sessionize	rport-dg0.2	Graphics color callback pointers; bridge through Android device/session state.
+rmath-rs/rmath/src/mainutils/connections.rs	test-only	allow-test	rport-dg0.1	Remaining Mutex is a unit-test serialization lock.
+rmath-rs/rmath/src/mainutils/debug.rs	evaluator-runtime	sessionize	rport-t57	Debug/tracing switches; move into session eval state.
+rmath-rs/rmath/src/mainutils/deparse.rs	printing-runtime	sessionize	rport-t57	Deparse scratch buffers and browse lines; move into session print/deparse state.
+rmath-rs/rmath/src/mainutils/dotcode.rs	runtime-policy	sessionize	rport-97s	DotCode policy cache; native package policy must be session/host controlled.
+rmath-rs/rmath/src/mainutils/edit.rs	desktop-ui	disabled-android	rport-dg0.2	Editor temp-file state; Android editor is host-owned.
+rmath-rs/rmath/src/mainutils/errors.rs	evaluator-runtime	sessionize	rport-t57	Error/warning globals have session fallbacks but atomics remain as process fallback.
+rmath-rs/rmath/src/mainutils/essentials.rs	immutable-symbol-cache	allow-immutable	rport-t57	Builtin SEXP cache; verify immutable/session symbol semantics.
+rmath-rs/rmath/src/mainutils/format.rs	printing-runtime	sessionize	rport-c2w	Print format state; move into session print state.
+rmath-rs/rmath/src/mainutils/lapack.rs	native-dispatch	platform-replace	rport-pm0	LAPACK dispatch lock; Android should use pure Rust backend or explicit host policy.
+rmath-rs/rmath/src/mainutils/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset scratch buffer; Android locale bridge should own it.
+rmath-rs/rmath/src/mainutils/machine.rs	process-constant	allow-immutable	rport-dg0.2	Machine constants cache; acceptable if immutable after init.
+rmath-rs/rmath/src/mainutils/memory_main.rs	memory-runtime	sessionize	rport-dg0.2	GC reporting/forcing state; move into RInstance GC state.
+rmath-rs/rmath/src/mainutils/names.rs	immutable-symbol-cache	allow-immutable	rport-t57	Symbol initialization cache; verify immutable/session split.
+rmath-rs/rmath/src/mainutils/objects.rs	method-cache	sessionize	rport-97s	Primitive method cache state; sessionize with methods support.
+rmath-rs/rmath/src/mainutils/options.rs	session-fallback	sessionize	rport-dg0.2	Process fallback options table; Android path should use RInstance options only.
+rmath-rs/rmath/src/mainutils/paste_impl.rs	printing-runtime	sessionize	rport-c2w	Paste scratch buffer; move into session or call-local state.
+rmath-rs/rmath/src/mainutils/platform.rs	platform-locale	platform-replace	rport-dg0.2	Native encoding buffers; Android locale bridge should own them.
+rmath-rs/rmath/src/mainutils/print.rs	printing-runtime	sessionize	rport-c2w	Print data globals; move into session print state.
+rmath-rs/rmath/src/mainutils/printutils.rs	printing-runtime	sessionize	rport-c2w	Print utility buffers; move into session or call-local buffers.
+rmath-rs/rmath/src/mainutils/printvector.rs	printing-runtime	sessionize	rport-c2w	Vector print data; move into session print state.
+rmath-rs/rmath/src/mainutils/radixsort.rs	numeric-workspace	sessionize	rport-c2w	Radix sort scratch/cache; move into call-local/session workspace.
+rmath-rs/rmath/src/mainutils/relop.rs	evaluator-runtime	sessionize	rport-c2w	Relop language option; move into session options/eval state.
+rmath-rs/rmath/src/mainutils/rng_dispatch.rs	immutable-symbol-cache	allow-immutable	rport-pm0	RNG SEXP cache; RNG state itself is session-owned.
+rmath-rs/rmath/src/mainutils/serialize.rs	serialization-runtime	sessionize	rport-97s	Serialization name/depth caches; move into session serialization state.
+rmath-rs/rmath/src/mainutils/source.rs	parser-runtime	sessionize	rport-ur1	Parse error context globals; move into session parser state.
+rmath-rs/rmath/src/mainutils/sprintf.rs	printing-runtime	sessionize	rport-c2w	sprintf output buffer; move into call-local/session state.
+rmath-rs/rmath/src/mainutils/sprintf_main.rs	printing-runtime	sessionize	rport-c2w	sprintf format buffers; move into call-local/session state.
+rmath-rs/rmath/src/mainutils/startup.rs	process-startup	disabled-android	rport-dg0.2	Workspace startup pointer; Android host should configure explicitly.
+rmath-rs/rmath/src/mainutils/sysutils.rs	process-state	sessionize	rport-dg0.2	Interactive flag should be session/host configuration.
+rmath-rs/rmath/src/modules/internet/internet.rs	network-runtime	platform-replace	rport-dg0.2	Internet quiet flag; Android network integration must be host controlled.
+rmath-rs/rmath/src/modules/internet/libcurl.rs	network-runtime	platform-replace	rport-dg0.2	libcurl/progress/header scratch state; Android networking policy pending.
+rmath-rs/rmath/src/modules/internet/rhttpd.rs	network-runtime	disabled-android	rport-dg0.2	In-process HTTP server state; disabled for Android embedding.
+rmath-rs/rmath/src/modules/internet/rsock.rs	network-runtime	platform-replace	rport-dg0.2	Socket initialization/wait state; Android networking policy pending.
+rmath-rs/rmath/src/modules/x11/dev_x11.rs	desktop-ui	disabled-android	rport-dg0.2	X11 device globals; Android uses headless/device bridge.
+rmath-rs/rmath/src/modules/x11/rotated.rs	desktop-ui	disabled-android	rport-dg0.2	X11 text style state; Android text metrics belong in device backend.
+rmath-rs/rmath/src/sexp/context.rs	session-fallback	sessionize	rport-t57	Context stack fallback; Android sessions should use RInstance context stack.
+rmath-rs/rmath/src/sexp/env_hash.rs	session-fallback	sessionize	rport-c2w	Environment hash fallback; Android sessions should use RInstance env hash tables.
+rmath-rs/rmath/src/sexp/gengc.rs	session-fallback	sessionize	rport-dg0.2	GC state fallback and test atomics; Android sessions should use RInstance GC state.
+rmath-rs/rmath/src/sexp/globals.rs	process-sentinels	allow-immutable	rport-dg0.2	R_NilValue and global fallback sentinels; do not use fallback env pointers in Android sessions.
+rmath-rs/rmath/src/sexp/init.rs	process-startup	sessionize	rport-dg0.2	Init atomic/lock protects process fallback init; Android should initialize per-session explicitly.
+rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
+rmath-rs/rmath/src/sexp/memory.rs	session-fallback	sessionize	rport-dg0.2	Arena fallback TLS; Android sessions should use RInstance arena only.
+rmath-rs/rmath/src/sexp/memory_ext.rs	session-fallback	sessionize	rport-dg0.2	R_alloc fallback TLS; Android sessions should use RInstance transient allocations.
+rmath-rs/rmath/src/sexp/output.rs	session-fallback	sessionize	rport-dg0.2	Capture output fallback; Android sessions should use RInstance output buffers.
+rmath-rs/rmath/src/sexp/protect.rs	session-fallback	sessionize	rport-dg0.2	Protect stack fallback TLS; Android sessions should use RInstance protect stack.
+rmath-rs/rmath/src/sexp/session.rs	documentation	allow-session-dispatch	rport-dg0.2	Module documents thread-local fallback risks; not itself runtime state.
+rmath-rs/rmath/src/sexp/symbol.rs	session-fallback	sessionize	rport-dg0.2	Process symbol table fallback; Android sessions should use RInstance symbols.
+rmath-rs/rmath/src/support/cport/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset constants/scratch buffer; Android locale bridge should own lookup.
+rmath-rs/rmath/src/support/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp clipboard; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/context.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp context; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/controls.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp controls; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/cursors.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp cursors; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/dialogs.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp dialogs; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/drawing.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp drawing; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/events.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp events; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/fonts.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp fonts; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/gdraw.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp drawing; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/init.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp app/window globals; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/menus.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp menus; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/objects.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp object registry; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/rgb.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp color buffer; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/strings.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp string buffers; disabled for Android.
+rmath-rs/rmath/src/support/graphapp/windows.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp windows; disabled for Android.
+rmath-rs/rmath/src/support/intl/bindtextdom.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext binding state; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/dcigettext.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext message/domain caches; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/finddomain.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext domain cache; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/langprefs.rs	intl-cache	platform-replace	rport-dg0.2	Support language preference cache; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/loadmsgcat.rs	intl-cache	platform-replace	rport-dg0.2	Support message catalog counter/lock shim; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/localename.rs	intl-cache	platform-replace	rport-dg0.2	Support locale name cache; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/lock.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext lock shim; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/plural_exp.rs	intl-cache	platform-replace	rport-dg0.2	Support plural expression globals; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/tsearch.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext tree traversal scratch; Android localization bridge pending.
+rmath-rs/rmath/src/support/intl/types.rs	intl-cache	platform-replace	rport-dg0.2	Support gettext global domain state; Android localization bridge pending.
+rmath-rs/rmath/src/support/tzone.rs	platform-timezone	platform-replace	rport-dg0.2	Time-zone global cache; Android timezone bridge should own it.
+rmath-rs/rmath/src/tzone.rs	platform-timezone	platform-replace	rport-dg0.2	Time-zone cache; Android timezone bridge should own it.
+rmath-rs/rmath/src/unix/embedded.rs	process-startup	disabled-android	rport-dg0.2	Unix embedded process flag; Android host config should be explicit.
+rmath-rs/rmath/src/unix/sys_std.rs	process-event-loop	platform-replace	rport-dg0.2	Polled event callbacks; Android event loop bridge should own this.
+rmath-rs/rmath/src/unix/sys_unix.rs	process-startup	platform-replace	rport-dg0.2	Unix startup/time state; Android host/session config should own replacements.
+rmath-rs/rmath/src/unix/system.rs	process-startup	platform-replace	rport-dg0.2	Unix console/startup callback table; Android host callbacks should be explicit per session.
