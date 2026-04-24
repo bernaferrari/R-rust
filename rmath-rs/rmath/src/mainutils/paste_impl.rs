@@ -15,7 +15,6 @@
 //! stubs.
 
 use super::printutils::EncodeComplex;
-use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
@@ -397,38 +396,6 @@ impl RStringBuffer {
     }
 }
 
-thread_local! { static CBUFF: Cell<*mut RStringBuffer> = Cell::new(ptr::null_mut()); }
-
-#[repr(transparent)]
-struct MutPtr<T>(*mut T);
-
-impl<T> std::ops::Deref for MutPtr<T> {
-    type Target = T;
-    fn deref(&self) -> &Self::Target {
-        unsafe { &*self.0 }
-    }
-}
-
-impl<T> std::ops::DerefMut for MutPtr<T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.0 }
-    }
-}
-
-unsafe fn get_cbuff() -> MutPtr<RStringBuffer> {
-    MutPtr(CBUFF.with(|v| {
-        let ptr = v.get();
-        if ptr.is_null() {
-            let buf = Box::new(RStringBuffer::new());
-            let raw = Box::into_raw(buf);
-            v.set(raw);
-            raw
-        } else {
-            ptr
-        }
-    }))
-}
-
 // ---------------------------------------------------------------------------
 // R_stpcpy
 // ---------------------------------------------------------------------------
@@ -670,7 +637,7 @@ pub unsafe fn do_paste(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, maxlen as c_int);
 
-        let mut cbuff = get_cbuff();
+        let mut cbuff = RStringBuffer::new();
 
         for i in 0..maxlen {
             let mut allKnown: bool = true;
@@ -939,7 +906,7 @@ pub unsafe fn do_filepath(_call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP 
         }
 
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, maxlen as c_int);
-        let mut cbuff = get_cbuff();
+        let mut cbuff = RStringBuffer::new();
 
         for i in 0..maxlen {
             let use_UTF8: bool = true;
