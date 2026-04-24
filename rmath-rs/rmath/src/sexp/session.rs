@@ -33,7 +33,9 @@ use std::ptr;
 use super::context::{RError, RSignal};
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use super::instance::{RInstance, clear_current_instance_if, set_current_instance};
+use super::instance::{
+    RInstance, clear_current_instance_if, replace_current_instance, set_current_instance,
+};
 use super::memory::RArena;
 use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 use super::safe::Sexp;
@@ -81,6 +83,18 @@ where
     }
 }
 
+struct CurrentInstanceGuard {
+    previous: Option<*mut RInstance>,
+}
+
+impl Drop for CurrentInstanceGuard {
+    fn drop(&mut self) {
+        unsafe {
+            replace_current_instance(self.previous);
+        }
+    }
+}
+
 /// An R interpreter session with its own isolated instance state.
 ///
 /// Each `RSession` owns an [`RInstance`] containing a private arena,
@@ -114,6 +128,23 @@ impl RSession {
             active: true,
             instance,
         }
+    }
+
+    fn instance_ptr(&self) -> *mut RInstance {
+        (&*self.instance as *const RInstance).cast_mut()
+    }
+
+    fn activate(&self) -> CurrentInstanceGuard {
+        let previous = unsafe { replace_current_instance(Some(self.instance_ptr())) };
+        CurrentInstanceGuard { previous }
+    }
+
+    fn with_active<F, T>(&self, f: F) -> T
+    where
+        F: FnOnce() -> T,
+    {
+        let _guard = self.activate();
+        f()
     }
 
     /// Check if this session is active.
@@ -153,7 +184,9 @@ impl RSession {
                 message: "session is closed".to_string(),
             });
         }
-        catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) })
+        self.with_active(|| {
+            catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) })
+        })
     }
 
     /// Evaluate an expression with a custom environment.
@@ -172,7 +205,7 @@ impl RSession {
                 message: "session is closed".to_string(),
             });
         }
-        catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, env) })
+        self.with_active(|| catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, env) }))
     }
 
     /// Find a variable by name in the global environment.
@@ -182,13 +215,15 @@ impl RSession {
     ///
     /// Names with interior NUL bytes are rejected.
     pub fn find_var(&self, name: &str) -> Option<Sexp<'_>> {
-        let symbol = install_symbol(name)?;
-        let result = unsafe { crate::sexp::envir::R_findVar(symbol, self.instance.global_env) };
-        if result == unsafe { R_UnboundValue() } || result == unsafe { R_NilValue() } {
-            None
-        } else {
-            Sexp::from_raw(result)
-        }
+        self.with_active(|| {
+            let symbol = install_symbol(name)?;
+            let result = unsafe { crate::sexp::envir::R_findVar(symbol, self.instance.global_env) };
+            if result == unsafe { R_UnboundValue() } || result == unsafe { R_NilValue() } {
+                None
+            } else {
+                Sexp::from_raw(result)
+            }
+        })
     }
 
     /// Define a variable in the global environment.
@@ -206,9 +241,21 @@ impl RSession {
         let Some(symbol) = install_symbol(name) else {
             return;
         };
-        unsafe {
+        self.with_active(|| unsafe {
             crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
+        });
+    }
+
+    /// Run a closure with mutable access to this session's arena.
+    pub fn with_arena<F, T>(&mut self, f: F) -> Option<T>
+    where
+        F: FnOnce(&mut RArena) -> T,
+    {
+        if !self.active {
+            return None;
         }
+        let _guard = self.activate();
+        Some(f(&mut self.instance.arena))
     }
 
     /// Run a function in a protected scope.
@@ -234,22 +281,24 @@ impl RSession {
     where
         F: FnOnce() -> T,
     {
-        let depth = R_ProtectCount();
-        let result = f();
-        let new_depth = R_ProtectCount();
-        if new_depth > depth {
-            unsafe {
-                Rf_unprotect((new_depth - depth) as c_int);
+        self.with_active(|| {
+            let depth = R_ProtectCount();
+            let result = f();
+            let new_depth = R_ProtectCount();
+            if new_depth > depth {
+                unsafe {
+                    Rf_unprotect((new_depth - depth) as c_int);
+                }
             }
-        }
-        result
+            result
+        })
     }
 
     /// Run the garbage collector.
     ///
     /// Performs a minor GC on the young generation.
     pub fn gc(&self) {
-        super::gengc::minor_gc();
+        self.with_active(super::gengc::minor_gc);
     }
 
     /// Close this session.
@@ -284,7 +333,7 @@ impl Drop for RSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::instance::with_current_instance;
+    use crate::sexp::instance::{current_instance_ptr, with_current_instance};
     use crate::sexp::memory::with_arena;
 
     #[test]
@@ -331,6 +380,33 @@ mod tests {
                 .unwrap_or(false)
         );
         assert!(newer.is_active());
+    }
+
+    #[test]
+    fn test_session_method_activation_restores_previous_instance() {
+        let mut older = RSession::new();
+        let older_instance = &*older.instance as *const RInstance;
+        let newer = RSession::new();
+        let newer_instance = &*newer.instance as *const RInstance;
+
+        assert!(
+            current_instance_ptr()
+                .map(|ptr| std::ptr::eq(ptr as *const RInstance, newer_instance))
+                .unwrap_or(false)
+        );
+
+        let activated_older = older.with_arena(|_| {
+            current_instance_ptr()
+                .map(|ptr| std::ptr::eq(ptr as *const RInstance, older_instance))
+                .unwrap_or(false)
+        });
+
+        assert_eq!(activated_older, Some(true));
+        assert!(
+            current_instance_ptr()
+                .map(|ptr| std::ptr::eq(ptr as *const RInstance, newer_instance))
+                .unwrap_or(false)
+        );
     }
 
     #[test]

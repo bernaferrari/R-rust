@@ -130,6 +130,20 @@ pub unsafe fn set_current_instance(instance: *mut RInstance) {
     });
 }
 
+/// Replace the current thread-local R instance and return the previous value.
+///
+/// This is the primitive used by scoped session activation. It only stores raw
+/// pointers; callers remain responsible for ensuring any non-null pointer stays
+/// valid while installed.
+pub unsafe fn replace_current_instance(instance: Option<*mut RInstance>) -> Option<*mut RInstance> {
+    CURRENT_INSTANCE.with(|ci| {
+        let mut current = ci.borrow_mut();
+        let previous = *current;
+        *current = instance;
+        previous
+    })
+}
+
 /// Clear the current thread-local R instance.
 ///
 /// Should be called when an `RSession` is closed or dropped.
@@ -157,6 +171,12 @@ pub fn clear_current_instance_if(instance: *const RInstance) -> bool {
             false
         }
     })
+}
+
+/// Return the current raw instance pointer, if one is active.
+#[inline]
+pub fn current_instance_ptr() -> Option<*mut RInstance> {
+    CURRENT_INSTANCE.with(|ci| *ci.borrow())
 }
 
 /// Execute a closure with a reference to the current instance, if active.
