@@ -4,6 +4,8 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CASES_DIR="$ROOT_DIR/tests/conformance/cases"
 GOLDEN_DIR="$ROOT_DIR/tests/conformance/golden"
+ERROR_CASES_DIR="$ROOT_DIR/tests/conformance/error_cases"
+ERROR_GOLDEN_DIR="$ROOT_DIR/tests/conformance/error_golden"
 XFAIL_FILE="$ROOT_DIR/tests/conformance/xfail.tsv"
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 
@@ -77,6 +79,12 @@ normalize_output() {
     tr -d '\r' | sed 's/[[:space:]]*$//'
 }
 
+normalize_error_output() {
+    normalize_output |
+        sed '/^Execution halted$/d' |
+        sed -E 's/^Error in .* : /Error: /'
+}
+
 is_xfail() {
     local case_name="$1"
     [[ -f "$XFAIL_FILE" ]] && awk -F '\t' -v case_name="$case_name" \
@@ -140,6 +148,62 @@ run_case() {
     rm -rf "$tmp_dir"
 }
 
+run_error_case() {
+    local case_file="$1"
+    local case_name
+    case_name="$(basename "$case_file" .R)"
+
+    local golden_file="$ERROR_GOLDEN_DIR/${case_name}.out"
+    if [[ ! -f "$golden_file" ]]; then
+        echo "FAIL ${case_name}: missing error golden file $golden_file"
+        return 1
+    fi
+
+    local tmp_dir
+    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/rport-conformance-error.XXXXXX")"
+
+    local c_out="$tmp_dir/c.out"
+    local r_out="$tmp_dir/r.out"
+    local c_norm="$tmp_dir/c.norm"
+    local r_norm="$tmp_dir/r.norm"
+    local g_norm="$tmp_dir/golden.norm"
+
+    if env LC_ALL=C LANG=C Rscript --vanilla "$case_file" >"$c_out" 2>&1; then
+        echo "FAIL ${case_name}: Rscript succeeded, expected error"
+        sed 's/^/  C | /' "$c_out"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    if env LC_ALL=C LANG=C "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
+        echo "FAIL ${case_name}: Rust runner succeeded, expected error"
+        sed 's/^/  R | /' "$r_out"
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    normalize_error_output <"$c_out" >"$c_norm"
+    normalize_error_output <"$r_out" >"$r_norm"
+    normalize_error_output <"$golden_file" >"$g_norm"
+
+    if ! cmp -s "$c_norm" "$g_norm"; then
+        echo "FAIL ${case_name}: C R error diverged from golden"
+        diff -u "$g_norm" "$c_norm" || true
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    if ! cmp -s "$r_norm" "$g_norm"; then
+        echo "FAIL ${case_name}: Rust error diverged from golden"
+        diff -u "$g_norm" "$r_norm" || true
+        rm -rf "$tmp_dir"
+        return 1
+    fi
+
+    echo "PASS ${case_name}"
+    rm -rf "$tmp_dir"
+}
+
 main() {
     local total=0
     local passed=0
@@ -162,6 +226,30 @@ main() {
         local case_name
         case_name="$(basename "$case_file" .R)"
         if run_case "$case_file"; then
+            if is_xfail "$case_name"; then
+                echo "XPASS ${case_name}: remove from $XFAIL_FILE or fix the owner bead"
+                xpassed=$((xpassed + 1))
+                failed=$((failed + 1))
+            else
+                passed=$((passed + 1))
+            fi
+        elif is_xfail "$case_name"; then
+            echo "XFAIL ${case_name}"
+            xfailed=$((xfailed + 1))
+        else
+            failed=$((failed + 1))
+        fi
+    done
+
+    shopt -s nullglob
+    local error_cases=("$ERROR_CASES_DIR"/*.R)
+    shopt -u nullglob
+
+    for case_file in "${error_cases[@]}"; do
+        total=$((total + 1))
+        local case_name
+        case_name="$(basename "$case_file" .R)"
+        if run_error_case "$case_file"; then
             if is_xfail "$case_name"; then
                 echo "XPASS ${case_name}: remove from $XFAIL_FILE or fix the owner bead"
                 xpassed=$((xpassed + 1))

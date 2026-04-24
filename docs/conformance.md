@@ -10,6 +10,8 @@ The harness:
 - reads scripted cases from `tests/conformance/cases/*.R`
 - normalizes output deterministically
 - compares both engines against checked-in goldens in `tests/conformance/golden/*.out`
+- compares expected-error fixtures from `tests/conformance/error_cases/*.R`
+  against normalized goldens in `tests/conformance/error_golden/*.out`
 - treats entries in `tests/conformance/xfail.tsv` as known gaps that must have
   an owner bead and reason
 - exits successfully with a clear skip message if `Rscript` is not available
@@ -47,6 +49,7 @@ Rust artifact after source edits.
 - `018_missing_arg_false.R` checks `missing(x)` for supplied formals
 - `019_while_break.R` checks loop break unwinding
 - `020_while_next.R` checks loop next unwinding
+- `021_missing_arg_error.R` checks missing formal argument errors
 
 ## Domain Matrix
 
@@ -73,7 +76,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 20 passing cases and 0 expected failures.
+Current parity status is 21 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 
