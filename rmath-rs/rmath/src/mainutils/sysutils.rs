@@ -152,17 +152,18 @@ unsafe fn translateChar(s: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(s) }
 }
 
-/// R_Interactive flag. Set to false (non-interactive mode).
-static R_INTERACTIVE: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-
 /// Set R_Interactive flag.
 pub fn R_SetInteractive(val: bool) {
-    R_INTERACTIVE.store(val, std::sync::atomic::Ordering::Relaxed);
+    let flag = if val { TRUE } else { FALSE };
+    crate::sexp::instance::with_current_instance(|inst| {
+        inst.eval_state.interactive = flag;
+    });
 }
 
 /// Get R_Interactive flag.
 pub fn R_Interactive() -> bool {
-    R_INTERACTIVE.load(std::sync::atomic::Ordering::Relaxed)
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.interactive != FALSE)
+        .unwrap_or(false)
 }
 
 /// Sys.getenv() — get environment variables.

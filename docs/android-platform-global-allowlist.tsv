@@ -69,7 +69,6 @@ rmath-rs/rmath/src/mainutils/source.rs	parser-runtime	sessionize	rport-ur1	Parse
 rmath-rs/rmath/src/mainutils/sprintf.rs	printing-runtime	sessionize	rport-c2w	sprintf output buffer; move into call-local/session state.
 rmath-rs/rmath/src/mainutils/sprintf_main.rs	printing-runtime	sessionize	rport-c2w	sprintf format buffers; move into call-local/session state.
 rmath-rs/rmath/src/mainutils/startup.rs	process-startup	disabled-android	rport-dg0.2	Workspace startup pointer; Android host should configure explicitly.
-rmath-rs/rmath/src/mainutils/sysutils.rs	process-state	sessionize	rport-dg0.2	Interactive flag should be session/host configuration.
 rmath-rs/rmath/src/modules/internet/internet.rs	network-runtime	platform-replace	rport-dg0.2	Internet quiet flag; Android network integration must be host controlled.
 rmath-rs/rmath/src/modules/internet/libcurl.rs	network-runtime	platform-replace	rport-dg0.2	libcurl/progress/header scratch state; Android networking policy pending.
 rmath-rs/rmath/src/modules/internet/rhttpd.rs	network-runtime	disabled-android	rport-dg0.2	In-process HTTP server state; disabled for Android embedding.
