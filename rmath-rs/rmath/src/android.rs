@@ -550,6 +550,17 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_summary_na_rm() {
+        let mut session = RSession::new();
+        let sum = session.eval("sum(c(1, NA, 3), na.rm = TRUE)");
+        let min = session.eval("min(c(3, NA, 1), na.rm = TRUE)");
+        let range = session.eval("range(c(3, NA, 1), na.rm = TRUE)");
+        assert_eq!(sum.output, "[1] 4");
+        assert_eq!(min.output, "[1] 1");
+        assert_eq!(range.output, "[1] 1 3");
+    }
+
+    #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");

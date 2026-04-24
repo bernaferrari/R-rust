@@ -564,11 +564,27 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     unsafe {
         let op_name = get_op_name(call);
 
-        // Collect all values from all arguments
-        let mut vals: Vec<f64> = Vec::new();
-        let mut has_na = false;
+        let mut na_rm = false;
+
         let mut current = args;
         while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "na.rm") {
+                na_rm = logical_arg_is_true(CAR(current));
+                break;
+            }
+            current = CDR(current);
+        }
+
+        // Collect all values from all data arguments.
+        let mut vals: Vec<f64> = Vec::new();
+        let mut has_na = false;
+        current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name_is(TAG(current), "na.rm") {
+                current = CDR(current);
+                continue;
+            }
+
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
                 let t = TYPEOF(arg);
@@ -577,6 +593,9 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                     for i in 0..n {
                         let v = elt_real(arg, i);
                         if v.to_bits() == R_NA_BIT_PATTERN {
+                            if na_rm {
+                                continue;
+                            }
                             has_na = true;
                         }
                         vals.push(v);

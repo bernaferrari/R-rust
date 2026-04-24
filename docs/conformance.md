@@ -65,6 +65,9 @@ Rust artifact after source edits.
 - `034_mean_na_rm.R` checks `mean()` with `na.rm`
 - `035_mean_sequence.R` checks `mean()` over `:` sequences
 - `036_mean_na.R` checks `mean()` with `NA`
+- `037_sum_na_rm.R` checks `sum()` with `na.rm`
+- `038_min_na_rm.R` checks `min()` with `na.rm`
+- `039_range_na_rm.R` checks `range()` with `na.rm`
 
 ## Domain Matrix
 
@@ -73,7 +76,7 @@ Rust artifact after source edits.
 | Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
 | Evaluator/scoping/promises | Seeded | parity cases 011-020 plus Android closure tests | `rport-t57` |
 | Vector semantics | Seeded | parity cases 003, 008, 009, 022-026 | `rport-c2w` |
-| Base functions | Seeded | parity cases 002, 029, 033-036 plus Android eval smoke tests | `rport-6p2` |
+| Base functions | Seeded | parity cases 002, 029, 033-039 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
 | Packages/namespaces | Open | no parity gate yet | `rport-97s` |
 | Object systems | Open | factor parity case 010; no broader S3/S4 gate yet | `rport-fs5` |
@@ -91,7 +94,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 36 passing cases and 0 expected failures.
+Current parity status is 39 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 
