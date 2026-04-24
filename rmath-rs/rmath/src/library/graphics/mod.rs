@@ -62,7 +62,7 @@ mod plot;
     unused_assignments,
     non_camel_case_types
 )]
-mod plot3d;
+pub(crate) mod plot3d;
 #[allow(
     dead_code,
     unused_imports,

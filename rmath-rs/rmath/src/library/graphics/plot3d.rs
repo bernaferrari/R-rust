@@ -26,7 +26,6 @@
  *  R_NilValue().
  */
 
-use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -35,6 +34,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::*;
 
 /* ========================================================================
@@ -230,17 +230,40 @@ type Vector3d = [c_double; 4];
 /// Trans3d: a 4x4 transformation matrix.
 type Trans3d = [[c_double; 4]; 4];
 
-/// The viewing transformation matrix (module-level state, matching C static).
-thread_local! { static VT: Cell<Trans3d> = Cell::new([[0.0; 4]; 4]); }
+pub(crate) struct Plot3dState {
+    vt: Trans3d,
+    light: [c_double; 4],
+    shade: c_double,
+    do_lighting: bool,
+}
 
-/// Light source direction vector (module-level state).
-thread_local! { static Light: Cell<[c_double; 4]> = Cell::new([0.0; 4]); }
+impl Default for Plot3dState {
+    fn default() -> Self {
+        Plot3dState {
+            vt: [[0.0; 4]; 4],
+            light: [0.0; 4],
+            shade: 1.0,
+            do_lighting: false,
+        }
+    }
+}
 
-/// Shade exponent for lighting.
-thread_local! { static Shade: Cell<c_double> = Cell::new(1.0); }
+#[inline]
+fn with_plot3d_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut Plot3dState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.plot3d_state))
+}
 
-/// Whether lighting is enabled.
-thread_local! { static DoLighting: Cell<bool> = Cell::new(false); }
+fn set_vt_identity() {
+    with_plot3d_state(|state| {
+        state.vt = [[0.0; 4]; 4];
+        for i in 0..4 {
+            state.vt[i][i] = 1.0;
+        }
+    });
+}
 
 /// Transform a 3D vector by a 4x4 transformation matrix.
 /// Real implementation of the matrix-vector product.
@@ -259,8 +282,8 @@ fn TransVector(u: &Vector3d, t: *const Trans3d, v: &mut Vector3d) {
 /// Accumulate (right-multiply) a transformation into the global VT matrix.
 /// VT := VT * T
 fn Accumulate(t: &Trans3d) {
-    VT.with(|v| {
-        let vt = v.get();
+    with_plot3d_state(|state| {
+        let vt = state.vt;
         let mut u: Trans3d = [[0.0; 4]; 4];
         for i in 0..4 {
             for j in 0..4 {
@@ -271,7 +294,7 @@ fn Accumulate(t: &Trans3d) {
                 u[i][j] = sum;
             }
         }
-        v.set(u);
+        state.vt = u;
     });
 }
 
@@ -364,22 +387,13 @@ fn Perspective(d: c_double) {
 /// Set up the light source direction from spherical coordinates.
 fn SetUpLight(theta: c_double, phi: c_double) {
     let u: Vector3d = [0.0, -1.0, 0.0, 1.0];
-    VT.with(|v| {
-        let mut m = v.get();
-        for i in 0..4 {
-            for j in 0..4 {
-                m[i][j] = 0.0;
-            }
-            m[i][i] = 1.0;
-        }
-        v.set(m);
-    });
+    set_vt_identity();
     XRotate(-phi);
     ZRotate(theta);
-    let vt_val = VT.with(|v| v.get());
+    let vt_val = with_plot3d_state(|state| state.vt);
     let mut light: [c_double; 4] = [0.0; 4];
     TransVector(&u, &vt_val, &mut light);
-    Light.with(|v| v.set(light));
+    with_plot3d_state(|state| state.light = light);
 }
 
 /// Compute the shading factor for a facet given two edge vectors.
@@ -394,12 +408,9 @@ fn FacetShade(u: &[c_double], v: &[c_double]) -> c_double {
     let nx = nx / sum;
     let ny = ny / sum;
     let nz = nz / sum;
-    let s = 0.5
-        * (nx * Light.with(|v| v.get())[0]
-            + ny * Light.with(|v| v.get())[1]
-            + nz * Light.with(|v| v.get())[2]
-            + 1.0);
-    s.powf(Shade.with(|v| v.get()))
+    let (light, shade) = with_plot3d_state(|state| (state.light, state.shade));
+    let s = 0.5 * (nx * light[0] + ny * light[1] + nz * light[2] + 1.0);
+    s.powf(shade)
 }
 
 /* ========================================================================
@@ -570,7 +581,7 @@ fn DepthOrder(
                     u[2] = 0.0;
                     u[3] = 1.0;
                     if u[0].is_finite() && u[1].is_finite() && u[2].is_finite() {
-                        let vt_val = VT.with(|v| v.get());
+                        let vt_val = with_plot3d_state(|state| state.vt);
                         TransVector(&u, &vt_val, &mut v);
                         if v[3] > d {
                             d = v[3];
@@ -1161,7 +1172,7 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     _args = CDR(_args);
     let _lphi = asReal(CAR(_args));
     _args = CDR(_args);
-    Shade.with(|v| v.set(asReal(CAR(_args))));
+    with_plot3d_state(|state| state.shade = asReal(CAR(_args)));
     _args = CDR(_args);
     let _dobox = asLogical(CAR(_args));
     _args = CDR(_args);
@@ -1178,14 +1189,17 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     let _zlab = CAR(_args);
     _args = CDR(_args);
 
-    let shade_val = Shade.with(|v| v.get());
+    let shade_val = with_plot3d_state(|state| state.shade);
     if shade_val.is_finite() && shade_val <= 0.0 {
-        Shade.with(|v| v.set(1.0));
+        with_plot3d_state(|state| state.shade = 1.0);
     }
-    if _ltheta.is_finite() && _lphi.is_finite() && Shade.with(|v| v.get()).is_finite() {
-        DoLighting.with(|v| v.set(true));
+    if _ltheta.is_finite()
+        && _lphi.is_finite()
+        && with_plot3d_state(|state| state.shade).is_finite()
+    {
+        with_plot3d_state(|state| state.do_lighting = true);
     } else {
-        DoLighting.with(|v| v.set(false));
+        with_plot3d_state(|state| state.do_lighting = false);
     }
 
     let mut _xs2 = _xs;
@@ -1221,16 +1235,7 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     }
 
     /* Set up the viewing transformation (real math) */
-    VT.with(|v| {
-        let mut m = v.get();
-        for i in 0..4 {
-            for j in 0..4 {
-                m[i][j] = 0.0;
-            }
-            m[i][i] = 1.0;
-        }
-        v.set(m);
-    });
+    set_vt_identity();
     Translate(-_xc, -_yc, -_zc);
     Scale(1.0 / _xs2, 1.0 / _ys2, _expand / _zs2);
     XRotate(-90.0);
@@ -1240,11 +1245,11 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     Perspective(_d);
 
     /* Set up lighting (real math) */
-    if DoLighting.with(|v| v.get()) {
+    if with_plot3d_state(|state| state.do_lighting) {
         /* Save VT, set up light direction, then restore VT */
-        let saved_vt = VT.with(|v| v.get());
+        let saved_vt = with_plot3d_state(|state| state.vt);
         SetUpLight(_ltheta, _lphi);
-        VT.with(|v| v.set(saved_vt));
+        with_plot3d_state(|state| state.vt = saved_vt);
     }
 
     /* Compute depth order (real algorithm) */
@@ -1268,7 +1273,7 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
     let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
     for i in 0..4 {
         for j in 0..4 {
-            *REAL(result).add(i + j * 4) = VT.with(|v| v.get())[i][j];
+            *REAL(result).add(i + j * 4) = with_plot3d_state(|state| state.vt)[i][j];
         }
     }
     *INTEGER(dim).add(0) = 4;
@@ -1447,4 +1452,43 @@ pub unsafe fn C_contour(args: SEXP) -> SEXP {
 
     Rf_unprotect(8);
     R_NilValue()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn plot3d_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            with_plot3d_state(|state| {
+                state.vt[0][0] = 42.0;
+                state.light = [1.0, 2.0, 3.0, 4.0];
+                state.shade = 3.5;
+                state.do_lighting = true;
+            });
+        });
+
+        right.with_protected(|| {
+            with_plot3d_state(|state| {
+                assert_eq!(state.vt, [[0.0; 4]; 4]);
+                assert_eq!(state.light, [0.0; 4]);
+                assert_eq!(state.shade, 1.0);
+                assert!(!state.do_lighting);
+            });
+        });
+
+        left.with_protected(|| {
+            with_plot3d_state(|state| {
+                assert_eq!(state.vt[0][0], 42.0);
+                assert_eq!(state.light, [1.0, 2.0, 3.0, 4.0]);
+                assert_eq!(state.shade, 3.5);
+                assert!(state.do_lighting);
+            });
+        });
+    }
 }
