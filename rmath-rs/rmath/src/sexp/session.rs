@@ -25,16 +25,61 @@
 //! [`RSession::close`]. Once closed, evaluation and variable definition
 //! operations become no-ops or return errors.
 
+use std::ffi::CString;
 use std::os::raw::c_int;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::ptr;
 
+use super::context::{RError, RSignal};
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
-use super::instance::{RInstance, set_current_instance, clear_current_instance};
+use super::instance::{RInstance, clear_current_instance, set_current_instance};
 use super::memory::RArena;
 use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 use super::safe::Sexp;
-use crate::error::{catch_r, REvalError, RResult};
+
+/// Error returned by safe session evaluation APIs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct REvalError {
+    pub message: String,
+}
+
+impl std::fmt::Display for REvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.message)
+    }
+}
+
+impl std::error::Error for REvalError {}
+
+pub type RResult<T> = Result<T, REvalError>;
+
+fn install_symbol(name: &str) -> Option<SEXP> {
+    let name = CString::new(name).ok()?;
+    let symbol = unsafe { crate::sexp::symbol::Rf_install(name.as_ptr()) };
+    if symbol.is_null() { None } else { Some(symbol) }
+}
+
+fn catch_eval<F>(f: F) -> RResult<SEXP>
+where
+    F: FnOnce() -> SEXP,
+{
+    match catch_unwind(AssertUnwindSafe(f)) {
+        Ok(value) => Ok(value),
+        Err(payload) => match payload.downcast::<RSignal>() {
+            Ok(signal) => match *signal {
+                RSignal::Error { message } => Err(REvalError { message }),
+                other => std::panic::panic_any(other),
+            },
+            Err(payload) => match payload.downcast::<RError>() {
+                Ok(err) => Err(REvalError {
+                    message: err.message.clone(),
+                }),
+                Err(payload) => std::panic::resume_unwind(payload),
+            },
+        },
+    }
+}
 
 /// An R interpreter session with its own isolated instance state.
 ///
@@ -108,11 +153,7 @@ impl RSession {
                 message: "session is closed".to_string(),
             });
         }
-        catch_r(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) }).map_err(|e| {
-            REvalError {
-                message: format!("evaluation failed: {}", e.message),
-            }
-        })
+        catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) })
     }
 
     /// Evaluate an expression with a custom environment.
@@ -131,9 +172,7 @@ impl RSession {
                 message: "session is closed".to_string(),
             });
         }
-        catch_r(|| unsafe { crate::eval::eval::Rf_eval(expr, env) }).map_err(|e| REvalError {
-            message: format!("evaluation failed: {}", e.message),
-        })
+        catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, env) })
     }
 
     /// Find a variable by name in the global environment.
@@ -141,14 +180,9 @@ impl RSession {
     /// Returns `None` if the variable is not found, is unbound, or
     /// is `R_NilValue`.
     ///
-    /// # Safety
-    ///
-    /// The `name` string must be null-terminated and valid UTF-8.
+    /// Names with interior NUL bytes are rejected.
     pub fn find_var(&self, name: &str) -> Option<Sexp<'_>> {
-        let symbol = unsafe { crate::sexp::symbol::Rf_install(name.as_ptr() as *const _) };
-        if symbol.is_null() {
-            return None;
-        }
+        let symbol = install_symbol(name)?;
         let result = unsafe { crate::sexp::envir::R_findVar(symbol, self.instance.global_env) };
         if result == unsafe { R_UnboundValue() } || result == unsafe { R_NilValue() } {
             None
@@ -162,18 +196,16 @@ impl RSession {
     /// This is a no-op if the session is closed or if the symbol
     /// cannot be interned.
     ///
-    /// # Safety
+    /// Names with interior NUL bytes are rejected.
     ///
-    /// The `name` string must be null-terminated and valid UTF-8.
     /// The `value` pointer must be a valid SEXP or null.
     pub fn define_var(&self, name: &str, value: SEXP) {
         if !self.active {
             return;
         }
-        let symbol = unsafe { crate::sexp::symbol::Rf_install(name.as_ptr() as *const _) };
-        if symbol.is_null() {
+        let Some(symbol) = install_symbol(name) else {
             return;
-        }
+        };
         unsafe {
             crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
         }
@@ -276,6 +308,34 @@ mod tests {
         session.close();
         let result = session.eval(ptr::null_mut());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_session_define_and_find_var_with_rust_str() {
+        let session = RSession::new();
+        let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
+        assert!(sexp.set_integer_elt(0, 42));
+
+        session.define_var("session_defined_value", value);
+
+        let found = session
+            .find_var("session_defined_value")
+            .expect("defined value should be found");
+        assert_eq!(found.integer_elt(0), Some(42));
+    }
+
+    #[test]
+    fn test_session_rejects_interior_nul_symbol_names() {
+        let session = RSession::new();
+        let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
+        assert!(sexp.set_integer_elt(0, 99));
+
+        session.define_var("session_bad\0name", value);
+
+        assert!(session.find_var("session_bad\0name").is_none());
+        assert!(session.find_var("session_bad").is_none());
     }
 
     #[test]

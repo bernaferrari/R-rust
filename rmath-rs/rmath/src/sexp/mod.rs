@@ -29,6 +29,7 @@ pub mod memory_ext;
 pub mod output;
 pub mod protect;
 pub mod safe;
+pub mod session;
 pub mod symbol;
 
 // Re-export commonly used types at the module level
@@ -49,3 +50,4 @@ pub use output::{
 };
 
 pub use safe::{PairlistIter, Sexp};
+pub use session::RSession;
