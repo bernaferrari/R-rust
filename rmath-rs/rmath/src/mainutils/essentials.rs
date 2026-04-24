@@ -2502,7 +2502,7 @@ pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -2543,7 +2543,7 @@ pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -2820,6 +2820,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
     let all_fns = [
         "c",
         "seq",
+        "seq_len",
+        "seq_along",
         "rep",
         "paste",
         "paste0",
@@ -2830,6 +2832,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "names",
         "which",
         "ifelse",
+        "any",
+        "all",
         "table",
         "simplify2array",
         "match.arg",
@@ -2914,6 +2918,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "dmultinom",
         "NROW",
         "NCOL",
+        "nrow",
+        "ncol",
         "lengths",
         "rownames",
         "colnames",
@@ -2974,6 +2980,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "summary.data.frame",
         "format.data.frame",
         // Matrix/linear algebra
+        "matrix",
+        "diag",
+        "dim",
         "crossprod",
         "tcrossprod",
         "det",
@@ -3010,6 +3019,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "anyDuplicated.array",
         "match",
         "%in%",
+        "diff",
+        "setNames",
         "findInterval",
         "cut",
         // String operations
@@ -3778,7 +3789,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         return R_NilValue(); // not a matrix/array
     }
     let nrow = *INTEGER(dim_attr) as R_xlen_t;
-    let ncol = *INTEGER(dim_attr.add(1)) as R_xlen_t;
+    let ncol = *INTEGER(dim_attr).add(1) as R_xlen_t;
     let margin = real_or_default(margin_arg, 1.0) as i64;
 
     if margin == 1 {
@@ -4034,7 +4045,7 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
     if !dim.is_null() {
         *INTEGER(dim) = nx as c_int;
-        *INTEGER(dim.add(1)) = ny as c_int;
+        *INTEGER(dim).add(1) = ny as c_int;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -4100,7 +4111,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             (n, 1)
@@ -4938,7 +4949,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
     if !dim.is_null() {
         *INTEGER(dim) = nrow as c_int;
-        *INTEGER(dim.add(1)) = ncol as c_int;
+        *INTEGER(dim).add(1) = ncol as c_int;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -4966,7 +4977,7 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             (XLENGTH(x), 1)
@@ -4998,7 +5009,7 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
     if !dim.is_null() {
         *INTEGER(dim) = ncol as c_int;
-        *INTEGER(dim.add(1)) = nrow as c_int;
+        *INTEGER(dim).add(1) = nrow as c_int;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -5038,7 +5049,7 @@ pub unsafe fn do_ncol(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
     );
     if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-        Rf_ScalarInteger(*INTEGER(dim_attr.add(1)))
+        Rf_ScalarInteger(*INTEGER(dim_attr).add(1))
     } else {
         Rf_ScalarInteger(1)
     }
@@ -5076,7 +5087,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
         // Extract diagonal
         let nrow = *INTEGER(dim_attr) as usize;
-        let ncol = *INTEGER(dim_attr.add(1)) as usize;
+        let ncol = *INTEGER(dim_attr).add(1) as usize;
         let n = nrow.min(ncol);
         let result = Rf_allocVector3(TYPEOF(x), n as R_xlen_t);
         if result.is_null() {
@@ -5095,6 +5106,45 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::protect::Rf_unprotect(1);
         result
     } else {
+        if XLENGTH(x) == 1 {
+            let n = real_or_default(x, 0.0).max(0.0) as usize;
+            let t = TYPEOF(x);
+            let result = Rf_allocVector3(t, (n * n) as R_xlen_t);
+            if result.is_null() {
+                return R_NilValue();
+            }
+            let _p = Rf_protect(result);
+
+            for i in 0..n * n {
+                if t == SEXPTYPE::REALSXP {
+                    *REAL(result).add(i) = 0.0;
+                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                    *INTEGER(result).add(i) = 0;
+                }
+            }
+            for i in 0..n {
+                let dst = i * n + i;
+                if t == SEXPTYPE::REALSXP {
+                    *REAL(result).add(dst) = 1.0;
+                } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                    *INTEGER(result).add(dst) = 1;
+                }
+            }
+
+            let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+            if !dim.is_null() {
+                *INTEGER(dim) = n as c_int;
+                *INTEGER(dim).add(1) = n as c_int;
+                crate::sexp::attrib_core::setAttrib(
+                    result,
+                    Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
+                    dim,
+                );
+            }
+            crate::sexp::protect::Rf_unprotect(1);
+            return result;
+        }
+
         // Create diagonal matrix from vector
         let n = XLENGTH(x) as usize;
         let t = TYPEOF(x);
@@ -5125,7 +5175,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
             *INTEGER(dim) = n as c_int;
-            *INTEGER(dim.add(1)) = n as c_int;
+            *INTEGER(dim).add(1) = n as c_int;
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -5810,7 +5860,7 @@ pub unsafe fn do_NCOL(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
     );
     if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
-        Rf_ScalarInteger(*INTEGER(dim_attr.add(1)))
+        Rf_ScalarInteger(*INTEGER(dim_attr).add(1))
     } else {
         Rf_ScalarInteger(1)
     }
@@ -6065,7 +6115,7 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             if !rn.is_null() {
                 let _p3 = Rf_protect(rn);
                 *INTEGER(rn) = NA_INTEGER;
-                *INTEGER(rn.add(1)) = -(nrow as i32);
+                *INTEGER(rn).add(1) = -(nrow as i32);
                 crate::sexp::attrib_core::setAttrib(
                     result,
                     Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
@@ -6597,7 +6647,7 @@ pub unsafe fn do_print_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x).max(1);
@@ -6936,7 +6986,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
     if !rn.is_null() {
         let _p3 = Rf_protect(rn);
         *INTEGER(rn) = NA_INTEGER;
-        *INTEGER(rn.add(1)) = -(nrow as i32);
+        *INTEGER(rn).add(1) = -(nrow as i32);
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
@@ -7065,7 +7115,7 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
     if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) == 2 {
         // 2D table: print as matrix
         let nrow = *INTEGER(dim_attr) as usize;
-        let ncol = *INTEGER(dim_attr.add(1)) as usize;
+        let ncol = *INTEGER(dim_attr).add(1) as usize;
 
         // Get dimnames
         let dn = crate::sexp::attrib_core::getAttrib(
@@ -7342,7 +7392,7 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
     if !dim.is_null() {
         let _p2 = Rf_protect(dim);
         *INTEGER(dim) = nrow as i32;
-        *INTEGER(dim.add(1)) = ncol as i32;
+        *INTEGER(dim).add(1) = ncol as i32;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -7389,13 +7439,13 @@ pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
     let (x_nrow, x_ncol) =
         if !xdim.is_null() && TYPEOF(xdim) == SEXPTYPE::INTSXP && LENGTH(xdim) == 2 {
-            (*INTEGER(xdim) as usize, *INTEGER(xdim.add(1)) as usize)
+            (*INTEGER(xdim) as usize, *INTEGER(xdim).add(1) as usize)
         } else {
             (x_n as usize, 1)
         };
     let (y_nrow, y_ncol) =
         if !ydim.is_null() && TYPEOF(ydim) == SEXPTYPE::INTSXP && LENGTH(ydim) == 2 {
-            (*INTEGER(ydim) as usize, *INTEGER(ydim.add(1)) as usize)
+            (*INTEGER(ydim) as usize, *INTEGER(ydim).add(1) as usize)
         } else {
             (y_n as usize, 1)
         };
@@ -7438,7 +7488,7 @@ pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     if !dim.is_null() {
         let _p2 = Rf_protect(dim);
         *INTEGER(dim) = x_ncol as i32;
-        *INTEGER(dim.add(1)) = y_ncol as i32;
+        *INTEGER(dim).add(1) = y_ncol as i32;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -7480,13 +7530,13 @@ pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
     let (x_nrow, x_ncol) =
         if !xdim.is_null() && TYPEOF(xdim) == SEXPTYPE::INTSXP && LENGTH(xdim) == 2 {
-            (*INTEGER(xdim) as usize, *INTEGER(xdim.add(1)) as usize)
+            (*INTEGER(xdim) as usize, *INTEGER(xdim).add(1) as usize)
         } else {
             (x_n as usize, 1)
         };
     let (y_nrow, y_ncol) =
         if !ydim.is_null() && TYPEOF(ydim) == SEXPTYPE::INTSXP && LENGTH(ydim) == 2 {
-            (*INTEGER(ydim) as usize, *INTEGER(ydim.add(1)) as usize)
+            (*INTEGER(ydim) as usize, *INTEGER(ydim).add(1) as usize)
         } else {
             (y_n as usize, 1)
         };
@@ -7528,7 +7578,7 @@ pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
     if !dim.is_null() {
         let _p2 = Rf_protect(dim);
         *INTEGER(dim) = x_nrow as i32;
-        *INTEGER(dim.add(1)) = y_nrow as i32;
+        *INTEGER(dim).add(1) = y_nrow as i32;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -7557,7 +7607,7 @@ pub unsafe fn do_det(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return Rf_ScalarReal(NA_REAL);
     }
     let n = *INTEGER(dim_attr) as usize;
-    let m = *INTEGER(dim_attr.add(1)) as usize;
+    let m = *INTEGER(dim_attr).add(1) as usize;
     if n != m || n == 0 {
         return Rf_ScalarReal(NA_REAL);
     }
@@ -7637,7 +7687,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return R_NilValue();
     }
     let n = *INTEGER(dim_attr) as usize;
-    let m = *INTEGER(dim_attr.add(1)) as usize;
+    let m = *INTEGER(dim_attr).add(1) as usize;
     if n != m || n == 0 {
         return R_NilValue();
     }
@@ -7655,7 +7705,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
         );
         if !b_dim.is_null() && TYPEOF(b_dim) == SEXPTYPE::INTSXP && LENGTH(b_dim) == 2 {
-            *INTEGER(b_dim.add(1)) as usize
+            *INTEGER(b_dim).add(1) as usize
         } else {
             1
         }
@@ -7757,7 +7807,7 @@ pub unsafe fn do_solve(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !dim.is_null() {
             let _p2 = Rf_protect(dim);
             *INTEGER(dim) = n as i32;
-            *INTEGER(dim.add(1)) = nrhs as i32;
+            *INTEGER(dim).add(1) = nrhs as i32;
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -13792,7 +13842,7 @@ pub unsafe fn do_colSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -13861,7 +13911,7 @@ pub unsafe fn do_rowSums(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -13923,7 +13973,7 @@ pub unsafe fn do_colMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -13993,7 +14043,7 @@ pub unsafe fn do_rowMeans(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -14059,7 +14109,7 @@ pub unsafe fn do_col(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -14096,7 +14146,7 @@ pub unsafe fn do_row(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2 {
             (
                 *INTEGER(dim_attr) as R_xlen_t,
-                *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                *INTEGER(dim_attr).add(1) as R_xlen_t,
             )
         } else {
             let n = XLENGTH(x);
@@ -14250,7 +14300,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
                 let r = *INTEGER(dim_attr) as R_xlen_t;
-                let c = *INTEGER(dim_attr.add(1)) as R_xlen_t;
+                let c = *INTEGER(dim_attr).add(1) as R_xlen_t;
                 if nrows == 0 {
                     nrows = r;
                 }
@@ -14294,7 +14344,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             {
                 (
                     *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                    *INTEGER(dim_attr).add(1) as R_xlen_t,
                 )
             } else {
                 (XLENGTH(arg), 1)
@@ -14335,7 +14385,7 @@ pub unsafe fn do_cbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if !dim.is_null() {
         let _dp = Rf_protect(dim);
         *INTEGER(dim) = nrows as c_int;
-        *INTEGER(dim.add(1)) = ncols as c_int;
+        *INTEGER(dim).add(1) = ncols as c_int;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -14378,7 +14428,7 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if !dim_attr.is_null() && TYPEOF(dim_attr) == SEXPTYPE::INTSXP && LENGTH(dim_attr) >= 2
             {
                 let r = *INTEGER(dim_attr) as R_xlen_t;
-                let c = *INTEGER(dim_attr.add(1)) as R_xlen_t;
+                let c = *INTEGER(dim_attr).add(1) as R_xlen_t;
                 if ncols == 0 {
                     ncols = c;
                 }
@@ -14422,7 +14472,7 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             {
                 (
                     *INTEGER(dim_attr) as R_xlen_t,
-                    *INTEGER(dim_attr.add(1)) as R_xlen_t,
+                    *INTEGER(dim_attr).add(1) as R_xlen_t,
                 )
             } else {
                 (1, XLENGTH(arg))
@@ -14463,7 +14513,7 @@ pub unsafe fn do_rbind(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     if !dim.is_null() {
         let _dp = Rf_protect(dim);
         *INTEGER(dim) = nrows as c_int;
-        *INTEGER(dim.add(1)) = ncols as c_int;
+        *INTEGER(dim).add(1) = ncols as c_int;
         crate::sexp::attrib_core::setAttrib(
             result,
             Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
@@ -15700,7 +15750,7 @@ pub unsafe fn do_outer_enhanced(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
             *INTEGER(dim) = nx as c_int;
-            *INTEGER(dim.add(1)) = ny as c_int;
+            *INTEGER(dim).add(1) = ny as c_int;
             crate::sexp::attrib_core::setAttrib(
                 result,
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),

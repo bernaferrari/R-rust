@@ -154,6 +154,80 @@ fn format_logical_value(v: i32) -> String {
     }
 }
 
+fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
+    unsafe {
+        let dim = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_DimSymbol(),
+        );
+        let dim = Sexp::from_raw(dim)?;
+        if dim.typeof_() != SEXPTYPE::INTSXP || dim.len() != 2 {
+            return None;
+        }
+        let nrow = dim.integer_elt(0)? as usize;
+        let ncol = dim.integer_elt(1)? as usize;
+        if nrow.checked_mul(ncol)? > x.len() as usize {
+            return None;
+        }
+        Some((nrow, ncol))
+    }
+}
+
+fn format_matrix_with<F>(nrow: usize, ncol: usize, value_at: F) -> String
+where
+    F: Fn(usize, usize) -> String,
+{
+    let mut values = vec![vec![String::new(); ncol]; nrow];
+    let mut widths = Vec::with_capacity(ncol);
+    for c in 0..ncol {
+        let mut width = format!("[,{}]", c + 1).len().max(4);
+        for r in 0..nrow {
+            let value = value_at(r, c);
+            width = width.max(value.len());
+            values[r][c] = value;
+        }
+        widths.push(width);
+    }
+
+    let mut lines = Vec::with_capacity(nrow + 1);
+    let mut header = format!("{:5}", "");
+    for (c, width) in widths.iter().enumerate() {
+        header.push_str(&format!("{:>width$}", format!("[,{}]", c + 1)));
+        if c + 1 < ncol {
+            header.push(' ');
+        }
+    }
+    lines.push(header);
+
+    for r in 0..nrow {
+        let mut line = format!("{:<5}", format!("[{},]", r + 1));
+        for (c, width) in widths.iter().enumerate() {
+            line.push_str(&format!("{:>width$}", values[r][c]));
+            if c + 1 < ncol {
+                line.push(' ');
+            }
+        }
+        lines.push(line);
+    }
+    lines.join("\n")
+}
+
+fn format_matrix(x: Sexp<'_>) -> Option<String> {
+    let (nrow, ncol) = matrix_dims(x)?;
+    match x.typeof_() {
+        SEXPTYPE::INTSXP => Some(format_matrix_with(nrow, ncol, |r, c| {
+            format_integer_value(x.integer_elt((r + c * nrow) as i64).unwrap_or(NA_INTEGER))
+        })),
+        SEXPTYPE::REALSXP => Some(format_matrix_with(nrow, ncol, |r, c| {
+            format_real_value(x.real_elt((r + c * nrow) as i64).unwrap_or(f64::NAN))
+        })),
+        SEXPTYPE::LGLSXP => Some(format_matrix_with(nrow, ncol, |r, c| {
+            format_logical_value(x.logical_elt((r + c * nrow) as i64).unwrap_or(NA_INTEGER))
+        })),
+        _ => None,
+    }
+}
+
 fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
     unsafe {
         let class = crate::sexp::attrib_core::getAttrib(
@@ -265,6 +339,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit("NULL\n");
         }
         SEXPTYPE::INTSXP => {
+            if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if let Some(output) = format_factor(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -283,6 +361,10 @@ pub fn print_value(x: Sexp<'_>) {
             }
         }
         SEXPTYPE::REALSXP => {
+            if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if x.len() == 1 {
                 let v = x.real_elt(0).unwrap_or(0.0);
                 emit(&format!("[1] {}\n", format_real_value(v)));
@@ -293,6 +375,10 @@ pub fn print_value(x: Sexp<'_>) {
             }
         }
         SEXPTYPE::LGLSXP => {
+            if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             let vals: Vec<String> = x
                 .iter_logical()
                 .take(10)
@@ -377,6 +463,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     match x.typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
+            if let Some(output) = format_matrix(x) {
+                return output;
+            }
             if let Some(output) = format_factor(x) {
                 return output;
             }
@@ -394,6 +483,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
         }
         SEXPTYPE::REALSXP => {
+            if let Some(output) = format_matrix(x) {
+                return output;
+            }
             if x.len() == 1 {
                 let v = x.real_elt(0).unwrap_or(0.0);
                 format!("[1] {}", format_real_value(v))
@@ -404,6 +496,9 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
         }
         SEXPTYPE::LGLSXP => {
+            if let Some(output) = format_matrix(x) {
+                return output;
+            }
             let vals: Vec<String> = x
                 .iter_logical()
                 .take(10)

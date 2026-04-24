@@ -771,6 +771,40 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_matrix_sequence_and_logic_helpers() {
+        let mut session = RSession::new();
+        let any = session.eval("any(c(FALSE, TRUE))");
+        let all = session.eval("all(c(TRUE, FALSE))");
+        let matrix = session.eval("matrix(1:4, nrow = 2)");
+        let dim = session.eval("dim(matrix(1:4, nrow = 2))");
+        let nrow = session.eval("nrow(matrix(1:4, nrow = 2))");
+        let ncol = session.eval("ncol(matrix(1:4, nrow = 2))");
+        let diag = session.eval("diag(3)");
+        let diff = session.eval("diff(c(1, 4, 9))");
+        let names = session.eval("names(setNames(c(1, 2), c(\"a\", \"b\")))");
+        let seq_len = session.eval("seq_len(3)");
+        let seq_along = session.eval("seq_along(c(4, 5))");
+
+        assert_eq!(any.output, "[1] TRUE");
+        assert_eq!(all.output, "[1] FALSE");
+        assert_eq!(
+            matrix.output,
+            "     [,1] [,2]\n[1,]    1    3\n[2,]    2    4"
+        );
+        assert_eq!(dim.output, "[1] 2 2");
+        assert_eq!(nrow.output, "[1] 2");
+        assert_eq!(ncol.output, "[1] 2");
+        assert_eq!(
+            diag.output,
+            "     [,1] [,2] [,3]\n[1,]    1    0    0\n[2,]    0    1    0\n[3,]    0    0    1"
+        );
+        assert_eq!(diff.output, "[1] 3 5");
+        assert_eq!(names.output, "[1] \"a\" \"b\"");
+        assert_eq!(seq_len.output, "[1] 1 2 3");
+        assert_eq!(seq_along.output, "[1] 1 2");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
