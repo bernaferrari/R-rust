@@ -45,16 +45,31 @@ find_rust_rlib() {
     printf '%s' "$found"
 }
 
+RUSTFLAGS_FOR_BUILD="${RUSTFLAGS:-}"
+if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
+    RUSTFLAGS_FOR_BUILD="${RUSTFLAGS_FOR_BUILD:+$RUSTFLAGS_FOR_BUILD }-Awarnings"
+fi
+
+echo "INFO: building Rust rmath artifact for conformance runner." >&2
+(cd "$ROOT_DIR" && env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo build -p rmath >/dev/null)
+
 RUST_RLIB="$(find_rust_rlib)"
 
 if [[ -z "$RUST_RLIB" ]]; then
-    echo "INFO: Rust rmath artifact not found; building with cargo." >&2
-    (cd "$ROOT_DIR" && cargo build -p rmath >/dev/null)
-    RUST_RLIB="$(find_rust_rlib)"
+    echo "ERROR: Rust rmath artifact still missing after build." >&2
+    exit 1
 fi
 
-if [[ -z "$RUST_RLIB" ]]; then
-    echo "ERROR: Rust rmath artifact still missing after build." >&2
+RUNNER_TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/rport-conformance-runner.XXXXXX")"
+RUST_BIN="$RUNNER_TMP_DIR/rust_runner"
+cleanup_runner() {
+    rm -rf "$RUNNER_TMP_DIR"
+}
+trap cleanup_runner EXIT
+
+if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$RUST_BIN" >"$RUNNER_TMP_DIR/rustc.log" 2>&1; then
+    echo "ERROR: failed to compile Rust conformance runner"
+    sed 's/^/  rustc | /' "$RUNNER_TMP_DIR/rustc.log"
     exit 1
 fi
 
@@ -96,15 +111,7 @@ run_case() {
         return 1
     fi
 
-    local rust_bin="$tmp_dir/rust_runner"
-    if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/debug/deps" --extern rmath="$RUST_RLIB" -o "$rust_bin" >"$tmp_dir/rustc.log" 2>&1; then
-        echo "FAIL ${case_name}: failed to compile Rust runner"
-        sed 's/^/  rustc | /' "$tmp_dir/rustc.log"
-        rm -rf "$tmp_dir"
-        return 1
-    fi
-
-    if ! env LC_ALL=C LANG=C "$rust_bin" "$case_file" >"$r_out" 2>&1; then
+    if ! env LC_ALL=C LANG=C "$RUST_BIN" "$case_file" >"$r_out" 2>&1; then
         echo "FAIL ${case_name}: Rust runner exited non-zero"
         sed 's/^/  R | /' "$r_out"
         rm -rf "$tmp_dir"

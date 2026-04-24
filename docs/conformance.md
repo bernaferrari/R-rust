@@ -21,7 +21,9 @@ The harness:
 ```
 
 The script is non-interactive and safe to run in CI. It uses `Rscript --vanilla`
-and a standalone Rust runner, so it does not depend on the interactive REPL.
+and a standalone Rust runner, so it does not depend on the interactive REPL. It
+builds `rmath` before compiling the runner so parity checks never reuse a stale
+Rust artifact after source edits.
 
 ## Current cases
 
