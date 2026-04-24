@@ -663,6 +663,28 @@ mod tests {
     }
 
     #[test]
+    fn test_with_visible_returns_visible_list_with_captured_flag() {
+        let mut session = RSession::new();
+
+        let visible = session.eval("withVisible(1)");
+        assert_eq!(visible.output, "$value\n[1] 1\n\n$visible\n[1] TRUE");
+        assert_eq!(
+            visible.typed,
+            RValue::List(vec![RValue::Real(Some(1.0)), RValue::Logical(Some(true))])
+        );
+
+        let invisible = session.eval("withVisible(invisible(1))");
+        assert_eq!(
+            invisible.output,
+            "$value\n[1] 1\n\n$visible\n[1] FALSE"
+        );
+        assert_eq!(
+            invisible.typed,
+            RValue::List(vec![RValue::Real(Some(1.0)), RValue::Logical(Some(false))])
+        );
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

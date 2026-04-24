@@ -11454,7 +11454,7 @@ pub unsafe fn do_with_visible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         crate::sexp::protect::Rf_unprotect(1);
     }
     crate::sexp::protect::Rf_unprotect(1);
-    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::TRUE);
     result
 }
 
