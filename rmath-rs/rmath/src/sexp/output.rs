@@ -19,12 +19,17 @@ pub struct RCapturedOutput {
 thread_local! {
     static CAPTURE_STDOUT: RefCell<Option<String>> = const { RefCell::new(None) };
     static CAPTURE_STDERR: RefCell<Option<String>> = const { RefCell::new(None) };
+    static CAPTURE_STACK: RefCell<Vec<(Option<String>, Option<String>)>> = const { RefCell::new(Vec::new()) };
     static IS_CAPTURING: Cell<bool> = const { Cell::new(false) };
 }
 
 /// Start capturing R output.
 pub fn start_capture() {
     if super::instance::with_current_instance(|inst| {
+        let outer = (inst.capture_stdout.take(), inst.capture_stderr.take());
+        if outer.0.is_some() || outer.1.is_some() {
+            inst.capture_stack.push(outer);
+        }
         inst.capture_stdout = Some(String::new());
         inst.capture_stderr = Some(String::new());
     })
@@ -32,22 +37,42 @@ pub fn start_capture() {
     {
         return;
     }
-    CAPTURE_STDOUT.with(|c| *c.borrow_mut() = Some(String::new()));
+    CAPTURE_STDOUT.with(|stdout| {
+        CAPTURE_STDERR.with(|stderr| {
+            let outer = (stdout.borrow_mut().take(), stderr.borrow_mut().take());
+            if outer.0.is_some() || outer.1.is_some() {
+                CAPTURE_STACK.with(|stack| stack.borrow_mut().push(outer));
+            }
+        });
+        *stdout.borrow_mut() = Some(String::new());
+    });
     CAPTURE_STDERR.with(|c| *c.borrow_mut() = Some(String::new()));
     IS_CAPTURING.with(|c| c.set(true));
 }
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    if let Some(output) = super::instance::with_current_instance(|inst| RCapturedOutput {
-        stdout: inst.capture_stdout.take().unwrap_or_default(),
-        stderr: inst.capture_stderr.take().unwrap_or_default(),
+    if let Some(output) = super::instance::with_current_instance(|inst| {
+        let stdout = inst.capture_stdout.take().unwrap_or_default();
+        let stderr = inst.capture_stderr.take().unwrap_or_default();
+        if let Some((outer_stdout, outer_stderr)) = inst.capture_stack.pop() {
+            inst.capture_stdout = outer_stdout;
+            inst.capture_stderr = outer_stderr;
+        }
+        RCapturedOutput { stdout, stderr }
     }) {
         return output;
     }
     let stdout = CAPTURE_STDOUT.with(|c| c.borrow_mut().take().unwrap_or_default());
     let stderr = CAPTURE_STDERR.with(|c| c.borrow_mut().take().unwrap_or_default());
-    IS_CAPTURING.with(|c| c.set(false));
+    let restored = CAPTURE_STACK.with(|stack| stack.borrow_mut().pop());
+    if let Some((outer_stdout, outer_stderr)) = restored {
+        CAPTURE_STDOUT.with(|c| *c.borrow_mut() = outer_stdout);
+        CAPTURE_STDERR.with(|c| *c.borrow_mut() = outer_stderr);
+        IS_CAPTURING.with(|c| c.set(true));
+    } else {
+        IS_CAPTURING.with(|c| c.set(false));
+    }
     RCapturedOutput { stdout, stderr }
 }
 
@@ -699,8 +724,23 @@ mod tests {
     fn test_nested_capture() {
         start_capture();
         capture_stdout("outer ");
-        let output = stop_capture();
-        assert_eq!(output.stdout, "outer ");
+        capture_stderr("outer err ");
+
+        start_capture();
+        capture_stdout("inner ");
+        capture_stderr("inner err ");
+        let inner = stop_capture();
+        assert_eq!(inner.stdout, "inner ");
+        assert_eq!(inner.stderr, "inner err ");
+
+        assert!(is_capturing());
+        capture_stdout("resumed");
+        capture_stderr("resumed err");
+
+        let outer = stop_capture();
+        assert_eq!(outer.stdout, "outer resumed");
+        assert_eq!(outer.stderr, "outer err resumed err");
+        assert!(!is_capturing());
     }
 
     #[test]

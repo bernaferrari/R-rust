@@ -698,6 +698,27 @@ mod tests {
     }
 
     #[test]
+    fn test_stop_warning_message_and_suppression() {
+        let mut session = RSession::new();
+
+        let stopped = session.eval("stop(\"boom\")");
+        assert!(matches!(stopped.typed, RValue::Error(_)));
+        assert_eq!(stopped.output, "Error: boom");
+
+        let warned = session.eval("warning(\"careful\"); 1");
+        assert_eq!(warned.output, "Warning message:\ncareful \n[1] 1");
+
+        let messaged = session.eval("message(\"hi\"); 1");
+        assert_eq!(messaged.output, "hi\n[1] 1");
+
+        let suppress_warning = session.eval("suppressWarnings(warning(\"careful\")); 1");
+        assert_eq!(suppress_warning.output, "[1] 1");
+
+        let suppress_message = session.eval("suppressMessages(message(\"hi\")); 1");
+        assert_eq!(suppress_message.output, "[1] 1");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

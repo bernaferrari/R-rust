@@ -3218,6 +3218,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "capture.output",
         "withVisible",
         "invisible",
+        "stop",
+        "warning",
+        "message",
         "stopifnot",
         "suppressWarnings",
         "suppressMessages",
@@ -4296,13 +4299,25 @@ pub unsafe fn do_stop(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `warning(...)` — issue warning.
 pub unsafe fn do_warning(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    eprintln!("Warning: {}", elt_to_string(CAR(args), 0));
+    let message = format!("Warning message:\n{} \n", elt_to_string(CAR(args), 0));
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stderr(&message);
+    } else {
+        eprint!("{message}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     R_NilValue()
 }
 
 /// R's `message(...)` — print message.
 pub unsafe fn do_message(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    eprintln!("{}", elt_to_string(CAR(args), 0));
+    let message = format!("{}\n", elt_to_string(CAR(args), 0));
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stderr(&message);
+    } else {
+        eprint!("{message}");
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     R_NilValue()
 }
 
@@ -11477,26 +11492,34 @@ pub unsafe fn do_invisible(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
     x
 }
 
-/// R's `suppressWarnings(expr)` — evaluate expr, suppressing warnings (simplified: just evaluate).
+/// R's `suppressWarnings(expr)` — evaluate expr with captured diagnostics suppressed.
 pub unsafe fn do_suppress_warnings(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let expr = CAR(args);
     if expr.is_null() || expr == R_NilValue() {
         return R_NilValue();
     }
-    // Simplified: just evaluate the expression; in a full implementation we'd
-    // temporarily set warn = -1 to suppress warnings
-    crate::eval::eval::Rf_eval(expr, rho)
+    crate::sexp::output::start_capture();
+    let result = crate::eval::eval::Rf_eval(expr, rho);
+    let captured = crate::sexp::output::stop_capture();
+    if !captured.stdout.is_empty() {
+        crate::sexp::output::capture_stdout(&captured.stdout);
+    }
+    result
 }
 
-/// R's `suppressMessages(expr)` — evaluate expr, suppressing messages (simplified: just evaluate).
+/// R's `suppressMessages(expr)` — evaluate expr with captured diagnostics suppressed.
 pub unsafe fn do_suppress_messages(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let expr = CAR(args);
     if expr.is_null() || expr == R_NilValue() {
         return R_NilValue();
     }
-    // Simplified: just evaluate the expression; in a full implementation we'd
-    // temporarily set message output to null
-    crate::eval::eval::Rf_eval(expr, rho)
+    crate::sexp::output::start_capture();
+    let result = crate::eval::eval::Rf_eval(expr, rho);
+    let captured = crate::sexp::output::stop_capture();
+    if !captured.stdout.is_empty() {
+        crate::sexp::output::capture_stdout(&captured.stdout);
+    }
+    result
 }
 
 /// R's `force(x)` — force evaluation of a promise.

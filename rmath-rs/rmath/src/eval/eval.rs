@@ -458,6 +458,8 @@ fn primitive_controls_visibility(name: &str) -> bool {
             | "withVisible"
             | "cat"
             | "print"
+            | "warning"
+            | "message"
             | "stopifnot"
             | "suppressWarnings"
             | "suppressMessages"
@@ -532,6 +534,32 @@ fn apply_builtin_safe<'a>(
                 args.as_raw(),
                 rho.as_raw(),
             )
+        };
+        if flag < 2 && !primitive_controls_visibility(&op_name) {
+            unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+        }
+        return Ok(unsafe { Sexp::from_raw_unchecked(tmp) });
+    }
+
+    if op_name == "suppressWarnings" || op_name == "suppressMessages" {
+        let tmp = if op_name == "suppressWarnings" {
+            unsafe {
+                crate::mainutils::essentials::do_suppress_warnings(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                )
+            }
+        } else {
+            unsafe {
+                crate::mainutils::essentials::do_suppress_messages(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                )
+            }
         };
         if flag < 2 && !primitive_controls_visibility(&op_name) {
             unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
@@ -4546,7 +4574,7 @@ fn apply_builtin_safe<'a>(
         },
         // Error handling
         "stop" => unsafe {
-            crate::mainutils::errors::do_stop(
+            crate::mainutils::essentials::do_stop(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,
@@ -4562,7 +4590,7 @@ fn apply_builtin_safe<'a>(
             )
         },
         "warning" => unsafe {
-            crate::mainutils::errors::do_warning(
+            crate::mainutils::essentials::do_warning(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,
@@ -4570,7 +4598,7 @@ fn apply_builtin_safe<'a>(
             )
         },
         "message" => unsafe {
-            crate::mainutils::errors::do_message(
+            crate::mainutils::essentials::do_message(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,

@@ -232,6 +232,8 @@ pub struct RInstance {
     pub(crate) capture_stdout: Option<String>,
     /// Per-instance stderr capture buffer.
     pub(crate) capture_stderr: Option<String>,
+    /// Suspended outer capture buffers for nested output capture.
+    pub(crate) capture_stack: Vec<(Option<String>, Option<String>)>,
     /// Per-instance options storage (mirrors the global OPTIONS_TABLE).
     pub options: HashMap<String, SEXP>,
     /// Whether the instance options have been initialized with defaults.
@@ -328,6 +330,7 @@ impl RInstance {
             random_state: crate::mainutils::random::RNGState::new(),
             capture_stdout: None,
             capture_stderr: None,
+            capture_stack: Vec::new(),
             options: HashMap::new(),
             options_initialized: false,
             env_hash_tables: hashbrown::HashMap::new(),

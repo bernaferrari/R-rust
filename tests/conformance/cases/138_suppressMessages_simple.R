@@ -1,0 +1,1 @@
+suppressMessages(message("hello"))
