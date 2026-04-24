@@ -16,6 +16,7 @@ use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
+use super::instance;
 use super::memory;
 
 // ---------------------------------------------------------------------------
@@ -123,6 +124,17 @@ thread_local! {
     static RAW_CONS: std::cell::RefCell<Vec<*mut SexprecCore>> = std::cell::RefCell::new(Vec::new());
 }
 
+fn with_raw_cons<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut Vec<*mut SexprecCore>) -> R,
+{
+    if instance::has_current_instance() {
+        instance::with_current_instance(|instance| f(&mut instance.raw_cons)).unwrap()
+    } else {
+        RAW_CONS.with(|rc| f(&mut rc.borrow_mut()))
+    }
+}
+
 /// Create a cons cell tracked for cleanup.
 pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
     let boxed = Box::new(SexprecCore::new(SEXPTYPE::LISTSXP));
@@ -132,7 +144,7 @@ pub unsafe fn cons_raw(car: SEXP, cdr: SEXP) -> SEXP {
         (*ptr).data.listsxp.cdrval = cdr;
         (*ptr).data.listsxp.tagval = ptr::null_mut();
     }
-    RAW_CONS.with(|rc| rc.borrow_mut().push(ptr));
+    with_raw_cons(|rc| rc.push(ptr));
     ptr
 }
 
@@ -141,8 +153,7 @@ pub unsafe fn free_raw_cons(ptr: SEXP) {
     if ptr.is_null() {
         return;
     }
-    RAW_CONS.with(|rc| {
-        let mut cells = rc.borrow_mut();
+    with_raw_cons(|cells| {
         if let Some(pos) = cells.iter().position(|&p| p == ptr) {
             cells.remove(pos);
             unsafe {
@@ -275,6 +286,17 @@ thread_local! {
         std::cell::RefCell::new(Vec::new());
 }
 
+fn with_vmax<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut Vec<(*mut u8, Layout)>) -> R,
+{
+    if instance::has_current_instance() {
+        instance::with_current_instance(|instance| f(&mut instance.vmax)).unwrap()
+    } else {
+        VMAX.with(|vmax| f(&mut vmax.borrow_mut()))
+    }
+}
+
 /// Allocate transient memory (freed by vmaxset).
 ///
 /// This is the equivalent of R's `R_alloc()` which allocates on the C stack.
@@ -296,9 +318,7 @@ pub unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
         }
         // Zero-initialize
         std::ptr::write_bytes(ptr, 0, total);
-        VMAX.with(|vmax| {
-            vmax.borrow_mut().push((ptr, layout));
-        });
+        with_vmax(|vmax| vmax.push((ptr, layout)));
         ptr as *mut c_void
     }
 }
@@ -307,10 +327,7 @@ pub unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
 ///
 /// Returns an opaque value to pass to vmaxset().
 pub unsafe fn vmaxget() -> *mut c_void {
-    VMAX.with(|vmax| {
-        let len = vmax.borrow().len();
-        len as *mut c_void
-    })
+    with_vmax(|vmax| vmax.len() as *mut c_void)
 }
 
 /// Reset transient allocations to the given watermark.
@@ -318,12 +335,8 @@ pub unsafe fn vmaxget() -> *mut c_void {
 /// Frees all transient allocations made since the corresponding vmaxget().
 pub unsafe fn vmaxset(value: *mut c_void) {
     let mark = value as usize;
-    VMAX.with(|vmax| {
-        let mut vmax = vmax.borrow_mut();
-        let drain_start = vmax
-            .iter()
-            .position(|(ptr, _)| *ptr as usize >= mark)
-            .unwrap_or(vmax.len());
+    with_vmax(|vmax| {
+        let drain_start = mark.min(vmax.len());
         for (ptr, layout) in vmax.drain(drain_start..) {
             if !ptr.is_null() && layout.size() > 0 {
                 unsafe {
@@ -334,6 +347,16 @@ pub unsafe fn vmaxset(value: *mut c_void) {
     });
 }
 
+#[cfg(test)]
+fn raw_cons_len() -> usize {
+    with_raw_cons(|rc| rc.len())
+}
+
+#[cfg(test)]
+fn vmax_len() -> usize {
+    with_vmax(|vmax| vmax.len())
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -342,6 +365,8 @@ pub unsafe fn vmaxset(value: *mut c_void) {
 mod tests {
     use super::super::constructors::*;
     use super::super::ffi::*;
+    use crate::sexp::session::RSession;
+
     use super::*;
 
     #[test]
@@ -405,5 +430,43 @@ mod tests {
             assert_eq!(*ints.add(0), 42);
             vmaxset(mark);
         }
+    }
+
+    #[test]
+    fn test_session_raw_cons_and_vmax_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        let mut left_cons = ptr::null_mut();
+
+        left.with_arena(|_| unsafe {
+            left_cons = cons_raw(ptr::null_mut(), ptr::null_mut());
+            assert_eq!(raw_cons_len(), 1);
+            let mark = vmaxget();
+            let ptr = R_alloc(1, 8);
+            assert!(!ptr.is_null());
+            assert_eq!(vmax_len(), 1);
+            vmaxset(mark);
+            assert_eq!(vmax_len(), 0);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| unsafe {
+                assert_eq!(raw_cons_len(), 0);
+                let right_cons = cons_raw(ptr::null_mut(), ptr::null_mut());
+                assert_eq!(raw_cons_len(), 1);
+                assert_ne!(right_cons, left_cons);
+                free_raw_cons(right_cons);
+                assert_eq!(raw_cons_len(), 0);
+            })
+            .unwrap();
+
+        left.with_arena(|_| unsafe {
+            assert_eq!(raw_cons_len(), 1);
+            free_raw_cons(left_cons);
+            assert_eq!(raw_cons_len(), 0);
+        })
+        .unwrap();
     }
 }

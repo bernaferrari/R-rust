@@ -10,6 +10,7 @@ use hashbrown::HashMap;
 use std::cell::RefCell;
 
 use super::ffi::SEXP;
+use super::instance;
 
 /// Number of bindings in a frame before auto-promotion to hash table.
 const PROMOTION_THRESHOLD: usize = 100;
@@ -19,18 +20,28 @@ thread_local! {
     static ENV_HASH_TABLES: RefCell<HashMap<usize, HashMap<usize, SEXP>>> = RefCell::new(HashMap::new());
 }
 
+fn with_env_hash_tables<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut HashMap<usize, HashMap<usize, SEXP>>) -> R,
+{
+    if instance::has_current_instance() {
+        instance::with_current_instance(|instance| f(&mut instance.env_hash_tables)).unwrap()
+    } else {
+        ENV_HASH_TABLES.with(|tables| f(&mut tables.borrow_mut()))
+    }
+}
+
 /// Check if an environment has an associated hash table.
 pub fn env_has_hash_table(env: SEXP) -> bool {
-    ENV_HASH_TABLES.with(|tables| tables.borrow().contains_key(&(env as usize)))
+    with_env_hash_tables(|tables| tables.contains_key(&(env as usize)))
 }
 
 /// Look up a symbol in the environment's hash table.
 ///
 /// Returns `None` if no hash table exists or the symbol is not found.
 pub fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
-    ENV_HASH_TABLES.with(|tables| {
+    with_env_hash_tables(|tables| {
         tables
-            .borrow()
             .get(&(env as usize))?
             .get(&(symbol as usize))
             .copied()
@@ -39,8 +50,8 @@ pub fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
 
 /// Insert a binding into the environment's hash table (if one exists).
 pub fn hash_insert(env: SEXP, symbol: SEXP, value: SEXP) {
-    ENV_HASH_TABLES.with(|tables| {
-        if let Some(ht) = tables.borrow_mut().get_mut(&(env as usize)) {
+    with_env_hash_tables(|tables| {
+        if let Some(ht) = tables.get_mut(&(env as usize)) {
             ht.insert(symbol as usize, value);
         }
     })
@@ -48,8 +59,8 @@ pub fn hash_insert(env: SEXP, symbol: SEXP, value: SEXP) {
 
 /// Remove a binding from the environment's hash table (if one exists).
 pub fn hash_remove(env: SEXP, symbol: SEXP) {
-    ENV_HASH_TABLES.with(|tables| {
-        if let Some(ht) = tables.borrow_mut().get_mut(&(env as usize)) {
+    with_env_hash_tables(|tables| {
+        if let Some(ht) = tables.get_mut(&(env as usize)) {
             ht.remove(&(symbol as usize));
         }
     })
@@ -57,8 +68,7 @@ pub fn hash_remove(env: SEXP, symbol: SEXP) {
 
 /// Promote an environment to use a hash table by bulk-inserting all current bindings.
 pub fn promote_to_hash_table(env: SEXP, bindings: &[(SEXP, SEXP)]) {
-    ENV_HASH_TABLES.with(|tables| {
-        let mut tables = tables.borrow_mut();
+    with_env_hash_tables(|tables| {
         let ht = tables
             .entry(env as usize)
             .or_insert_with(|| HashMap::with_capacity(bindings.len()));
@@ -75,7 +85,48 @@ pub fn should_promote(pairlist_length: usize) -> bool {
 
 /// Remove an environment's hash table entry (for cleanup).
 pub fn remove_env(env: SEXP) {
-    ENV_HASH_TABLES.with(|tables| {
-        tables.borrow_mut().remove(&(env as usize));
+    with_env_hash_tables(|tables| {
+        tables.remove(&(env as usize));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sexp::session::RSession;
+
+    use super::*;
+
+    #[test]
+    fn test_session_env_hash_tables_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        let env = 0x1000usize as SEXP;
+        let sym = 0x2000usize as SEXP;
+        let left_val = 0x3000usize as SEXP;
+        let right_val = 0x4000usize as SEXP;
+
+        left.with_arena(|_| {
+            promote_to_hash_table(env, &[(sym, left_val)]);
+            assert!(env_has_hash_table(env));
+            assert_eq!(hash_get(env, sym), Some(left_val));
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| {
+                assert!(!env_has_hash_table(env));
+                assert_eq!(hash_get(env, sym), None);
+                promote_to_hash_table(env, &[(sym, right_val)]);
+                assert_eq!(hash_get(env, sym), Some(right_val));
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert_eq!(hash_get(env, sym), Some(left_val));
+            remove_env(env);
+            assert!(!env_has_hash_table(env));
+        })
+        .unwrap();
+    }
 }

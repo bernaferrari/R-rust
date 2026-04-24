@@ -15,6 +15,7 @@
 //! fallbacks. This preserves backward compatibility: code that does not use
 //! `RSession` continues to work with the original global state.
 
+use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::raw::c_int;
@@ -121,6 +122,12 @@ pub struct RInstance {
     pub options: HashMap<String, SEXP>,
     /// Whether the instance options have been initialized with defaults.
     pub options_initialized: bool,
+    /// Per-instance environment hash side tables.
+    pub(crate) env_hash_tables: hashbrown::HashMap<usize, hashbrown::HashMap<usize, SEXP>>,
+    /// Per-instance raw cons cells allocated outside the arena.
+    pub(crate) raw_cons: Vec<*mut SexprecCore>,
+    /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
+    pub(crate) vmax: Vec<(*mut u8, Layout)>,
 }
 
 // SAFETY: RInstance owns all its data. The SEXP pointers point into the
@@ -161,6 +168,9 @@ impl RInstance {
             capture_stderr: None,
             options: HashMap::new(),
             options_initialized: false,
+            env_hash_tables: hashbrown::HashMap::new(),
+            raw_cons: Vec::new(),
+            vmax: Vec::new(),
         };
 
         instance.initialize_base_bindings();
@@ -192,6 +202,25 @@ impl RInstance {
 impl Default for RInstance {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+impl Drop for RInstance {
+    fn drop(&mut self) {
+        for ptr in self.raw_cons.drain(..) {
+            if !ptr.is_null() {
+                unsafe {
+                    let _ = Box::from_raw(ptr);
+                }
+            }
+        }
+        for (ptr, layout) in self.vmax.drain(..) {
+            if !ptr.is_null() && layout.size() > 0 {
+                unsafe {
+                    dealloc(ptr, layout);
+                }
+            }
+        }
     }
 }
 
