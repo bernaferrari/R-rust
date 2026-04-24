@@ -494,6 +494,38 @@ mod tests {
     }
 
     #[test]
+    fn test_sessions_keep_globals_isolated_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        assert!(!left.eval("x <- 11").output.contains("Error"));
+        assert!(!right.eval("x <- 29").output.contains("Error"));
+
+        let left_x = left.eval("x");
+        let right_x = right.eval("x");
+
+        assert!((left_x.value - 11.0).abs() < 1e-10, "left: {left_x:?}");
+        assert!((right_x.value - 29.0).abs() < 1e-10, "right: {right_x:?}");
+    }
+
+    #[test]
+    fn test_parallel_sessions_keep_globals_isolated() {
+        let left = std::thread::spawn(|| {
+            let mut session = RSession::new();
+            assert!(!session.eval("x <- 101").output.contains("Error"));
+            session.eval("x").value
+        });
+        let right = std::thread::spawn(|| {
+            let mut session = RSession::new();
+            assert!(!session.eval("x <- 202").output.contains("Error"));
+            session.eval("x").value
+        });
+
+        assert!((left.join().expect("left session panicked") - 101.0).abs() < 1e-10);
+        assert!((right.join().expect("right session panicked") - 202.0).abs() < 1e-10);
+    }
+
+    #[test]
     fn test_eval_null() {
         let mut session = RSession::new();
         let result = session.eval("NULL");
