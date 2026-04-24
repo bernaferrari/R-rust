@@ -2,7 +2,6 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
-
 use std::ffi::CString;
 use std::os::raw::c_int;
 
@@ -13,7 +12,8 @@ use crate::sexp::accessors::{
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkString,
+    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3, Rf_cons, Rf_mkChar,
+    Rf_mkString,
 };
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_REAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
@@ -110,8 +110,18 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     };
                     *dst.add((offset + i) as usize) = val;
                 }
+            } else if result_type == SEXPTYPE::STRSXP {
+                for i in 0..n {
+                    if t == SEXPTYPE::STRSXP {
+                        SET_STRING_ELT(result, offset + i, STRING_ELT(arg, i));
+                    } else {
+                        let value = elt_to_string(arg, i);
+                        let cstr = CString::new(value).unwrap_or_default();
+                        SET_STRING_ELT(result, offset + i, Rf_mkChar(cstr.as_ptr()));
+                    }
+                }
             }
-            // STRSXP and CPLXSXP require STRING_ELT/COMPLEX which need more work
+            // CPLXSXP requires COMPLEX support which needs more work.
             offset += n;
         }
         current = CDR(current);
@@ -11818,30 +11828,60 @@ pub unsafe fn do_relevel(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     x
 }
 
-/// R's `factor(x)` — create factor (simplified).
+/// R's `factor(x)` — create a minimal factor with sorted levels.
 pub unsafe fn do_factor(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
-    // Simplified: return as integer vector
     let n = XLENGTH(x);
     let t = TYPEOF(x);
-    if t == SEXPTYPE::STRSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP {
-        let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = Rf_protect(result);
-        let dst = INTEGER(result);
-        for i in 0..n {
-            *dst.add(i as usize) = (i + 1) as i32;
-        }
-        crate::sexp::protect::Rf_unprotect(1);
-        result
-    } else {
-        x
+    if t != SEXPTYPE::STRSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::REALSXP {
+        return x;
     }
+
+    let mut level_set = std::collections::BTreeSet::new();
+    let mut values = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let value = elt_to_string(x, i);
+        level_set.insert(value.clone());
+        values.push(value);
+    }
+    let levels: Vec<String> = level_set.into_iter().collect();
+
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+
+    let dst = INTEGER(result);
+    for (i, value) in values.iter().enumerate() {
+        let code = levels
+            .binary_search(value)
+            .map(|idx| idx as i32 + 1)
+            .unwrap_or(NA_INTEGER);
+        *dst.add(i) = code;
+    }
+
+    let levels_vec = Rf_allocVector3(SEXPTYPE::STRSXP, levels.len() as R_xlen_t);
+    Rf_protect(levels_vec);
+    for (i, level) in levels.iter().enumerate() {
+        let cstr = CString::new(level.as_str()).unwrap_or_default();
+        SET_STRING_ELT(levels_vec, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+    }
+
+    let class = Rf_mkString(CString::new("factor").unwrap_or_default().as_ptr());
+    Rf_protect(class);
+    crate::sexp::attrib_core::setAttrib(
+        result,
+        crate::sexp::attrib_core::R_LevelsSymbol(),
+        levels_vec,
+    );
+    crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_ClassSymbol(), class);
+
+    crate::sexp::protect::Rf_unprotect(3);
+    result
 }
 
 /// R's `is.factor(x)` — check if factor (simplified: checks class attribute).

@@ -1,2 +1,1 @@
 # case	owner	reason
-010_factor_labels	rport-fs5	Factor construction stores integer codes but factor class/levels printing is incomplete.

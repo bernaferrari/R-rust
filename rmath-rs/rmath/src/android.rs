@@ -512,6 +512,13 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_factor_labels() {
+        let mut session = RSession::new();
+        let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");
+        assert_eq!(result.output, "[1] b a b c\nLevels: a b c");
+    }
+
+    #[test]
     fn test_sessions_keep_globals_isolated_on_same_thread() {
         let mut left = RSession::new();
         let mut right = RSession::new();

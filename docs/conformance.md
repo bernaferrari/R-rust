@@ -46,7 +46,7 @@ and a standalone Rust runner, so it does not depend on the interactive REPL.
 | Base functions | Early | parity case 002 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
 | Packages/namespaces | Open | no parity gate yet | `rport-97s` |
-| Object systems | Open | xfail case 010; no S3/S4 gate yet | `rport-fs5` |
+| Object systems | Open | factor parity case 010; no broader S3/S4 gate yet | `rport-fs5` |
 | Graphics/grid/grDevices | Infrastructure | session-state unit tests and Android global ratchet | `rport-5jd` |
 | Android embedding API | Seeded | `scripts/android_toolchain_check.sh`, `android::tests` | `rport-usi` |
 | Android cancellation | Open | no gate yet | `rport-ece` |
@@ -61,11 +61,9 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 9 passing cases and 1 expected failure:
+Current parity status is 10 passing cases and 0 expected failures.
 
-| Case | Owner | Gap |
-| --- | --- | --- |
-| `010_factor_labels.R` | `rport-fs5` | factor class/levels printing is incomplete |
+There are currently no entries in `tests/conformance/xfail.tsv`.
 
 Near-term conformance work should land in this order:
 

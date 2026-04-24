@@ -154,6 +154,72 @@ fn format_logical_value(v: i32) -> String {
     }
 }
 
+fn factor_levels(x: Sexp<'_>) -> Option<Vec<String>> {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !string_vector_contains(class, "factor") {
+            return None;
+        }
+
+        let levels = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_LevelsSymbol(),
+        );
+        string_vector_values(levels).filter(|levels| !levels.is_empty())
+    }
+}
+
+fn string_vector_contains(x: SEXP, needle: &str) -> bool {
+    string_vector_values(x)
+        .map(|values| values.iter().any(|value| value == needle))
+        .unwrap_or(false)
+}
+
+fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
+    let sexp = Sexp::from_raw(x)?;
+    if sexp.typeof_() != SEXPTYPE::STRSXP {
+        return None;
+    }
+    let mut values = Vec::with_capacity(sexp.len() as usize);
+    for i in 0..sexp.len() {
+        let value = sexp
+            .string_elt(i)
+            .and_then(|charsxp| charsxp.as_str())
+            .unwrap_or("")
+            .to_string();
+        values.push(value);
+    }
+    Some(values)
+}
+
+fn format_factor(x: Sexp<'_>) -> Option<String> {
+    let levels = factor_levels(x)?;
+    let vals: Vec<String> = x
+        .iter_integer()
+        .take(10)
+        .map(|code| {
+            if code == NA_INTEGER {
+                "NA".to_string()
+            } else {
+                levels
+                    .get((code - 1) as usize)
+                    .cloned()
+                    .unwrap_or_else(|| code.to_string())
+            }
+        })
+        .collect();
+    let suffix = if x.len() > 10 { " ..." } else { "" };
+    Some(format!(
+        "[1] {}{}\nLevels: {}",
+        vals.join(" "),
+        suffix,
+        levels.join(" ")
+    ))
+}
+
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
 /// This is the Rust implementation of R's Rf_PrintValue. For Android
@@ -165,11 +231,19 @@ pub fn print_value(x: Sexp<'_>) {
             emit("NULL\n");
         }
         SEXPTYPE::INTSXP => {
+            if let Some(output) = format_factor(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if x.len() == 1 {
                 let v = x.integer_elt(0).unwrap_or(0);
                 emit(&format!("[1] {}\n", format_integer_value(v)));
             } else {
-                let vals: Vec<String> = x.iter_integer().take(10).map(format_integer_value).collect();
+                let vals: Vec<String> = x
+                    .iter_integer()
+                    .take(10)
+                    .map(format_integer_value)
+                    .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
             }
@@ -185,7 +259,11 @@ pub fn print_value(x: Sexp<'_>) {
             }
         }
         SEXPTYPE::LGLSXP => {
-            let vals: Vec<String> = x.iter_logical().take(10).map(format_logical_value).collect();
+            let vals: Vec<String> = x
+                .iter_logical()
+                .take(10)
+                .map(format_logical_value)
+                .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
         }
@@ -268,11 +346,18 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
     match x.typeof_() {
         SEXPTYPE::NILSXP => "NULL".to_string(),
         SEXPTYPE::INTSXP => {
+            if let Some(output) = format_factor(x) {
+                return output;
+            }
             if x.len() == 1 {
                 let v = x.integer_elt(0).unwrap_or(0);
                 format!("[1] {}", format_integer_value(v))
             } else {
-                let vals: Vec<String> = x.iter_integer().take(10).map(format_integer_value).collect();
+                let vals: Vec<String> = x
+                    .iter_integer()
+                    .take(10)
+                    .map(format_integer_value)
+                    .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", format_aligned_values(vals), suffix)
             }
@@ -288,7 +373,11 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
         }
         SEXPTYPE::LGLSXP => {
-            let vals: Vec<String> = x.iter_logical().take(10).map(format_logical_value).collect();
+            let vals: Vec<String> = x
+                .iter_logical()
+                .take(10)
+                .map(format_logical_value)
+                .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             format!("[1] {}{}", format_aligned_values(vals), suffix)
         }
