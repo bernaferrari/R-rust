@@ -4,8 +4,6 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
-use std::cell::{Cell, RefCell};
-
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, SEXP, SEXPTYPE};
 use super::safe::Sexp;
 
@@ -16,43 +14,21 @@ pub struct RCapturedOutput {
     pub stderr: String,
 }
 
-thread_local! {
-    static CAPTURE_STDOUT: RefCell<Option<String>> = const { RefCell::new(None) };
-    static CAPTURE_STDERR: RefCell<Option<String>> = const { RefCell::new(None) };
-    static CAPTURE_STACK: RefCell<Vec<(Option<String>, Option<String>)>> = const { RefCell::new(Vec::new()) };
-    static IS_CAPTURING: Cell<bool> = const { Cell::new(false) };
-}
-
 /// Start capturing R output.
 pub fn start_capture() {
-    if super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         let outer = (inst.capture_stdout.take(), inst.capture_stderr.take());
         if outer.0.is_some() || outer.1.is_some() {
             inst.capture_stack.push(outer);
         }
         inst.capture_stdout = Some(String::new());
         inst.capture_stderr = Some(String::new());
-    })
-    .is_some()
-    {
-        return;
-    }
-    CAPTURE_STDOUT.with(|stdout| {
-        CAPTURE_STDERR.with(|stderr| {
-            let outer = (stdout.borrow_mut().take(), stderr.borrow_mut().take());
-            if outer.0.is_some() || outer.1.is_some() {
-                CAPTURE_STACK.with(|stack| stack.borrow_mut().push(outer));
-            }
-        });
-        *stdout.borrow_mut() = Some(String::new());
     });
-    CAPTURE_STDERR.with(|c| *c.borrow_mut() = Some(String::new()));
-    IS_CAPTURING.with(|c| c.set(true));
 }
 
 /// Stop capturing and return the captured output.
 pub fn stop_capture() -> RCapturedOutput {
-    if let Some(output) = super::instance::with_current_instance(|inst| {
+    super::instance::with_required_current_instance(|inst| {
         let stdout = inst.capture_stdout.take().unwrap_or_default();
         let stderr = inst.capture_stderr.take().unwrap_or_default();
         if let Some((outer_stdout, outer_stderr)) = inst.capture_stack.pop() {
@@ -60,46 +36,22 @@ pub fn stop_capture() -> RCapturedOutput {
             inst.capture_stderr = outer_stderr;
         }
         RCapturedOutput { stdout, stderr }
-    }) {
-        return output;
-    }
-    let stdout = CAPTURE_STDOUT.with(|c| c.borrow_mut().take().unwrap_or_default());
-    let stderr = CAPTURE_STDERR.with(|c| c.borrow_mut().take().unwrap_or_default());
-    let restored = CAPTURE_STACK.with(|stack| stack.borrow_mut().pop());
-    if let Some((outer_stdout, outer_stderr)) = restored {
-        CAPTURE_STDOUT.with(|c| *c.borrow_mut() = outer_stdout);
-        CAPTURE_STDERR.with(|c| *c.borrow_mut() = outer_stderr);
-        IS_CAPTURING.with(|c| c.set(true));
-    } else {
-        IS_CAPTURING.with(|c| c.set(false));
-    }
-    RCapturedOutput { stdout, stderr }
+    })
 }
 
 /// Check if output capture is active.
 pub fn is_capturing() -> bool {
-    if let Some(is_capturing) = super::instance::with_current_instance(|inst| {
+    super::instance::with_current_instance(|inst| {
         inst.capture_stdout.is_some() || inst.capture_stderr.is_some()
-    }) {
-        return is_capturing;
-    }
-    IS_CAPTURING.with(|c| c.get())
+    })
+    .unwrap_or(false)
 }
 
 /// Append to captured stdout. Called by the Rprintf hook.
 pub fn capture_stdout(msg: &str) {
     if is_capturing() {
-        if super::instance::with_current_instance(|inst| {
+        super::instance::with_current_instance(|inst| {
             if let Some(s) = inst.capture_stdout.as_mut() {
-                s.push_str(msg);
-            }
-        })
-        .is_some()
-        {
-            return;
-        }
-        CAPTURE_STDOUT.with(|c| {
-            if let Some(s) = c.borrow_mut().as_mut() {
                 s.push_str(msg);
             }
         });
@@ -109,17 +61,8 @@ pub fn capture_stdout(msg: &str) {
 /// Append to captured stderr. Called by the REprintf hook.
 pub fn capture_stderr(msg: &str) {
     if is_capturing() {
-        if super::instance::with_current_instance(|inst| {
+        super::instance::with_current_instance(|inst| {
             if let Some(s) = inst.capture_stderr.as_mut() {
-                s.push_str(msg);
-            }
-        })
-        .is_some()
-        {
-            return;
-        }
-        CAPTURE_STDERR.with(|c| {
-            if let Some(s) = c.borrow_mut().as_mut() {
                 s.push_str(msg);
             }
         });
@@ -749,9 +692,11 @@ pub unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_capture_lifecycle() {
+        let _session = RSession::new();
         assert!(!is_capturing());
         start_capture();
         assert!(is_capturing());
@@ -766,6 +711,7 @@ mod tests {
 
     #[test]
     fn test_capture_empty() {
+        let _session = RSession::new();
         start_capture();
         let output = stop_capture();
         assert_eq!(output.stdout, "");
@@ -774,6 +720,7 @@ mod tests {
 
     #[test]
     fn test_nested_capture() {
+        let _session = RSession::new();
         start_capture();
         capture_stdout("outer ");
         capture_stderr("outer err ");
@@ -797,17 +744,21 @@ mod tests {
 
     #[test]
     fn test_print_logical_vector() {
-        let mut arena = crate::sexp::memory::RArena::new();
-        let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 3);
-        let sexp = Sexp::from_raw(ptr).expect("logical vector allocation failed");
-        assert!(sexp.set_logical_elt(0, 0));
-        assert!(sexp.set_logical_elt(1, 1));
-        assert!(sexp.set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL));
+        let mut session = RSession::new();
+        session
+            .with_arena(|arena| {
+                let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 3);
+                let sexp = Sexp::from_raw(ptr).expect("logical vector allocation failed");
+                assert!(sexp.set_logical_elt(0, 0));
+                assert!(sexp.set_logical_elt(1, 1));
+                assert!(sexp.set_logical_elt(2, crate::sexp::ffi::NA_LOGICAL));
 
-        start_capture();
-        print_value(sexp);
-        let output = stop_capture();
-        assert_eq!(output.stdout, "[1] FALSE  TRUE    NA\n");
+                start_capture();
+                print_value(sexp);
+                let output = stop_capture();
+                assert_eq!(output.stdout, "[1] FALSE  TRUE    NA\n");
+            })
+            .unwrap();
     }
 
     #[test]

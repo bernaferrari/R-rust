@@ -80,7 +80,6 @@ rmath-rs/rmath/src/sexp/globals.rs	process-sentinels	allow-immutable	rport-dg0.2
 rmath-rs/rmath/src/sexp/init.rs	process-startup	sessionize	rport-dg0.2	Init atomic/lock protects process fallback init; Android should initialize per-session explicitly.
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
 rmath-rs/rmath/src/sexp/memory.rs	session-fallback	sessionize	rport-dg0.2	Arena fallback TLS; Android sessions should use RInstance arena only.
-rmath-rs/rmath/src/sexp/output.rs	session-fallback	sessionize	rport-dg0.2	Capture output fallback; Android sessions should use RInstance output buffers.
 rmath-rs/rmath/src/sexp/protect.rs	session-fallback	sessionize	rport-dg0.2	Protect stack fallback TLS; Android sessions should use RInstance protect stack.
 rmath-rs/rmath/src/sexp/session.rs	documentation	allow-session-dispatch	rport-dg0.2	Module documents thread-local fallback risks; not itself runtime state.
 rmath-rs/rmath/src/sexp/symbol.rs	session-fallback	sessionize	rport-dg0.2	Process symbol table fallback; Android sessions should use RInstance symbols.
