@@ -57,10 +57,16 @@ impl std::fmt::Display for ArenaError {
         match self {
             ArenaError::OutOfMemory => write!(f, "arena out of memory"),
             ArenaError::ByteBudgetExceeded { limit, requested } => {
-                write!(f, "arena byte budget exceeded: limit={limit}, requested={requested}")
+                write!(
+                    f,
+                    "arena byte budget exceeded: limit={limit}, requested={requested}"
+                )
             }
             ArenaError::NodeBudgetExceeded { limit, requested } => {
-                write!(f, "arena node budget exceeded: limit={limit}, requested={requested}")
+                write!(
+                    f,
+                    "arena node budget exceeded: limit={limit}, requested={requested}"
+                )
             }
             ArenaError::InvalidLength => write!(f, "invalid vector length"),
         }
@@ -476,7 +482,9 @@ impl RArena {
             (*ptr).gengc_next_node = ptr::null_mut();
             (*ptr).attrib = ptr::null_mut();
             (*ptr).sxpinfo.set_mark(false);
-            (*ptr).sxpinfo.set_gcgen(crate::sexp::gengc::Generation::Old as u8);
+            (*ptr)
+                .sxpinfo
+                .set_gcgen(crate::sexp::gengc::Generation::Old as u8);
         }
 
         self.free_list.push(ptr);
