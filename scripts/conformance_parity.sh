@@ -76,7 +76,9 @@ if ! rustc --edition=2024 "$RUST_RUNNER_SRC" -L dependency="$ROOT_DIR/target/deb
 fi
 
 normalize_output() {
-    tr -d '\r' | sed 's/[[:space:]]*$//'
+    tr -d '\r' |
+        sed 's/[[:space:]]*$//' |
+        awk '{ lines[NR] = $0 } END { n = NR; while (n > 0 && lines[n] == "") n--; for (i = 1; i <= n; i++) print lines[i] }'
 }
 
 normalize_error_output() {

@@ -519,6 +519,13 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_lapply_prints_list() {
+        let mut session = RSession::new();
+        let result = session.eval("lapply(c(1, 2), function(x) x + 1)");
+        assert_eq!(result.output, "[[1]]\n[1] 2\n\n[[2]]\n[1] 3");
+    }
+
+    #[test]
     fn test_eval_factor_labels() {
         let mut session = RSession::new();
         let result = session.eval("x <- factor(c(\"b\", \"a\", \"b\", \"c\"))\nx");

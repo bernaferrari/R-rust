@@ -55,6 +55,9 @@ Rust artifact after source edits.
 - `024_logical_numeric_coercion.R` checks logical-to-numeric arithmetic coercion
 - `025_vector_multi_subset.R` checks integer vector subsetting
 - `026_named_vector_names.R` checks named vector construction via `c()`
+- `027_list_print.R` checks unnamed list output
+- `028_named_list_print.R` checks named list output
+- `029_lapply_closure.R` checks `lapply()` with closure results
 
 ## Domain Matrix
 
@@ -63,7 +66,7 @@ Rust artifact after source edits.
 | Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
 | Evaluator/scoping/promises | Seeded | parity cases 011-020 plus Android closure tests | `rport-t57` |
 | Vector semantics | Seeded | parity cases 003, 008, 009, 022-026 | `rport-c2w` |
-| Base functions | Early | parity case 002 plus Android eval smoke tests | `rport-6p2` |
+| Base functions | Seeded | parity cases 002, 029 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
 | Packages/namespaces | Open | no parity gate yet | `rport-97s` |
 | Object systems | Open | factor parity case 010; no broader S3/S4 gate yet | `rport-fs5` |
@@ -81,7 +84,7 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 26 passing cases and 0 expected failures.
+Current parity status is 29 passing cases and 0 expected failures.
 
 There are currently no entries in `tests/conformance/xfail.tsv`.
 

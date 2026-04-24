@@ -220,6 +220,40 @@ fn format_factor(x: Sexp<'_>) -> Option<String> {
     ))
 }
 
+fn list_names(x: Sexp<'_>) -> Vec<String> {
+    unsafe {
+        let names = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        string_vector_values(names).unwrap_or_default()
+    }
+}
+
+fn list_element_header(index: usize, names: &[String]) -> String {
+    match names.get(index) {
+        Some(name) if !name.is_empty() => format!("${name}"),
+        _ => format!("[[{}]]", index + 1),
+    }
+}
+
+fn format_list(x: Sexp<'_>) -> String {
+    if x.len() == 0 {
+        return "list()".to_string();
+    }
+
+    let names = list_names(x);
+    let mut sections = Vec::with_capacity(x.len() as usize);
+    for (index, elem) in x.iter_vector().enumerate() {
+        sections.push(format!(
+            "{}\n{}",
+            list_element_header(index, &names),
+            format_sexp_direct(elem)
+        ));
+    }
+    sections.join("\n\n")
+}
+
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
 /// This is the Rust implementation of R's Rf_PrintValue. For Android
@@ -302,10 +336,7 @@ pub fn print_value(x: Sexp<'_>) {
             }
         }
         SEXPTYPE::VECSXP => {
-            let type_name = "list";
-            let output = format!("[{}; length={}]", type_name, x.len());
-            emit(&output);
-            emit("\n");
+            emit(&format!("{}\n", format_list(x)));
         }
         tp => {
             let type_name = match tp {
@@ -403,7 +434,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 format!("[1] {}{}", vals.join(" "), suffix)
             }
         }
-        SEXPTYPE::VECSXP => format!("[list; length={}]", x.len()),
+        SEXPTYPE::VECSXP => format_list(x),
         tp => {
             let type_name = match tp {
                 SEXPTYPE::EXPRSXP => "expression",
