@@ -6,7 +6,6 @@
 //! Faithfully follows R's print.c logic with simplifications for features
 //! not yet available (S4 dispatch, source references, Win32 UTF8, etc.).
 
-use std::cell::RefCell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int};
 use std::ptr;
@@ -40,38 +39,72 @@ const SIMPLEDEPARSE: c_int = 0;
 const DEFAULTDEPARSE: c_int = 1;
 const USESOURCE: c_int = 8;
 
-// ---------------------------------------------------------------------------
-// Thread-local tagbuf
-// ---------------------------------------------------------------------------
+pub(crate) struct PrintRuntimeState {
+    pub data: R_PrintData,
+    tagbuf: [u8; TAGBUFLEN0 * 2],
+}
 
-thread_local! {
-    static TAGBUF: RefCell<[u8; TAGBUFLEN0 * 2]> = RefCell::new([0u8; TAGBUFLEN0 * 2]);
+impl Default for PrintRuntimeState {
+    fn default() -> Self {
+        PrintRuntimeState {
+            data: R_PRINT_INIT.clone(),
+            tagbuf: [0; TAGBUFLEN0 * 2],
+        }
+    }
+}
+
+fn with_print_runtime<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut PrintRuntimeState) -> R,
+{
+    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.eval_state.print))
+}
+
+fn with_current_print_data_mut<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut R_PrintData) -> R,
+{
+    with_print_runtime(|state| f(&mut state.data))
+}
+
+fn set_current_print_data(data: &R_PrintData) {
+    with_current_print_data_mut(|current| *current = data.clone());
+}
+
+fn current_print_data_clone() -> R_PrintData {
+    with_current_print_data_mut(|current| current.clone())
 }
 
 unsafe fn tagbuf_strlen() -> usize {
-    unsafe { TAGBUF.with(|buf| libc::strlen(buf.borrow().as_ptr() as *const c_char)) }
+    unsafe { with_print_runtime(|state| libc::strlen(state.tagbuf.as_ptr() as *const c_char)) }
 }
 
 unsafe fn tagbuf_set(idx: usize, val: c_char) {
-    TAGBUF.with(|buf| {
-        let mut b = buf.borrow_mut();
-        if idx < b.len() {
-            b[idx] = val as u8;
+    with_print_runtime(|state| {
+        if idx < state.tagbuf.len() {
+            state.tagbuf[idx] = val as u8;
         }
-    });
+    })
 }
 
 unsafe fn tagbuf_clear() {
-    TAGBUF.with(|buf| {
-        buf.borrow_mut()[0] = 0;
+    with_print_runtime(|state| {
+        state.tagbuf[0] = 0;
     });
 }
 
 unsafe fn tagbuf_ptr_at(offset: usize) -> *mut c_char {
-    TAGBUF.with(|buf| {
-        let b = buf.borrow();
-        b.as_ptr().wrapping_add(offset) as *mut c_char
-    })
+    with_print_runtime(|state| state.tagbuf.as_mut_ptr().wrapping_add(offset) as *mut c_char)
+}
+
+unsafe fn tagbuf_string() -> String {
+    unsafe {
+        with_print_runtime(|state| {
+            CStr::from_ptr(state.tagbuf.as_ptr() as *const c_char)
+                .to_string_lossy()
+                .into_owned()
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -116,8 +149,6 @@ const R_PRINT_INIT: R_PrintData = R_PrintData {
     callArgs: ptr::null_mut(),
 };
 
-thread_local! { static R_PRINT: RefCell<R_PrintData> = RefCell::new(R_PRINT_INIT); }
-
 #[repr(transparent)]
 pub struct MutPtr<T>(*mut T);
 
@@ -135,7 +166,7 @@ impl<T> std::ops::DerefMut for MutPtr<T> {
 }
 
 pub unsafe fn get_R_print_data() -> MutPtr<R_PrintData> {
-    MutPtr(R_PRINT.with(|v| v.as_ptr() as *mut R_PrintData))
+    with_current_print_data_mut(|data| MutPtr(data as *mut R_PrintData))
 }
 
 // ---------------------------------------------------------------------------
@@ -447,8 +478,8 @@ pub unsafe fn PrintInit(data: *mut std::ffi::c_void, env: SEXP) {
 pub unsafe fn PrintDefaults() {
     unsafe {
         let env = R_GlobalEnv();
-        R_PRINT.with(|v| {
-            PrintInit(v.as_ptr() as *mut std::ffi::c_void, env);
+        with_current_print_data_mut(|data| {
+            PrintInit(data as *mut R_PrintData as *mut std::ffi::c_void, env);
         });
     }
 }
@@ -481,11 +512,10 @@ unsafe fn advancePrintArgs(
 
 unsafe fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
     unsafe {
-        TAGBUF.with(|buf| {
-            let b = buf.borrow();
-            let len = libc::strlen(b.as_ptr() as *const c_char);
+        with_print_runtime(|state| {
+            let len = libc::strlen(state.tagbuf.as_ptr() as *const c_char);
             if len < save.len() {
-                ptr::copy_nonoverlapping(b.as_ptr(), save.as_mut_ptr(), len + 1);
+                ptr::copy_nonoverlapping(state.tagbuf.as_ptr(), save.as_mut_ptr(), len + 1);
             } else {
                 save[0] = 0;
             }
@@ -495,11 +525,10 @@ unsafe fn save_tagbuf(save: &mut [u8; TAGBUFLEN0 * 2]) {
 
 unsafe fn restore_tagbuf(save: &[u8; TAGBUFLEN0 * 2]) {
     unsafe {
-        TAGBUF.with(|buf| {
-            let mut b = buf.borrow_mut();
+        with_print_runtime(|state| {
             let len = libc::strlen(save.as_ptr() as *const c_char);
             if len < TAGBUFLEN0 * 2 {
-                ptr::copy_nonoverlapping(save.as_ptr(), b.as_mut_ptr(), len + 1);
+                ptr::copy_nonoverlapping(save.as_ptr(), state.tagbuf.as_mut_ptr(), len + 1);
             }
         });
     }
@@ -513,7 +542,7 @@ unsafe fn PrintLanguage(s: SEXP, data: &R_PrintData) {
     unsafe {
         let t = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
         Rf_protect(t);
-        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+        set_current_print_data(data);
 
         let n = LENGTH(t);
         for i in 0..n {
@@ -579,7 +608,7 @@ unsafe fn PrintSpecial(s: SEXP, data: &R_PrintData) {
         if s2 != R_UnboundValue() {
             let t = crate::mainutils::deparse::deparse1m(s2, false, DEFAULTDEPARSE);
             Rf_protect(t);
-            R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+            set_current_print_data(data);
 
             let line = STRING_ELT(t, 0);
             if !line.is_null() && line != R_NilValue() {
@@ -601,7 +630,7 @@ unsafe fn PrintExpression(s: SEXP, data: &R_PrintData) {
     unsafe {
         let u = crate::mainutils::deparse::deparse1w(s, false, data.useSource | DEFAULTDEPARSE);
         Rf_protect(u);
-        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+        set_current_print_data(data);
 
         let n = LENGTH(u);
         for i in 0..n {
@@ -649,7 +678,7 @@ unsafe fn PrintObject(s: SEXP, data: &R_PrintData) {
 
         PrintObjectS3(s, data);
 
-        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+        set_current_print_data(data);
         restore_tagbuf(&save);
     }
 }
@@ -1035,13 +1064,7 @@ unsafe fn PrintGenericVector(s: SEXP, data: &R_PrintData) {
                     }
 
                     // Print tag line
-                    TAGBUF.with(|buf| {
-                        let b = buf.borrow();
-                        let s = CStr::from_ptr(b.as_ptr() as *const c_char)
-                            .to_str()
-                            .unwrap_or("");
-                        println!("{}", s);
-                    });
+                    println!("{}", tagbuf_string());
 
                     PrintDispatch(VECTOR_ELT(s, i), data);
 
@@ -1215,13 +1238,7 @@ unsafe fn printList(s: SEXP, data: &R_PrintData) {
                     }
                 }
 
-                TAGBUF.with(|buf| {
-                    let b = buf.borrow();
-                    let s = CStr::from_ptr(b.as_ptr() as *const c_char)
-                        .to_str()
-                        .unwrap_or("");
-                    println!("{}", s);
-                });
+                println!("{}", tagbuf_string());
 
                 PrintDispatch(CAR(cur), data);
 
@@ -1333,13 +1350,7 @@ unsafe fn printAttributes(s: SEXP, data: &R_PrintData, useSlots: bool) {
                 }
             }
 
-            TAGBUF.with(|buf| {
-                let b = buf.borrow();
-                let s = CStr::from_ptr(b.as_ptr() as *const c_char)
-                    .to_str()
-                    .unwrap_or("");
-                println!("{}", s);
-            });
+            println!("{}", tagbuf_string());
 
             if tag == R_RowNamesSymbol() {
                 let val = Rf_protect(getAttrib(s, R_RowNamesSymbol()));
@@ -1368,7 +1379,8 @@ pub unsafe fn PrintValueRec(s: SEXP, _data: *mut std::ffi::c_void) {
         let data = _data as *const R_PrintData;
         if data.is_null() {
             PrintDefaults();
-            R_PRINT.with(|v| PrintValueRec_inner(s, &*v.as_ptr()));
+            let data = current_print_data_clone();
+            PrintValueRec_inner(s, &data);
         } else {
             PrintValueRec_inner(s, &*data);
         }
@@ -1393,7 +1405,7 @@ unsafe fn PrintValueRec_inner(s: SEXP, data: &R_PrintData) {
             t if t == SEXPTYPE::SYMSXP => {
                 let t = crate::mainutils::deparse::deparse1(s, false, SIMPLEDEPARSE);
                 Rf_protect(t);
-                R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+                set_current_print_data(data);
                 let line = STRING_ELT(t, 0);
                 if !line.is_null() && line != R_NilValue() {
                     println!("{}", CStr::from_ptr(CHAR(line)).to_str().unwrap_or("?"));
@@ -1625,7 +1637,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
 
         // Simplified: if not enough args, just print directly
         if args_rest == R_NilValue() || CDR(args_rest) == R_NilValue() {
-            R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+            set_current_print_data(&data);
             tagbuf_clear();
             PrintValueRec_inner(x, &data);
             PrintDefaults();
@@ -1777,7 +1789,7 @@ pub unsafe fn do_printdefault(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         };
         data.callArgs = CDR(orig);
 
-        R_PRINT.with(|v| *v.borrow_mut() = data.clone());
+        set_current_print_data(&data);
 
         tagbuf_clear();
 
@@ -1809,14 +1821,13 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 
         let quote = asInteger(CAR(a));
         a = CDR(a);
-        R_PRINT.with(|v| v.borrow_mut().right = asInteger(CAR(a)));
+        with_current_print_data_mut(|data| data.right = asInteger(CAR(a)));
         a = CDR(a);
         let naprint = CAR(a);
 
         if Rf_isNull(naprint) == 0 && isString(naprint) != 0 && LENGTH(naprint) >= 1 {
             let na_str = STRING_ELT(naprint, 0);
-            R_PRINT.with(|v| {
-                let mut ds = v.borrow_mut();
+            with_current_print_data_mut(|ds| {
                 ds.na_string = na_str;
                 ds.na_string_noquote = na_str;
                 ds.na_width = crate::mainutils::printutils::Rstrlen(ds.na_string, 0);
@@ -1834,7 +1845,7 @@ pub unsafe fn do_prmatrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         }
 
         let dim = getAttrib(x, R_DimSymbol());
-        let right_val = R_PRINT.with(|v| v.borrow().right);
+        let right_val = with_current_print_data_mut(|data| data.right);
         crate::mainutils::printarray::printMatrix(
             x,
             0,
@@ -1926,6 +1937,7 @@ unsafe fn do_str(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
     use std::ptr;
 
     #[test]
@@ -1943,6 +1955,7 @@ mod tests {
 
     #[test]
     fn test_get_option_digits() {
+        let _session = RSession::new();
         unsafe {
             assert!(GetOptionDigits() > 0);
         }
@@ -1997,27 +2010,22 @@ mod tests {
     }
 
     #[test]
-    fn test_tagbuf_thread_local() {
+    fn test_tagbuf_session_owned() {
+        let _session = RSession::new();
         unsafe {
             tagbuf_clear();
-            TAGBUF.with(|buf| {
-                let mut b = buf.borrow_mut();
+            with_print_runtime(|state| {
                 let src = b"hello\0";
-                b[..src.len()].copy_from_slice(src);
+                state.tagbuf[..src.len()].copy_from_slice(src);
             });
-            TAGBUF.with(|buf| {
-                let b = buf.borrow();
-                let s = CStr::from_ptr(b.as_ptr() as *const c_char)
-                    .to_str()
-                    .unwrap_or("");
-                assert_eq!(s, "hello");
-            });
+            assert_eq!(tagbuf_string(), "hello");
             tagbuf_clear();
         }
     }
 
     #[test]
     fn test_print_defaults() {
+        let _session = RSession::new();
         unsafe {
             PrintDefaults();
             let pd = get_R_print_data();
@@ -2060,6 +2068,7 @@ mod tests {
 
     #[test]
     fn test_custom_print_value_null() {
+        let _session = RSession::new();
         unsafe {
             CustomPrintValue(ptr::null_mut(), ptr::null_mut());
         }
@@ -2089,37 +2098,31 @@ mod tests {
 
     #[test]
     fn test_save_restore_tagbuf() {
+        let _session = RSession::new();
         unsafe {
             tagbuf_clear();
-            TAGBUF.with(|buf| {
-                let mut b = buf.borrow_mut();
+            with_print_runtime(|state| {
                 let src = b"test_prefix$\0";
-                b[..src.len()].copy_from_slice(src);
+                state.tagbuf[..src.len()].copy_from_slice(src);
             });
             let mut save = [0u8; TAGBUFLEN0 * 2];
             save_tagbuf(&mut save);
 
             tagbuf_clear();
-            TAGBUF.with(|buf| {
-                let mut b = buf.borrow_mut();
+            with_print_runtime(|state| {
                 let src = b"modified\0";
-                b[..src.len()].copy_from_slice(src);
+                state.tagbuf[..src.len()].copy_from_slice(src);
             });
 
             restore_tagbuf(&save);
-            TAGBUF.with(|buf| {
-                let b = buf.borrow();
-                let s = CStr::from_ptr(b.as_ptr() as *const c_char)
-                    .to_str()
-                    .unwrap_or("");
-                assert_eq!(s, "test_prefix$");
-            });
+            assert_eq!(tagbuf_string(), "test_prefix$");
             tagbuf_clear();
         }
     }
 
     #[test]
     fn test_do_prmatrix_nil() {
+        let _session = RSession::new();
         unsafe {
             let result = do_prmatrix(
                 ptr::null_mut(),
