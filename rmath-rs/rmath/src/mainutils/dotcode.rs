@@ -24,6 +24,7 @@ use crate::sexp::attrib_core::{getAttrib, setAttrib};
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_length, Rf_mkChar};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, Rcomplex, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance;
 use crate::sexp::memory_ext::{R_alloc, vmaxget, vmaxset};
 use crate::sexp::symbol::Rf_install;
 use crate::unix::dynload::DL_FUNC;
@@ -44,6 +45,11 @@ const R_PATH_MAX: usize = 4096;
 /// Guard byte pattern and count for bounds checking in .C/.Fortran.
 const FILL: u8 = 0xee;
 const NG: usize = 64;
+
+#[derive(Default)]
+pub(crate) struct DotcodeRuntimeState {
+    pub retval_check: Option<bool>,
+}
 
 // ---------------------------------------------------------------------------
 // Native symbol type constants
@@ -167,6 +173,12 @@ unsafe fn warning(msg: &str) {
 
 unsafe fn warningcall(_call: SEXP, msg: &str) {
     eprintln!("WARNING: {}", msg);
+}
+
+fn dotcode_retval_check_enabled() -> bool {
+    std::env::var("_R_CHECK_DOTCODE_RETVAL_")
+        .map(|p| p == "TRUE" || p == "true" || p == "1" || p == "yes")
+        .unwrap_or(false)
 }
 
 // ---------------------------------------------------------------------------
@@ -584,11 +596,11 @@ unsafe fn resolveNativeRoutine(
 
 unsafe fn check_retval(call: SEXP, val: SEXP) -> SEXP {
     unsafe {
-        static DO_CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        let do_check = *DO_CHECK.get_or_init(|| {
-            std::env::var("_R_CHECK_DOTCODE_RETVAL_")
-                .map(|p| p == "TRUE" || p == "true" || p == "1" || p == "yes")
-                .unwrap_or(false)
+        let do_check = instance::with_required_current_instance(|inst| {
+            *inst
+                .dotcode_state
+                .retval_check
+                .get_or_insert_with(dotcode_retval_check_enabled)
         });
 
         if do_check {
