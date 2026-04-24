@@ -3009,6 +3009,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "duplicated.array",
         "anyDuplicated.array",
         "match",
+        "%in%",
         "findInterval",
         "cut",
         // String operations

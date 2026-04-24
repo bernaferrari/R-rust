@@ -749,6 +749,28 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_match_in_set_ops_and_extrema_indices() {
+        let mut session = RSession::new();
+        let matched = session.eval("match(c(2, 4), c(1, 2, 3))");
+        let contains = session.eval("c(2, 4) %in% c(1, 2, 3)");
+        let union = session.eval("union(c(1, 2), c(2, 3))");
+        let intersect = session.eval("intersect(c(1, 2), c(2, 3))");
+        let setdiff = session.eval("setdiff(c(1, 2, 3), c(2, 4))");
+        let setequal = session.eval("setequal(c(1, 2), c(2, 1, 1))");
+        let which_min = session.eval("which.min(c(3, 1, 2))");
+        let which_max = session.eval("which.max(c(3, 1, 2))");
+
+        assert_eq!(matched.output, "[1]  2 NA");
+        assert_eq!(contains.output, "[1]  TRUE FALSE");
+        assert_eq!(union.output, "[1] 1 2 3");
+        assert_eq!(intersect.output, "[1] 2");
+        assert_eq!(setdiff.output, "[1] 1 3");
+        assert_eq!(setequal.output, "[1] TRUE");
+        assert_eq!(which_min.output, "[1] 2");
+        assert_eq!(which_max.output, "[1] 1");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
