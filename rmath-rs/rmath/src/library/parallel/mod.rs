@@ -1,5 +1,6 @@
 //! Parallel package - parallel support
 
+#[cfg(not(target_os = "android"))]
 #[allow(
     dead_code,
     unused_imports,

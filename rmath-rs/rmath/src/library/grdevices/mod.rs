@@ -63,6 +63,7 @@ pub(crate) mod device_registry;
     non_camel_case_types
 )]
 mod devices;
+#[cfg(not(target_os = "android"))]
 #[allow(
     dead_code,
     unused_imports,

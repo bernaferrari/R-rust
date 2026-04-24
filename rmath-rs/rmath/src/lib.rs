@@ -128,8 +128,10 @@ pub mod android;
 pub mod eval;
 #[allow(dead_code, non_camel_case_types)]
 pub mod modules;
+#[cfg(not(target_os = "android"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod graphapp;
+#[cfg(not(target_os = "android"))]
 pub mod intl;
 #[allow(dead_code, non_camel_case_types)]
 pub mod library;

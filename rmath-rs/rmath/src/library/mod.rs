@@ -66,6 +66,7 @@ pub mod splines;
     non_camel_case_types
 )]
 pub mod stats;
+#[cfg(not(target_os = "android"))]
 #[allow(
     dead_code,
     unused_imports,
