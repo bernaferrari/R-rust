@@ -735,6 +735,20 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_sort_unique_rev() {
+        let mut session = RSession::new();
+        let sorted = session.eval("sort(c(3, 1, 2))");
+        let sorted_desc = session.eval("sort(c(3, 1, 2), decreasing = TRUE)");
+        let unique = session.eval("unique(c(1, 1, 2, 1))");
+        let reversed = session.eval("rev(c(1, 2, 3))");
+
+        assert_eq!(sorted.output, "[1] 1 2 3");
+        assert_eq!(sorted_desc.output, "[1] 3 2 1");
+        assert_eq!(unique.output, "[1] 1 2");
+        assert_eq!(reversed.output, "[1] 3 2 1");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
