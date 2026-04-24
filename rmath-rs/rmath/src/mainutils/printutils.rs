@@ -16,13 +16,10 @@
 //!   Rprintf, Rvprintf, REvprintf, REvprintf_internal,
 //!   Rcons_vprintf, VectorIndex
 
-use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::io::Write as IoWrite;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::sync::LazyLock;
-use std::sync::Mutex;
 
 use crate::sexp::accessors::{
     CHAR, COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF,
@@ -66,52 +63,88 @@ impl Default for RPrint {
     }
 }
 
-thread_local! { static R_PRINT: Cell<RPrint> = Cell::new(RPrint { na_string: ptr::null(), na_string_noquote: ptr::null(), na_width: 2, na_width_noquote: 2, gap: 1 }); }
+pub(crate) struct PrintUtilsState {
+    pub print: RPrint,
+    encode_logical: [u8; NB],
+    encode_integer: [u8; NB],
+    encode_real0: [u8; 2 * NB],
+    encode_real_drop0: [u8; 2 * NB],
+    encode_real2: [u8; NB],
+    encode_complex: [u8; NB + 3],
+    encode_raw: [u8; 10],
+    encode_environment: [u8; 1000],
+    encode_extptr: [u8; 1000],
+    encode_string: Vec<u8>,
+}
+
+impl Default for PrintUtilsState {
+    fn default() -> Self {
+        PrintUtilsState {
+            print: RPrint::default(),
+            encode_logical: [0; NB],
+            encode_integer: [0; NB],
+            encode_real0: [0; 2 * NB],
+            encode_real_drop0: [0; 2 * NB],
+            encode_real2: [0; NB],
+            encode_complex: [0; NB + 3],
+            encode_raw: [0; 10],
+            encode_environment: [0; 1000],
+            encode_extptr: [0; 1000],
+            encode_string: Vec::with_capacity(BUFSIZE),
+        }
+    }
+}
+
+fn current_R_print() -> RPrint {
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.printutils.print)
+        .unwrap_or_default()
+}
+
+unsafe fn na_string_ptr_from_print(rp: RPrint, noquote: bool) -> *const c_char {
+    unsafe {
+        let na = if noquote {
+            rp.na_string_noquote
+        } else {
+            rp.na_string
+        };
+        if !na.is_null() {
+            let p = CHAR(na as SEXP);
+            if !p.is_null() {
+                return p;
+            }
+        }
+        b"NA\0".as_ptr() as *const c_char
+    }
+}
+
+unsafe fn na_string_owned_from_print(rp: RPrint, noquote: bool) -> String {
+    unsafe {
+        CStr::from_ptr(na_string_ptr_from_print(rp, noquote))
+            .to_string_lossy()
+            .into_owned()
+    }
+}
 
 /// Return a copy of the current R_print configuration.
 pub unsafe fn get_R_print() -> RPrint {
-    R_PRINT.with(|v| v.get())
+    current_R_print()
 }
 
 /// Set the R_print configuration.
 pub unsafe fn set_R_print(rp: RPrint) {
-    R_PRINT.with(|v| v.set(rp));
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.eval_state.printutils.print = rp;
+    });
 }
 
 /// Helper: return the NA string from R_print, falling back to "NA".
-unsafe fn na_string_str() -> &'static str {
-    unsafe {
-        let rp = R_PRINT.with(|v| v.get());
-        let na = rp.na_string;
-        if !na.is_null() {
-            let p = CHAR(na as SEXP);
-            if !p.is_null() {
-                let s = CStr::from_ptr(p);
-                if let Ok(s) = s.to_str() {
-                    return s;
-                }
-            }
-        }
-        "NA"
-    }
+unsafe fn na_string_str() -> String {
+    unsafe { na_string_owned_from_print(current_R_print(), false) }
 }
 
 /// Helper: return the no-quote NA string from R_print, falling back to "NA".
-unsafe fn na_string_noquote_str() -> &'static str {
-    unsafe {
-        let rp = R_PRINT.with(|v| v.get());
-        let na = rp.na_string_noquote;
-        if !na.is_null() {
-            let p = CHAR(na as SEXP);
-            if !p.is_null() {
-                let s = CStr::from_ptr(p);
-                if let Ok(s) = s.to_str() {
-                    return s;
-                }
-            }
-        }
-        "NA"
-    }
+unsafe fn na_string_noquote_str() -> String {
+    unsafe { na_string_owned_from_print(current_R_print(), true) }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,22 +248,18 @@ pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
 
 /// Encode a logical value for printing.
 ///
-/// Returns a static string.  `x` is the logical value (NA_LOGICAL for NA),
-/// `w` is the minimum field width.
+/// Returns a pointer into the active session's print buffer. `x` is the logical
+/// value (NA_LOGICAL for NA), `w` is the minimum field width.
 #[unsafe(no_mangle)]
 pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; NB]>> = LazyLock::new(|| Mutex::new([0u8; NB]));
-
-        let na = na_string_str();
+        let rp = current_R_print();
+        let na = na_string_owned_from_print(rp, false);
 
         // Fast path: exact-width matches
         if x == NA_LOGICAL {
-            if w == R_PRINT.with(|v| v.get()).na_width {
-                return na.as_ptr() as *const c_char;
+            if w == rp.na_width {
+                return na_string_ptr_from_print(rp, false);
             }
         } else if x != 0 {
             if w == 4 {
@@ -245,25 +274,27 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
         let val = if x == NA_LOGICAL {
             na
         } else if x != 0 {
-            "TRUE"
+            "TRUE".to_string()
         } else {
-            "FALSE"
+            "FALSE".to_string()
         };
 
         let width = w as usize;
         let mw = if width < NB - 1 { width } else { NB - 1 };
 
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-        // Right-justify into buffer
-        let val_bytes = val.as_bytes();
-        let val_len = val_bytes.len().min(mw);
-        buf.fill(b' ');
-        buf[mw..].copy_from_slice(&[0u8; 1]); // zero the tail
-        let start = mw - val_len;
-        buf[start..mw].copy_from_slice(&val_bytes[..val_len]);
-        buf[mw] = 0; // null-terminate
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_logical;
+            // Right-justify into buffer
+            let val_bytes = val.as_bytes();
+            let val_len = val_bytes.len().min(mw);
+            buf.fill(b' ');
+            buf[mw..].copy_from_slice(&[0u8; 1]); // zero the tail
+            let start = mw - val_len;
+            buf[start..mw].copy_from_slice(&val_bytes[..val_len]);
+            buf[mw] = 0; // null-terminate
 
-        buf.as_ptr() as *const c_char
+            buf.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -273,39 +304,28 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 
 /// Encode an integer value for printing.
 ///
-/// Returns a static string.  `x` is the integer value (NA_INTEGER for NA),
-/// `w` is the minimum field width.
+/// Returns a pointer into the active session's print buffer. `x` is the integer
+/// value (NA_INTEGER for NA), `w` is the minimum field width.
 #[unsafe(no_mangle)]
 pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; NB]>> = LazyLock::new(|| Mutex::new([0u8; NB]));
-
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-
-        if x == NA_INTEGER {
-            let na = na_string_str();
-            let width = w as usize;
-            let mw = if width < NB - 1 { width } else { NB - 1 };
-            let val_len = na.len().min(mw);
-            let start = mw - val_len;
-            buf[..mw].fill(b' ');
-            buf[start..mw].copy_from_slice(&na.as_bytes()[..val_len]);
-            buf[mw] = 0;
+        let val = if x == NA_INTEGER {
+            na_string_str()
         } else {
-            let s = format!("{}", x);
-            let width = w as usize;
-            let mw = if width < NB - 1 { width } else { NB - 1 };
-            let val_len = s.len().min(mw);
+            format!("{}", x)
+        };
+        let width = w as usize;
+        let mw = if width < NB - 1 { width } else { NB - 1 };
+
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_integer;
+            let val_len = val.len().min(mw);
             let start = mw - val_len;
             buf[..mw].fill(b' ');
-            buf[start..mw].copy_from_slice(&s.as_bytes()[..val_len]);
+            buf[start..mw].copy_from_slice(&val.as_bytes()[..val_len]);
             buf[mw] = 0;
-        }
-
-        buf.as_ptr() as *const c_char
+            buf.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -347,7 +367,7 @@ fn format_number_fixed(x: f64, prec: usize) -> String {
 /// after the decimal, `e` is non-zero to use scientific notation.
 /// `dec` is the decimal separator string (typically ".").
 ///
-/// Returns a pointer to a static buffer.
+/// Returns a pointer into the active session's print buffer.
 #[unsafe(no_mangle)]
 pub unsafe fn EncodeReal0(
     x: f64,
@@ -357,12 +377,6 @@ pub unsafe fn EncodeReal0(
     dec: *const c_char,
 ) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; 2 * NB]>> = LazyLock::new(|| Mutex::new([0u8; 2 * NB]));
-
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
         let dec_str = if dec.is_null() {
             "."
         } else {
@@ -403,35 +417,39 @@ pub unsafe fn EncodeReal0(
             format_number_fixed(x, d as usize)
         };
 
-        // Copy into buf, replacing "." with dec if needed
-        let out = if dec_str != "." {
-            let mut idx = 0usize;
-            for ch in formatted.chars() {
-                if ch == '.' {
-                    for dc in dec_str.chars() {
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_real0;
+
+            // Copy into buf, replacing "." with dec if needed
+            let out = if dec_str != "." {
+                let mut idx = 0usize;
+                for ch in formatted.chars() {
+                    if ch == '.' {
+                        for dc in dec_str.chars() {
+                            if idx < 2 * NB - 1 {
+                                buf[idx] = dc as u8;
+                                idx += 1;
+                            }
+                        }
+                    } else {
                         if idx < 2 * NB - 1 {
-                            buf[idx] = dc as u8;
+                            buf[idx] = ch as u8;
                             idx += 1;
                         }
                     }
-                } else {
-                    if idx < 2 * NB - 1 {
-                        buf[idx] = ch as u8;
-                        idx += 1;
-                    }
                 }
-            }
-            buf[idx] = 0;
-            buf.as_ptr()
-        } else {
-            let bytes = formatted.as_bytes();
-            let len = bytes.len().min(NB - 1);
-            buf[..len].copy_from_slice(&bytes[..len]);
-            buf[len] = 0;
-            buf.as_ptr()
-        };
+                buf[idx] = 0;
+                buf.as_ptr()
+            } else {
+                let bytes = formatted.as_bytes();
+                let len = bytes.len().min(NB - 1);
+                buf[..len].copy_from_slice(&bytes[..len]);
+                buf[len] = 0;
+                buf.as_ptr()
+            };
 
-        out as *const c_char
+            out as *const c_char
+        })
     }
 }
 
@@ -462,12 +480,6 @@ pub unsafe fn EncodeRealDrop0(
     dec: *const c_char,
 ) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; 2 * NB]>> = LazyLock::new(|| Mutex::new([0u8; 2 * NB]));
-
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
         let dec_str = if dec.is_null() {
             "."
         } else {
@@ -525,34 +537,38 @@ pub unsafe fn EncodeRealDrop0(
             }
         }
 
-        // Replace "." with dec if needed
-        let out = if dec_str != "." {
-            let mut idx = 0usize;
-            for &byte in &trimmed {
-                if byte == b'.' {
-                    for dc in dec_str.bytes() {
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_real_drop0;
+
+            // Replace "." with dec if needed
+            let out = if dec_str != "." {
+                let mut idx = 0usize;
+                for &byte in &trimmed {
+                    if byte == b'.' {
+                        for dc in dec_str.bytes() {
+                            if idx < 2 * NB - 1 {
+                                buf[idx] = dc;
+                                idx += 1;
+                            }
+                        }
+                    } else {
                         if idx < 2 * NB - 1 {
-                            buf[idx] = dc;
+                            buf[idx] = byte;
                             idx += 1;
                         }
                     }
-                } else {
-                    if idx < 2 * NB - 1 {
-                        buf[idx] = byte;
-                        idx += 1;
-                    }
                 }
-            }
-            buf[idx] = 0;
-            buf.as_ptr()
-        } else {
-            let len = trimmed.len().min(NB - 1);
-            buf[..len].copy_from_slice(&trimmed[..len]);
-            buf[len] = 0;
-            buf.as_ptr()
-        };
+                buf[idx] = 0;
+                buf.as_ptr()
+            } else {
+                let len = trimmed.len().min(NB - 1);
+                buf[..len].copy_from_slice(&trimmed[..len]);
+                buf[len] = 0;
+                buf.as_ptr()
+            };
 
-        out as *const c_char
+            out as *const c_char
+        })
     }
 }
 
@@ -566,13 +582,6 @@ pub unsafe fn EncodeRealDrop0(
 /// point is always present.
 pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; NB]>> = LazyLock::new(|| Mutex::new([0u8; NB]));
-
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-
         // IEEE: normalize signed zero
         let x = if x == 0.0 { 0.0 } else { x };
 
@@ -606,12 +615,15 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
             format_number_fixed(x, d as usize)
         };
 
-        let bytes = formatted.as_bytes();
-        let len = bytes.len().min(NB - 1);
-        buf[..len].copy_from_slice(&bytes[..len]);
-        buf[len] = 0;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_real2;
+            let bytes = formatted.as_bytes();
+            let len = bytes.len().min(NB - 1);
+            buf[..len].copy_from_slice(&bytes[..len]);
+            buf[len] = 0;
 
-        buf.as_ptr() as *const c_char
+            buf.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -636,13 +648,6 @@ pub unsafe fn EncodeComplex(
     dec: *const c_char,
 ) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; NB + 3]>> = LazyLock::new(|| Mutex::new([0u8; NB + 3]));
-
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-
         let dec_str = if dec.is_null() {
             "."
         } else {
@@ -682,12 +687,15 @@ pub unsafe fn EncodeComplex(
             im_str
         };
 
-        let bytes = result.as_bytes();
-        let len = bytes.len().min(NB + 2);
-        buf[..len].copy_from_slice(&bytes[..len]);
-        buf[len] = 0;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_complex;
+            let bytes = result.as_bytes();
+            let len = bytes.len().min(NB + 2);
+            buf[..len].copy_from_slice(&bytes[..len]);
+            buf[len] = 0;
 
-        buf.as_ptr() as *const c_char
+            buf.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -699,13 +707,6 @@ pub unsafe fn EncodeComplex(
 #[unsafe(no_mangle)]
 pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
     unsafe {
-        use std::sync::LazyLock;
-        use std::sync::Mutex;
-
-        static BUF: LazyLock<Mutex<[u8; 10]>> = LazyLock::new(|| Mutex::new([0u8; 10]));
-
-        let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-
         let prefix_str = if prefix.is_null() {
             ""
         } else {
@@ -713,12 +714,15 @@ pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
         };
 
         let s = format!("{}{:02x}", prefix_str, x);
-        let bytes = s.as_bytes();
-        let len = bytes.len().min(9);
-        buf[..len].copy_from_slice(&bytes[..len]);
-        buf[len] = 0;
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buf = &mut inst.eval_state.printutils.encode_raw;
+            let bytes = s.as_bytes();
+            let len = bytes.len().min(9);
+            buf[..len].copy_from_slice(&bytes[..len]);
+            buf[len] = 0;
 
-        buf.as_ptr() as *const c_char
+            buf.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -816,24 +820,26 @@ pub unsafe fn IndexWidth_xlen(n: R_xlen_t) -> c_int {
 
 /// Encode an environment SEXP for display.
 pub unsafe fn EncodeEnvironment(_x: SEXP) -> *const c_char {
-    static BUF: LazyLock<Mutex<[u8; 1000]>> = LazyLock::new(|| Mutex::new([0u8; 1000]));
-    let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-    let s = "<environment: 0x0>";
-    let bytes = s.as_bytes();
-    buf[..bytes.len()].copy_from_slice(bytes);
-    buf[bytes.len()] = 0;
-    buf.as_ptr() as *const c_char
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        let buf = &mut inst.eval_state.printutils.encode_environment;
+        let s = "<environment: 0x0>";
+        let bytes = s.as_bytes();
+        buf[..bytes.len()].copy_from_slice(bytes);
+        buf[bytes.len()] = 0;
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Encode an external pointer SEXP for display.
 pub unsafe fn EncodeExtptr(_x: SEXP) -> *const c_char {
-    static BUF: LazyLock<Mutex<[u8; 1000]>> = LazyLock::new(|| Mutex::new([0u8; 1000]));
-    let mut buf = BUF.lock().unwrap_or_else(|e| e.into_inner());
-    let s = "<pointer: 0x0>";
-    let bytes = s.as_bytes();
-    buf[..bytes.len()].copy_from_slice(bytes);
-    buf[bytes.len()] = 0;
-    buf.as_ptr() as *const c_char
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        let buf = &mut inst.eval_state.printutils.encode_extptr;
+        let s = "<pointer: 0x0>";
+        let bytes = s.as_bytes();
+        buf[..bytes.len()].copy_from_slice(bytes);
+        buf[bytes.len()] = 0;
+        buf.as_ptr() as *const c_char
+    })
 }
 
 /// Create a CHARSXP from a formatted real value.
@@ -899,22 +905,24 @@ pub enum Rprt_adj {
 #[unsafe(no_mangle)]
 pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
-        static BUFFER: LazyLock<Mutex<Vec<u8>>> =
-            LazyLock::new(|| Mutex::new(Vec::with_capacity(BUFSIZE)));
-
-        let mut buffer = BUFFER.lock().unwrap_or_else(|e| e.into_inner());
-        buffer.clear();
-
         if s.is_null() {
-            buffer.push(0);
-            return buffer.as_ptr() as *const c_char;
+            return crate::sexp::instance::with_required_current_instance(|inst| {
+                let buffer = &mut inst.eval_state.printutils.encode_string;
+                buffer.clear();
+                buffer.push(0);
+                buffer.as_ptr() as *const c_char
+            });
         }
 
         // Get the character data
         let p = CHAR(s);
         if p.is_null() {
-            buffer.push(0);
-            return buffer.as_ptr() as *const c_char;
+            return crate::sexp::instance::with_required_current_instance(|inst| {
+                let buffer = &mut inst.eval_state.printutils.encode_string;
+                buffer.clear();
+                buffer.push(0);
+                buffer.as_ptr() as *const c_char
+            });
         }
 
         let bytes = CStr::from_ptr(p).to_bytes();
@@ -931,114 +939,119 @@ pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -
             b = 0;
         }
 
-        // Left/centre padding
-        if b > 0 && justify != Rprt_adj::left {
-            let b0 = if justify == Rprt_adj::centre {
-                b / 2
-            } else {
-                b
-            };
-            for _ in 0..b0 {
-                buffer.push(b' ');
+        crate::sexp::instance::with_required_current_instance(|inst| {
+            let buffer = &mut inst.eval_state.printutils.encode_string;
+            buffer.clear();
+
+            // Left/centre padding
+            if b > 0 && justify != Rprt_adj::left {
+                let b0 = if justify == Rprt_adj::centre {
+                    b / 2
+                } else {
+                    b
+                };
+                for _ in 0..b0 {
+                    buffer.push(b' ');
+                }
+                b -= b0;
             }
-            b -= b0;
-        }
 
-        // Opening quote
-        if quote != 0 {
-            buffer.push(quote_char);
-        }
+            // Opening quote
+            if quote != 0 {
+                buffer.push(quote_char);
+            }
 
-        // Encode each byte with escaping (ASCII path, matching R's non-MBCS path)
-        for &k in bytes {
-            if k < 0x80 {
-                // ASCII
-                if k != b'\t' && (k >= 0x20 && k < 0x7f) {
-                    match k {
-                        b'\\' => {
-                            buffer.push(b'\\');
-                            buffer.push(b'\\');
-                        }
-                        b'\'' | b'"' | b'`' => {
-                            if quote != 0 && k == quote_char {
+            // Encode each byte with escaping (ASCII path, matching R's non-MBCS path)
+            for &k in bytes {
+                if k < 0x80 {
+                    // ASCII
+                    if k != b'\t' && (k >= 0x20 && k < 0x7f) {
+                        match k {
+                            b'\\' => {
+                                buffer.push(b'\\');
                                 buffer.push(b'\\');
                             }
-                            buffer.push(k);
+                            b'\'' | b'"' | b'`' => {
+                                if quote != 0 && k == quote_char {
+                                    buffer.push(b'\\');
+                                }
+                                buffer.push(k);
+                            }
+                            _ => buffer.push(k),
                         }
-                        _ => buffer.push(k),
+                    } else {
+                        // Control characters / non-printable ASCII
+                        match k {
+                            0x07 => {
+                                buffer.push(b'\\');
+                                buffer.push(b'a');
+                            }
+                            0x08 => {
+                                buffer.push(b'\\');
+                                buffer.push(b'b');
+                            }
+                            0x0C => {
+                                buffer.push(b'\\');
+                                buffer.push(b'f');
+                            }
+                            b'\n' => {
+                                buffer.push(b'\\');
+                                buffer.push(b'n');
+                            }
+                            b'\r' => {
+                                buffer.push(b'\\');
+                                buffer.push(b'r');
+                            }
+                            b'\t' => {
+                                buffer.push(b'\\');
+                                buffer.push(b't');
+                            }
+                            0x0B => {
+                                buffer.push(b'\\');
+                                buffer.push(b'v');
+                            }
+                            0x00 => {
+                                buffer.push(b'\\');
+                                buffer.push(b'0');
+                            }
+                            _ => {
+                                // Octal encoding: \OOO
+                                buffer.push(b'\\');
+                                buffer.push(b'0' + (k >> 6));
+                                buffer.push(b'0' + ((k >> 3) & 7));
+                                buffer.push(b'0' + (k & 7));
+                            }
+                        }
                     }
                 } else {
-                    // Control characters / non-printable ASCII
-                    match k {
-                        0x07 => {
-                            buffer.push(b'\\');
-                            buffer.push(b'a');
-                        }
-                        0x08 => {
-                            buffer.push(b'\\');
-                            buffer.push(b'b');
-                        }
-                        0x0C => {
-                            buffer.push(b'\\');
-                            buffer.push(b'f');
-                        }
-                        b'\n' => {
-                            buffer.push(b'\\');
-                            buffer.push(b'n');
-                        }
-                        b'\r' => {
-                            buffer.push(b'\\');
-                            buffer.push(b'r');
-                        }
-                        b'\t' => {
-                            buffer.push(b'\\');
-                            buffer.push(b't');
-                        }
-                        0x0B => {
-                            buffer.push(b'\\');
-                            buffer.push(b'v');
-                        }
-                        0x00 => {
-                            buffer.push(b'\\');
-                            buffer.push(b'0');
-                        }
-                        _ => {
-                            // Octal encoding: \OOO
-                            buffer.push(b'\\');
-                            buffer.push(b'0' + (k >> 6));
-                            buffer.push(b'0' + ((k >> 3) & 7));
-                            buffer.push(b'0' + (k & 7));
-                        }
+                    // High byte: pass through (non-MBCS simplified path)
+                    if k >= 0x20 {
+                        buffer.push(k);
+                    } else {
+                        // Octal encoding
+                        buffer.push(b'\\');
+                        buffer.push(b'0' + (k >> 6));
+                        buffer.push(b'0' + ((k >> 3) & 7));
+                        buffer.push(b'0' + (k & 7));
                     }
                 }
-            } else {
-                // High byte: pass through (non-MBCS simplified path)
-                if k >= 0x20 {
-                    buffer.push(k);
-                } else {
-                    // Octal encoding
-                    buffer.push(b'\\');
-                    buffer.push(b'0' + (k >> 6));
-                    buffer.push(b'0' + ((k >> 3) & 7));
-                    buffer.push(b'0' + (k & 7));
+            }
+
+            // Closing quote
+            if quote != 0 {
+                buffer.push(quote_char);
+            }
+
+            // Right/centre padding
+            if b > 0 && justify != Rprt_adj::right {
+                for _ in 0..b {
+                    buffer.push(b' ');
                 }
             }
-        }
 
-        // Closing quote
-        if quote != 0 {
-            buffer.push(quote_char);
-        }
-
-        // Right/centre padding
-        if b > 0 && justify != Rprt_adj::right {
-            for _ in 0..b {
-                buffer.push(b' ');
-            }
-        }
-
-        buffer.push(0); // null-terminate
-        buffer.as_ptr() as *const c_char
+            buffer.push(0); // null-terminate
+            buffer.as_ptr() as *const c_char
+        })
     }
 }
 
@@ -1129,10 +1142,7 @@ pub unsafe fn EncodeElement0(
                 let val = *raw_data.add(indx as usize);
                 EncodeRaw(val, b"\0".as_ptr() as *const c_char)
             }
-            _ => {
-                static EMPTY: [u8; 1] = [0];
-                EMPTY.as_ptr() as *const c_char
-            }
+            _ => b"\0".as_ptr() as *const c_char,
         }
     }
 }
