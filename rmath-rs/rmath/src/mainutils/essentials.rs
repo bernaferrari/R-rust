@@ -3060,6 +3060,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "rawToChar",
         "strtoi",
         "strtrim",
+        "regexpr",
         // Data manipulation
         "order",
         "rank",
@@ -13235,14 +13236,44 @@ pub unsafe fn do_regexpr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
             return R_NilValue();
         }
         let _p = Rf_protect(result);
+        let match_len = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        if match_len.is_null() {
+            crate::sexp::protect::Rf_unprotect(1);
+            return R_NilValue();
+        }
+        let _mlp = Rf_protect(match_len);
+
         for i in 0..n {
             let txt = elt_to_string(CAR(CDR(args)), i);
-            *INTEGER(result).add(i as usize) = match txt.find(&pat) {
-                Some(pos) => (pos + 1) as c_int,
-                None => -1,
-            };
+            match txt.find(&pat) {
+                Some(pos) => {
+                    *INTEGER(result).add(i as usize) = (pos + 1) as c_int;
+                    *INTEGER(match_len).add(i as usize) = pat.len() as c_int;
+                }
+                None => {
+                    *INTEGER(result).add(i as usize) = -1;
+                    *INTEGER(match_len).add(i as usize) = -1;
+                }
+            }
         }
-        crate::sexp::protect::Rf_unprotect(1);
+
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("match.length").unwrap_or_default().as_ptr()),
+            match_len,
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("index.type").unwrap_or_default().as_ptr()),
+            Rf_mkString(CString::new("chars").unwrap_or_default().as_ptr()),
+        );
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            Rf_install(CString::new("useBytes").unwrap_or_default().as_ptr()),
+            Rf_ScalarLogical(TRUE),
+        );
+
+        crate::sexp::protect::Rf_unprotect(2);
         result
     }
 }

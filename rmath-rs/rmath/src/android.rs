@@ -719,6 +719,23 @@ mod tests {
     }
 
     #[test]
+    fn test_regexpr_reports_match_attributes() {
+        let mut session = RSession::new();
+
+        let result = session.eval("regexpr(\"a\", c(\"cat\", \"dog\"))");
+        assert_eq!(
+            result.output,
+            "[1]  2 -1\nattr(,\"match.length\")\n[1]  1 -1\nattr(,\"index.type\")\n[1] \"chars\"\nattr(,\"useBytes\")\n[1] TRUE"
+        );
+
+        let match_length = session.eval("attr(regexpr(\"a\", c(\"cat\", \"dog\")), \"match.length\")");
+        assert_eq!(match_length.output, "[1]  1 -1");
+
+        let use_bytes = session.eval("attr(regexpr(\"a\", \"cat\"), \"useBytes\")");
+        assert_eq!(use_bytes.output, "[1] TRUE");
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");

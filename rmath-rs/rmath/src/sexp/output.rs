@@ -219,6 +219,38 @@ fn format_raw_value(v: u8) -> String {
     format!("{v:02x}")
 }
 
+fn get_named_attribute<'a>(x: Sexp<'a>, name: &str) -> Option<Sexp<'a>> {
+    let cname = std::ffi::CString::new(name).ok()?;
+    unsafe {
+        let attr = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::symbol::Rf_install(cname.as_ptr()),
+        );
+        if attr == crate::sexp::globals::R_NilValue() {
+            return None;
+        }
+        Sexp::from_raw(attr)
+    }
+}
+
+fn has_regexpr_attributes(x: Sexp<'_>) -> bool {
+    get_named_attribute(x, "match.length").is_some()
+        || get_named_attribute(x, "index.type").is_some()
+        || get_named_attribute(x, "useBytes").is_some()
+}
+
+fn format_regexpr_attributes(x: Sexp<'_>) -> String {
+    let mut out = String::new();
+    for name in ["match.length", "index.type", "useBytes"] {
+        if let Some(value) = get_named_attribute(x, name) {
+            out.push('\n');
+            out.push_str(&format!("attr(,\"{name}\")\n"));
+            out.push_str(&format_sexp_direct(value));
+        }
+    }
+    out
+}
+
 fn matrix_dims(x: Sexp<'_>) -> Option<(usize, usize)> {
     unsafe {
         let dim = crate::sexp::attrib_core::getAttrib(
@@ -412,6 +444,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
+            if has_regexpr_attributes(x) {
+                emit(&format!("{}\n", format_sexp_direct(x)));
+                return;
+            }
             if x.len() == 1 {
                 let v = x.integer_elt(0).unwrap_or(0);
                 emit(&format!("[1] {}\n", format_integer_value(v)));
@@ -539,7 +575,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_factor(x) {
                 return output;
             }
-            if x.len() == 1 {
+            let base = if x.len() == 1 {
                 let v = x.integer_elt(0).unwrap_or(0);
                 format!("[1] {}", format_integer_value(v))
             } else {
@@ -550,7 +586,8 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                     .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", format_aligned_values(vals), suffix)
-            }
+            };
+            format!("{base}{}", format_regexpr_attributes(x))
         }
         SEXPTYPE::REALSXP => {
             if let Some(output) = format_matrix(x) {
