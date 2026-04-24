@@ -35,7 +35,7 @@ mod clippath;
     unused_assignments,
     non_camel_case_types
 )]
-mod colors;
+pub(crate) mod colors;
 #[allow(
     dead_code,
     unused_imports,

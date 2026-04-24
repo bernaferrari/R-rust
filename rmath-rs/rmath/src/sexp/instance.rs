@@ -264,6 +264,8 @@ pub struct RInstance {
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,
     /// Per-instance graphics engine registration state.
     pub(crate) graphics_engine_state: crate::mainutils::engine::GraphicsEngineState,
+    /// Per-instance grDevices color palette and scratch buffer state.
+    pub(crate) graphics_color_state: crate::library::grdevices::colors::GraphicsColorState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -330,6 +332,7 @@ impl RInstance {
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
             graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),
+            graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };
