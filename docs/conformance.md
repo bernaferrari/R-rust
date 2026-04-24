@@ -42,7 +42,7 @@ and a standalone Rust runner, so it does not depend on the interactive REPL.
 | --- | --- | --- | --- |
 | Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
 | Evaluator/scoping/promises | Early | Android unit eval tests plus scalar parity cases | `rport-t57` |
-| Vector semantics | Seeded | parity case 003; xfail cases 008, 009 | `rport-c2w` |
+| Vector semantics | Seeded | parity cases 003, 008; xfail case 009 | `rport-c2w` |
 | Base functions | Early | parity case 002 plus Android eval smoke tests | `rport-6p2` |
 | Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
 | Packages/namespaces | Open | no parity gate yet | `rport-97s` |
@@ -61,11 +61,10 @@ full R compatibility: parser coverage is narrow, promises and lexical scoping
 need stock-R goldens, package loading is mostly policy work, and graphics still
 needs the Android device bridge.
 
-Current parity status is 7 passing cases and 3 expected failures:
+Current parity status is 8 passing cases and 2 expected failures:
 
 | Case | Owner | Gap |
 | --- | --- | --- |
-| `008_na_arithmetic.R` | `rport-c2w` | `NA` propagation/formatting differs from stock R |
 | `009_index_assignment.R` | `rport-c2w` | subassignment is not implemented |
 | `010_factor_labels.R` | `rport-fs5` | factor construction/printing is incomplete |
 

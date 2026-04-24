@@ -6,7 +6,7 @@
 
 use std::cell::{Cell, RefCell};
 
-use super::ffi::{SEXP, SEXPTYPE};
+use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, SEXP, SEXPTYPE};
 use super::safe::Sexp;
 
 /// Captured R output.
@@ -112,6 +112,48 @@ pub fn format_sexp(x: SEXP) -> String {
     }
 }
 
+fn format_aligned_values(vals: Vec<String>) -> String {
+    let width = vals.iter().map(|v| v.len()).max().unwrap_or(0);
+    vals.into_iter()
+        .map(|v| format!("{v:>width$}"))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn format_integer_value(v: i32) -> String {
+    if v == NA_INTEGER {
+        "NA".to_string()
+    } else {
+        v.to_string()
+    }
+}
+
+fn format_real_value(v: f64) -> String {
+    if R_IsNA(v) {
+        "NA".to_string()
+    } else if R_IsNaN(v) {
+        "NaN".to_string()
+    } else if v.is_infinite() {
+        if v.is_sign_negative() {
+            "-Inf".to_string()
+        } else {
+            "Inf".to_string()
+        }
+    } else if v.fract() == 0.0 {
+        format!("{v:.0}")
+    } else {
+        v.to_string()
+    }
+}
+
+fn format_logical_value(v: i32) -> String {
+    match v {
+        0 => "FALSE".to_string(),
+        1 => "TRUE".to_string(),
+        _ => "NA".to_string(),
+    }
+}
+
 /// Print an R object to the captured output (or stdout if not capturing).
 ///
 /// This is the Rust implementation of R's Rf_PrintValue. For Android
@@ -125,39 +167,27 @@ pub fn print_value(x: Sexp<'_>) {
         SEXPTYPE::INTSXP => {
             if x.len() == 1 {
                 let v = x.integer_elt(0).unwrap_or(0);
-                emit(&format!("[1] {}\n", v));
+                emit(&format!("[1] {}\n", format_integer_value(v)));
             } else {
-                let vals: Vec<String> = x.iter_integer().take(10).map(|v| v.to_string()).collect();
+                let vals: Vec<String> = x.iter_integer().take(10).map(format_integer_value).collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
             }
         }
         SEXPTYPE::REALSXP => {
             if x.len() == 1 {
                 let v = x.real_elt(0).unwrap_or(0.0);
-                emit(&format!("[1] {}\n", v));
+                emit(&format!("[1] {}\n", format_real_value(v)));
             } else {
-                let vals: Vec<String> = x
-                    .iter_real()
-                    .take(10)
-                    .map(|v| format!("{:.6}", v))
-                    .collect();
+                let vals: Vec<String> = x.iter_real().take(10).map(format_real_value).collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+                emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
             }
         }
         SEXPTYPE::LGLSXP => {
-            let vals: Vec<&str> = x
-                .iter_logical()
-                .take(10)
-                .map(|v| match v {
-                    0 => "FALSE",
-                    1 => "TRUE",
-                    _ => "NA",
-                })
-                .collect();
+            let vals: Vec<String> = x.iter_logical().take(10).map(format_logical_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
+            emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
         }
         SEXPTYPE::STRSXP => {
             if x.len() == 1 {
@@ -240,39 +270,27 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
         SEXPTYPE::INTSXP => {
             if x.len() == 1 {
                 let v = x.integer_elt(0).unwrap_or(0);
-                format!("[1] {}", v)
+                format!("[1] {}", format_integer_value(v))
             } else {
-                let vals: Vec<String> = x.iter_integer().take(10).map(|v| v.to_string()).collect();
+                let vals: Vec<String> = x.iter_integer().take(10).map(format_integer_value).collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                format!("[1] {}{}", vals.join(" "), suffix)
+                format!("[1] {}{}", format_aligned_values(vals), suffix)
             }
         }
         SEXPTYPE::REALSXP => {
             if x.len() == 1 {
                 let v = x.real_elt(0).unwrap_or(0.0);
-                format!("[1] {}", v)
+                format!("[1] {}", format_real_value(v))
             } else {
-                let vals: Vec<String> = x
-                    .iter_real()
-                    .take(10)
-                    .map(|v| format!("{:.6}", v))
-                    .collect();
+                let vals: Vec<String> = x.iter_real().take(10).map(format_real_value).collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
-                format!("[1] {}{}", vals.join(" "), suffix)
+                format!("[1] {}{}", format_aligned_values(vals), suffix)
             }
         }
         SEXPTYPE::LGLSXP => {
-            let vals: Vec<&str> = x
-                .iter_logical()
-                .take(10)
-                .map(|v| match v {
-                    0 => "FALSE",
-                    1 => "TRUE",
-                    _ => "NA",
-                })
-                .collect();
+            let vals: Vec<String> = x.iter_logical().take(10).map(format_logical_value).collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
-            format!("[1] {}{}", vals.join(" "), suffix)
+            format!("[1] {}{}", format_aligned_values(vals), suffix)
         }
         SEXPTYPE::STRSXP => {
             if x.len() == 1 {
@@ -432,6 +450,21 @@ mod tests {
         start_capture();
         print_value(sexp);
         let output = stop_capture();
-        assert_eq!(output.stdout, "[1] FALSE TRUE NA\n");
+        assert_eq!(output.stdout, "[1] FALSE  TRUE    NA\n");
+    }
+
+    #[test]
+    fn test_format_atomic_na_values() {
+        assert_eq!(format_integer_value(crate::sexp::ffi::NA_INTEGER), "NA");
+        assert_eq!(format_real_value(crate::sexp::ffi::NA_REAL), "NA");
+        assert_eq!(format_real_value(f64::NAN), "NaN");
+        assert_eq!(format_real_value(f64::INFINITY), "Inf");
+        assert_eq!(format_real_value(f64::NEG_INFINITY), "-Inf");
+    }
+
+    #[test]
+    fn test_numeric_vector_alignment_matches_r_simple_output() {
+        let vals = vec!["2".to_string(), "NA".to_string(), "4".to_string()];
+        assert_eq!(format_aligned_values(vals), " 2 NA  4");
     }
 }
