@@ -63,7 +63,6 @@ rmath-rs/rmath/src/mainutils/print.rs	printing-runtime	sessionize	rport-c2w	Prin
 rmath-rs/rmath/src/mainutils/printutils.rs	printing-runtime	sessionize	rport-c2w	Print utility buffers; move into session or call-local buffers.
 rmath-rs/rmath/src/mainutils/printvector.rs	printing-runtime	sessionize	rport-c2w	Vector print data; move into session print state.
 rmath-rs/rmath/src/mainutils/radixsort.rs	numeric-workspace	sessionize	rport-c2w	Radix sort scratch/cache; move into call-local/session workspace.
-rmath-rs/rmath/src/mainutils/relop.rs	evaluator-runtime	sessionize	rport-c2w	Relop language option; move into session options/eval state.
 rmath-rs/rmath/src/mainutils/serialize.rs	serialization-runtime	sessionize	rport-97s	Serialization name/depth caches; move into session serialization state.
 rmath-rs/rmath/src/mainutils/sprintf.rs	printing-runtime	sessionize	rport-c2w	sprintf output buffer; move into call-local/session state.
 rmath-rs/rmath/src/mainutils/sprintf_main.rs	printing-runtime	sessionize	rport-c2w	sprintf format buffers; move into call-local/session state.
