@@ -10,7 +10,6 @@
 //!   formatInteger, formatIntegerS, formatReal, formatRealS,
 //!   formatComplex, formatComplexS, formatRaw, formatRawS
 
-use std::cell::Cell;
 use std::os::raw::{c_double, c_int, c_void};
 
 use crate::sexp::accessors::{COMPLEX, INTEGER, LOGICAL, REAL, STRING_ELT};
@@ -47,16 +46,21 @@ impl Default for RPrint {
     }
 }
 
-thread_local! { static R_PRINT: Cell<RPrint> = Cell::new(RPrint { digits: 0, scipen: 0, na_width: 2, na_width_noquote: 2 }); }
+fn current_R_print() -> RPrint {
+    crate::sexp::instance::with_current_instance(|inst| inst.eval_state.format_print)
+        .unwrap_or_default()
+}
 
 pub unsafe fn format_set_R_print(p: RPrint) -> RPrint {
-    let old = R_PRINT.with(|v| v.get());
-    R_PRINT.with(|v| v.set(p));
-    old
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        let old = inst.eval_state.format_print;
+        inst.eval_state.format_print = p;
+        old
+    })
 }
 
 pub unsafe fn format_get_R_print() -> RPrint {
-    R_PRINT.with(|v| v.get())
+    current_R_print()
 }
 
 // ---------------------------------------------------------------------------
@@ -243,7 +247,7 @@ pub unsafe fn format_scientific(
             r = xv;
         }
 
-        let digits = R_PRINT.with(|v| v.get()).digits;
+        let digits = current_R_print().digits;
         if digits == 0 {
             // No digits configured; fall back to a safe default.
             *kpower = 0;
@@ -370,9 +374,9 @@ pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, 
             if si.is_null() {
                 // NA_STRING
                 l = if quote != 0 {
-                    R_PRINT.with(|v| v.get()).na_width
+                    current_R_print().na_width
                 } else {
-                    R_PRINT.with(|v| v.get()).na_width_noquote
+                    current_R_print().na_width_noquote
                 };
             } else {
                 l = Rstrlen(si, quote) + if quote != 0 { 2 } else { 0 };
@@ -402,9 +406,9 @@ pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote:
             if si.is_null() {
                 // NA_STRING
                 l = if quote != 0 {
-                    R_PRINT.with(|v| v.get()).na_width
+                    current_R_print().na_width
                 } else {
-                    R_PRINT.with(|v| v.get()).na_width_noquote
+                    current_R_print().na_width_noquote
                 };
             } else {
                 l = Rstrlen(si, quote) + if quote != 0 { 2 } else { 0 };
@@ -437,8 +441,8 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
         for i in 0..n {
             let xi = *x.add(i as usize);
             if xi == NA_LOGICAL {
-                if *fieldwidth < R_PRINT.with(|v| v.get()).na_width {
-                    *fieldwidth = R_PRINT.with(|v| v.get()).na_width;
+                if *fieldwidth < current_R_print().na_width {
+                    *fieldwidth = current_R_print().na_width;
                 }
             } else if xi != 0 && *fieldwidth < 4 {
                 // TRUE
@@ -447,7 +451,7 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
                 // FALSE
                 *fieldwidth = 5;
                 // Only break early if NA can't be wider
-                if R_PRINT.with(|v| v.get()).na_width <= max_fixed_width {
+                if current_R_print().na_width <= max_fixed_width {
                     break;
                 }
             }
@@ -518,7 +522,7 @@ pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
 
         // FORMATINT_RETLOGIC:
         if naflag {
-            *fieldwidth = R_PRINT.with(|v| v.get()).na_width;
+            *fieldwidth = current_R_print().na_width;
         } else {
             *fieldwidth = 1;
         }
@@ -612,7 +616,7 @@ pub unsafe fn formatReal(
         let mut mxsl: c_int = c_int::MIN;
         let mut mxns: c_int = c_int::MIN;
 
-        let na_width = R_PRINT.with(|v| v.get()).na_width;
+        let na_width = current_R_print().na_width;
 
         for i in 0..n {
             let xi = *x.add(i as usize);
@@ -668,7 +672,7 @@ pub unsafe fn formatReal(
         }
 
         // F vs E format decision
-        if R_PRINT.with(|v| v.get()).digits == 0 {
+        if current_R_print().digits == 0 {
             rgt = 0;
         }
         if mxl < 0 {
@@ -685,7 +689,7 @@ pub unsafe fn formatReal(
         if mxns != c_int::MIN {
             *d = mxns - 1;
             *w = neg + if *d > 0 { 1 } else { 0 } + *d + 4 + *e; // width for E format
-            if wF <= *w + R_PRINT.with(|v| v.get()).scipen {
+            if wF <= *w + current_R_print().scipen {
                 // Fixpoint if it needs less space
                 *e = 0;
                 let nsmall_i = nsmall as c_int;
@@ -848,7 +852,7 @@ pub unsafe fn formatComplex(
         formatReal(im_ptr, i1 as R_xlen_t, wi, di, ei, nsmall);
 
         // Ensure space for NA in the combined width.
-        let na_width = R_PRINT.with(|v| v.get()).na_width;
+        let na_width = current_R_print().na_width;
         if naflag && *wr + *wi + 2 < na_width {
             *wr += na_width - (*wr + *wi + 2);
         }
@@ -923,15 +927,18 @@ pub unsafe fn formatComplexS(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
     use std::os::raw::c_int;
 
     /// Helper: set R_print with digits and get a guard that resets on drop.
     struct RPrintGuard {
+        _session: RSession,
         old: RPrint,
     }
 
     impl RPrintGuard {
         fn new(digits: c_int) -> Self {
+            let session = RSession::new();
             let p = RPrint {
                 digits,
                 scipen: 0,
@@ -939,7 +946,10 @@ mod tests {
                 na_width_noquote: 2,
             };
             let old = unsafe { format_set_R_print(p) };
-            RPrintGuard { old }
+            RPrintGuard {
+                _session: session,
+                old,
+            }
         }
     }
 
@@ -1077,6 +1087,7 @@ mod tests {
     #[test]
     fn test_format_logical_na_wider() {
         unsafe {
+            let _session = RSession::new();
             // Set na_width larger than FALSE width
             let p = RPrint {
                 digits: 7,
