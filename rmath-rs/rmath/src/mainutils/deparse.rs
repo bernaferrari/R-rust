@@ -27,7 +27,6 @@
 //! - S4 deparsing, source reference deparsing kept as stubs (need eval/methods).
 //! - do_dput, do_dump kept as stubs (need connections infrastructure).
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_uint};
 use std::ptr;
 
@@ -178,6 +177,57 @@ const ATTR_STRUC_NMS_A: c_int = 3;
 // ---------------------------------------------------------------------------
 const NB: usize = 1000;
 const NB2: usize = 2 * NB + 25;
+
+pub(crate) struct DeparseRuntimeState {
+    quote_buf: [u8; 1024],
+    int_buf: [c_char; 32],
+    logical_buf: [c_char; 8],
+    real_buf: [c_char; 64],
+    string_buf: [u8; 2048],
+    raw_buf: [c_char; 8],
+    hex_buf: [c_char; 64],
+    dig_buf: [c_char; 64],
+    cplx_buf: [c_char; NB2],
+    hex_cplx: [c_char; 128],
+    dig_cplx: [c_char; 128],
+    cplx_buf2: [c_char; 256],
+    browse_lines: c_int,
+}
+
+impl Default for DeparseRuntimeState {
+    fn default() -> Self {
+        DeparseRuntimeState {
+            quote_buf: [0; 1024],
+            int_buf: [0; 32],
+            logical_buf: [0; 8],
+            real_buf: [0; 64],
+            string_buf: [0; 2048],
+            raw_buf: [0; 8],
+            hex_buf: [0; 64],
+            dig_buf: [0; 64],
+            cplx_buf: [0; NB2],
+            hex_cplx: [0; 128],
+            dig_cplx: [0; 128],
+            cplx_buf2: [0; 256],
+            browse_lines: 0,
+        }
+    }
+}
+
+fn with_deparse_runtime<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut DeparseRuntimeState) -> R,
+{
+    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.eval_state.deparse))
+}
+
+fn get_browse_lines() -> c_int {
+    with_deparse_runtime(|state| state.browse_lines)
+}
+
+fn set_browse_lines(value: c_int) {
+    with_deparse_runtime(|state| state.browse_lines = value);
+}
 
 // ---------------------------------------------------------------------------
 // LocalParseData — carries all state across recursive deparse calls
@@ -810,9 +860,8 @@ unsafe fn quotify(name: SEXP, quote: c_int) -> *const c_char {
         // For backtick or double-quote quoting, just return the name with quotes
         // Full EncodeString is in printutils but currently stubbed.
         // We implement basic quoting here.
-        thread_local! { static QUOTE_BUF: Cell<[u8; 1024]> = Cell::new([0; 1024]); }
-        QUOTE_BUF.with(|cell| {
-            let buf: &mut [u8; 1024] = &mut *cell.as_ptr();
+        with_deparse_runtime(|state| {
+            let buf = &mut state.quote_buf;
             let bytes = std::ffi::CStr::from_ptr(s).to_bytes();
             let quote_char = if quote == b'`' as c_int { b'`' } else { b'"' };
             let mut pos = 0;
@@ -944,8 +993,8 @@ unsafe fn deparse2buf_name(nv: SEXP, i: c_int, d: *mut LocalParseData) {
 unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *const c_char {
     unsafe {
         // Simplified implementation: format real and imaginary parts
-    let mut re_buf = [0 as libc::c_char; 64];
-    let mut im_buf = [0 as libc::c_char; 64];
+        let mut re_buf = [0 as libc::c_char; 64];
+        let mut im_buf = [0 as libc::c_char; 64];
         if R_FINITE(x.r) {
             libc::snprintf(
                 re_buf.as_mut_ptr(),
@@ -988,9 +1037,8 @@ unsafe fn EncodeNonFiniteComplexElement(x: Rcomplex, buff: *mut c_char) -> *cons
 /// Format an integer element as a string.
 unsafe fn format_int_element(val: c_int) -> *const c_char {
     unsafe {
-        thread_local! { static BUF: Cell<[c_char; 32]> = Cell::new([0; 32]); }
-        BUF.with(|cell| {
-            let buf: &mut [c_char; 32] = &mut *cell.as_ptr();
+        with_deparse_runtime(|state| {
+            let buf = &mut state.int_buf;
             if val == NA_INTEGER {
                 libc::snprintf(buf.as_mut_ptr(), 32, b"NA\0".as_ptr() as *const c_char);
             } else {
@@ -1004,9 +1052,8 @@ unsafe fn format_int_element(val: c_int) -> *const c_char {
 /// Format a logical element as a string.
 unsafe fn format_logical_element(val: c_int) -> *const c_char {
     unsafe {
-        thread_local! { static BUF: Cell<[c_char; 8]> = Cell::new([0; 8]); }
-        BUF.with(|cell| {
-            let buf: &mut [c_char; 8] = &mut *cell.as_ptr();
+        with_deparse_runtime(|state| {
+            let buf = &mut state.logical_buf;
             if val == NA_INTEGER {
                 libc::snprintf(buf.as_mut_ptr(), 8, b"NA\0".as_ptr() as *const c_char);
             } else if val != 0 {
@@ -1029,29 +1076,34 @@ unsafe fn format_logical_element(val: c_int) -> *const c_char {
 }
 
 /// Format a real element as a string with maximal precision.
+unsafe fn write_real_element(buf: &mut [c_char; 64], val: f64) {
+    unsafe {
+        if ISNAN(val) && (val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN) {
+            libc::snprintf(buf.as_mut_ptr(), 64, b"NA\0".as_ptr() as *const c_char);
+        } else if ISNAN(val) {
+            libc::snprintf(buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
+        } else if !R_FINITE(val) {
+            if val > 0.0 {
+                libc::snprintf(buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
+            } else {
+                libc::snprintf(buf.as_mut_ptr(), 64, b"-Inf\0".as_ptr() as *const c_char);
+            }
+        } else {
+            libc::snprintf(
+                buf.as_mut_ptr(),
+                64,
+                b"%.17g\0".as_ptr() as *const c_char,
+                val,
+            );
+        }
+    }
+}
+
 unsafe fn format_real_element(val: f64) -> *const c_char {
     unsafe {
-        thread_local! { static BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
-        BUF.with(|cell| {
-            let buf: &mut [c_char; 64] = &mut *cell.as_ptr();
-            if ISNAN(val) && (val.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN) {
-                libc::snprintf(buf.as_mut_ptr(), 64, b"NA\0".as_ptr() as *const c_char);
-            } else if ISNAN(val) {
-                libc::snprintf(buf.as_mut_ptr(), 64, b"NaN\0".as_ptr() as *const c_char);
-            } else if !R_FINITE(val) {
-                if val > 0.0 {
-                    libc::snprintf(buf.as_mut_ptr(), 64, b"Inf\0".as_ptr() as *const c_char);
-                } else {
-                    libc::snprintf(buf.as_mut_ptr(), 64, b"-Inf\0".as_ptr() as *const c_char);
-                }
-            } else {
-                libc::snprintf(
-                    buf.as_mut_ptr(),
-                    64,
-                    b"%.17g\0".as_ptr() as *const c_char,
-                    val,
-                );
-            }
+        with_deparse_runtime(|state| {
+            let buf = &mut state.real_buf;
+            write_real_element(buf, val);
             buf.as_ptr() as *const c_char
         })
     }
@@ -1060,9 +1112,8 @@ unsafe fn format_real_element(val: f64) -> *const c_char {
 /// Format a string element with quoting.
 unsafe fn format_string_element(s: SEXP) -> *const c_char {
     unsafe {
-        thread_local! { static BUF: Cell<[u8; 2048]> = Cell::new([0; 2048]); }
-        BUF.with(|cell| {
-            let buf: &mut [u8; 2048] = &mut *cell.as_ptr();
+        with_deparse_runtime(|state| {
+            let buf = &mut state.string_buf;
             if s.is_null() || s == R_NilValue() {
                 buf[0] = b'N';
                 buf[1] = b'A';
@@ -1126,9 +1177,8 @@ unsafe fn format_string_element(s: SEXP) -> *const c_char {
 /// Format a raw element as hex.
 unsafe fn format_raw_element(val: Rbyte) -> *const c_char {
     unsafe {
-        thread_local! { static BUF: Cell<[c_char; 8]> = Cell::new([0; 8]); }
-        BUF.with(|cell| {
-            let buf: &mut [c_char; 8] = &mut *cell.as_ptr();
+        with_deparse_runtime(|state| {
+            let buf = &mut state.raw_buf;
             libc::snprintf(
                 buf.as_mut_ptr(),
                 8,
@@ -1358,9 +1408,8 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             {
                                 strp = b"NA_real_\0".as_ptr() as *const c_char;
                             } else if (d.opts & HEXNUMERIC != 0) && R_FINITE(v) {
-                                thread_local! { static HEX_BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
-                                HEX_BUF.with(|cell| {
-                                    let hex_buf: &mut [c_char; 64] = &mut *cell.as_ptr();
+                                with_deparse_runtime(|state| {
+                                    let hex_buf = &mut state.hex_buf;
                                     libc::snprintf(
                                         hex_buf.as_mut_ptr(),
                                         64,
@@ -1370,9 +1419,8 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                                     strp = hex_buf.as_ptr() as *const c_char;
                                 });
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(v) {
-                                thread_local! { static DIG_BUF: Cell<[c_char; 64]> = Cell::new([0; 64]); }
-                                DIG_BUF.with(|cell| {
-                                    let dig_buf: &mut [c_char; 64] = &mut *cell.as_ptr();
+                                with_deparse_runtime(|state| {
+                                    let dig_buf = &mut state.dig_buf;
                                     libc::snprintf(
                                         dig_buf.as_mut_ptr(),
                                         64,
@@ -1394,15 +1442,13 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                             if all_na && ISNAN(c.r) && ISNAN(c.i) {
                                 strp = b"NA_complex_\0".as_ptr() as *const c_char;
                             } else if ISNAN(c.r) || !R_FINITE(c.i) {
-                                thread_local! { static CPLX_BUF: Cell<[c_char; NB2]> = Cell::new([0; NB2]); }
-                                CPLX_BUF.with(|cell| {
-                                    let cplx_buf: &mut [c_char; NB2] = &mut *cell.as_ptr();
+                                with_deparse_runtime(|state| {
+                                    let cplx_buf = &mut state.cplx_buf;
                                     strp = EncodeNonFiniteComplexElement(c, cplx_buf.as_mut_ptr());
                                 });
                             } else if (d.opts & HEXNUMERIC != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
-                                thread_local! { static HEX_CPLX: Cell<[c_char; 128]> = Cell::new([0; 128]); }
-                                HEX_CPLX.with(|cell| {
-                                    let hex_cplx: &mut [c_char; 128] = &mut *cell.as_ptr();
+                                with_deparse_runtime(|state| {
+                                    let hex_cplx = &mut state.hex_cplx;
                                     libc::snprintf(
                                         hex_cplx.as_mut_ptr(),
                                         128,
@@ -1413,9 +1459,8 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                                     strp = hex_cplx.as_ptr() as *const c_char;
                                 });
                             } else if (d.opts & DIGITS17 != 0) && R_FINITE(c.r) && R_FINITE(c.i) {
-                                thread_local! { static DIG_CPLX: Cell<[c_char; 128]> = Cell::new([0; 128]); }
-                                DIG_CPLX.with(|cell| {
-                                    let dig_cplx: &mut [c_char; 128] = &mut *cell.as_ptr();
+                                with_deparse_runtime(|state| {
+                                    let dig_cplx = &mut state.dig_cplx;
                                     libc::snprintf(
                                         dig_cplx.as_mut_ptr(),
                                         128,
@@ -1426,22 +1471,23 @@ unsafe fn vector2buff(vector: SEXP, d: *mut LocalParseData) {
                                     strp = dig_cplx.as_ptr() as *const c_char;
                                 });
                             } else {
-                                thread_local! { static CPLX_BUF2: Cell<[c_char; 256]> = Cell::new([0; 256]); }
-                                CPLX_BUF2.with(|cell| {
-                                    let cplx_buf2: &mut [c_char; 256] = &mut *cell.as_ptr();
-                                    let re = format_real_element(c.r);
-                                    let im = format_real_element(c.i);
+                                with_deparse_runtime(|state| {
+                                    let cplx_buf2 = &mut state.cplx_buf2;
+                                    let mut re_buf = [0 as c_char; 64];
+                                    let mut im_buf = [0 as c_char; 64];
+                                    write_real_element(&mut re_buf, c.r);
+                                    write_real_element(&mut im_buf, c.i);
                                     libc::snprintf(
                                         cplx_buf2.as_mut_ptr(),
                                         256,
                                         b"%s%s%si\0".as_ptr() as *const c_char,
-                                        re,
+                                        re_buf.as_ptr(),
                                         if c.i >= 0.0 {
                                             b"+\0".as_ptr() as *const c_char
                                         } else {
                                             b"\0".as_ptr() as *const c_char
                                         },
-                                        im,
+                                        im_buf.as_ptr(),
                                     );
                                     strp = cplx_buf2.as_ptr() as *const c_char;
                                 });
@@ -2487,15 +2533,15 @@ unsafe fn deparse1WithCutoff(
             local_data.linenumber = nlines;
             local_data.maxlines = nlines;
         } else {
-            if R_BrowseLines.with(|v| v.get()) > 0 {
-                local_data.maxlines = R_BrowseLines.with(|v| v.get()) + 1;
+            let browse_lines = get_browse_lines();
+            if browse_lines > 0 {
+                local_data.maxlines = browse_lines + 1;
             }
             deparse2(call, svec, &mut local_data);
             local_data.active = true;
-            if R_BrowseLines.with(|v| v.get()) > 0
-                && local_data.linenumber > R_BrowseLines.with(|v| v.get())
-            {
-                local_data.linenumber = R_BrowseLines.with(|v| v.get()) + 1;
+            let browse_lines = get_browse_lines();
+            if browse_lines > 0 && local_data.linenumber > browse_lines {
+                local_data.linenumber = browse_lines + 1;
                 need_ellipses = true;
             }
         }
@@ -2531,7 +2577,7 @@ unsafe fn deparse1WithCutoff(
             return result;
         } else if need_ellipses {
             let ellipsis = Rf_mkChar(b"  ...\0".as_ptr() as *const c_char);
-            SET_STRING_ELT(svec, R_BrowseLines.with(|v| v.get()) as R_xlen_t, ellipsis);
+            SET_STRING_ELT(svec, get_browse_lines() as R_xlen_t, ellipsis);
         }
 
         Rf_unprotect(1);
@@ -2736,10 +2782,10 @@ pub unsafe fn do_dump(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Used in bind.c, builtin.c, coerce.c, match.c, relop.c, and do_dput/do_dump.
 pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
-        let old_bl = R_BrowseLines.with(|v| v.get());
-        R_BrowseLines.with(|v| v.set(0));
+        let old_bl = get_browse_lines();
+        set_browse_lines(0);
         let result = deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0);
-        R_BrowseLines.with(|v| v.set(old_bl));
+        set_browse_lines(old_bl);
         result
     }
 }
@@ -2753,7 +2799,7 @@ pub unsafe fn deparse1(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
 /// Unimplemented: requires getOption infrastructure.
 pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
     unsafe {
-        let old_bl = R_BrowseLines.with(|v| v.get());
+        let old_bl = get_browse_lines();
         let max_lines = {
             let val = crate::mainutils::options::GetOption(
                 b"deparse.max.lines\0".as_ptr() as *const c_char
@@ -2761,9 +2807,9 @@ pub unsafe fn deparse1m(call: SEXP, abbrev: bool, opts: c_int) -> SEXP {
             let n = crate::mainutils::coerce::asInteger(val);
             if n == NA_INTEGER { 100 } else { n }
         };
-        R_BrowseLines.with(|v| v.set(max_lines));
+        set_browse_lines(max_lines);
         let result = deparse1WithCutoff(call, abbrev, DEFAULT_CUTOFF, true, opts, 0);
-        R_BrowseLines.with(|v| v.set(old_bl));
+        set_browse_lines(old_bl);
         result
     }
 }
@@ -2909,12 +2955,6 @@ pub unsafe fn con_cleanup(data: *mut std::ffi::c_void) {
 }
 
 // ---------------------------------------------------------------------------
-// R_BrowseLines — global for max lines in deparsing
-// ---------------------------------------------------------------------------
-
-thread_local! { pub static R_BrowseLines: Cell<c_int> = Cell::new(0); }
-
-// ---------------------------------------------------------------------------
 // Additional helper stubs needed by other modules
 // ---------------------------------------------------------------------------
 
@@ -2932,6 +2972,7 @@ pub unsafe fn Rf_isValidName(s: *const c_char) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_constants() {
@@ -3025,6 +3066,7 @@ mod tests {
 
     #[test]
     fn test_do_deparse_simple_expr() {
+        let _session = RSession::new();
         unsafe {
             // Create a simple expression: 1L
             let expr = Rf_ScalarInteger(1);
@@ -3052,6 +3094,7 @@ mod tests {
 
     #[test]
     fn test_do_dput_returns_nil() {
+        let _session = RSession::new();
         unsafe {
             let result = do_dput(
                 ptr::null_mut(),
@@ -3089,7 +3132,8 @@ mod tests {
 
     #[test]
     fn test_browse_lines_initial() {
-        assert_eq!(R_BrowseLines.with(|v| v.get()), 0);
+        let _session = RSession::new();
+        assert_eq!(get_browse_lines(), 0);
     }
 
     #[test]
