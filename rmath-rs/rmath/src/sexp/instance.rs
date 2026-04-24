@@ -50,6 +50,11 @@ pub struct RInstance {
     pub protect_stack: Vec<SEXP>,
     /// The permanent preserve stack for this instance.
     pub preserve_stack: Vec<SEXP>,
+    /// Per-instance execution context stack.
+    #[allow(clippy::vec_box)]
+    pub(crate) context_stack: Vec<Box<super::context::RCNTXT>>,
+    /// Per-instance in-error flag.
+    pub(crate) in_error: bool,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -94,6 +99,8 @@ impl RInstance {
             empty_env,
             protect_stack: Vec::new(),
             preserve_stack: Vec::new(),
+            context_stack: Vec::new(),
+            in_error: false,
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),

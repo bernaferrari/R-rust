@@ -11,9 +11,9 @@
 use std::cell::RefCell;
 use std::os::raw::c_int;
 use std::ptr;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::ffi::{SEXP, SexprecCore};
+use super::instance;
 
 // ---------------------------------------------------------------------------
 // Context type constants (from Defn.h CTXT_* defines)
@@ -139,14 +139,26 @@ thread_local! {
     /// The thread-local context stack.
     #[allow(clippy::vec_box)]
     static CONTEXT_STACK: RefCell<Vec<Box<RCNTXT>>> = RefCell::new(Vec::new());
+    /// Fallback in-error flag for legacy non-session code.
+    static IN_ERROR: RefCell<bool> = const { RefCell::new(false) };
+}
+
+fn context_ptr(ctx: &RCNTXT) -> *mut RCNTXT {
+    ctx as *const RCNTXT as *mut RCNTXT
 }
 
 /// Get a reference to the current (top) context, if any.
 pub unsafe fn R_GlobalContext() -> *mut RCNTXT {
+    if let Some(ctx) = instance::with_current_instance(|instance| {
+        instance.context_stack.last().map(|ctx| context_ptr(ctx))
+    }) {
+        return ctx.unwrap_or(ptr::null_mut());
+    }
+
     CONTEXT_STACK.with(|stack| {
         let stack = stack.borrow();
         if let Some(ctx) = stack.last() {
-            &**ctx as *const RCNTXT as *mut RCNTXT
+            context_ptr(ctx)
         } else {
             ptr::null_mut()
         }
@@ -176,11 +188,28 @@ pub unsafe fn Rf_begincontext(
         ..RCNTXT::new()
     });
 
+    if instance::has_current_instance() {
+        return instance::with_current_instance(|instance| {
+            let prev = instance
+                .context_stack
+                .last()
+                .map(|prev_ctx| context_ptr(prev_ctx))
+                .unwrap_or(ptr::null_mut());
+            ctx.nextcontext = prev;
+            ctx.protectCount = super::protect::R_ProtectCount();
+
+            let ptr: *mut RCNTXT = &mut *ctx;
+            instance.context_stack.push(ctx);
+            ptr
+        })
+        .unwrap_or(ptr::null_mut());
+    }
+
     // Link to previous context
     CONTEXT_STACK.with(|stack| {
         let mut stack = stack.borrow_mut();
         let prev = if let Some(prev_ctx) = stack.last() {
-            &**prev_ctx as *const RCNTXT as *mut RCNTXT
+            context_ptr(prev_ctx)
         } else {
             ptr::null_mut()
         };
@@ -199,10 +228,22 @@ pub unsafe fn Rf_begincontext(
 ///
 /// This is the equivalent of R's `endcontext()`.
 pub unsafe fn Rf_endcontext(c: *mut RCNTXT) {
+    if instance::has_current_instance() {
+        instance::with_current_instance(|instance| {
+            if let Some(top) = instance.context_stack.last() {
+                let top_ptr = context_ptr(top);
+                if top_ptr == c {
+                    instance.context_stack.pop();
+                }
+            }
+        });
+        return;
+    }
+
     CONTEXT_STACK.with(|stack| {
         let mut stack = stack.borrow_mut();
         if let Some(top) = stack.last() {
-            let top_ptr: *mut RCNTXT = &**top as *const RCNTXT as *mut RCNTXT;
+            let top_ptr = context_ptr(top);
             if top_ptr == c {
                 stack.pop();
             }
@@ -215,10 +256,29 @@ pub unsafe fn Rf_endcontext(c: *mut RCNTXT) {
 /// This is the equivalent of R's `findcontext()`.
 pub unsafe fn Rf_findcontext(ctxt_type: c_int, cloenv: SEXP, call: SEXP) -> *mut RCNTXT {
     unsafe {
+        if let Some(ctx) = instance::with_current_instance(|instance| {
+            for ctx in instance.context_stack.iter().rev() {
+                let c = context_ptr(ctx);
+                if !c.is_null() {
+                    let ctx_ref = &*c;
+                    // Match by type
+                    if ctxt_type == 0 || (ctx_ref.callflag & ctxt_type) != 0 {
+                        // If cloenv specified, match environment
+                        if cloenv.is_null() || ctx_ref.cloenv == cloenv {
+                            return c;
+                        }
+                    }
+                }
+            }
+            ptr::null_mut()
+        }) {
+            return ctx;
+        }
+
         CONTEXT_STACK.with(|stack| {
             let stack = stack.borrow();
             for ctx in stack.iter().rev() {
-                let c: *mut RCNTXT = &**ctx as *const RCNTXT as *mut RCNTXT;
+                let c = context_ptr(ctx);
                 if !c.is_null() {
                     let ctx_ref = &*c;
                     // Match by type
@@ -239,17 +299,28 @@ pub unsafe fn Rf_findcontext(ctxt_type: c_int, cloenv: SEXP, call: SEXP) -> *mut
 // Global state
 // ---------------------------------------------------------------------------
 
-/// Whether an error is currently being handled.
-static IN_ERROR: AtomicBool = AtomicBool::new(false);
-
 /// Set the global in-error flag.
 pub fn R_SetInError(flag: bool) {
-    IN_ERROR.store(flag, Ordering::Relaxed);
+    if instance::with_current_instance(|instance| {
+        instance.in_error = flag;
+    })
+    .is_some()
+    {
+        return;
+    }
+
+    IN_ERROR.with(|in_error| {
+        *in_error.borrow_mut() = flag;
+    });
 }
 
 /// Get the global in-error flag.
 pub fn R_GetInError() -> bool {
-    IN_ERROR.load(Ordering::Relaxed)
+    if let Some(flag) = instance::with_current_instance(|instance| instance.in_error) {
+        return flag;
+    }
+
+    IN_ERROR.with(|in_error| *in_error.borrow())
 }
 
 // ---------------------------------------------------------------------------
@@ -344,6 +415,16 @@ pub fn handle_closure_signal(payload: Box<dyn std::any::Any + Send>) -> SEXP {
 /// Used by ExitingHandler signal handling to determine if the current
 /// catch_unwind frame is the intended target.
 pub fn context_env_exists(target_env: SEXP) -> bool {
+    if let Some(exists) = instance::with_current_instance(|instance| {
+        instance
+            .context_stack
+            .iter()
+            .rev()
+            .any(|ctx| ctx.cloenv == target_env)
+    }) {
+        return exists;
+    }
+
     CONTEXT_STACK.with(|stack| {
         let stack = stack.borrow();
         stack.iter().rev().any(|ctx| ctx.cloenv == target_env)
@@ -357,6 +438,7 @@ pub fn context_env_exists(target_env: SEXP) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_rcntxt_new() {
@@ -471,5 +553,83 @@ mod tests {
 
             CONTEXT_STACK.with(|stack| stack.borrow_mut().clear());
         }
+    }
+
+    #[test]
+    fn test_session_context_stacks_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        let left_ctx = left
+            .with_arena(|_| unsafe {
+                let ctx = Rf_begincontext(
+                    ctxt_flags::CTXT_FUNCTION,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                );
+                assert_eq!(R_GlobalContext(), ctx);
+                ctx
+            })
+            .unwrap();
+
+        right
+            .with_arena(|_| unsafe {
+                assert!(R_GlobalContext().is_null());
+                let right_ctx = Rf_begincontext(
+                    ctxt_flags::CTXT_LOOP,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                    None,
+                    ptr::null_mut(),
+                    ptr::null_mut(),
+                );
+                assert_eq!(R_GlobalContext(), right_ctx);
+                let found = Rf_findcontext(ctxt_flags::CTXT_LOOP, ptr::null_mut(), ptr::null_mut());
+                assert_eq!(found, right_ctx);
+                Rf_endcontext(right_ctx);
+                assert!(R_GlobalContext().is_null());
+            })
+            .unwrap();
+
+        left.with_arena(|_| unsafe {
+            assert_eq!(R_GlobalContext(), left_ctx);
+            let found = Rf_findcontext(ctxt_flags::CTXT_FUNCTION, ptr::null_mut(), ptr::null_mut());
+            assert_eq!(found, left_ctx);
+            Rf_endcontext(left_ctx);
+            assert!(R_GlobalContext().is_null());
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_session_in_error_flags_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|_| {
+            R_SetInError(true);
+            assert!(R_GetInError());
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| {
+                assert!(!R_GetInError());
+                R_SetInError(false);
+                assert!(!R_GetInError());
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert!(R_GetInError());
+            R_SetInError(false);
+            assert!(!R_GetInError());
+        })
+        .unwrap();
     }
 }
