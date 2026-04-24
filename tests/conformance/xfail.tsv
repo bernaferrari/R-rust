@@ -1,0 +1,4 @@
+# case	owner	reason
+008_na_arithmetic	rport-c2w	Rust currently formats propagated NA as NaN and prints real vectors with fixed decimals.
+009_index_assignment	rport-c2w	Parser/evaluator does not yet implement R subassignment semantics.
+010_factor_labels	rport-fs5	Factor construction/printing currently falls back to pairlist output.

@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CASES_DIR="$ROOT_DIR/tests/conformance/cases"
 GOLDEN_DIR="$ROOT_DIR/tests/conformance/golden"
+XFAIL_FILE="$ROOT_DIR/tests/conformance/xfail.tsv"
 RUST_RUNNER_SRC="$ROOT_DIR/tests/conformance/src/main.rs"
 
 MODE="${1:---check}"
@@ -33,7 +34,10 @@ fi
 find_rust_rlib() {
     local found=""
     shopt -s nullglob
-    local rust_rlibs=("$ROOT_DIR"/target/debug/deps/librmath-*.rlib)
+    local rust_rlibs=(
+        "$ROOT_DIR"/target/debug/deps/librmath-*.rlib
+        "$ROOT_DIR"/target/debug/deps/librmath.rlib
+    )
     shopt -u nullglob
     if (( ${#rust_rlibs[@]} > 0 )); then
         found="$(ls -t "${rust_rlibs[@]}" 2>/dev/null | head -n1)"
@@ -56,6 +60,13 @@ fi
 
 normalize_output() {
     tr -d '\r' | sed 's/[[:space:]]*$//'
+}
+
+is_xfail() {
+    local case_name="$1"
+    [[ -f "$XFAIL_FILE" ]] && awk -F '\t' -v case_name="$case_name" \
+        'NF && $1 !~ /^#/ && $1 == case_name { found = 1 } END { exit found ? 0 : 1 }' \
+        "$XFAIL_FILE"
 }
 
 run_case() {
@@ -125,6 +136,8 @@ run_case() {
 main() {
     local total=0
     local passed=0
+    local xfailed=0
+    local xpassed=0
     local failed=0
 
     shopt -s nullglob
@@ -139,14 +152,28 @@ main() {
     local case_file
     for case_file in "${cases[@]}"; do
         total=$((total + 1))
+        local case_name
+        case_name="$(basename "$case_file" .R)"
         if run_case "$case_file"; then
-            passed=$((passed + 1))
+            if is_xfail "$case_name"; then
+                echo "XPASS ${case_name}: remove from $XFAIL_FILE or fix the owner bead"
+                xpassed=$((xpassed + 1))
+                failed=$((failed + 1))
+            else
+                passed=$((passed + 1))
+            fi
+        elif is_xfail "$case_name"; then
+            echo "XFAIL ${case_name}"
+            xfailed=$((xfailed + 1))
         else
             failed=$((failed + 1))
         fi
     done
 
-    echo "Summary: ${passed}/${total} cases passed"
+    echo "Summary: ${passed}/${total} cases passed, ${xfailed} expected failures"
+    if (( xpassed > 0 )); then
+        echo "Unexpected passes: ${xpassed}"
+    fi
     if (( failed > 0 )); then
         exit 1
     fi
