@@ -18,10 +18,9 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicPtr, Ordering};
 
 use crate::sexp::context::{RError, RSignal};
-use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals;
 use crate::sexp::instance::{self, ErrorState};
 
@@ -60,279 +59,167 @@ const R_NWARNINGS_DEFAULT: c_int = 50;
 /// Buffer size for error/warning messages.
 pub const BUFSIZE: usize = 8192;
 
-/// Maximum length for warning messages.
-static R_WARN_LENGTH: AtomicI32 = AtomicI32::new(1000);
-
-/// Whether to show error messages.
-static R_SHOW_ERROR_MESSAGES: AtomicBool = AtomicBool::new(true);
-
-/// Whether to show error call traces.
-static R_SHOW_ERROR_CALLS: AtomicBool = AtomicBool::new(false);
-
-/// Whether to show warning call traces.
-static R_SHOW_WARN_CALLS: AtomicBool = AtomicBool::new(false);
-
 /// Number of characters shown in concise tracebacks.
 static R_NSHOWCALLS: usize = 512;
 
 /// Maximum number of calls shown in concise traceback.
 static R_MAXCALLS: c_int = 50;
 
-// ---------------------------------------------------------------------------
-// Error state globals
-// ---------------------------------------------------------------------------
-
-static IN_ERROR: AtomicI32 = AtomicI32::new(0);
-static IN_WARNING: AtomicI32 = AtomicI32::new(0);
-static IN_PRINT_WARNINGS: AtomicI32 = AtomicI32::new(0);
-static IMMEDIATE_WARNING: AtomicBool = AtomicBool::new(false);
-static NO_BREAK_WARNING: AtomicBool = AtomicBool::new(false);
-
-/// Whether interrupts are suspended.
-static R_INTERRUPTS_SUSPENDED: AtomicBool = AtomicBool::new(false);
-
-/// Whether interrupts are pending.
-static R_INTERRUPTS_PENDING: AtomicBool = AtomicBool::new(false);
-
-// ---------------------------------------------------------------------------
-// Warning collection
-// ---------------------------------------------------------------------------
-
-/// Number of warnings collected so far.
-static R_COLLECT_WARNINGS: AtomicI32 = AtomicI32::new(0);
-
-/// Maximum number of warnings to collect.
-static R_NWARNINGS: AtomicI32 = AtomicI32::new(R_NWARNINGS_DEFAULT);
-
-/// R_Warnings: the vector of collected warning calls.
-static R_WARNINGS: AtomicPtr<SexprecCore> = AtomicPtr::new(ptr::null_mut());
-
-fn with_error_state<F, R>(f: F) -> Option<R>
+fn with_error_state<F, R>(f: F) -> R
 where
     F: FnOnce(&mut ErrorState) -> R,
 {
-    instance::with_current_instance(|instance| f(&mut instance.error_state))
+    instance::with_required_current_instance(|instance| f(&mut instance.error_state))
 }
 
 fn r_warn_length() -> c_int {
     with_error_state(|state| state.warn_length)
-        .unwrap_or_else(|| R_WARN_LENGTH.load(Ordering::Relaxed))
 }
 
 fn set_r_warn_length(val: c_int) {
-    if with_error_state(|state| state.warn_length = val).is_none() {
-        R_WARN_LENGTH.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.warn_length = val);
 }
 
 fn r_show_error_messages() -> bool {
     with_error_state(|state| state.show_error_messages)
-        .unwrap_or_else(|| R_SHOW_ERROR_MESSAGES.load(Ordering::Relaxed))
 }
 
 fn set_r_show_error_messages(val: bool) {
-    if with_error_state(|state| state.show_error_messages = val).is_none() {
-        R_SHOW_ERROR_MESSAGES.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.show_error_messages = val);
 }
 
 fn r_show_error_calls() -> bool {
     with_error_state(|state| state.show_error_calls)
-        .unwrap_or_else(|| R_SHOW_ERROR_CALLS.load(Ordering::Relaxed))
 }
 
 fn set_r_show_error_calls(val: bool) {
-    if with_error_state(|state| state.show_error_calls = val).is_none() {
-        R_SHOW_ERROR_CALLS.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.show_error_calls = val);
 }
 
 fn r_show_warn_calls() -> bool {
     with_error_state(|state| state.show_warn_calls)
-        .unwrap_or_else(|| R_SHOW_WARN_CALLS.load(Ordering::Relaxed))
 }
 
 fn set_r_show_warn_calls(val: bool) {
-    if with_error_state(|state| state.show_warn_calls = val).is_none() {
-        R_SHOW_WARN_CALLS.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.show_warn_calls = val);
 }
 
 fn in_error() -> c_int {
-    with_error_state(|state| state.in_error).unwrap_or_else(|| IN_ERROR.load(Ordering::Relaxed))
+    with_error_state(|state| state.in_error)
 }
 
 fn set_in_error(val: c_int) {
-    if with_error_state(|state| state.in_error = val).is_none() {
-        IN_ERROR.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.in_error = val);
 }
 
 fn in_warning() -> c_int {
-    with_error_state(|state| state.in_warning).unwrap_or_else(|| IN_WARNING.load(Ordering::Relaxed))
+    with_error_state(|state| state.in_warning)
 }
 
 fn set_in_warning(val: c_int) {
-    if with_error_state(|state| state.in_warning = val).is_none() {
-        IN_WARNING.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.in_warning = val);
 }
 
 fn in_print_warnings() -> c_int {
     with_error_state(|state| state.in_print_warnings)
-        .unwrap_or_else(|| IN_PRINT_WARNINGS.load(Ordering::Relaxed))
 }
 
 fn set_in_print_warnings(val: c_int) {
-    if with_error_state(|state| state.in_print_warnings = val).is_none() {
-        IN_PRINT_WARNINGS.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.in_print_warnings = val);
 }
 
 fn immediate_warning() -> bool {
     with_error_state(|state| state.immediate_warning)
-        .unwrap_or_else(|| IMMEDIATE_WARNING.load(Ordering::Relaxed))
 }
 
 fn set_immediate_warning(val: bool) {
-    if with_error_state(|state| state.immediate_warning = val).is_none() {
-        IMMEDIATE_WARNING.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.immediate_warning = val);
 }
 
 fn set_no_break_warning(val: bool) {
-    if with_error_state(|state| state.no_break_warning = val).is_none() {
-        NO_BREAK_WARNING.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.no_break_warning = val);
 }
 
 fn interrupts_suspended() -> bool {
     with_error_state(|state| state.interrupts_suspended)
-        .unwrap_or_else(|| R_INTERRUPTS_SUSPENDED.load(Ordering::Relaxed))
 }
 
 fn set_interrupts_suspended(val: bool) {
-    if with_error_state(|state| state.interrupts_suspended = val).is_none() {
-        R_INTERRUPTS_SUSPENDED.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.interrupts_suspended = val);
 }
 
 fn interrupts_pending() -> bool {
     with_error_state(|state| state.interrupts_pending)
-        .unwrap_or_else(|| R_INTERRUPTS_PENDING.load(Ordering::Relaxed))
 }
 
 fn set_interrupts_pending(val: bool) {
-    if with_error_state(|state| state.interrupts_pending = val).is_none() {
-        R_INTERRUPTS_PENDING.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.interrupts_pending = val);
 }
 
 fn collect_warnings() -> c_int {
     with_error_state(|state| state.collect_warnings)
-        .unwrap_or_else(|| R_COLLECT_WARNINGS.load(Ordering::Relaxed))
 }
 
 fn set_collect_warnings(val: c_int) {
-    if with_error_state(|state| state.collect_warnings = val).is_none() {
-        R_COLLECT_WARNINGS.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.collect_warnings = val);
 }
 
 fn increment_collect_warnings() {
-    if with_error_state(|state| state.collect_warnings += 1).is_none() {
-        R_COLLECT_WARNINGS.fetch_add(1, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.collect_warnings += 1);
 }
 
 fn nwarnings() -> c_int {
-    with_error_state(|state| state.nwarnings).unwrap_or_else(|| R_NWARNINGS.load(Ordering::Relaxed))
+    with_error_state(|state| state.nwarnings)
 }
 
 fn warnings_ptr() -> SEXP {
-    with_error_state(|state| state.warnings).unwrap_or_else(|| R_WARNINGS.load(Ordering::Relaxed))
+    with_error_state(|state| state.warnings)
 }
 
 fn set_warnings_ptr(val: SEXP) {
-    if with_error_state(|state| state.warnings = val).is_none() {
-        R_WARNINGS.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.warnings = val);
 }
 
 fn handler_stack() -> SEXP {
     with_error_state(|state| state.handler_stack)
-        .unwrap_or_else(|| R_HANDLER_STACK.with(|stack| *stack.borrow()))
 }
 
 fn set_handler_stack(val: SEXP) {
-    if with_error_state(|state| state.handler_stack = val).is_none() {
-        R_HANDLER_STACK.with(|stack| {
-            *stack.borrow_mut() = val;
-        });
-    }
+    with_error_state(|state| state.handler_stack = val);
 }
 
 fn restart_stack() -> SEXP {
     with_error_state(|state| state.restart_stack)
-        .unwrap_or_else(|| R_RESTART_STACK.with(|stack| *stack.borrow()))
 }
 
 fn set_restart_stack(val: SEXP) {
-    if with_error_state(|state| state.restart_stack = val).is_none() {
-        R_RESTART_STACK.with(|stack| {
-            *stack.borrow_mut() = val;
-        });
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Handler/restart stacks (thread-local for now)
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    /// Stack of condition handlers (list of handler entries).
-    pub static R_HANDLER_STACK: std::cell::RefCell<SEXP> =
-        std::cell::RefCell::new(ptr::null_mut());
-
-    /// Stack of restarts (list of restart entries).
-    pub static R_RESTART_STACK: std::cell::RefCell<SEXP> =
-        std::cell::RefCell::new(ptr::null_mut());
-}
-
-// ---------------------------------------------------------------------------
-// Error buffer
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    static ERRBUF: std::cell::RefCell<[u8; BUFSIZE + 1]> =
-        std::cell::RefCell::new([0u8; BUFSIZE + 1]);
+    with_error_state(|state| state.restart_stack = val);
 }
 
 /// Get the current error buffer contents as a string.
 pub unsafe fn R_curErrorBuf() -> *const c_char {
-    ERRBUF.with(|buf| {
-        let buf = buf.borrow();
-        buf.as_ptr() as *const c_char
-    })
+    with_error_state(|state| state.error_buffer.as_ptr() as *const c_char)
 }
 
 /// Get the current error buffer contents as a Rust String.
 pub fn R_GetErrorBuf() -> String {
-    ERRBUF.with(|buf| {
-        let buf = buf.borrow();
-        let len = buf.iter().position(|&b| b == 0).unwrap_or(BUFSIZE);
-        String::from_utf8_lossy(&buf[..len]).into_owned()
+    with_error_state(|state| {
+        let len = state
+            .error_buffer
+            .iter()
+            .position(|&b| b == 0)
+            .unwrap_or(BUFSIZE);
+        String::from_utf8_lossy(&state.error_buffer[..len]).into_owned()
     })
 }
 
 /// Set the error message buffer (Rust).
 pub fn R_SetErrmessage(s: &str) {
-    ERRBUF.with(|buf| {
-        let mut buf = buf.borrow_mut();
+    with_error_state(|state| {
         let bytes = s.as_bytes();
         let len = bytes.len().min(BUFSIZE - 1);
-        buf[..len].copy_from_slice(&bytes[..len]);
-        buf[len] = 0;
+        state.error_buffer[..len].copy_from_slice(&bytes[..len]);
+        state.error_buffer[len] = 0;
     })
 }
 
@@ -2697,32 +2584,23 @@ pub unsafe fn R_InitConditions() {
 // R_Expressions management
 // ---------------------------------------------------------------------------
 
-static R_EXPRESSIONS: AtomicI32 = AtomicI32::new(500);
-static R_EXPRESSIONS_KEEP: AtomicI32 = AtomicI32::new(500);
-
 fn expressions_keep() -> c_int {
     with_error_state(|state| state.expressions_keep)
-        .unwrap_or_else(|| R_EXPRESSIONS_KEEP.load(Ordering::Relaxed))
 }
 
 /// Get the current expression limit.
 pub fn R_Expressions() -> c_int {
     with_error_state(|state| state.expressions)
-        .unwrap_or_else(|| R_EXPRESSIONS.load(Ordering::Relaxed))
 }
 
 /// Set the expression limit.
 pub fn R_SetExpressions(val: c_int) {
-    if with_error_state(|state| state.expressions = val).is_none() {
-        R_EXPRESSIONS.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.expressions = val);
 }
 
 /// Set the expression keep value.
 pub fn R_SetExpressionsKeep(val: c_int) {
-    if with_error_state(|state| state.expressions_keep = val).is_none() {
-        R_EXPRESSIONS_KEEP.store(val, Ordering::Relaxed);
-    }
+    with_error_state(|state| state.expressions_keep = val);
 }
 
 // ---------------------------------------------------------------------------
@@ -3291,6 +3169,8 @@ mod tests {
 
     #[test]
     fn test_R_SetErrmessage() {
+        let _session = RSession::new();
+
         R_SetErrmessage("test error");
         assert_eq!(R_GetErrorBuf(), "test error");
 
@@ -3300,6 +3180,8 @@ mod tests {
 
     #[test]
     fn test_error_catches_panic() {
+        let _session = RSession::new();
+
         let result = std::panic::catch_unwind(|| {
             R_SetErrmessage("test panic");
             std::panic::panic_any(RError {
@@ -3318,6 +3200,8 @@ mod tests {
 
     #[test]
     fn test_in_error_flag() {
+        let _session = RSession::new();
+
         assert_eq!(R_GetInError(), 0);
         R_SetInError(1);
         assert_eq!(R_GetInError(), 1);
@@ -3534,6 +3418,8 @@ mod tests {
 
     #[test]
     fn test_r_makeErrorCondition() {
+        let _session = RSession::new();
+
         unsafe {
             let cond = R_makeErrorCondition(
                 ptr::null_mut(),
@@ -3550,6 +3436,8 @@ mod tests {
 
     #[test]
     fn test_r_makeErrorCondition_with_subclass() {
+        let _session = RSession::new();
+
         unsafe {
             let cond = R_makeErrorCondition(
                 ptr::null_mut(),
@@ -3580,6 +3468,8 @@ mod tests {
 
     #[test]
     fn test_interrupts_suspended() {
+        let _session = RSession::new();
+
         assert!(!R_InterruptsSuspended());
         R_SetInterruptsSuspended(true);
         assert!(R_InterruptsSuspended());
@@ -3589,6 +3479,8 @@ mod tests {
 
     #[test]
     fn test_warning_collection() {
+        let _session = RSession::new();
+
         unsafe {
             set_collect_warnings(0);
             set_warnings_ptr(ptr::null_mut());
@@ -3605,6 +3497,8 @@ mod tests {
 
     #[test]
     fn test_handler_stack_operations() {
+        let _session = RSession::new();
+
         set_handler_stack(ptr::null_mut());
 
         unsafe {
@@ -3619,6 +3513,8 @@ mod tests {
 
     #[test]
     fn test_restart_stack_operations() {
+        let _session = RSession::new();
+
         set_restart_stack(ptr::null_mut());
 
         unsafe {
@@ -3699,6 +3595,8 @@ mod tests {
 
     #[test]
     fn test_r_make_warning_condition() {
+        let _session = RSession::new();
+
         unsafe {
             let cond = R_makeWarningCondition(
                 ptr::null_mut(),
@@ -3714,6 +3612,8 @@ mod tests {
 
     #[test]
     fn test_r_make_c_stack_overflow_error() {
+        let _session = RSession::new();
+
         unsafe {
             let cond = R_makeCStackOverflowError(ptr::null_mut(), 42);
             assert!(!cond.is_null());
@@ -3724,6 +3624,8 @@ mod tests {
 
     #[test]
     fn test_r_make_not_subsettable_error() {
+        let _session = RSession::new();
+
         unsafe {
             // Create a simple vector to act as the "object"
             let x = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -3735,6 +3637,8 @@ mod tests {
 
     #[test]
     fn test_r_make_missing_subscript_error() {
+        let _session = RSession::new();
+
         unsafe {
             let x = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             let cond = R_makeMissingSubscriptError(x, ptr::null_mut());
@@ -3745,6 +3649,8 @@ mod tests {
 
     #[test]
     fn test_r_make_missing_subscript_error1() {
+        let _session = RSession::new();
+
         unsafe {
             let cond = R_makeMissingSubscriptError1(ptr::null_mut());
             assert!(!cond.is_null());
@@ -3754,6 +3660,8 @@ mod tests {
 
     #[test]
     fn test_r_make_out_of_bounds_error() {
+        let _session = RSession::new();
+
         unsafe {
             let x = Rf_allocVector(SEXPTYPE::INTSXP, 5);
             let idx = Rf_allocVector(SEXPTYPE::REALSXP, 1);
@@ -3766,6 +3674,8 @@ mod tests {
 
     #[test]
     fn test_r_make_partial_match_warning_condition() {
+        let _session = RSession::new();
+
         unsafe {
             let arg = Rf_install(b"abc\0".as_ptr() as *const c_char);
             let formal = Rf_install(b"abcdef\0".as_ptr() as *const c_char);
@@ -3787,6 +3697,8 @@ mod tests {
 
     #[test]
     fn test_r_expressions_management() {
+        let _session = RSession::new();
+
         let val = R_Expressions();
         assert!(val > 0);
         R_SetExpressions(val + 100);
@@ -3798,6 +3710,8 @@ mod tests {
 
     #[test]
     fn test_warn_length() {
+        let _session = RSession::new();
+
         R_SetWarnLength(500);
         // Just verify it doesn't panic
         let val = r_warn_length();
@@ -3808,14 +3722,18 @@ mod tests {
 
     #[test]
     fn test_show_error_messages_flag() {
+        let _session = RSession::new();
+
         R_SetShowErrorMessages(true);
-        // Can't easily read the flag back since it's AtomicBool
-        // but we can verify the function exists
+        assert!(r_show_error_messages());
         R_SetShowErrorMessages(false);
+        assert!(!r_show_error_messages());
     }
 
     #[test]
     fn test_r_print_deferred_warnings_no_warnings() {
+        let _session = RSession::new();
+
         unsafe {
             set_collect_warnings(0);
             set_warnings_ptr(ptr::null_mut());
