@@ -877,6 +877,40 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_additional_distribution_helpers() {
+        let mut session = RSession::new();
+        let cases = [
+            ("dexp(1)", "[1] 0.3678794"),
+            ("pexp(1)", "[1] 0.6321206"),
+            ("dbeta(0.5, 2, 3)", "[1] 1.5"),
+            ("pbeta(0.5, 2, 3)", "[1] 0.6875"),
+            ("qbeta(0.5, 2, 3)", "[1] 0.3857276"),
+            ("dt(0, 5)", "[1] 0.3796067"),
+            ("pt(0, 5)", "[1] 0.5"),
+            ("qt(0.5, 5)", "[1] 0"),
+            ("dchisq(2, 3)", "[1] 0.2075537"),
+            ("pchisq(2, 3)", "[1] 0.4275933"),
+            ("qchisq(0.5, 3)", "[1] 2.365974"),
+            ("dweibull(2, 3)", "[1] 0.004025552"),
+            ("pweibull(2, 3)", "[1] 0.9996645"),
+            ("qweibull(0.5, 3)", "[1] 0.884997"),
+            ("df(1, 5, 10)", "[1] 0.4954798"),
+            ("pf(1, 5, 10)", "[1] 0.5348806"),
+            ("qf(0.5, 5, 10)", "[1] 0.9319332"),
+            ("dnbinom(2, 5, 0.5)", "[1] 0.1171875"),
+            ("pnbinom(2, 5, 0.5)", "[1] 0.2265625"),
+            ("qnbinom(0.5, 5, 0.5)", "[1] 4"),
+            ("dgeom(2, 0.5)", "[1] 0.125"),
+            ("pgeom(2, 0.5)", "[1] 0.875"),
+            ("qgeom(0.5, 0.5)", "[1] 0"),
+        ];
+
+        for (code, expected) in cases {
+            assert_eq!(session.eval(code).output, expected, "{code}");
+        }
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");

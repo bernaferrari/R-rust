@@ -2913,6 +2913,29 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "dcauchy",
         "pcauchy",
         "qcauchy",
+        "dexp",
+        "pexp",
+        "dbeta",
+        "pbeta",
+        "qbeta",
+        "dt",
+        "pt",
+        "qt",
+        "dchisq",
+        "pchisq",
+        "qchisq",
+        "dweibull",
+        "pweibull",
+        "qweibull",
+        "df",
+        "pf",
+        "qf",
+        "dnbinom",
+        "pnbinom",
+        "qnbinom",
+        "dgeom",
+        "pgeom",
+        "qgeom",
         "dlnorm",
         "plnorm",
         "qlnorm",
@@ -4444,7 +4467,7 @@ pub unsafe fn do_pbinom(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 /// R's `dexp(x, rate)` — exponential density.
 pub unsafe fn do_dexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     do_dist_unary(args, 1.0, 0.0, |x, rate, _| {
-        crate::dist::exponential::dexp(x, 1.0 / rate, 1)
+        crate::dist::exponential::dexp_inner(x, 1.0 / rate, false)
     })
 }
 
