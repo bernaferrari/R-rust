@@ -55,6 +55,8 @@ pub struct RInstance {
     pub(crate) context_stack: Vec<Box<super::context::RCNTXT>>,
     /// Per-instance in-error flag.
     pub(crate) in_error: bool,
+    /// Per-instance generational GC state.
+    pub(crate) gc_state: super::gengc::GcState,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -101,6 +103,7 @@ impl RInstance {
             preserve_stack: Vec::new(),
             context_stack: Vec::new(),
             in_error: false,
+            gc_state: super::gengc::GcState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),

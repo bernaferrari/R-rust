@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE};
+use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
     update_preserve_stack_refs, update_protect_stack_refs, with_preserved_objects,
@@ -57,33 +58,19 @@ pub struct GcStats {
     pub peak_memory: usize,
 }
 
-thread_local! {
-    static GC_STATS: std::cell::RefCell<GcStats> = const {
-        std::cell::RefCell::new(GcStats {
-            collections: 0,
-            promoted: 0,
-            freed: 0,
-            compacted: 0,
-            total_bytes_allocated: 0,
-            total_bytes_freed: 0,
-            peak_memory: 0,
-        })
-    };
-}
-
 /// Get a snapshot of the current GC statistics.
 pub fn get_gc_stats() -> GcStats {
-    GC_STATS.with(|s| s.borrow().clone())
+    with_gc_state(|state| state.stats.clone())
 }
 
 /// Reset all GC statistics to zero.
 pub fn reset_gc_stats() {
-    GC_STATS.with(|s| *s.borrow_mut() = GcStats::default());
+    with_gc_state(|state| state.stats = GcStats::default());
 }
 
 fn record_collection(promoted: usize, freed: usize) {
-    GC_STATS.with(|s| {
-        let mut stats = s.borrow_mut();
+    with_gc_state(|state| {
+        let stats = &mut state.stats;
         stats.collections += 1;
         stats.promoted += promoted;
         stats.freed += freed;
@@ -91,10 +78,7 @@ fn record_collection(promoted: usize, freed: usize) {
 }
 
 fn record_compaction(count: usize) {
-    GC_STATS.with(|s| {
-        let mut stats = s.borrow_mut();
-        stats.compacted += count;
-    });
+    with_gc_state(|state| state.stats.compacted += count);
 }
 
 // ---------------------------------------------------------------------------
@@ -104,19 +88,15 @@ fn record_compaction(count: usize) {
 /// Callback type for GC event notifications.
 pub type GcCallback = Box<dyn Fn(&GcStats) + Send + Sync>;
 
-thread_local! {
-    static GC_CALLBACKS: std::cell::RefCell<Vec<GcCallback>> = const { std::cell::RefCell::new(Vec::new()) };
-}
-
 /// Register a callback to be invoked after each GC cycle.
 pub fn register_gc_callback(cb: GcCallback) {
-    GC_CALLBACKS.with(|cbs| cbs.borrow_mut().push(cb));
+    with_gc_state(|state| state.callbacks.push(cb));
 }
 
 fn notify_gc_callbacks() {
     let stats = get_gc_stats();
-    GC_CALLBACKS.with(|cbs| {
-        for cb in cbs.borrow().iter() {
+    with_gc_state(|state| {
+        for cb in &state.callbacks {
             cb(&stats);
         }
     });
@@ -125,10 +105,6 @@ fn notify_gc_callbacks() {
 // ---------------------------------------------------------------------------
 // GC Re-entrancy Guard
 // ---------------------------------------------------------------------------
-
-thread_local! {
-    static GC_IN_PROGRESS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
-}
 
 enum GcGuardState {
     Active,
@@ -141,12 +117,12 @@ struct GcGuard {
 
 impl GcGuard {
     fn new() -> Self {
-        if GC_IN_PROGRESS.with(|g| g.get()) {
+        if with_gc_state(|state| state.in_progress) {
             GcGuard {
                 state: GcGuardState::Skipped,
             }
         } else {
-            GC_IN_PROGRESS.with(|g| g.set(true));
+            with_gc_state(|state| state.in_progress = true);
             GcGuard {
                 state: GcGuardState::Active,
             }
@@ -161,7 +137,7 @@ impl GcGuard {
 impl Drop for GcGuard {
     fn drop(&mut self) {
         if self.is_active() {
-            GC_IN_PROGRESS.with(|g| g.set(false));
+            with_gc_state(|state| state.in_progress = false);
         }
     }
 }
@@ -353,6 +329,51 @@ impl RememberedSet {
 }
 
 // ---------------------------------------------------------------------------
+// GC State
+// ---------------------------------------------------------------------------
+
+pub struct GcState {
+    pub(crate) stats: GcStats,
+    pub(crate) callbacks: Vec<GcCallback>,
+    pub(crate) in_progress: bool,
+    pub(crate) card_table: CardTable,
+    pub(crate) remembered_set: RememberedSet,
+}
+
+impl GcState {
+    pub fn new() -> Self {
+        GcState {
+            stats: GcStats::default(),
+            callbacks: Vec::new(),
+            in_progress: false,
+            card_table: unsafe { CardTable::new(0x100000000 as *mut u8, 1 << 30) },
+            remembered_set: RememberedSet::default(),
+        }
+    }
+}
+
+impl Default for GcState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+thread_local! {
+    static FALLBACK_GC_STATE: std::cell::RefCell<GcState> = std::cell::RefCell::new(GcState::default());
+}
+
+fn with_gc_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut GcState) -> R,
+{
+    if instance::has_current_instance() {
+        instance::with_current_instance(|instance| f(&mut instance.gc_state)).unwrap()
+    } else {
+        FALLBACK_GC_STATE.with(|state| f(&mut state.borrow_mut()))
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Write Barriers
 // ---------------------------------------------------------------------------
 
@@ -367,8 +388,10 @@ pub fn write_barrier(parent: SEXP, child: SEXP) {
         let child_gen = (*child).sxpinfo.gcgen();
 
         if parent_gen == Generation::Old as u8 && child_gen == Generation::Young as u8 {
-            REMBERED_SET.with(|rs| rs.borrow_mut().add(parent));
-            CARD_TABLE.with(|ct| ct.borrow().mark_dirty(parent));
+            with_gc_state(|state| {
+                state.remembered_set.add(parent);
+                state.card_table.mark_dirty(parent);
+            });
         }
     }
 }
@@ -403,26 +426,13 @@ pub unsafe fn promote_to_old(obj: SEXP) {
     }
 }
 
-// ---------------------------------------------------------------------------
-// Thread Local GC State
-// ---------------------------------------------------------------------------
-
-thread_local! {
-    static CARD_TABLE: std::cell::RefCell<CardTable> = std::cell::RefCell::new(unsafe {
-        CardTable::new(0x100000000 as *mut u8, 1 << 30)
-    });
-
-    static REMBERED_SET: std::cell::RefCell<RememberedSet> = std::cell::RefCell::new(RememberedSet::default());
-}
-
 pub unsafe fn init_gc_heap(heap_base: *mut u8, heap_size: usize) {
     unsafe {
         if heap_base.is_null() || heap_size == 0 {
             return;
         }
-        CARD_TABLE.with(|ct| {
-            let mut ct = ct.borrow_mut();
-            *ct = CardTable::new(heap_base, heap_size);
+        with_gc_state(|state| {
+            state.card_table = CardTable::new(heap_base, heap_size);
         });
     }
 }
@@ -462,9 +472,8 @@ fn update_preserve_stack(old_to_new: &HashMap<usize, SEXP>) {
 }
 
 fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
-    REMBERED_SET.with(|rs| {
-        let mut set = rs.borrow_mut();
-        for entry in set.entries_mut() {
+    with_gc_state(|state| {
+        for entry in state.remembered_set.entries_mut() {
             let addr = *entry as usize;
             if let Some(&new_ptr) = old_to_new.get(&addr) {
                 *entry = new_ptr;
@@ -562,7 +571,7 @@ pub fn minor_gc() -> (usize, usize) {
             (promoted, freed)
         }
         Err(_) => {
-            GC_IN_PROGRESS.with(|g| g.set(false));
+            with_gc_state(|state| state.in_progress = false);
             (0, 0)
         }
     }
@@ -597,9 +606,8 @@ fn do_minor_gc() -> (usize, usize) {
         }
     });
 
-    REMBERED_SET.with(|rs| {
-        let rs = rs.borrow();
-        let entries: Vec<SEXP> = rs.entries.clone();
+    with_gc_state(|state| {
+        let entries: Vec<SEXP> = state.remembered_set.entries.clone();
         for obj in entries {
             if !obj.is_null() {
                 unsafe {
@@ -644,8 +652,10 @@ fn do_minor_gc() -> (usize, usize) {
         }
     });
 
-    REMBERED_SET.with(|rs| rs.borrow_mut().clear());
-    CARD_TABLE.with(|ct| ct.borrow_mut().clear_dirty());
+    with_gc_state(|state| {
+        state.remembered_set.clear();
+        state.card_table.clear_dirty();
+    });
 
     (promoted_count, freed_count)
 }
@@ -686,7 +696,7 @@ pub fn full_gc() -> (usize, usize, usize) {
             (promoted, freed, compacted)
         }
         Err(_) => {
-            GC_IN_PROGRESS.with(|g| g.set(false));
+            with_gc_state(|state| state.in_progress = false);
             (0, 0, 0)
         }
     }
@@ -1069,6 +1079,8 @@ mod tests {
     use std::collections::HashMap;
 
     use super::super::memory::with_arena;
+    use crate::sexp::session::RSession;
+
     use super::*;
 
     #[test]
@@ -1084,9 +1096,7 @@ mod tests {
 
             write_barrier(old_obj, young_obj);
 
-            REMBERED_SET.with(|rs| {
-                assert_eq!(rs.borrow().len(), 1);
-            });
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
         });
     }
 
@@ -1177,7 +1187,7 @@ mod tests {
         assert!(guard1.is_active());
 
         drop(guard1);
-        assert!(!GC_IN_PROGRESS.with(|g| g.get()));
+        assert!(!with_gc_state(|state| state.in_progress));
     }
 
     #[test]
@@ -1263,6 +1273,85 @@ mod tests {
         let stats = get_gc_stats();
         assert_eq!(stats.collections, 0);
         assert_eq!(stats.freed, 0);
+    }
+
+    #[test]
+    fn test_session_gc_stats_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|arena| {
+            reset_gc_stats();
+            *arena = RArena::new();
+            arena.alloc_node(SEXPTYPE::INTSXP);
+            let (_, freed) = minor_gc();
+            assert_eq!(freed, 1);
+            assert_eq!(get_gc_stats().collections, 1);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|arena| {
+                assert_eq!(get_gc_stats().collections, 0);
+                reset_gc_stats();
+                *arena = RArena::new();
+                arena.alloc_node(SEXPTYPE::INTSXP);
+                arena.alloc_node(SEXPTYPE::REALSXP);
+                let (_, freed) = minor_gc();
+                assert_eq!(freed, 2);
+                assert_eq!(get_gc_stats().collections, 1);
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            let stats = get_gc_stats();
+            assert_eq!(stats.collections, 1);
+            assert_eq!(stats.freed, 1);
+        })
+        .unwrap();
+    }
+
+    #[test]
+    fn test_session_remembered_sets_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.with_arena(|arena| {
+            *arena = RArena::new();
+            let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
+            let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
+            unsafe {
+                (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
+            }
+            write_barrier(old_obj, young_obj);
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|arena| {
+                *arena = RArena::new();
+                assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
+                let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
+                let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
+                unsafe {
+                    (*old_obj).sxpinfo.set_gcgen(Generation::Old as u8);
+                    (*young_obj).sxpinfo.set_gcgen(Generation::Young as u8);
+                }
+                write_barrier(old_obj, young_obj);
+                assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+                minor_gc();
+                assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
+            })
+            .unwrap();
+
+        left.with_arena(|_| {
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 1);
+            minor_gc();
+            assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
+        })
+        .unwrap();
     }
 
     #[test]
