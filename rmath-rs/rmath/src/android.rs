@@ -827,6 +827,30 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_registered_distribution_and_cumulative_helpers() {
+        let mut session = RSession::new();
+        let dnorm = session.eval("dnorm(0)");
+        let pnorm = session.eval("pnorm(0)");
+        let qnorm = session.eval("qnorm(0.5)");
+        let dpois = session.eval("dpois(2, 3)");
+        let dbinom = session.eval("dbinom(2, 5, 0.5)");
+        let dgamma = session.eval("dgamma(2, 3)");
+        let dcauchy = session.eval("dcauchy(0)");
+        let cumsum = session.eval("cumsum(c(1, 2, 3))");
+        let cumprod = session.eval("cumprod(c(1, 2, 3))");
+
+        assert!((dnorm.value - 0.3989422804014327).abs() < 1e-12);
+        assert_eq!(pnorm.output, "[1] 0.5");
+        assert_eq!(qnorm.output, "[1] 0");
+        assert!((dpois.value - 0.22404180765538775).abs() < 1e-12);
+        assert!((dbinom.value - 0.3125).abs() < 1e-12);
+        assert!((dgamma.value - 0.2706705664732254).abs() < 1e-12);
+        assert!((dcauchy.value - 0.3183098861837907).abs() < 1e-12);
+        assert_eq!(cumsum.output, "[1] 1 3 6");
+        assert_eq!(cumprod.output, "[1] 1 2 6");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
