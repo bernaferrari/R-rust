@@ -192,6 +192,35 @@ impl RSession {
         })
     }
 
+    /// Evaluate an expression while capturing output and the final visibility flag.
+    ///
+    /// This mirrors the top-level embedding contract: explicit output produced by
+    /// functions such as `print()` and `cat()` is captured separately from the
+    /// implicit printing controlled by `R_Visible`.
+    pub fn eval_with_output_capture(
+        &self,
+        expr: SEXP,
+    ) -> (RResult<SEXP>, super::output::RCapturedOutput, bool) {
+        if !self.active {
+            return (
+                Err(REvalError {
+                    message: "session is closed".to_string(),
+                }),
+                super::output::RCapturedOutput::default(),
+                false,
+            );
+        }
+        self.with_active(|| {
+            super::output::start_capture();
+            let result = catch_eval(|| unsafe {
+                crate::eval::eval::Rf_eval(expr, self.instance.global_env)
+            });
+            let visible = super::globals::R_Visible() != 0;
+            let output = super::output::stop_capture();
+            (result, output, visible)
+        })
+    }
+
     /// Evaluate an expression with a custom environment.
     ///
     /// # Errors

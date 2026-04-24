@@ -3218,6 +3218,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "capture.output",
         "withVisible",
         "invisible",
+        "stopifnot",
         "suppressWarnings",
         "suppressMessages",
         "force",
@@ -5701,11 +5702,12 @@ pub unsafe fn do_stopifnot(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             && *LOGICAL(cond) == 0
         {
             std::panic::panic_any(crate::sexp::context::RError {
-                message: "stopifnot: condition is FALSE".to_string(),
+                message: "FALSE is not TRUE".to_string(),
             });
         }
         current = CDR(current);
     }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     R_NilValue()
 }
 

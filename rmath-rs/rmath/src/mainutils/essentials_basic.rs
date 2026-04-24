@@ -1,4 +1,3 @@
-
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::os::raw::c_int;
@@ -105,7 +104,12 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         current = CDR(current);
     }
     let output = parts.join(" ");
-    print!("{}", output);
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stdout(&output);
+    } else {
+        print!("{}", output);
+    }
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     R_NilValue()
 }
 
@@ -117,18 +121,16 @@ pub unsafe fn do_cat(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     if x.is_null() || x == R_NilValue() {
-        println!("NULL");
+        if crate::sexp::output::is_capturing() {
+            crate::sexp::output::capture_stdout("NULL\n");
+        } else {
+            println!("NULL");
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         return R_NilValue();
     }
-    let t = TYPEOF(x);
-    let n = XLENGTH(x).max(1);
-    for i in 0..n {
-        let s = elt_to_string(x, i);
-        if i == 0 {
-            println!("[1] {}", s);
-        } else {
-            println!("[{}] {}", i + 1, s);
-        }
+    if let Some(sexp) = crate::sexp::safe::Sexp::from_raw(x) {
+        crate::sexp::output::print_value(sexp);
     }
     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     x

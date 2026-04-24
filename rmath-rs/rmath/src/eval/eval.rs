@@ -423,6 +423,47 @@ fn apply_closure_safe<'a>(
     Ok(unsafe { Sexp::from_raw_unchecked(raw_result) })
 }
 
+fn call_head_name(call: Sexp<'_>) -> String {
+    unsafe {
+        let fun_sym = crate::sexp::accessors::CAR(call.as_raw());
+        let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
+        if pname.is_null() {
+            return String::new();
+        }
+        let s = crate::sexp::accessors::CHAR(pname);
+        if s.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(s)
+                .to_str()
+                .unwrap_or("")
+                .to_string()
+        }
+    }
+}
+
+fn primitive_controls_visibility(name: &str) -> bool {
+    matches!(
+        name,
+        "<-" | "<<-"
+            | "="
+            | "{"
+            | "("
+            | "if"
+            | "for"
+            | "while"
+            | "repeat"
+            | "return"
+            | "invisible"
+            | "withVisible"
+            | "cat"
+            | "print"
+            | "stopifnot"
+            | "suppressWarnings"
+            | "suppressMessages"
+    )
+}
+
 /// Safe special form application.
 fn apply_special_safe<'a>(
     fun: Sexp<'a>,
@@ -432,6 +473,7 @@ fn apply_special_safe<'a>(
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
     let flag = unsafe { PRIMPRINT(fun.as_raw()) };
+    let op_name = call_head_name(call);
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
     let tmp = if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
@@ -447,7 +489,7 @@ fn apply_special_safe<'a>(
         }
     };
 
-    if flag < 2 {
+    if flag < 2 && !primitive_controls_visibility(&op_name) {
         unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
     }
 
@@ -465,23 +507,7 @@ fn apply_builtin_safe<'a>(
     let flag = unsafe { PRIMPRINT(fun.as_raw()) };
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
-    let op_name = unsafe {
-        let fun_sym = crate::sexp::accessors::CAR(call.as_raw());
-        let pname = crate::sexp::accessors::PRINTNAME(fun_sym);
-        if !pname.is_null() {
-            let s = crate::sexp::accessors::CHAR(pname);
-            if !s.is_null() {
-                std::ffi::CStr::from_ptr(s)
-                    .to_str()
-                    .unwrap_or("")
-                    .to_string()
-            } else {
-                String::new()
-            }
-        } else {
-            String::new()
-        }
-    };
+    let op_name = call_head_name(call);
 
     if op_name == "missing" {
         let tmp = unsafe {
@@ -4983,7 +5009,7 @@ fn apply_builtin_safe<'a>(
         }
     };
 
-    if flag < 2 {
+    if flag < 2 && !primitive_controls_visibility(&op_name) {
         unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
     }
 

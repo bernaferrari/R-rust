@@ -67,6 +67,23 @@ fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
     }
 }
 
+fn result_from_eval(sexp: Sexp<'_>, captured: output::RCapturedOutput, visible: bool) -> RResult {
+    let mut display = String::new();
+    display.push_str(&captured.stdout);
+    display.push_str(&captured.stderr);
+    if visible {
+        if !display.is_empty() && !display.ends_with('\n') {
+            display.push('\n');
+        }
+        display.push_str(&output::format_sexp_direct(sexp));
+    }
+    RResult {
+        value: extract_numeric_value(sexp),
+        typed: RValue::from_sexp(sexp),
+        output: display,
+    }
+}
+
 fn error_result(message: impl Into<String>) -> RResult {
     RResult {
         value: 0.0,
@@ -224,13 +241,18 @@ impl RSession {
             };
         }
 
-        match self.core.eval(sexp) {
+        let (result, captured, visible) = self.core.eval_with_output_capture(sexp);
+        match result {
             Ok(result) => match Sexp::from_raw(result) {
-                Some(result) => result_from_sexp(result),
+                Some(result) => result_from_eval(result, captured, visible),
                 None => RResult {
                     value: 0.0,
                     typed: RValue::Null,
-                    output: "NULL".to_string(),
+                    output: if visible {
+                        "NULL".to_string()
+                    } else {
+                        String::new()
+                    },
                 },
             },
             Err(e) => error_result(e.to_string()),
@@ -596,6 +618,48 @@ mod tests {
             "value: {}",
             result.value
         );
+    }
+
+    #[test]
+    fn test_eval_honors_visibility_for_assignment_and_invisible() {
+        let mut session = RSession::new();
+
+        let assigned = session.eval("x <- 42");
+        assert_eq!(assigned.output, "");
+        assert_eq!(assigned.typed, RValue::Real(Some(42.0)));
+
+        let invisible = session.eval("invisible(7)");
+        assert_eq!(invisible.output, "");
+        assert_eq!(invisible.typed, RValue::Real(Some(7.0)));
+
+        let visible = session.eval("x");
+        assert_eq!(visible.output, "[1] 42");
+    }
+
+    #[test]
+    fn test_eval_captures_explicit_output_without_implicit_reprint() {
+        let mut session = RSession::new();
+
+        let cat = session.eval("cat(\"hello\")");
+        assert_eq!(cat.output, "hello");
+        assert_eq!(cat.typed, RValue::Null);
+
+        let printed = session.eval("print(1)");
+        assert_eq!(printed.output, "[1] 1\n");
+        assert_eq!(printed.typed, RValue::Real(Some(1.0)));
+    }
+
+    #[test]
+    fn test_stopifnot_is_invisible_on_success_and_errors_on_failure() {
+        let mut session = RSession::new();
+
+        let ok = session.eval("stopifnot(TRUE)");
+        assert_eq!(ok.output, "");
+        assert_eq!(ok.typed, RValue::Null);
+
+        let err = session.eval("stopifnot(FALSE)");
+        assert!(matches!(err.typed, RValue::Error(_)));
+        assert!(err.output.contains("FALSE is not TRUE"));
     }
 
     #[test]
