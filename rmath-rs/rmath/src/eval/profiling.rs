@@ -19,7 +19,6 @@
 //! - `do_bcprofstart` / `do_bcprofstop` / `do_bcprofcounts` -- BC profiling
 //! - `dobcprof` / `dobcprof_null` -- BC profiling signal handlers
 
-use std::cell::{Cell, RefCell};
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int, c_void};
 use std::ptr;
@@ -37,6 +36,9 @@ use crate::sexp::envir::R_findVar;
 use crate::sexp::ffi::{NA_INTEGER, R_FINITE};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::{
+    NO_PROFILING_OPCODE, PROFILING_OPCODE_COUNT, ProfilingState, with_required_current_instance,
+};
 use crate::sexp::protect::{R_PreserveObject, R_ReleaseObject};
 
 /// Profiling timer type (ITIMER_PROF is not available on Android).
@@ -52,10 +54,6 @@ use crate::sexp::symbol::{
 // ---------------------------------------------------------------------------
 // Stubs for functions not yet ported
 // ---------------------------------------------------------------------------
-
-thread_local! {
-    static R_SREF: Cell<SEXP> = const { Cell::new(ptr::null_mut()) };
-}
 
 unsafe fn get_R_InBCInterpreter() -> SEXP {
     unsafe { R_NilValue() }
@@ -76,30 +74,16 @@ unsafe fn R_findBCInterpreterSrcref(_cptr: *mut RCNTXT) -> SEXP {
 /// Number of bytecode opcodes -- sentinel value in the BC opcode enum.
 /// In R, this is the last entry in the bytecode opcode enum (eval.c line ~4732).
 /// We use 256 as a reasonable upper bound covering all defined opcodes.
-const OPCOUNT: usize = 256;
+const OPCOUNT: usize = PROFILING_OPCODE_COUNT;
 
 /// Sentinel for "no current opcode" during BC profiling.
-const NO_CURRENT_OPCODE: c_int = -1;
+const NO_CURRENT_OPCODE: c_int = NO_PROFILING_OPCODE;
 
 /// Buffer size for profiling output.
 const PROFBUFSIZ: usize = 10500;
 
 /// Maximum digits for IEEE double integer part printing.
 const PB_MAX_DBL_DIGITS: usize = 309;
-
-// ---------------------------------------------------------------------------
-// Profiling state (static globals)
-// ---------------------------------------------------------------------------
-
-thread_local! { static R_Profiling: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_Mem_Profiling: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_GC_Profiling: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_Line_Profiling: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_Filter_Callframes: Cell<c_int> = Cell::new(0); }
-thread_local! { static R_Profiling_Error: Cell<c_int> = Cell::new(0); }
-thread_local! { static bc_profiling: Cell<c_int> = Cell::new(0); }
-thread_local! { static current_opcode: Cell<c_int> = Cell::new(NO_CURRENT_OPCODE); }
-thread_local! { static opcode_counts: RefCell<[c_int; OPCOUNT]> = RefCell::new([0; OPCOUNT]); }
 
 /// Profiling event type: CPU time or elapsed time.
 #[derive(Clone, Copy, PartialEq)]
@@ -109,20 +93,24 @@ pub enum rpe_type {
     RPE_ELAPSED = 1,
 }
 
-thread_local! { static R_Profiling_Event: Cell<rpe_type> = Cell::new(rpe_type::RPE_CPU); }
+fn profiling_event_code(event: rpe_type) -> c_int {
+    event as c_int
+}
 
-// Output file handle for profiling.
-// On Unix, this is a file descriptor (int). On Windows, it would be a FILE*.
-thread_local! { static R_ProfileOutfile: Cell<c_int> = Cell::new(-1); }
+fn profiling_event_from_code(event: c_int) -> rpe_type {
+    if event == rpe_type::RPE_ELAPSED as c_int {
+        rpe_type::RPE_ELAPSED
+    } else {
+        rpe_type::RPE_CPU
+    }
+}
 
-// Array of source file name pointers for line profiling.
-thread_local! { static R_Srcfiles: Cell<*mut *mut c_char> = Cell::new(ptr::null_mut()); }
-
-// Count of source file buffer entries.
-thread_local! { static R_Srcfile_bufcount: Cell<usize> = Cell::new(0); }
-
-// Raw SEXP buffer for filenames and pointers.
-thread_local! { static R_Srcfiles_buffer: Cell<SEXP> = Cell::new(ptr::null_mut()); }
+fn with_profiling_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut ProfilingState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.eval_state.profiling))
+}
 
 // ---------------------------------------------------------------------------
 // R_Profiling -- check if profiling is active
@@ -130,7 +118,7 @@ thread_local! { static R_Srcfiles_buffer: Cell<SEXP> = Cell::new(ptr::null_mut()
 
 /// Check whether R profiling is currently active.
 pub fn R_Profiling_active() -> c_int {
-    R_Profiling.with(|v| v.get())
+    with_profiling_state(|state| state.profiling)
 }
 
 // ---------------------------------------------------------------------------
@@ -139,7 +127,7 @@ pub fn R_Profiling_active() -> c_int {
 
 /// Check if R profiling is enabled (public API).
 pub fn R_isRprofiling() -> c_int {
-    R_Profiling.with(|v| v.get())
+    with_profiling_state(|state| state.profiling)
 }
 
 // ---------------------------------------------------------------------------
@@ -362,13 +350,13 @@ unsafe fn pb_dbl(pb: *mut profbuf, num: c_double) {
 /// Ported from R's `getFilenum()` in eval.c.
 unsafe fn getFilenum(filename: *const c_char) -> c_int {
     unsafe {
-        let r_srcfiles = R_Srcfiles.with(|v| v.get());
-        let r_srcfiles_buffer = R_Srcfiles_buffer.with(|v| v.get());
+        let r_srcfiles = with_profiling_state(|state| state.srcfiles);
+        let r_srcfiles_buffer = with_profiling_state(|state| state.srcfiles_buffer);
         if r_srcfiles.is_null() || r_srcfiles_buffer.is_null() {
             return 0;
         }
 
-        let line_prof = R_Line_Profiling.with(|v| v.get());
+        let line_prof = with_profiling_state(|state| state.line_profiling);
         if line_prof <= 0 {
             return 0;
         }
@@ -409,10 +397,10 @@ unsafe fn getFilenum(filename: *const c_char) -> c_int {
                 len += 1;
             }
 
-            let bufcount = R_Srcfile_bufcount.with(|v| v.get());
+            let bufcount = with_profiling_state(|state| state.srcfile_bufcount);
             if (fnum as usize) >= bufcount {
                 // Too many files
-                R_Profiling_Error.with(|v| v.set(1));
+                with_profiling_state(|state| state.profiling_error = 1);
                 return 0;
             }
 
@@ -424,7 +412,7 @@ unsafe fn getFilenum(filename: *const c_char) -> c_int {
 
             if used + len + 1 > total {
                 // Out of space in the buffer
-                R_Profiling_Error.with(|v| v.set(2));
+                with_profiling_state(|state| state.profiling_error = 2);
                 return 0;
             }
 
@@ -437,7 +425,7 @@ unsafe fn getFilenum(filename: *const c_char) -> c_int {
             *r_srcfiles.add((fnum + 1) as usize) = next_ptr as *mut c_char;
             *next_ptr = 0; // NUL terminator
 
-            R_Line_Profiling.with(|v| v.set(v.get() + 1));
+            with_profiling_state(|state| state.line_profiling += 1);
         }
 
         fnum + 1
@@ -504,7 +492,7 @@ unsafe fn lineprof(pb: *mut profbuf, srcref: SEXP) {
 /// Ported from R's `findProfContext()` in eval.c.
 unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
     unsafe {
-        if R_Filter_Callframes.with(|v| v.get()) == 0 {
+        if with_profiling_state(|state| state.filter_callframes) == 0 {
             return (*cptr).nextcontext;
         }
 
@@ -561,7 +549,7 @@ unsafe fn findProfContext(cptr: *mut RCNTXT) -> *mut RCNTXT {
 /// Ported from R's `pf_str()` in eval.c.
 unsafe fn pf_str(s: *const c_char) -> isize {
     unsafe {
-        let outfile = R_ProfileOutfile.with(|v| v.get());
+        let outfile = with_profiling_state(|state| state.profile_outfile);
         if outfile < 0 {
             return -1;
         }
@@ -625,7 +613,7 @@ unsafe fn pf_int(num: c_int) {
 /// Ported from R's `R_getCurrentSrcref()` in eval.c.
 unsafe fn R_getCurrentSrcref() -> SEXP {
     unsafe {
-        let srcref = R_SREF.with(|s| s.get());
+        let srcref = with_profiling_state(|state| state.sref);
         let in_bc = get_R_InBCInterpreter();
         if srcref != in_bc {
             srcref
@@ -652,7 +640,7 @@ unsafe fn R_getCurrentSrcref() -> SEXP {
 unsafe fn doprof(_sig: c_int) {
     unsafe {
         let mut buf = [0u8; PROFBUFSIZ];
-        let prevnum = R_Line_Profiling.with(|v| v.get());
+        let prevnum = with_profiling_state(|state| state.line_profiling);
 
         let mut pb = profbuf {
             ptr: buf.as_mut_ptr() as *mut c_char,
@@ -660,7 +648,7 @@ unsafe fn doprof(_sig: c_int) {
         };
 
         // Memory profiling: record memory allocation sizes
-        if R_Mem_Profiling.with(|v| v.get()) != 0 {
+        if with_profiling_state(|state| state.mem_profiling) != 0 {
             // get_current_mem is not yet available; use stub values
             let smallv: u64 = 0;
             let bigv: u64 = 0;
@@ -679,14 +667,14 @@ unsafe fn doprof(_sig: c_int) {
         }
 
         // GC profiling
-        if R_GC_Profiling.with(|v| v.get()) != 0
+        if with_profiling_state(|state| state.gc_profiling) != 0
             && crate::mainutils::memory_main::R_gc_running() != 0
         {
             pb_str(&mut pb, b"\"<GC>\" \0".as_ptr() as *const c_char);
         }
 
         // Line profiling
-        if R_Line_Profiling.with(|v| v.get()) != 0 {
+        if with_profiling_state(|state| state.line_profiling) != 0 {
             lineprof(&mut pb, R_getCurrentSrcref());
         }
 
@@ -765,7 +753,7 @@ unsafe fn doprof(_sig: c_int) {
                 pb_str(&mut pb, b"\" \0".as_ptr() as *const c_char);
 
                 // Line profiling for this context
-                if R_Line_Profiling.with(|v| v.get()) != 0 {
+                if with_profiling_state(|state| state.line_profiling) != 0 {
                     let srcref_val = (*cptr).srcref;
                     let in_bc = get_R_InBCInterpreter();
                     if srcref_val == in_bc {
@@ -783,12 +771,12 @@ unsafe fn doprof(_sig: c_int) {
         } else {
             // Overflow
             buf[0] = 0;
-            R_Profiling_Error.with(|v| v.set(3));
+            with_profiling_state(|state| state.profiling_error = 3);
         }
 
         // Write any new source file references
-        let line_prof_val = R_Line_Profiling.with(|v| v.get());
-        let r_srcfiles = R_Srcfiles.with(|v| v.get());
+        let line_prof_val = with_profiling_state(|state| state.line_profiling);
+        let r_srcfiles = with_profiling_state(|state| state.srcfiles);
         let mut i = prevnum;
         while i < line_prof_val {
             pf_str(b"#File \0".as_ptr() as *const c_char);
@@ -842,20 +830,21 @@ unsafe fn doprof_null(_sig: c_int) {
 ///
 /// Note: In this Rust port, threading is handled via std::thread.
 /// This is a simplified version that uses sleep instead of pthread_cond_timedwait.
-fn profile_thread_entry(interval_us: u64, terminate_flag: &std::sync::atomic::AtomicBool) {
-    use std::sync::atomic::Ordering;
+fn profile_thread_entry(interval_us: u64, terminate_rx: std::sync::mpsc::Receiver<()>) {
+    use std::sync::mpsc::RecvTimeoutError;
     use std::time::Duration;
 
-    while !terminate_flag.load(Ordering::Relaxed) {
-        std::thread::sleep(Duration::from_micros(interval_us));
-        if terminate_flag.load(Ordering::Relaxed) {
-            break;
-        }
-        // Send profiling signal to main thread
-        // In the C version, this calls pthread_kill(R_profiled_thread, SIGPROF)
-        // Here we call doprof directly for simplicity
-        unsafe {
-            doprof(libc::SIGPROF);
+    loop {
+        match terminate_rx.recv_timeout(Duration::from_micros(interval_us)) {
+            Ok(()) | Err(RecvTimeoutError::Disconnected) => break,
+            Err(RecvTimeoutError::Timeout) => {
+                // Send profiling signal to main thread. In the C version, this
+                // calls pthread_kill(R_profiled_thread, SIGPROF); here we call
+                // doprof directly for the current simplified port.
+                unsafe {
+                    doprof(libc::SIGPROF);
+                }
+            }
         }
     }
 }
@@ -872,7 +861,9 @@ unsafe fn R_EndProfiling() {
         // On Unix: disable the timer or signal the thread to terminate
         // Simplified: just close the file and reset state
 
-        if R_Profiling_Event.with(|v| v.get()) == rpe_type::RPE_CPU {
+        if with_profiling_state(|state| profiling_event_from_code(state.profiling_event))
+            == rpe_type::RPE_CPU
+        {
             // Disable ITIMER_PROF
             let zero_val = libc::itimerval {
                 it_interval: libc::timeval {
@@ -891,28 +882,30 @@ unsafe fn R_EndProfiling() {
         // (handled externally via the global terminate flag)
 
         // Close the output file
-        let outfile = R_ProfileOutfile.with(|v| v.get());
+        let outfile = with_profiling_state(|state| state.profile_outfile);
         if outfile >= 0 {
             libc::close(outfile);
-            R_ProfileOutfile.with(|v| v.set(-1));
+            with_profiling_state(|state| state.profile_outfile = -1);
         }
 
         // Reset state
-        R_Profiling.with(|v| v.set(0));
-        R_Mem_Profiling.with(|v| v.set(0));
-        R_GC_Profiling.with(|v| v.set(0));
-        R_Line_Profiling.with(|v| v.set(0));
+        with_profiling_state(|state| {
+            state.profiling = 0;
+            state.mem_profiling = 0;
+            state.gc_profiling = 0;
+            state.line_profiling = 0;
+        });
 
         // Release the source files buffer
-        let buf = R_Srcfiles_buffer.with(|v| v.get());
+        let buf = with_profiling_state(|state| state.srcfiles_buffer);
         if !buf.is_null() && buf != R_NilValue() {
             R_ReleaseObject(buf);
-            R_Srcfiles_buffer.with(|v| v.set(ptr::null_mut()));
+            with_profiling_state(|state| state.srcfiles_buffer = ptr::null_mut());
         }
-        R_Srcfiles.with(|v| v.set(ptr::null_mut()));
+        with_profiling_state(|state| state.srcfiles = ptr::null_mut());
 
         // Report any profiling errors
-        let err = R_Profiling_Error.with(|v| v.get());
+        let err = with_profiling_state(|state| state.profiling_error);
         if err != 0 {
             if err == 3 {
                 // Samples too large for I/O buffer skipped
@@ -949,7 +942,7 @@ unsafe fn R_InitProfiling(
 ) {
     unsafe {
         // If already profiling, stop first
-        if R_ProfileOutfile.with(|v| v.get()) >= 0 {
+        if with_profiling_state(|state| state.profile_outfile) >= 0 {
             R_EndProfiling();
         }
 
@@ -979,7 +972,7 @@ unsafe fn R_InitProfiling(
         if fd < 0 {
             return;
         }
-        R_ProfileOutfile.with(|v| v.set(fd));
+        with_profiling_state(|state| state.profile_outfile = fd);
 
         let interval: c_int = (1e6 * dinterval + 0.5) as c_int;
 
@@ -998,27 +991,29 @@ unsafe fn R_InitProfiling(
         pf_str(b"\n\0".as_ptr() as *const c_char);
 
         // Set profiling state
-        R_Mem_Profiling.with(|v| v.set(mem_profiling));
-        R_Profiling_Error.with(|v| v.set(0));
-        R_Line_Profiling.with(|v| v.set(line_profiling));
-        R_GC_Profiling.with(|v| v.set(gc_profiling));
-        R_Filter_Callframes.with(|v| v.set(filter_callframes));
+        with_profiling_state(|state| {
+            state.mem_profiling = mem_profiling;
+            state.profiling_error = 0;
+            state.line_profiling = line_profiling;
+            state.gc_profiling = gc_profiling;
+            state.filter_callframes = filter_callframes;
+        });
 
         // Set up line profiling buffer
         if line_profiling != 0 {
             let bufcount = numfiles as usize;
-            R_Srcfile_bufcount.with(|v| v.set(bufcount));
+            with_profiling_state(|state| state.srcfile_bufcount = bufcount);
             let len1 = bufcount * std::mem::size_of::<*mut c_char>();
             let len2 = bufsize as usize;
             let total = (len1 + len2) as c_int;
 
             let buf = Rf_allocVector(SEXPTYPE::RAWSXP, total);
-            R_Srcfiles_buffer.with(|v| v.set(buf));
+            with_profiling_state(|state| state.srcfiles_buffer = buf);
             R_PreserveObject(buf);
 
             // Set up the pointer array in the first part of the buffer
             let srcfiles = RAW(buf) as *mut *mut c_char;
-            R_Srcfiles.with(|v| v.set(srcfiles));
+            with_profiling_state(|state| state.srcfiles = srcfiles);
 
             // The actual strings start after the pointer array
             let buf_start = (RAW(buf) as *mut c_char).add(len1);
@@ -1026,7 +1021,7 @@ unsafe fn R_InitProfiling(
             *buf_start = 0; // NUL terminator for first filename slot
         }
 
-        R_Profiling_Event.with(|v| v.set(event));
+        with_profiling_state(|state| state.profiling_event = profiling_event_code(event));
 
         // Set up the timer or thread
         if event == rpe_type::RPE_ELAPSED {
@@ -1044,13 +1039,16 @@ unsafe fn R_InitProfiling(
             };
             if libc::setitimer(PROF_TIMER, &itv, ptr::null_mut()) == -1 {
                 // Failed to set timer
-                libc::close(R_ProfileOutfile.with(|v| v.get()));
-                R_ProfileOutfile.with(|v| v.set(-1));
+                let outfile = with_profiling_state(|state| state.profile_outfile);
+                if outfile >= 0 {
+                    libc::close(outfile);
+                }
+                with_profiling_state(|state| state.profile_outfile = -1);
                 return;
             }
         }
 
-        R_Profiling.with(|v| v.set(1));
+        with_profiling_state(|state| state.profiling = 1);
     }
 }
 
@@ -1068,7 +1066,7 @@ unsafe fn R_InitProfiling(
 pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // BC profiling check
-        if bc_profiling.with(|v| v.get()) != 0 {
+        if with_profiling_state(|state| state.bc_profiling) != 0 {
             // Cannot use R profiling while byte code profiling
             return R_NilValue();
         }
@@ -1193,11 +1191,9 @@ pub unsafe fn do_gcprof(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `dobcprof()` in eval.c.
 unsafe fn dobcprof(_sig: c_int) {
-    let op = current_opcode.with(|v| v.get());
+    let op = with_profiling_state(|state| state.current_opcode);
     if op >= 0 && (op as usize) < OPCOUNT {
-        opcode_counts.with(|counts| {
-            counts.borrow_mut()[op as usize] += 1;
-        });
+        with_profiling_state(|state| state.opcode_counts[op as usize] += 1);
     }
     // Reinstall handler: signal(SIGPROF, dobcprof);
 }
@@ -1227,21 +1223,19 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let dinterval: c_double = 0.02;
         let interval: c_int = (1e6 * dinterval + 0.5) as c_int;
 
-        if R_Profiling.with(|v| v.get()) != 0 {
+        if with_profiling_state(|state| state.profiling) != 0 {
             // Profile timer in use
             return R_NilValue();
         }
-        if bc_profiling.with(|v| v.get()) != 0 {
+        if with_profiling_state(|state| state.bc_profiling) != 0 {
             // Already byte code profiling
             return R_NilValue();
         }
 
         // Initialize the profile data
-        current_opcode.with(|v| v.set(NO_CURRENT_OPCODE));
-        opcode_counts.with(|counts| {
-            for i in 0..OPCOUNT {
-                counts.borrow_mut()[i] = 0;
-            }
+        with_profiling_state(|state| {
+            state.current_opcode = NO_CURRENT_OPCODE;
+            state.opcode_counts.fill(0);
         });
 
         // Set up the timer
@@ -1257,7 +1251,7 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             return R_NilValue();
         }
 
-        bc_profiling.with(|v| v.set(1));
+        with_profiling_state(|state| state.bc_profiling = 1);
 
         R_NilValue()
     }
@@ -1274,7 +1268,7 @@ pub unsafe fn do_bcprofstart(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 /// Ported from R's `do_bcprofstop()` in eval.c.
 pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
-        if bc_profiling.with(|v| v.get()) == 0 {
+        if with_profiling_state(|state| state.bc_profiling) == 0 {
             // Not byte code profiling
             return R_NilValue();
         }
@@ -1291,7 +1285,7 @@ pub unsafe fn do_bcprofstop(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP
         };
         libc::setitimer(PROF_TIMER, &zero_val, ptr::null_mut());
 
-        bc_profiling.with(|v| v.set(0));
+        with_profiling_state(|state| state.bc_profiling = 0);
 
         R_NilValue()
     }
@@ -1314,10 +1308,9 @@ pub unsafe fn do_bcprofcounts(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SE
         }
         let ip = INTEGER(val);
         if !ip.is_null() {
-            opcode_counts.with(|counts| {
-                let counts = counts.borrow();
+            with_profiling_state(|state| {
                 for i in 0..OPCOUNT {
-                    *ip.add(i) = counts[i];
+                    *ip.add(i) = state.opcode_counts[i];
                 }
             });
         }
@@ -1339,3 +1332,76 @@ pub fn R_WriteProfile(_out: c_int) {
 // ---------------------------------------------------------------------------
 // bc_check_sigint -- check for user interrupts in bytecode loop
 // ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn profiling_flags_are_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            with_profiling_state(|state| {
+                state.profiling = 1;
+                state.bc_profiling = 1;
+                state.current_opcode = 7;
+                state.opcode_counts[7] = 11;
+            });
+            assert_eq!(R_Profiling_active(), 1);
+            assert_eq!(R_isRprofiling(), 1);
+        });
+
+        right.with_protected(|| {
+            assert_eq!(R_Profiling_active(), 0);
+            assert_eq!(R_isRprofiling(), 0);
+            with_profiling_state(|state| {
+                assert_eq!(state.bc_profiling, 0);
+                assert_eq!(state.current_opcode, NO_CURRENT_OPCODE);
+                assert_eq!(state.opcode_counts[7], 0);
+            });
+        });
+
+        left.with_protected(|| {
+            with_profiling_state(|state| {
+                assert_eq!(state.bc_profiling, 1);
+                assert_eq!(state.current_opcode, 7);
+                assert_eq!(state.opcode_counts[7], 11);
+            });
+        });
+    }
+
+    #[test]
+    fn bytecode_profiler_samples_current_session_only() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            with_profiling_state(|state| {
+                state.current_opcode = 3;
+                state.opcode_counts.fill(0);
+            });
+            unsafe {
+                dobcprof(0);
+            }
+            with_profiling_state(|state| assert_eq!(state.opcode_counts[3], 1));
+        });
+
+        right.with_protected(|| {
+            with_profiling_state(|state| {
+                assert_eq!(state.opcode_counts[3], 0);
+                state.current_opcode = 3;
+            });
+            unsafe {
+                dobcprof(0);
+            }
+            with_profiling_state(|state| assert_eq!(state.opcode_counts[3], 1));
+        });
+
+        left.with_protected(|| {
+            with_profiling_state(|state| assert_eq!(state.opcode_counts[3], 1));
+        });
+    }
+}

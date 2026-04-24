@@ -18,7 +18,7 @@
 use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::os::raw::c_int;
+use std::os::raw::{c_char, c_int};
 use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
@@ -74,6 +74,49 @@ impl Default for ErrorState {
     }
 }
 
+pub(crate) const PROFILING_OPCODE_COUNT: usize = 256;
+pub(crate) const NO_PROFILING_OPCODE: c_int = -1;
+
+pub(crate) struct ProfilingState {
+    pub sref: SEXP,
+    pub profiling: c_int,
+    pub mem_profiling: c_int,
+    pub gc_profiling: c_int,
+    pub line_profiling: c_int,
+    pub filter_callframes: c_int,
+    pub profiling_error: c_int,
+    pub bc_profiling: c_int,
+    pub current_opcode: c_int,
+    pub opcode_counts: [c_int; PROFILING_OPCODE_COUNT],
+    pub profiling_event: c_int,
+    pub profile_outfile: c_int,
+    pub srcfiles: *mut *mut c_char,
+    pub srcfile_bufcount: usize,
+    pub srcfiles_buffer: SEXP,
+}
+
+impl Default for ProfilingState {
+    fn default() -> Self {
+        ProfilingState {
+            sref: std::ptr::null_mut(),
+            profiling: 0,
+            mem_profiling: 0,
+            gc_profiling: 0,
+            line_profiling: 0,
+            filter_callframes: 0,
+            profiling_error: 0,
+            bc_profiling: 0,
+            current_opcode: NO_PROFILING_OPCODE,
+            opcode_counts: [0; PROFILING_OPCODE_COUNT],
+            profiling_event: 0,
+            profile_outfile: -1,
+            srcfiles: std::ptr::null_mut(),
+            srcfile_bufcount: 0,
+            srcfiles_buffer: std::ptr::null_mut(),
+        }
+    }
+}
+
 pub(crate) struct EvalControlState {
     pub no_echo: c_int,
     pub quiet: c_int,
@@ -97,6 +140,7 @@ pub(crate) struct EvalControlState {
     pub disable_bytecode: c_int,
     pub check_constants: c_int,
     pub exec_token: SEXP,
+    pub profiling: ProfilingState,
 }
 
 impl Default for EvalControlState {
@@ -124,6 +168,7 @@ impl Default for EvalControlState {
             disable_bytecode: 0,
             check_constants: 0,
             exec_token: std::ptr::null_mut(),
+            profiling: ProfilingState::default(),
         }
     }
 }
@@ -278,6 +323,12 @@ impl Drop for RInstance {
                     dealloc(ptr, layout);
                 }
             }
+        }
+        if self.eval_state.profiling.profile_outfile >= 0 {
+            unsafe {
+                libc::close(self.eval_state.profiling.profile_outfile);
+            }
+            self.eval_state.profiling.profile_outfile = -1;
         }
     }
 }
