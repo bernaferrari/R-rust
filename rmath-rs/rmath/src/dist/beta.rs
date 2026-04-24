@@ -11,6 +11,7 @@ use crate::constants::*;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::utils::*;
 use libm::*;
 
@@ -914,16 +915,36 @@ pub fn qbeta_inner(alpha: f64, p: f64, q: f64, lower_tail: bool, log_p: bool) ->
 // rbeta
 // =====================================================================
 
-use std::cell::Cell;
+#[derive(Clone, Copy)]
+pub(crate) struct BetaState {
+    olda: f64,
+    oldb: f64,
+    beta: f64,
+    gamma: f64,
+    delta: f64,
+    k1: f64,
+    k2: f64,
+}
 
-thread_local! {
-    static RB_OLDA: Cell<f64> = Cell::new(-1.0);
-    static RB_OLDB: Cell<f64> = Cell::new(-1.0);
-    static RB_BETA: Cell<f64> = Cell::new(0.0);
-    static RB_GAMMA: Cell<f64> = Cell::new(0.0);
-    static RB_DELTA: Cell<f64> = Cell::new(0.0);
-    static RB_K1: Cell<f64> = Cell::new(0.0);
-    static RB_K2: Cell<f64> = Cell::new(0.0);
+impl Default for BetaState {
+    fn default() -> Self {
+        BetaState {
+            olda: -1.0,
+            oldb: -1.0,
+            beta: 0.0,
+            gamma: 0.0,
+            delta: 0.0,
+            k1: 0.0,
+            k2: 0.0,
+        }
+    }
+}
+
+fn with_beta_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut BetaState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.dist_beta_state))
 }
 
 pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
@@ -949,13 +970,11 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
     let (a, b): (f64, f64);
     let alpha: f64;
 
-    let qsame = RB_OLDA.with(|olda| {
-        let olda_v = olda.get();
-        let oldb_v = RB_OLDB.with(|v| v.get());
-        let same = (olda_v == aa) && (oldb_v == bb);
+    let qsame = with_beta_state(|state| {
+        let same = (state.olda == aa) && (state.oldb == bb);
         if !same {
-            olda.set(aa);
-            RB_OLDB.with(|v| v.set(bb));
+            state.olda = aa;
+            state.oldb = bb;
         }
         same
     });
@@ -965,7 +984,8 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
     alpha = a + b;
 
     let v_w_from_u1_bet = |u1: f64, aa_val: f64| -> (f64, f64) {
-        let v = RB_BETA.with(|beta| beta.get()) * log(u1 / (1.0 - u1));
+        let beta = with_beta_state(|state| state.beta);
+        let v = beta * log(u1 / (1.0 - u1));
         if v <= EXPMAX {
             let w = aa_val * exp(v);
             let w = if !r_finite(w) { DBL_MAX } else { w };
@@ -978,19 +998,15 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
     if a <= 1.0 {
         // --- Algorithm BC ---
         if !qsame {
-            RB_BETA.with(|beta| beta.set(1.0 / a));
-            let delta = 1.0 + b - a;
-            RB_DELTA.with(|v| v.set(delta));
-            RB_K1.with(|k1| {
-                k1.set(delta * (0.0138889 + 0.0416667 * a) / (b * (1.0 / a) - 0.777778));
-            });
-            RB_K2.with(|k2| {
-                k2.set(0.25 + (0.5 + 0.25 / delta) * a);
+            with_beta_state(|state| {
+                state.beta = 1.0 / a;
+                state.delta = 1.0 + b - a;
+                state.k1 = state.delta * (0.0138889 + 0.0416667 * a) / (b * (1.0 / a) - 0.777778);
+                state.k2 = 0.25 + (0.5 + 0.25 / state.delta) * a;
             });
         }
 
-        let k1 = RB_K1.with(|v| v.get());
-        let k2 = RB_K2.with(|v| v.get());
+        let (k1, k2, beta) = with_beta_state(|state| (state.k1, state.k2, state.beta));
 
         loop {
             let u1 = unif_rand();
@@ -1013,7 +1029,7 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
             }
 
             let (_, w) = v_w_from_u1_bet(u1, b);
-            let v = RB_BETA.with(|beta| beta.get()) * log(u1 / (1.0 - u1));
+            let v = beta * log(u1 / (1.0 - u1));
 
             if alpha * (log(alpha / (a + w)) + v) - 1.3862944 >= log(u1 * u1 * u2) {
                 return if aa == a { a / (a + w) } else { w / (a + w) };
@@ -1022,14 +1038,13 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
     } else {
         // Algorithm BB
         if !qsame {
-            RB_BETA.with(|beta| {
-                beta.set(sqrt((alpha - 2.0) / (2.0 * a * b - alpha)));
+            with_beta_state(|state| {
+                state.beta = sqrt((alpha - 2.0) / (2.0 * a * b - alpha));
+                state.gamma = a + 1.0 / state.beta;
             });
-            let beta = RB_BETA.with(|v| v.get());
-            RB_GAMMA.with(|gamma| gamma.set(a + 1.0 / beta));
         }
 
-        let gamma_v = RB_GAMMA.with(|v| v.get());
+        let (gamma_v, beta) = with_beta_state(|state| (state.gamma, state.beta));
 
         loop {
             let u1 = unif_rand();
@@ -1037,7 +1052,7 @@ pub fn rbeta_inner(aa: f64, bb: f64) -> f64 {
             let (_, w) = v_w_from_u1_bet(u1, a);
 
             let z = u1 * u1 * u2;
-            let r = gamma_v * RB_BETA.with(|v| v.get()) * log(u1 / (1.0 - u1)) - 1.3862944;
+            let r = gamma_v * beta * log(u1 / (1.0 - u1)) - 1.3862944;
             let s = a + r - w;
             if s + 2.609438 >= 5.0 * z {
                 break;
@@ -1090,4 +1105,33 @@ pub fn Rf_rbeta(a: f64, b: f64) -> f64 {
 
 pub fn rbeta(a: f64, b: f64) -> f64 {
     rbeta_inner(a, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rbeta_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rbeta_inner(2.0, 5.0);
+            with_beta_state(|state| {
+                assert_eq!(state.olda, 2.0);
+                assert_eq!(state.oldb, 5.0);
+                assert!(state.beta > 0.0);
+            });
+        });
+
+        right.with_protected(|| {
+            with_beta_state(|state| {
+                assert_eq!(state.olda, -1.0);
+                assert_eq!(state.oldb, -1.0);
+                assert_eq!(state.beta, 0.0);
+            });
+        });
+    }
 }
