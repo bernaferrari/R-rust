@@ -262,6 +262,8 @@ pub struct RInstance {
     pub(crate) connections_state: crate::mainutils::connections::ConnectionsState,
     /// Per-instance headless graphics device registry.
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,
+    /// Per-instance graphics engine registration state.
+    pub(crate) graphics_engine_state: crate::mainutils::engine::GraphicsEngineState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -327,6 +329,7 @@ impl RInstance {
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
+            graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };

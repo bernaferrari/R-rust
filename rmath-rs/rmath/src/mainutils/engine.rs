@@ -9,7 +9,6 @@
 //! Most opaque-device dispatch now routes through the C bridge; a handful of
 //! higher-level recording helpers still remain intentionally partial.
 
-use std::cell::Cell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_double, c_int, c_uint, c_void};
 use std::ptr;
@@ -20,6 +19,7 @@ use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, LOGICAL, REAL, STRING_ELT, T
 use crate::sexp::constructors::Rf_mkString;
 use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance::with_required_current_instance;
 
 unsafe extern "C" {
     fn rmath_ge_set_clip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: *mut c_void);
@@ -620,10 +620,21 @@ pub const GE_BEVEL_JOIN: c_int = 3;
 pub const R_TRANWHITE: c_uint = 0x00FFFFFF;
 
 // ---------------------------------------------------------------------------
-// Number of registered graphics systems (mutable static)
+// Per-session graphics engine state
 // ---------------------------------------------------------------------------
 
-thread_local! { static numGraphicsSystems: Cell<c_int> = Cell::new(0); }
+#[derive(Default)]
+pub(crate) struct GraphicsEngineState {
+    pub num_graphics_systems: c_int,
+}
+
+#[inline]
+fn with_graphics_engine_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut GraphicsEngineState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.graphics_engine_state))
+}
 
 #[inline]
 fn wrap_index(len: c_int, ind: c_int) -> usize {
@@ -782,8 +793,8 @@ pub unsafe fn GEregisterSystem(
     systemRegisterIndex: *mut c_int,
 ) {
     let _ = cb;
-    numGraphicsSystems.with(|v| {
-        let current = v.get();
+    with_graphics_engine_state(|state| {
+        let current = state.num_graphics_systems;
         if current >= MAX_GRAPHICS_SYSTEMS {
             return;
         }
@@ -793,7 +804,7 @@ pub unsafe fn GEregisterSystem(
             }
         }
         // Increment the count of registered graphics systems
-        v.set(current + 1);
+        state.num_graphics_systems = current + 1;
         // Wire-up with any active devices. In headless mode there are no devices,
         // but call the hook to keep behavior consistent with the original C API.
         unsafe {
@@ -809,10 +820,10 @@ pub unsafe fn GEregisterSystem(
 /// Unregister a graphics system from the engine.
 pub unsafe fn GEunregisterSystem(registerIndex: c_int) {
     let _ = registerIndex;
-    numGraphicsSystems.with(|v| {
-        let current = v.get();
+    with_graphics_engine_state(|state| {
+        let current = state.num_graphics_systems;
         if current > 0 {
-            v.set(current - 1);
+            state.num_graphics_systems = current - 1;
         }
     });
 }
@@ -1778,6 +1789,7 @@ mod tests {
     use crate::sexp::accessors::STRING_ELT;
     use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_mkChar, Rf_mkString};
     use crate::sexp::ffi::{R_xlen_t, SEXPTYPE};
+    use crate::sexp::session::RSession;
     fn make_string_vector(values: &[&str]) -> SEXP {
         let v = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, values.len() as c_int) };
         for (i, value) in values.iter().enumerate() {
@@ -1825,6 +1837,34 @@ mod tests {
             let result = GEhandleEvent(0, ptr::null_mut(), ptr::null_mut());
             assert_eq!(result, R_NilValue());
         }
+    }
+
+    #[test]
+    fn test_graphics_system_count_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| unsafe {
+            let mut idx = -1;
+            GEregisterSystem(None, &mut idx);
+            assert_eq!(idx, 0);
+            with_graphics_engine_state(|state| {
+                assert_eq!(state.num_graphics_systems, 1);
+            });
+        });
+
+        right.with_protected(|| {
+            with_graphics_engine_state(|state| {
+                assert_eq!(state.num_graphics_systems, 0);
+            });
+        });
+
+        left.with_protected(|| unsafe {
+            GEunregisterSystem(0);
+            with_graphics_engine_state(|state| {
+                assert_eq!(state.num_graphics_systems, 0);
+            });
+        });
     }
 
     #[test]
@@ -2062,10 +2102,11 @@ mod tests {
 
     #[test]
     fn test_Rf_eval_with_gd_returns_nil() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let result = Rf_eval_with_gd(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             assert_eq!(result, R_NilValue());
-        }
+        });
     }
 
     #[test]
