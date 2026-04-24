@@ -170,85 +170,27 @@ unsafe fn warningcall(_call: SEXP, msg: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Lazy-initialized symbol cache (replaces C statics)
+// Session-local symbols
 // ---------------------------------------------------------------------------
 
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-static NAOK_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-static DUP_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-static PKG_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-static ENC_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-static CSING_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-
-unsafe fn ensure_symbols() {
-    unsafe {
-        if NAOK_SYMBOL.load(Ordering::Acquire) == 0 {
-            NAOK_SYMBOL.store(
-                Rf_install(b"NAOK\0".as_ptr() as *const c_char) as usize,
-                Ordering::Release,
-            );
-        }
-        if DUP_SYMBOL.load(Ordering::Acquire) == 0 {
-            DUP_SYMBOL.store(
-                Rf_install(b"DUP\0".as_ptr() as *const c_char) as usize,
-                Ordering::Release,
-            );
-        }
-        if PKG_SYMBOL.load(Ordering::Acquire) == 0 {
-            PKG_SYMBOL.store(
-                Rf_install(b"PACKAGE\0".as_ptr() as *const c_char) as usize,
-                Ordering::Release,
-            );
-        }
-        if ENC_SYMBOL.load(Ordering::Acquire) == 0 {
-            ENC_SYMBOL.store(
-                Rf_install(b"ENCODING\0".as_ptr() as *const c_char) as usize,
-                Ordering::Release,
-            );
-        }
-        if CSING_SYMBOL.load(Ordering::Acquire) == 0 {
-            CSING_SYMBOL.store(
-                Rf_install(b"Csingle\0".as_ptr() as *const c_char) as usize,
-                Ordering::Release,
-            );
-        }
-    }
-}
-
 unsafe fn NaokSymbol() -> SEXP {
-    unsafe {
-        ensure_symbols();
-        NAOK_SYMBOL.load(Ordering::Acquire) as SEXP
-    }
+    unsafe { Rf_install(b"NAOK\0".as_ptr() as *const c_char) }
 }
 
 unsafe fn DupSymbol() -> SEXP {
-    unsafe {
-        ensure_symbols();
-        DUP_SYMBOL.load(Ordering::Acquire) as SEXP
-    }
+    unsafe { Rf_install(b"DUP\0".as_ptr() as *const c_char) }
 }
 
 unsafe fn PkgSymbol() -> SEXP {
-    unsafe {
-        ensure_symbols();
-        PKG_SYMBOL.load(Ordering::Acquire) as SEXP
-    }
+    unsafe { Rf_install(b"PACKAGE\0".as_ptr() as *const c_char) }
 }
 
 unsafe fn EncSymbol() -> SEXP {
-    unsafe {
-        ensure_symbols();
-        ENC_SYMBOL.load(Ordering::Acquire) as SEXP
-    }
+    unsafe { Rf_install(b"ENCODING\0".as_ptr() as *const c_char) }
 }
 
 unsafe fn CSingSymbol() -> SEXP {
-    unsafe {
-        ensure_symbols();
-        CSING_SYMBOL.load(Ordering::Acquire) as SEXP
-    }
+    unsafe { Rf_install(b"Csingle\0".as_ptr() as *const c_char) }
 }
 
 // ---------------------------------------------------------------------------
@@ -329,24 +271,9 @@ unsafe fn checkValidSymbolId(
         }
 
         if TYPEOF(op) == SEXPTYPE::EXTPTRSXP {
-            static NATIVE_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-            static REGISTERED_NATIVE_SYMBOL: AtomicUsize = AtomicUsize::new(0);
-
-            if NATIVE_SYMBOL.load(Ordering::Acquire) == 0 {
-                NATIVE_SYMBOL.store(
-                    Rf_install(b"native symbol\0".as_ptr() as *const c_char) as usize,
-                    Ordering::Release,
-                );
-            }
-            if REGISTERED_NATIVE_SYMBOL.load(Ordering::Acquire) == 0 {
-                REGISTERED_NATIVE_SYMBOL.store(
-                    Rf_install(b"registered native symbol\0".as_ptr() as *const c_char) as usize,
-                    Ordering::Release,
-                );
-            }
-
-            let _native_sym = NATIVE_SYMBOL.load(Ordering::Acquire) as SEXP;
-            let _reg_native_sym = REGISTERED_NATIVE_SYMBOL.load(Ordering::Acquire) as SEXP;
+            let _native_sym = Rf_install(b"native symbol\0".as_ptr() as *const c_char);
+            let _reg_native_sym =
+                Rf_install(b"registered native symbol\0".as_ptr() as *const c_char);
 
             if fun.is_none() {
                 errorcall(call, "NULL value passed as symbol address");
@@ -657,18 +584,14 @@ unsafe fn resolveNativeRoutine(
 
 unsafe fn check_retval(call: SEXP, val: SEXP) -> SEXP {
     unsafe {
-        use std::sync::atomic::{AtomicBool, Ordering};
-        static CHECK_INIT: AtomicBool = AtomicBool::new(false);
-        static DO_CHECK: AtomicBool = AtomicBool::new(false);
+        static DO_CHECK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let do_check = *DO_CHECK.get_or_init(|| {
+            std::env::var("_R_CHECK_DOTCODE_RETVAL_")
+                .map(|p| p == "TRUE" || p == "true" || p == "1" || p == "yes")
+                .unwrap_or(false)
+        });
 
-        if !CHECK_INIT.load(Ordering::Relaxed) {
-            CHECK_INIT.store(true, Ordering::Relaxed);
-            if let Ok(p) = std::env::var("_R_CHECK_DOTCODE_RETVAL_") {
-                DO_CHECK.store(p == "TRUE" || p == "true" || p == "1" || p == "yes", Ordering::Relaxed);
-            }
-        }
-
-        if DO_CHECK.load(Ordering::Relaxed) {
+        if do_check {
             if (val as usize) < 16 {
                 errorcall(call, &format!("WEIRD RETURN VALUE: {:?}", val));
             }
@@ -969,8 +892,6 @@ pub unsafe fn do_dotcall(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// calls the native routine, then marshals results back.
 pub unsafe fn do_dotCode(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        ensure_symbols();
-
         let mut naok: c_int = 0;
         let mut nargs_val: c_int = 0;
         let mut fun: DL_FUNC = None;
@@ -1402,10 +1323,12 @@ unsafe fn R_FindNativeSymbolFromDLL(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::RSession;
 
     #[test]
     fn test_check_valid_symbol_id_copies_name() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let op =
                 crate::sexp::constructors::Rf_mkString(b"registered\0".as_ptr() as *const c_char);
             let mut fun: DL_FUNC = None;
@@ -1419,29 +1342,44 @@ mod tests {
                 .unwrap_or("");
             assert_eq!(copied, "registered");
             assert!(fun.is_none());
-        }
+        });
     }
 
     #[test]
     fn test_isloaded_missing_symbol_is_false() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let args = crate::sexp::constructors::Rf_cons(
                 crate::sexp::constructors::Rf_mkString(b"missing\0".as_ptr() as *const c_char),
                 R_NilValue(),
             );
             let out = do_isloaded(R_NilValue(), R_NilValue(), args, R_NilValue());
             assert_eq!(*crate::sexp::accessors::INTEGER(out), FALSE as c_int);
-        }
+        });
     }
 
     #[test]
     fn test_find_native_symbol_from_dll_empty() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let mut dll = DllReference::new();
             let mut symbol = R_RegisteredNativeSymbol::new(R_CALL_SYM);
             let found =
                 R_FindNativeSymbolFromDLL(b"missing\0", &mut dll, &mut symbol, R_NilValue());
             assert!(found.is_none());
-        }
+        });
+    }
+
+    #[test]
+    fn test_dotcode_symbols_are_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let left_naok = left.with_protected(|| unsafe { NaokSymbol() });
+        let right_naok = right.with_protected(|| unsafe { NaokSymbol() });
+        let left_naok_again = left.with_protected(|| unsafe { NaokSymbol() });
+
+        assert_eq!(left_naok, left_naok_again);
+        assert_ne!(left_naok, right_naok);
     }
 }
