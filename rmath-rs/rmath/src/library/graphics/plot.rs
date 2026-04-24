@@ -25,7 +25,6 @@
  *  implementations that call into these GE stubs.
  */
 
-use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
@@ -40,6 +39,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::constructors::{Rf_length as length, Rf_ScalarInteger as ScalarInteger};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::protect::*;
 
 /* ========================================================================
@@ -1550,12 +1550,32 @@ pub unsafe fn C_path(args: SEXP) -> SEXP {
  * C_dend -- dendrogram plotting
  * ======================================================================== */
 
-thread_local! { static dnd_lptr: Cell<*mut c_int> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static dnd_rptr: Cell<*mut c_int> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static dnd_hght: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static dnd_xpos: Cell<*mut c_double> = Cell::new(std::ptr::null_mut()); }
-thread_local! { static dnd_hang: Cell<c_double> = Cell::new(0.0); }
-thread_local! { static dnd_offset: Cell<c_double> = Cell::new(0.0); }
+#[derive(Clone, Copy)]
+pub(crate) struct DendrogramState {
+    pub(crate) lptr: *mut c_int,
+    pub(crate) rptr: *mut c_int,
+    pub(crate) hght: *mut c_double,
+    pub(crate) xpos: *mut c_double,
+    pub(crate) hang: c_double,
+    pub(crate) offset: c_double,
+}
+
+impl Default for DendrogramState {
+    fn default() -> Self {
+        DendrogramState {
+            lptr: std::ptr::null_mut(),
+            rptr: std::ptr::null_mut(),
+            hght: std::ptr::null_mut(),
+            xpos: std::ptr::null_mut(),
+            hang: 0.0,
+            offset: 0.0,
+        }
+    }
+}
+
+fn with_dendrogram_state<T>(f: impl FnOnce(&mut DendrogramState) -> T) -> T {
+    with_required_current_instance(|instance| f(&mut instance.dendrogram_state))
+}
 
 unsafe fn drawdend(
     node: c_int,
@@ -1571,24 +1591,25 @@ unsafe fn drawdend(
     let mut xx = [0.0; 4];
     let mut yy = [0.0; 4];
     let mut k: c_int;
+    let state = with_dendrogram_state(|state| *state);
 
-    *y = *dnd_hght.with(|v| v.get()).add((node - 1) as usize);
+    *y = *state.hght.add((node - 1) as usize);
 
     /* left part */
-    k = *dnd_lptr.with(|v| v.get()).add((node - 1) as usize);
+    k = *state.lptr.add((node - 1) as usize);
     if k > 0 {
         drawdend(k, &mut xl, &mut yl, dnd_llabels, dd);
     } else {
-        xl = *dnd_xpos.with(|v| v.get()).add((-k - 1) as usize);
-        yl = if dnd_hang.with(|v| v.get()) >= 0.0 {
-            *y - dnd_hang.with(|v| v.get())
+        xl = *state.xpos.add((-k - 1) as usize);
+        yl = if state.hang >= 0.0 {
+            *y - state.hang
         } else {
             0.0
         };
         if STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t) != NA_STRING {
             GText(
                 xl,
-                yl - dnd_offset.with(|v| v.get()),
+                yl - state.offset,
                 USER,
                 CHAR(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
                 getCharCE(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
@@ -1601,20 +1622,20 @@ unsafe fn drawdend(
     }
 
     /* right part */
-    k = *dnd_rptr.with(|v| v.get()).add((node - 1) as usize);
+    k = *state.rptr.add((node - 1) as usize);
     if k > 0 {
         drawdend(k, &mut xr, &mut yr, dnd_llabels, dd);
     } else {
-        xr = *dnd_xpos.with(|v| v.get()).add((-k - 1) as usize);
-        yr = if dnd_hang.with(|v| v.get()) >= 0.0 {
-            *y - dnd_hang.with(|v| v.get())
+        xr = *state.xpos.add((-k - 1) as usize);
+        yr = if state.hang >= 0.0 {
+            *y - state.hang
         } else {
             0.0
         };
         if STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t) != NA_STRING {
             GText(
                 xr,
-                yr - dnd_offset.with(|v| v.get()),
+                yr - state.offset,
                 USER,
                 CHAR(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
                 getCharCE(STRING_ELT(dnd_llabels, (-k - 1) as R_xlen_t)),
@@ -1670,15 +1691,19 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
     if TYPEOF(CAR(args)) != SEXPTYPE::INTSXP || length(CAR(args)) != 2 * n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    dnd_lptr.with(|v| v.set(&mut *INTEGER(CAR(args)).add(0)));
-    dnd_rptr.with(|v| v.set(&mut *INTEGER(CAR(args)).add(n as usize)));
+    with_dendrogram_state(|state| {
+        state.lptr = &mut *INTEGER(CAR(args)).add(0);
+        state.rptr = &mut *INTEGER(CAR(args)).add(n as usize);
+    });
     args = CDR(args);
 
     /* height */
     if TYPEOF(CAR(args)) != SEXPTYPE::REALSXP || length(CAR(args)) != n {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    dnd_hght.with(|v| v.set(&mut *REAL(CAR(args)).add(0)));
+    with_dendrogram_state(|state| {
+        state.hght = &mut *REAL(CAR(args)).add(0);
+    });
     args = CDR(args);
 
     /* ord */
@@ -1686,20 +1711,18 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     let xpos = Rf_protect(coerceVector(CAR(args), SEXPTYPE::REALSXP.into()));
-    dnd_xpos.with(|v| v.set(&mut *REAL(xpos).add(0)));
+    with_dendrogram_state(|state| {
+        state.xpos = &mut *REAL(xpos).add(0);
+    });
     args = CDR(args);
 
     /* hang */
-    dnd_hang.with(|v| v.set(asReal(CAR(args))));
-    if R_FINITE(dnd_hang.with(|v| v.get())) == 0 {
+    let hang = asReal(CAR(args));
+    if R_FINITE(hang) == 0 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
-    dnd_hang.with(|v| {
-        v.set(
-            v.get()
-                * (*dnd_hght.with(|h| h.get()).add((n - 1) as usize)
-                    - *dnd_hght.with(|h| h.get()).add(0)),
-        )
+    with_dendrogram_state(|state| {
+        state.hang = hang * (*state.hght.add((n - 1) as usize) - *state.hght.add(0));
     });
     args = CDR(args);
 
@@ -1714,13 +1737,14 @@ pub unsafe fn C_dend(args: SEXP) -> SEXP {
     ProcessInlinePars(args, dd);
     let gp = gpptr(dd) as *mut GPar;
     (*gp).cex = (*gp).cexbase * (*gp).cex;
-    dnd_offset.with(|v| {
-        v.set(GConvertYUnits(
-            GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd),
-            INCHES,
-            USER,
-            dd,
-        ))
+    let offset = GConvertYUnits(
+        GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd),
+        INCHES,
+        USER,
+        dd,
+    );
+    with_dendrogram_state(|state| {
+        state.offset = offset;
     });
 
     if (*gp).xpd < 1 {
@@ -1778,8 +1802,11 @@ pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
     }
     height = CAR(args);
     args = CDR(args);
-    dnd_hang.with(|v| v.set(asReal(CAR(args))));
-    if R_FINITE(dnd_hang.with(|v| v.get())) == 0 {
+    let hang = asReal(CAR(args));
+    with_dendrogram_state(|state| {
+        state.hang = hang;
+    });
+    if R_FINITE(hang) == 0 {
         Rf_error(b"invalid dendrogram input\0".as_ptr() as *const c_char);
     }
     args = CDR(args);
@@ -1793,20 +1820,19 @@ pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
     ProcessInlinePars(args, dd);
     let gp = gpptr(dd) as *mut GPar;
     (*gp).cex = (*gp).cexbase * (*gp).cex;
-    dnd_offset.with(|v| {
-        v.set(GStrWidth(
-            b"m\0".as_ptr() as *const c_char,
-            CE_ANY,
-            INCHES,
-            dd,
-        ))
+    let offset = GStrWidth(b"m\0".as_ptr() as *const c_char, CE_ANY, INCHES, dd);
+    with_dendrogram_state(|state| {
+        state.offset = offset;
     });
     let vmax = vmaxget();
 
     y = R_alloc((n + 1) as usize, std::mem::size_of::<c_double>()) as *mut c_double;
     ll = R_alloc((n + 1) as usize, std::mem::size_of::<c_double>()) as *mut c_double;
-    dnd_lptr.with(|v| v.set(&mut *INTEGER(merge).add(0)));
-    dnd_rptr.with(|v| v.set(&mut *INTEGER(merge).add(n as usize)));
+    let (lptr, rptr, hang, offset) = with_dendrogram_state(|state| {
+        state.lptr = &mut *INTEGER(merge).add(0);
+        state.rptr = &mut *INTEGER(merge).add(n as usize);
+        (state.lptr, state.rptr, state.hang, state.offset)
+    });
 
     ymax = *REAL(height).add(0);
     ymin = ymax;
@@ -1825,21 +1851,23 @@ pub unsafe fn C_dendwindow(args: SEXP) -> SEXP {
         *ll.add(i) = if str == NA_STRING {
             0.0
         } else {
-            GStrWidth(CHAR(str), getCharCE(str), INCHES, dd) + dnd_offset.with(|v| v.get())
+            GStrWidth(CHAR(str), getCharCE(str), INCHES, dd) + offset
         };
     }
 
     yval = -DBL_MAX;
-    if dnd_hang.with(|v| v.get()) >= 0.0 {
-        ymin = ymax - (1.0 + dnd_hang.with(|v| v.get())) * (ymax - ymin);
+    if hang >= 0.0 {
+        ymin = ymax - (1.0 + hang) * (ymax - ymin);
         yrange = ymax - ymin;
         /* determine leaf heights */
         for i in 0..n as usize {
-            if *dnd_lptr.with(|v| v.get()).add(i) < 0 {
-                *y.add((-*dnd_lptr.with(|v| v.get()).add(i) - 1) as usize) = *REAL(height).add(i);
+            let left = *lptr.add(i);
+            if left < 0 {
+                *y.add((-left - 1) as usize) = *REAL(height).add(i);
             }
-            if *dnd_rptr.with(|v| v.get()).add(i) < 0 {
-                *y.add((-*dnd_rptr.with(|v| v.get()).add(i) - 1) as usize) = *REAL(height).add(i);
+            let right = *rptr.add(i);
+            if right < 0 {
+                *y.add((-right - 1) as usize) = *REAL(height).add(i);
             }
         }
         for i in 0..=(n as usize) {
@@ -1955,4 +1983,53 @@ pub unsafe fn C_convertY(args: SEXP) -> SEXP {
     }
     Rf_unprotect(1);
     ans
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn dendrogram_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let mut merge = [1 as c_int, 2, 3, 4];
+        let mut height = [1.0 as c_double, 2.0, 3.0, 4.0];
+        let mut xpos = [5.0 as c_double, 6.0, 7.0, 8.0];
+
+        left.with_protected(|| {
+            with_dendrogram_state(|state| {
+                state.lptr = merge.as_mut_ptr();
+                state.rptr = unsafe { merge.as_mut_ptr().add(2) };
+                state.hght = height.as_mut_ptr();
+                state.xpos = xpos.as_mut_ptr();
+                state.hang = 9.0;
+                state.offset = 10.0;
+            });
+        });
+
+        right.with_protected(|| {
+            with_dendrogram_state(|state| {
+                assert!(state.lptr.is_null());
+                assert!(state.rptr.is_null());
+                assert!(state.hght.is_null());
+                assert!(state.xpos.is_null());
+                assert_eq!(state.hang, 0.0);
+                assert_eq!(state.offset, 0.0);
+            });
+        });
+
+        left.with_protected(|| {
+            with_dendrogram_state(|state| {
+                assert_eq!(unsafe { *state.lptr }, 1);
+                assert_eq!(unsafe { *state.rptr }, 3);
+                assert_eq!(unsafe { *state.hght }, 1.0);
+                assert_eq!(unsafe { *state.xpos }, 5.0);
+                assert_eq!(state.hang, 9.0);
+                assert_eq!(state.offset, 10.0);
+            });
+        });
+    }
 }

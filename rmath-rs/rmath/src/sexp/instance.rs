@@ -270,6 +270,8 @@ pub struct RInstance {
     pub(crate) grid_runtime_state: crate::library::grid::types::GridRuntimeState,
     /// Per-instance graphics::plot3d scratch transformation state.
     pub(crate) plot3d_state: crate::library::graphics::plot3d::Plot3dState,
+    /// Per-instance graphics dendrogram scratch state.
+    pub(crate) dendrogram_state: crate::library::graphics::plot::DendrogramState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -339,6 +341,7 @@ impl RInstance {
             graphics_color_state: crate::library::grdevices::colors::GraphicsColorState::default(),
             grid_runtime_state: crate::library::grid::types::GridRuntimeState::default(),
             plot3d_state: crate::library::graphics::plot3d::Plot3dState::default(),
+            dendrogram_state: crate::library::graphics::plot::DendrogramState::default(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };

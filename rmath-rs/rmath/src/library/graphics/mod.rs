@@ -53,7 +53,7 @@ mod par_common;
     unused_assignments,
     non_camel_case_types
 )]
-mod plot;
+pub(crate) mod plot;
 #[allow(
     dead_code,
     unused_imports,
