@@ -1,9 +1,4 @@
-#![allow(
-    non_snake_case,
-    non_upper_case_globals,
-    dead_code,
-    unused_variables
-)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Core eval() function — the heart of the R interpreter.
 //!
@@ -33,11 +28,12 @@ use crate::sexp::accessors::{CAR, CDR, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_NilValue, set_R_Visible};
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::safe::{PairlistIter, Sexp};
-use crate::sexp::symbol::symbol_name_from_ptr;
 use crate::sexp::symbol::R_DotsSymbol;
+use crate::sexp::symbol::symbol_name_from_ptr;
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
 
@@ -201,28 +197,19 @@ impl EvalLimits {
     }
 }
 
-thread_local! {
-    static CURRENT_LIMITS: std::cell::RefCell<EvalLimits> = const {
-        std::cell::RefCell::new(EvalLimits::default())
-    };
-    static EVAL_START_TIME: std::cell::RefCell<Option<Instant>> = const {
-        std::cell::RefCell::new(None)
-    };
-}
-
 /// Set evaluation limits for the current thread.
 pub fn set_eval_limits(limits: EvalLimits) {
-    CURRENT_LIMITS.with(|l| *l.borrow_mut() = limits);
+    with_required_current_instance(|inst| inst.eval_state.limits = limits);
 }
 
 /// Get the current evaluation limits for this thread.
 pub fn get_eval_limits() -> EvalLimits {
-    CURRENT_LIMITS.with(|l| *l.borrow())
+    with_required_current_instance(|inst| inst.eval_state.limits)
 }
 
 /// Reset evaluation limits to the default (500 depth, unlimited time/alloc).
 pub fn reset_eval_limits() {
-    CURRENT_LIMITS.with(|l| *l.borrow_mut() = EvalLimits::default());
+    set_eval_limits(EvalLimits::default());
 }
 
 // ---------------------------------------------------------------------------
@@ -252,8 +239,8 @@ fn check_eval_depth() -> Result<DepthGuard, String> {
 
     // Check execution time limit
     if limits.max_execution_time_ms > 0 {
-        let elapsed = EVAL_START_TIME.with(|t| {
-            t.borrow().map(|start| start.elapsed())
+        let elapsed = with_required_current_instance(|inst| {
+            inst.eval_state.start_time.map(|start| start.elapsed())
         });
         if let Some(elapsed) = elapsed {
             if elapsed > Duration::from_millis(limits.max_execution_time_ms) {
@@ -5242,9 +5229,9 @@ pub fn eval_with_limits<'a>(
 ) -> Result<Sexp<'a>, String> {
     let previous = get_eval_limits();
     set_eval_limits(limits);
-    EVAL_START_TIME.with(|t| *t.borrow_mut() = Some(Instant::now()));
+    with_required_current_instance(|inst| inst.eval_state.start_time = Some(Instant::now()));
     let result = eval_safe(e, rho);
-    EVAL_START_TIME.with(|t| *t.borrow_mut() = None);
+    with_required_current_instance(|inst| inst.eval_state.start_time = None);
     set_eval_limits(previous);
     result
 }

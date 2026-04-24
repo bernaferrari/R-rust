@@ -19,6 +19,7 @@ use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::os::raw::c_int;
+use std::time::Instant;
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore};
 use super::memory::RArena;
@@ -73,6 +74,42 @@ impl Default for ErrorState {
     }
 }
 
+pub(crate) struct EvalControlState {
+    pub no_echo: c_int,
+    pub quiet: c_int,
+    pub interactive: c_int,
+    pub verbose: c_int,
+    pub current_expr: SEXP,
+    pub visible: c_int,
+    pub eval_depth: c_int,
+    pub eval_depth_limit: c_int,
+    pub pp_stack_top: c_int,
+    pub collect_warnings: c_int,
+    pub parse_error_msg: [u8; 256],
+    pub limits: crate::eval::eval::EvalLimits,
+    pub start_time: Option<Instant>,
+}
+
+impl Default for EvalControlState {
+    fn default() -> Self {
+        EvalControlState {
+            no_echo: 0,
+            quiet: 0,
+            interactive: 1,
+            verbose: 0,
+            current_expr: std::ptr::null_mut(),
+            visible: 1,
+            eval_depth: 0,
+            eval_depth_limit: 500,
+            pp_stack_top: 0,
+            collect_warnings: 0,
+            parse_error_msg: [0; 256],
+            limits: crate::eval::eval::EvalLimits::default(),
+            start_time: None,
+        }
+    }
+}
+
 /// All per-instance state for one independent R session.
 ///
 /// Each `RInstance` has its own arena, environments, and protection stack,
@@ -107,6 +144,8 @@ pub struct RInstance {
     pub(crate) gc_state: super::gengc::GcState,
     /// Per-instance error, warning, interrupt, and expression-limit state.
     pub(crate) error_state: ErrorState,
+    /// Per-instance evaluator and REPL control state.
+    pub(crate) eval_state: EvalControlState,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -161,6 +200,7 @@ impl RInstance {
             in_error: false,
             gc_state: super::gengc::GcState::default(),
             error_state: ErrorState::default(),
+            eval_state: EvalControlState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),
@@ -317,6 +357,19 @@ where
             None => None,
         }
     })
+}
+
+/// Execute a closure with the current instance.
+///
+/// Mutable interpreter state must be accessed through an active `RInstance`.
+/// A missing instance indicates an unscoped runtime entrypoint that should be
+/// routed through `RSession` before it reaches interpreter internals.
+#[inline]
+pub fn with_required_current_instance<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RInstance) -> R,
+{
+    with_current_instance(f).expect("mutable R runtime state requires an active RInstance")
 }
 
 /// Returns `true` if a current instance is active on this thread.

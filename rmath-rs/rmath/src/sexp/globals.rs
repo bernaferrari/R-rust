@@ -7,7 +7,6 @@
 //! raw pointer OnceLocks for thread-safe initialization without requiring
 //! Send/Sync on SexprecCore.
 
-use std::os::raw::c_int;
 use std::ptr;
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -172,43 +171,32 @@ pub fn INTEGER_IS_NA(x: i32) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Evaluator globals (thread-local)
+// Evaluator globals
 // ---------------------------------------------------------------------------
 
-thread_local! {
-    /// Whether the last expression result should be printed (R_Visible).
-    pub static R_VISIBLE: std::cell::Cell<c_int> = const { std::cell::Cell::new(1) };
-
-    /// Current evaluation depth (R_EvalDepth).
-    pub static R_EVAL_DEPTH: std::cell::Cell<c_int> = const { std::cell::Cell::new(0) };
-
-    /// Maximum evaluation depth (R_EvalDepthLimit).
-    pub static R_EVAL_DEPTH_LIMIT: std::cell::Cell<c_int> = const { std::cell::Cell::new(500) };
-}
-
 /// Get the current R_Visible flag.
-pub fn R_Visible() -> c_int {
-    R_VISIBLE.with(|v| v.get())
+pub fn R_Visible() -> i32 {
+    super::instance::with_required_current_instance(|inst| inst.eval_state.visible)
 }
 
 /// Set the R_Visible flag.
-pub fn set_R_Visible(v: c_int) {
-    R_VISIBLE.with(|vis| vis.set(v));
+pub fn set_R_Visible(v: i32) {
+    super::instance::with_required_current_instance(|inst| inst.eval_state.visible = v);
 }
 
 /// Get the current evaluation depth.
-pub fn R_EvalDepth() -> c_int {
-    R_EVAL_DEPTH.with(|d| d.get())
+pub fn R_EvalDepth() -> i32 {
+    super::instance::with_required_current_instance(|inst| inst.eval_state.eval_depth)
 }
 
 /// Set the evaluation depth.
-pub fn set_R_EvalDepth(d: c_int) {
-    R_EVAL_DEPTH.with(|depth| depth.set(d));
+pub fn set_R_EvalDepth(d: i32) {
+    super::instance::with_required_current_instance(|inst| inst.eval_state.eval_depth = d);
 }
 
 /// Get the evaluation depth limit.
-pub fn R_EvalDepthLimit() -> c_int {
-    R_EVAL_DEPTH_LIMIT.with(|d| d.get())
+pub fn R_EvalDepthLimit() -> i32 {
+    super::instance::with_required_current_instance(|inst| inst.eval_state.eval_depth_limit)
 }
 
 // ---------------------------------------------------------------------------

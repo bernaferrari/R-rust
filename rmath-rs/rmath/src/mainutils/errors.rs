@@ -3834,6 +3834,7 @@ mod tests {
 
     #[test]
     fn test_r_signal_warning_condition_valid() {
+        let _session = RSession::new();
         unsafe {
             let cond = R_makeWarningCondition(
                 ptr::null_mut(),
