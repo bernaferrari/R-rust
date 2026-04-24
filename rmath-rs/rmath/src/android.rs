@@ -863,6 +863,20 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_replacement_and_order_predicate_helpers() {
+        let mut session = RSession::new();
+        let names = session.eval("x <- c(1, 2)\nnames(x) <- c(\"a\", \"b\")\nnames(x)");
+        let class = session.eval("x <- 1\nclass(x) <- \"foo\"\nclass(x)");
+        let unsorted = session.eval("is.unsorted(c(1, 3, 2))");
+        let sorted = session.eval("is.unsorted(c(1, 2, 3))");
+
+        assert_eq!(names.output, "[1] \"a\" \"b\"");
+        assert_eq!(class.output, "[1] \"foo\"");
+        assert_eq!(unsorted.output, "[1] TRUE");
+        assert_eq!(sorted.output, "[1] FALSE");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
