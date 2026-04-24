@@ -142,8 +142,44 @@ fn format_real_value(v: f64) -> String {
     } else if v.fract() == 0.0 {
         format!("{v:.0}")
     } else {
-        v.to_string()
+        format_r_default_real(v)
     }
+}
+
+fn trim_float(s: String) -> String {
+    let (mut mantissa, exponent) = match s.find(['e', 'E']) {
+        Some(idx) => (s[..idx].to_string(), &s[idx..]),
+        None => (s, ""),
+    };
+    if mantissa.contains('.') {
+        while mantissa.ends_with('0') {
+            mantissa.pop();
+        }
+        if mantissa.ends_with('.') {
+            mantissa.pop();
+        }
+    }
+    format!("{mantissa}{exponent}")
+}
+
+fn format_r_default_real(v: f64) -> String {
+    let digits = 7i32;
+    let abs = v.abs();
+    if abs == 0.0 {
+        return "0".to_string();
+    }
+
+    let exponent = abs.log10().floor() as i32;
+    if !(-4..digits).contains(&exponent) {
+        return trim_float(format!("{v:.6e}"));
+    }
+
+    let decimals = if exponent >= 0 {
+        (digits - exponent - 1).max(0) as usize
+    } else {
+        (digits - exponent - 1) as usize
+    };
+    trim_float(format!("{v:.decimals$}"))
 }
 
 fn format_logical_value(v: i32) -> String {
