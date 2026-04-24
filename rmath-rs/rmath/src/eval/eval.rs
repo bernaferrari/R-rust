@@ -926,6 +926,14 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "[[" => unsafe {
+            crate::mainutils::subset::do_subset2_dflt(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "setdiff" => unsafe {
             crate::mainutils::essentials::do_setdiff(
                 call.as_raw(),

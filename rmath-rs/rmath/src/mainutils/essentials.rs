@@ -7,8 +7,8 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
+    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -2862,6 +2862,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "head",
         "tail",
         "[",
+        "[[",
         "setdiff",
         "union",
         "intersect",

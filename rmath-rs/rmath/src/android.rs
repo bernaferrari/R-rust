@@ -723,6 +723,18 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_double_bracket_subset() {
+        let mut session = RSession::new();
+        let list_numeric = session.eval("list(a = 10, b = 20)[[2]]");
+        let list_name = session.eval("list(a = 10, b = 20)[[\"b\"]]");
+        let atomic = session.eval("c(10, 20, 30)[[2]]");
+
+        assert_eq!(list_numeric.output, "[1] 20");
+        assert_eq!(list_name.output, "[1] 20");
+        assert_eq!(atomic.output, "[1] 20");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
