@@ -15,6 +15,7 @@ use crate::nmath::rng::*;
 use crate::nmath::special::bd0::bd0;
 use crate::nmath::special::stirlerr::stirlerr;
 use crate::nmath::utils::*;
+use crate::sexp::instance::with_required_current_instance;
 use libm::*;
 
 const DBL_EPSILON: f64 = 2.220446049250313e-16;
@@ -325,9 +326,7 @@ pub fn qbinom_inner(p: f64, n: f64, pr: f64, lower_tail: bool, log_p: bool) -> f
 
 // ---- rbinom ----
 
-use std::cell::RefCell;
-
-struct RbinomState {
+pub(crate) struct RbinomState {
     c: f64,
     fm: f64,
     npq: f64,
@@ -347,7 +346,7 @@ struct RbinomState {
 }
 
 impl RbinomState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         RbinomState {
             c: 0.0,
             fm: 0.0,
@@ -369,7 +368,12 @@ impl RbinomState {
     }
 }
 
-thread_local!(static RBINOM_STATE: RefCell<RbinomState> = RefCell::new(RbinomState::new()));
+fn with_rbinom_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RbinomState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.nmath_binom_state))
+}
 
 #[must_use]
 pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
@@ -404,9 +408,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
     let r_val = p / q;
     let g = r_val * ((n as f64) + 1.0);
 
-    RBINOM_STATE.with(|state| {
-        let mut st = state.borrow_mut();
-
+    with_rbinom_state(|st| {
         // Setup, perform only when parameters change
         if pp != st.psave || n != st.nsave {
             st.psave = pp;

@@ -15,6 +15,7 @@ use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::special::bd0::ebd0;
 use crate::special::gamma::lgammafn;
 use crate::special::stirlerr::stirlerr;
@@ -281,7 +282,7 @@ pub fn qpois_inner(p: f64, lambda: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rpois ----
 
 // Persistent state for rpois (mirrors C's function-level static variables)
-struct RpoisState {
+pub(crate) struct RpoisState {
     l: i32,
     m: i32,
     b1: f64,
@@ -304,7 +305,7 @@ struct RpoisState {
 }
 
 impl RpoisState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         RpoisState {
             l: 0,
             m: 0,
@@ -329,8 +330,12 @@ impl RpoisState {
     }
 }
 
-use std::cell::RefCell;
-thread_local!(static RPOIS_STATE: RefCell<RpoisState> = RefCell::new(RpoisState::new()));
+fn with_rpois_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RpoisState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.dist_pois_state))
+}
 
 #[must_use]
 pub fn rpois_inner(mu: f64) -> f64 {
@@ -345,9 +350,7 @@ pub fn rpois_inner(mu: f64) -> f64 {
 
     let big_mu = mu >= 10.0;
 
-    RPOIS_STATE.with(|state| {
-        let mut st = state.borrow_mut();
-
+    with_rpois_state(|st| {
         let mut new_big_mu = false;
 
         if !(big_mu && mu == st.muprev) {
@@ -558,4 +561,31 @@ pub fn Rf_rpois(mu: f64) -> f64 {
 #[must_use]
 pub fn rpois(mu: f64) -> f64 {
     rpois_inner(mu)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rpois_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rpois_inner(12.0);
+            with_rpois_state(|state| {
+                assert_eq!(state.muprev, 12.0);
+                assert!(state.s > 0.0);
+            });
+        });
+
+        right.with_protected(|| {
+            with_rpois_state(|state| {
+                assert_eq!(state.muprev, 0.0);
+                assert_eq!(state.s, 0.0);
+            });
+        });
+    }
 }

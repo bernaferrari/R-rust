@@ -236,6 +236,14 @@ pub struct RInstance {
     pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
     /// Per-instance Wilcoxon rank-sum distribution memo table.
     pub(crate) wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
+    /// Per-instance dist::binomial sampler cache.
+    pub(crate) dist_binom_state: crate::dist::binomial::RbinomState,
+    /// Per-instance nmath::dist::binomial sampler cache.
+    pub(crate) nmath_binom_state: crate::nmath::dist::binomial::RbinomState,
+    /// Per-instance dist::poisson sampler cache.
+    pub(crate) dist_pois_state: crate::dist::poisson::RpoisState,
+    /// Per-instance nmath::dist::poisson sampler cache.
+    pub(crate) nmath_pois_state: crate::nmath::dist::poisson::RpoisState,
     /// Per-instance raw cons cells allocated outside the arena.
     pub(crate) raw_cons: Vec<*mut SexprecCore>,
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
@@ -287,6 +295,10 @@ impl RInstance {
             env_hash_tables: hashbrown::HashMap::new(),
             signrank_cache: HashMap::new(),
             wilcox_cache: HashMap::new(),
+            dist_binom_state: crate::dist::binomial::RbinomState::new(),
+            nmath_binom_state: crate::nmath::dist::binomial::RbinomState::new(),
+            dist_pois_state: crate::dist::poisson::RpoisState::new(),
+            nmath_pois_state: crate::nmath::dist::poisson::RpoisState::new(),
             raw_cons: Vec::new(),
             vmax: Vec::new(),
         };

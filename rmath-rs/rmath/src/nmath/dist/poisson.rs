@@ -19,6 +19,7 @@ use crate::nmath::special::bd0::ebd0;
 use crate::nmath::special::gamma::lgammafn;
 use crate::nmath::special::stirlerr::stirlerr;
 use crate::nmath::utils::*;
+use crate::sexp::instance::with_required_current_instance;
 use libm::*;
 
 const M_SQRT_2PI: f64 = 2.50662827463100050241576528481104525301; /* sqrt(2*pi) */
@@ -281,7 +282,7 @@ pub fn qpois_inner(p: f64, lambda: f64, lower_tail: bool, log_p: bool) -> f64 {
 // ---- rpois ----
 
 // Persistent state for rpois (mirrors C's function-level static variables)
-struct RpoisState {
+pub(crate) struct RpoisState {
     l: i32,
     m: i32,
     b1: f64,
@@ -304,7 +305,7 @@ struct RpoisState {
 }
 
 impl RpoisState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         RpoisState {
             l: 0,
             m: 0,
@@ -329,8 +330,12 @@ impl RpoisState {
     }
 }
 
-use std::cell::RefCell;
-thread_local!(static RPOIS_STATE: RefCell<RpoisState> = RefCell::new(RpoisState::new()));
+fn with_rpois_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RpoisState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.nmath_pois_state))
+}
 
 #[must_use]
 pub fn rpois_inner(mu: f64) -> f64 {
@@ -345,9 +350,7 @@ pub fn rpois_inner(mu: f64) -> f64 {
 
     let big_mu = mu >= 10.0;
 
-    RPOIS_STATE.with(|state| {
-        let mut st = state.borrow_mut();
-
+    with_rpois_state(|st| {
         let mut new_big_mu = false;
 
         if !(big_mu && mu == st.muprev) {

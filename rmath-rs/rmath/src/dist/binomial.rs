@@ -12,6 +12,7 @@ use crate::dist::normal::qnorm5_inner;
 use crate::dpq::*;
 use crate::error::*;
 use crate::rng::*;
+use crate::sexp::instance::with_required_current_instance;
 use crate::special::bd0::bd0;
 use crate::special::stirlerr::stirlerr;
 use crate::utils::*;
@@ -325,9 +326,7 @@ pub fn qbinom_inner(p: f64, n: f64, pr: f64, lower_tail: bool, log_p: bool) -> f
 
 // ---- rbinom ----
 
-use std::cell::RefCell;
-
-struct RbinomState {
+pub(crate) struct RbinomState {
     c: f64,
     fm: f64,
     npq: f64,
@@ -347,7 +346,7 @@ struct RbinomState {
 }
 
 impl RbinomState {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         RbinomState {
             c: 0.0,
             fm: 0.0,
@@ -369,7 +368,12 @@ impl RbinomState {
     }
 }
 
-thread_local!(static RBINOM_STATE: RefCell<RbinomState> = RefCell::new(RbinomState::new()));
+fn with_rbinom_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut RbinomState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.dist_binom_state))
+}
 
 #[must_use]
 pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
@@ -404,9 +408,7 @@ pub fn rbinom_inner(nin: f64, pp: f64) -> f64 {
     let r_val = p / q;
     let g = r_val * ((n as f64) + 1.0);
 
-    RBINOM_STATE.with(|state| {
-        let mut st = state.borrow_mut();
-
+    with_rbinom_state(|st| {
         // Setup, perform only when parameters change
         if pp != st.psave || n != st.nsave {
             st.psave = pp;
@@ -672,4 +674,31 @@ pub fn Rf_rbinom(n: f64, p: f64) -> f64 {
 #[must_use]
 pub fn rbinom(n: f64, p: f64) -> f64 {
     rbinom_inner(n, p)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::RSession;
+
+    #[test]
+    fn rbinom_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let _ = rbinom_inner(40.0, 0.3);
+            with_rbinom_state(|state| {
+                assert_eq!(state.nsave, 40);
+                assert_eq!(state.psave, 0.3);
+            });
+        });
+
+        right.with_protected(|| {
+            with_rbinom_state(|state| {
+                assert_eq!(state.nsave, -1);
+                assert_eq!(state.psave, -1.0);
+            });
+        });
+    }
 }
