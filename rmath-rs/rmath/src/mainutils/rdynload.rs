@@ -6,11 +6,9 @@
 //! symbol lookup (registered first, then dynamic), and the R-level interfaces
 //! `do_dynload`, `do_dynunload`, `getSymbolInfo`, `getLoadedDLLs`, etc.
 
-use std::cell::RefCell;
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::sync::atomic::Ordering;
 
 use crate::mainutils::memory_main::{R_ExternalPtrAddr, R_MakeExternalPtr};
 use crate::mainutils::relop::checkArity;
@@ -24,6 +22,7 @@ use crate::sexp::constructors::{
 use crate::sexp::envir::{R_NewHashedEnv, R_findVarInFrame, defineVar};
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::symbol::Rf_install;
 use crate::unix::dynload::{DL_FUNC, InitFunctionHashing};
 
@@ -142,15 +141,44 @@ impl DllInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Global DLL table
+// Per-session DLL table
 // ---------------------------------------------------------------------------
 
-thread_local! {
-    static LOADED_DLL: RefCell<Vec<*mut DllInfo>> = RefCell::new(Vec::new());
-    static DLL_INFO_EPTRS: RefCell<SEXP> = RefCell::new(ptr::null_mut());
-    static SYMBOL_EPTRS: RefCell<SEXP> = RefCell::new(ptr::null_mut());
-    static DLL_ERROR: RefCell<[u8; 4000]> = RefCell::new([0u8; 4000]);
-    static MAX_NUM_DLLS: RefCell<usize> = RefCell::new(0);
+/// Dynamic-loader state owned by one `RInstance`.
+///
+/// Native library handles are still process-loader handles (`dlopen`/`dlsym`),
+/// but R's visible registry, external-pointer caches, error buffer, and
+/// inter-package C-callable table are session-local. This is the boundary that
+/// lets Android host multiple independent R sessions without process-global R
+/// registry mutation.
+pub(crate) struct DynloadState {
+    pub loaded_dll: Vec<*mut DllInfo>,
+    pub dll_info_eptrs: SEXP,
+    pub symbol_eptrs: SEXP,
+    pub dll_error: [u8; 4000],
+    pub max_num_dlls: usize,
+    pub c_entry_table: SEXP,
+}
+
+impl Default for DynloadState {
+    fn default() -> Self {
+        DynloadState {
+            loaded_dll: Vec::new(),
+            dll_info_eptrs: ptr::null_mut(),
+            symbol_eptrs: ptr::null_mut(),
+            dll_error: [0; 4000],
+            max_num_dlls: 0,
+            c_entry_table: ptr::null_mut(),
+        }
+    }
+}
+
+#[inline]
+fn with_dynload_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut DynloadState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.dynload_state))
 }
 
 // ---------------------------------------------------------------------------
@@ -203,10 +231,12 @@ pub struct R_ExternalMethodDef {
 
 /// Initialize the DLL table. Called once at R startup.
 fn init_loaded_dll() {
-    LOADED_DLL.with(|v| v.borrow_mut().clear());
-    DLL_INFO_EPTRS.with(|v| *v.borrow_mut() = ptr::null_mut());
-    SYMBOL_EPTRS.with(|v| *v.borrow_mut() = ptr::null_mut());
-    MAX_NUM_DLLS.with(|v| *v.borrow_mut() = MAX_NUM_DLLS_DEFAULT);
+    with_dynload_state(|state| {
+        state.loaded_dll.clear();
+        state.dll_info_eptrs = ptr::null_mut();
+        state.symbol_eptrs = ptr::null_mut();
+        state.max_num_dlls = MAX_NUM_DLLS_DEFAULT;
+    });
 }
 
 /// Called at R startup to initialize dynamic loading.
@@ -217,11 +247,10 @@ pub unsafe fn InitDynload() {
         let base_path = b"base\0".as_ptr() as *const c_char;
         let _idx = add_dll(base_path, base_path, ptr::null_mut());
 
-        LOADED_DLL.with(|v| {
-            let dll = v.borrow_mut();
-            if !dll.is_empty() {
+        with_dynload_state(|state| {
+            if let Some(&dll) = state.loaded_dll.first() {
                 crate::mainutils::registration::R_init_base(
-                    dll[0] as *mut crate::mainutils::registration::DllInfo,
+                    dll as *mut crate::mainutils::registration::DllInfo,
                 );
             }
         });
@@ -250,10 +279,9 @@ unsafe fn add_dll(dpath: *const c_char, dllname: *const c_char, handle: *mut c_v
 
         let info = Box::into_raw(Box::new(DllInfo::new(path_copy, name_copy, handle)));
 
-        LOADED_DLL.with(|v| {
-            let mut dlls = v.borrow_mut();
-            let idx = dlls.len() as isize;
-            dlls.push(info);
+        with_dynload_state(|state| {
+            let idx = state.loaded_dll.len() as isize;
+            state.loaded_dll.push(info);
             idx
         })
     }
@@ -317,9 +345,8 @@ unsafe fn libc_dlsym(handle: *mut c_void, name: *const c_char) -> *mut c_void {
 /// Find a DllInfo by its path.
 pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
     unsafe {
-        LOADED_DLL.with(|v| {
-            let dlls = v.borrow();
-            for &dll in dlls.iter() {
+        with_dynload_state(|state| {
+            for &dll in state.loaded_dll.iter() {
                 if !dll.is_null() && strcmp((*dll).path, path) == 0 {
                     return dll;
                 }
@@ -331,9 +358,8 @@ pub unsafe fn R_getDllInfo(path: *const c_char) -> *mut DllInfo {
 
 /// Find the index of a DllInfo in the table.
 unsafe fn R_getDllIndex(info: *mut DllInfo) -> isize {
-    LOADED_DLL.with(|v| {
-        let dlls = v.borrow();
-        for (i, &dll) in dlls.iter().enumerate() {
+    with_dynload_state(|state| {
+        for (i, &dll) in state.loaded_dll.iter().enumerate() {
             if dll == info {
                 return i as isize;
             }
@@ -810,9 +836,8 @@ pub(crate) unsafe fn R_findDllByHandle(handle: *mut c_void) -> *mut DllInfo {
         if handle.is_null() {
             return ptr::null_mut();
         }
-        LOADED_DLL.with(|v| {
-            let dlls = v.borrow();
-            for &dll in dlls.iter() {
+        with_dynload_state(|state| {
+            for &dll in state.loaded_dll.iter() {
                 if !dll.is_null() && (*dll).handle == handle {
                     return dll;
                 }
@@ -835,8 +860,8 @@ pub unsafe fn R_FindSymbol(name: *const c_char, pkg: *const c_char, sym_type: c_
         };
         let all = pkg_cstr.is_empty();
 
-        LOADED_DLL.with(|v| {
-            let dlls = v.borrow();
+        let dlls = with_dynload_state(|state| state.loaded_dll.clone());
+        {
             // Search in reverse order (most recently loaded first)
             let mut i = dlls.len();
             while i > 0 {
@@ -871,7 +896,7 @@ pub unsafe fn R_FindSymbol(name: *const c_char, pkg: *const c_char, sym_type: c_
                 }
             }
             None
-        })
+        }
     }
 }
 
@@ -959,11 +984,10 @@ unsafe fn call_dll_unload(dll_info: *mut DllInfo) {
 
 unsafe fn delete_dll(path: *const c_char) -> bool {
     unsafe {
-        LOADED_DLL.with(|v| {
-            let mut dlls = v.borrow_mut();
+        let dll = with_dynload_state(|state| {
             let loc = {
                 let mut found = None;
-                for (i, &dll) in dlls.iter().enumerate() {
+                for (i, &dll) in state.loaded_dll.iter().enumerate() {
                     if !dll.is_null() && strcmp((*dll).path, path) == 0 {
                         found = Some(i);
                         break;
@@ -972,25 +996,23 @@ unsafe fn delete_dll(path: *const c_char) -> bool {
                 found
             };
 
-            match loc {
-                Some(idx) => {
-                    let dll = dlls[idx];
-                    if !dll.is_null() {
-                        call_dll_unload(dll);
-                        if !(*dll).handle.is_null() {
-                            unsafe extern "C" {
-                                fn dlclose(handle: *mut c_void) -> c_int;
-                            }
-                            dlclose((*dll).handle);
-                        }
-                        free_dll_info(dll);
-                    }
-                    dlls.remove(idx);
-                    true
+            loc.map(|idx| state.loaded_dll.remove(idx))
+        });
+
+        let Some(dll) = dll else {
+            return false;
+        };
+        if !dll.is_null() {
+            call_dll_unload(dll);
+            if !(*dll).handle.is_null() {
+                unsafe extern "C" {
+                    fn dlclose(handle: *mut c_void) -> c_int;
                 }
-                None => false,
+                dlclose((*dll).handle);
             }
-        })
+            free_dll_info(dll);
+        }
+        true
     }
 }
 
@@ -1007,13 +1029,12 @@ unsafe fn AddDLL(
 ) -> *mut DllInfo {
     unsafe {
         // Check if already loaded — if so, move to end of list (most recent)
-        let already_loaded = LOADED_DLL.with(|v| {
-            let mut dlls = v.borrow_mut();
-            for i in 0..dlls.len() {
-                let dll = dlls[i];
+        let already_loaded = with_dynload_state(|state| {
+            for i in 0..state.loaded_dll.len() {
+                let dll = state.loaded_dll[i];
                 if !dll.is_null() && strcmp((*dll).path, path) == 0 {
-                    let entry = dlls.remove(i);
-                    dlls.push(entry);
+                    let entry = state.loaded_dll.remove(i);
+                    state.loaded_dll.push(entry);
                     return Some(entry);
                 }
             }
@@ -1023,8 +1044,7 @@ unsafe fn AddDLL(
             return dll;
         }
 
-        let at_max =
-            MAX_NUM_DLLS.with(|max| LOADED_DLL.with(|v| v.borrow().len() >= *max.borrow()));
+        let at_max = with_dynload_state(|state| state.loaded_dll.len() >= state.max_num_dlls);
         if at_max {
             return ptr::null_mut();
         }
@@ -1052,9 +1072,7 @@ unsafe fn AddDLL(
         (*info).use_dynamic_lookup = !handle.is_null();
         (*info).force_symbols = false;
 
-        LOADED_DLL.with(|v| {
-            v.borrow_mut().push(info);
-        });
+        with_dynload_state(|state| state.loaded_dll.push(info));
 
         call_init_routine(info);
 
@@ -1178,23 +1196,21 @@ pub unsafe fn R_getSymbolInfo(sname: SEXP, spackage: SEXP, _with_registration: S
 
 pub unsafe fn R_getDllTable() -> SEXP {
     unsafe {
-        LOADED_DLL.with(|v| {
-            let dlls = v.borrow();
-            let count = dlls.len();
-            let ans = Rf_allocVector(SEXPTYPE::VECSXP, count as c_int);
-            for i in 0..count {
-                let info = dlls[i];
-                if !info.is_null() {
-                    SET_VECTOR_ELT(ans, i as R_xlen_t, make_dll_info_sexp(info));
-                }
+        let dlls = with_dynload_state(|state| state.loaded_dll.clone());
+        let count = dlls.len();
+        let ans = Rf_allocVector(SEXPTYPE::VECSXP, count as c_int);
+        for i in 0..count {
+            let info = dlls[i];
+            if !info.is_null() {
+                SET_VECTOR_ELT(ans, i as R_xlen_t, make_dll_info_sexp(info));
             }
-            setAttrib(
-                ans,
-                R_ClassSymbol(),
-                Rf_mkString(b"DLLInfoList\0".as_ptr() as *const c_char),
-            );
-            ans
-        })
+        }
+        setAttrib(
+            ans,
+            R_ClassSymbol(),
+            Rf_mkString(b"DLLInfoList\0".as_ptr() as *const c_char),
+        );
+        ans
     }
 }
 
@@ -1327,8 +1343,8 @@ pub unsafe fn do_dynload(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 
         let info = AddDLL(path, as_local, now, b"\0".as_ptr() as *const c_char);
         if info.is_null() {
-            DLL_ERROR.with(|e| {
-                let err_bytes = &*e.borrow();
+            with_dynload_state(|state| {
+                let err_bytes = &state.dll_error;
                 let err_str = std::ffi::CStr::from_bytes_until_nul(err_bytes).unwrap_or(
                     std::ffi::CStr::from_bytes_with_nul(b"unknown error\0").unwrap_or_default(),
                 );
@@ -1429,20 +1445,16 @@ pub unsafe fn R_cairoCdynload(local: c_int, now: c_int) -> c_int {
 // R_RegisterCCallable / R_GetCCallable — inter-package C function sharing
 // ---------------------------------------------------------------------------
 
-use std::sync::atomic::AtomicPtr;
-
-static C_ENTRY_TABLE: AtomicPtr<c_void> = AtomicPtr::new(ptr::null_mut());
-
 unsafe fn get_package_centry_table(package: *const c_char) -> SEXP {
     unsafe {
-        let table = C_ENTRY_TABLE.load(Ordering::Acquire);
-        if table.is_null() {
+        let table = with_dynload_state(|state| state.c_entry_table);
+        let table = if table.is_null() {
             let env = R_NewHashedEnv(R_NilValue(), 0);
-            // Preserve from GC
-            // In a full implementation we'd call R_PreserveObject here
-            C_ENTRY_TABLE.store(env as *mut c_void, Ordering::Release);
-        }
-        let table = C_ENTRY_TABLE.load(Ordering::Acquire) as SEXP;
+            with_dynload_state(|state| state.c_entry_table = env);
+            env
+        } else {
+            table
+        };
         let pname = Rf_install(package);
         let penv = R_findVarInFrame(table, pname);
         if penv == R_UnboundValue() {
@@ -1520,19 +1532,30 @@ pub unsafe fn Rf_lookupCachedSymbol(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
     use std::ptr;
+
+    fn with_session<F>(f: F)
+    where
+        F: FnOnce(),
+    {
+        let session = RSession::new();
+        session.with_protected(f);
+    }
 
     #[test]
     fn test_init_dynload() {
-        init_loaded_dll();
-        LOADED_DLL.with(|v| {
-            assert!(v.borrow().is_empty());
+        with_session(|| {
+            init_loaded_dll();
+            with_dynload_state(|state| {
+                assert!(state.loaded_dll.is_empty());
+            });
         });
     }
 
     #[test]
     fn test_add_dll() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let idx = add_dll(
                 b"test_path\0".as_ptr() as *const c_char,
@@ -1540,24 +1563,24 @@ mod tests {
                 ptr::null_mut(),
             );
             assert_eq!(idx, 0);
-            LOADED_DLL.with(|v| {
-                assert_eq!(v.borrow().len(), 1);
+            with_dynload_state(|state| {
+                assert_eq!(state.loaded_dll.len(), 1);
             });
-        }
+        });
     }
 
     #[test]
     fn test_get_dll_info_not_found() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let result = R_getDllInfo(b"nonexistent\0".as_ptr() as *const c_char);
             assert!(result.is_null());
-        }
+        });
     }
 
     #[test]
     fn test_get_dll_info_found() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let _ = add_dll(
                 b"test_path\0".as_ptr() as *const c_char,
@@ -1566,12 +1589,12 @@ mod tests {
             );
             let result = R_getDllInfo(b"test_path\0".as_ptr() as *const c_char);
             assert!(!result.is_null());
-        }
+        });
     }
 
     #[test]
     fn test_delete_dll() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let _ = add_dll(
                 b"to_delete\0".as_ptr() as *const c_char,
@@ -1579,23 +1602,23 @@ mod tests {
                 ptr::null_mut(),
             );
             assert!(delete_dll(b"to_delete\0".as_ptr() as *const c_char));
-            LOADED_DLL.with(|v| {
-                assert!(v.borrow().is_empty());
+            with_dynload_state(|state| {
+                assert!(state.loaded_dll.is_empty());
             });
-        }
+        });
     }
 
     #[test]
     fn test_delete_dll_not_found() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             assert!(!delete_dll(b"nonexistent\0".as_ptr() as *const c_char));
-        }
+        });
     }
 
     #[test]
     fn test_use_dynamic_symbols() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let _ = add_dll(
                 b"path\0".as_ptr() as *const c_char,
@@ -1607,12 +1630,12 @@ mod tests {
             let old = R_useDynamicSymbols(dll, false);
             assert!(old); // default is true
             assert!(!(*dll).use_dynamic_lookup);
-        }
+        });
     }
 
     #[test]
     fn test_force_symbols() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let _ = add_dll(
                 b"path2\0".as_ptr() as *const c_char,
@@ -1624,7 +1647,7 @@ mod tests {
             let old = R_forceSymbols(dll, true);
             assert!(!old); // default is false
             assert!((*dll).force_symbols);
-        }
+        });
     }
 
     #[test]
@@ -1641,7 +1664,7 @@ mod tests {
 
     #[test]
     fn test_find_symbol_empty() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let f = R_FindSymbol(
                 b"nonexistent\0".as_ptr() as *const c_char,
@@ -1649,14 +1672,14 @@ mod tests {
                 R_ANY_SYM,
             );
             assert!(f.is_none());
-        }
+        });
     }
 
     unsafe extern "C" fn test_registered_call() {}
 
     #[test]
     fn test_find_symbol_registered_call() {
-        unsafe {
+        with_session(|| unsafe {
             init_loaded_dll();
             let info = Box::into_raw(Box::new(DllInfo::new(
                 b"/tmp/test.so\0".as_ptr() as *mut c_char,
@@ -1675,7 +1698,7 @@ mod tests {
                     num_args: 0,
                 },
             ];
-            LOADED_DLL.with(|v| v.borrow_mut().push(info));
+            with_dynload_state(|state| state.loaded_dll.push(info));
             R_registerRoutines(
                 info,
                 ptr::null(),
@@ -1705,6 +1728,49 @@ mod tests {
                 loaded.unwrap() as *const (),
                 test_registered_call as *const ()
             );
-        }
+        });
+    }
+
+    #[test]
+    fn test_dynload_tables_are_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        let (left_package_table, left_root_table) = left.with_protected(|| unsafe {
+            init_loaded_dll();
+            let _ = add_dll(
+                b"left_path\0".as_ptr() as *const c_char,
+                b"left_name\0".as_ptr() as *const c_char,
+                ptr::null_mut(),
+            );
+            let table = get_package_centry_table(b"leftpkg\0".as_ptr() as *const c_char);
+            let root = with_dynload_state(|state| {
+                assert_eq!(state.loaded_dll.len(), 1);
+                assert!(!state.c_entry_table.is_null());
+                state.c_entry_table
+            });
+            (table, root)
+        });
+
+        right.with_protected(|| {
+            with_dynload_state(|state| {
+                assert!(state.loaded_dll.is_empty());
+                assert!(state.c_entry_table.is_null());
+            });
+        });
+
+        let (right_package_table, right_root_table) = right.with_protected(|| unsafe {
+            init_loaded_dll();
+            let table = get_package_centry_table(b"rightpkg\0".as_ptr() as *const c_char);
+            let root = with_dynload_state(|state| {
+                assert!(state.loaded_dll.is_empty());
+                assert!(!state.c_entry_table.is_null());
+                state.c_entry_table
+            });
+            (table, root)
+        });
+
+        assert_ne!(left_root_table, right_root_table);
+        assert_ne!(left_package_table, right_package_table);
     }
 }
