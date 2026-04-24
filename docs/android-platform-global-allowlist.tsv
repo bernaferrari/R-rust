@@ -53,7 +53,6 @@ rmath-rs/rmath/src/mainutils/errors.rs	evaluator-runtime	sessionize	rport-t57	Er
 rmath-rs/rmath/src/mainutils/format.rs	printing-runtime	sessionize	rport-c2w	Print format state; move into session print state.
 rmath-rs/rmath/src/mainutils/lapack.rs	native-dispatch	platform-replace	rport-pm0	LAPACK dispatch lock; Android should use pure Rust backend or explicit host policy.
 rmath-rs/rmath/src/mainutils/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset scratch buffer; Android locale bridge should own it.
-rmath-rs/rmath/src/mainutils/memory_main.rs	memory-runtime	sessionize	rport-dg0.2	GC reporting/forcing state; move into RInstance GC state.
 rmath-rs/rmath/src/mainutils/names.rs	immutable-symbol-cache	allow-immutable	rport-t57	Symbol initialization cache; verify immutable/session split.
 rmath-rs/rmath/src/mainutils/objects.rs	method-cache	sessionize	rport-97s	Primitive method cache state; sessionize with methods support.
 rmath-rs/rmath/src/mainutils/paste_impl.rs	printing-runtime	sessionize	rport-c2w	Paste scratch buffer; move into session or call-local state.

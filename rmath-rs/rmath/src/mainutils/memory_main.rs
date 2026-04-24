@@ -22,7 +22,6 @@
 //! unix/system.rs, unix/embedded.rs, and mainutils/main.rs are provided
 //! as pub(crate) functions WITHOUT #[unsafe(no_mangle)] to avoid duplicate symbol errors.
 
-use std::cell::Cell;
 use std::os::raw::{c_char, c_double, c_int, c_long, c_void};
 use std::ptr;
 
@@ -41,24 +40,37 @@ unsafe fn error(msg: &str) -> ! {
 // GC control
 // ---------------------------------------------------------------------------
 
-thread_local! { static R_in_gc: Cell<c_int> = Cell::new(0); }
-thread_local! { static gc_reporting: Cell<c_int> = Cell::new(0); }
-thread_local! { static gc_count: Cell<c_int> = Cell::new(0); }
-thread_local! { static gc_force_gap: Cell<c_int> = Cell::new(0); }
-thread_local! { static gc_force_wait: Cell<c_int> = Cell::new(0); }
+pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
+
+#[derive(Default)]
+pub(crate) struct MemoryRuntimeState {
+    pub in_gc: c_int,
+    pub gc_reporting: c_int,
+    pub gc_count: c_int,
+    pub gc_force_gap: c_int,
+    pub gc_force_wait: c_int,
+    pub pending_finalizers: Vec<(SEXP, R_CFinalizer_t)>,
+}
+
+fn with_memory_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut MemoryRuntimeState) -> R,
+{
+    crate::sexp::instance::with_required_current_instance(|inst| f(&mut inst.memory_state))
+}
 
 /// Returns whether a GC is currently running.
 ///
 /// This is the equivalent of R's `R_gc_running()`.
 pub unsafe fn R_gc_running() -> c_int {
-    R_in_gc.with(|v| v.get())
+    crate::sexp::instance::with_current_instance(|inst| inst.memory_state.in_gc).unwrap_or(0)
 }
 
 /// Trigger a full garbage collection.
 ///
 /// This is the equivalent of R's `R_gc()`.
 pub unsafe fn R_gc() {
-    gc_count.with(|v| v.set(v.get() + 1));
+    with_memory_state(|state| state.gc_count += 1);
     // No actual GC implementation yet; stub.
 }
 
@@ -66,7 +78,7 @@ pub unsafe fn R_gc() {
 ///
 /// This is the equivalent of R's `R_gc_lite()`.
 pub unsafe fn R_gc_lite() {
-    gc_count.with(|v| v.set(v.get() + 1));
+    with_memory_state(|state| state.gc_count += 1);
     crate::sexp::gengc::minor_gc();
 }
 
@@ -75,14 +87,12 @@ pub unsafe fn R_gc_lite() {
 /// When `gap > 0`, every `gap` allocations will force a GC cycle.
 /// This is a debugging aid for finding GC-safety bugs.
 pub unsafe fn R_gc_torture(gap: c_int, wait: c_int, _inhibit: c_int) {
-    gc_force_gap.with(|v| {
+    with_memory_state(|state| {
         if gap != NA_INTEGER && gap >= 0 {
-            v.set(gap);
+            state.gc_force_gap = gap;
         }
-    });
-    gc_force_wait.with(|v| {
         if gap > 0 && wait != NA_INTEGER && wait > 0 {
-            v.set(wait);
+            state.gc_force_wait = wait;
         }
     });
 }
@@ -454,12 +464,6 @@ pub(crate) unsafe fn R_ReleaseObject_memory(s: SEXP) {
 // Weak references and finalizers
 // ---------------------------------------------------------------------------
 
-pub type R_CFinalizer_t = unsafe extern "C" fn(*mut c_void);
-
-thread_local! {
-    static PENDING_FINALIZERS: std::cell::RefCell<Vec<(SEXP, R_CFinalizer_t)>> = std::cell::RefCell::new(Vec::new());
-}
-
 pub unsafe fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, _onexit: c_int) -> SEXP {
     unsafe {
         let s = crate::sexp::memory_ext::allocSExp(SEXPTYPE::WEAKREFSXP);
@@ -477,9 +481,7 @@ pub unsafe fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, _onexit:
     unsafe {
         let s = R_MakeWeakRef(key, val, R_NilValue(), 0);
         if !s.is_null() {
-            PENDING_FINALIZERS.with(|f| {
-                f.borrow_mut().push((key, fin));
-            });
+            with_memory_state(|state| state.pending_finalizers.push((key, fin)));
         }
         s
     }
@@ -523,14 +525,11 @@ pub unsafe fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, _onexit: c_in
     if s.is_null() {
         return;
     }
-    PENDING_FINALIZERS.with(|f| {
-        f.borrow_mut().push((s, fun));
-    });
+    with_memory_state(|state| state.pending_finalizers.push((s, fun)));
 }
 
 pub unsafe fn R_RunPendingFinalizers() {
-    let finalizers: Vec<(SEXP, R_CFinalizer_t)> =
-        PENDING_FINALIZERS.with(|f| std::mem::take(&mut *f.borrow_mut()));
+    let finalizers = with_memory_state(|state| std::mem::take(&mut state.pending_finalizers));
     for (s, fin) in finalizers {
         if !s.is_null() {
             unsafe {
@@ -1066,7 +1065,7 @@ pub unsafe fn R_signal_unprotect_error() {
 ///
 /// This is the equivalent of R's `InitMemory()`.
 pub unsafe fn InitMemory() {
-    // Arena/GC initialized statically via thread_local; no explicit init needed
+    // Arena and GC state are owned by the active RInstance.
 }
 
 /// Reset the protection stack.
@@ -1106,10 +1105,10 @@ pub unsafe fn do_gc(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
 /// This is the equivalent of R's `do_gcinfo()`.
 pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let old = Rf_ScalarLogical(gc_reporting.with(|v| v.get()));
+        let old = Rf_ScalarLogical(with_memory_state(|state| state.gc_reporting));
         let i = crate::mainutils::coerce::asLogical(CAR(args));
         if i != crate::sexp::ffi::NA_LOGICAL {
-            gc_reporting.with(|v| v.set(i));
+            with_memory_state(|state| state.gc_reporting = i);
         }
         old
     }
@@ -1117,7 +1116,7 @@ pub unsafe fn do_gcinfo(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
 pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let old = Rf_ScalarLogical(if gc_force_wait.with(|v| v.get()) > 0 {
+        let old = Rf_ScalarLogical(if with_memory_state(|state| state.gc_force_wait) > 0 {
             crate::sexp::ffi::TRUE
         } else {
             crate::sexp::ffi::FALSE
@@ -1130,7 +1129,7 @@ pub unsafe fn do_gctorture(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 pub unsafe fn do_gctorture2(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let old = Rf_ScalarInteger(gc_force_gap.with(|v| v.get()));
+        let old = Rf_ScalarInteger(with_memory_state(|state| state.gc_force_gap));
         let gap = crate::mainutils::coerce::asInteger(CAR(args));
         let _wait = crate::mainutils::coerce::asInteger(CADR(args));
         R_gc_torture(gap, 0, 0);
@@ -1193,6 +1192,7 @@ pub unsafe fn Seql(a: SEXP, b: SEXP) -> c_int {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_sexptype2char_basic() {
@@ -1228,11 +1228,12 @@ mod tests {
 
     #[test]
     fn test_gc_does_not_crash() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_gc();
             R_gc_lite();
             // Should not crash
-        }
+        });
     }
 
     #[test]
@@ -1245,10 +1246,12 @@ mod tests {
 
     #[test]
     fn test_r_allocld() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             let ptr = R_allocLD(10);
             // May or may not be null depending on implementation; just check it doesn't crash
-        }
+            let _ = ptr;
+        });
     }
 
     #[test]
@@ -1406,7 +1409,8 @@ mod tests {
 
     #[test]
     fn test_finalizer_stubs() {
-        unsafe {
+        let session = RSession::new();
+        session.with_protected(|| unsafe {
             R_RegisterFinalizer(ptr::null_mut(), ptr::null_mut());
             R_RegisterFinalizerEx(ptr::null_mut(), ptr::null_mut(), 0);
             R_RegisterCFinalizer(ptr::null_mut(), dummy_c_finalizer);
@@ -1414,7 +1418,7 @@ mod tests {
             R_RunPendingFinalizers();
             R_RunFinalizers();
             // Should not crash
-        }
+        });
     }
 
     unsafe extern "C" fn dummy_c_finalizer(_ptr: *mut c_void) {

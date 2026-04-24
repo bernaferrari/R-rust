@@ -223,6 +223,8 @@ pub struct RInstance {
     pub(crate) gc_state: super::gengc::GcState,
     /// Per-instance error, warning, interrupt, and expression-limit state.
     pub(crate) error_state: ErrorState,
+    /// Per-instance main memory/GC control state.
+    pub(crate) memory_state: crate::mainutils::memory_main::MemoryRuntimeState,
     /// Per-instance evaluator and REPL control state.
     pub(crate) eval_state: EvalControlState,
     /// Per-instance symbol table for session-local interning.
@@ -331,6 +333,7 @@ impl RInstance {
             in_error: false,
             gc_state: super::gengc::GcState::default(),
             error_state: ErrorState::default(),
+            memory_state: crate::mainutils::memory_main::MemoryRuntimeState::default(),
             eval_state: EvalControlState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
