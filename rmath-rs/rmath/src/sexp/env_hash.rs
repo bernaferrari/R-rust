@@ -2,12 +2,11 @@
 
 //! Side table for environment hash lookups.
 //!
-//! Uses a thread-local `HashMap` to provide O(1) lookups for environment bindings
+//! Uses the active `RInstance` to provide O(1) lookups for environment bindings
 //! without modifying the `#[repr(C)]` Envsxp struct or the GC's pointer-remapping logic.
 //! The pairlist remains the authoritative storage; this hash table is an optimization layer.
 
 use hashbrown::HashMap;
-use std::cell::RefCell;
 
 use super::ffi::SEXP;
 use super::instance;
@@ -15,20 +14,11 @@ use super::instance;
 /// Number of bindings in a frame before auto-promotion to hash table.
 const PROMOTION_THRESHOLD: usize = 100;
 
-thread_local! {
-    /// Maps environment addresses to their hash tables (symbol address -> value SEXP).
-    static ENV_HASH_TABLES: RefCell<HashMap<usize, HashMap<usize, SEXP>>> = RefCell::new(HashMap::new());
-}
-
 fn with_env_hash_tables<F, R>(f: F) -> R
 where
     F: FnOnce(&mut HashMap<usize, HashMap<usize, SEXP>>) -> R,
 {
-    if instance::has_current_instance() {
-        instance::with_current_instance(|instance| f(&mut instance.env_hash_tables)).unwrap()
-    } else {
-        ENV_HASH_TABLES.with(|tables| f(&mut tables.borrow_mut()))
-    }
+    instance::with_required_current_instance(|instance| f(&mut instance.env_hash_tables))
 }
 
 /// Check if an environment has an associated hash table.
