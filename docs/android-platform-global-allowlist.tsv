@@ -40,7 +40,6 @@ rmath-rs/rmath/src/library/tcltk/tcltk.rs	desktop-ui	disabled-android	rport-dg0.
 rmath-rs/rmath/src/mainutils/CommandLineArgs.rs	process-startup	disabled-android	rport-dg0.2	Command-line startup state; Android host config should pass explicit session options.
 rmath-rs/rmath/src/mainutils/Rmain.rs	process-startup	disabled-android	rport-dg0.2	Standalone R main flag; not part of embedded Android runtime.
 rmath-rs/rmath/src/mainutils/altrep.rs	runtime-registry	sessionize	rport-c2w	ALTREP class registries; move into session or immutable registry before package-facing use.
-rmath-rs/rmath/src/mainutils/bind.rs	runtime-cache	sessionize	rport-t57	Binding sentinels/cache; audit for session-local environment semantics.
 rmath-rs/rmath/src/mainutils/character.rs	immutable-symbol-cache	allow-immutable	rport-c2w	NA string cache; should remain immutable or instance-owned.
 rmath-rs/rmath/src/mainutils/coerce.rs	immutable-symbol-cache	allow-immutable	rport-c2w	NA string cache for coercion; should remain immutable or instance-owned.
 rmath-rs/rmath/src/mainutils/colors.rs	graphics-callbacks	sessionize	rport-dg0.2	Graphics color callback pointers; bridge through Android device/session state.

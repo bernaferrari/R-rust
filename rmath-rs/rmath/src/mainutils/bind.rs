@@ -28,6 +28,7 @@ use crate::sexp::ffi::{
     FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_xlen_t, Rbyte, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::instance;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::protect::Rf_unprotect;
 
@@ -71,6 +72,11 @@ struct BindData {
 struct NameData {
     count: c_int,
     seqno: R_xlen_t,
+}
+
+#[derive(Default)]
+pub(crate) struct BindRuntimeState {
+    pub blank_string: SEXP,
 }
 
 // ---------------------------------------------------------------------------
@@ -569,15 +575,19 @@ unsafe fn EnsureString(x: SEXP) -> SEXP {
 /// R_BlankString: return a blank CHARSXP.
 unsafe fn R_BlankString() -> SEXP {
     unsafe {
-        static BLANK: std::sync::atomic::AtomicPtr<std::ffi::c_void> =
-            std::sync::atomic::AtomicPtr::new(ptr::null_mut());
-        let mut p = BLANK.load(std::sync::atomic::Ordering::Relaxed);
-        if p.is_null() {
-            let s = Rf_mkChar(b"\0".as_ptr() as *const c_char);
-            p = s as *mut std::ffi::c_void;
-            BLANK.store(p, std::sync::atomic::Ordering::Relaxed);
+        let existing =
+            instance::with_required_current_instance(|inst| inst.bind_state.blank_string);
+        if !existing.is_null() {
+            return existing;
         }
-        p as SEXP
+
+        let s = Rf_mkChar(b"\0".as_ptr() as *const c_char);
+        instance::with_required_current_instance(|inst| {
+            if inst.bind_state.blank_string.is_null() {
+                inst.bind_state.blank_string = s;
+            }
+            inst.bind_state.blank_string
+        })
     }
 }
 
@@ -2951,6 +2961,7 @@ unsafe fn rbind(call: SEXP, args: SEXP, mode: SEXPTYPE, rho: SEXP, deparse_level
 mod tests {
     use super::*;
     use crate::sexp::protect::R_ProtectCount;
+    use crate::sexp::session::RSession;
 
     fn reset_protect_stack() {
         unsafe {
@@ -2961,12 +2972,15 @@ mod tests {
         }
     }
 
-    struct ProtectStackGuard;
+    struct ProtectStackGuard {
+        _session: RSession,
+    }
 
     impl ProtectStackGuard {
         fn new() -> Self {
+            let session = RSession::new();
             reset_protect_stack();
-            Self
+            Self { _session: session }
         }
     }
 
@@ -3023,6 +3037,34 @@ mod tests {
             let s = std::ffi::CStr::from_ptr(type2char(24));
             assert_eq!(s.to_str().unwrap_or(""), "raw");
         }
+    }
+
+    #[test]
+    fn test_blank_string_is_session_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        let mut left_blank = ptr::null_mut();
+        left.with_arena(|_| unsafe {
+            left_blank = R_BlankString();
+            assert!(!left_blank.is_null());
+            assert_eq!(R_BlankString(), left_blank);
+        })
+        .unwrap();
+
+        right
+            .with_arena(|_| unsafe {
+                let right_blank = R_BlankString();
+                assert!(!right_blank.is_null());
+                assert_eq!(R_BlankString(), right_blank);
+                assert_ne!(right_blank, left_blank);
+            })
+            .unwrap();
+
+        left.with_arena(|_| unsafe {
+            assert_eq!(R_BlankString(), left_blank);
+        })
+        .unwrap();
     }
 
     #[test]
