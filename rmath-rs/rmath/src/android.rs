@@ -805,6 +805,28 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_environment_file_and_predicate_helpers() {
+        let mut session = RSession::new();
+        let missing = session.eval("exists(\"x\")");
+        let assigned = session.eval("assign(\"y\", 2)\nget(\"y\")");
+        let removed = session.eval("x <- 1\nrm(\"x\")\nexists(\"x\")");
+        let tempdir_exists = session.eval("file.exists(tempdir())");
+        let inherits = session.eval("inherits(1, \"numeric\")");
+        let to_string = session.eval("toString(c(1, 2, 3))");
+        let is_vector = session.eval("is.vector(c(1, 2))");
+        let is_data_frame = session.eval("is.data.frame(data.frame(a = 1))");
+
+        assert_eq!(missing.output, "[1] FALSE");
+        assert_eq!(assigned.output, "[1] 2");
+        assert_eq!(removed.output, "[1] FALSE");
+        assert_eq!(tempdir_exists.output, "[1] TRUE");
+        assert_eq!(inherits.output, "[1] TRUE");
+        assert_eq!(to_string.output, "[1] \"1, 2, 3\"");
+        assert_eq!(is_vector.output, "[1] TRUE");
+        assert_eq!(is_data_frame.output, "[1] TRUE");
+    }
+
+    #[test]
     fn test_eval_named_vector_names() {
         let mut session = RSession::new();
         let result = session.eval("names(c(a = 1, b = 2))");
