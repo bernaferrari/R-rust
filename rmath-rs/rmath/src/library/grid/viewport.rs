@@ -31,8 +31,8 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::constructors::Rf_cons;
 use crate::sexp::envir::findFun;
-use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
@@ -44,8 +44,8 @@ use super::layout::calcViewportLayout;
 use super::state::{gridStateElement, setGridStateElement};
 use super::types::*;
 use super::unit::{
-    transformHeighttoINCHES, transformWidthtoINCHES, transformXtoINCHES, transformYtoINCHES,
-    LViewportContext as UnitViewportContext,
+    LViewportContext as UnitViewportContext, transformHeighttoINCHES, transformWidthtoINCHES,
+    transformXtoINCHES, transformYtoINCHES,
 };
 
 // ---------------------------------------------------------------------------
@@ -58,7 +58,11 @@ unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
 }
 
 unsafe fn scalar_real_or(x: SEXP, default_value: f64) -> f64 {
-    if !x.is_null() && Rf_isNull(x) == 0 && TYPEOF(x) == SEXPTYPE::REALSXP.as_c_int() && LENGTH(x) > 0 {
+    if !x.is_null()
+        && Rf_isNull(x) == 0
+        && TYPEOF(x) == SEXPTYPE::REALSXP.as_c_int()
+        && LENGTH(x) > 0
+    {
         *REAL(x)
     } else {
         default_value
@@ -321,11 +325,7 @@ pub unsafe fn copyViewportContext(vpc1: LViewportContext, vpc2: *mut LViewportCo
 // gcontextFromViewport — delegate through gpar context resolution.
 // ---------------------------------------------------------------------------
 
-pub unsafe fn gcontextFromViewport(
-    vp: SEXP,
-    gc: pGEcontext,
-    dd: pGEDevDesc,
-) {
+pub unsafe fn gcontextFromViewport(vp: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
     let gpar = viewportgpar(vp);
     if gpar.is_null() || Rf_isNull(gpar) != 0 {
         return;
@@ -337,12 +337,7 @@ pub unsafe fn gcontextFromViewport(
     gcontextFromgpar(gpar, 0, gc, dd);
 }
 
-pub unsafe fn calcViewportTransform(
-    vp: SEXP,
-    parent: SEXP,
-    _incremental: bool,
-    dd: pGEDevDesc,
-) {
+pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, dd: pGEDevDesc) {
     let parent_context = if parent.is_null() || Rf_isNull(parent) != 0 {
         LViewportContext {
             xscalemin: 0.0,
@@ -368,7 +363,10 @@ pub unsafe fn calcViewportTransform(
     let mut parent_width_cm = if parent.is_null() || Rf_isNull(parent) != 0 {
         scalar_real_or(viewportDevWidthCM(vp), 1.0)
     } else {
-        scalar_real_or(viewportWidthCM(parent), scalar_real_or(viewportDevWidthCM(parent), 1.0))
+        scalar_real_or(
+            viewportWidthCM(parent),
+            scalar_real_or(viewportDevWidthCM(parent), 1.0),
+        )
     };
     let mut parent_height_cm = if parent.is_null() || Rf_isNull(parent) != 0 {
         scalar_real_or(viewportDevHeightCM(vp), 1.0)
@@ -455,7 +453,14 @@ pub unsafe fn calcViewportTransform(
     SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, clip);
 
     if Rf_isNull(viewportLayout(vp)) == 0 {
-        calcViewportLayout(vp, parent_width_cm, parent_height_cm, parent_context, gc_buf.as_ptr(), dd as *const u8);
+        calcViewportLayout(
+            vp,
+            parent_width_cm,
+            parent_height_cm,
+            parent_context,
+            gc_buf.as_ptr(),
+            dd as *const u8,
+        );
     }
 }
 
@@ -468,7 +473,7 @@ pub unsafe fn initVP(dd: *const u8) {
     let dd = dd as pGEDevDesc;
 
     let vpfnname = Rf_protect(Rf_install(b"grid.top.level.vp\0".as_ptr() as *const c_char));
-    let vpfn_env = R_gridEvalEnv.with(|v| v.get());
+    let vpfn_env = grid_eval_env();
     let vpfn = Rf_protect(lang1(findFun(vpfnname, vpfn_env)));
     let vp = Rf_protect(Rf_eval(vpfn, R_GlobalEnv()));
 

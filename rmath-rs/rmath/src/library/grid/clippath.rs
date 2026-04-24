@@ -33,7 +33,7 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::state::setGridStateElement;
-use super::types::{R_gridEvalEnv, pGEDevDesc, *};
+use super::types::{pGEDevDesc, *};
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -94,7 +94,7 @@ pub unsafe fn resolveClipPath(path: SEXP, dd: pGEDevDesc) -> SEXP {
     setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
     // Use the shared grid eval env so clip-path callbacks see the same
     // initialization state as the rest of grid.
-    let env = R_gridEvalEnv.with(|v| v.get());
+    let env = grid_eval_env();
     let resolve_fn = Rf_protect(findFun(
         Rf_install(b"resolveClipPath\0".as_ptr() as *const std::os::raw::c_char),
         env,

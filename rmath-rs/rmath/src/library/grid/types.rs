@@ -2,11 +2,11 @@
 //!
 //! Defines all constants, types, and stubs used across grid modules.
 
-use std::cell::Cell;
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
 use crate::sexp::ffi::SEXP;
+use crate::sexp::instance::with_required_current_instance;
 
 /* ==================== GSS (Grid System State) indices ==================== */
 
@@ -284,9 +284,92 @@ pub type pGEcontext = *const c_void;
 /// Stub for GEevent type.
 pub type GEevent = c_int;
 
-/* ==================== Global state ==================== */
+/* ==================== Per-session grid state ==================== */
 
-/// Grid registration index (set by the graphics engine).
-thread_local! { pub static gridRegisterIndex: Cell<c_int> = Cell::new(0); }
+pub(crate) struct GridRuntimeState {
+    pub current_grid_state: SEXP,
+    pub register_index: c_int,
+    pub eval_env: SEXP,
+}
 
-thread_local! { pub static R_gridEvalEnv: Cell<SEXP> = Cell::new(std::ptr::null_mut()); }
+impl Default for GridRuntimeState {
+    fn default() -> Self {
+        GridRuntimeState {
+            current_grid_state: std::ptr::null_mut(),
+            register_index: 0,
+            eval_env: std::ptr::null_mut(),
+        }
+    }
+}
+
+#[inline]
+pub(crate) fn with_grid_runtime_state<F, R>(f: F) -> R
+where
+    F: FnOnce(&mut GridRuntimeState) -> R,
+{
+    with_required_current_instance(|instance| f(&mut instance.grid_runtime_state))
+}
+
+#[inline]
+pub(crate) fn current_grid_state() -> SEXP {
+    with_grid_runtime_state(|state| state.current_grid_state)
+}
+
+#[inline]
+pub(crate) fn set_current_grid_state(value: SEXP) {
+    with_grid_runtime_state(|state| state.current_grid_state = value);
+}
+
+#[inline]
+pub(crate) fn grid_register_index() -> c_int {
+    with_grid_runtime_state(|state| state.register_index)
+}
+
+#[inline]
+pub(crate) fn set_grid_register_index(value: c_int) {
+    with_grid_runtime_state(|state| state.register_index = value);
+}
+
+#[inline]
+pub(crate) fn grid_eval_env() -> SEXP {
+    with_grid_runtime_state(|state| state.eval_env)
+}
+
+#[inline]
+pub(crate) fn set_grid_eval_env(value: SEXP) {
+    with_grid_runtime_state(|state| state.eval_env = value);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn grid_runtime_state_is_session_local_on_same_thread() {
+        let left = RSession::new();
+        let right = RSession::new();
+
+        left.with_protected(|| {
+            let marker = 0x1234usize as SEXP;
+            set_current_grid_state(marker);
+            set_grid_eval_env(marker);
+            set_grid_register_index(7);
+            assert_eq!(current_grid_state(), marker);
+            assert_eq!(grid_eval_env(), marker);
+            assert_eq!(grid_register_index(), 7);
+        });
+
+        right.with_protected(|| {
+            assert!(current_grid_state().is_null());
+            assert!(grid_eval_env().is_null());
+            assert_eq!(grid_register_index(), 0);
+        });
+
+        left.with_protected(|| {
+            assert_eq!(current_grid_state(), 0x1234usize as SEXP);
+            assert_eq!(grid_eval_env(), 0x1234usize as SEXP);
+            assert_eq!(grid_register_index(), 7);
+        });
+    }
+}

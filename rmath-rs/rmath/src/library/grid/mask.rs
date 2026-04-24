@@ -33,7 +33,7 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
-use super::types::{R_gridEvalEnv, pGEDevDesc, *};
+use super::types::{pGEDevDesc, *};
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -89,7 +89,7 @@ pub unsafe fn isMask(mask: SEXP) -> bool {
 pub unsafe fn resolveMask(mask: SEXP, dd: pGEDevDesc) -> SEXP {
     // Use the shared grid eval env so mask callbacks see the same
     // initialization state as the rest of grid.
-    let env = R_gridEvalEnv.with(|v| v.get());
+    let env = grid_eval_env();
     let resolve_fn = Rf_protect(findFun(
         Rf_install(b"resolveMask\0".as_ptr() as *const std::os::raw::c_char),
         env,

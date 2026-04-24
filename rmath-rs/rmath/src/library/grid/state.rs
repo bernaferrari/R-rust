@@ -3,7 +3,6 @@
 //! Manages per-device grid state including display lists, viewports,
 //! graphics parameters, and engine callbacks.
 
-use std::cell::Cell;
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -18,8 +17,6 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::types::*;
-
-thread_local! { static CURRENT_GRID_STATE: Cell<SEXP> = const { Cell::new(std::ptr::null_mut()) }; }
 
 /* ==================== GE function stubs ==================== */
 
@@ -219,7 +216,7 @@ pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
     // GSS_GROUPS: group name to device reference mapping
     SET_VECTOR_ELT(state, GSS_GROUPS as R_xlen_t, R_NilValue());
 
-    CURRENT_GRID_STATE.with(|cell| cell.set(state));
+    set_current_grid_state(state);
 
     Rf_unprotect(1);
 }
@@ -227,7 +224,7 @@ pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
 /// Get a grid state element by index.
 pub unsafe fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -> SEXP {
     let _ = dd;
-    let state = CURRENT_GRID_STATE.with(|cell| cell.get());
+    let state = current_grid_state();
     if state.is_null() || state == R_NilValue() {
         return R_NilValue();
     }
@@ -237,7 +234,7 @@ pub unsafe fn gridStateElement(dd: pGEDevDesc, elementIndex: c_int) -> SEXP {
 /// Set a grid state element by index.
 pub unsafe fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP) {
     let _ = dd;
-    let state = CURRENT_GRID_STATE.with(|cell| cell.get());
+    let state = current_grid_state();
     if state.is_null() || state == R_NilValue() {
         return;
     }
@@ -257,14 +254,14 @@ pub unsafe fn L_setGridState(elementIndex: SEXP, value: SEXP) -> SEXP {
 unsafe fn deglobaliseState(state: SEXP) {
     let index = *INTEGER(VECTOR_ELT(state, GSS_GLOBALINDEX as R_xlen_t)).add(0);
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-    let globalstate = findVar(sym, R_gridEvalEnv.with(|v| v.get()));
+    let globalstate = findVar(sym, grid_eval_env());
     SET_VECTOR_ELT(globalstate, index as R_xlen_t, R_NilValue());
 }
 
 /// Find an empty slot in the global state list.
 unsafe fn findStateSlot() -> c_int {
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-    let globalstate = findVar(sym, R_gridEvalEnv.with(|v| v.get()));
+    let globalstate = findVar(sym, grid_eval_env());
     let len = LENGTH(globalstate) as i32;
     for i in 0..len {
         if isNull(VECTOR_ELT(globalstate, i as R_xlen_t)) {
@@ -279,7 +276,7 @@ unsafe fn findStateSlot() -> c_int {
 unsafe fn globaliseState(state: SEXP) {
     let index = findStateSlot();
     let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
-    let globalstate = findVar(sym, R_gridEvalEnv.with(|v| v.get()));
+    let globalstate = findVar(sym, grid_eval_env());
     Rf_protect(globalstate);
     let indexsxp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
     Rf_protect(indexsxp);
