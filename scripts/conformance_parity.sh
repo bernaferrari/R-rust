@@ -83,6 +83,7 @@ normalize_output() {
 
 normalize_error_output() {
     normalize_output |
+        sed -E '/^Error in .* :$/ { N; s/^Error in .* :\n[[:space:]]*/Error: /; }' |
         sed '/^Execution halted$/d' |
         sed -E 's/^Error in .* : /Error: /'
 }

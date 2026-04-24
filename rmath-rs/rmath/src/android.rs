@@ -736,6 +736,23 @@ mod tests {
     }
 
     #[test]
+    fn test_sample_int_uniform_shape_and_errors() {
+        let mut session = RSession::new();
+
+        let permutation = session.eval("all(sort(sample.int(5)) == 1:5)");
+        assert_eq!(permutation.output, "[1] TRUE");
+
+        let replace = session.eval("length(sample.int(3, 7, TRUE))");
+        assert_eq!(replace.output, "[1] 7");
+
+        let too_large = session.eval("sample.int(3, 4, FALSE)");
+        assert!(matches!(too_large.typed, RValue::Error(_)));
+        assert!(too_large.output.contains(
+            "cannot take a sample larger than the population when 'replace = FALSE'"
+        ));
+    }
+
+    #[test]
     fn test_eval_subtraction() {
         let mut session = RSession::new();
         let result = session.eval("10 - 3");
