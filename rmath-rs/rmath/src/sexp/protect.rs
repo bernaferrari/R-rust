@@ -227,28 +227,128 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// R_ProtectWithIndex — protect with an index for later unprotection
+// Indexed protection — protect a stack slot that can be replaced later
 // ---------------------------------------------------------------------------
 
-/// Result of R_ProtectWithIndex — holds the index for unprotection.
+/// Opaque legacy marker used by the `R_ProtectWithIndex` compatibility shim.
 pub struct ProtectIndex {
-    index: usize,
+    _private: (),
 }
 
-/// Protect an SEXP and return an index that can be used to unprotect it later.
+/// Stable handle for a protected stack slot that may be replaced with another
+/// value before it is unprotected.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProtectionSlot {
+    index: Option<usize>,
+}
+
+impl ProtectionSlot {
+    fn inactive() -> Self {
+        Self { index: None }
+    }
+
+    fn from_stack_index(index: usize) -> Self {
+        Self { index: Some(index) }
+    }
+
+    fn from_legacy_ptr(index: *mut ProtectIndex) -> Self {
+        let raw = index as usize;
+        if raw == 0 {
+            Self::inactive()
+        } else {
+            Self::from_stack_index(raw - 1)
+        }
+    }
+
+    fn into_legacy_ptr(self) -> *mut ProtectIndex {
+        self.index
+            .map(|index| (index + 1) as *mut ProtectIndex)
+            .unwrap_or(std::ptr::null_mut())
+    }
+
+    pub fn is_active(self) -> bool {
+        self.index.is_some()
+    }
+}
+
+fn protect_raw_with_slot(s: SEXP, api: &str) -> ProtectionSlot {
+    if s.is_null() {
+        return ProtectionSlot::inactive();
+    }
+    super::instance::with_required_current_instance(|inst| {
+        reserve_slot_or_fail(&mut inst.protect_stack, api);
+        inst.protect_stack.push(s);
+        ProtectionSlot::from_stack_index(inst.protect_stack.len() - 1)
+    })
+}
+
+fn reprotect_slot(slot: ProtectionSlot, s: SEXP) {
+    let Some(index) = slot.index else {
+        return;
+    };
+    super::instance::with_required_current_instance(|inst| {
+        if index < inst.protect_stack.len() {
+            inst.protect_stack[index] = s;
+        }
+    });
+}
+
+fn release_protect_slot(slot: ProtectionSlot) {
+    let Some(index) = slot.index else {
+        return;
+    };
+    super::instance::with_required_current_instance(|inst| {
+        if index < inst.protect_stack.len() {
+            inst.protect_stack.remove(index);
+        }
+    });
+}
+
+/// RAII guard for a replaceable protection stack slot.
+pub struct IndexedProtectGuard {
+    slot: ProtectionSlot,
+}
+
+impl IndexedProtectGuard {
+    pub fn slot(&self) -> ProtectionSlot {
+        self.slot
+    }
+
+    pub(crate) fn reprotect_raw(&mut self, value: SEXP) {
+        reprotect_slot(self.slot, value);
+    }
+
+    pub fn reprotect_sexp(&mut self, value: Sexp<'_>) {
+        self.reprotect_raw(value.as_raw());
+    }
+}
+
+impl Drop for IndexedProtectGuard {
+    fn drop(&mut self) {
+        release_protect_slot(self.slot);
+    }
+}
+
+/// Protect an owner-scoped SEXP handle in a replaceable stack slot.
+pub fn protect_sexp_with_index(value: Sexp<'_>) -> IndexedProtectGuard {
+    protect_with_index_raw(value.as_raw(), "protect_sexp_with_index")
+}
+
+/// Protect a raw SEXP in a replaceable stack slot.
+///
+/// Legacy compatibility helper for translated Rust modules. Prefer
+/// [`protect_sexp_with_index`] when the caller has an owner-scoped value.
+pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard {
+    IndexedProtectGuard {
+        slot: protect_raw_with_slot(s, api),
+    }
+}
+
+/// Protect an SEXP and return a legacy encoded index for later replacement.
 ///
 /// This is the equivalent of R's `R_ProtectWithIndex()`.
 pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
-    let index = super::instance::with_required_current_instance(|inst| {
-        if !s.is_null() {
-            reserve_slot_or_fail(&mut inst.protect_stack, "R_ProtectWithIndex");
-            inst.protect_stack.push(s);
-            (inst.protect_stack.len() - 1) + 1
-        } else {
-            0
-        }
-    });
-    index as *mut ProtectIndex
+    protect_raw_with_slot(s, "R_ProtectWithIndex").into_legacy_ptr()
 }
 
 /// Free a ProtectIndex returned by R_ProtectWithIndex.
@@ -260,15 +360,7 @@ pub unsafe fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
 ///
 /// This is the equivalent of R's `R_Reprotect()`.
 pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
-    if index.is_null() {
-        return;
-    }
-    let idx = (index as usize).wrapping_sub(1);
-    super::instance::with_required_current_instance(|inst| {
-        if idx < inst.protect_stack.len() {
-            inst.protect_stack[idx] = s;
-        }
-    });
+    reprotect_slot(ProtectionSlot::from_legacy_ptr(index), s);
 }
 
 // ---------------------------------------------------------------------------
@@ -459,6 +551,44 @@ mod tests {
             with_preserved_objects(|objects| assert_eq!(objects, &[value.as_raw()]));
             drop(guard);
             with_preserved_objects(|objects| assert!(objects.is_empty()));
+        });
+    }
+
+    #[test]
+    fn test_indexed_protect_guard_reprotects_and_unwinds() {
+        let mut session = RSession::new();
+        let first = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let second = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::REALSXP))
+            .expect("session should be active");
+        let first = session.sexp(first).expect("first value belongs to session");
+        let second = session
+            .sexp(second)
+            .expect("second value belongs to session");
+
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let mut guard = protect_sexp_with_index(first);
+            assert!(guard.slot().is_active());
+            assert_eq!(R_ProtectCount(), depth_before + 1);
+            guard.reprotect_sexp(second);
+            with_protected_objects(|objects| assert_eq!(objects, &[second.as_raw()]));
+            drop(guard);
+            assert_eq!(R_ProtectCount(), depth_before);
+        });
+    }
+
+    #[test]
+    fn test_indexed_raw_guard_null_is_inactive() {
+        let session = RSession::new();
+        session.with_protected(|| {
+            let depth_before = R_ProtectCount();
+            let guard = protect_with_index_raw(ptr::null_mut(), "test");
+            assert!(!guard.slot().is_active());
+            drop(guard);
+            assert_eq!(R_ProtectCount(), depth_before);
         });
     }
 

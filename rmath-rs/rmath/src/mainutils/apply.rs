@@ -31,7 +31,7 @@ use crate::sexp::accessors::REAL;
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_cons, Rf_lang3};
 use crate::sexp::envir::{R_findVarInFrame, defineVar, forcePromise};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{R_ProtectWithIndex, R_Reprotect, Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect_with_index_raw};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -519,7 +519,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         let mut names: SEXP = R_NilValue();
         let mut rowNames: SEXP = R_NilValue();
-        let mut rowNames_index: *mut crate::sexp::protect::ProtectIndex = ptr::null_mut();
+        let mut rowNames_guard = None;
 
         if useNames != 0 {
             names = getAttrib(XX, R_NamesSymbol());
@@ -534,7 +534,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     R_NamesSymbol()
                 },
             );
-            rowNames_index = R_ProtectWithIndex(rowNames);
+            rowNames_guard = Some(protect_with_index_raw(rowNames, "do_vapply rowNames"));
         }
 
         // Build call: FUN(XX[[<ind>]], ...)
@@ -627,8 +627,8 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         R_NamesSymbol()
                     },
                 );
-                if !rowNames_index.is_null() {
-                    R_Reprotect(rowNames, rowNames_index);
+                if let Some(guard) = rowNames_guard.as_mut() {
+                    guard.reprotect_raw(rowNames);
                 }
             }
 
@@ -767,11 +767,6 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                     setAttrib(ans, R_DimNamesSymbol(), dimnames);
                     Rf_unprotect(1);
                 }
-                // Unprotect rowNames
-                if !rowNames_index.is_null() {
-                    // We need to unprotect rowNames too; it was protected via R_ProtectWithIndex
-                    // Since we can't easily track it, and the arena handles memory, this is safe.
-                }
             }
         } else if useNames != 0 {
             // commonLen == 1: just set names
@@ -780,6 +775,7 @@ pub unsafe fn do_vapply(_call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
         }
 
+        drop(rowNames_guard);
         Rf_unprotect(4); // X, XX, value, ans
         ans
     }

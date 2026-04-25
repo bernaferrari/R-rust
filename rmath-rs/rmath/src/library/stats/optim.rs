@@ -381,7 +381,7 @@ unsafe fn genptry(
     const E1: f64 = 1.7182818; /* exp(1) - 1 */
 
     let s = Rf_allocVector(SEXPTYPE::REALSXP, n);
-    let pi = R_ProtectWithIndex(s);
+    let mut s_guard = protect_with_index_raw(s, "genptry candidate");
 
     for i in 0..n as usize {
         /* generate a Cauchy variate */
@@ -408,7 +408,7 @@ unsafe fn genptry(
     let fminfn = if let Some(f) = fminfn { f } else { return 0.0 };
     let y = fminfn(n, xp, ex);
 
-    R_Reprotect(s, pi);
+    s_guard.reprotect_raw(s);
     y
 }
 
