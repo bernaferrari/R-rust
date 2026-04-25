@@ -1,4 +1,5 @@
 //! Typed numeric/logical views over SEXP vectors.
+#![deny(unsafe_op_in_unsafe_fn)]
 //!
 //! This module is the Rust-shaped boundary for internal code that needs R's
 //! numeric coercion and recycling behavior without opening raw vector buffers.

@@ -1,4 +1,5 @@
 //! Vectorized arithmetic and comparison builtin operations.
+#![deny(unsafe_op_in_unsafe_fn)]
 //!
 //! These handle the core numeric operators (+, -, *, /, ^, %%, %/%),
 //! comparison operators (<, >, <=, >=, ==, !=), and unary operators (!, -).
