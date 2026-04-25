@@ -25,13 +25,28 @@ use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise}
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
-use crate::sexp::object::PairlistBuilder;
+use crate::sexp::object::{PairlistBuilder, Sexp};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::builtin::PRIMNAME;
 use super::closure::applyClosure;
 use super::eval::Rf_eval;
+
+fn push_pairlist_cell(builder: &mut PairlistBuilder, value: SEXP, tag: SEXP) {
+    let Some(value) = Sexp::from_raw(value) else {
+        return;
+    };
+    let tag = Sexp::from_raw(tag);
+    let _ = builder.push(value, tag);
+}
+
+fn finish_pairlist(builder: PairlistBuilder) -> SEXP {
+    builder
+        .finish()
+        .map(Sexp::as_raw)
+        .unwrap_or_else(|_| unsafe { R_NilValue() })
+}
 
 // ---------------------------------------------------------------------------
 // evalList — evaluate each element of a pairlist
@@ -56,13 +71,13 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
             }
 
             let val = Rf_eval(CAR(current), rho);
-            let _ = result.push_raw(val, TAG(current));
+            push_pairlist_cell(&mut result, val, TAG(current));
 
             current = CDR(current);
             count += 1;
         }
 
-        result.finish_raw()
+        finish_pairlist(result)
     }
 }
 
@@ -88,12 +103,12 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
 
             // Create a promise for each argument
             let prom = mkPROMISE(arg_expr, rho);
-            let _ = result.push_raw(prom, tag);
+            push_pairlist_cell(&mut result, prom, tag);
 
             current = CDR(current);
         }
 
-        result.finish_raw()
+        finish_pairlist(result)
     }
 }
 
@@ -135,11 +150,11 @@ unsafe fn evalArgs(
                 continue;
             }
 
-            let _ = result.push_raw(val, TAG(current));
+            push_pairlist_cell(&mut result, val, TAG(current));
             current = CDR(current);
         }
 
-        result.finish_raw()
+        finish_pairlist(result)
     }
 }
 

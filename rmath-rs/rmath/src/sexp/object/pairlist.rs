@@ -75,10 +75,10 @@ impl PairlistBuilder {
 
     pub(crate) fn push<'a>(&mut self, value: Sexp<'a>, tag: Option<Sexp<'a>>) -> SexpResult<()> {
         let tag = tag.map(Sexp::as_raw).unwrap_or_else(ptr::null_mut);
-        unsafe { self.push_raw(value.as_raw(), tag) }.map(|_| ())
+        unsafe { self.append_raw(value.as_raw(), tag) }.map(|_| ())
     }
 
-    pub(crate) unsafe fn push_raw(&mut self, value: SEXP, tag: SEXP) -> SexpResult<SEXP> {
+    unsafe fn append_raw(&mut self, value: SEXP, tag: SEXP) -> SexpResult<SEXP> {
         unsafe {
             let cell = Rf_cons(value, R_NilValue());
             if cell.is_null() {
@@ -101,7 +101,7 @@ impl PairlistBuilder {
         }
     }
 
-    pub(crate) fn finish_raw(self) -> SEXP {
+    fn finish_raw(self) -> SEXP {
         if self.head.is_null() {
             unsafe { R_NilValue() }
         } else {
@@ -109,17 +109,17 @@ impl PairlistBuilder {
         }
     }
 
-    pub(crate) unsafe fn finish_as<'a>(self) -> SexpResult<Sexp<'a>> {
-        unsafe { Sexp::try_from_raw(self.finish_raw()) }
+    pub(crate) fn finish<'a>(self) -> SexpResult<Sexp<'a>> {
+        Sexp::try_from_raw(self.finish_raw())
     }
 
-    pub(crate) unsafe fn finish_with_type(self, sexptype: SEXPTYPE) -> SexpResult<SEXP> {
+    pub(crate) fn finish_as_type<'a>(self, sexptype: SEXPTYPE) -> SexpResult<Sexp<'a>> {
         unsafe {
             let head = self.finish_raw();
             if head != R_NilValue() {
                 (*head).sxpinfo.set_type(sexptype);
             }
-            Ok(head)
+            Sexp::try_from_raw(head)
         }
     }
 }
@@ -147,7 +147,7 @@ mod tests {
         let mut builder = PairlistBuilder::new();
         builder.push(first_value, Some(tag_value)).unwrap();
         builder.push(second_value, None).unwrap();
-        let list = builder.finish_raw();
+        let list = builder.finish().expect("pairlist").as_raw();
 
         unsafe {
             assert_eq!(CAR(list), first);

@@ -117,7 +117,9 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
             .map_err(|err| sexp_err("matched argument pairlist build", err))?;
     }
 
-    unsafe { builder.finish_as() }.map_err(|err| sexp_err("matched argument pairlist wrap", err))
+    builder
+        .finish()
+        .map_err(|err| sexp_err("matched argument pairlist wrap", err))
 }
 
 /// Safe environment creation.
@@ -311,7 +313,9 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> 
                 }
             }
 
-            result.push_raw(value, formal_tag).map_err(|_| ())?;
+            let value = Sexp::try_from_raw(value).map_err(|_| ())?;
+            let formal_tag = Sexp::from_raw(formal_tag);
+            result.push(value, formal_tag).map_err(|_| ())?;
             formal = CDR(formal);
         }
 
@@ -319,7 +323,7 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> 
             return Err(());
         }
 
-        Ok(result.finish_raw())
+        result.finish().map(Sexp::as_raw).map_err(|_| ())
     }
 }
 
@@ -332,10 +336,15 @@ unsafe fn collect_unused_args(supplied_cells: &[SEXP], used: &mut [bool]) -> SEX
                 continue;
             }
             used[idx] = true;
-            let _ = dots.push_raw(CAR(*supplied_cell), TAG(*supplied_cell));
+            let Some(value) = Sexp::from_raw(CAR(*supplied_cell)) else {
+                continue;
+            };
+            let tag = Sexp::from_raw(TAG(*supplied_cell));
+            let _ = dots.push(value, tag);
         }
 
-        dots.finish_with_type(SEXPTYPE::DOTSXP)
+        dots.finish_as_type(SEXPTYPE::DOTSXP)
+            .map(Sexp::as_raw)
             .unwrap_or_else(|_| R_NilValue())
     }
 }
