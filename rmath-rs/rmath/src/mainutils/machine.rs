@@ -10,7 +10,9 @@ use std::os::raw::{c_double, c_int, c_void};
 use crate::mainutils::machar;
 use crate::sexp::accessors::{SET_STRING_ELT, SET_VECTOR_ELT};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_mkChar};
+use crate::sexp::envir::Environment;
 use crate::sexp::ffi::SEXP;
+use crate::sexp::object::Sexp;
 
 // ---------------------------------------------------------------------------
 // SEXPTYPE constants
@@ -31,12 +33,6 @@ unsafe fn setAttrib(x: SEXP, what: SEXP, val: SEXP) {
 
 unsafe fn R_NamesSymbol() -> SEXP {
     unsafe { crate::eval::attrib_core::R_NamesSymbol() }
-}
-
-unsafe fn defineVar(name: SEXP, value: SEXP, rho: SEXP) {
-    unsafe {
-        crate::sexp::envir::defineVar(name, value, rho);
-    }
 }
 
 unsafe fn install(name: *const std::os::raw::c_char) -> SEXP {
@@ -105,6 +101,19 @@ fn compute_accuracy_info() -> AccuracyInfo {
     info
 }
 
+fn define_machine_binding(rho: SEXP, ans: SEXP) {
+    let (Some(rho), Some(ans)) = (Sexp::from_raw(rho), Sexp::from_raw(ans)) else {
+        return;
+    };
+    let Ok(env) = Environment::new(rho) else {
+        return;
+    };
+    let Some(machine_symbol) = Sexp::from_raw(unsafe { install(c".Machine".as_ptr()) }) else {
+        return;
+    };
+    let _ = env.define(machine_symbol, ans);
+}
+
 // ---------------------------------------------------------------------------
 // Init_R_Machine
 // ---------------------------------------------------------------------------
@@ -171,7 +180,7 @@ pub unsafe fn Init_R_Machine(_rho: SEXP) {
         }
 
         setAttrib(ans, R_NamesSymbol(), nms);
-        // defineVar is stubbed since environment system is not fully ported
+        define_machine_binding(_rho, ans);
     }
 }
 
@@ -191,6 +200,7 @@ pub extern "C" fn R_Dec_min_exponent() -> c_int {
 #[cfg(test)]
 mod tests {
     use crate::sexp::globals::*;
+    use crate::sexp::{envir::Environment, memory};
 
     use super::*;
 
@@ -204,6 +214,41 @@ mod tests {
             assert!(info.ibeta != 0);
             assert!(info.eps > 0.0);
             assert!(R_Dec_min_exponent() < 0);
+        }
+    }
+
+    #[test]
+    fn test_init_machine_defines_machine_binding() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let env_raw =
+                memory::with_arena(|arena| arena.alloc_node(crate::sexp::ffi::SEXPTYPE::ENVSXP));
+            Init_R_Machine(env_raw);
+
+            let env = Environment::new(Sexp::from_raw(env_raw).expect("environment"))
+                .expect("environment facade");
+            let machine_symbol =
+                Sexp::from_raw(install(c".Machine".as_ptr())).expect(".Machine symbol");
+            let machine = env
+                .find_in_frame(machine_symbol)
+                .expect(".Machine lookup")
+                .expect(".Machine binding");
+
+            assert_eq!(machine.len(), 19);
+
+            let names = Sexp::from_raw(crate::eval::attrib_core::getAttrib(
+                machine.as_raw(),
+                crate::eval::attrib_core::R_NamesSymbol(),
+            ))
+            .expect("names attribute");
+            assert_eq!(names.len(), 19);
+            assert_eq!(
+                names
+                    .string_elt(0)
+                    .and_then(|name| name.as_str())
+                    .expect("first name"),
+                "double.eps"
+            );
         }
     }
 }
