@@ -3535,6 +3535,10 @@ unsafe fn name_symbol() -> SEXP {
     unsafe { Rf_install(c"name".as_ptr()) }
 }
 
+unsafe fn namespace_env_symbol() -> SEXP {
+    unsafe { Rf_install(c".namespaceEnv".as_ptr()) }
+}
+
 unsafe fn package_name_binding(env: SEXP) -> Option<String> {
     unsafe {
         let value = crate::sexp::envir::R_findVarInFrame(env, package_name_symbol());
@@ -3587,7 +3591,8 @@ unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), S
         define_package_metadata(package, package_env);
         let load_result = source_package_r_files(package, package_dir, package_env);
         if load_result.is_ok() {
-            attach_package_env(package_env);
+            let attach_env = make_package_attach_env(package, package_dir, package_env)?;
+            attach_package_env(attach_env);
         }
         load_result
     }
@@ -3642,6 +3647,113 @@ unsafe fn source_package_r_files(
         }
 
         Ok(())
+    }
+}
+
+unsafe fn make_package_attach_env(
+    package: &str,
+    package_dir: &Path,
+    package_env: SEXP,
+) -> Result<SEXP, String> {
+    unsafe {
+        let Some(exports) = read_namespace_exports(package_dir)? else {
+            return Ok(package_env);
+        };
+
+        let attach_env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        if attach_env.is_null() {
+            return Err(format!(
+                "could not create attach environment for package '{}'",
+                package
+            ));
+        }
+        let _attach_guard = crate::sexp::protect::protect(attach_env);
+
+        define_package_metadata(package, attach_env);
+        crate::sexp::envir::defineVar(namespace_env_symbol(), package_env, attach_env);
+
+        let mut missing = Vec::new();
+        for export in exports {
+            let Ok(symbol_name) = CString::new(export.as_str()) else {
+                missing.push(export);
+                continue;
+            };
+            let symbol = Rf_install(symbol_name.as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(package_env, symbol);
+            if value.is_null()
+                || value == R_NilValue()
+                || value == crate::sexp::globals::R_UnboundValue()
+            {
+                missing.push(export);
+            } else {
+                crate::sexp::envir::defineVar(symbol, value, attach_env);
+            }
+        }
+
+        if missing.is_empty() {
+            Ok(attach_env)
+        } else {
+            Err(format!(
+                "package '{}' has undefined exports: {}",
+                package,
+                missing.join(", ")
+            ))
+        }
+    }
+}
+
+fn read_namespace_exports(package_dir: &Path) -> Result<Option<Vec<String>>, String> {
+    let namespace = package_dir.join("NAMESPACE");
+    if !namespace.is_file() {
+        return Ok(None);
+    }
+    let content = std::fs::read_to_string(&namespace)
+        .map_err(|err| format!("could not read {}: {err}", namespace.display()))?;
+    Ok(Some(parse_namespace_exports(&content)))
+}
+
+fn parse_namespace_exports(content: &str) -> Vec<String> {
+    let mut exports = Vec::new();
+    let uncommented = content
+        .lines()
+        .map(|line| line.split('#').next().unwrap_or_default())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let mut rest = uncommented.as_str();
+    while let Some(idx) = rest.find("export(") {
+        rest = &rest[idx + "export(".len()..];
+        let Some(end) = rest.find(')') else {
+            break;
+        };
+        let args = &rest[..end];
+        for name in args.split(',').filter_map(clean_namespace_name) {
+            if !exports.contains(&name) {
+                exports.push(name);
+            }
+        }
+        rest = &rest[end + 1..];
+    }
+    exports
+}
+
+fn clean_namespace_name(raw: &str) -> Option<String> {
+    let name = raw
+        .split('#')
+        .next()
+        .unwrap_or_default()
+        .trim()
+        .trim_matches('"')
+        .trim_matches('\'')
+        .trim_matches('`')
+        .trim();
+    if name.is_empty() {
+        None
+    } else {
+        Some(name.to_string())
     }
 }
 

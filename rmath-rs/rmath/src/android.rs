@@ -628,9 +628,11 @@ mod tests {
         std::fs::create_dir_all(&r_dir).expect("package R dir");
         std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
             .expect("description");
+        std::fs::write(pkg.join("NAMESPACE"), "export(tiny_value, tiny_label)\n")
+            .expect("namespace");
         std::fs::write(
             r_dir.join("tiny.R"),
-            "tiny_value <- function() 42L\ntiny_label <- \"loaded\"\n",
+            "tiny_secret <- function() 42L\ntiny_value <- function() tiny_secret()\ntiny_label <- \"loaded\"\n",
         )
         .expect("R source");
 
@@ -649,6 +651,8 @@ mod tests {
             session.eval("tiny_label").typed,
             string_vector(vec!["loaded".to_string()])
         );
+        let secret = session.eval("tiny_secret");
+        assert!(matches!(secret.typed, RValue::Error(_)), "{secret:?}");
         assert_eq!(session.eval("library(\"tiny\")").output, "");
         assert_eq!(
             session.eval("find.package(\"tiny\")").typed,
