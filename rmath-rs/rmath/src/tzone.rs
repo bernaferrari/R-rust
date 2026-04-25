@@ -17,7 +17,8 @@ use std::cell::{Cell, UnsafeCell};
 use std::env;
 use std::fs::File;
 use std::io::Read;
-use std::sync::{Mutex, OnceLock};
+
+use crate::sexp::instance::with_required_current_instance;
 
 // ---------------------------------------------------------------------------
 // Constants from tzfile.h
@@ -133,9 +134,9 @@ impl Default for stm {
     }
 }
 
-// Safety: stm is #[repr(C)] and only used behind a Mutex in TzGlobals.
+// Safety: stm is #[repr(C)] and only used inside per-session TzGlobals state.
 // The raw pointer tm_zone points into the chars buffer of a state struct
-// that lives as long as the Mutex guard is held.
+// that lives as long as the active RInstance timezone cache is held.
 unsafe impl Send for stm {}
 
 pub type R_time_t = i64;
@@ -229,10 +230,8 @@ struct tzhead {
 }
 
 // ---------------------------------------------------------------------------
-// Static state -- protected by a global Mutex for thread safety.
-//
-// The C code uses file-scope statics.  We bundle them together behind a
-// single Mutex to avoid deadlocks from lock ordering issues.
+// Runtime state. The original C code uses file-scope statics; the compiled
+// Rust port stores the cache on RInstance so parallel sessions do not share it.
 // ---------------------------------------------------------------------------
 
 struct TzGlobals {
@@ -268,10 +267,27 @@ impl Default for TzGlobals {
     }
 }
 
-static TZ_GLOBALS: OnceLock<Mutex<TzGlobals>> = OnceLock::new();
+/// Per-session timezone runtime state.
+pub struct TzRuntimeState {
+    globals: TzGlobals,
+}
 
-fn get_tz_globals() -> &'static Mutex<TzGlobals> {
-    TZ_GLOBALS.get_or_init(|| Mutex::new(TzGlobals::default()))
+impl TzRuntimeState {
+    fn globals_mut(&mut self) -> &mut TzGlobals {
+        &mut self.globals
+    }
+}
+
+impl Default for TzRuntimeState {
+    fn default() -> Self {
+        Self {
+            globals: TzGlobals::default(),
+        }
+    }
+}
+
+fn with_tz_globals<R>(f: impl FnOnce(&mut TzGlobals) -> R) -> R {
+    with_required_current_instance(|inst| f(inst.tzone_state.globals_mut()))
 }
 
 // Wild abbreviation (three spaces).
@@ -1824,8 +1840,8 @@ fn localsub(g: &mut TzGlobals, timep: &i64, _offset: i32, tmp: &mut stm) -> Opti
     tmp.tm_isdst = ttisp.tt_isdst;
 
     // Set tm_zone to point into the state's chars buffer.
-    // This is safe because the chars buffer lives in the TzGlobals struct
-    // which is behind a Mutex and persists for the lifetime of the program.
+    // This is safe because the chars buffer lives in the active RInstance's
+    // timezone state for at least as long as the returned stm is used.
     let abbr_ind = ttisp.tt_abbrind as usize;
     tmp.tm_zone = sp.chars[abbr_ind..].as_ptr() as *const libc::c_char;
 
@@ -2193,119 +2209,121 @@ fn r_tzset_impl(g: &mut TzGlobals) {
 /// `R_gmtime` -- convert time_t to UTC broken-down time (non-reentrant).
 pub unsafe fn R_gmtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
-        r_tzset_impl(&mut g);
-        let t = if timep.is_null() { 0 } else { *timep };
-        let mut tmp = stm::default();
-        match gmtsub(&mut g, &t, 0, &mut tmp) {
-            Some(_) => {
-                g.tm = tmp;
-                &mut g.tm as *mut stm
+        with_tz_globals(|g| {
+            r_tzset_impl(g);
+            let t = if timep.is_null() { 0 } else { *timep };
+            let mut tmp = stm::default();
+            match gmtsub(g, &t, 0, &mut tmp) {
+                Some(_) => {
+                    g.tm = tmp;
+                    &mut g.tm as *mut stm
+                }
+                None => std::ptr::null_mut(),
             }
-            None => std::ptr::null_mut(),
-        }
+        })
     }
 }
 
 /// `R_gmtime_r` -- convert time_t to UTC broken-down time (reentrant).
 pub unsafe fn R_gmtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
-        let t = *timep;
-        let mut result = stm::default();
-        match gmtsub(&mut g, &t, 0, &mut result) {
-            Some(_) => {
-                std::ptr::copy_nonoverlapping(&result as *const stm, tmp, 1);
-                tmp
+        with_tz_globals(|g| {
+            let t = *timep;
+            let mut result = stm::default();
+            match gmtsub(g, &t, 0, &mut result) {
+                Some(_) => {
+                    std::ptr::copy_nonoverlapping(&result as *const stm, tmp, 1);
+                    tmp
+                }
+                None => std::ptr::null_mut(),
             }
-            None => std::ptr::null_mut(),
-        }
+        })
     }
 }
 
 /// `R_localtime` -- convert time_t to local broken-down time (non-reentrant).
 pub unsafe fn R_localtime(timep: *const i64) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
-        r_tzset_impl(&mut g);
-        let t = if timep.is_null() { 0 } else { *timep };
-        let mut tmp = stm::default();
-        match localsub(&mut g, &t, 0, &mut tmp) {
-            Some(_) => {
-                g.tm = tmp;
-                &mut g.tm as *mut stm
+        with_tz_globals(|g| {
+            r_tzset_impl(g);
+            let t = if timep.is_null() { 0 } else { *timep };
+            let mut tmp = stm::default();
+            match localsub(g, &t, 0, &mut tmp) {
+                Some(_) => {
+                    g.tm = tmp;
+                    &mut g.tm as *mut stm
+                }
+                None => std::ptr::null_mut(),
             }
-            None => std::ptr::null_mut(),
-        }
+        })
     }
 }
 
 /// `R_localtime_r` -- convert time_t to local broken-down time (reentrant).
 pub unsafe fn R_localtime_r(timep: *const i64, tmp: *mut stm) -> *mut stm {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         if timep.is_null() || tmp.is_null() {
             return std::ptr::null_mut();
         }
-        let t = *timep;
-        let mut result = stm::default();
-        match localsub(&mut g, &t, 0, &mut result) {
-            Some(_) => {
-                std::ptr::copy_nonoverlapping(&result as *const stm, tmp, 1);
-                tmp
+        with_tz_globals(|g| {
+            let t = *timep;
+            let mut result = stm::default();
+            match localsub(g, &t, 0, &mut result) {
+                Some(_) => {
+                    std::ptr::copy_nonoverlapping(&result as *const stm, tmp, 1);
+                    tmp
+                }
+                None => std::ptr::null_mut(),
             }
-            None => std::ptr::null_mut(),
-        }
+        })
     }
 }
 
 /// `R_mktime` -- convert local broken-down time to time_t.
 pub unsafe fn R_mktime(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
-        r_tzset_impl(&mut g);
         if tmp.is_null() {
             return WRONG;
         }
-        let mut t = std::ptr::read(tmp);
-        time1(&mut g, &mut t, localsub, 0)
+        with_tz_globals(|g| {
+            r_tzset_impl(g);
+            let mut t = std::ptr::read(tmp);
+            time1(g, &mut t, localsub, 0)
+        })
     }
 }
 
 /// `R_timegm` -- convert UTC broken-down time to time_t.
 pub unsafe fn R_timegm(tmp: *mut stm) -> i64 {
     unsafe {
-        let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
         if tmp.is_null() {
             return WRONG;
         }
-        let mut t = std::ptr::read(tmp);
-        t.tm_isdst = 0;
-        time1(&mut g, &mut t, gmtsub, 0)
+        with_tz_globals(|g| {
+            let mut t = std::ptr::read(tmp);
+            t.tm_isdst = 0;
+            time1(g, &mut t, gmtsub, 0)
+        })
     }
 }
 
 /// `R_tzset` -- set timezone from TZ environment variable.
 pub fn R_tzset() {
-    let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
-    r_tzset_impl(&mut g);
+    with_tz_globals(r_tzset_impl);
 }
 
 /// `R_tzsetwall` -- set timezone from system wall clock.
 pub fn R_tzsetwall() {
-    let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
-    r_tzsetwall(&mut g);
+    with_tz_globals(r_tzsetwall);
 }
 
 /// `R_tzname` -- returns a pointer to the [2]-element array of timezone name
 /// pointers (standard, daylight).
 pub unsafe fn R_tzname() -> *mut *mut libc::c_char {
-    let mut g = get_tz_globals().lock().unwrap_or_else(|e| e.into_inner());
-    r_tzset_impl(&mut g);
-    drop(g);
+    with_tz_globals(r_tzset_impl);
     R_TZNAME.with(|v| v.get() as *mut *mut libc::c_char)
 }
 
@@ -2316,6 +2334,10 @@ pub unsafe fn R_tzname() -> *mut *mut libc::c_char {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn activate_test_session() -> crate::sexp::session::RSession {
+        crate::sexp::session::RSession::new()
+    }
 
     #[test]
     fn test_isleap() {
@@ -2378,6 +2400,7 @@ mod tests {
 
     #[test]
     fn test_gmtime_epoch() {
+        let _session = activate_test_session();
         unsafe {
             let t: i64 = 0;
             let result = R_gmtime(&t);
@@ -2395,6 +2418,7 @@ mod tests {
 
     #[test]
     fn test_mktime_epoch() {
+        let _session = activate_test_session();
         unsafe {
             let mut tm = stm {
                 tm_sec: 0,
@@ -2416,6 +2440,7 @@ mod tests {
 
     #[test]
     fn test_timegm_epoch() {
+        let _session = activate_test_session();
         unsafe {
             let mut tm = stm {
                 tm_sec: 0,
@@ -2437,6 +2462,7 @@ mod tests {
 
     #[test]
     fn test_gmtime_known_date() {
+        let _session = activate_test_session();
         unsafe {
             // 2024-01-01 00:00:00 UTC = 1704067200
             let t: i64 = 1704067200;
@@ -2455,6 +2481,7 @@ mod tests {
 
     #[test]
     fn test_gmtime_r_reentrant() {
+        let _session = activate_test_session();
         unsafe {
             let t1: i64 = 0;
             let t2: i64 = 1704067200;
@@ -2466,6 +2493,27 @@ mod tests {
             assert!(!r2.is_null());
             assert_eq!((*r1).tm_year, 70);
             assert_eq!((*r2).tm_year, 124);
+        }
+    }
+
+    #[test]
+    fn test_tzone_cache_is_session_local_on_same_thread() {
+        use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            let t: i64 = 0;
+            let first_tm = R_gmtime(&t);
+            assert!(!first_tm.is_null());
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            let second_tm = R_gmtime(&t);
+            assert!(!second_tm.is_null());
+
+            assert_ne!(first_tm, second_tm);
+            clear_current_instance();
         }
     }
 }
