@@ -4844,8 +4844,8 @@ pub(crate) fn elt_to_string(x: SEXP, i: R_xlen_t) -> String {
 
 /// R's `lapply(X, FUN)` — apply FUN to each element, return list.
 pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let fun = CAR(CDR(args));
+    let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+    let fun = callable_arg_by_name_or_position(args, &["FUN"], 1);
     if x.is_null() || x == R_NilValue() || fun.is_null() {
         return Rf_allocVector3(SEXPTYPE::VECSXP, 0);
     }
@@ -4872,54 +4872,21 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// R's `sapply(X, FUN)` — like lapply but simplifies to vector.
 pub unsafe fn do_sapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     let list = do_lapply(_call, _op, args, rho);
-    if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
-        return list;
-    }
-    let n = XLENGTH(list);
-    if n == 0 {
-        return list;
-    }
-    let first = crate::sexp::accessors::VECTOR_ELT(list, 0);
-    if first.is_null() || XLENGTH(first) != 1 {
-        return list;
-    }
-    let elem_type = TYPEOF(first);
-    if elem_type != SEXPTYPE::REALSXP
-        && elem_type != SEXPTYPE::INTSXP
-        && elem_type != SEXPTYPE::LGLSXP
-    {
-        return list;
-    }
-    let result = Rf_allocVector3(elem_type, n);
-    if result.is_null() {
-        return list;
-    }
-    let _p = Rf_protect(result);
-    for i in 0..n {
-        let elem = crate::sexp::accessors::VECTOR_ELT(list, i as i64);
-        if !elem.is_null() && TYPEOF(elem) == elem_type {
-            if elem_type == SEXPTYPE::REALSXP {
-                *REAL(result).add(i as usize) = *REAL(elem);
-            } else if elem_type == SEXPTYPE::INTSXP {
-                *INTEGER(result).add(i as usize) = *INTEGER(elem);
-            } else if elem_type == SEXPTYPE::LGLSXP {
-                *LOGICAL(result).add(i as usize) = *LOGICAL(elem);
-            }
-        }
-    }
-    crate::sexp::protect::Rf_unprotect(1);
-    result
+    simplify_scalar_list(list)
 }
 
-/// R's `vapply(X, FUN, FUN.VALUE)` — simplified as lapply.
+/// R's `vapply(X, FUN, FUN.VALUE)` — apply and simplify using FUN.VALUE's scalar type.
 pub unsafe fn do_vapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    do_lapply(_call, _op, args, rho)
+    let template_expr = arg_by_name_or_position(args, &["FUN.VALUE"], 2);
+    let template_type = fun_value_type(template_expr, rho);
+    let list = do_lapply(_call, _op, args, rho);
+    simplify_scalar_list_as(list, template_type)
 }
 
 /// R's `Map(f, ...)` — apply f element-wise.
 pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let fun = CAR(args);
-    let x = CAR(CDR(args));
+    let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0);
+    let x = eval_arg_by_name_or_position(args, &[], 1, rho);
     if fun.is_null() || x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
@@ -4945,8 +4912,8 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `Filter(f, x)` — keep elements where f returns TRUE.
 pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let fun = CAR(args);
-    let x = CAR(CDR(args));
+    let fun = callable_arg_by_name_or_position(args, &["f", "FUN"], 0);
+    let x = eval_arg_by_name_or_position(args, &["x"], 1, rho);
     if fun.is_null() || x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
@@ -4982,8 +4949,8 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `do.call(what, args)` — call function with list of args.
 pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let fun = CAR(args);
-    let arg_list = CAR(CDR(args));
+    let fun = callable_arg_by_name_or_position(args, &["what"], 0);
+    let arg_list = eval_arg_by_name_or_position(args, &["args"], 1, rho);
     if fun.is_null() || arg_list.is_null() {
         return R_NilValue();
     }
@@ -5004,6 +4971,129 @@ pub unsafe fn do_do_call(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP 
         (*call_sexp).sxpinfo.set_type(SEXPTYPE::LANGSXP);
     }
     crate::eval::eval::Rf_eval(call_sexp, rho)
+}
+
+fn callable_arg_by_name_or_position(args: SEXP, names: &[&str], position: usize) -> SEXP {
+    unsafe { callable_expr(arg_by_name_or_position(args, names, position)) }
+}
+
+fn eval_arg_by_name_or_position(args: SEXP, names: &[&str], position: usize, rho: SEXP) -> SEXP {
+    unsafe {
+        let expr = arg_by_name_or_position(args, names, position);
+        if expr.is_null() || expr == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(expr, rho)
+        }
+    }
+}
+
+fn callable_expr(fun: SEXP) -> SEXP {
+    unsafe {
+        if fun.is_null() || fun == R_NilValue() {
+            return fun;
+        }
+        if TYPEOF(fun) == SEXPTYPE::STRSXP && XLENGTH(fun) > 0 {
+            let charsxp = STRING_ELT(fun, 0);
+            if charsxp.is_null() || charsxp == crate::sexp::globals::R_NaString() {
+                return R_NilValue();
+            }
+            let name = CHAR(charsxp);
+            if name.is_null() {
+                R_NilValue()
+            } else {
+                Rf_install(name)
+            }
+        } else {
+            fun
+        }
+    }
+}
+
+fn fun_value_type(template_expr: SEXP, rho: SEXP) -> SEXPTYPE {
+    unsafe {
+        if !template_expr.is_null()
+            && template_expr != R_NilValue()
+            && TYPEOF(template_expr) == SEXPTYPE::LANGSXP
+        {
+            let head = CAR(template_expr);
+            if TYPEOF(head) == SEXPTYPE::SYMSXP {
+                if let Some(name) = symbol_name(head) {
+                    if let Some(template_type) = match name.as_str() {
+                        "integer" => Some(SEXPTYPE::INTSXP),
+                        "numeric" | "double" => Some(SEXPTYPE::REALSXP),
+                        "logical" => Some(SEXPTYPE::LGLSXP),
+                        "character" => Some(SEXPTYPE::STRSXP),
+                        _ => None,
+                    } {
+                        return template_type;
+                    }
+                }
+            }
+        }
+        let template = if template_expr.is_null() || template_expr == R_NilValue() {
+            R_NilValue()
+        } else {
+            crate::eval::eval::Rf_eval(template_expr, rho)
+        };
+        SEXPTYPE(TYPEOF(template))
+    }
+}
+
+fn simplify_scalar_list(list: SEXP) -> SEXP {
+    unsafe {
+        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
+            return list;
+        }
+        let n = XLENGTH(list);
+        if n == 0 {
+            return list;
+        }
+        let first = VECTOR_ELT(list, 0);
+        if first.is_null() || XLENGTH(first) != 1 {
+            return list;
+        }
+        simplify_scalar_list_as(list, SEXPTYPE(TYPEOF(first)))
+    }
+}
+
+fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
+    unsafe {
+        if list.is_null() || TYPEOF(list) != SEXPTYPE::VECSXP {
+            return list;
+        }
+        if elem_type != SEXPTYPE::REALSXP
+            && elem_type != SEXPTYPE::INTSXP
+            && elem_type != SEXPTYPE::LGLSXP
+            && elem_type != SEXPTYPE::STRSXP
+        {
+            return list;
+        }
+        let n = XLENGTH(list);
+        let result = Rf_allocVector3(elem_type, n);
+        if result.is_null() {
+            return list;
+        }
+        let _p = Rf_protect(result);
+        for i in 0..n {
+            let elem = VECTOR_ELT(list, i as i64);
+            if elem.is_null() || TYPEOF(elem) != elem_type || XLENGTH(elem) != 1 {
+                crate::sexp::protect::Rf_unprotect(1);
+                return list;
+            }
+            if elem_type == SEXPTYPE::REALSXP {
+                *REAL(result).add(i as usize) = *REAL(elem);
+            } else if elem_type == SEXPTYPE::INTSXP {
+                *INTEGER(result).add(i as usize) = *INTEGER(elem);
+            } else if elem_type == SEXPTYPE::LGLSXP {
+                *LOGICAL(result).add(i as usize) = *LOGICAL(elem);
+            } else if elem_type == SEXPTYPE::STRSXP {
+                SET_STRING_ELT(result, i, STRING_ELT(elem, 0));
+            }
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
 }
 
 fn extract_element(x: SEXP, i: R_xlen_t) -> SEXP {
@@ -5081,9 +5171,9 @@ unsafe fn extract_matrix_col(x: SEXP, nrow: R_xlen_t, _ncol: R_xlen_t, col: R_xl
 /// - MARGIN=1: apply FUN to each row, return vector of length nrow
 /// - MARGIN=2: apply FUN to each column, return vector of length ncol
 pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let margin_arg = CAR(CDR(args));
-    let fun = CAR(CDR(CDR(args)));
+    let x = eval_arg_by_name_or_position(args, &["X"], 0, rho);
+    let margin_arg = eval_arg_by_name_or_position(args, &["MARGIN"], 1, rho);
+    let fun = callable_arg_by_name_or_position(args, &["FUN"], 2);
     if x.is_null() || x == R_NilValue() || fun.is_null() {
         return R_NilValue();
     }
@@ -5118,7 +5208,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
         crate::sexp::protect::Rf_unprotect(1);
-        result
+        simplify_scalar_list(result)
     } else if margin == 2 {
         // Apply over columns
         let result = Rf_allocVector3(SEXPTYPE::VECSXP, ncol);
@@ -5137,7 +5227,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::sexp::accessors::SET_VECTOR_ELT(result, j as i64, val);
         }
         crate::sexp::protect::Rf_unprotect(1);
-        result
+        simplify_scalar_list(result)
     } else {
         R_NilValue()
     }

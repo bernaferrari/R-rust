@@ -702,6 +702,62 @@ fn apply_builtin_safe<'a>(
         return Ok(unsafe { Sexp::from_raw_unchecked(tmp) });
     }
 
+    if matches!(
+        op_name.as_str(),
+        "apply" | "lapply" | "sapply" | "vapply" | "Map" | "Filter" | "do.call"
+    ) {
+        let tmp = unsafe {
+            match op_name.as_str() {
+                "apply" => crate::mainutils::essentials::do_apply(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+                "lapply" => crate::mainutils::essentials::do_lapply(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+                "sapply" => crate::mainutils::essentials::do_sapply(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+                "vapply" => crate::mainutils::essentials::do_vapply(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+                "Map" => crate::mainutils::essentials::do_map(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+                "Filter" => crate::mainutils::essentials::do_filter(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+                _ => crate::mainutils::essentials::do_do_call(
+                    call.as_raw(),
+                    fun.as_raw(),
+                    args.as_raw(),
+                    rho.as_raw(),
+                ),
+            }
+        };
+        if flag < 2 && !primitive_controls_visibility(&op_name) {
+            unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
+        }
+        return Ok(unsafe { Sexp::from_raw_unchecked(tmp) });
+    }
+
     let evaled_args =
         unsafe { super::dispatch::evalList(args.as_raw(), rho.as_raw(), call.as_raw(), -1) };
 
