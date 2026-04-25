@@ -19,22 +19,22 @@ use uniffi::Object;
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum RError {
-    #[error("Failed to initialize R session")]
-    InitFailed,
+    #[error("Failed to initialize R session: {0}")]
+    InitFailed(String),
     #[error("Evaluation error: {0}")]
     EvalError(String),
     #[error("Render error: {0}")]
     RenderError(String),
     #[error("Session is already closed")]
     SessionClosed,
-    #[error("Invalid input")]
-    InvalidInput,
+    #[error("Invalid input: {0}")]
+    InvalidInput(String),
     #[error("Internal error: {0}")]
     InternalError(String),
     #[error("Operation cancelled")]
     Cancelled,
-    #[error("Session busy")]
-    SessionBusy,
+    #[error("Session busy: {0}")]
+    SessionBusy(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -357,6 +357,22 @@ fn current_callback(
     callback.lock().unwrap_or_else(|e| e.into_inner()).clone()
 }
 
+fn validate_package_name(package: &str) -> Result<(), RError> {
+    if package.trim().is_empty() {
+        return Err(RError::InvalidInput("package name is empty".to_string()));
+    }
+    Ok(())
+}
+
+fn validate_plot_dimensions(width: u32, height: u32) -> Result<(), RError> {
+    if width == 0 || height == 0 {
+        return Err(RError::InvalidInput(
+            "plot width and height must be greater than zero".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 fn spawn_worker(
     cmd_rx: Receiver<SessionCommand>,
     callback: Arc<Mutex<Option<Arc<dyn SessionCallback>>>>,
@@ -383,7 +399,7 @@ fn spawn_worker(
                     );
                     let result = session
                         .configure_android_runtime(&embed_paths)
-                        .map_err(|_| RError::InitFailed);
+                        .map_err(|err| RError::InitFailed(err.to_string()));
                     let _ = reply.send(result);
                 }
                 SessionCommand::RuntimeInfo { reply } => {
@@ -474,6 +490,20 @@ fn spawn_worker(
     });
 }
 
+impl RSession {
+    fn request<T>(
+        &self,
+        command: impl FnOnce(Sender<Result<T, RError>>) -> SessionCommand,
+    ) -> Result<T, RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(command(reply_tx))
+            .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+}
+
 #[uniffi::export]
 impl RSession {
     #[uniffi::constructor]
@@ -497,21 +527,20 @@ impl RSession {
         *self.callback.lock().unwrap_or_else(|e| e.into_inner()) = Some(callback.into());
     }
 
+    pub fn is_active(&self) -> bool {
+        self.cmd_tx
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
     pub fn eval(&self, code: String) -> Result<String, RError> {
         self.eval_result(code).map(|result| result.output)
     }
 
     pub fn eval_result(&self, code: String) -> Result<EvalResult, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
         self.cancelled.reset();
-        tx.send(SessionCommand::Eval {
-            code,
-            reply: reply_tx,
-        })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        self.request(|reply| SessionCommand::Eval { code, reply })
     }
 
     pub fn configure_android_paths(
@@ -528,81 +557,35 @@ impl RSession {
     }
 
     pub fn configure_android_runtime(&self, paths: AndroidRuntimePaths) -> Result<(), RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::ConfigurePaths {
-            paths,
-            reply: reply_tx,
-        })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        self.request(|reply| SessionCommand::ConfigurePaths { paths, reply })
     }
 
     pub fn runtime_info(&self) -> Result<RuntimeInfo, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::RuntimeInfo { reply: reply_tx })
-            .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        self.request(|reply| SessionCommand::RuntimeInfo { reply })
     }
 
     pub fn package_available(&self, package: String) -> Result<bool, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::PackageAvailable {
-            package,
-            reply: reply_tx,
-        })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        validate_package_name(&package)?;
+        self.request(|reply| SessionCommand::PackageAvailable { package, reply })
     }
 
     pub fn package_path(&self, package: String) -> Result<Option<String>, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::PackagePath {
-            package,
-            reply: reply_tx,
-        })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        validate_package_name(&package)?;
+        self.request(|reply| SessionCommand::PackagePath { package, reply })
     }
 
     pub fn package_info(&self, package: String) -> Result<Option<PackageInfo>, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::PackageInfo {
-            package,
-            reply: reply_tx,
-        })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        validate_package_name(&package)?;
+        self.request(|reply| SessionCommand::PackageInfo { package, reply })
     }
 
     pub fn installed_packages(&self) -> Result<Vec<PackageInfo>, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::InstalledPackages { reply: reply_tx })
-            .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        self.request(|reply| SessionCommand::InstalledPackages { reply })
     }
 
     pub fn load_package(&self, package: String) -> Result<(), RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::LoadPackage {
-            package,
-            reply: reply_tx,
-        })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+        validate_package_name(&package)?;
+        self.request(|reply| SessionCommand::LoadPackage { package, reply })
     }
 
     pub fn eval_async(&self, code: String) -> Result<u64, RError> {
@@ -620,20 +603,17 @@ impl RSession {
     }
 
     pub fn render(&self, code: String, width: u32, height: u32) -> Result<PlotResult, RError> {
-        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
-        let (reply_tx, reply_rx) = channel();
-        tx.send(SessionCommand::Render {
+        validate_plot_dimensions(width, height)?;
+        self.request(|reply| SessionCommand::Render {
             code,
             width,
             height,
-            reply: reply_tx,
+            reply,
         })
-        .map_err(|_| RError::SessionClosed)?;
-        reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
 
     pub fn render_async(&self, code: String, width: u32, height: u32) -> Result<u64, RError> {
+        validate_plot_dimensions(width, height)?;
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
@@ -650,6 +630,14 @@ impl RSession {
 
     pub fn cancel(&self) {
         self.cancelled.cancel();
+    }
+
+    pub fn cancel_current_operation(&self) {
+        self.cancel();
+    }
+
+    pub fn close(&self) {
+        self.destroy();
     }
 
     pub fn destroy(&self) {
@@ -705,9 +693,36 @@ mod tests {
     fn cancel_without_active_eval_does_not_poison_next_eval() {
         let session = RSession::new().expect("session");
 
-        session.cancel();
+        session.cancel_current_operation();
 
         assert_eq!(session.eval("1 + 1".to_string()).unwrap(), "[1] 2");
+    }
+
+    #[test]
+    fn lifecycle_aliases_close_session() {
+        let session = RSession::new().expect("session");
+
+        assert!(session.is_active());
+        session.close();
+        assert!(!session.is_active());
+        assert!(matches!(
+            session.eval("1 + 1".to_string()),
+            Err(RError::SessionClosed)
+        ));
+    }
+
+    #[test]
+    fn validates_android_facing_inputs() {
+        let session = RSession::new().expect("session");
+
+        assert!(matches!(
+            session.package_available("   ".to_string()),
+            Err(RError::InvalidInput(message)) if message.contains("package")
+        ));
+        assert!(matches!(
+            session.render("plot(c(1), c(1))".to_string(), 0, 120),
+            Err(RError::InvalidInput(message)) if message.contains("width")
+        ));
     }
 
     #[test]

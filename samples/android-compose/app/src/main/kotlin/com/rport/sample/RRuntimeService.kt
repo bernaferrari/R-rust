@@ -10,6 +10,7 @@ import android.os.Binder
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import com.rport.uniffi.EvalResult
 import com.rport.uniffi.ProgressUpdate
 import com.rport.uniffi.RSession
 import com.rport.uniffi.SessionCallback
@@ -58,6 +59,16 @@ class RRuntimeService : Service() {
         override fun on_plot_ready(plot: com.rport.uniffi.PlotResult) {
             // Broadcast plot ready event
         }
+
+        override fun on_eval_complete(result: EvalResult) {
+            if (result.output.isNotBlank()) {
+                _consoleOutput.tryEmit(_consoleOutput.value + result.output + "\n")
+            }
+        }
+
+        override fun on_error(error: String) {
+            _consoleOutput.tryEmit(_consoleOutput.value + "Error: $error\n")
+        }
     }
 
     override fun onCreate() {
@@ -81,7 +92,7 @@ class RRuntimeService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
-        rSession.destroy()
+        rSession.close()
         serviceScope.cancel()
         Log.d(TAG, "R Runtime service destroyed")
     }
@@ -93,9 +104,11 @@ class RRuntimeService : Service() {
         serviceScope.launch {
             try {
                 val result = withContext(Dispatchers.IO) {
-                    rSession.eval(code)
+                    rSession.eval_result(code)
                 }
-                _consoleOutput.tryEmit(_consoleOutput.value + result + "\n")
+                if (result.output.isNotBlank()) {
+                    _consoleOutput.tryEmit(_consoleOutput.value + result.output + "\n")
+                }
                 _sessionState.value = SessionState.IDLE
             } catch (e: Exception) {
                 _consoleOutput.tryEmit(_consoleOutput.value + "Error: ${e.message}\n")
@@ -123,7 +136,7 @@ class RRuntimeService : Service() {
     }
 
     fun cancelExecution() {
-        rSession.cancel()
+        rSession.cancel_current_operation()
         _sessionState.value = SessionState.CANCELLED
     }
 
