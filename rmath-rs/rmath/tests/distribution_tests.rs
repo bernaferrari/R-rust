@@ -71,7 +71,7 @@ fn test_qnorm_975() {
 fn test_dt_at_zero_df1() {
     let result = t_dist::dt_inner(0.0, 1.0, false);
     assert!(
-        approx_eq(result, 0.3183098861837907, 1e-10),
+        approx_eq(result, std::f64::consts::FRAC_1_PI, 1e-10),
         "dt(0,1) = {result}, expected 0.3183098861837907"
     );
 }

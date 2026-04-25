@@ -74,7 +74,7 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
         // nothing
     } else if t == SEXPTYPE::CHARSXP {
         /* CHARSXP */
-        vcnt = (LENGTH(s) as usize + 1 + 7) / 8;
+        vcnt = (LENGTH(s) as usize + 1).div_ceil(8);
         is_vec = true;
     } else if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
         /* LGLSXP, INTSXP */
@@ -112,7 +112,7 @@ unsafe fn objectsize(s: SEXP) -> R_size_t {
         cnt += objectsize(crate::main::memory_main::R_ExternalPtrProtected(s));
     } else if t == SEXPTYPE::RAWSXP {
         /* RAWSXP */
-        vcnt = (XLENGTH(s) as usize + 7) / 8;
+        vcnt = (XLENGTH(s) as usize).div_ceil(8);
         is_vec = true;
     } else if t == SEXPTYPE::S4SXP.0 {
         /* OBJSXP */

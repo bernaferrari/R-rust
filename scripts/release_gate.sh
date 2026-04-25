@@ -8,7 +8,7 @@ RUN_ANDROID=1
 RUN_ANDROID_PACKAGE=0
 RUN_UNIFFI_BINDINGS=0
 RUN_DESKTOP_SMOKE=0
-RUN_STRICT_CLIPPY=0
+RUN_STRICT_CLIPPY=1
 
 usage() {
     cat <<'USAGE'
@@ -30,8 +30,8 @@ Options:
   --android-package   Run scripts/android_package_smoke.sh --check.
   --uniffi-bindings   Run scripts/generate_uniffi_bindings.sh --check.
   --desktop-smoke     Run scripts/desktop_host_smoke.sh.
-  --strict-clippy     Run the current aspirational clippy gate. This is tracked
-                      by bead rport-0dbg and is not expected to pass yet.
+  --strict-clippy     Run strict clippy. This is the default.
+  --no-strict-clippy  Skip strict clippy for focused local debugging only.
   -h, --help          Show this help.
 USAGE
 }
@@ -63,6 +63,10 @@ while (($# > 0)); do
             ;;
         --strict-clippy)
             RUN_STRICT_CLIPPY=1
+            shift
+            ;;
+        --no-strict-clippy)
+            RUN_STRICT_CLIPPY=0
             shift
             ;;
         -h|--help)
@@ -141,7 +145,6 @@ else
     echo "Release gate mode: default"
 fi
 echo "Rust warning policy: using RUSTFLAGS='$RUSTFLAGS_FOR_BUILD'."
-echo "Strict clippy zero-warning cleanup is tracked by bead rport-0dbg."
 
 section "Rust formatting"
 run cargo fmt --check --all
@@ -149,6 +152,9 @@ run cargo fmt --check --all
 if [[ "$RUN_STRICT_CLIPPY" -eq 1 ]]; then
     section "Strict clippy"
     run cargo clippy --all-targets --all-features -- -D warnings
+else
+    section "Strict clippy"
+    echo "Skipped by --no-strict-clippy. Do not use this mode for release signoff."
 fi
 
 section "Rust tests"

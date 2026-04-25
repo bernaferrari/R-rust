@@ -668,7 +668,7 @@ fn test_session_eval_parsed_exprs() {
     assert!(r3.output.contains("hello"));
 
     let r4 = session.eval("TRUE");
-    assert!(r4.output.contains("TRUE") || r4.output.contains("1"));
+    assert!(r4.output.contains("TRUE") || r4.output.contains('1'));
 
     let r5 = session.eval("NULL");
     assert_eq!(r5.output, "NULL");

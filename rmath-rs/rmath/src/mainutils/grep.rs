@@ -1551,7 +1551,7 @@ mod tests {
         let nodes = test_ok(compile_ere("[abc]"));
         assert_eq!(nodes.len(), 1);
         if let EreNode::CharClass(chars, negated) = &nodes[0] {
-            assert_eq!(chars, &[b'a', b'b', b'c']);
+            assert_eq!(chars, b"abc");
             assert!(!negated);
         } else {
             panic!("Expected CharClass");

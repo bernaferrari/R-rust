@@ -805,13 +805,6 @@ fn bup(a: f64, b: f64, x: f64, y: f64, n: i32, eps: f64, give_log: bool) -> f64 
 
         // ADD THE INCREASING TERMS OF THE SERIES - if k > 0
         // L30:
-        for i in 0..k {
-            let l = i as f64;
-            dd *= (apb + l) / (ap1 + l) * x;
-            dd += dd - dd + dd; // just to suppress unused warning; we use dd below
-            // Actually we want: w += d but we're computing dd
-        }
-        // Redo properly:
         dd = d;
         for i in 0..k {
             let l = i as f64;

@@ -2619,6 +2619,7 @@ unsafe fn appendRawToFile(file: SEXP, bytes: SEXP) -> SEXP {
         }
         let mut fp = match OpenOptions::new()
             .create(true)
+            .truncate(false)
             .read(true)
             .write(true)
             .open(&path)

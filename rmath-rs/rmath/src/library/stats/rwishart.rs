@@ -27,6 +27,7 @@ use crate::attrib_core::{R_DimSymbol, getAttrib, setAttrib};
 use crate::main::coerce::{asInteger, asReal, coerceVector};
 use crate::main::errors::Rf_error;
 use crate::main::random::{GetRNGstate, PutRNGstate};
+use crate::modules::lapack::backend;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{NA_REAL, SEXP, SEXPTYPE};
@@ -108,9 +109,6 @@ unsafe extern "C" {
         ldc: *const c_int,
     );
 }
-
-#[cfg(not(feature = "fortran-backend"))]
-use crate::modules::lapack::backend;
 
 // ---------------------------------------------------------------------------
 // std_rWishart_factor: simulate Cholesky factor of standardized Wishart

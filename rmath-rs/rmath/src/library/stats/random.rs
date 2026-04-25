@@ -730,7 +730,7 @@ pub unsafe fn do_rmultinom(sn: SEXP, ssize: SEXP, prob: SEXP) -> SEXP {
     let mut rn_buf: Vec<f64> = vec![0.0; k as usize];
     for i in 0..n as R_xlen_t {
         let ik = i * k as R_xlen_t;
-        let _ = crate::nmath::dist::multinom::rmultinom_inner(
+        crate::nmath::dist::multinom::rmultinom_inner(
             size,
             std::slice::from_raw_parts(REAL(prob), k as usize),
             &mut rn_buf,

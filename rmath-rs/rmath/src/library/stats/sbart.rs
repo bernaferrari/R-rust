@@ -171,7 +171,7 @@ unsafe fn sgram(
                             + yw2[ii] * yw2[jj] / 3.0);
                     *sg0.add(idx) += contrib;
                 }
-                if jj + 1 <= 3 {
+                if jj < 3 {
                     let idx = ileft_u - 4 + ii + 1;
                     if idx < nk {
                         let contrib = wpt
@@ -213,7 +213,7 @@ unsafe fn sgram(
                             + yw2[ii] * yw2[jj] / 3.0);
                     *sg0.add(idx) += contrib;
                 }
-                if jj + 1 <= 2 {
+                if jj < 2 {
                     let idx = ileft_u - 3 + ii + 1;
                     if idx < nk {
                         let contrib = wpt
@@ -245,7 +245,7 @@ unsafe fn sgram(
                             + yw2[ii] * yw2[jj] / 3.0);
                     *sg0.add(idx) += contrib;
                 }
-                if jj + 1 <= 1 {
+                if jj < 1 {
                     let idx = ileft_u - 2 + ii + 1;
                     if idx < nk {
                         let contrib = wpt

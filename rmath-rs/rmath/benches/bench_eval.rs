@@ -1,15 +1,13 @@
-#![feature(test)]
 #![allow(non_snake_case, non_upper_case_globals)]
 
-extern crate test;
+use std::hint::black_box;
+use std::time::Instant;
 
-use std::os::raw::c_int;
-use test::Bencher;
-
-use rmath::sexp::constructors::*;
+use rmath::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, Rf_cons};
 use rmath::sexp::ffi::{SEXP, SEXPTYPE};
 use rmath::sexp::globals::R_NilValue;
-use rmath::sexp::object::Sexp;
+
+const DEFAULT_ITERS: usize = 1_000;
 
 fn make_env() -> SEXP {
     unsafe {
@@ -24,68 +22,57 @@ fn make_env() -> SEXP {
     }
 }
 
-#[bench]
-fn bench_alloc_integer_vector(b: &mut Bencher) {
-    b.iter(|| unsafe {
+fn run<T>(name: &str, iterations: usize, mut f: impl FnMut() -> T) {
+    let start = Instant::now();
+    for _ in 0..iterations {
+        black_box(f());
+    }
+    eprintln!("{name}: {:?} for {iterations} iterations", start.elapsed());
+}
+
+fn main() {
+    run("alloc_integer_vector", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let v = Rf_allocVector(SEXPTYPE::INTSXP.0, 1000);
         assert!(!v.is_null());
         v
     });
-}
 
-#[bench]
-fn bench_alloc_real_vector(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("alloc_real_vector", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let v = Rf_allocVector(SEXPTYPE::REALSXP.0, 1000);
         assert!(!v.is_null());
         v
     });
-}
 
-#[bench]
-fn bench_alloc_string_vector(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("alloc_string_vector", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let v = Rf_allocVector(SEXPTYPE::STRSXP.0, 100);
         assert!(!v.is_null());
         v
     });
-}
 
-#[bench]
-fn bench_eval_self_integer(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("eval_self_integer", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let env = make_env();
         let val = Rf_ScalarInteger(42);
         rmath::eval::eval::Rf_eval(val, env)
     });
-}
 
-#[bench]
-fn bench_eval_self_real(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("eval_self_real", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let env = make_env();
-        let val = Rf_ScalarReal(3.14);
+        let val = Rf_ScalarReal(std::f64::consts::PI);
         rmath::eval::eval::Rf_eval(val, env)
     });
-}
 
-#[bench]
-fn bench_eval_null(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("eval_null", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let env = make_env();
         rmath::eval::eval::Rf_eval(R_NilValue(), env)
     });
-}
 
-#[bench]
-fn bench_cons_pairlist_100(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("cons_pairlist_100", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         let mut list = R_NilValue();
         for _ in 0..100 {
@@ -94,79 +81,51 @@ fn bench_cons_pairlist_100(b: &mut Bencher) {
         }
         list
     });
-}
 
-#[bench]
-fn bench_altrep_intseq_create(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("altrep_intseq_create", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         rmath::mainutils::altrep::R_compact_intseq(1, 1000)
     });
-}
 
-#[bench]
-fn bench_altrep_intseq_access(b: &mut Bencher) {
-    let seq = unsafe { rmath::mainutils::altrep::R_compact_intseq(1, 1000) };
-    b.iter(|| unsafe {
+    let int_seq = unsafe { rmath::mainutils::altrep::R_compact_intseq(1, 1000) };
+    run("altrep_intseq_access", DEFAULT_ITERS, || unsafe {
         for i in 0..1000 {
-            test::black_box(rmath::mainutils::altrep::ALTINTEGER_ELT(seq, i));
+            black_box(rmath::mainutils::altrep::ALTINTEGER_ELT(int_seq, i));
         }
     });
-}
 
-#[bench]
-fn bench_altrep_realseq_create(b: &mut Bencher) {
-    b.iter(|| unsafe {
+    run("altrep_realseq_create", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         rmath::mainutils::altrep::R_compact_realseq(0.0, 0.001, 1000)
     });
-}
 
-#[bench]
-fn bench_altrep_realseq_access(b: &mut Bencher) {
-    let seq = unsafe { rmath::mainutils::altrep::R_compact_realseq(0.0, 1.0, 1000) };
-    b.iter(|| unsafe {
+    let real_seq = unsafe { rmath::mainutils::altrep::R_compact_realseq(0.0, 1.0, 1000) };
+    run("altrep_realseq_access", DEFAULT_ITERS, || unsafe {
         for i in 0..1000 {
-            test::black_box(rmath::mainutils::altrep::ALTREAL_ELT(seq, i));
+            black_box(rmath::mainutils::altrep::ALTREAL_ELT(real_seq, i));
         }
     });
-}
 
-#[bench]
-fn bench_output_capture(b: &mut Bencher) {
-    b.iter(|| {
+    run("output_capture", DEFAULT_ITERS, || unsafe {
         rmath::sexp::memory::reset_arena();
         rmath::sexp::output::start_capture();
-        unsafe {
-            let val = Rf_ScalarInteger(42);
-            rmath::sexp::output::Rf_PrintValue(val);
-        }
+        let val = Rf_ScalarInteger(42);
+        rmath::sexp::output::Rf_PrintValue(val);
         let output = rmath::sexp::output::stop_capture();
         assert!(!output.stdout.is_empty());
     });
-}
 
-#[bench]
-fn bench_math_dnorm(b: &mut Bencher) {
-    b.iter(|| unsafe { rmath::dist::normal::Rf_dnorm(0.0, 0.0, 1.0, 0) });
-}
-
-#[bench]
-fn bench_math_pnorm(b: &mut Bencher) {
-    b.iter(|| unsafe { rmath::dist::normal::Rf_pnorm(1.96, 0.0, 1.0, 1, 0) });
-}
-
-#[bench]
-fn bench_math_qnorm(b: &mut Bencher) {
-    b.iter(|| unsafe { rmath::dist::normal::Rf_qnorm(0.975, 0.0, 1.0, 1, 0) });
-}
-
-#[bench]
-fn bench_math_rnorm(b: &mut Bencher) {
-    b.iter(|| unsafe { rmath::dist::normal::Rf_rnorm(0.0, 1.0) });
-}
-
-#[bench]
-fn bench_unif_rand(b: &mut Bencher) {
-    b.iter(|| rmath::rng::unif_rand());
+    run("math_dnorm", DEFAULT_ITERS, || {
+        rmath::dist::normal::Rf_dnorm(0.0, 0.0, 1.0, 0)
+    });
+    run("math_pnorm", DEFAULT_ITERS, || {
+        rmath::dist::normal::Rf_pnorm(1.96, 0.0, 1.0, 1, 0)
+    });
+    run("math_qnorm", DEFAULT_ITERS, || {
+        rmath::dist::normal::Rf_qnorm(0.975, 0.0, 1.0, 1, 0)
+    });
+    run("math_rnorm", DEFAULT_ITERS, || {
+        rmath::dist::normal::Rf_rnorm(0.0, 1.0)
+    });
+    run("unif_rand", DEFAULT_ITERS, rmath::rng::unif_rand);
 }

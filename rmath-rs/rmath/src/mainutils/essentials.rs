@@ -13188,7 +13188,7 @@ pub unsafe fn do_capture_output(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -
     }
 
     crate::sexp::output::start_capture();
-    crate::eval::eval::Rf_eval(expr, rho);
+    let _ = crate::eval::eval::Rf_eval(expr, rho);
     let captured = crate::sexp::output::stop_capture();
 
     let stdout = captured.stdout.trim_end_matches('\n');

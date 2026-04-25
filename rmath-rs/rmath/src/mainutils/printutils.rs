@@ -665,7 +665,7 @@ pub unsafe fn EncodeComplex(
         let is_na = |v: f64| v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
 
         let result = if is_na(r) || is_na(i) {
-            na.to_string()
+            na.clone()
         } else {
             let re_str = format!("{}", r);
             let flag_neg_im = i < 0.0;

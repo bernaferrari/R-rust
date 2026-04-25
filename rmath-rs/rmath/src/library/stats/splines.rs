@@ -464,7 +464,7 @@ pub unsafe fn SplineCoef(method: SEXP, x: SEXP, y: SEXP) -> SEXP {
 
     let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 7));
     SET_VECTOR_ELT(ans, 0, Rf_ScalarInteger(m));
-    if n > std::i32::MAX as usize {
+    if n > i32::MAX as usize {
         SET_VECTOR_ELT(ans, 1, Rf_ScalarReal(n as c_double));
     } else {
         SET_VECTOR_ELT(ans, 1, Rf_ScalarInteger(n as c_int));

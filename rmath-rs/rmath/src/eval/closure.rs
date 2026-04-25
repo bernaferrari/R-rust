@@ -10,7 +10,7 @@
 use std::os::raw::c_int;
 use std::ptr;
 
-use crate::sexp::accessors::{BODY, CAR, CDR, SETCAR, SETCDR, SETTAG, TAG, TYPEOF};
+use crate::sexp::accessors::{BODY, CAR, CDR, SETCAR, TAG, TYPEOF};
 use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};

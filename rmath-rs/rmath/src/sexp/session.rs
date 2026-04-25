@@ -29,20 +29,23 @@
 use std::ffi::CString;
 use std::os::raw::c_int;
 use std::panic::{AssertUnwindSafe, catch_unwind};
+#[cfg(test)]
 use std::ptr;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use super::context::{RError, RSignal};
-use super::ffi::{SEXP, SEXPTYPE};
-use super::globals::{
-    R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_RestartToken, R_UnboundValue,
-};
+use super::ffi::SEXP;
+#[cfg(test)]
+use super::ffi::SEXPTYPE;
+use super::globals::{R_MissingArg, R_NilValue, R_RestartToken, R_UnboundValue};
 use super::instance::{
     RInstance, clear_current_instance_if, replace_current_instance, set_current_instance,
 };
 use super::memory::{ArenaBudget, RArena};
 use super::object::Sexp;
-use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
+#[cfg(test)]
+use super::protect::Rf_protect;
+use super::protect::{R_ProtectCount, Rf_unprotect};
 
 /// Error returned by safe session evaluation APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]

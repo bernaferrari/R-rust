@@ -200,7 +200,7 @@ pub unsafe fn dqrdc2(
                 *x.add(l + l * ldx) = 1.0 + *x.add(l + l * ldx);
 
                 // Apply transformation to remaining columns
-                if p >= l + 1 {
+                if p > l {
                     for j in (l + 1)..p {
                         let t = -ddot(
                             (n - l) as c_int,

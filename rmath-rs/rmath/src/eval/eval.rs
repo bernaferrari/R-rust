@@ -25,7 +25,7 @@ use crate::sexp::accessors::{CAR, CDR, CLOENV, LENGTH, PRIMOFFSET, PRINTNAME, ST
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
-    R_BaseEnv, R_EvalDepth, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible,
+    R_EvalDepth, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible,
 };
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::RArena;

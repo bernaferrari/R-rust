@@ -87,7 +87,7 @@ fn r1(x: u32) -> u32 {
 /// Cyclic (right) rotation of a 32-bit word.
 #[inline(always)]
 fn cyclic(w: u32, s: u32) -> u32 {
-    (w >> s) | (w << (32 - s))
+    w.rotate_right(s)
 }
 
 /// Process LEN bytes of BUFFER, accumulating context into CTX.

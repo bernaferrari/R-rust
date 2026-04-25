@@ -14,7 +14,6 @@
 //! - R_CheckJIT: check if a function should be JIT-compiled
 
 use std::os::raw::{c_char, c_int};
-use std::ptr;
 
 use crate::eval::attrib_core::{R_SrcRefSymbol, getAttrib};
 use crate::sexp::accessors::{BODY, CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TYPEOF};

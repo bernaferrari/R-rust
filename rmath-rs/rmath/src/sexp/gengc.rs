@@ -19,8 +19,7 @@ use super::ffi::{SEXP, SEXPTYPE};
 use super::instance;
 use super::memory::{RArena, with_arena_for_gc};
 use super::protect::{
-    update_preserve_stack_refs, update_protect_stack_refs, with_preserved_objects,
-    with_protected_objects,
+    update_preserve_stack_refs, update_protect_stack_refs, with_protected_objects,
 };
 
 /// Card size in bytes for the card marking table.

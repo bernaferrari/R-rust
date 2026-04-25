@@ -37,7 +37,7 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
     }
 
     let mut k: c_int = 1;
-    while k <= n - 1 {
+    while k < n {
         let mut m1 = *i_merge.add((k - 1) as usize);
         let mut m2 = *i_merge.add((n - 1 + k - 1) as usize);
 

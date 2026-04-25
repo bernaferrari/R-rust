@@ -87,7 +87,7 @@ fn chmod_one(name: &str, grpwrt: bool) {
 
         if metadata.is_dir() {
             // Set directory permissions
-            if let Err(_) = fs::set_permissions(name, fs::Permissions::from_mode(dirmask)) {
+            if fs::set_permissions(name, fs::Permissions::from_mode(dirmask)).is_err() {
                 // Ignore errors
             }
 
@@ -106,8 +106,8 @@ fn chmod_one(name: &str, grpwrt: bool) {
             }
         } else {
             // Set file permissions
-            if let Err(_) =
-                fs::set_permissions(name, fs::Permissions::from_mode((mode | mask) & dirmask))
+            if fs::set_permissions(name, fs::Permissions::from_mode((mode | mask) & dirmask))
+                .is_err()
             {
                 // Ignore errors
             }

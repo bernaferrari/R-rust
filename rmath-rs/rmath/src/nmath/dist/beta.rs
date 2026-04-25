@@ -283,7 +283,6 @@ fn pbeta_raw(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
 ///
 /// This is a simplified version that handles the common cases.
 /// For production use, the full TOMS 708 implementation should be ported.
-
 #[must_use]
 pub fn pbeta_inner(x: f64, a: f64, b: f64, lower_tail: bool, log_p: bool) -> f64 {
     // IEEE_754

@@ -350,7 +350,7 @@ pub unsafe fn doTabExpand(strings: SEXP, starts: SEXP) -> SEXP {
             if c == b'\t' {
                 loop {
                     buffer.push(b' ');
-                    if ((buffer.len() as c_int + start) & 7) == 0 {
+                    if (buffer.len() as c_int + start).trailing_zeros() >= 3 {
                         break;
                     }
                 }

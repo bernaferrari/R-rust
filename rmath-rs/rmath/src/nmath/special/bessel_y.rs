@@ -324,7 +324,7 @@ fn y_bessel(x: f64, alpha: f64, nb: i32, by: &mut [f64]) -> i32 {
             d1 = trunc(ex / fivpi);
             i = d1 as i32;
             dmu = ex - 15.0 * d1 - d1 * pim5 - (alpha + 0.5) * M_PI_2;
-            if i - (i / 2 << 1) == 0 {
+            if i - ((i / 2) << 1) == 0 {
                 cosmu = cos(dmu);
                 sinmu = sin(dmu);
             } else {

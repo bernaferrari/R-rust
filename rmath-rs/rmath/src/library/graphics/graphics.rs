@@ -337,7 +337,6 @@ pub unsafe fn GCheckState(_dd: pGEDevDesc) {
 /// GScale -- compute default axis information (axp, usr, log, n).
 /// Provides default axis information i.e., if user has NOT specified
 /// par(usr=.., {x,y}axp= ..).
-
 /// Stub: does nothing.
 #[unsafe(no_mangle)]
 pub unsafe fn GScale(_min: c_double, _max: c_double, _axis: c_int, _dd: pGEDevDesc) {
@@ -482,7 +481,6 @@ pub unsafe fn GClipPolygon(
 /// GPolygon -- draw a filled polygon with border.
 /// Filled with color bg and outlined with color fg.
 /// Stub: does nothing.
-
 #[unsafe(no_mangle)]
 pub unsafe fn GPolygon(
     _n: c_int,
@@ -575,7 +573,6 @@ pub unsafe fn GRaster(
  * ======================================================================== */
 
 /// GStrWidth -- compute the width of a string.
-
 /// Stub: returns 0.0.
 #[unsafe(no_mangle)]
 pub unsafe fn GStrWidth(

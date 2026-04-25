@@ -100,7 +100,7 @@ fn make_array(data: &[f64], dim: &[i32], ndim: i32) -> Array {
     let mut a = Array {
         vec: data[..len].to_vec(),
         dim: [0; MAX_DIM_LENGTH],
-        ndim: ndim,
+        ndim,
     };
     for i in 0..ndim as usize {
         a.dim[i] = dim[i];
@@ -118,7 +118,7 @@ fn make_zero_array(dim: &[i32], ndim: i32) -> Array {
     let mut a = Array {
         vec: vec![0.0; len],
         dim: [0; MAX_DIM_LENGTH],
-        ndim: ndim,
+        ndim,
     };
     for i in 0..ndim as usize {
         a.dim[i] = dim[i];

@@ -22,7 +22,7 @@ const BLOCKSIZE: usize = 4096;
 /// Rotate a 32-bit integer left by n bits.
 #[inline(always)]
 fn rol(x: md5_uint32, n: u32) -> md5_uint32 {
-    (x << n) | (x >> (32 - n))
+    x.rotate_left(n)
 }
 
 /// On little-endian (which is what we target), SWAP is identity.

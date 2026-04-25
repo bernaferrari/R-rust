@@ -112,19 +112,17 @@ pub unsafe fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     match File::open(&path_str) {
         Ok(file) => {
             let reader = BufReader::new(file);
-            for line in reader.lines() {
-                if let Ok(line_content) = line {
-                    let trimmed = line_content.trim();
-                    if !trimmed.is_empty() {
-                        // Add to readline history if available
-                        #[cfg(unix)]
-                        {
-                            unsafe extern "C" {
-                                fn add_history(line: *const c_char);
-                            }
-                            let c_line = CString::new(trimmed).unwrap_or_default();
-                            add_history(c_line.as_ptr());
+            for line_content in reader.lines().map_while(Result::ok) {
+                let trimmed = line_content.trim();
+                if !trimmed.is_empty() {
+                    // Add to readline history if available
+                    #[cfg(unix)]
+                    {
+                        unsafe extern "C" {
+                            fn add_history(line: *const c_char);
                         }
+                        let c_line = CString::new(trimmed).unwrap_or_default();
+                        add_history(c_line.as_ptr());
                     }
                 }
             }

@@ -17,6 +17,7 @@
 
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
+#[cfg(test)]
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use crate::sexp::output;
@@ -847,7 +848,7 @@ mod tests {
     fn test_session_eval_int_vector() {
         let mut session = RSession::new();
         let result = session.eval_int_vector(&[1, 2, 3]);
-        assert!(result.output.contains("1"));
+        assert!(result.output.contains('1'));
         assert_eq!(
             result.typed,
             RValue::IntegerVector(vec![Some(1), Some(2), Some(3)])

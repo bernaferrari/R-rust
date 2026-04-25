@@ -257,7 +257,7 @@ unsafe fn f2xact(
     *kyy.add(1) = 1;
     let mut idx: usize = 1;
     while idx < nro as usize {
-        if *iro.add(idx) + 1 <= imax / *kyy.add(idx) {
+        if *iro.add(idx) < imax / *kyy.add(idx) {
             *kyy.add(idx + 1) = *kyy.add(idx) * (*iro.add(idx) + 1);
         } else {
             prterr(5, ch_err_5);
@@ -1735,7 +1735,7 @@ unsafe fn f8xact(irow: *const c_int, is: c_int, i1: c_int, izero: c_int, new: *m
         i += 1;
     }
 
-    while i <= izero - 1 {
+    while i < izero {
         if is >= *irow.add((i + 1) as usize) {
             break;
         }
