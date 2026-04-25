@@ -15,7 +15,6 @@
 //! - **Zero-cost.** The safe wrappers compile down to the same operations
 //!   as the internal code.
 
-use crate::eval::parser;
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
 use crate::sexp::ffi::SEXPTYPE;
@@ -214,25 +213,7 @@ impl RSession {
     /// Parses and evaluates code against this session's isolated global
     /// environment.
     pub fn eval(&mut self, code: &str) -> RResult {
-        let sexp = match self.core.with_arena(|arena| parser::parse(code, arena)) {
-            Some(Ok(sexp)) => sexp,
-            Some(Err(e)) => return error_result(e.to_string()),
-            None => return error_result("session is closed"),
-        };
-
-        if sexp.is_null() {
-            return RResult {
-                value: 0.0,
-                typed: RValue::Null,
-                output: "NULL".to_string(),
-            };
-        }
-
-        let Some(expr) = self.core.sexp(sexp) else {
-            return error_result("parsed expression does not belong to session");
-        };
-
-        let (result, captured, visible) = self.core.eval_sexp_with_output_capture(expr);
+        let (result, captured, visible) = self.core.eval_code_with_output_capture(code);
         match result {
             Ok(result) => result_from_eval(result, captured, visible),
             Err(e) => error_result(e.to_string()),

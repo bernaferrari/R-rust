@@ -291,6 +291,56 @@ impl RSession {
         })
     }
 
+    /// Parse and evaluate source code while capturing output and visibility.
+    ///
+    /// This keeps embedders on the owner-checked `Sexp` path instead of asking
+    /// them to parse into a raw `SEXP` and then prove ownership themselves.
+    pub fn eval_code_with_output_capture<'session>(
+        &'session mut self,
+        code: &str,
+    ) -> (
+        RResult<Sexp<'session>>,
+        super::output::RCapturedOutput,
+        bool,
+    ) {
+        if !self.active {
+            return (
+                Err(REvalError {
+                    message: "session is closed".to_string(),
+                }),
+                super::output::RCapturedOutput::default(),
+                false,
+            );
+        }
+
+        let raw_expr = {
+            let _guard = self.activate();
+            crate::eval::parser::parse(code, &mut self.instance.arena)
+        };
+        let raw_expr = match raw_expr {
+            Ok(expr) => expr_or_nil(expr),
+            Err(err) => {
+                return (
+                    Err(REvalError {
+                        message: err.to_string(),
+                    }),
+                    super::output::RCapturedOutput::default(),
+                    false,
+                );
+            }
+        };
+        let Some(expr) = self.sexp(raw_expr) else {
+            return (
+                Err(REvalError {
+                    message: "parsed expression does not belong to this session".to_string(),
+                }),
+                super::output::RCapturedOutput::default(),
+                false,
+            );
+        };
+        self.eval_sexp_with_output_capture(expr)
+    }
+
     /// Evaluate an expression with a custom environment.
     ///
     /// # Errors
@@ -620,6 +670,18 @@ mod tests {
 
         assert_eq!(result.integer_elt(0), Some(8));
         assert!(output.stdout.is_empty());
+        assert!(visible);
+    }
+
+    #[test]
+    fn test_session_eval_code_with_output_capture_keeps_parsing_session_owned() {
+        let mut session = RSession::new();
+
+        let (result, output, visible) = session.eval_code_with_output_capture("print(1); 2");
+        let result = result.expect("source should parse and evaluate");
+
+        assert_eq!(output.stdout, "[1] 1\n");
+        assert_eq!(result.real_elt(0), Some(2.0));
         assert!(visible);
     }
 
