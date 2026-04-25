@@ -386,6 +386,7 @@ mod tests {
 
     #[test]
     fn test_complex_add() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let a = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
             let b = Rf_ScalarComplex(Rcomplex { r: 3.0, i: 4.0 });
@@ -398,6 +399,7 @@ mod tests {
 
     #[test]
     fn test_complex_mul() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // (1+2i) * (3+4i) = (3-8) + (4+6)i = -5 + 10i
             let a = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
@@ -411,6 +413,7 @@ mod tests {
 
     #[test]
     fn test_complex_div() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // (1+2i) / (1+i) = ((1+2i)(1-i)) / 2 = (3+i)/2 = 1.5 + 0.5i
             let a = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
@@ -424,6 +427,7 @@ mod tests {
 
     #[test]
     fn test_complex_sub() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let a = Rf_ScalarComplex(Rcomplex { r: 5.0, i: 3.0 });
             let b = Rf_ScalarComplex(Rcomplex { r: 2.0, i: 1.0 });
@@ -436,6 +440,7 @@ mod tests {
 
     #[test]
     fn test_complex_abs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let a = Rf_ScalarComplex(Rcomplex { r: 3.0, i: 4.0 });
             let result = complex_abs_vec(a);
@@ -447,6 +452,7 @@ mod tests {
 
     #[test]
     fn test_complex_exp() {
+        let _session = crate::sexp::session::RSession::new();
         // exp(i*pi) = -1
         let z = complex_exp(Rcomplex {
             r: 0.0,
@@ -458,6 +464,7 @@ mod tests {
 
     #[test]
     fn test_complex_sqrt() {
+        let _session = crate::sexp::session::RSession::new();
         // sqrt(-1) = i
         let z = complex_sqrt(Rcomplex { r: -1.0, i: 0.0 });
         assert!(z.r.abs() < 1e-10);

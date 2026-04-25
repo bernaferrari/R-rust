@@ -317,6 +317,7 @@ mod tests {
 
     #[test]
     fn test_get_attrib_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(getAttrib(ptr::null_mut(), ptr::null_mut()), R_NilValue());
         }
@@ -324,6 +325,7 @@ mod tests {
 
     #[test]
     fn test_is_object_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isObject(ptr::null_mut()), 0);
         }
@@ -331,6 +333,7 @@ mod tests {
 
     #[test]
     fn test_data_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class = R_data_class(v);

@@ -774,6 +774,7 @@ mod tests {
 
     #[test]
     fn test_bc_stack_basic() {
+        let _session = crate::sexp::session::RSession::new();
         let mut stack = R_bcstack_t::new(4);
         unsafe {
             stack.push(0x1 as SEXP);
@@ -786,6 +787,7 @@ mod tests {
 
     #[test]
     fn test_opcodes_defined() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(opcodes::OP_RETURN > 0);
         assert!(opcodes::OP_PUSHTRUE > 0);
         assert!(opcodes::OP_PUSHFALSE > 0);
@@ -796,6 +798,7 @@ mod tests {
 
     #[test]
     fn test_bc_push_pop_sequence() {
+        let _session = crate::sexp::session::RSession::new();
         let mut stack = R_bcstack_t::new(8);
         unsafe {
             stack.push(R_NilValue());
@@ -810,6 +813,7 @@ mod tests {
 
     #[test]
     fn test_bc_dup2() {
+        let _session = crate::sexp::session::RSession::new();
         let mut stack = R_bcstack_t::new(8);
         unsafe {
             stack.push(Rf_ScalarInteger(10));
@@ -826,6 +830,7 @@ mod tests {
 
     #[test]
     fn test_bc_goto_and_branch() {
+        let _session = crate::sexp::session::RSession::new();
         let mut stack = R_bcstack_t::new(8);
         unsafe {
             stack.push(Rf_ScalarLogical(TRUE));
@@ -842,6 +847,7 @@ mod tests {
 
     #[test]
     fn test_bc_eval_simple_code() {
+        let _session = crate::sexp::session::RSession::new();
         use crate::sexp::memory::RArena;
         let mut arena = RArena::new();
 

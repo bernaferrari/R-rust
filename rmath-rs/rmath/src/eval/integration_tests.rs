@@ -38,6 +38,7 @@ fn make_test_env() -> SEXP {
 
 #[test]
 fn test_self_evaluating_integer() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let val = Rf_ScalarInteger(42);
         assert!(!val.is_null());
@@ -52,6 +53,7 @@ fn test_self_evaluating_integer() {
 
 #[test]
 fn test_self_evaluating_real() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let val = Rf_ScalarReal(3.14);
         assert!(!val.is_null());
@@ -66,6 +68,7 @@ fn test_self_evaluating_real() {
 
 #[test]
 fn test_self_evaluating_null() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let val = R_NilValue();
         let env = make_test_env();
@@ -76,6 +79,7 @@ fn test_self_evaluating_null() {
 
 #[test]
 fn test_self_evaluating_logical() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let val = Rf_ScalarLogical(1);
         assert!(!val.is_null());
@@ -90,6 +94,7 @@ fn test_self_evaluating_logical() {
 
 #[test]
 fn test_self_evaluating_string() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let val = Rf_mkString(c"hello".as_ptr());
         assert!(!val.is_null());
@@ -102,6 +107,7 @@ fn test_self_evaluating_string() {
 
 #[test]
 fn test_eval_integer_vector() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let vec = Rf_allocVector(SEXPTYPE::INTSXP, 5);
         assert!(!vec.is_null());
@@ -124,6 +130,7 @@ fn test_eval_integer_vector() {
 
 #[test]
 fn test_eval_real_vector() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let vec = Rf_allocVector(SEXPTYPE::REALSXP, 3);
         assert!(!vec.is_null());
@@ -145,6 +152,7 @@ fn test_eval_real_vector() {
 
 #[test]
 fn test_eval_safe_wrapper() {
+    let _session = crate::sexp::session::RSession::new();
     let env_raw = make_test_env();
     let env = unsafe { Sexp::from_raw_unchecked(env_raw) };
     let val = unsafe {
@@ -160,6 +168,7 @@ fn test_eval_safe_wrapper() {
 
 #[test]
 fn test_eval_null_via_safe() {
+    let _session = crate::sexp::session::RSession::new();
     let env_raw = make_test_env();
     let env = unsafe { Sexp::from_raw_unchecked(env_raw) };
     let null = unsafe { Sexp::from_raw_unchecked(R_NilValue()) };
@@ -171,6 +180,7 @@ fn test_eval_null_via_safe() {
 
 #[test]
 fn test_altrep_compact_intseq() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let seq = crate::mainutils::altrep::R_compact_intseq(1, 5);
         assert!(!seq.is_null());
@@ -185,6 +195,7 @@ fn test_altrep_compact_intseq() {
 
 #[test]
 fn test_altrep_compact_realseq() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let seq = crate::mainutils::altrep::R_compact_realseq(0.0, 1.0, 5);
         assert!(!seq.is_null());
@@ -199,6 +210,7 @@ fn test_altrep_compact_realseq() {
 
 #[test]
 fn test_altrep_new_altrep_data_roundtrip() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let class_sym = Rf_ScalarInteger(42);
         let data1 = Rf_ScalarInteger(100);
@@ -221,6 +233,7 @@ fn test_altrep_new_altrep_data_roundtrip() {
 
 #[test]
 fn test_output_capture_print_integer() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         start_capture();
         let val = Rf_ScalarInteger(42);
@@ -236,6 +249,7 @@ fn test_output_capture_print_integer() {
 
 #[test]
 fn test_output_capture_print_real() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         start_capture();
         let val = Rf_ScalarReal(3.14);
@@ -251,6 +265,7 @@ fn test_output_capture_print_real() {
 
 #[test]
 fn test_output_capture_print_null() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         start_capture();
         crate::sexp::output::Rf_PrintValue(R_NilValue());
@@ -265,6 +280,7 @@ fn test_output_capture_print_null() {
 
 #[test]
 fn test_output_capture_print_logical() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         start_capture();
         let val = Rf_ScalarLogical(1);
@@ -280,6 +296,7 @@ fn test_output_capture_print_logical() {
 
 #[test]
 fn test_pairlist_eval() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let a = Rf_ScalarInteger(1);
         let b = Rf_ScalarInteger(2);
@@ -293,6 +310,7 @@ fn test_pairlist_eval() {
 
 #[test]
 fn test_arena_alloc_and_eval() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let vec = Rf_allocVector(SEXPTYPE::REALSXP, 4);
         assert!(!vec.is_null());
@@ -315,6 +333,7 @@ fn test_arena_alloc_and_eval() {
 
 #[test]
 fn test_cons_and_car_cdr() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         let a = Rf_ScalarInteger(10);
         let b = Rf_ScalarInteger(20);
@@ -332,6 +351,7 @@ fn test_cons_and_car_cdr() {
 
 #[test]
 fn test_gc_after_allocations() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         for _ in 0..100 {
             let v = Rf_allocVector(SEXPTYPE::INTSXP, 10);
@@ -347,6 +367,7 @@ fn test_gc_after_allocations() {
 
 #[test]
 fn test_dnorm_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (0.0, 0.0, 1.0, 0.3989422804014327),
         (1.0, 0.0, 1.0, 0.24197072451914337),
@@ -366,6 +387,7 @@ fn test_dnorm_vs_r() {
 
 #[test]
 fn test_pnorm_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (0.0, 0.0, 1.0, true, 0.5),
         (1.96, 0.0, 1.0, true, 0.9750021048517795),
@@ -386,6 +408,7 @@ fn test_pnorm_vs_r() {
 
 #[test]
 fn test_qnorm_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (0.5, 0.0, 1.0, true, 0.0),
         (0.975, 0.0, 1.0, true, 1.959963984540054),
@@ -405,6 +428,7 @@ fn test_qnorm_vs_r() {
 
 #[test]
 fn test_bessel_j_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (0.0, 0.0, 1.0),
         (1.0, 0.0, 0.7651976865579666),
@@ -422,6 +446,7 @@ fn test_bessel_j_vs_r() {
 
 #[test]
 fn test_bessel_i_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (0.0, 0.0, 1.0),
         (1.0, 0.0, 1.2660658777520082),
@@ -439,6 +464,7 @@ fn test_bessel_i_vs_r() {
 
 #[test]
 fn test_bessel_y_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (1.0, 0.0, 0.0882569642156769),
         (2.0, 0.0, 0.5103756726497451),
@@ -456,6 +482,7 @@ fn test_bessel_y_vs_r() {
 
 #[test]
 fn test_gamma_fn_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (1.0, 1.0),
         (2.0, 1.0),
@@ -476,6 +503,7 @@ fn test_gamma_fn_vs_r() {
 
 #[test]
 fn test_lgamma_fn_vs_r() {
+    let _session = crate::sexp::session::RSession::new();
     let cases = [
         (1.0, 0.0),
         (2.0, 0.0),
@@ -494,6 +522,7 @@ fn test_lgamma_fn_vs_r() {
 
 #[test]
 fn test_exp_log_roundtrip() {
+    let _session = crate::sexp::session::RSession::new();
     for x in [0.5, 1.0, 2.0, 10.0, 100.0] {
         let roundtrip = libm::log(libm::exp(x));
         assert!((roundtrip - x).abs() < 1e-10, "log(exp({x})) = {roundtrip}");
@@ -502,6 +531,7 @@ fn test_exp_log_roundtrip() {
 
 #[test]
 fn test_trig_identities() {
+    let _session = crate::sexp::session::RSession::new();
     for x in [0.0, 0.5, 1.0, 1.5, 3.14159] {
         let sin2 = libm::sin(x) * libm::sin(x);
         let cos2 = libm::cos(x) * libm::cos(x);
@@ -519,6 +549,7 @@ fn test_trig_identities() {
 
 #[test]
 fn test_arena_alloc_dealloc_pattern() {
+    let _session = crate::sexp::session::RSession::new();
     let mut arena = crate::sexp::memory::RArena::new();
     assert_eq!(arena.node_count(), 0);
 
@@ -535,6 +566,7 @@ fn test_arena_alloc_dealloc_pattern() {
 
 #[test]
 fn test_arena_large_alloc() {
+    let _session = crate::sexp::session::RSession::new();
     let mut arena = crate::sexp::memory::RArena::new();
     let n = 10000;
     let p = arena.alloc_vector(SEXPTYPE::REALSXP, n);
@@ -547,6 +579,7 @@ fn test_arena_large_alloc() {
 
 #[test]
 fn test_arena_many_small_allocs() {
+    let _session = crate::sexp::session::RSession::new();
     let mut arena = crate::sexp::memory::RArena::new();
     let mut ptrs = Vec::new();
     for _ in 0..500 {
@@ -565,6 +598,7 @@ fn test_arena_many_small_allocs() {
 
 #[test]
 fn test_arena_node_types() {
+    let _session = crate::sexp::session::RSession::new();
     let mut arena = crate::sexp::memory::RArena::new();
 
     let types = [
@@ -589,6 +623,7 @@ fn test_arena_node_types() {
 
 #[test]
 fn test_arena_independent_sessions() {
+    let _session = crate::sexp::session::RSession::new();
     let mut arena1 = crate::sexp::memory::RArena::new();
     let mut arena2 = crate::sexp::memory::RArena::new();
 
@@ -602,6 +637,7 @@ fn test_arena_independent_sessions() {
 
 #[test]
 fn test_protect_stack_integrity() {
+    let _session = crate::sexp::session::RSession::new();
     unsafe {
         use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 
@@ -619,6 +655,7 @@ fn test_protect_stack_integrity() {
 
 #[test]
 fn test_session_eval_parsed_exprs() {
+    let _session = crate::sexp::session::RSession::new();
     let mut session = crate::android::RSession::new();
 
     let r1 = session.eval("42");
@@ -639,6 +676,7 @@ fn test_session_eval_parsed_exprs() {
 
 #[test]
 fn test_eval_arithmetic_direct() {
+    let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
     use crate::eval::parser;
     use crate::sexp::init;
@@ -667,6 +705,7 @@ fn test_eval_arithmetic_direct() {
 
 #[test]
 fn test_eval_abs_debug() {
+    let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
     use crate::eval::parser;
     use crate::sexp::accessors::{CAR, CDR, TYPEOF};
@@ -725,6 +764,7 @@ fn test_eval_abs_debug() {
 
 #[test]
 fn test_eval_math_builtins() {
+    let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
     use crate::eval::parser;
     use crate::sexp::init;
@@ -780,6 +820,7 @@ fn test_eval_math_builtins() {
 
 #[test]
 fn test_eval_length_builtin() {
+    let _session = crate::sexp::session::RSession::new();
     use crate::eval::eval::eval_safe;
     use crate::eval::parser;
     use crate::sexp::init;
