@@ -1,4 +1,3 @@
-
 //! Double Centering for Classical Multidimensional Scaling.
 //! Port of r-source/src/library/stats/src/dblcen.c
 

@@ -12,8 +12,8 @@ use std::io::Write;
 use std::os::raw::{c_char, c_int, c_long, c_void};
 use std::ptr;
 
-use super::{image as image_api, memory, objects, strings, windows};
 use super::types::*;
+use super::{image as image_api, memory, objects, strings, windows};
 
 fn first_list_item(list: *const *const c_char) -> *const c_char {
     if list.is_null() {
@@ -51,7 +51,12 @@ unsafe fn alloc_drawstate(dest: drawing) -> drawstate {
     state
 }
 
-unsafe fn new_control_object(kind: c_int, text: *const c_char, r: rect, with_drawstate: bool) -> control {
+unsafe fn new_control_object(
+    kind: c_int,
+    text: *const c_char,
+    r: rect,
+    with_drawstate: bool,
+) -> control {
     unsafe {
         objects::init_objects();
         let parent = windows::get_current_window();
@@ -645,7 +650,13 @@ pub unsafe fn newmultilist(
     }
 }
 pub unsafe fn isselected(b: listbox, index: c_int) -> c_int {
-    unsafe { if !b.is_null() && (*b).value == index { 1 } else { 0 } }
+    unsafe {
+        if !b.is_null() && (*b).value == index {
+            1
+        } else {
+            0
+        }
+    }
 }
 pub unsafe fn setlistitem(b: listbox, index: c_int) {
     unsafe {
@@ -655,13 +666,7 @@ pub unsafe fn setlistitem(b: listbox, index: c_int) {
     }
 }
 pub unsafe fn getlistitem(b: listbox) -> c_int {
-    unsafe {
-        if b.is_null() {
-            -1
-        } else {
-            (*b).value
-        }
-    }
+    unsafe { if b.is_null() { -1 } else { (*b).value } }
 }
 pub unsafe fn changelistbox(b: listbox, list: *const *const c_char) {
     unsafe {
@@ -870,12 +875,7 @@ pub unsafe fn imagetobitmap(img: image) -> bitmap {
         bitmap
     }
 }
-pub unsafe fn createbitmap(
-    width: c_int,
-    height: c_int,
-    depth: c_int,
-    data: *mut GAbyte,
-) -> bitmap {
+pub unsafe fn createbitmap(width: c_int, height: c_int, depth: c_int, data: *mut GAbyte) -> bitmap {
     unsafe {
         let bitmap = new_bitmap_object(width, height, depth);
         set_bitmap_pixels(bitmap, data);
@@ -973,7 +973,11 @@ pub unsafe fn saveimage(img: image, filename: *const c_char) {
         for y in 0..height {
             for x in 0..width {
                 let pixel = image_api::get_image_pixel(img, x, y);
-                let bytes = [getred(pixel) as u8, getgreen(pixel) as u8, getblue(pixel) as u8];
+                let bytes = [
+                    getred(pixel) as u8,
+                    getgreen(pixel) as u8,
+                    getblue(pixel) as u8,
+                ];
                 let _ = file.write_all(&bytes);
             }
         }
@@ -1137,7 +1141,10 @@ mod tests {
             let mut end = -1;
             textselection(control, &mut start, &mut end);
 
-            assert_eq!(CStr::from_ptr(GA_gettext(control)).to_bytes(), b"hello world");
+            assert_eq!(
+                CStr::from_ptr(GA_gettext(control)).to_bytes(),
+                b"hello world"
+            );
             assert_eq!(start, 11);
             assert_eq!(end, 11);
 

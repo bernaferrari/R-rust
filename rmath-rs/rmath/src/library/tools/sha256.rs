@@ -1,4 +1,3 @@
-
 /* SHA256 implementation.
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2003-2024   The R Core Team.
@@ -200,10 +199,7 @@ pub unsafe fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
 
 /// Process the remaining bytes in the internal buffer and the usual
 /// prolog according to the standard and write the result to RESBUF.
-pub unsafe fn Rsha256_finish_ctx(
-    ctx: *mut Sha256Ctx,
-    resbuf: *mut c_void,
-) -> *mut c_void {
+pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *mut c_void {
     let bytes = (*ctx).buflen;
     let pad: usize = if bytes >= 56 {
         (64 + 56 - bytes) as usize
@@ -248,11 +244,7 @@ pub unsafe fn Rsha256_finish_ctx(
 }
 
 /// Feed arbitrary bytes into the SHA256 computation.
-pub unsafe fn Rsha256_process_bytes(
-    buffer: *const c_void,
-    mut len: size_t,
-    ctx: *mut Sha256Ctx,
-) {
+pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, mut len: size_t, ctx: *mut Sha256Ctx) {
     let mut buf = buffer as *const u8;
 
     // When we already have some bits in our internal buffer, concatenate both inputs first

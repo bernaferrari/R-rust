@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/grDevices/src/patterns.c

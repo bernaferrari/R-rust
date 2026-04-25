@@ -359,13 +359,7 @@ pub fn Rf_pnt(
     pnt_inner(t, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-pub fn pnt(
-    t: c_double,
-    df: c_double,
-    ncp: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn pnt(t: c_double, df: c_double, ncp: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     pnt_inner(t, df, ncp, lower_tail != 0, log_p != 0)
 }
 
@@ -379,13 +373,7 @@ pub fn Rf_qnt(
     qnt_inner(p, df, ncp, lower_tail != 0, log_p != 0)
 }
 
-pub fn qnt(
-    p: c_double,
-    df: c_double,
-    ncp: c_double,
-    lower_tail: c_int,
-    log_p: c_int,
-) -> c_double {
+pub fn qnt(p: c_double, df: c_double, ncp: c_double, lower_tail: c_int, log_p: c_int) -> c_double {
     qnt_inner(p, df, ncp, lower_tail != 0, log_p != 0)
 }
 

@@ -152,13 +152,7 @@ pub fn dcauchy(x: f64, location: f64, scale: f64, give_log: i32) -> f64 {
     dcauchy_inner(x, location, scale, give_log != 0)
 }
 
-pub fn Rf_pcauchy(
-    x: f64,
-    location: f64,
-    scale: f64,
-    lower_tail: i32,
-    log_p: i32,
-) -> f64 {
+pub fn Rf_pcauchy(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     pcauchy_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
@@ -167,13 +161,7 @@ pub fn pcauchy(x: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -
     pcauchy_inner(x, location, scale, lower_tail != 0, log_p != 0)
 }
 
-pub fn Rf_qcauchy(
-    p: f64,
-    location: f64,
-    scale: f64,
-    lower_tail: i32,
-    log_p: i32,
-) -> f64 {
+pub fn Rf_qcauchy(p: f64, location: f64, scale: f64, lower_tail: i32, log_p: i32) -> f64 {
     qcauchy_inner(p, location, scale, lower_tail != 0, log_p != 0)
 }
 

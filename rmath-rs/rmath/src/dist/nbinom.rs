@@ -557,12 +557,7 @@ pub fn rnbinom_mu_inner(size: f64, mu: f64) -> f64 {
 
 // ---- FFI shims ----
 
-pub fn Rf_dnbinom(
-    x: c_double,
-    size: c_double,
-    prob: c_double,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_dnbinom(x: c_double, size: c_double, prob: c_double, log_p: c_int) -> c_double {
     dnbinom_inner(x, size, prob, log_p != 0)
 }
 
@@ -571,12 +566,7 @@ pub fn dnbinom(x: c_double, size: c_double, prob: c_double, log_p: c_int) -> c_d
     dnbinom_inner(x, size, prob, log_p != 0)
 }
 
-pub fn Rf_dnbinom_mu(
-    x: c_double,
-    size: c_double,
-    mu: c_double,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_dnbinom_mu(x: c_double, size: c_double, mu: c_double, log_p: c_int) -> c_double {
     dnbinom_mu_inner(x, size, mu, log_p != 0)
 }
 

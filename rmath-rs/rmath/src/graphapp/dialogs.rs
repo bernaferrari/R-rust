@@ -169,10 +169,9 @@ pub unsafe fn askfilenamewithdir(
     default_name: *const c_char,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(
-        unsafe { cstr_to_string(default_name) },
-        unsafe { cstr_to_string(dir) },
-    );
+    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
+        cstr_to_string(dir)
+    });
     if value.is_empty() {
         ptr::null_mut()
     } else {
@@ -209,10 +208,9 @@ pub unsafe fn askfilesavewithdir(
     default_name: *const c_char,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(
-        unsafe { cstr_to_string(default_name) },
-        unsafe { cstr_to_string(dir) },
-    );
+    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
+        cstr_to_string(dir)
+    });
     if value.is_empty() {
         ptr::null_mut()
     } else {
@@ -230,10 +228,9 @@ pub unsafe fn askfilenames(
     bufsize: c_int,
     dir: *const c_char,
 ) -> *mut c_char {
-    let value = select_path(
-        unsafe { cstr_to_string(default_name) },
-        unsafe { cstr_to_string(dir) },
-    );
+    let value = select_path(unsafe { cstr_to_string(default_name) }, unsafe {
+        cstr_to_string(dir)
+    });
     copy_into_buffer(&value, strbuf, bufsize)
 }
 
@@ -305,7 +302,10 @@ mod tests {
         unsafe {
             let text = CString::new("hello").unwrap_or_else(|e| panic!("{e}"));
             myMessageBox(ptr::null_mut(), text.as_ptr(), 7);
-            assert_eq!(LAST_MESSAGE.with(|slot| slot.borrow().clone()), Some((7, "hello".to_owned())));
+            assert_eq!(
+                LAST_MESSAGE.with(|slot| slot.borrow().clone()),
+                Some((7, "hello".to_owned()))
+            );
         }
     }
 }

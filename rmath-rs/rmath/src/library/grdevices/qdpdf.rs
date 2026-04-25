@@ -20,21 +20,13 @@ type QuartzParameters_t = *const c_void;
 
 /// QuartzPDF_GetCGContext - returns the PDF drawing context.
 /// Stub: returns null.
-pub unsafe fn QuartzPDF_GetCGContext(
-    _dev: QuartzDesc_t,
-    _user_info: *mut c_void,
-) -> *mut c_void {
+pub unsafe fn QuartzPDF_GetCGContext(_dev: QuartzDesc_t, _user_info: *mut c_void) -> *mut c_void {
     ptr::null_mut()
 }
 
 /// QuartzPDF_NewPage - handles page breaks.
 /// Stub: no-op.
-pub unsafe fn QuartzPDF_NewPage(
-    _dev: QuartzDesc_t,
-    _user_info: *mut c_void,
-    _flags: c_int,
-) {
-}
+pub unsafe fn QuartzPDF_NewPage(_dev: QuartzDesc_t, _user_info: *mut c_void, _flags: c_int) {}
 
 /// QuartzPDF_Close - cleanup and release resources.
 /// Stub: no-op.

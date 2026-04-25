@@ -1,4 +1,3 @@
-
 //! Port of R's `src/library/grDevices/src/devices.c`.
 //!
 //! Graphics device creation and listing:
@@ -271,21 +270,9 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     } else {
         (*gdd).haveTransparentBg
     };
-    let haveRaster = if gdd.is_null() {
-        1
-    } else {
-        (*gdd).haveRaster
-    };
-    let haveCapture = if gdd.is_null() {
-        1
-    } else {
-        (*gdd).haveCapture
-    };
-    let haveLocator = if gdd.is_null() {
-        1
-    } else {
-        (*gdd).haveLocator
-    };
+    let haveRaster = if gdd.is_null() { 1 } else { (*gdd).haveRaster };
+    let haveCapture = if gdd.is_null() { 1 } else { (*gdd).haveCapture };
+    let haveLocator = if gdd.is_null() { 1 } else { (*gdd).haveLocator };
     let canGenMouseDown = if gdd.is_null() {
         0
     } else {
@@ -301,16 +288,8 @@ pub unsafe fn devcap(args: SEXP) -> SEXP {
     } else {
         (*gdd).canGenMouseUp
     };
-    let canGenKeybd = if gdd.is_null() {
-        0
-    } else {
-        (*gdd).canGenKeybd
-    };
-    let canGenIdle = if gdd.is_null() {
-        0
-    } else {
-        (*gdd).canGenIdle
-    };
+    let canGenKeybd = if gdd.is_null() { 0 } else { (*gdd).canGenKeybd };
+    let canGenIdle = if gdd.is_null() { 0 } else { (*gdd).canGenIdle };
 
     trans = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
     *INTEGER(trans).add(0) = haveTransparency;

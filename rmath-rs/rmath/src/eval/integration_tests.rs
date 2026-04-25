@@ -9,8 +9,8 @@ use std::os::raw::c_int;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::output::{start_capture, stop_capture};
 use crate::sexp::object::Sexp;
+use crate::sexp::output::{start_capture, stop_capture};
 
 fn some<T>(opt: Option<T>) -> T {
     opt.unwrap_or_else(|| panic!("unexpected None in test"))

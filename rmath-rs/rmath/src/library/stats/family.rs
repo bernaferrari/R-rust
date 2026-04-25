@@ -42,7 +42,9 @@ unsafe fn shallow_duplicate(x: SEXP) -> SEXP {
 #[inline]
 unsafe fn x_d_omx(x: c_double) -> c_double {
     if x < 0.0 || x > 1.0 {
-        crate::main::errors::Rf_error(b"Value out of range (0, 1)\0".as_ptr() as *const libc::c_char);
+        crate::main::errors::Rf_error(
+            b"Value out of range (0, 1)\0".as_ptr() as *const libc::c_char
+        );
     }
     x / (1.0 - x)
 }
@@ -184,12 +186,14 @@ pub unsafe fn binomial_dev_resids(y: SEXP, mu: SEXP, wt: SEXP) -> SEXP {
 
     if lmu != n && lmu != 1 {
         crate::main::errors::Rf_error(
-            b"argument mu must be a numeric vector of length 1 or matching length\0".as_ptr() as *const libc::c_char,
+            b"argument mu must be a numeric vector of length 1 or matching length\0".as_ptr()
+                as *const libc::c_char,
         );
     }
     if lwt != n && lwt != 1 {
         crate::main::errors::Rf_error(
-            b"argument wt must be a numeric vector of length 1 or matching length\0".as_ptr() as *const libc::c_char,
+            b"argument wt must be a numeric vector of length 1 or matching length\0".as_ptr()
+                as *const libc::c_char,
         );
     }
 

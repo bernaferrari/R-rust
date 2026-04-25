@@ -22,8 +22,7 @@ use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::*;
 
 use super::backend::{
-    La_norm_type, La_rcond_type, La_valid_uplo, LapRcomplex, fort_char, fort_str,
-    unscramble,
+    La_norm_type, La_rcond_type, La_valid_uplo, LapRcomplex, fort_char, fort_str, unscramble,
 };
 
 // Local SEXPTYPE constants (as c_int for coerceVector etc.)

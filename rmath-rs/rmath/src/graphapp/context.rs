@@ -63,7 +63,11 @@ pub unsafe fn remove_context(obj: object) {
         return;
     }
     CONTEXTS.with(|contexts| {
-        if let Some(entry) = contexts.borrow_mut().iter_mut().find(|entry| entry.obj == obj) {
+        if let Some(entry) = contexts
+            .borrow_mut()
+            .iter_mut()
+            .find(|entry| entry.obj == obj)
+        {
             entry.dc = entry.old;
             entry.old = ptr::null_mut();
         }

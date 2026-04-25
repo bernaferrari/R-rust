@@ -36,7 +36,7 @@ use crate::mainutils::bind::isList;
 use crate::mainutils::colors::RGBpar3;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::constructors::{Rf_length as length, Rf_ScalarInteger as ScalarInteger};
+use crate::sexp::constructors::{Rf_ScalarInteger as ScalarInteger, Rf_length as length};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::with_required_current_instance;
@@ -1353,7 +1353,6 @@ unsafe fn CheckSymbolPar(p: SEXP, nr: *mut c_int, nc: *mut c_int) {
         Rf_error(b"invalid symbol parameter vector\0".as_ptr() as *const c_char);
     }
 }
-
 
 /* ========================================================================
  * labelformat -- format labels from numbers to strings

@@ -136,15 +136,100 @@ unsafe extern "C" {
 #[cfg(not(feature = "fortran-backend"))]
 mod loess_stubs {
     use std::os::raw::{c_double, c_int};
-    pub unsafe fn lowesd(_iv: *mut c_int, _liv: *mut c_int, _lv: *mut c_int, _v: *mut c_double, _d: *mut c_int, _n: *mut c_int, _f: *mut c_double, _ideg: *mut c_int, _nf: *mut c_int, _nvmax: *mut c_int, _setlf: *mut c_int) {}
-    pub unsafe fn lowesa(_trL: *mut c_double, _n: *mut c_int, _d: *mut c_int, _tau: *mut c_int, _nsing: *mut c_int, _one_delta: *mut c_double, _two_delta: *mut c_double) {}
-    pub unsafe fn lowesb(_x: *mut c_double, _y: *mut c_double, _robust: *mut c_double, _diagonal: *mut c_double, _i1: *mut c_int, _iv: *mut c_int, _v: *mut c_double) {}
-    pub unsafe fn lowese(_iv: *mut c_int, _v: *mut c_double, _n: *mut c_int, _x: *mut c_double, _surface: *mut c_double) {}
-    pub unsafe fn lowesf(_x: *mut c_double, _y: *mut c_double, _weights: *mut c_double, _iv: *mut c_int, _v: *mut c_double, _m: *mut c_int, _x_evaluate: *mut c_double, _diagonal: *mut c_double, _i2: *mut c_int, _surface: *mut c_double) {}
-    pub unsafe fn lowesl(_iv: *mut c_int, _v: *mut c_double, _m: *mut c_int, _x: *mut c_double, _L: *mut c_double) {}
-    pub unsafe fn lowesc(_n: *mut c_int, _hat_matrix: *mut c_double, _LL: *mut c_double, _trL: *mut c_double, _one_delta: *mut c_double, _two_delta: *mut c_double) {}
-    pub unsafe fn ehg169(_d: *mut c_int, _vc: *mut c_int, _nc: *mut c_int, _nc2: *mut c_int, _nv: *mut c_int, _nv2: *mut c_int, _vert: *mut c_double, _a: *mut c_int, _xi: *mut c_double, _lv1: *mut c_int, _lv2: *mut c_int, _lv3: *mut c_int) {}
-    pub unsafe fn ehg196(_tau: *mut c_int, _d: *mut c_int, _span: *mut c_double, _trL: *mut c_double) {}
+    pub unsafe fn lowesd(
+        _iv: *mut c_int,
+        _liv: *mut c_int,
+        _lv: *mut c_int,
+        _v: *mut c_double,
+        _d: *mut c_int,
+        _n: *mut c_int,
+        _f: *mut c_double,
+        _ideg: *mut c_int,
+        _nf: *mut c_int,
+        _nvmax: *mut c_int,
+        _setlf: *mut c_int,
+    ) {
+    }
+    pub unsafe fn lowesa(
+        _trL: *mut c_double,
+        _n: *mut c_int,
+        _d: *mut c_int,
+        _tau: *mut c_int,
+        _nsing: *mut c_int,
+        _one_delta: *mut c_double,
+        _two_delta: *mut c_double,
+    ) {
+    }
+    pub unsafe fn lowesb(
+        _x: *mut c_double,
+        _y: *mut c_double,
+        _robust: *mut c_double,
+        _diagonal: *mut c_double,
+        _i1: *mut c_int,
+        _iv: *mut c_int,
+        _v: *mut c_double,
+    ) {
+    }
+    pub unsafe fn lowese(
+        _iv: *mut c_int,
+        _v: *mut c_double,
+        _n: *mut c_int,
+        _x: *mut c_double,
+        _surface: *mut c_double,
+    ) {
+    }
+    pub unsafe fn lowesf(
+        _x: *mut c_double,
+        _y: *mut c_double,
+        _weights: *mut c_double,
+        _iv: *mut c_int,
+        _v: *mut c_double,
+        _m: *mut c_int,
+        _x_evaluate: *mut c_double,
+        _diagonal: *mut c_double,
+        _i2: *mut c_int,
+        _surface: *mut c_double,
+    ) {
+    }
+    pub unsafe fn lowesl(
+        _iv: *mut c_int,
+        _v: *mut c_double,
+        _m: *mut c_int,
+        _x: *mut c_double,
+        _L: *mut c_double,
+    ) {
+    }
+    pub unsafe fn lowesc(
+        _n: *mut c_int,
+        _hat_matrix: *mut c_double,
+        _LL: *mut c_double,
+        _trL: *mut c_double,
+        _one_delta: *mut c_double,
+        _two_delta: *mut c_double,
+    ) {
+    }
+    pub unsafe fn ehg169(
+        _d: *mut c_int,
+        _vc: *mut c_int,
+        _nc: *mut c_int,
+        _nc2: *mut c_int,
+        _nv: *mut c_int,
+        _nv2: *mut c_int,
+        _vert: *mut c_double,
+        _a: *mut c_int,
+        _xi: *mut c_double,
+        _lv1: *mut c_int,
+        _lv2: *mut c_int,
+        _lv3: *mut c_int,
+    ) {
+    }
+    pub unsafe fn ehg196(
+        _tau: *mut c_int,
+        _d: *mut c_int,
+        _span: *mut c_double,
+        _trL: *mut c_double,
+    ) {
+    }
 }
 #[cfg(not(feature = "fortran-backend"))]
 use loess_stubs::*;

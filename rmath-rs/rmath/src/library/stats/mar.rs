@@ -1,5 +1,3 @@
-
-
 use core::ffi::{c_char, c_double, c_int};
 use std::ptr;
 use std::slice;

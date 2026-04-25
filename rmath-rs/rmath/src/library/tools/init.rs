@@ -21,8 +21,8 @@
 
 use std::os::raw::c_int;
 
-use crate::sexp::ffi::*;
 use crate::mainutils::printutils::Rprintf;
+use crate::sexp::ffi::*;
 
 /* Test function used in tests/encodings.R */
 pub unsafe fn Renctest(x: *mut *mut libc::c_char) {

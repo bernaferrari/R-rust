@@ -1,3 +1,2 @@
 edition = "2024"
-imports_granularity = "Crate"
 max_width = 100

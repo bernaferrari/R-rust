@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/grDevices/src/init.c
@@ -8,10 +7,10 @@
  *  all symbols are already visible.
  */
 
+use crate::library::grdevices::colors::initPalette;
 use crate::main::coerce::asInteger;
 use crate::sexp::constructors::Rf_ScalarLogical;
 use crate::sexp::ffi::SEXP;
-use crate::library::grdevices::colors::initPalette;
 
 /// Stub: cairoProps - return whether Cairo features are available.
 /// Returns FALSE (0) for both Cairo and PangoCairo.

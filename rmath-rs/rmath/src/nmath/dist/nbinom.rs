@@ -8,13 +8,13 @@
 //   Reference: Devroye, L. (1986).
 //     Non-Uniform Random Variate Generation. New York:Springer-Verlag. Pages 488 and 543.
 
+pub use crate::dist::nbinom::qnbinom_inner;
 use crate::nmath::constants::*;
 use crate::nmath::dist::beta::pbeta_inner;
 use crate::nmath::dist::binomial::dbinom_raw;
 use crate::nmath::dist::gamma::rgamma_inner;
 use crate::nmath::dist::normal::qnorm5_inner;
 use crate::nmath::dist::poisson::{dpois_raw, ppois_inner, qpois_inner, rpois_inner};
-pub use crate::dist::nbinom::qnbinom_inner;
 use crate::nmath::dpq::*;
 use crate::nmath::error::*;
 use crate::nmath::special::gamma::lgammafn1p;
@@ -456,12 +456,7 @@ pub fn rnbinom_mu_inner(size: f64, mu: f64) -> f64 {
 
 // ---- FFI shims ----
 
-pub fn Rf_dnbinom(
-    x: c_double,
-    size: c_double,
-    prob: c_double,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_dnbinom(x: c_double, size: c_double, prob: c_double, log_p: c_int) -> c_double {
     dnbinom_inner(x, size, prob, log_p != 0)
 }
 
@@ -470,12 +465,7 @@ pub fn dnbinom(x: c_double, size: c_double, prob: c_double, log_p: c_int) -> c_d
     dnbinom_inner(x, size, prob, log_p != 0)
 }
 
-pub fn Rf_dnbinom_mu(
-    x: c_double,
-    size: c_double,
-    mu: c_double,
-    log_p: c_int,
-) -> c_double {
+pub fn Rf_dnbinom_mu(x: c_double, size: c_double, mu: c_double, log_p: c_int) -> c_double {
     dnbinom_mu_inner(x, size, mu, log_p != 0)
 }
 

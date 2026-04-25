@@ -10,13 +10,13 @@
 use std::os::raw::{c_double, c_int};
 use std::ptr;
 
+use crate::mainutils::coerce::coerceVector;
+use crate::mainutils::util_main::nrows;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
-use crate::mainutils::coerce::coerceVector;
-use crate::mainutils::util_main::nrows;
 
 /// split() partitions m points by the line joining points ii and jj.
 unsafe fn split(

@@ -732,7 +732,12 @@ unsafe fn fmt_do(
 /// - `format` must be a valid NUL-terminated C string, or null (in which
 ///   case `"%c"` is used).
 /// - `t` must point to a valid `stm` struct.
-pub unsafe fn R_strftime(s: *mut u8, maxsize: usize, format: *const libc::c_char, t: *const stm) -> usize {
+pub unsafe fn R_strftime(
+    s: *mut u8,
+    maxsize: usize,
+    format: *const libc::c_char,
+    t: *const stm,
+) -> usize {
     unsafe {
         r_tzset();
 

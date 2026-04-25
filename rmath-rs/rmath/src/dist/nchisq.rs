@@ -495,12 +495,7 @@ pub fn rnchisq_inner(df: f64, lambda: f64) -> f64 {
 
 // ---- FFI shims ----
 
-pub fn Rf_dnchisq(
-    x: c_double,
-    df: c_double,
-    ncp: c_double,
-    give_log: c_int,
-) -> c_double {
+pub fn Rf_dnchisq(x: c_double, df: c_double, ncp: c_double, give_log: c_int) -> c_double {
     dnchisq_inner(x, df, ncp, give_log != 0)
 }
 

@@ -26,9 +26,9 @@ pub mod init;
 pub mod instance;
 pub mod memory;
 pub mod memory_ext;
+pub mod object;
 pub mod output;
 pub mod protect;
-pub mod object;
 pub mod session;
 pub mod symbol;
 

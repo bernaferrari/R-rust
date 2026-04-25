@@ -1,4 +1,3 @@
-
 //! Exact distribution for Cochran-Mantel-Haenszel test.
 //! Port of r-source/src/library/stats/src/d2x2xk.c
 

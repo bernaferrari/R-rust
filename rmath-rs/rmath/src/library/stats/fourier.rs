@@ -312,7 +312,8 @@ unsafe fn nextn0(mut n: c_int, f: *const c_int, nf: c_int) -> c_int {
     }
     if n >= c_int::MAX {
         crate::main::errors::Rf_warning(
-            b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr() as *const libc::c_char,
+            b"nextn() found no solution < INT_MAX (the maximal integer)\0".as_ptr()
+                as *const libc::c_char,
         );
         return NA_INTEGER;
     }
@@ -370,7 +371,9 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
 
     let mut use_int = TYPEOF(n) == SEXPTYPE::INTSXP;
     if !use_int && TYPEOF(n) != SEXPTYPE::REALSXP {
-        Rf_error(b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr() as *const libc::c_char);
+        Rf_error(
+            b"'n' must have typeof(.) \"integer\" or \"double\"\0".as_ptr() as *const libc::c_char,
+        );
     }
     let nn = XLENGTH(n);
     if !use_int && nn > 0 {
@@ -428,7 +431,8 @@ pub unsafe fn nextn(mut n: SEXP, f: SEXP) -> SEXP {
                 let n_n = nextn0_64(*n_.add(i) as u64, f_, nf);
                 if n_n > max_dbl_int {
                     crate::main::errors::Rf_warning(
-                        b"nextn() may not be exactly representable in R (as \"double\")\0".as_ptr() as *const libc::c_char,
+                        b"nextn() may not be exactly representable in R (as \"double\")\0".as_ptr()
+                            as *const libc::c_char,
                     );
                 }
                 *r.add(i) = n_n as c_double;

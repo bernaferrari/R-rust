@@ -126,8 +126,6 @@ pub mod xdr;
 pub mod android;
 #[allow(dead_code, non_camel_case_types)]
 pub mod eval;
-#[allow(dead_code, non_camel_case_types)]
-pub mod modules;
 #[cfg(not(target_os = "android"))]
 #[allow(dead_code, non_camel_case_types)]
 pub mod graphapp;
@@ -137,6 +135,8 @@ pub mod intl;
 pub mod library;
 #[allow(dead_code, non_camel_case_types)]
 pub mod mainutils;
+#[allow(dead_code, non_camel_case_types)]
+pub mod modules;
 pub use mainutils as main;
 #[allow(unused, dead_code, non_camel_case_types)]
 pub mod nmath;

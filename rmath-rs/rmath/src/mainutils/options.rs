@@ -576,12 +576,12 @@ unsafe fn SetOptionByName(name: &str, value: SEXP) -> SEXP {
         InitOptions();
 
         crate::sexp::instance::with_required_current_instance(|inst| {
-                if value == nil {
-                    inst.options.remove(name).unwrap_or(nil)
-                } else {
-                    R_PreserveObject(value);
-                    inst.options.insert(name.to_string(), value).unwrap_or(nil)
-                }
+            if value == nil {
+                inst.options.remove(name).unwrap_or(nil)
+            } else {
+                R_PreserveObject(value);
+                inst.options.insert(name.to_string(), value).unwrap_or(nil)
+            }
         })
     }
 }
@@ -705,56 +705,56 @@ pub unsafe fn Rf_GetOptionDeviceAsk() -> Rboolean {
 /// Populate an options HashMap with default R option values.
 unsafe fn populate_options(options: &mut HashMap<String, SEXP>) {
     unsafe {
-    let pi = crate::sexp::constructors::persistent_scalar_integer;
-    let pl = crate::sexp::constructors::persistent_scalar_logical;
-    let pm = crate::sexp::constructors::persistent_mkstring;
+        let pi = crate::sexp::constructors::persistent_scalar_integer;
+        let pl = crate::sexp::constructors::persistent_scalar_logical;
+        let pm = crate::sexp::constructors::persistent_mkstring;
 
-    let val = pm(CString::new("> ").unwrap_or_default().as_ptr());
-    options.insert("prompt".to_string(), val);
+        let val = pm(CString::new("> ").unwrap_or_default().as_ptr());
+        options.insert("prompt".to_string(), val);
 
-    let val = pm(CString::new("+ ").unwrap_or_default().as_ptr());
-    options.insert("continue".to_string(), val);
+        let val = pm(CString::new("+ ").unwrap_or_default().as_ptr());
+        options.insert("continue".to_string(), val);
 
-    options.insert("expressions".to_string(), pi(5000));
-    options.insert("width".to_string(), pi(80));
-    options.insert("deparse.cutoff".to_string(), pi(60));
-    options.insert("digits".to_string(), pi(7));
-    options.insert("echo".to_string(), pl(TRUE));
-    options.insert("quiet".to_string(), pl(FALSE));
-    options.insert("verbose".to_string(), pl(FALSE));
-    options.insert("check.bounds".to_string(), pl(FALSE));
-    options.insert("keep.source".to_string(), pl(FALSE));
-    options.insert("keep.source.pkgs".to_string(), pl(FALSE));
-    options.insert("keep.parse.data".to_string(), pl(TRUE));
-    options.insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
-    options.insert("warning.length".to_string(), pi(1000));
-    options.insert("nwarnings".to_string(), pi(50));
+        options.insert("expressions".to_string(), pi(5000));
+        options.insert("width".to_string(), pi(80));
+        options.insert("deparse.cutoff".to_string(), pi(60));
+        options.insert("digits".to_string(), pi(7));
+        options.insert("echo".to_string(), pl(TRUE));
+        options.insert("quiet".to_string(), pl(FALSE));
+        options.insert("verbose".to_string(), pl(FALSE));
+        options.insert("check.bounds".to_string(), pl(FALSE));
+        options.insert("keep.source".to_string(), pl(FALSE));
+        options.insert("keep.source.pkgs".to_string(), pl(FALSE));
+        options.insert("keep.parse.data".to_string(), pl(TRUE));
+        options.insert("keep.parse.data.pkgs".to_string(), pl(FALSE));
+        options.insert("warning.length".to_string(), pi(1000));
+        options.insert("nwarnings".to_string(), pi(50));
 
-    let val = pm(CString::new(".").unwrap_or_default().as_ptr());
-    options.insert("OutDec".to_string(), val);
+        let val = pm(CString::new(".").unwrap_or_default().as_ptr());
+        options.insert("OutDec".to_string(), val);
 
-    options.insert("CBoundsCheck".to_string(), pl(FALSE));
+        options.insert("CBoundsCheck".to_string(), pl(FALSE));
 
-    let val = pm(CString::new("default").unwrap_or_default().as_ptr());
-    options.insert("matprod".to_string(), val);
+        let val = pm(CString::new("default").unwrap_or_default().as_ptr());
+        options.insert("matprod".to_string(), val);
 
-    options.insert("PCRE_study".to_string(), pl(TRUE));
-    options.insert("PCRE_use_JIT".to_string(), pl(TRUE));
-    options.insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL));
-    options.insert("max.contour.segments".to_string(), pi(25000));
-    options.insert("warnPartialMatchDollar".to_string(), pl(FALSE));
-    options.insert("warnPartialMatchArgs".to_string(), pl(FALSE));
-    options.insert("warnPartialMatchAttr".to_string(), pl(FALSE));
-    options.insert("showWarnCalls".to_string(), pl(FALSE));
-    options.insert("showErrorCalls".to_string(), pl(FALSE));
-    options.insert("showNCalls".to_string(), pi(50));
-    options.insert("browserNLdisabled".to_string(), pl(FALSE));
-    options.insert("warn".to_string(), pi(0));
-    options.insert("max.print".to_string(), pi(99999));
-    options.insert("show.error.messages".to_string(), pl(TRUE));
-    options.insert("scipen".to_string(), pi(0));
-    options.insert("height".to_string(), pi(60));
-    options.insert("add.smooth".to_string(), pl(TRUE));
+        options.insert("PCRE_study".to_string(), pl(TRUE));
+        options.insert("PCRE_use_JIT".to_string(), pl(TRUE));
+        options.insert("PCRE_limit_recursion".to_string(), pl(NA_LOGICAL));
+        options.insert("max.contour.segments".to_string(), pi(25000));
+        options.insert("warnPartialMatchDollar".to_string(), pl(FALSE));
+        options.insert("warnPartialMatchArgs".to_string(), pl(FALSE));
+        options.insert("warnPartialMatchAttr".to_string(), pl(FALSE));
+        options.insert("showWarnCalls".to_string(), pl(FALSE));
+        options.insert("showErrorCalls".to_string(), pl(FALSE));
+        options.insert("showNCalls".to_string(), pi(50));
+        options.insert("browserNLdisabled".to_string(), pl(FALSE));
+        options.insert("warn".to_string(), pi(0));
+        options.insert("max.print".to_string(), pi(99999));
+        options.insert("show.error.messages".to_string(), pl(TRUE));
+        options.insert("scipen".to_string(), pi(0));
+        options.insert("height".to_string(), pi(60));
+        options.insert("add.smooth".to_string(), pl(TRUE));
     }
 }
 
@@ -1545,7 +1545,9 @@ mod tests {
             unsafe {
                 set_current_instance(&mut *instance);
             }
-            TestInstance { _instance: instance }
+            TestInstance {
+                _instance: instance,
+            }
         }
     }
 

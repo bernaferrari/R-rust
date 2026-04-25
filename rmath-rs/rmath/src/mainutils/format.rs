@@ -189,7 +189,13 @@ pub unsafe fn format_via_sprintf(r: c_double, d: c_int, kpower: *mut c_int, nsig
 /// Minimal snprintf shim for our format_via_sprintf.
 /// Writes into `buf` (up to `buf_size` bytes including NUL) using the
 /// C format string `fmt`.
-fn snprintf(buf: &mut [libc::c_char], buf_size: usize, fmt: *const libc::c_char, precision: usize, value: f64) -> i32 {
+fn snprintf(
+    buf: &mut [libc::c_char],
+    buf_size: usize,
+    fmt: *const libc::c_char,
+    precision: usize,
+    value: f64,
+) -> i32 {
     let fmt_cstr = unsafe { std::ffi::CStr::from_ptr(fmt) };
     let fmt_str = fmt_cstr.to_str().unwrap_or("%.15e");
     // We only support the specific "%#.*e" pattern used by format_via_sprintf.

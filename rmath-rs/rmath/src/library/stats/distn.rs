@@ -1269,25 +1269,11 @@ unsafe fn wrap_qhyper(
     crate::nmath::dist::hypergeometric::qhyper_inner(p, r, b, n, lt != 0, lp != 0)
 }
 
-pub unsafe fn do_phyper(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_phyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_phyper)
 }
 
-pub unsafe fn do_qhyper(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_qhyper(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_qhyper)
 }
 
@@ -1315,25 +1301,11 @@ unsafe fn wrap_qnbeta(
     crate::nmath::dist::nbeta::qnbeta_inner(p, a, b, ncp, lt != 0, lp != 0)
 }
 
-pub unsafe fn do_pnbeta(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_pnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_pnbeta)
 }
 
-pub unsafe fn do_qnbeta(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_qnbeta(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_qnbeta)
 }
 
@@ -1361,25 +1333,11 @@ unsafe fn wrap_qnf(
     crate::nmath::dist::nf_dist::qnf_inner(p, df1, df2, ncp, lt != 0, lp != 0)
 }
 
-pub unsafe fn do_pnf(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_pnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_pnf)
 }
 
-pub unsafe fn do_qnf(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_qnf(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_qnf)
 }
 
@@ -1407,25 +1365,11 @@ unsafe fn wrap_qtukey(
     crate::nmath::dist::tukey::qtukey_inner(p, nr, nmeans, df, lt != 0, lp != 0)
 }
 
-pub unsafe fn do_ptukey(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_ptukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_ptukey)
 }
 
-pub unsafe fn do_qtukey(
-    sa: SEXP,
-    sb: SEXP,
-    sc: SEXP,
-    sd: SEXP,
-    sI: SEXP,
-    sJ: SEXP,
-) -> SEXP {
+pub unsafe fn do_qtukey(sa: SEXP, sb: SEXP, sc: SEXP, sd: SEXP, sI: SEXP, sJ: SEXP) -> SEXP {
     math4_2(sa, sb, sc, sd, sI, sJ, wrap_qtukey)
 }
 

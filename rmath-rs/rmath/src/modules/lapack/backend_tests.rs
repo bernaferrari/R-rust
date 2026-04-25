@@ -105,7 +105,9 @@ fn seed_matrix(m: usize, n: usize, seed: u64) -> Vec<f64> {
     let mut s = seed;
     (0..m * n)
         .map(|_| {
-            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            s = s
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             0.5 + ((s >> 40) as f64) / ((1u64 << 24) as f64) * 4.5
         })
         .collect()
@@ -191,27 +193,19 @@ fn test_dlange_3x3_known() {
     let mut work = vec![0.0; 3];
 
     // 1-norm (max column sum): max(1+4+7, 2+5+8, 3+6+9) = 18
-    let norm_one = unsafe {
-        backend::dlange_(&b'O', &n, &n, a.as_ptr(), &n, work.as_mut_ptr())
-    };
+    let norm_one = unsafe { backend::dlange_(&b'O', &n, &n, a.as_ptr(), &n, work.as_mut_ptr()) };
     assert_close(norm_one, 18.0, "dlange 1-norm");
 
     // ∞-norm (max row sum): max(1+2+3, 4+5+6, 7+8+9) = 24
-    let norm_inf = unsafe {
-        backend::dlange_(&b'I', &n, &n, a.as_ptr(), &n, work.as_mut_ptr())
-    };
+    let norm_inf = unsafe { backend::dlange_(&b'I', &n, &n, a.as_ptr(), &n, work.as_mut_ptr()) };
     assert_close(norm_inf, 24.0, "dlange inf-norm");
 
     // Frobenius: sqrt(1²+4²+7²+2²+5²+8²+3²+6²+9²) = sqrt(285)
-    let norm_f = unsafe {
-        backend::dlange_(&b'F', &n, &n, a.as_ptr(), &n, work.as_mut_ptr())
-    };
+    let norm_f = unsafe { backend::dlange_(&b'F', &n, &n, a.as_ptr(), &n, work.as_mut_ptr()) };
     assert_close(norm_f, 285.0f64.sqrt(), "dlange F-norm");
 
     // Max element: 9
-    let norm_m = unsafe {
-        backend::dlange_(&b'M', &n, &n, a.as_ptr(), &n, work.as_mut_ptr())
-    };
+    let norm_m = unsafe { backend::dlange_(&b'M', &n, &n, a.as_ptr(), &n, work.as_mut_ptr()) };
     assert_close(norm_m, 9.0, "dlange max");
 }
 
@@ -231,9 +225,7 @@ fn test_dlange_5x3_random() {
         }
         expected_one = expected_one.max(col_sum);
     }
-    let got = unsafe {
-        backend::dlange_(&b'O', &m, &n, a.as_ptr(), &m, work.as_mut_ptr())
-    };
+    let got = unsafe { backend::dlange_(&b'O', &m, &n, a.as_ptr(), &m, work.as_mut_ptr()) };
     assert_close(got, expected_one, "dlange 5×3 1-norm");
 
     // Verify Frobenius
@@ -241,9 +233,7 @@ fn test_dlange_5x3_random() {
     for &v in &a {
         expected_f += v * v;
     }
-    let got_f = unsafe {
-        backend::dlange_(&b'F', &m, &n, a.as_ptr(), &m, work.as_mut_ptr())
-    };
+    let got_f = unsafe { backend::dlange_(&b'F', &m, &n, a.as_ptr(), &m, work.as_mut_ptr()) };
     assert_close(got_f, expected_f.sqrt(), "dlange 5×3 F-norm");
 }
 
@@ -275,7 +265,10 @@ fn test_dgetrf_3x3() {
 
     // Verify L has unit diagonal (implicit) and U diagonal is non-zero
     for i in 0..3 {
-        assert!(a[i + i * 3].abs() > 1e-15, "dgetrf U diagonal [{i}] is ~zero");
+        assert!(
+            a[i + i * 3].abs() > 1e-15,
+            "dgetrf U diagonal [{i}] is ~zero"
+        );
     }
 }
 
@@ -296,10 +289,13 @@ fn test_dgesv_3x3() {
 
     unsafe {
         backend::dgesv_(
-            &n, &nrhs,
-            a.as_mut_ptr(), &n,
+            &n,
+            &nrhs,
+            a.as_mut_ptr(),
+            &n,
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &n,
+            b.as_mut_ptr(),
+            &n,
             &mut info,
         );
     }
@@ -322,10 +318,13 @@ fn test_dgesv_5x5() {
 
     unsafe {
         backend::dgesv_(
-            &n, &nrhs,
-            a.as_mut_ptr(), &n,
+            &n,
+            &nrhs,
+            a.as_mut_ptr(),
+            &n,
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &n,
+            b.as_mut_ptr(),
+            &n,
             &mut info,
         );
     }
@@ -348,10 +347,13 @@ fn test_dgesv_10x10() {
 
     unsafe {
         backend::dgesv_(
-            &n, &nrhs,
-            a.as_mut_ptr(), &n,
+            &n,
+            &nrhs,
+            a.as_mut_ptr(),
+            &n,
             ipiv.as_mut_ptr(),
-            b.as_mut_ptr(), &n,
+            b.as_mut_ptr(),
+            &n,
             &mut info,
         );
     }
@@ -530,12 +532,18 @@ fn test_dgesdd_3x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgesdd_(
-                &b'A', &m, &n,
-                a.as_mut_ptr(), &m,
+                &b'A',
+                &m,
+                &n,
+                a.as_mut_ptr(),
+                &m,
                 s.as_mut_ptr(),
-                u.as_mut_ptr(), &m,
-                vt.as_mut_ptr(), &n,
-                work.as_mut_ptr(), &lwork,
+                u.as_mut_ptr(),
+                &m,
+                vt.as_mut_ptr(),
+                &n,
+                work.as_mut_ptr(),
+                &lwork,
                 iwork.as_mut_ptr(),
                 &mut info,
             );
@@ -549,12 +557,18 @@ fn test_dgesdd_3x3() {
     unsafe {
         let mut a = a_orig.clone();
         backend::dgesdd_(
-            &b'A', &m, &n,
-            a.as_mut_ptr(), &m,
+            &b'A',
+            &m,
+            &n,
+            a.as_mut_ptr(),
+            &m,
             s.as_mut_ptr(),
-            u.as_mut_ptr(), &m,
-            vt.as_mut_ptr(), &n,
-            work.as_mut_ptr(), &lwork,
+            u.as_mut_ptr(),
+            &m,
+            vt.as_mut_ptr(),
+            &n,
+            work.as_mut_ptr(),
+            &lwork,
             iwork.as_mut_ptr(),
             &mut info,
         );
@@ -569,7 +583,9 @@ fn test_dgesdd_3x3() {
         assert!(
             s[i] >= s[i + 1] - 1e-14,
             "dgesdd s[{i}]={} < s[{}]={}",
-            s[i], i + 1, s[i + 1],
+            s[i],
+            i + 1,
+            s[i + 1],
         );
     }
 
@@ -586,7 +602,10 @@ fn test_dgesdd_3x3() {
         diff[i] = recon[i] - a_orig[i];
     }
     let residual = frob(&diff, 3, 3) / frob(&a_orig, 3, 3).max(1e-15);
-    assert!(residual < 1e-10, "dgesdd 3×3 reconstruction residual: {residual}");
+    assert!(
+        residual < 1e-10,
+        "dgesdd 3×3 reconstruction residual: {residual}"
+    );
 }
 
 #[test]
@@ -608,12 +627,18 @@ fn test_dgesdd_5x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgesdd_(
-                &b'A', &m, &n,
-                a.as_mut_ptr(), &m,
+                &b'A',
+                &m,
+                &n,
+                a.as_mut_ptr(),
+                &m,
                 s.as_mut_ptr(),
-                u.as_mut_ptr(), &m,
-                vt.as_mut_ptr(), &n,
-                work.as_mut_ptr(), &lwork,
+                u.as_mut_ptr(),
+                &m,
+                vt.as_mut_ptr(),
+                &n,
+                work.as_mut_ptr(),
+                &lwork,
                 iwork.as_mut_ptr(),
                 &mut info,
             );
@@ -625,12 +650,18 @@ fn test_dgesdd_5x3() {
     unsafe {
         let mut a = a_orig.clone();
         backend::dgesdd_(
-            &b'A', &m, &n,
-            a.as_mut_ptr(), &m,
+            &b'A',
+            &m,
+            &n,
+            a.as_mut_ptr(),
+            &m,
             s.as_mut_ptr(),
-            u.as_mut_ptr(), &m,
-            vt.as_mut_ptr(), &n,
-            work.as_mut_ptr(), &lwork,
+            u.as_mut_ptr(),
+            &m,
+            vt.as_mut_ptr(),
+            &n,
+            work.as_mut_ptr(),
+            &lwork,
             iwork.as_mut_ptr(),
             &mut info,
         );
@@ -669,13 +700,26 @@ fn test_dsyevr_3x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dsyevr_(
-                &b'V', &b'A', &b'L',
-                &n, a.as_mut_ptr(), &n,
-                &0.0, &0.0, &0, &0, &0.0,
-                &mut m, w.as_mut_ptr(), z.as_mut_ptr(), &n,
+                &b'V',
+                &b'A',
+                &b'L',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                &0.0,
+                &0.0,
+                &0,
+                &0,
+                &0.0,
+                &mut m,
+                w.as_mut_ptr(),
+                z.as_mut_ptr(),
+                &n,
                 isuppz.as_mut_ptr(),
-                work.as_mut_ptr(), &lwork,
-                iwork.as_mut_ptr(), &liwork,
+                work.as_mut_ptr(),
+                &lwork,
+                iwork.as_mut_ptr(),
+                &liwork,
                 &mut info,
             );
         }
@@ -690,13 +734,26 @@ fn test_dsyevr_3x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dsyevr_(
-                &b'V', &b'A', &b'L',
-                &n, a.as_mut_ptr(), &n,
-                &0.0, &0.0, &0, &0, &0.0,
-                &mut m, w.as_mut_ptr(), z.as_mut_ptr(), &n,
+                &b'V',
+                &b'A',
+                &b'L',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                &0.0,
+                &0.0,
+                &0,
+                &0,
+                &0.0,
+                &mut m,
+                w.as_mut_ptr(),
+                z.as_mut_ptr(),
+                &n,
                 isuppz.as_mut_ptr(),
-                work.as_mut_ptr(), &lwork,
-                iwork.as_mut_ptr(), &liwork,
+                work.as_mut_ptr(),
+                &lwork,
+                iwork.as_mut_ptr(),
+                &liwork,
                 &mut info,
             );
         }
@@ -744,13 +801,26 @@ fn test_dsyevr_5x5() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dsyevr_(
-                &b'V', &b'A', &b'L',
-                &n, a.as_mut_ptr(), &n,
-                &0.0, &0.0, &0, &0, &0.0,
-                &mut m, w.as_mut_ptr(), z.as_mut_ptr(), &n,
+                &b'V',
+                &b'A',
+                &b'L',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                &0.0,
+                &0.0,
+                &0,
+                &0,
+                &0.0,
+                &mut m,
+                w.as_mut_ptr(),
+                z.as_mut_ptr(),
+                &n,
                 isuppz.as_mut_ptr(),
-                work.as_mut_ptr(), &lwork,
-                iwork.as_mut_ptr(), &liwork,
+                work.as_mut_ptr(),
+                &lwork,
+                iwork.as_mut_ptr(),
+                &liwork,
                 &mut info,
             );
         }
@@ -764,13 +834,26 @@ fn test_dsyevr_5x5() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dsyevr_(
-                &b'V', &b'A', &b'L',
-                &n, a.as_mut_ptr(), &n,
-                &0.0, &0.0, &0, &0, &0.0,
-                &mut m, w.as_mut_ptr(), z.as_mut_ptr(), &n,
+                &b'V',
+                &b'A',
+                &b'L',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                &0.0,
+                &0.0,
+                &0,
+                &0,
+                &0.0,
+                &mut m,
+                w.as_mut_ptr(),
+                z.as_mut_ptr(),
+                &n,
                 isuppz.as_mut_ptr(),
-                work.as_mut_ptr(), &lwork,
-                iwork.as_mut_ptr(), &liwork,
+                work.as_mut_ptr(),
+                &lwork,
+                iwork.as_mut_ptr(),
+                &liwork,
                 &mut info,
             );
         }
@@ -815,12 +898,19 @@ fn test_dgeev_3x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgeev_(
-                &b'N', &b'V',
-                &n, a.as_mut_ptr(), &n,
-                wr.as_mut_ptr(), wi.as_mut_ptr(),
-                vl.as_mut_ptr(), &n,
-                vr.as_mut_ptr(), &n,
-                work.as_mut_ptr(), &lwork,
+                &b'N',
+                &b'V',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                wr.as_mut_ptr(),
+                wi.as_mut_ptr(),
+                vl.as_mut_ptr(),
+                &n,
+                vr.as_mut_ptr(),
+                &n,
+                work.as_mut_ptr(),
+                &lwork,
                 &mut info,
             );
         }
@@ -833,12 +923,19 @@ fn test_dgeev_3x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgeev_(
-                &b'N', &b'V',
-                &n, a.as_mut_ptr(), &n,
-                wr.as_mut_ptr(), wi.as_mut_ptr(),
-                vl.as_mut_ptr(), &n,
-                vr.as_mut_ptr(), &n,
-                work.as_mut_ptr(), &lwork,
+                &b'N',
+                &b'V',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                wr.as_mut_ptr(),
+                wi.as_mut_ptr(),
+                vl.as_mut_ptr(),
+                &n,
+                vr.as_mut_ptr(),
+                &n,
+                work.as_mut_ptr(),
+                &lwork,
                 &mut info,
             );
         }
@@ -886,12 +983,19 @@ fn test_dgeev_5x5() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgeev_(
-                &b'N', &b'V',
-                &n, a.as_mut_ptr(), &n,
-                wr.as_mut_ptr(), wi.as_mut_ptr(),
-                vl.as_mut_ptr(), &n,
-                vr.as_mut_ptr(), &n,
-                work.as_mut_ptr(), &lwork,
+                &b'N',
+                &b'V',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                wr.as_mut_ptr(),
+                wi.as_mut_ptr(),
+                vl.as_mut_ptr(),
+                &n,
+                vr.as_mut_ptr(),
+                &n,
+                work.as_mut_ptr(),
+                &lwork,
                 &mut info,
             );
         }
@@ -903,12 +1007,19 @@ fn test_dgeev_5x5() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgeev_(
-                &b'N', &b'V',
-                &n, a.as_mut_ptr(), &n,
-                wr.as_mut_ptr(), wi.as_mut_ptr(),
-                vl.as_mut_ptr(), &n,
-                vr.as_mut_ptr(), &n,
-                work.as_mut_ptr(), &lwork,
+                &b'N',
+                &b'V',
+                &n,
+                a.as_mut_ptr(),
+                &n,
+                wr.as_mut_ptr(),
+                wi.as_mut_ptr(),
+                vl.as_mut_ptr(),
+                &n,
+                vr.as_mut_ptr(),
+                &n,
+                work.as_mut_ptr(),
+                &lwork,
                 &mut info,
             );
         }
@@ -957,11 +1068,14 @@ fn test_dgeqp3_3x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgeqp3_(
-                &m, &n,
-                a.as_mut_ptr(), &m,
+                &m,
+                &n,
+                a.as_mut_ptr(),
+                &m,
                 jpvt.as_mut_ptr(),
                 tau.as_mut_ptr(),
-                work.as_mut_ptr(), &lwork,
+                work.as_mut_ptr(),
+                &lwork,
                 &mut info,
             );
         }
@@ -973,11 +1087,14 @@ fn test_dgeqp3_3x3() {
     let mut a = a_orig.clone();
     unsafe {
         backend::dgeqp3_(
-            &m, &n,
-            a.as_mut_ptr(), &m,
+            &m,
+            &n,
+            a.as_mut_ptr(),
+            &m,
             jpvt.as_mut_ptr(),
             tau.as_mut_ptr(),
-            work.as_mut_ptr(), &lwork,
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -1007,11 +1124,14 @@ fn test_dgeqp3_5x3() {
         let mut a = a_orig.clone();
         unsafe {
             backend::dgeqp3_(
-                &m, &n,
-                a.as_mut_ptr(), &m,
+                &m,
+                &n,
+                a.as_mut_ptr(),
+                &m,
                 jpvt.as_mut_ptr(),
                 tau.as_mut_ptr(),
-                work.as_mut_ptr(), &lwork,
+                work.as_mut_ptr(),
+                &lwork,
                 &mut info,
             );
         }
@@ -1022,11 +1142,14 @@ fn test_dgeqp3_5x3() {
     let mut a = a_orig.clone();
     unsafe {
         backend::dgeqp3_(
-            &m, &n,
-            a.as_mut_ptr(), &m,
+            &m,
+            &n,
+            a.as_mut_ptr(),
+            &m,
             jpvt.as_mut_ptr(),
             tau.as_mut_ptr(),
-            work.as_mut_ptr(), &lwork,
+            work.as_mut_ptr(),
+            &lwork,
             &mut info,
         );
     }
@@ -1056,10 +1179,15 @@ fn test_dtrtrs_3x3_upper() {
 
     unsafe {
         backend::dtrtrs_(
-            &b'U', &b'N', &b'N',
-            &n, &nrhs,
-            a.as_ptr(), &n,
-            b.as_mut_ptr(), &n,
+            &b'U',
+            &b'N',
+            &b'N',
+            &n,
+            &nrhs,
+            a.as_ptr(),
+            &n,
+            b.as_mut_ptr(),
+            &n,
             &mut info,
         );
     }
@@ -1095,10 +1223,15 @@ fn test_dtrtrs_5x5_random() {
 
     unsafe {
         backend::dtrtrs_(
-            &b'U', &b'N', &b'N',
-            &n, &nrhs,
-            a.as_ptr(), &n,
-            b.as_mut_ptr(), &n,
+            &b'U',
+            &b'N',
+            &b'N',
+            &n,
+            &nrhs,
+            a.as_ptr(),
+            &n,
+            b.as_mut_ptr(),
+            &n,
             &mut info,
         );
     }
@@ -1122,10 +1255,15 @@ fn test_dtrtrs_lower_transpose() {
 
     unsafe {
         backend::dtrtrs_(
-            &b'L', &b'T', &b'N',
-            &n, &nrhs,
-            a.as_ptr(), &n,
-            b.as_mut_ptr(), &n,
+            &b'L',
+            &b'T',
+            &b'N',
+            &n,
+            &nrhs,
+            a.as_ptr(),
+            &n,
+            b.as_mut_ptr(),
+            &n,
             &mut info,
         );
     }

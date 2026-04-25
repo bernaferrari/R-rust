@@ -58,7 +58,11 @@ unsafe fn isBlankString(s: *const libc::c_char) -> c_int {
     }
     let mut p = s;
     while *p != 0 {
-        if *p != b' ' as libc::c_char && *p != b'\t' as libc::c_char && *p != b'\n' as libc::c_char && *p != b'\r' as libc::c_char {
+        if *p != b' ' as libc::c_char
+            && *p != b'\t' as libc::c_char
+            && *p != b'\n' as libc::c_char
+            && *p != b'\r' as libc::c_char
+        {
             return 0;
         }
         p = p.add(1);

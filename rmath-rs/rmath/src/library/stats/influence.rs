@@ -124,7 +124,19 @@ unsafe extern "C" {
 }
 
 #[cfg(not(feature = "fortran-backend"))]
-unsafe fn lminfl_(_qr: *const c_double, _n: *const c_int, _ldqr: *const c_int, _k: *const c_int, _q: *const c_int, _qraux: *const c_double, _resid: *const c_double, _hat: *mut c_double, _sigma: *mut c_double, _tol: *const c_double) {}
+unsafe fn lminfl_(
+    _qr: *const c_double,
+    _n: *const c_int,
+    _ldqr: *const c_int,
+    _k: *const c_int,
+    _q: *const c_int,
+    _qraux: *const c_double,
+    _resid: *const c_double,
+    _hat: *mut c_double,
+    _sigma: *mut c_double,
+    _tol: *const c_double,
+) {
+}
 
 // ---------------------------------------------------------------------------
 // influence: regression influence diagnostics

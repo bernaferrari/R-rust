@@ -1,4 +1,3 @@
-
 //! Cubic B-spline smoother (sbart).
 //! Port of r-source/src/library/stats/src/sbart.c
 //!

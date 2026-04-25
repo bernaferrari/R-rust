@@ -33,12 +33,7 @@ pub unsafe fn QuartzBitmap_Output(_dev: QuartzDesc_t, _qbd: *mut c_void) {}
 
 /// QuartzBitmap_NewPage - handles new page.
 /// Stub: no-op.
-pub unsafe fn QuartzBitmap_NewPage(
-    _dev: QuartzDesc_t,
-    _user_info: *mut c_void,
-    _flags: c_int,
-) {
-}
+pub unsafe fn QuartzBitmap_NewPage(_dev: QuartzDesc_t, _user_info: *mut c_void, _flags: c_int) {}
 
 /// QuartzBitmap_Close - cleanup and free device resources.
 /// Stub: no-op.

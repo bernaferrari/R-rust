@@ -136,14 +136,19 @@ fn set_pixel_if_visible(d: drawing, x: c_int, y: c_int, color: rgb) {
     }
     with_state_mut(d, |state| {
         let p = point { x, y };
-        if get_clip(d, state).map(|clip| point_in_rect(p, clip)).unwrap_or(true) {
+        if get_clip(d, state)
+            .map(|clip| point_in_rect(p, clip))
+            .unwrap_or(true)
+        {
             state.pixels.insert((x, y), color);
         }
     });
 }
 
 fn get_pixel_state(d: drawing, x: c_int, y: c_int) -> rgb {
-    with_state(d, |state| state.pixels.get(&(x, y)).copied().unwrap_or(Black))
+    with_state(d, |state| {
+        state.pixels.get(&(x, y)).copied().unwrap_or(Black)
+    })
 }
 
 fn stamp_square(d: drawing, center: point, width: c_int, color: rgb) {
@@ -311,8 +316,8 @@ fn point_in_polygon_even_odd(points: &[point], x: f64, y: f64) -> bool {
         let yi = points[i].y as f64;
         let xj = points[j].x as f64;
         let yj = points[j].y as f64;
-        let crosses = ((yi > y) != (yj > y))
-            && (x < (xj - xi) * (y - yi) / (yj - yi + f64::EPSILON) + xi);
+        let crosses =
+            ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi + f64::EPSILON) + xi);
         if crosses {
             inside = !inside;
         }
@@ -429,12 +434,16 @@ fn font_info(f: font) -> FontInfo {
     }
 
     FONT_STATE.with(|fonts| {
-        fonts.borrow().get(&font_key(f)).copied().unwrap_or(FontInfo {
-            height: unsafe { (*f).value.max(1) },
-            style: unsafe { (*f).flags as c_int },
-            quality: unsafe { (*f).max },
-            use_points: unsafe { (*f).size },
-        })
+        fonts
+            .borrow()
+            .get(&font_key(f))
+            .copied()
+            .unwrap_or(FontInfo {
+                height: unsafe { (*f).value.max(1) },
+                style: unsafe { (*f).flags as c_int },
+                quality: unsafe { (*f).max },
+                use_points: unsafe { (*f).size },
+            })
     })
 }
 
@@ -543,7 +552,9 @@ pub fn gsetcliprect(d: drawing, r: rect) {
     if d.is_null() {
         return;
     }
-    with_state_mut(d, |state| state.clip = rect_bounds(r).map(|_| normalized_rect(r)));
+    with_state_mut(d, |state| {
+        state.clip = rect_bounds(r).map(|_| normalized_rect(r))
+    });
 }
 
 pub fn gbitblt(db: bitmap, sb: bitmap, p: point, r: rect) {
@@ -707,7 +718,13 @@ pub unsafe fn gdrawpolyline(
         draw_line_segment(d, width.max(1), c, segment[0], segment[1]);
     }
     if closepath != 0 {
-        draw_line_segment(d, width.max(1), c, *points.last().unwrap_or(&points[0]), points[0]);
+        draw_line_segment(
+            d,
+            width.max(1),
+            c,
+            *points.last().unwrap_or(&points[0]),
+            points[0],
+        );
     }
 }
 
@@ -771,13 +788,7 @@ pub fn gmaskimage(d: drawing, img: image, dr: rect, sr: rect, mask: image) {
     draw_image_into_rect(d, img, dr, sr, Some(mask));
 }
 
-pub unsafe fn gdrawstr(
-    d: drawing,
-    f: font,
-    c: rgb,
-    p: point,
-    s: *const c_char,
-) -> c_int {
+pub unsafe fn gdrawstr(d: drawing, f: font, c: rgb, p: point, s: *const c_char) -> c_int {
     let width = unsafe { gstrwidth(d, f, s) };
     let char_w = font_char_width(f).max(1);
     let len = unsafe { c_string_len(s) } as c_int;
@@ -787,14 +798,7 @@ pub unsafe fn gdrawstr(
     width
 }
 
-pub unsafe fn gdrawstr1(
-    d: drawing,
-    f: font,
-    c: rgb,
-    p: point,
-    s: *const c_char,
-    hadj: f64,
-) {
+pub unsafe fn gdrawstr1(d: drawing, f: font, c: rgb, p: point, s: *const c_char, hadj: f64) {
     let width = unsafe { gstrwidth(d, f, s) };
     let start = point {
         x: p.x - (hadj * width as f64).round() as c_int,
@@ -922,13 +926,7 @@ pub unsafe fn newfield_no_border(text: *const c_char, r: rect) -> field {
     field
 }
 
-pub unsafe fn gdrawwcs(
-    d: drawing,
-    f: font,
-    c: rgb,
-    p: point,
-    s: *const c_int,
-) -> c_int {
+pub unsafe fn gdrawwcs(d: drawing, f: font, c: rgb, p: point, s: *const c_int) -> c_int {
     let chars = unsafe { wide_string(s, None) };
     let width = text_width(f, chars.len());
     let char_w = font_char_width(f).max(1);
@@ -971,12 +969,7 @@ pub unsafe fn gwdrawstr1(
     }
 }
 
-pub unsafe fn gstrwidth1(
-    _d: drawing,
-    f: font,
-    s: *const c_char,
-    _enc: c_int,
-) -> c_int {
+pub unsafe fn gstrwidth1(_d: drawing, f: font, s: *const c_char, _enc: c_int) -> c_int {
     text_width(f, unsafe { c_string_len(s) })
 }
 
@@ -1061,7 +1054,14 @@ mod tests {
             let mut ascent = 0;
             let mut descent = 0;
             let mut width = 0;
-            gcharmetric(ptr::null_mut(), font, 'a' as c_int, &mut ascent, &mut descent, &mut width);
+            gcharmetric(
+                ptr::null_mut(),
+                font,
+                'a' as c_int,
+                &mut ascent,
+                &mut descent,
+                &mut width,
+            );
             assert_eq!(width, 6);
             assert_eq!(ascent + descent, 12);
         }

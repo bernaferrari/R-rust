@@ -628,13 +628,7 @@ mod win_impl {
         let _ = (x, y, radius, gc, dd);
     }
 
-    pub unsafe fn GA_Clip(
-        x0: c_double,
-        x1: c_double,
-        y0: c_double,
-        y1: c_double,
-        dd: *mut c_void,
-    ) {
+    pub unsafe fn GA_Clip(x0: c_double, x1: c_double, y0: c_double, y1: c_double, dd: *mut c_void) {
         let _ = (x0, x1, y0, y1, dd);
     }
 
@@ -650,11 +644,7 @@ mod win_impl {
         let _ = (dd, code);
     }
 
-    pub unsafe fn GA_Locator(
-        x: *mut c_double,
-        y: *mut c_double,
-        dd: *mut c_void,
-    ) -> c_int {
+    pub unsafe fn GA_Locator(x: *mut c_double, y: *mut c_double, dd: *mut c_void) -> c_int {
         let _ = (x, y, dd);
         0 // FALSE
     }
@@ -767,11 +757,7 @@ mod win_impl {
         R_NilValue()
     }
 
-    pub unsafe fn GA_StrWidth(
-        str: *const c_char,
-        gc: *const c_void,
-        dd: *mut c_void,
-    ) -> c_double {
+    pub unsafe fn GA_StrWidth(str: *const c_char, gc: *const c_void, dd: *mut c_void) -> c_double {
         let _ = (str, gc, dd);
         0.0
     }

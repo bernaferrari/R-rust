@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001-12   The R Core Team.
@@ -136,13 +135,7 @@ pub unsafe fn C_axis(
 
 /// C_box -- draw a box around the current plot.
 /// Stub: returns R_NilValue.
-pub unsafe fn C_box(
-    _which: SEXP,
-    _lty: SEXP,
-    _lwd: SEXP,
-    _col: SEXP,
-    _fill: SEXP,
-) -> SEXP {
+pub unsafe fn C_box(_which: SEXP, _lty: SEXP, _lwd: SEXP, _col: SEXP, _fill: SEXP) -> SEXP {
     R_NilValue()
 }
 

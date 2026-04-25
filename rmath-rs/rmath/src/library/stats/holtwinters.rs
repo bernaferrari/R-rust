@@ -1,4 +1,3 @@
-
 //! Holt-Winters filtering algorithm.
 //! Port of r-source/src/library/stats/src/HoltWinters.c
 

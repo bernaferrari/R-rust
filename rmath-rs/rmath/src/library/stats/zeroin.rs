@@ -1,4 +1,3 @@
-
 //! Brent's root-finding method (zeroin).
 //! Port of r-source/src/library/stats/src/zeroin.c
 

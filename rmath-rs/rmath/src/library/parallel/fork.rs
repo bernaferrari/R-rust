@@ -559,118 +559,124 @@ pub unsafe fn mc_fork(sEstranged: SEXP) -> SEXP {
 
     #[cfg(not(target_os = "android"))]
     {
-    use crate::main::coerce::asInteger;
+        use crate::main::coerce::asInteger;
 
-    let mut pipefd: [c_int; 2] = [-1, -1]; // write end, read end
-    let mut sipfd: [c_int; 2] = [-1, -1];
-    let mut pid: pid_t = 0;
-    let estranged = asInteger(sEstranged) > 0;
-    let res = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-    let res_i = INTEGER(res);
+        let mut pipefd: [c_int; 2] = [-1, -1]; // write end, read end
+        let mut sipfd: [c_int; 2] = [-1, -1];
+        let mut pid: pid_t = 0;
+        let estranged = asInteger(sEstranged) > 0;
+        let res = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+        let res_i = INTEGER(res);
 
-    if !estranged {
-        if pipe(pipefd.as_mut_ptr()) != 0 {
-            crate::main::errors::Rf_error(b"unable to create a pipe\0".as_ptr() as *const c_char);
-        }
-        if pipe(sipfd.as_mut_ptr()) != 0 {
-            close(pipefd[0]);
-            close(pipefd[1]);
-            crate::main::errors::Rf_error(b"unable to create a pipe\0".as_ptr() as *const c_char);
-        }
-    }
-
-    setup_sig_handler();
-
-    let mut ss: sigset_t = std::mem::zeroed();
-    block_sigchld(&mut ss);
-
-    // Flush stdout before forking
-    libc::fflush(std::ptr::null_mut());
-
-    pid = fork();
-    if pid == -1 {
         if !estranged {
-            close(pipefd[0]);
-            close(pipefd[1]);
-            close(sipfd[0]);
-            close(sipfd[1]);
-        }
-        crate::main::errors::Rf_error(
-            b"unable to fork, possible reason: %s\0".as_ptr() as *const c_char
-        );
-    }
-
-    *res_i.add(0) = pid as c_int;
-
-    if pid == 0 {
-        // Child process
-        R_isForkedChild.with(|v| v.set(1));
-
-        // Free children entries inherited from parent
-        while !children.with(|v| v.get()).is_null() {
-            close_fds_child_ci(children.with(|v| v.get()));
-            let next = (*children.with(|v| v.get())).next;
-            libc::free(children.with(|v| v.get()) as *mut c_void);
-            children.with(|v| v.set(next));
+            if pipe(pipefd.as_mut_ptr()) != 0 {
+                crate::main::errors::Rf_error(
+                    b"unable to create a pipe\0".as_ptr() as *const c_char
+                );
+            }
+            if pipe(sipfd.as_mut_ptr()) != 0 {
+                close(pipefd[0]);
+                close(pipefd[1]);
+                crate::main::errors::Rf_error(
+                    b"unable to create a pipe\0".as_ptr() as *const c_char
+                );
+            }
         }
 
-        restore_sigchld(&ss);
-        restore_sig_handler();
+        setup_sig_handler();
 
-        if estranged {
-            *res_i.add(1) = NA_INTEGER as c_int;
-            *res_i.add(2) = NA_INTEGER as c_int;
+        let mut ss: sigset_t = std::mem::zeroed();
+        block_sigchld(&mut ss);
+
+        // Flush stdout before forking
+        libc::fflush(std::ptr::null_mut());
+
+        pid = fork();
+        if pid == -1 {
+            if !estranged {
+                close(pipefd[0]);
+                close(pipefd[1]);
+                close(sipfd[0]);
+                close(sipfd[1]);
+            }
+            crate::main::errors::Rf_error(
+                b"unable to fork, possible reason: %s\0".as_ptr() as *const c_char
+            );
+        }
+
+        *res_i.add(0) = pid as c_int;
+
+        if pid == 0 {
+            // Child process
+            R_isForkedChild.with(|v| v.set(1));
+
+            // Free children entries inherited from parent
+            while !children.with(|v| v.get()).is_null() {
+                close_fds_child_ci(children.with(|v| v.get()));
+                let next = (*children.with(|v| v.get())).next;
+                libc::free(children.with(|v| v.get()) as *mut c_void);
+                children.with(|v| v.set(next));
+            }
+
+            restore_sigchld(&ss);
+            restore_sig_handler();
+
+            if estranged {
+                *res_i.add(1) = NA_INTEGER as c_int;
+                *res_i.add(2) = NA_INTEGER as c_int;
+            } else {
+                close(pipefd[0]);
+                close(sipfd[1]);
+                master_fd.with(|v| v.set(*res_i.add(1)));
+                *res_i.add(1) = pipefd[1];
+                *res_i.add(2) = NA_INTEGER as c_int;
+
+                dup2(sipfd[0], R_STDIN_FILENO);
+                close(sipfd[0]);
+            }
+            is_master.with(|v| v.set(0));
+            child_exit_status.with(|v| v.set(-1));
+
+            if estranged {
+                child_can_exit.with(|v| v.set(1));
+            } else {
+                child_can_exit.with(|v| v.set(0));
+                signal(SIGUSR1, child_sig_handler as *const () as usize);
+            }
         } else {
-            close(pipefd[0]);
-            close(sipfd[1]);
-            master_fd.with(|v| v.set(*res_i.add(1)));
-            *res_i.add(1) = pipefd[1];
-            *res_i.add(2) = NA_INTEGER as c_int;
+            // Master process
+            let ci = libc::malloc(std::mem::size_of::<child_info_t>()) as *mut child_info_t;
+            if ci.is_null() {
+                crate::main::errors::Rf_error(
+                    b"memory allocation error\0".as_ptr() as *const c_char
+                );
+            }
+            (*ci).pid = pid;
+            (*ci).ppid = libc::getpid();
+            (*ci).waitedfor = 0;
 
-            dup2(sipfd[0], R_STDIN_FILENO);
-            close(sipfd[0]);
-        }
-        is_master.with(|v| v.set(0));
-        child_exit_status.with(|v| v.set(-1));
+            if estranged {
+                (*ci).detached = 1;
+                *res_i.add(1) = NA_INTEGER as c_int;
+                *res_i.add(2) = NA_INTEGER as c_int;
+                (*ci).pfd = -1;
+                (*ci).sifd = -1;
+            } else {
+                (*ci).detached = 0;
+                close(pipefd[1]); // close write end of data pipe
+                close(sipfd[0]); // close read end of child-stdin pipe
+                *res_i.add(1) = pipefd[0];
+                *res_i.add(2) = sipfd[1];
+                (*ci).pfd = pipefd[0];
+                (*ci).sifd = sipfd[1];
+            }
 
-        if estranged {
-            child_can_exit.with(|v| v.set(1));
-        } else {
-            child_can_exit.with(|v| v.set(0));
-            signal(SIGUSR1, child_sig_handler as *const () as usize);
-        }
-    } else {
-        // Master process
-        let ci = libc::malloc(std::mem::size_of::<child_info_t>()) as *mut child_info_t;
-        if ci.is_null() {
-            crate::main::errors::Rf_error(b"memory allocation error\0".as_ptr() as *const c_char);
-        }
-        (*ci).pid = pid;
-        (*ci).ppid = libc::getpid();
-        (*ci).waitedfor = 0;
-
-        if estranged {
-            (*ci).detached = 1;
-            *res_i.add(1) = NA_INTEGER as c_int;
-            *res_i.add(2) = NA_INTEGER as c_int;
-            (*ci).pfd = -1;
-            (*ci).sifd = -1;
-        } else {
-            (*ci).detached = 0;
-            close(pipefd[1]); // close write end of data pipe
-            close(sipfd[0]); // close read end of child-stdin pipe
-            *res_i.add(1) = pipefd[0];
-            *res_i.add(2) = sipfd[1];
-            (*ci).pfd = pipefd[0];
-            (*ci).sifd = sipfd[1];
+            (*ci).next = children.with(|v| v.get());
+            children.with(|v| v.set(ci));
+            restore_sigchld(&ss);
         }
 
-        (*ci).next = children.with(|v| v.get());
-        children.with(|v| v.set(ci));
-        restore_sigchld(&ss);
-    }
-
-    res
+        res
     }
 }
 
@@ -951,7 +957,8 @@ pub unsafe fn mc_select_children(sTimeout: SEXP, sWhich: SEXP) -> SEXP {
             // Note: R_wait_usec is a global; we treat it as 0 (no external wait)
             if timeout > 0.0 {
                 tv.tv_sec = remains as i64;
-                tv.tv_usec = ((remains - (remains as i64) as c_double) * 1_000_000.0) as libc::suseconds_t;
+                tv.tv_usec =
+                    ((remains - (remains as i64) as c_double) * 1_000_000.0) as libc::suseconds_t;
             } else {
                 tv.tv_sec = 1; // still allow to process events
                 tv.tv_usec = 0;

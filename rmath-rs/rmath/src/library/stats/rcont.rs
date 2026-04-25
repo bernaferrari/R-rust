@@ -1,4 +1,3 @@
-
 use core::ffi::c_int;
 
 use crate::nmath::rng::unif_rand;

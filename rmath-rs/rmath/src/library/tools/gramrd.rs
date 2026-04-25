@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/tools/src/gramRd.c
@@ -13,9 +12,9 @@
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
 
-use crate::attrib_core::setAttrib;
 use crate::attrib_core::R_ClassSymbol;
 use crate::attrib_core::R_NamesSymbol;
+use crate::attrib_core::setAttrib;
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
 use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;

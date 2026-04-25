@@ -36,7 +36,11 @@ fn nearest_palette_index(palette: &[rgb], color: rgb) -> GAbyte {
         return 0;
     }
     if color == Transparent {
-        if let Some((index, _)) = palette.iter().enumerate().find(|(_, value)| **value == Transparent) {
+        if let Some((index, _)) = palette
+            .iter()
+            .enumerate()
+            .find(|(_, value)| **value == Transparent)
+        {
             return index as GAbyte;
         }
     }
@@ -62,7 +66,13 @@ fn nearest_palette_index(palette: &[rgb], color: rgb) -> GAbyte {
         .unwrap_or(0)
 }
 
-fn sample_coordinate(out_coord: c_int, out_size: c_int, start: c_int, span: c_int, limit: c_int) -> c_int {
+fn sample_coordinate(
+    out_coord: c_int,
+    out_size: c_int,
+    start: c_int,
+    span: c_int,
+    limit: c_int,
+) -> c_int {
     if limit <= 0 {
         return 0;
     }
@@ -92,8 +102,9 @@ pub unsafe fn newimage(width: c_int, height: c_int, depth: c_int) -> image {
             (*img).pixels = pixels;
         } else {
             (*img).depth = 32;
-            let pixels =
-                memory::memalloc((width as i64 * height as i64 * std::mem::size_of::<rgb>() as i64) as i64);
+            let pixels = memory::memalloc(
+                (width as i64 * height as i64 * std::mem::size_of::<rgb>() as i64) as i64,
+            );
             (*img).pixels = pixels;
         }
 
@@ -297,7 +308,8 @@ pub unsafe fn sortpalette(img: image) {
         }
 
         let cmapsize = (*img).cmapsize as usize;
-        let mut entries: Vec<(usize, rgb)> = (0..cmapsize).map(|i| (i, *(*img).cmap.add(i))).collect();
+        let mut entries: Vec<(usize, rgb)> =
+            (0..cmapsize).map(|i| (i, *(*img).cmap.add(i))).collect();
         entries.sort_by_key(|(_, color)| palette_sort_key(*color));
 
         let mut remap = vec![0u8; cmapsize];
@@ -309,7 +321,10 @@ pub unsafe fn sortpalette(img: image) {
         let len = ((*img).width * (*img).height).max(0) as usize;
         for i in 0..len {
             let pixel = *(*img).pixels.add(i) as usize;
-            let remapped = remap.get(pixel).copied().unwrap_or_else(|| remap[cmapsize - 1]);
+            let remapped = remap
+                .get(pixel)
+                .copied()
+                .unwrap_or_else(|| remap[cmapsize - 1]);
             *(*img).pixels.add(i) = remapped;
         }
     }
@@ -342,9 +357,16 @@ pub unsafe fn scaleimage(src: image, dr: rect, sr: rect) -> image {
         };
 
         for y in 0..dr.height {
-            let sy = sample_coordinate(y, dr.height, source_rect.y, source_rect.height, (*src).height);
+            let sy = sample_coordinate(
+                y,
+                dr.height,
+                source_rect.y,
+                source_rect.height,
+                (*src).height,
+            );
             for x in 0..dr.width {
-                let sx = sample_coordinate(x, dr.width, source_rect.x, source_rect.width, (*src).width);
+                let sx =
+                    sample_coordinate(x, dr.width, source_rect.x, source_rect.width, (*src).width);
                 let src_index = (sy * (*src).width + sx) as usize;
                 let dest_index = (y * dr.width + x) as usize;
                 if (*src).depth <= 8 {

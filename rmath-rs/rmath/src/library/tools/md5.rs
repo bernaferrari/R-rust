@@ -1,4 +1,3 @@
-
 /* md5.c - Functions to compute MD5 message digest of files or memory blocks
    according to the definition of MD5 in RFC 1321 from April 1992.
    Copyright (C) 1995, 1996, 2001 Free Software Foundation, Inc.
@@ -384,11 +383,7 @@ pub unsafe fn md5_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
 /// Compute MD5 message digest for LEN bytes beginning at BUFFER.
 /// The result is always in little endian byte order.
 /// Returns resblock on success.
-pub unsafe fn md5_buffer(
-    buffer: *const u8,
-    len: size_t,
-    resblock: *mut c_void,
-) -> *mut c_void {
+pub unsafe fn md5_buffer(buffer: *const u8, len: size_t, resblock: *mut c_void) -> *mut c_void {
     let mut ctx = Md5Ctx {
         A: 0,
         B: 0,

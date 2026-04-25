@@ -90,21 +90,27 @@ unsafe fn dqrls_rust(
     let mut lwork = -1i32;
     let mut work_query = [0.0f64; 1];
     backend::dgeqp3_(
-        &n, &p,
-        qr, &n,
+        &n,
+        &p,
+        qr,
+        &n,
         pivot,
         qraux,
-        work_query.as_mut_ptr(), &lwork,
+        work_query.as_mut_ptr(),
+        &lwork,
         &mut info,
     );
     lwork = work_query[0] as i32;
     let mut work = vec![0.0f64; lwork as usize];
     backend::dgeqp3_(
-        &n, &p,
-        qr, &n,
+        &n,
+        &p,
+        qr,
+        &n,
         pivot,
         qraux,
-        work.as_mut_ptr(), &lwork,
+        work.as_mut_ptr(),
+        &lwork,
         &mut info,
     );
 
@@ -137,9 +143,13 @@ unsafe fn dqrls_rust(
     // --- 3. Determine rank from diagonal of R -------------------------
     let mut rnk = 0usize;
     if k > 0 {
-        let max_r = (0..k).map(|j| (*qr.add(j + j * n_us)).abs()).fold(0.0f64, f64::max);
+        let max_r = (0..k)
+            .map(|j| (*qr.add(j + j * n_us)).abs())
+            .fold(0.0f64, f64::max);
         let thresh = tol * max_r;
-        rnk = (0..k).take_while(|&j| (*qr.add(j + j * n_us)).abs() > thresh).count();
+        rnk = (0..k)
+            .take_while(|&j| (*qr.add(j + j * n_us)).abs() > thresh)
+            .count();
     }
     *rank = rnk as c_int;
 
@@ -181,7 +191,11 @@ unsafe fn mkNamed(sexptype: SEXPTYPE, names: &[&str]) -> SEXP {
     let nm = Rf_allocVector(SEXPTYPE::STRSXP, nn);
     setAttrib(ans, R_NamesSymbol(), nm);
     for i in 0..(nn as usize) {
-        SET_STRING_ELT(nm, i as R_xlen_t, Rf_mkChar(names[i].as_ptr() as *const libc::c_char));
+        SET_STRING_ELT(
+            nm,
+            i as R_xlen_t,
+            Rf_mkChar(names[i].as_ptr() as *const libc::c_char),
+        );
     }
     Rf_unprotect(1);
     ans

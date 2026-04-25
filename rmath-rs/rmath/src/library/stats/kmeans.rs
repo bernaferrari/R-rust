@@ -1,4 +1,3 @@
-
 use core::ffi::c_int;
 
 pub unsafe fn kmeans_Lloyd(

@@ -158,9 +158,21 @@ pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
     let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
     setAttrib(ans, R_NamesSymbol(), nm);
     SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const libc::c_char));
-    SET_STRING_ELT(nm, 1, Rf_mkChar(b"coefficients\0".as_ptr() as *const libc::c_char));
-    SET_STRING_ELT(nm, 2, Rf_mkChar(b"residuals\0".as_ptr() as *const libc::c_char));
-    SET_STRING_ELT(nm, 3, Rf_mkChar(b"fitted.values\0".as_ptr() as *const libc::c_char));
+    SET_STRING_ELT(
+        nm,
+        1,
+        Rf_mkChar(b"coefficients\0".as_ptr() as *const libc::c_char),
+    );
+    SET_STRING_ELT(
+        nm,
+        2,
+        Rf_mkChar(b"residuals\0".as_ptr() as *const libc::c_char),
+    );
+    SET_STRING_ELT(
+        nm,
+        3,
+        Rf_mkChar(b"fitted.values\0".as_ptr() as *const libc::c_char),
+    );
     SET_VECTOR_ELT(ans, 0, call);
 
     let coef = Rf_allocVector(SEXPTYPE::REALSXP, 2);

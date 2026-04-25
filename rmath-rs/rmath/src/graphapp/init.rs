@@ -69,7 +69,11 @@ pub fn gamainloop() {
     events::mainloop();
 }
 
-pub unsafe fn startgraphapp(instance: *mut c_void, previous_instance: *mut c_void, _cmd_show: c_int) {
+pub unsafe fn startgraphapp(
+    instance: *mut c_void,
+    previous_instance: *mut c_void,
+    _cmd_show: c_int,
+) {
     this_instance.with(|v| v.set(instance));
     prev_instance.with(|v| v.set(previous_instance));
     unsafe {

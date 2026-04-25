@@ -9,8 +9,8 @@ use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_long};
 use std::ptr;
 
-use super::{memory, objects, strings};
 use super::types::*;
+use super::{memory, objects, strings};
 
 thread_local! { static CURRENT_WINDOW: Cell<window> = Cell::new(ptr::null_mut()); }
 thread_local! { static ACTIVE_WINDOWS: Cell<c_int> = Cell::new(0); }

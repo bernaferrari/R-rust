@@ -74,7 +74,10 @@ mod tests {
             assert_eq!(clipboardhastext(), 1);
 
             let mut buf = [0i8; 16];
-            assert_eq!(getstringfromclipboard(buf.as_mut_ptr(), buf.len() as c_int), 5);
+            assert_eq!(
+                getstringfromclipboard(buf.as_mut_ptr(), buf.len() as c_int),
+                5
+            );
             assert_eq!(CStr::from_ptr(buf.as_ptr()).to_str().unwrap(), "hello");
         }
     }

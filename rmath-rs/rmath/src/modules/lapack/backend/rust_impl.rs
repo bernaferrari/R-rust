@@ -7,8 +7,8 @@
  */
 
 use crate::modules::lapack::lapack::Rcomplex;
-use faer::{c64, Mat, MatRef, Side};
-use faer::linalg::solvers::{Solve, DenseSolveCore};
+use faer::linalg::solvers::{DenseSolveCore, Solve};
+use faer::{Mat, MatRef, Side, c64};
 // ============================================================
 // Helper functions
 // ============================================================
@@ -43,7 +43,13 @@ unsafe fn write_owned_f64(mat: &Mat<f64>, ptr: *mut f64, m: usize, n: usize, lda
 }
 
 /// Write complex matrix data to column-major Rcomplex pointer (MatRef).
-unsafe fn write_matref_c64(mat: MatRef<'_, c64>, ptr: *mut Rcomplex, m: usize, n: usize, lda: usize) {
+unsafe fn write_matref_c64(
+    mat: MatRef<'_, c64>,
+    ptr: *mut Rcomplex,
+    m: usize,
+    n: usize,
+    lda: usize,
+) {
     for j in 0..n {
         for i in 0..m {
             let c = mat[(i, j)];
@@ -196,11 +202,7 @@ pub unsafe fn dgetrf_(
         for i in 0..m {
             let val = if i > j {
                 // Strict lower triangle: from L
-                if i < k && j < k {
-                    l[(i, j)]
-                } else {
-                    0.0
-                }
+                if i < k && j < k { l[(i, j)] } else { 0.0 }
             } else {
                 // Upper triangle (including diagonal): from U
                 if j < u.ncols() && i < u.nrows() {
@@ -264,11 +266,7 @@ pub unsafe fn dgesv_(
     let l = lu.L();
     for j in 0..n {
         for i in 0..n {
-            let val = if i > j {
-                l[(i, j)]
-            } else {
-                u[(i, j)]
-            };
+            let val = if i > j { l[(i, j)] } else { u[(i, j)] };
             *a.add(i + j * lda_val) = val;
         }
     }
@@ -645,8 +643,7 @@ pub unsafe fn dgesdd_(
         let min_mn = m.min(n);
         let max_mn = m.max(n);
         *work = (3_usize * min_mn * min_mn
-            + max_mn.max(4_usize * min_mn * min_mn + 4_usize * min_mn))
-            as f64;
+            + max_mn.max(4_usize * min_mn * min_mn + 4_usize * min_mn)) as f64;
         *info = 0;
         return;
     }
@@ -1077,14 +1074,15 @@ pub unsafe fn dgeqp3_(
 
         let alpha = x[0];
         let sign = if alpha >= 0.0 { 1.0 } else { -1.0 };
-        let beta = -sign * (alpha * alpha + {
-            let mut s = 0.0;
-            for i in 1..remaining {
-                s += x[i] * x[i];
-            }
-            s
-        })
-        .sqrt();
+        let beta = -sign
+            * (alpha * alpha + {
+                let mut s = 0.0;
+                for i in 1..remaining {
+                    s += x[i] * x[i];
+                }
+                s
+            })
+            .sqrt();
 
         // Compute Householder vector and tau
         let u1 = alpha - beta;
@@ -1193,7 +1191,11 @@ pub unsafe fn dormqr_(
     // Apply Householder reflections from the QR factorization
     if is_left {
         // C = Q * C or C = Q^T * C
-        let range: Vec<usize> = if is_trans { (0..k_val).rev().collect() } else { (0..k_val).collect() };
+        let range: Vec<usize> = if is_trans {
+            (0..k_val).rev().collect()
+        } else {
+            (0..k_val).collect()
+        };
 
         for j in range {
             let tau_j = *tau.add(j);
@@ -1221,7 +1223,11 @@ pub unsafe fn dormqr_(
         }
     } else {
         // Right: C = C * Q or C = C * Q^T
-        let range: Vec<usize> = if !is_trans { (0..k_val).rev().collect() } else { (0..k_val).collect() };
+        let range: Vec<usize> = if !is_trans {
+            (0..k_val).rev().collect()
+        } else {
+            (0..k_val).collect()
+        };
 
         for j in range {
             let tau_j = *tau.add(j);
@@ -1530,13 +1536,20 @@ pub unsafe fn zgetrf_(
     for j in 0..n {
         for i in 0..m {
             let val = if i > j {
-                if i < k && j < k { l[(i, j)] } else { c64::new(0.0, 0.0) }
+                if i < k && j < k {
+                    l[(i, j)]
+                } else {
+                    c64::new(0.0, 0.0)
+                }
             } else if j < u.ncols() && i < u.nrows() {
                 u[(i, j)]
             } else {
                 c64::new(0.0, 0.0)
             };
-            *a.add(i + j * lda) = Rcomplex { r: val.re, i: val.im };
+            *a.add(i + j * lda) = Rcomplex {
+                r: val.re,
+                i: val.im,
+            };
         }
     }
 
@@ -1588,7 +1601,10 @@ pub unsafe fn zgesv_(
     for j in 0..n_val {
         for i in 0..n_val {
             let val = if i > j { l[(i, j)] } else { u[(i, j)] };
-            *a.add(i + j * lda_val) = Rcomplex { r: val.re, i: val.im };
+            *a.add(i + j * lda_val) = Rcomplex {
+                r: val.re,
+                i: val.im,
+            };
         }
     }
     let bwd = get_bwd_perm(lu.P());
@@ -1964,7 +1980,11 @@ pub unsafe fn zgeqp3_(
         // Complex Householder: H = I - tau * v * v^H
         let alpha = x[0];
         let r_alpha = (alpha.re * alpha.re + alpha.im * alpha.im).sqrt();
-        let sign = if r_alpha == 0.0 { 1.0 } else { alpha.re / r_alpha };
+        let sign = if r_alpha == 0.0 {
+            1.0
+        } else {
+            alpha.re / r_alpha
+        };
         let beta = -sign * norm_x;
 
         let u1 = c64::new(alpha.re - beta, alpha.im);
@@ -2081,7 +2101,11 @@ pub unsafe fn zunmqr_(
     let is_conj = trans_byte == b'C' || trans_byte == b'c';
 
     if is_left {
-        let range: Vec<usize> = if is_conj { (0..k_val).rev().collect() } else { (0..k_val).collect() };
+        let range: Vec<usize> = if is_conj {
+            (0..k_val).rev().collect()
+        } else {
+            (0..k_val).collect()
+        };
 
         for j in range {
             let tau_j = {
@@ -2114,7 +2138,10 @@ pub unsafe fn zunmqr_(
                     let rc = *c__.add(j + col * ldc_val);
                     c64::new(rc.r, rc.i) - w
                 };
-                *c__.add(j + col * ldc_val) = Rcomplex { r: new_c0.re, i: new_c0.im };
+                *c__.add(j + col * ldc_val) = Rcomplex {
+                    r: new_c0.re,
+                    i: new_c0.im,
+                };
                 for i in 1..remaining {
                     let vi = {
                         let rc = *a.add(j + i + j * lda_val);
@@ -2125,12 +2152,19 @@ pub unsafe fn zunmqr_(
                         c64::new(rc.r, rc.i)
                     };
                     let new_ci = ci - w * vi;
-                    *c__.add(j + i + col * ldc_val) = Rcomplex { r: new_ci.re, i: new_ci.im };
+                    *c__.add(j + i + col * ldc_val) = Rcomplex {
+                        r: new_ci.re,
+                        i: new_ci.im,
+                    };
                 }
             }
         }
     } else {
-        let range: Vec<usize> = if !is_conj { (0..k_val).rev().collect() } else { (0..k_val).collect() };
+        let range: Vec<usize> = if !is_conj {
+            (0..k_val).rev().collect()
+        } else {
+            (0..k_val).collect()
+        };
 
         for j in range {
             let tau_j = {
@@ -2162,7 +2196,10 @@ pub unsafe fn zunmqr_(
                     let rc = *c__.add(row + j * ldc_val);
                     c64::new(rc.r, rc.i) - w
                 };
-                *c__.add(row + j * ldc_val) = Rcomplex { r: new_c0.re, i: new_c0.im };
+                *c__.add(row + j * ldc_val) = Rcomplex {
+                    r: new_c0.re,
+                    i: new_c0.im,
+                };
                 for i in 1..remaining {
                     let vi = {
                         let rc = *a.add(j + i + j * lda_val);
@@ -2173,7 +2210,10 @@ pub unsafe fn zunmqr_(
                         c64::new(rc.r, rc.i)
                     };
                     let new_ci = ci - w * c64::new(vi.re, -vi.im);
-                    *c__.add(row + (j + i) * ldc_val) = Rcomplex { r: new_ci.re, i: new_ci.im };
+                    *c__.add(row + (j + i) * ldc_val) = Rcomplex {
+                        r: new_ci.re,
+                        i: new_ci.im,
+                    };
                 }
             }
         }
@@ -2253,7 +2293,11 @@ pub unsafe fn ztrcon_(
 
     for i in 0..n_val {
         let rc = *a.add(i + i * lda_val);
-        let d = if is_unit { 1.0 } else { (rc.r * rc.r + rc.i * rc.i).sqrt() };
+        let d = if is_unit {
+            1.0
+        } else {
+            (rc.r * rc.r + rc.i * rc.i).sqrt()
+        };
         min_diag = min_diag.min(d);
         max_diag = max_diag.max(d);
     }
@@ -2313,9 +2357,17 @@ pub unsafe fn ztrtrs_(
             for i in 0..n_val {
                 let rc = *a.add(i + j * lda_val);
                 let val = if is_upper {
-                    if i <= j { c64::new(rc.r, rc.i) } else { c64::new(0.0, 0.0) }
+                    if i <= j {
+                        c64::new(rc.r, rc.i)
+                    } else {
+                        c64::new(0.0, 0.0)
+                    }
                 } else {
-                    if i >= j { c64::new(rc.r, rc.i) } else { c64::new(0.0, 0.0) }
+                    if i >= j {
+                        c64::new(rc.r, rc.i)
+                    } else {
+                        c64::new(0.0, 0.0)
+                    }
                 };
                 m[(i, j)] = val;
             }

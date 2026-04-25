@@ -179,7 +179,11 @@ pub unsafe fn trio_equal(first: *const c_char, second: *const c_char) -> c_int {
             f = f.add(1);
             s = s.add(1);
         }
-        if *f == 0 as libc::c_char && *s == 0 as libc::c_char { 1 } else { 0 }
+        if *f == 0 as libc::c_char && *s == 0 as libc::c_char {
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -198,7 +202,11 @@ pub unsafe fn trio_equal_case(first: *const c_char, second: *const c_char) -> c_
             f = f.add(1);
             s = s.add(1);
         }
-        if *f == 0 as libc::c_char && *s == 0 as libc::c_char { 1 } else { 0 }
+        if *f == 0 as libc::c_char && *s == 0 as libc::c_char {
+            1
+        } else {
+            0
+        }
     }
 }
 

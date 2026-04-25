@@ -92,7 +92,13 @@ pub unsafe fn gsetmodified(c: textbox, modified: c_int) {
 }
 
 pub unsafe fn ggetmodified(c: textbox) -> c_int {
-    unsafe { if c.is_null() { 0 } else { i32::from((*c).value != 0) } }
+    unsafe {
+        if c.is_null() {
+            0
+        } else {
+            i32::from((*c).value != 0)
+        }
+    }
 }
 
 pub unsafe fn getlinelength(c: textbox) -> c_int {
@@ -164,7 +170,11 @@ pub unsafe fn checklimittext(t: textbox, n: c_long) {
             return;
         }
 
-        let limit = if n > 0 { n as usize } else { (*t).max.max(0) as usize };
+        let limit = if n > 0 {
+            n as usize
+        } else {
+            (*t).max.max(0) as usize
+        };
         if limit == 0 {
             return;
         }

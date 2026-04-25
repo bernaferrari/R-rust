@@ -1606,27 +1606,18 @@ unsafe fn addCIDFont(name: *const c_char, isPDF: bool) -> cidfontfamily {
     if fontfamily.is_null() {
         return ptr::null_mut();
     }
-    let cmap = getFontCMap(
-        name,
-        font_database_name(isPDF),
-    );
+    let cmap = getFontCMap(name, font_database_name(isPDF));
     if cmap.is_null() {
         freeCIDFontFamily(fontfamily);
         return ptr::null_mut();
     }
     safestrcpy((*fontfamily).fxname.as_mut_ptr(), name, 50);
     safestrcpy((*fontfamily).cmap.as_mut_ptr(), cmap, 50);
-    let enc = getCIDFontEncoding(
-        name,
-        font_database_name(isPDF),
-    );
+    let enc = getCIDFontEncoding(name, font_database_name(isPDF));
     if !enc.is_null() {
         safestrcpy((*fontfamily).encoding.as_mut_ptr(), enc, 50);
     }
-    let fname = getFontName(
-        name,
-        font_database_name(isPDF),
-    );
+    let fname = getFontName(name, font_database_name(isPDF));
     for i in 0..4 {
         (*fontfamily).cidfonts[i] = makeCIDFont();
         if !fname.is_null() {
@@ -1647,10 +1638,7 @@ unsafe fn addFont(
     if fontfamily.is_null() {
         return ptr::null_mut();
     }
-    let encpath = getFontEncoding(
-        name,
-        font_database_name(isPDF),
-    );
+    let encpath = getFontEncoding(name, font_database_name(isPDF));
     if encpath.is_null() {
         freeFontFamily(fontfamily);
         return ptr::null_mut();
@@ -1675,11 +1663,7 @@ unsafe fn addFont(
             return ptr::null_mut();
         }
         (*fontfamily).fonts[i] = font;
-        let afmpath = fontMetricsFileName(
-            name,
-            i as c_int,
-            font_database_name(isPDF),
-        );
+        let afmpath = fontMetricsFileName(name, i as c_int, font_database_name(isPDF));
         if afmpath.is_null() {
             freeFontFamily(fontfamily);
             freeType1Font(font);
@@ -2010,7 +1994,10 @@ mod tests {
                     font_database_name(false),
                     POSTSCRIPT_FONTS.as_ptr() as *const c_char
                 );
-                assert_eq!(font_database_name(true), PDF_FONTS.as_ptr() as *const c_char);
+                assert_eq!(
+                    font_database_name(true),
+                    PDF_FONTS.as_ptr() as *const c_char
+                );
             });
         });
     }

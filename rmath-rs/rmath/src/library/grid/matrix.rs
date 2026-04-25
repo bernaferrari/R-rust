@@ -1,4 +1,3 @@
-
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001-3 Paul Murrell
@@ -105,11 +104,7 @@ pub unsafe fn rotation(theta: f64, m: *mut LTransform) {
     m[1][1] = costheta;
 }
 
-pub unsafe fn multiply(
-    m1: *const LTransform,
-    m2: *const LTransform,
-    m: *mut LTransform,
-) {
+pub unsafe fn multiply(m1: *const LTransform, m2: *const LTransform, m: *mut LTransform) {
     let m1 = &*m1;
     let m2 = &*m2;
     let m = &mut *m;
