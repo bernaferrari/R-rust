@@ -373,22 +373,19 @@ impl StringVector {
 /// Builder for generic vectors (VECSXP) containing arbitrary SEXP elements.
 ///
 /// Use [`GenericVector::with_length`] to create a vector of a given size,
-/// then chain [`GenericVector::set`] calls to populate elements.
+/// then chain [`GenericVector::set_value`] calls to populate elements from
+/// owner-scoped [`Sexp`] handles.
 ///
 /// # Examples
 ///
 /// ```
-/// use rmath::sexp::builder::{GenericVector, IntVector};
+/// use rmath::sexp::builder::GenericVector;
+/// use rmath::sexp::Sexp;
 ///
 /// let mut arena = rmath::sexp::memory::RArena::new();
-/// let int_v = {
-///     let int_v = IntVector::new(&[1, 2])
-///         .build_in(&mut arena)
-///         .unwrap_or_else(|| panic!("failed to build IntVector"));
-///     int_v.as_raw()
-/// };
+/// let nil = Sexp::nil();
 /// let vec = GenericVector::with_length(2)
-///     .set(0, int_v)
+///     .set_value(0, nil)
 ///     .build_in(&mut arena);
 /// ```
 pub struct GenericVector {
@@ -403,24 +400,40 @@ impl GenericVector {
         }
     }
 
-    /// Set the element at the given index.
+    /// Create a builder pre-populated from typed SEXP handles.
+    pub fn from_values<'a>(values: impl IntoIterator<Item = Sexp<'a>>) -> Self {
+        GenericVector {
+            elements: values.into_iter().map(Sexp::as_raw).collect(),
+        }
+    }
+
+    /// Set the raw element at the given index.
     ///
     /// Silently ignores indices that are out of bounds. New Rust code should
     /// prefer [`try_set_value`](Self::try_set_value), which reports mistakes.
-    pub fn set(mut self, index: usize, value: SEXP) -> Self {
+    pub fn set_raw(mut self, index: usize, value: SEXP) -> Self {
         if index < self.elements.len() {
             self.elements[index] = value;
         }
         self
     }
 
+    /// Set the raw element at the given index.
+    ///
+    /// Legacy alias for translated code. Prefer [`set_value`](Self::set_value)
+    /// or [`try_set_value`](Self::try_set_value) in Rust code.
+    #[deprecated(note = "use set_value/try_set_value with owner-scoped Sexp handles")]
+    pub fn set(self, index: usize, value: SEXP) -> Self {
+        self.set_raw(index, value)
+    }
+
     /// Set the element at the given index from a typed SEXP handle.
     ///
     /// Silently ignores indices that are out of bounds, matching
-    /// [`set`](Self::set). Use [`try_set_value`](Self::try_set_value) when the
-    /// index should be checked.
+    /// [`set_raw`](Self::set_raw). Use [`try_set_value`](Self::try_set_value)
+    /// when the index should be checked.
     pub fn set_value(self, index: usize, value: Sexp<'_>) -> Self {
-        self.set(index, value.as_raw())
+        self.set_raw(index, value.as_raw())
     }
 
     /// Set the element at the given index from a typed SEXP handle, returning
@@ -468,12 +481,12 @@ impl GenericVector {
 /// ```
 /// use rmath::sexp::builder::PairlistBuilder;
 /// use rmath::sexp::memory::RArena;
-/// use rmath::sexp::SEXPTYPE;
+/// use rmath::sexp::Sexp;
 ///
 /// let mut arena = RArena::new();
-/// let a = arena.alloc_node(SEXPTYPE::INTSXP);
+/// let nil = Sexp::nil();
 /// let list = PairlistBuilder::new()
-///     .push_untagged(a)
+///     .push_untagged_value(nil)
 ///     .build_in(&mut arena);
 /// ```
 pub struct PairlistBuilder {
@@ -488,25 +501,50 @@ impl PairlistBuilder {
         }
     }
 
-    /// Add an element with an optional tag.
-    pub fn push(mut self, car: SEXP, tag: SEXP) -> Self {
+    /// Create a builder from untagged typed values.
+    pub fn from_untagged_values<'a>(values: impl IntoIterator<Item = Sexp<'a>>) -> Self {
+        values
+            .into_iter()
+            .fold(Self::new(), Self::push_untagged_value)
+    }
+
+    /// Add a raw element with an optional raw tag.
+    pub fn push_raw(mut self, car: SEXP, tag: SEXP) -> Self {
         self.elements.push((car, tag));
         self
     }
 
-    /// Add an element from typed SEXP handles.
-    pub fn push_value(self, car: Sexp<'_>, tag: Option<Sexp<'_>>) -> Self {
-        self.push(car.as_raw(), tag.map_or(ptr::null_mut(), Sexp::as_raw))
+    /// Add a raw element with an optional raw tag.
+    ///
+    /// Legacy alias for translated code. Prefer [`push_value`](Self::push_value)
+    /// in Rust code.
+    #[deprecated(note = "use push_value with owner-scoped Sexp handles")]
+    pub fn push(self, car: SEXP, tag: SEXP) -> Self {
+        self.push_raw(car, tag)
     }
 
-    /// Add an untagged element.
+    /// Add an element from typed SEXP handles.
+    pub fn push_value(self, car: Sexp<'_>, tag: Option<Sexp<'_>>) -> Self {
+        self.push_raw(car.as_raw(), tag.map_or(ptr::null_mut(), Sexp::as_raw))
+    }
+
+    /// Add an untagged raw element.
+    pub fn push_untagged_raw(self, car: SEXP) -> Self {
+        self.push_raw(car, ptr::null_mut())
+    }
+
+    /// Add an untagged raw element.
+    ///
+    /// Legacy alias for translated code. Prefer
+    /// [`push_untagged_value`](Self::push_untagged_value) in Rust code.
+    #[deprecated(note = "use push_untagged_value with owner-scoped Sexp handles")]
     pub fn push_untagged(self, car: SEXP) -> Self {
-        self.push(car, ptr::null_mut())
+        self.push_untagged_raw(car)
     }
 
     /// Add an untagged element from a typed SEXP handle.
     pub fn push_untagged_value(self, car: Sexp<'_>) -> Self {
-        self.push_untagged(car.as_raw())
+        self.push_untagged_raw(car.as_raw())
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
@@ -866,23 +904,24 @@ mod tests {
     #[test]
     fn test_generic_vector_builder() {
         let mut arena = RArena::new();
-        let int_v = {
-            let int_v = some(IntVector::new(&[1, 2]).build_in(&mut arena));
-            int_v.as_raw()
-        };
-        let real_v = {
-            let real_v = some(RealVector::new(&[3.0, 4.0]).build_in(&mut arena));
-            real_v.as_raw()
-        };
-        let vec = some(
-            GenericVector::with_length(2)
-                .set(0, int_v)
-                .set(1, real_v)
-                .build_in(&mut arena),
-        );
+        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let vec = some(GenericVector::from_values([nil, nil]).build_in(&mut arena));
         assert_eq!(vec.len(), 2);
         assert!(vec.vector_elt(0).is_some());
         assert!(vec.vector_elt(1).is_some());
+    }
+
+    #[test]
+    fn test_generic_vector_typed_set() {
+        let mut arena = RArena::new();
+        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let vec = some(
+            GenericVector::with_length(1)
+                .set_value(0, nil)
+                .build_in(&mut arena),
+        );
+        assert_eq!(vec.len(), 1);
+        assert!(vec.vector_elt(0).is_some_and(Sexp::is_nil));
     }
 
     #[test]
@@ -901,14 +940,8 @@ mod tests {
     #[test]
     fn test_pairlist_builder() {
         let mut arena = crate::sexp::memory::RArena::new();
-        let a = arena.alloc_node(SEXPTYPE::INTSXP);
-        let b = arena.alloc_node(SEXPTYPE::REALSXP);
-        let list = some(
-            PairlistBuilder::new()
-                .push_untagged(a)
-                .push_untagged(b)
-                .build_in(&mut arena),
-        );
+        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let list = some(PairlistBuilder::from_untagged_values([nil, nil]).build_in(&mut arena));
         assert!(list.is_pairlist());
         assert!(list.car().is_some());
         assert!(list.cdr().is_some());

@@ -88,6 +88,12 @@ pub struct Sexp<'a> {
 }
 
 impl<'a> Sexp<'a> {
+    /// Return R's immutable `NULL` singleton as an owner-independent handle.
+    #[inline]
+    pub fn nil() -> Sexp<'static> {
+        unsafe { Sexp::from_raw_unchecked(R_NilValue()) }
+    }
+
     /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
     ///
     /// Returns `None` if the pointer is null or visibly invalid. Public safe

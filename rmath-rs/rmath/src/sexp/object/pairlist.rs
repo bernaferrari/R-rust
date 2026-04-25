@@ -133,17 +133,20 @@ mod tests {
 
     #[test]
     fn pairlist_builder_preserves_order_and_tags() {
-        let _session = crate::sexp::session::RSession::new();
+        let session = crate::sexp::session::RSession::new();
 
         let first = unsafe { Rf_ScalarInteger(1) };
         let second = unsafe { Rf_ScalarInteger(2) };
         let tag = unsafe { Rf_install(c"answer".as_ptr()) };
+        let first_value = session.sexp(first).expect("first value belongs to session");
+        let second_value = session
+            .sexp(second)
+            .expect("second value belongs to session");
+        let tag_value = session.sexp(tag).expect("tag belongs to session");
 
         let mut builder = PairlistBuilder::new();
-        unsafe {
-            builder.push_raw(first, tag).unwrap();
-            builder.push_raw(second, R_NilValue()).unwrap();
-        }
+        builder.push(first_value, Some(tag_value)).unwrap();
+        builder.push(second_value, None).unwrap();
         let list = builder.finish_raw();
 
         unsafe {
