@@ -26,6 +26,7 @@ pub mod init;
 pub mod instance;
 pub mod memory;
 pub mod memory_ext;
+pub(crate) mod numeric;
 pub mod object;
 pub mod output;
 pub mod protect;

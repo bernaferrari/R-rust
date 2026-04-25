@@ -16,103 +16,17 @@ use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::numeric::NumericVector;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
-// Numeric vector view
-// ---------------------------------------------------------------------------
-
-/// Safe Rust-shaped view over the numeric/logical vectors accepted by R's
-/// arithmetic group. It centralizes type checks, recycling, and NA coercion so
-/// arithmetic code does not open-code raw SEXP buffer reads.
-#[derive(Clone, Copy)]
-struct NumericVector<'a> {
-    sexp: Sexp<'a>,
-}
-
-impl<'a> NumericVector<'a> {
-    fn from_raw(raw: SEXP) -> Option<Self> {
-        let sexp = Sexp::from_raw(raw)?;
-        Self::new(sexp)
-    }
-
-    fn new(sexp: Sexp<'a>) -> Option<Self> {
-        match sexp.typeof_() {
-            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => Some(Self { sexp }),
-            _ => None,
-        }
-    }
-
-    fn len(self) -> R_xlen_t {
-        self.sexp.len()
-    }
-
-    fn typeof_(self) -> SEXPTYPE {
-        self.sexp.typeof_()
-    }
-
-    fn needs_real_with(self, other: Self) -> bool {
-        self.typeof_() == SEXPTYPE::REALSXP || other.typeof_() == SEXPTYPE::REALSXP
-    }
-
-    fn recycled_index(self, i: R_xlen_t) -> Option<R_xlen_t> {
-        let n = self.len();
-        if n == 0 { None } else { Some(i % n) }
-    }
-
-    fn real_at(self, i: R_xlen_t) -> f64 {
-        let Some(idx) = self.recycled_index(i) else {
-            return NA_REAL;
-        };
-        match self.typeof_() {
-            SEXPTYPE::REALSXP => self.sexp.real_elt(idx).unwrap_or(NA_REAL),
-            SEXPTYPE::INTSXP => match self.sexp.integer_elt(idx) {
-                Some(NA_INTEGER) | None => NA_REAL,
-                Some(v) => v as f64,
-            },
-            SEXPTYPE::LGLSXP => match self.sexp.logical_elt(idx) {
-                Some(NA_LOGICAL) | None => NA_REAL,
-                Some(v) => v as f64,
-            },
-            _ => NA_REAL,
-        }
-    }
-
-    fn int_at(self, i: R_xlen_t) -> i32 {
-        let Some(idx) = self.recycled_index(i) else {
-            return NA_INTEGER;
-        };
-        match self.typeof_() {
-            SEXPTYPE::INTSXP => self.sexp.integer_elt(idx).unwrap_or(NA_INTEGER),
-            SEXPTYPE::LGLSXP => self.sexp.logical_elt(idx).unwrap_or(NA_INTEGER),
-            _ => NA_INTEGER,
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
 // Vectorized binary arithmetic
 // ---------------------------------------------------------------------------
-
-/// Determine the result length for a binary operation (R's recycling rule).
-/// Returns max(len(a), len(b)), or 0 if either is length 0.
-#[inline]
-fn result_length(a: NumericVector<'_>, b: NumericVector<'_>) -> R_xlen_t {
-    let na = a.len();
-    let nb = b.len();
-    if na == 0 || nb == 0 {
-        0
-    } else if na >= nb {
-        na
-    } else {
-        nb
-    }
-}
 
 /// Apply a real-valued binary operation with recycling.
 ///
@@ -126,7 +40,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(b) = NumericVector::from_raw(sb) else {
             return R_NilValue();
         };
-        let n = result_length(a, b);
+        let n = a.recycled_len_with(b);
         if n == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
@@ -218,7 +132,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         let Some(b) = NumericVector::from_raw(sb) else {
             return R_NilValue();
         };
-        let n = result_length(a, b);
+        let n = a.recycled_len_with(b);
         if n == 0 {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
