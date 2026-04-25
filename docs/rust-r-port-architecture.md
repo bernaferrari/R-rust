@@ -84,19 +84,23 @@ Android embedding is app-owned and session-owned:
 
 ## Upstream Sync Workflow
 
-1. Import or diff the target upstream R C file under `r-source`.
-2. Identify the behavioral unit: parser, evaluator, builtin, math routine,
+1. Find or add the target row in `docs/upstream-port-map.tsv`.
+2. Import or diff the target upstream R C file under `r-source`.
+3. Identify the behavioral unit: parser, evaluator, builtin, math routine,
    device, package helper, or platform shim.
-3. Keep translated control flow close to upstream inside raw compatibility
+4. Keep translated control flow close to upstream inside raw compatibility
    modules when that improves reviewability.
-4. Move ownership, allocation, state, cancellation, paths, and output into
+5. Move ownership, allocation, state, cancellation, paths, and output into
    `RInstance`/`RSession` instead of preserving process globals.
-5. Add or update the typed Rust entrypoint first, then make the C-shaped shim
+6. Add or update the typed Rust entrypoint first, then make the C-shaped shim
    delegate to it.
-6. Add focused Rust tests for the typed API and Android/embedding tests when the
+7. Add focused Rust tests for the typed API and Android/embedding tests when the
    behavior crosses FFI boundaries.
-7. Add conformance cases when behavior is user-visible R semantics.
-8. Run the parity and Android gates before committing.
+8. Add conformance cases when behavior is user-visible R semantics.
+9. Run the parity and Android gates before committing.
+
+The sync-mode vocabulary and checked source map live in
+`docs/upstream-port-map.md`.
 
 ## Conformance Gates
 

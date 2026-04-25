@@ -6,7 +6,8 @@ repeatable gate with subsystem labels in the output.
 
 The GitHub workflows use the same policy split: formatting, strict clippy,
 focused tests, Android checks, conformance parity, artifact validation, and the
-safe API audit are the default release bar.
+safe API audit are the default release bar. The gate also checks the upstream
+port map so C-to-Rust traceability does not decay as modules are rewritten.
 
 ## Commands
 
@@ -48,6 +49,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
 | Artifact sanity | yes | yes | JSON/Markdown conformance report validation |
 | Public safe API audit | yes | yes | `scripts/audit_safe_api.sh` |
+| Upstream port map | yes | yes | `scripts/check_upstream_port_map.sh` |
 | Git whitespace | yes | yes | `git diff --check` |
 | Desktop host smoke | optional | yes | `scripts/desktop_host_smoke.sh` |
 | UniFFI binding generation | optional | yes | `scripts/generate_uniffi_bindings.sh --check` |
@@ -82,6 +84,13 @@ The gate writes conformance reports to:
 The JSON report is checked for nonzero total cases and zero failing or
 unexpected-passing cases. The Markdown report is the human-readable release
 attachment.
+
+The upstream source map is checked from:
+
+- `docs/upstream-port-map.tsv`
+
+See `docs/upstream-port-map.md` for sync-mode definitions and the comparison
+workflow.
 
 The Android showcase script writes separate demo artifacts:
 

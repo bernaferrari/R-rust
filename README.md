@@ -142,18 +142,19 @@ Conformance reports are written to:
 - `target/release-gate/conformance/summary.md`
 
 See `docs/conformance.md`, `docs/release-gate.md`,
-`docs/adversarial-testing.md`, and `docs/rust-r-port-architecture.md` for the
-detailed policy.
+`docs/adversarial-testing.md`, `docs/upstream-port-map.md`, and
+`docs/rust-r-port-architecture.md` for the detailed policy.
 
 ## Upstream Porting Discipline
 
-1. Compare the target upstream C/R behavior under `r-source`.
-2. Keep raw compatibility modules close to R when that improves future diffs.
-3. Move mutable state, allocation, paths, output, RNG, and cancellation into
+1. Find or add the target row in `docs/upstream-port-map.tsv`.
+2. Compare the target upstream C/R behavior under `r-source`.
+3. Keep raw compatibility modules close to R when that improves future diffs.
+4. Move mutable state, allocation, paths, output, RNG, and cancellation into
    `RSession`/`RInstance`.
-4. Add a Rust-shaped typed entrypoint first, then make C-shaped shims delegate.
-5. Add stock-R conformance fixtures for user-visible semantics when possible.
-6. Run the release gate before committing.
+5. Add a Rust-shaped typed entrypoint first, then make C-shaped shims delegate.
+6. Add stock-R conformance fixtures for user-visible semantics when possible.
+7. Run the release gate before committing.
 
 ## Roadmap
 

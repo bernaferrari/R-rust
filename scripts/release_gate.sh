@@ -20,6 +20,7 @@ Runs the local release-candidate gate:
   - Android mutable-global scan and aarch64 cargo check
   - C R vs Rust conformance report
   - generated artifact sanity checks
+  - upstream R source map validation
   - git whitespace check
 
 Options:
@@ -177,6 +178,9 @@ check_conformance_artifacts
 
 section "Public safe API audit"
 run scripts/audit_safe_api.sh
+
+section "Upstream port map"
+run scripts/check_upstream_port_map.sh
 
 if [[ "$RUN_DESKTOP_SMOKE" -eq 1 ]]; then
     section "Desktop host smoke"
