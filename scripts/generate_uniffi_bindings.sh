@@ -47,7 +47,26 @@ fi
 cd "$ROOT_DIR"
 cargo build -p r-uniffi --lib
 
-LIB_PATH="$(find "$TARGET_DIR" -type f \( -name 'libr_uniffi*.so' -o -name 'libr_uniffi*.dylib' -o -name 'libr_uniffi*.dll' -o -name 'r_uniffi*.dll' \) | sort | head -n 1)"
+LIB_PATH=""
+shopt -s nullglob
+HOST_LIB_CANDIDATES=(
+    "$TARGET_DIR"/debug/libr_uniffi*.so
+    "$TARGET_DIR"/debug/libr_uniffi*.dylib
+    "$TARGET_DIR"/debug/libr_uniffi*.dll
+    "$TARGET_DIR"/debug/r_uniffi*.dll
+    "$TARGET_DIR"/debug/deps/libr_uniffi*.so
+    "$TARGET_DIR"/debug/deps/libr_uniffi*.dylib
+    "$TARGET_DIR"/debug/deps/libr_uniffi*.dll
+    "$TARGET_DIR"/debug/deps/r_uniffi*.dll
+)
+shopt -u nullglob
+if (( ${#HOST_LIB_CANDIDATES[@]} > 0 )); then
+    LIB_PATH="$(ls -t "${HOST_LIB_CANDIDATES[@]}" 2>/dev/null | head -n 1)"
+fi
+
+if [[ -z "$LIB_PATH" ]]; then
+    LIB_PATH="$(find "$TARGET_DIR" -path '*/debug/*' -type f \( -name 'libr_uniffi*.so' -o -name 'libr_uniffi*.dylib' -o -name 'libr_uniffi*.dll' -o -name 'r_uniffi*.dll' \) | sort | head -n 1)"
+fi
 if [[ -z "$LIB_PATH" ]]; then
     echo "Error: Could not find the built r-uniffi library" >&2
     exit 1
@@ -55,9 +74,9 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-CRATE_CANDIDATES=(rport r_uniffi r-uniffi)
+CRATE_CANDIDATES=(r_uniffi rport r-uniffi)
 for crate_name in "${CRATE_CANDIDATES[@]}"; do
-    if uniffi-bindgen generate --library "$LIB_PATH" --crate "$crate_name" --language "$LANGUAGE" --out-dir "$OUT_DIR/$LANGUAGE"; then
+    if uniffi-bindgen generate --no-format --library "$LIB_PATH" --crate "$crate_name" --language "$LANGUAGE" --out-dir "$OUT_DIR/$LANGUAGE"; then
         echo "Generated $LANGUAGE bindings for crate $crate_name into $OUT_DIR/$LANGUAGE"
         echo "Done."
         exit 0
