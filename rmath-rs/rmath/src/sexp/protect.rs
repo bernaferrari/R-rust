@@ -1,15 +1,17 @@
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 //! R's PROTECT/UNPROTECT mechanism.
 //!
-//! In C, R maintains a protection stack to prevent GC from collecting objects
-//! that are only referenced by C local variables. In this port we maintain the
-//! same stack, even though we don't have GC yet — this ensures correctness
-//! and compatibility when GC is eventually implemented.
+//! R maintains a protection stack to prevent GC from collecting objects that
+//! are only referenced by local variables. In this Rust port the stack is owned
+//! by the active `RInstance`; new Rust code should protect owner-scoped
+//! [`Sexp`](super::object::Sexp) handles instead of raw pointers.
 
 use std::os::raw::c_int;
 
 use super::ffi::SEXP;
+use super::object::Sexp;
 
 /// RAII guard for the protection stack.
 /// Automatically unprotects when dropped.
@@ -35,16 +37,24 @@ impl Drop for ProtectGuard {
     }
 }
 
-/// Protect a SEXP and return an RAII guard.
+/// Protect an owner-scoped SEXP handle and return an RAII guard.
 ///
-/// This is the idiomatic Rust way to protect SEXP values.
-/// The guard automatically unprotects when it goes out of scope.
+/// This is the preferred Rust API. Raw pointer protection is retained only for
+/// translated legacy modules that have not yet moved to owner-scoped handles.
+pub fn protect_sexp(value: Sexp<'_>) -> ProtectGuard {
+    protect_raw(value.as_raw())
+}
+
+/// Protect a raw SEXP and return an RAII guard.
+///
+/// Legacy compatibility helper for translated code. Prefer
+/// [`protect_sexp`] when the caller has an owner-scoped value.
 pub fn protect(s: SEXP) -> ProtectGuard {
-    if !s.is_null() {
-        unsafe {
-            Rf_protect(s);
-        }
-    }
+    protect_raw(s)
+}
+
+fn protect_raw(s: SEXP) -> ProtectGuard {
+    push_protect(s);
     ProtectGuard {
         count: if s.is_null() { 0 } else { 1 },
     }
@@ -64,6 +74,55 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
     }
 }
 
+fn push_protect(s: SEXP) {
+    if !s.is_null() {
+        super::instance::with_required_current_instance(|inst| {
+            reserve_slot_or_fail(&mut inst.protect_stack, "protect");
+            inst.protect_stack.push(s);
+        });
+    }
+}
+
+fn push_preserve(s: SEXP) {
+    if !s.is_null() {
+        super::instance::with_required_current_instance(|inst| {
+            reserve_slot_or_fail(&mut inst.preserve_stack, "preserve");
+            inst.preserve_stack.push(s);
+        });
+    }
+}
+
+fn release_preserved(s: SEXP) {
+    if s.is_null() {
+        return;
+    }
+    super::instance::with_required_current_instance(|inst| {
+        if let Some(pos) = inst.preserve_stack.iter().position(|&x| x == s) {
+            inst.preserve_stack.remove(pos);
+        }
+    });
+}
+
+/// RAII guard for the preserve stack.
+///
+/// Dropping the guard releases the preserved object from the active session.
+pub struct PreserveGuard {
+    value: SEXP,
+}
+
+impl Drop for PreserveGuard {
+    fn drop(&mut self) {
+        release_preserved(self.value);
+    }
+}
+
+/// Preserve an owner-scoped SEXP handle until the returned guard is dropped.
+pub fn preserve_sexp(value: Sexp<'_>) -> PreserveGuard {
+    let raw = value.as_raw();
+    push_preserve(raw);
+    PreserveGuard { value: raw }
+}
+
 // ---------------------------------------------------------------------------
 // Core protect/unprotect functions
 // ---------------------------------------------------------------------------
@@ -74,12 +133,7 @@ fn reserve_slot_or_fail(stack: &mut Vec<SEXP>, api: &str) {
 /// This is the equivalent of R's `PROTECT()` macro.
 #[unsafe(no_mangle)]
 pub unsafe fn Rf_protect(s: SEXP) -> SEXP {
-    if !s.is_null() {
-        super::instance::with_required_current_instance(|inst| {
-            reserve_slot_or_fail(&mut inst.protect_stack, "Rf_protect");
-            inst.protect_stack.push(s);
-        });
-    }
+    push_protect(s);
     s
 }
 
@@ -226,26 +280,14 @@ pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
 /// Unlike Rf_protect, this protection persists until explicitly released.
 /// This is the equivalent of R's `R_PreserveObject()`.
 pub unsafe fn R_PreserveObject(s: SEXP) {
-    if !s.is_null() {
-        super::instance::with_required_current_instance(|inst| {
-            reserve_slot_or_fail(&mut inst.preserve_stack, "R_PreserveObject");
-            inst.preserve_stack.push(s);
-        });
-    }
+    push_preserve(s);
 }
 
 /// Release a previously preserved object.
 ///
 /// This is the equivalent of R's `R_ReleaseObject()`.
 pub unsafe fn R_ReleaseObject(s: SEXP) {
-    if s.is_null() {
-        return;
-    }
-    super::instance::with_required_current_instance(|inst| {
-        if let Some(pos) = inst.preserve_stack.iter().position(|&x| x == s) {
-            inst.preserve_stack.remove(pos);
-        }
-    });
+    release_preserved(s);
 }
 
 // ---------------------------------------------------------------------------
@@ -256,6 +298,7 @@ pub unsafe fn R_ReleaseObject(s: SEXP) {
 mod tests {
     use std::ptr;
 
+    use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::session::RSession;
 
     use super::*;
@@ -374,27 +417,48 @@ mod tests {
     }
 
     #[test]
-    fn test_protect_guard() {
-        let session = RSession::new();
+    fn test_protect_sexp_guard() {
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(value).expect("value belongs to session");
+
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
-            let a = 0x1 as SEXP;
-            let _guard = protect(a);
+            let guard = protect_sexp(value);
             assert_eq!(R_ProtectCount(), depth_before + 1);
-            drop(_guard);
+            with_protected_objects(|objects| assert_eq!(objects, &[value.as_raw()]));
+            drop(guard);
             assert_eq!(R_ProtectCount(), depth_before);
         });
     }
 
     #[test]
-    fn test_protect_guard_null() {
+    fn test_raw_protect_guard_null_legacy() {
         let session = RSession::new();
         session.with_protected(|| {
             let depth_before = R_ProtectCount();
-            let _guard = protect(ptr::null_mut());
+            let guard = protect(ptr::null_mut());
             assert_eq!(R_ProtectCount(), depth_before);
-            drop(_guard);
+            drop(guard);
             assert_eq!(R_ProtectCount(), depth_before);
+        });
+    }
+
+    #[test]
+    fn test_preserve_sexp_guard() {
+        let mut session = RSession::new();
+        let value = session
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("session should be active");
+        let value = session.sexp(value).expect("value belongs to session");
+
+        session.with_protected(|| {
+            let guard = preserve_sexp(value);
+            with_preserved_objects(|objects| assert_eq!(objects, &[value.as_raw()]));
+            drop(guard);
+            with_preserved_objects(|objects| assert!(objects.is_empty()));
         });
     }
 
