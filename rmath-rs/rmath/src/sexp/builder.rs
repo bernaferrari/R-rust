@@ -44,7 +44,7 @@ use std::ptr;
 
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
-use super::memory::RArena;
+use super::memory::{self, RArena};
 use super::object::{Sexp, SexpError, SexpResult};
 
 // ---------------------------------------------------------------------------
@@ -88,6 +88,29 @@ impl IntVector {
     /// Create a new builder with n zero values.
     pub fn zeros(n: usize) -> Self {
         IntVector { values: vec![0; n] }
+    }
+
+    /// Create an integer sequence from `start` to `end`, inclusive.
+    ///
+    /// Returns `None` if the sequence length cannot be represented by R's
+    /// integer vector length contract or if reserving the backing storage fails.
+    pub fn sequence(start: c_int, end: c_int) -> Option<Self> {
+        let len = (i64::from(end) - i64::from(start)).abs() + 1;
+        if len > i64::from(c_int::MAX) {
+            return None;
+        }
+        let len = usize::try_from(len).ok()?;
+        let mut values = Vec::new();
+        if values.try_reserve_exact(len).is_err() {
+            return None;
+        }
+
+        let step: c_int = if start <= end { 1 } else { -1 };
+        for i in 0..len {
+            values.push(start + (i as c_int * step));
+        }
+
+        Some(IntVector { values })
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
@@ -509,6 +532,14 @@ pub fn int_vec_in<'arena>(arena: &'arena mut RArena, values: &[c_int]) -> Option
     IntVector::new(values).build_in(arena)
 }
 
+pub(crate) fn int_sequence_current(start: c_int, end: c_int) -> Option<SEXP> {
+    memory::with_arena(|arena| {
+        IntVector::sequence(start, end)
+            .and_then(|builder| builder.build_in(arena))
+            .map(Sexp::as_raw)
+    })
+}
+
 pub fn real_vec_in<'arena>(arena: &'arena mut RArena, values: &[c_double]) -> Option<Sexp<'arena>> {
     RealVector::new(values).build_in(arena)
 }
@@ -765,6 +796,22 @@ mod tests {
                 Some(super::super::ffi::NA_INTEGER)
             );
         }
+    }
+
+    #[test]
+    fn test_int_vector_sequence() {
+        let mut arena = RArena::new();
+        let asc = some(some(IntVector::sequence(2, 4)).build_in(&mut arena));
+        assert_eq!(asc.len(), 3);
+        assert_eq!(asc.integer_elt(0), Some(2));
+        assert_eq!(asc.integer_elt(1), Some(3));
+        assert_eq!(asc.integer_elt(2), Some(4));
+
+        let desc = some(some(IntVector::sequence(1, -1)).build_in(&mut arena));
+        assert_eq!(desc.len(), 3);
+        assert_eq!(desc.integer_elt(0), Some(1));
+        assert_eq!(desc.integer_elt(1), Some(0));
+        assert_eq!(desc.integer_elt(2), Some(-1));
     }
 
     #[test]

@@ -12,8 +12,9 @@
 use std::os::raw::{c_char, c_int};
 
 use crate::sexp::accessors::{CHAR, LENGTH, TYPEOF};
+use crate::sexp::builder::int_sequence_current;
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_NilValue};
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::Rf_protect;
@@ -121,24 +122,7 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// Ported from R's `seq_int()` in eval.c. Used by the bytecode interpreter
 /// for the STEPFOR instruction.
 pub unsafe fn seq_int(n1: c_int, n2: c_int) -> SEXP {
-    unsafe {
-        let len = (i64::from(n2) - i64::from(n1)).abs() + 1;
-        if len > i64::from(c_int::MAX) {
-            return R_NilValue();
-        }
-
-        let len = len as R_xlen_t;
-        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, len);
-        let Some(ans_vec) = Sexp::from_raw(ans) else {
-            return R_NilValue();
-        };
-
-        let step: c_int = if n1 <= n2 { 1 } else { -1 };
-        for i in 0..len {
-            ans_vec.set_integer_elt(i, n1 + (i as c_int * step));
-        }
-        ans
-    }
+    int_sequence_current(n1, n2).unwrap_or_else(|| unsafe { R_NilValue() })
 }
 
 // ---------------------------------------------------------------------------
