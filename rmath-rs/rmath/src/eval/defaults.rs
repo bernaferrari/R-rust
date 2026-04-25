@@ -11,10 +11,11 @@
 
 use std::os::raw::{c_char, c_int};
 
-use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, LOGICAL, TYPEOF};
+use crate::sexp::accessors::{CHAR, LENGTH, TYPEOF};
 use crate::sexp::constructors::*;
-use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
+use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_NilValue};
+use crate::sexp::object::Sexp;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::symbol::Rf_install;
 
@@ -121,22 +122,22 @@ pub unsafe fn do_subassign2_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) ->
 /// for the STEPFOR instruction.
 pub unsafe fn seq_int(n1: c_int, n2: c_int) -> SEXP {
     unsafe {
-        let n = if n1 <= n2 { n2 - n1 + 1 } else { n1 - n2 + 1 };
-        let ans = Rf_allocVector(SEXPTYPE::INTSXP, n);
-        Rf_protect(ans);
-        let data = INTEGER(ans);
-        if !data.is_null() {
-            if n1 <= n2 {
-                for i in 0..n {
-                    *data.add(i as usize) = n1 + i;
-                }
-            } else {
-                for i in 0..n {
-                    *data.add(i as usize) = n1 - i;
-                }
-            }
+        let len = (i64::from(n2) - i64::from(n1)).abs() + 1;
+        if len > i64::from(c_int::MAX) {
+            return R_NilValue();
         }
-        R_NilValue() // unprotect handled by caller
+
+        let len = len as R_xlen_t;
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, len);
+        let Some(ans_vec) = Sexp::from_raw(ans) else {
+            return R_NilValue();
+        };
+
+        let step: c_int = if n1 <= n2 { 1 } else { -1 };
+        for i in 0..len {
+            ans_vec.set_integer_elt(i, n1 + (i as c_int * step));
+        }
+        ans
     }
 }
 
@@ -331,27 +332,8 @@ pub unsafe fn isNumericOnly(x: SEXP) -> c_int {
 ///
 /// Ported from R's `asLogicalNoNA()` in eval.c. Used in condition
 /// evaluation for if/while statements.
-pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
+pub unsafe fn asLogicalNoNA(s: SEXP, _call: SEXP) -> c_int {
     unsafe {
-        // Handle common scalar case directly
-        if TYPEOF(s) == SEXPTYPE::LGLSXP && LENGTH(s) == 1 {
-            let data = LOGICAL(s);
-            if !data.is_null() {
-                let v = *data;
-                if v != crate::sexp::ffi::NA_INTEGER {
-                    return if v != 0 { TRUE } else { FALSE };
-                }
-            }
-        } else if TYPEOF(s) == SEXPTYPE::INTSXP && LENGTH(s) == 1 {
-            let data = INTEGER(s);
-            if !data.is_null() {
-                let v = *data;
-                if v != crate::sexp::ffi::NA_INTEGER {
-                    return if v != 0 { TRUE } else { FALSE };
-                }
-            }
-        }
-
         let len = LENGTH(s);
         if len > 1 {
             eprintln!("Error: the condition has length > 1");
@@ -360,27 +342,78 @@ pub unsafe fn asLogicalNoNA(s: SEXP, call: SEXP) -> c_int {
             });
         }
         if len > 0 {
-            match TYPEOF(s) {
-                t if t == SEXPTYPE::LGLSXP => {
-                    let data = LOGICAL(s);
-                    if !data.is_null() {
-                        *data
-                    } else {
-                        crate::sexp::ffi::NA_INTEGER
-                    }
+            let Some(value) = Sexp::from_raw(s) else {
+                return NA_INTEGER;
+            };
+            match value.typeof_() {
+                SEXPTYPE::LGLSXP => {
+                    logical_scalar_no_na(value.logical_elt(0).unwrap_or(NA_INTEGER))
                 }
-                t if t == SEXPTYPE::INTSXP => {
-                    let data = INTEGER(s);
-                    if !data.is_null() {
-                        *data
-                    } else {
-                        crate::sexp::ffi::NA_INTEGER
-                    }
+                SEXPTYPE::INTSXP => {
+                    logical_scalar_no_na(value.integer_elt(0).unwrap_or(NA_INTEGER))
                 }
                 _ => crate::mainutils::coerce::asLogical(s),
             }
         } else {
-            crate::sexp::ffi::NA_INTEGER
+            NA_INTEGER
+        }
+    }
+}
+
+fn logical_scalar_no_na(value: c_int) -> c_int {
+    if value == NA_INTEGER {
+        NA_INTEGER
+    } else if value != 0 {
+        TRUE
+    } else {
+        FALSE
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarLogical};
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn seq_int_returns_filled_ascending_vector() {
+        let _session = RSession::new();
+        unsafe {
+            let seq = seq_int(2, 5);
+            let seq = Sexp::from_raw(seq).expect("sequence should allocate");
+            assert_eq!(seq.typeof_(), SEXPTYPE::INTSXP);
+            assert_eq!(seq.len(), 4);
+            assert_eq!(seq.integer_elt(0), Some(2));
+            assert_eq!(seq.integer_elt(1), Some(3));
+            assert_eq!(seq.integer_elt(2), Some(4));
+            assert_eq!(seq.integer_elt(3), Some(5));
+        }
+    }
+
+    #[test]
+    fn seq_int_returns_filled_descending_vector() {
+        let _session = RSession::new();
+        unsafe {
+            let seq = seq_int(3, 0);
+            let seq = Sexp::from_raw(seq).expect("sequence should allocate");
+            assert_eq!(seq.typeof_(), SEXPTYPE::INTSXP);
+            assert_eq!(seq.len(), 4);
+            assert_eq!(seq.integer_elt(0), Some(3));
+            assert_eq!(seq.integer_elt(1), Some(2));
+            assert_eq!(seq.integer_elt(2), Some(1));
+            assert_eq!(seq.integer_elt(3), Some(0));
+        }
+    }
+
+    #[test]
+    fn as_logical_no_na_uses_typed_scalar_access() {
+        let _session = RSession::new();
+        unsafe {
+            assert_eq!(asLogicalNoNA(Rf_ScalarLogical(TRUE), R_NilValue()), TRUE);
+            assert_eq!(asLogicalNoNA(Rf_ScalarLogical(FALSE), R_NilValue()), FALSE);
+            assert_eq!(asLogicalNoNA(Rf_ScalarInteger(42), R_NilValue()), TRUE);
+            assert_eq!(asLogicalNoNA(Rf_ScalarInteger(0), R_NilValue()), FALSE);
         }
     }
 }
