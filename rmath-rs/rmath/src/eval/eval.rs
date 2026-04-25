@@ -1051,6 +1051,22 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "grep" => unsafe {
+            crate::mainutils::essentials::do_grep(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "grepl" => unsafe {
+            crate::mainutils::essentials::do_grepl(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "strsplit" => unsafe {
             crate::mainutils::essentials::do_strsplit(
                 call.as_raw(),

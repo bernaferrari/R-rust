@@ -619,6 +619,85 @@ pub unsafe fn do_sub(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     do_string_replace(args, false)
 }
 
+/// R's `grep(pattern, x, ..., value = FALSE)` for common literal/substring use.
+pub unsafe fn do_grep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
+    let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
+    if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    }
+    let value = named_logical_arg(args, "value").unwrap_or(false);
+    let invert = named_logical_arg(args, "invert").unwrap_or(false);
+    let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+    let pattern = elt_to_string(pattern_arg, 0);
+    let matches = grep_match_indices(x_arg, &pattern, ignore_case, invert);
+
+    if value {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, matches.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        for (out_idx, src_idx) in matches.into_iter().enumerate() {
+            if TYPEOF(x_arg) == SEXPTYPE::STRSXP {
+                SET_STRING_ELT(result, out_idx as R_xlen_t, STRING_ELT(x_arg, src_idx));
+            } else {
+                SET_STRING_ELT(
+                    result,
+                    out_idx as R_xlen_t,
+                    Rf_mkChar(
+                        CString::new(elt_to_string(x_arg, src_idx))
+                            .unwrap_or_default()
+                            .as_ptr(),
+                    ),
+                );
+            }
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    } else {
+        let result = Rf_allocVector3(SEXPTYPE::INTSXP, matches.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        let dst = INTEGER(result);
+        for (out_idx, src_idx) in matches.into_iter().enumerate() {
+            *dst.add(out_idx) = (src_idx + 1) as c_int;
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+/// R's `grepl(pattern, x, ...)` for common literal/substring use.
+pub unsafe fn do_grepl(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let pattern_arg = arg_by_name_or_position(args, &["pattern"], 0);
+    let x_arg = arg_by_name_or_position(args, &["x", "text"], 1);
+    if pattern_arg.is_null() || x_arg.is_null() || x_arg == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
+    }
+    let ignore_case = named_logical_arg(args, "ignore.case").unwrap_or(false);
+    let pattern = elt_to_string(pattern_arg, 0);
+    let n = XLENGTH(x_arg);
+    let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = LOGICAL(result);
+    for i in 0..n {
+        if is_string_na(x_arg, i) {
+            *dst.add(i as usize) = FALSE;
+            continue;
+        }
+        let matched = string_contains(&elt_to_string(x_arg, i), &pattern, ignore_case);
+        *dst.add(i as usize) = if matched { TRUE } else { FALSE };
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
 unsafe fn do_string_replace(args: SEXP, global: bool) -> SEXP {
     let pattern_arg = CAR(args);
     let replacement_arg = CAR(CDR(args));
@@ -3027,6 +3106,8 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "sprintf",
         "gsub",
         "sub",
+        "grep",
+        "grepl",
         "strsplit",
         "pmin",
         "pmax",
@@ -4513,6 +4594,77 @@ fn named_logical_arg(args: SEXP, name: &str) -> Option<bool> {
             current = CDR(current);
         }
         None
+    }
+}
+
+fn arg_by_name_or_position(args: SEXP, names: &[&str], position: usize) -> SEXP {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if let Some(tag) = tag_name(current) {
+                if names.iter().any(|name| tag == *name) {
+                    return CAR(current);
+                }
+            }
+            current = CDR(current);
+        }
+
+        let mut positional = 0;
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).is_none() {
+                if positional == position {
+                    return CAR(current);
+                }
+                positional += 1;
+            }
+            current = CDR(current);
+        }
+        R_NilValue()
+    }
+}
+
+fn is_string_na(x: SEXP, i: R_xlen_t) -> bool {
+    unsafe {
+        if x.is_null() || x == R_NilValue() || TYPEOF(x) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        let n = XLENGTH(x);
+        if n == 0 {
+            return false;
+        }
+        STRING_ELT(x, i % n) == crate::sexp::globals::R_NaString()
+    }
+}
+
+fn string_contains(text: &str, pattern: &str, ignore_case: bool) -> bool {
+    if ignore_case {
+        text.to_lowercase().contains(&pattern.to_lowercase())
+    } else {
+        text.contains(pattern)
+    }
+}
+
+fn grep_match_indices(x: SEXP, pattern: &str, ignore_case: bool, invert: bool) -> Vec<R_xlen_t> {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Vec::new();
+        }
+        let n = XLENGTH(x);
+        let mut matches = Vec::new();
+        for i in 0..n {
+            if is_string_na(x, i) {
+                if invert {
+                    matches.push(i);
+                }
+                continue;
+            }
+            let matched = string_contains(&elt_to_string(x, i), pattern, ignore_case);
+            if if invert { !matched } else { matched } {
+                matches.push(i);
+            }
+        }
+        matches
     }
 }
 
