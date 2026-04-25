@@ -4668,6 +4668,17 @@ fn grep_match_indices(x: SEXP, pattern: &str, ignore_case: bool, invert: bool) -
     }
 }
 
+fn environment_arg_or_default(args: SEXP, names: &[&str], position: usize, default: SEXP) -> SEXP {
+    unsafe {
+        let arg = arg_by_name_or_position(args, names, position);
+        if !arg.is_null() && arg != R_NilValue() && TYPEOF(arg) == SEXPTYPE::ENVSXP {
+            arg
+        } else {
+            default
+        }
+    }
+}
+
 fn copy_vector_elt(dst: SEXP, dst_idx: R_xlen_t, src: SEXP, src_idx: R_xlen_t) {
     unsafe {
         match TYPEOF(src) {
@@ -5710,9 +5721,16 @@ pub unsafe fn do_tryCatch(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP
 
 /// R's `exists(x, envir)` — check name exists.
 pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let name = elt_to_string(CAR(args), 0);
+    let name_arg = arg_by_name_or_position(args, &["x"], 0);
+    let name = elt_to_string(name_arg, 0);
     let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
-    let val = crate::sexp::envir::R_findVar(sym, rho);
+    let env = environment_arg_or_default(args, &["envir", "where", "frame"], 1, rho);
+    let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+    let val = if inherits {
+        crate::sexp::envir::R_findVar(sym, env)
+    } else {
+        crate::sexp::envir::R_findVarInFrame(env, sym)
+    };
     Rf_ScalarLogical(
         if !val.is_null() && val != crate::sexp::globals::R_UnboundValue() {
             TRUE
@@ -5724,24 +5742,31 @@ pub unsafe fn do_exists(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `get(x, envir)` — get value.
 pub unsafe fn do_get(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let name = elt_to_string(CAR(args), 0);
-    crate::sexp::envir::R_findVar(
-        Rf_install(CString::new(name).unwrap_or_default().as_ptr()),
-        rho,
-    )
+    let name_arg = arg_by_name_or_position(args, &["x"], 0);
+    let name = elt_to_string(name_arg, 0);
+    let env = environment_arg_or_default(args, &["envir", "pos"], 1, rho);
+    let inherits = named_logical_arg(args, "inherits").unwrap_or(true);
+    let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+    if inherits {
+        crate::sexp::envir::R_findVar(sym, env)
+    } else {
+        crate::sexp::envir::R_findVarInFrame(env, sym)
+    }
 }
 
 /// R's `assign(x, value, envir)` — assign value.
 pub unsafe fn do_assign(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let name = elt_to_string(CAR(args), 0);
-    let val = CAR(CDR(args));
+    let name_arg = arg_by_name_or_position(args, &["x"], 0);
+    let name = elt_to_string(name_arg, 0);
+    let val = arg_by_name_or_position(args, &["value"], 1);
     if val.is_null() {
         return R_NilValue();
     }
+    let env = environment_arg_or_default(args, &["envir", "pos"], 2, rho);
     crate::sexp::envir::defineVar(
         Rf_install(CString::new(name).unwrap_or_default().as_ptr()),
         val,
-        rho,
+        env,
     );
     crate::sexp::globals::set_R_Visible(FALSE);
     val
@@ -9481,7 +9506,7 @@ pub unsafe fn do_globalenv(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
 
 /// R's `new.env(hash, parent, size)` — create a new environment.
 pub unsafe fn do_new_env(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let parent_arg = CAR(args);
+    let parent_arg = arg_by_name_or_position(args, &["parent"], 1);
     let parent = if parent_arg.is_null() || parent_arg == R_NilValue() {
         crate::sexp::globals::R_GlobalEnv()
     } else if TYPEOF(parent_arg) == SEXPTYPE::ENVSXP {
@@ -13399,21 +13424,53 @@ pub unsafe fn do_cast(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 // Complete R runtime — with, within, transform
 // ---------------------------------------------------------------------------
 
-/// R's `with(data, expr)` — evaluate expr in context of data (simplified).
-/// In a full implementation, creates a new environment with data columns as variables.
+/// R's `with(data, expr)` — evaluate expr in a data/list environment.
 pub unsafe fn do_with(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let data = CAR(args);
-    let expr = CAR(CDR(args));
+    let data_expr = arg_by_name_or_position(args, &["data"], 0);
+    let expr = arg_by_name_or_position(args, &["expr"], 1);
     if expr.is_null() || expr == R_NilValue() {
         return R_NilValue();
     }
+    let data = if data_expr.is_null() || data_expr == R_NilValue() {
+        R_NilValue()
+    } else {
+        crate::eval::eval::Rf_eval(data_expr, rho)
+    };
     if data.is_null() || data == R_NilValue() {
-        // No data, just evaluate expr
         return crate::eval::eval::Rf_eval(expr, rho);
     }
-    // Simplified: evaluate the expression in the current environment
-    // A full implementation would create a new env with data columns
-    crate::eval::eval::Rf_eval(expr, rho)
+    let eval_env = data_environment(data, rho);
+    crate::eval::eval::Rf_eval(expr, eval_env)
+}
+
+unsafe fn data_environment(data: SEXP, parent: SEXP) -> SEXP {
+    if TYPEOF(data) == SEXPTYPE::ENVSXP {
+        return data;
+    }
+    if TYPEOF(data) != SEXPTYPE::VECSXP {
+        return parent;
+    }
+
+    let env = crate::sexp::memory_ext::NewEnvironment(R_NilValue(), parent, R_NilValue());
+    if env.is_null() || env == R_NilValue() {
+        return parent;
+    }
+
+    let names =
+        crate::sexp::attrib_core::getAttrib(data, crate::sexp::attrib_core::R_NamesSymbol());
+    let n = XLENGTH(data);
+    for i in 0..n {
+        if names.is_null() || names == R_NilValue() || TYPEOF(names) != SEXPTYPE::STRSXP {
+            break;
+        }
+        let name = elt_to_string(names, i);
+        if name.is_empty() {
+            continue;
+        }
+        let symbol = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+        crate::sexp::envir::defineVar(symbol, VECTOR_ELT(data, i), env);
+    }
+    env
 }
 
 /// R's `within(data, expr)` — modify data by evaluating expr (simplified).
