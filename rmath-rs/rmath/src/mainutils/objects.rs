@@ -602,7 +602,11 @@ unsafe fn applyMethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, newvars: SEXP
                 return fn_ptr(call, op, evald_args, rho);
             }
         } else if t == SEXPTYPE::CLOSXP {
-            return crate::eval::closure::applyClosure(call, op, args, newvars, rho, 0);
+            // applyClosure expects an environment for promise evaluation. The
+            // S3 dispatch variables are still represented as a pairlist in this
+            // translated layer, so keep promise forcing rooted in the caller
+            // environment until the full S3 frame model is ported.
+            return crate::eval::closure::applyClosure(call, op, args, rho, rho, 0);
         }
 
         R_NilValue()
@@ -1012,11 +1016,14 @@ unsafe fn dispatchMethod(
         }
         Rf_protect(newcall);
 
-        let matchedarg = if !cptr.is_null() {
+        let mut matchedarg = if !cptr.is_null() {
             (*cptr).promiseargs
         } else {
             R_NilValue()
         };
+        if matchedarg.is_null() || matchedarg == R_NilValue() {
+            matchedarg = CDR(newcall);
+        }
         Rf_protect(matchedarg);
 
         let ans = applyMethod(newcall, sxp, matchedarg, rho, newvars);
@@ -1132,12 +1139,11 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
             return val;
         }
 
-        // Try the .__S3MethodsTable__. in defrho
-        let effective_defrho = if defrho == R_BaseEnv() {
-            R_GlobalEnv()
-        } else {
-            defrho
-        };
+        // Try the .__S3MethodsTable__. in defrho. Upstream R maps the base
+        // environment to the base namespace; this port does not yet model a
+        // distinct base namespace, so R_BaseEnv is the least surprising local
+        // approximation.
+        let effective_defrho = defrho;
         if !effective_defrho.is_null() && effective_defrho != R_NilValue() {
             let s3_table_sym = S3MethodsTable_symbol();
             let table = crate::sexp::envir::R_findVarInFrame(effective_defrho, s3_table_sym);
@@ -1158,12 +1164,10 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
             }
         }
 
-        // Search from top's enclosing env, with base after global
-        let search_start = if top == R_GlobalEnv() {
-            R_BaseEnv()
-        } else {
-            ENCLOS(top)
-        };
+        // Search from top's enclosing environment. In this port the search
+        // path is represented by R_GlobalEnv's enclosure chain, so this also
+        // covers attached package environments before base.
+        let search_start = ENCLOS(top);
 
         if !search_start.is_null() && search_start != R_EmptyEnv() {
             let val3 = findFunWithBaseEnvAfterGlobalEnv(method, search_start);

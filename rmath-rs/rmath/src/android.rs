@@ -742,6 +742,57 @@ mod tests {
     }
 
     #[test]
+    fn test_s3_method_registry_and_namespace_directives() {
+        let root = unique_test_root("android-s3");
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        write_package(
+            &bundled,
+            "tiny",
+            "export(tiny_generic)\nS3method(tiny_generic, myclass)\n",
+            "tiny_generic <- function(x) UseMethod(\"tiny_generic\", x)\ntiny_generic.myclass <- function(x) 77L\n",
+        );
+
+        let mut session = RSession::new();
+        session
+            .configure_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("configure paths");
+
+        assert_eq!(session.eval("library(\"tiny\")").output, "");
+        assert_eq!(
+            session
+                .eval("hasS3method(\"tiny_generic\", \"myclass\")")
+                .typed,
+            RValue::Logical(Some(true))
+        );
+        assert_eq!(
+            session
+                .eval("getS3method(\"tiny_generic\", \"myclass\")(1L)")
+                .output,
+            "[1] 77"
+        );
+        assert_eq!(
+            session
+                .eval("x <- 1L\nclass(x) <- \"myclass\"\ntiny_generic(x)")
+                .output,
+            "[1] 77"
+        );
+
+        let private_method = session.eval("tiny_generic.myclass");
+        assert!(
+            matches!(private_method.typed, RValue::Error(_)),
+            "{private_method:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn test_session_eval_integer() {
         let mut session = RSession::new();
         let result = session.eval_integer(42);

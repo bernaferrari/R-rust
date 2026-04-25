@@ -21,7 +21,7 @@ use std::ffi::CString;
 use std::os::raw::c_int;
 use std::time::{Duration, Instant};
 
-use crate::sexp::accessors::{CAR, CDR, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT, TYPEOF};
+use crate::sexp::accessors::{CAR, CDR, CLOENV, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT, TYPEOF};
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
@@ -420,7 +420,7 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
 
     // Dispatch based on function type
     match fun_val.typeof_() {
-        SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, args, rho),
+        SEXPTYPE::CLOSXP => apply_closure_safe(fun_val, e, args, rho),
         SEXPTYPE::SPECIALSXP => apply_special_safe(fun_val, e, args, rho),
         SEXPTYPE::BUILTINSXP => apply_builtin_safe(fun_val, e, args, rho),
         _ => Err(format!("cannot call type {:?}", fun_val.typeof_())),
@@ -507,12 +507,13 @@ fn eval_dots_safe<'a>(_dots: Sexp<'a>, _rho: Sexp<'a>) -> Result<Sexp<'a>, Strin
 /// Safe closure application.
 fn apply_closure_safe<'a>(
     fun: Sexp<'a>,
+    call: Sexp<'a>,
     args: Sexp<'a>,
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let raw_result = unsafe {
         super::closure::applyClosure(
-            fun.as_raw(), // call placeholder
+            call.as_raw(),
             fun.as_raw(),
             args.as_raw(),
             rho.as_raw(),
@@ -1322,8 +1323,8 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
-        "useMethod" => unsafe {
-            crate::mainutils::essentials::do_usemethod(
+        "UseMethod" | "useMethod" => unsafe {
+            crate::mainutils::objects::do_usemethod(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,
@@ -5264,21 +5265,20 @@ fn try_s3_dispatch<'a>(
                 continue;
             }
 
-            // Try to find the method in the environment chain
-            let method_val = crate::sexp::envir::R_findVar(method_sym, rho.as_raw());
-            if method_val.is_null() || method_val == R_NilValue() {
-                // Try base environment
-                let method_val = crate::sexp::envir::R_findVar(method_sym, R_BaseEnv());
-                if method_val.is_null()
-                    || method_val == R_NilValue()
-                    || TYPEOF(method_val) == SEXPTYPE::CLOSXP
-                    || TYPEOF(method_val) == SEXPTYPE::BUILTINSXP
-                    || TYPEOF(method_val) == SEXPTYPE::SPECIALSXP
-                {
-                    // Found in base - continue to try dispatching
-                } else {
-                    continue;
-                }
+            let defrho = if TYPEOF(fun.as_raw()) == SEXPTYPE::CLOSXP {
+                CLOENV(fun.as_raw())
+            } else {
+                rho.as_raw()
+            };
+            let method_val = crate::mainutils::objects::R_LookupMethod(
+                method_sym,
+                rho.as_raw(),
+                rho.as_raw(),
+                defrho,
+            );
+            if method_val.is_null() || method_val == R_NilValue() || method_val == R_UnboundValue()
+            {
+                continue;
             }
 
             // Check if it's a function
@@ -5618,11 +5618,12 @@ unsafe fn eval_builtin<'a>(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<S
 /// Evaluate a CLOSXP (user-defined function) — legacy wrapper.
 unsafe fn eval_closure<'a>(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let fun = Sexp::from_raw_unchecked(op);
+    let call = Sexp::from_raw_unchecked(e);
     let args = Sexp::from_raw_unchecked(e)
         .try_cdr()
         .map_err(|err| sexp_err("missing args", err))?;
     let env = Sexp::from_raw_unchecked(rho);
-    apply_closure_safe(fun, args, env)
+    apply_closure_safe(fun, call, args, env)
 }
 
 // ---------------------------------------------------------------------------

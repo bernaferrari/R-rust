@@ -3018,6 +3018,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "noquote",
         "deparse",
         "nargs",
+        "UseMethod",
         "useMethod",
         "missing",
         "parent.frame",
@@ -3655,12 +3656,20 @@ struct NamespaceDirectives {
     exports: Vec<String>,
     export_patterns: Vec<String>,
     imports: Vec<NamespaceImport>,
+    s3_methods: Vec<S3MethodDirective>,
 }
 
 #[derive(Clone, Debug)]
 enum NamespaceImport {
     All { package: String },
     From { package: String, names: Vec<String> },
+}
+
+#[derive(Clone, Debug)]
+struct S3MethodDirective {
+    generic: String,
+    class: String,
+    method: Option<String>,
 }
 
 unsafe fn populate_package_namespace(
@@ -3675,6 +3684,9 @@ unsafe fn populate_package_namespace(
             apply_namespace_imports(package, package_env, directives, loading)?;
         }
         source_package_r_files(package, package_dir, package_env)?;
+        if let Some(directives) = namespace.as_ref() {
+            register_namespace_s3_methods(package, package_env, directives)?;
+        }
         Ok(namespace)
     }
 }
@@ -3814,6 +3826,13 @@ unsafe fn make_package_attach_env(
 
         define_package_metadata(package, attach_env);
         crate::sexp::envir::defineVar(namespace_env_symbol(), package_env, attach_env);
+        let s3_table = crate::sexp::envir::R_findVarInFrame(package_env, s3_methods_table_symbol());
+        if !s3_table.is_null()
+            && s3_table != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(s3_table) == SEXPTYPE::ENVSXP
+        {
+            crate::sexp::envir::defineVar(s3_methods_table_symbol(), s3_table, attach_env);
+        }
 
         let exports = namespace_exports(Some(directives), package_env);
         let mut missing = Vec::new();
@@ -3901,10 +3920,59 @@ fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
                         .push(NamespaceImport::From { package, names });
                 }
             }
+            "S3method" => {
+                let parts = split_namespace_args(&args);
+                let Some(generic) = parts.first().and_then(|arg| clean_namespace_name(arg)) else {
+                    continue;
+                };
+                let Some(class) = parts.get(1).and_then(|arg| clean_namespace_name(arg)) else {
+                    continue;
+                };
+                let method = parts.get(2).and_then(|arg| clean_namespace_name(arg));
+                directives.s3_methods.push(S3MethodDirective {
+                    generic,
+                    class,
+                    method,
+                });
+            }
             _ => {}
         }
     }
     directives
+}
+
+unsafe fn register_namespace_s3_methods(
+    package: &str,
+    package_env: SEXP,
+    directives: &NamespaceDirectives,
+) -> Result<(), String> {
+    unsafe {
+        for method in &directives.s3_methods {
+            let method_name = method
+                .method
+                .clone()
+                .unwrap_or_else(|| format!("{}.{}", method.generic, method.class));
+            let Ok(method_cstr) = CString::new(method_name.as_str()) else {
+                return Err(format!(
+                    "package '{}' has invalid S3 method name '{}'",
+                    package, method_name
+                ));
+            };
+            let method_sym = Rf_install(method_cstr.as_ptr());
+            let method_value = crate::sexp::envir::R_findVarInFrame(package_env, method_sym);
+            if method_value.is_null()
+                || method_value == R_NilValue()
+                || method_value == crate::sexp::globals::R_UnboundValue()
+            {
+                return Err(format!(
+                    "package '{}' declares missing S3 method '{}'",
+                    package, method_name
+                ));
+            }
+            define_s3_method(package_env, &method.generic, &method.class, method_value)?;
+        }
+        Ok(())
+    }
 }
 
 fn strip_namespace_comments(content: &str) -> String {
@@ -6739,11 +6807,10 @@ pub unsafe fn do_nargs(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP 
 // S3 dispatch, environment functions, I/O extensions
 // ---------------------------------------------------------------------------
 
-/// R's `usemethod(generic, obj)` — simplified S3 dispatch.
-/// In a full implementation this would look for generic.class methods.
-/// For now, this is a no-op that signals "use default method".
-pub unsafe fn do_usemethod(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    Rf_ScalarLogical(FALSE) // Simplified: no method found
+/// R's `UseMethod(generic, obj)` — delegate to the translated object-system
+/// dispatch implementation.
+pub unsafe fn do_usemethod(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe { crate::mainutils::objects::do_usemethod(call, op, args, rho) }
 }
 
 /// R's `missing(x)` — check if argument was missing in call.
@@ -14808,45 +14875,202 @@ pub unsafe fn do_writeChar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 // ---------------------------------------------------------------------------
 
 /// R's `getS3method(generic, class)` — get S3 method function.
-pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let generic = elt_to_string(CAR(args), 0);
-    let class = elt_to_string(CAR(CDR(args)), 0);
-
-    // Try to find method: generic.class
-    let method_name = format!("{}.{}", generic, class);
-    let _sym = Rf_install(
-        CString::new(method_name.as_str())
-            .unwrap_or_default()
-            .as_ptr(),
-    );
-
-    // Return a placeholder closure
-    let body = Rf_mkString(
-        CString::new(format!("S3 method: {}", method_name).as_str())
-            .unwrap_or_default()
-            .as_ptr(),
-    );
-    body
+pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let generic = elt_to_string(CAR(args), 0);
+        let class = elt_to_string(CAR(CDR(args)), 0);
+        let Some(method_sym) = s3_method_symbol(&generic, &class) else {
+            return R_NilValue();
+        };
+        let method = lookup_s3_method(method_sym, rho);
+        if is_function_value(method) {
+            method
+        } else {
+            R_NilValue()
+        }
+    }
 }
 
 /// R's `hasS3method(generic, class)` — check if S3 method exists.
-pub unsafe fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let generic = elt_to_string(CAR(args), 0);
-    let class = elt_to_string(CAR(CDR(args)), 0);
-
-    let _method_name = format!("{}.{}", generic, class);
-    // Simplified: always return TRUE for common methods
-    Rf_ScalarLogical(TRUE)
+pub unsafe fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let generic = elt_to_string(CAR(args), 0);
+        let class = elt_to_string(CAR(CDR(args)), 0);
+        let Some(method_sym) = s3_method_symbol(&generic, &class) else {
+            return Rf_ScalarLogical(FALSE);
+        };
+        Rf_ScalarLogical(if is_function_value(lookup_s3_method(method_sym, rho)) {
+            TRUE
+        } else {
+            FALSE
+        })
+    }
 }
 
 /// R's `registerS3method(generic, class, method)` — register S3 method.
-pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let _generic = elt_to_string(CAR(args), 0);
-    let _class = elt_to_string(CAR(CDR(args)), 0);
-    let _method = CAR(CDR(CDR(args)));
+pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let generic = elt_to_string(CAR(args), 0);
+        let class = elt_to_string(CAR(CDR(args)), 0);
+        let method = CAR(CDR(CDR(args)));
+        let env_arg = CDR(CDR(CDR(args)));
+        let target_env = if !env_arg.is_null() && env_arg != R_NilValue() {
+            CAR(env_arg)
+        } else {
+            rho
+        };
 
-    // Simplified: no-op, return invisible NULL
-    R_NilValue()
+        if let Err(message) = define_s3_method(target_env, &generic, &class, method) {
+            package_error(message);
+        }
+        crate::sexp::globals::set_R_Visible(FALSE);
+        R_NilValue()
+    }
+}
+
+unsafe fn s3_methods_table_symbol() -> SEXP {
+    unsafe { Rf_install(c".__S3MethodsTable__.".as_ptr()) }
+}
+
+fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
+    let method_name = format!("{generic}.{class}");
+    let method_name = CString::new(method_name).ok()?;
+    Some(unsafe { Rf_install(method_name.as_ptr()) })
+}
+
+unsafe fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
+    unsafe {
+        if env.is_null() || env == R_NilValue() || TYPEOF(env) != SEXPTYPE::ENVSXP {
+            return Err("S3 method registration requires an environment".to_string());
+        }
+
+        let table_sym = s3_methods_table_symbol();
+        let existing = crate::sexp::envir::R_findVarInFrame(env, table_sym);
+        if !existing.is_null()
+            && existing != crate::sexp::globals::R_UnboundValue()
+            && TYPEOF(existing) == SEXPTYPE::ENVSXP
+        {
+            return Ok(existing);
+        }
+
+        let table = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        if table.is_null() {
+            return Err("could not create S3 methods table".to_string());
+        }
+        let _table_guard = crate::sexp::protect::protect(table);
+        crate::sexp::envir::defineVar(table_sym, table, env);
+        Ok(table)
+    }
+}
+
+unsafe fn define_s3_method(
+    env: SEXP,
+    generic: &str,
+    class: &str,
+    method: SEXP,
+) -> Result<(), String> {
+    unsafe {
+        if !is_function_value(method) {
+            return Err(format!(
+                "S3 method '{}.{}' must be a function",
+                generic, class
+            ));
+        }
+        let Some(method_sym) = s3_method_symbol(generic, class) else {
+            return Err(format!(
+                "invalid S3 method signature '{}.{}'",
+                generic, class
+            ));
+        };
+        let table = ensure_s3_methods_table(env)?;
+        crate::sexp::envir::defineVar(method_sym, method, table);
+        Ok(())
+    }
+}
+
+unsafe fn lookup_s3_method(method_sym: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        if method_sym.is_null() {
+            return R_NilValue();
+        }
+        let method = crate::mainutils::objects::R_LookupMethod(
+            method_sym,
+            rho,
+            rho,
+            effective_s3_defrho(rho),
+        );
+        if method != crate::sexp::globals::R_UnboundValue() {
+            method
+        } else {
+            let method = lookup_s3_method_in_attached_tables(method_sym, rho);
+            if method != crate::sexp::globals::R_UnboundValue() {
+                method
+            } else {
+                R_NilValue()
+            }
+        }
+    }
+}
+
+unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
+        {
+            crate::sexp::globals::R_GlobalEnv()
+        } else {
+            rho
+        };
+        while !current.is_null() && current != crate::sexp::globals::R_EmptyEnv() {
+            let table = crate::sexp::envir::R_findVarInFrame(current, s3_methods_table_symbol());
+            if !table.is_null()
+                && table != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(table) == SEXPTYPE::ENVSXP
+            {
+                let method = crate::sexp::envir::R_findVarInFrame(table, method_sym);
+                if is_function_value(method) {
+                    return method;
+                }
+            }
+            current = crate::sexp::accessors::ENCLOS(current);
+        }
+        crate::sexp::globals::R_UnboundValue()
+    }
+}
+
+unsafe fn effective_s3_defrho(rho: SEXP) -> SEXP {
+    unsafe {
+        if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP {
+            crate::sexp::globals::R_GlobalEnv()
+        } else {
+            let namespace_env = crate::sexp::envir::R_findVarInFrame(rho, namespace_env_symbol());
+            if !namespace_env.is_null()
+                && namespace_env != crate::sexp::globals::R_UnboundValue()
+                && TYPEOF(namespace_env) == SEXPTYPE::ENVSXP
+            {
+                namespace_env
+            } else {
+                rho
+            }
+        }
+    }
+}
+
+unsafe fn is_function_value(value: SEXP) -> bool {
+    unsafe {
+        !value.is_null()
+            && value != R_NilValue()
+            && value != crate::sexp::globals::R_UnboundValue()
+            && {
+                let value_type = TYPEOF(value);
+                value_type == SEXPTYPE::CLOSXP
+                    || value_type == SEXPTYPE::BUILTINSXP
+                    || value_type == SEXPTYPE::SPECIALSXP
+            }
+    }
 }
 
 /// R's `setGeneric(f, fdef, ...)` — set generic function.
