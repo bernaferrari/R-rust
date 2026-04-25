@@ -9,6 +9,7 @@
 
 use libc;
 use std::cell::Cell;
+use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
@@ -64,7 +65,7 @@ unsafe fn UNSET_S4_OBJECT(x: SEXP) {
 // ---------------------------------------------------------------------------
 
 /// Get or install the ".__S3MethodsTable__." symbol.
-unsafe fn S3MethodsTable_symbol() -> SEXP {
+pub(crate) unsafe fn S3MethodsTable_symbol() -> SEXP {
     unsafe { Rf_install(b".__S3MethodsTable__.\x00".as_ptr() as *const c_char) }
 }
 
@@ -1182,6 +1183,133 @@ pub unsafe fn R_LookupMethod(method: SEXP, rho: SEXP, callrho: SEXP, defrho: SEX
     }
 }
 
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct S3MethodMatch {
+    pub(crate) method_symbol: SEXP,
+    pub(crate) method: SEXP,
+    pub(crate) class_index: Option<c_int>,
+}
+
+pub(crate) fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
+    let generic = CString::new(generic).ok()?;
+    let class = CString::new(class).ok()?;
+    Some(unsafe { crate::mainutils::names::installS3Signature(generic.as_ptr(), class.as_ptr()) })
+}
+
+pub(crate) unsafe fn lookup_s3_method_symbol(
+    method_symbol: SEXP,
+    rho: SEXP,
+    callrho: SEXP,
+    defrho: SEXP,
+) -> SEXP {
+    unsafe {
+        let method = R_LookupMethod(method_symbol, rho, callrho, defrho);
+        if isFunction(method) != FALSE {
+            return method;
+        }
+
+        let method = lookup_s3_method_in_attached_tables(method_symbol, rho);
+        if isFunction(method) != FALSE {
+            method
+        } else {
+            R_UnboundValue()
+        }
+    }
+}
+
+pub(crate) unsafe fn lookup_s3_method_for_class(
+    generic: &str,
+    class: &str,
+    rho: SEXP,
+    callrho: SEXP,
+    defrho: SEXP,
+) -> Option<S3MethodMatch> {
+    unsafe {
+        let method_symbol = s3_method_symbol(generic, class)?;
+        let method = lookup_s3_method_symbol(method_symbol, rho, callrho, defrho);
+        if isFunction(method) != FALSE {
+            Some(S3MethodMatch {
+                method_symbol,
+                method,
+                class_index: None,
+            })
+        } else {
+            None
+        }
+    }
+}
+
+pub(crate) unsafe fn lookup_s3_method_for_classes(
+    generic: &str,
+    classes: SEXP,
+    rho: SEXP,
+    callrho: SEXP,
+    defrho: SEXP,
+    include_default: bool,
+) -> Option<S3MethodMatch> {
+    unsafe {
+        if classes.is_null() || classes == R_NilValue() || TYPEOF(classes) != SEXPTYPE::STRSXP {
+            return if include_default {
+                lookup_s3_method_for_class(generic, "default", rho, callrho, defrho)
+            } else {
+                None
+            };
+        }
+
+        let generic_cstr = CString::new(generic).ok()?;
+        for i in 0..length(classes) {
+            let class = STRING_ELT(classes, i as R_xlen_t);
+            if class.is_null() {
+                continue;
+            }
+            let class = translateChar(class);
+            if class.is_null() {
+                continue;
+            }
+            let method_symbol =
+                crate::mainutils::names::installS3Signature(generic_cstr.as_ptr(), class);
+            let method = lookup_s3_method_symbol(method_symbol, rho, callrho, defrho);
+            if isFunction(method) != FALSE {
+                return Some(S3MethodMatch {
+                    method_symbol,
+                    method,
+                    class_index: Some(i),
+                });
+            }
+        }
+
+        if include_default {
+            lookup_s3_method_for_class(generic, "default", rho, callrho, defrho)
+        } else {
+            None
+        }
+    }
+}
+
+unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
+        {
+            R_GlobalEnv()
+        } else {
+            rho
+        };
+
+        while !current.is_null() && current != R_EmptyEnv() {
+            let table = crate::sexp::envir::R_findVarInFrame(current, S3MethodsTable_symbol());
+            if !table.is_null() && table != R_UnboundValue() && TYPEOF(table) == SEXPTYPE::ENVSXP {
+                let method = crate::sexp::envir::R_findVarInFrame(table, method_sym);
+                if isFunction(method) != FALSE {
+                    return method;
+                }
+            }
+            current = ENCLOS(current);
+        }
+
+        R_UnboundValue()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // usemethod -- core S3 method dispatch implementation
 // ---------------------------------------------------------------------------
@@ -1214,56 +1342,63 @@ pub unsafe fn usemethod(
         let klass = R_data_class2(obj);
         Rf_protect(klass);
 
-        let nclass = length(klass);
+        let generic_name = std::ffi::CStr::from_ptr(generic).to_string_lossy();
+        let Some(method_match) =
+            lookup_s3_method_for_classes(&generic_name, klass, rho, callrho, defrho, true)
+        else {
+            Rf_unprotect(1); // klass
+            return 0;
+        };
 
-        for i in 0..nclass {
-            let ss = translateChar(STRING_ELT(klass, i as R_xlen_t));
-            let method = crate::mainutils::names::installS3Signature(generic, ss);
-            let sxp = R_LookupMethod(method, rho, callrho, defrho);
-
-            if isFunction(sxp) != FALSE {
-                Rf_protect(sxp);
+        Rf_protect(method_match.method);
+        match method_match.class_index {
+            Some(i) => {
                 if i > 0 {
                     let dotClass = stringSuffix(klass, i);
                     Rf_protect(dotClass);
                     setAttrib(dotClass, sym("previous"), klass);
                     *ans = dispatchMethod(
-                        op, sxp, dotClass, cptr, method, generic, rho, callrho, defrho,
+                        op,
+                        method_match.method,
+                        dotClass,
+                        cptr,
+                        method_match.method_symbol,
+                        generic,
+                        rho,
+                        callrho,
+                        defrho,
                     );
                     Rf_unprotect(1); // dotClass
                 } else {
-                    *ans =
-                        dispatchMethod(op, sxp, klass, cptr, method, generic, rho, callrho, defrho);
+                    *ans = dispatchMethod(
+                        op,
+                        method_match.method,
+                        klass,
+                        cptr,
+                        method_match.method_symbol,
+                        generic,
+                        rho,
+                        callrho,
+                        defrho,
+                    );
                 }
-                Rf_unprotect(2); // klass, sxp
-                return 1;
+            }
+            None => {
+                *ans = dispatchMethod(
+                    op,
+                    method_match.method,
+                    R_NilValue(),
+                    cptr,
+                    method_match.method_symbol,
+                    generic,
+                    rho,
+                    callrho,
+                    defrho,
+                );
             }
         }
-
-        // Try default method
-        let default_method = crate::mainutils::names::installS3Signature(
-            generic,
-            b"default\x00".as_ptr() as *const c_char,
-        );
-        let sxp = R_LookupMethod(default_method, rho, callrho, defrho);
-        Rf_protect(sxp);
-        if isFunction(sxp) != FALSE {
-            *ans = dispatchMethod(
-                op,
-                sxp,
-                R_NilValue(),
-                cptr,
-                default_method,
-                generic,
-                rho,
-                callrho,
-                defrho,
-            );
-            Rf_unprotect(2); // klass, sxp
-            return 1;
-        }
         Rf_unprotect(2); // klass, sxp
-        0
+        1
     }
 }
 

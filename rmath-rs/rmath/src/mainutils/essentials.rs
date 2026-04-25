@@ -15620,10 +15620,15 @@ pub unsafe fn do_getS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     unsafe {
         let generic = elt_to_string(CAR(args), 0);
         let class = elt_to_string(CAR(CDR(args)), 0);
-        let Some(method_sym) = s3_method_symbol(&generic, &class) else {
+        let Some(method_sym) = crate::mainutils::objects::s3_method_symbol(&generic, &class) else {
             return R_NilValue();
         };
-        let method = lookup_s3_method(method_sym, rho);
+        let method = crate::mainutils::objects::lookup_s3_method_symbol(
+            method_sym,
+            rho,
+            rho,
+            effective_s3_defrho(rho),
+        );
         if is_function_value(method) {
             method
         } else {
@@ -15637,10 +15642,16 @@ pub unsafe fn do_hasS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> S
     unsafe {
         let generic = elt_to_string(CAR(args), 0);
         let class = elt_to_string(CAR(CDR(args)), 0);
-        let Some(method_sym) = s3_method_symbol(&generic, &class) else {
+        let Some(method_sym) = crate::mainutils::objects::s3_method_symbol(&generic, &class) else {
             return Rf_ScalarLogical(FALSE);
         };
-        Rf_ScalarLogical(if is_function_value(lookup_s3_method(method_sym, rho)) {
+        let method = crate::mainutils::objects::lookup_s3_method_symbol(
+            method_sym,
+            rho,
+            rho,
+            effective_s3_defrho(rho),
+        );
+        Rf_ScalarLogical(if is_function_value(method) {
             TRUE
         } else {
             FALSE
@@ -15670,13 +15681,7 @@ pub unsafe fn do_registerS3method(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP)
 }
 
 unsafe fn s3_methods_table_symbol() -> SEXP {
-    unsafe { Rf_install(c".__S3MethodsTable__.".as_ptr()) }
-}
-
-fn s3_method_symbol(generic: &str, class: &str) -> Option<SEXP> {
-    let method_name = format!("{generic}.{class}");
-    let method_name = CString::new(method_name).ok()?;
-    Some(unsafe { Rf_install(method_name.as_ptr()) })
+    unsafe { crate::mainutils::objects::S3MethodsTable_symbol() }
 }
 
 unsafe fn ensure_s3_methods_table(env: SEXP) -> Result<SEXP, String> {
@@ -15721,7 +15726,7 @@ unsafe fn define_s3_method(
                 generic, class
             ));
         }
-        let Some(method_sym) = s3_method_symbol(generic, class) else {
+        let Some(method_sym) = crate::mainutils::objects::s3_method_symbol(generic, class) else {
             return Err(format!(
                 "invalid S3 method signature '{}.{}'",
                 generic, class
@@ -15730,55 +15735,6 @@ unsafe fn define_s3_method(
         let table = ensure_s3_methods_table(env)?;
         crate::sexp::envir::defineVar(method_sym, method, table);
         Ok(())
-    }
-}
-
-unsafe fn lookup_s3_method(method_sym: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        if method_sym.is_null() {
-            return R_NilValue();
-        }
-        let method = crate::mainutils::objects::R_LookupMethod(
-            method_sym,
-            rho,
-            rho,
-            effective_s3_defrho(rho),
-        );
-        if method != crate::sexp::globals::R_UnboundValue() {
-            method
-        } else {
-            let method = lookup_s3_method_in_attached_tables(method_sym, rho);
-            if method != crate::sexp::globals::R_UnboundValue() {
-                method
-            } else {
-                R_NilValue()
-            }
-        }
-    }
-}
-
-unsafe fn lookup_s3_method_in_attached_tables(method_sym: SEXP, rho: SEXP) -> SEXP {
-    unsafe {
-        let mut current = if rho.is_null() || rho == R_NilValue() || TYPEOF(rho) != SEXPTYPE::ENVSXP
-        {
-            crate::sexp::globals::R_GlobalEnv()
-        } else {
-            rho
-        };
-        while !current.is_null() && current != crate::sexp::globals::R_EmptyEnv() {
-            let table = crate::sexp::envir::R_findVarInFrame(current, s3_methods_table_symbol());
-            if !table.is_null()
-                && table != crate::sexp::globals::R_UnboundValue()
-                && TYPEOF(table) == SEXPTYPE::ENVSXP
-            {
-                let method = crate::sexp::envir::R_findVarInFrame(table, method_sym);
-                if is_function_value(method) {
-                    return method;
-                }
-            }
-            current = crate::sexp::accessors::ENCLOS(current);
-        }
-        crate::sexp::globals::R_UnboundValue()
     }
 }
 

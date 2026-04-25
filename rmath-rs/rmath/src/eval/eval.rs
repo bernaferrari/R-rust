@@ -18,11 +18,10 @@
 //! The C-shaped [`Rf_eval`] entrypoint is kept as a compatibility shell for
 //! ported code that still passes raw `SEXP` pointers.
 
-use std::ffi::CString;
 use std::os::raw::c_int;
 use std::time::{Duration, Instant};
 
-use crate::sexp::accessors::{CAR, CDR, CLOENV, LENGTH, PRIMOFFSET, PRINTNAME, STRING_ELT, TYPEOF};
+use crate::sexp::accessors::{CAR, CDR, CLOENV, PRIMOFFSET, PRINTNAME, TYPEOF};
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{
@@ -5411,85 +5410,41 @@ fn try_s3_dispatch<'a>(
             return None;
         }
 
-        let n_classes = LENGTH(klass);
-        if n_classes == 0 {
-            return None;
+        let defrho = if TYPEOF(fun.as_raw()) == SEXPTYPE::CLOSXP {
+            CLOENV(fun.as_raw())
+        } else {
+            rho.as_raw()
+        };
+        let method_match = crate::mainutils::objects::lookup_s3_method_for_classes(
+            op_name,
+            klass,
+            rho.as_raw(),
+            rho.as_raw(),
+            defrho,
+            false,
+        )?;
+
+        let method_val = method_match.method;
+        let method_type = TYPEOF(method_val);
+        if method_type == SEXPTYPE::CLOSXP {
+            return Some(super::closure::applyClosure(
+                call.as_raw(),
+                method_val,
+                evaled_args,
+                rho.as_raw(),
+                R_NilValue(),
+                TRUE,
+            ));
         }
 
-        // Try each class in the class vector
-        for i in 0..n_classes {
-            let class_name = STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t);
-            if class_name.is_null() {
-                continue;
-            }
-            let class_str = crate::sexp::accessors::CHAR(class_name);
-            if class_str.is_null() {
-                continue;
-            }
-            let Ok(class_str) = std::ffi::CStr::from_ptr(class_str).to_str() else {
-                continue;
-            };
-            if class_str.is_empty() {
-                continue;
-            }
-
-            // Build method name: "generic.class" (e.g., "print.data.frame")
-            let method_name = format!("{}.{}", op_name, class_str);
-            let method_cstr = CString::new(method_name.as_str()).ok()?;
-
-            // Look up the method symbol
-            let method_sym = crate::sexp::symbol::Rf_install(method_cstr.as_ptr());
-            if method_sym.is_null() {
-                continue;
-            }
-
-            let defrho = if TYPEOF(fun.as_raw()) == SEXPTYPE::CLOSXP {
-                CLOENV(fun.as_raw())
-            } else {
-                rho.as_raw()
-            };
-            let method_val = crate::mainutils::objects::R_LookupMethod(
-                method_sym,
-                rho.as_raw(),
-                rho.as_raw(),
-                defrho,
-            );
-            if method_val.is_null() || method_val == R_NilValue() || method_val == R_UnboundValue()
-            {
-                continue;
-            }
-
-            // Check if it's a function
-            let method_type = TYPEOF(method_val);
-            if method_type != SEXPTYPE::CLOSXP
-                && method_type != SEXPTYPE::BUILTINSXP
-                && method_type != SEXPTYPE::SPECIALSXP
-            {
-                continue;
-            }
-
-            // Found a valid S3 method — call it
-            if method_type == SEXPTYPE::CLOSXP {
-                // For closures, use applyClosure
-                let result = super::closure::applyClosure(
+        if method_type == SEXPTYPE::BUILTINSXP || method_type == SEXPTYPE::SPECIALSXP {
+            if let Some(primfun) = get_primfun(method_val) {
+                return Some(primfun(
                     call.as_raw(),
                     method_val,
                     evaled_args,
                     rho.as_raw(),
-                    R_NilValue(),
-                    TRUE,
-                );
-                return Some(result);
-            } else if method_type == SEXPTYPE::BUILTINSXP {
-                // For builtins, call directly
-                if let Some(primfun) = get_primfun(method_val) {
-                    return Some(primfun(
-                        call.as_raw(),
-                        method_val,
-                        evaled_args,
-                        rho.as_raw(),
-                    ));
-                }
+                ));
             }
         }
 
