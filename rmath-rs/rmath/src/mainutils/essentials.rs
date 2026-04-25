@@ -238,6 +238,57 @@ pub unsafe fn do_seq(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     result
 }
 
+/// R's `sequence(nvec, from = 1, by = 1)` for common integer-compatible inputs.
+pub unsafe fn do_sequence(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let nvec = CAR(args);
+    if nvec.is_null() || nvec == R_NilValue() {
+        return Rf_allocVector3(SEXPTYPE::INTSXP, 0);
+    }
+    let from_arg = if CDR(args).is_null() || CDR(args) == R_NilValue() {
+        R_NilValue()
+    } else {
+        CAR(CDR(args))
+    };
+    let by_arg = if CDR(args).is_null()
+        || CDR(args) == R_NilValue()
+        || CDR(CDR(args)).is_null()
+        || CDR(CDR(args)) == R_NilValue()
+    {
+        R_NilValue()
+    } else {
+        CAR(CDR(CDR(args)))
+    };
+
+    let n = XLENGTH(nvec);
+    let mut total: usize = 0;
+    let mut lengths = Vec::with_capacity(n as usize);
+    for i in 0..n {
+        let len = numeric_elt_as_count(nvec, i);
+        total += len;
+        lengths.push(len);
+    }
+
+    let result = Rf_allocVector3(SEXPTYPE::INTSXP, total as R_xlen_t);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    let dst = INTEGER(result);
+    let mut offset = 0;
+    for (i, len) in lengths.into_iter().enumerate() {
+        let from = real_elt_or_default(from_arg, i as R_xlen_t, 1.0) as c_int;
+        let by = real_elt_or_default(by_arg, i as R_xlen_t, 1.0) as c_int;
+        let mut value = from;
+        for _ in 0..len {
+            *dst.add(offset) = value;
+            value += by;
+            offset += 1;
+        }
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
+}
+
 // ---------------------------------------------------------------------------
 // do_rep — repeat elements
 // ---------------------------------------------------------------------------
@@ -2938,6 +2989,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
     let all_fns = [
         "c",
         "seq",
+        "sequence",
         "seq_len",
         "seq_along",
         "rep",
@@ -3097,6 +3149,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "sys.frame",
         "getwd",
         "setwd",
+        "basename",
+        "dirname",
+        "file.path",
         "file.exists",
         "list.files",
         "normalizePath",
@@ -4478,6 +4533,70 @@ fn copy_vector_elt(dst: SEXP, dst_idx: R_xlen_t, src: SEXP, src_idx: R_xlen_t) {
             }
             _ => {}
         }
+    }
+}
+
+fn map_path_strings(x: SEXP, f: fn(&str) -> String) -> SEXP {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+        }
+        let n = XLENGTH(x).max(1);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        for i in 0..n {
+            if TYPEOF(x) == SEXPTYPE::STRSXP {
+                let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
+                if STRING_ELT(x, idx) == crate::sexp::globals::R_NaString() {
+                    SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                    continue;
+                }
+            }
+            let value = f(&elt_to_string(x, i));
+            SET_STRING_ELT(
+                result,
+                i,
+                Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()),
+            );
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+fn trim_trailing_separators(path: &str) -> &str {
+    let trimmed = path.trim_end_matches(['/', '\\']);
+    if trimmed.is_empty() && !path.is_empty() {
+        &path[..1]
+    } else {
+        trimmed
+    }
+}
+
+fn r_basename(path: &str) -> String {
+    let trimmed = trim_trailing_separators(path);
+    if trimmed == "/" || trimmed == "\\" {
+        return trimmed.to_string();
+    }
+    trimmed
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(trimmed)
+        .to_string()
+}
+
+fn r_dirname(path: &str) -> String {
+    let trimmed = trim_trailing_separators(path);
+    if trimmed == "/" || trimmed == "\\" {
+        return trimmed.to_string();
+    }
+    match trimmed.rfind(['/', '\\']) {
+        Some(0) => trimmed[..1].to_string(),
+        Some(pos) => trimmed[..pos].to_string(),
+        None => ".".to_string(),
     }
 }
 
@@ -7040,6 +7159,58 @@ pub unsafe fn do_setwd(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
     }
+}
+
+/// R's `basename(path)` — final path component, vectorized over character input.
+pub unsafe fn do_basename(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    map_path_strings(CAR(args), r_basename)
+}
+
+/// R's `dirname(path)` — parent path component, vectorized over character input.
+pub unsafe fn do_dirname(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    map_path_strings(CAR(args), r_dirname)
+}
+
+/// R's `file.path(...)` — join path components element-wise with recycling.
+pub unsafe fn do_file_path(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let mut parts = Vec::new();
+    let mut max_len = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        if tag_name(current).as_deref() != Some("fsep") {
+            let value = CAR(current);
+            if !value.is_null() && value != R_NilValue() {
+                max_len = max_len.max(XLENGTH(value));
+                parts.push(value);
+            }
+        }
+        current = CDR(current);
+    }
+    if parts.is_empty() {
+        return Rf_allocVector3(SEXPTYPE::STRSXP, 0);
+    }
+    let result = Rf_allocVector3(SEXPTYPE::STRSXP, max_len);
+    if result.is_null() {
+        return R_NilValue();
+    }
+    let _p = Rf_protect(result);
+    for i in 0..max_len {
+        let joined = parts
+            .iter()
+            .filter_map(|part| {
+                let value = elt_to_string(*part, i);
+                (!value.is_empty()).then_some(value)
+            })
+            .collect::<Vec<_>>()
+            .join("/");
+        SET_STRING_ELT(
+            result,
+            i,
+            Rf_mkChar(CString::new(joined).unwrap_or_default().as_ptr()),
+        );
+    }
+    crate::sexp::protect::Rf_unprotect(1);
+    result
 }
 
 /// R's `dir.exists(paths)` — check if directories exist.

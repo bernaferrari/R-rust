@@ -747,6 +747,14 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "sequence" => unsafe {
+            crate::mainutils::essentials::do_sequence(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "rep" => unsafe {
             crate::mainutils::essentials::do_rep(
                 call.as_raw(),
@@ -1373,6 +1381,30 @@ fn apply_builtin_safe<'a>(
         },
         "setwd" => unsafe {
             crate::mainutils::essentials::do_setwd(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "basename" => unsafe {
+            crate::mainutils::essentials::do_basename(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "dirname" => unsafe {
+            crate::mainutils::essentials::do_dirname(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "file.path" => unsafe {
+            crate::mainutils::essentials::do_file_path(
                 call.as_raw(),
                 fun.as_raw(),
                 evaled_args,
