@@ -448,6 +448,14 @@ mod tests {
             result.value,
             RValue::RealVector(vec![Some(1.0), Some(2.0), Some(3.0)])
         );
+
+        let strings = session
+            .eval_result("c(\"a\", NA_character_)")
+            .expect("eval strings");
+        assert_eq!(
+            strings.value,
+            RValue::StringVector(vec![Some("a".to_string()), None])
+        );
     }
 
     #[test]
@@ -477,12 +485,14 @@ mod tests {
         assert_eq!(
             result.value,
             RValue::StringVector(vec![
-                files
-                    .join("R")
-                    .join("library")
-                    .to_string_lossy()
-                    .into_owned(),
-                bundled.to_string_lossy().into_owned()
+                Some(
+                    files
+                        .join("R")
+                        .join("library")
+                        .to_string_lossy()
+                        .into_owned()
+                ),
+                Some(bundled.to_string_lossy().into_owned())
             ])
         );
 

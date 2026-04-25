@@ -300,7 +300,7 @@ pub enum RValue {
     LogicalVector(Vec<Option<bool>>),
     IntegerVector(Vec<Option<i32>>),
     RealVector(Vec<Option<f64>>),
-    StringVector(Vec<String>),
+    StringVector(Vec<Option<String>>),
     RawVector(Vec<u8>),
     ComplexVector(Vec<Option<RComplexValue>>),
     List(Vec<RValue>),
@@ -344,12 +344,7 @@ impl RValue {
             SexpValue::LogicalVector(values) => RValue::LogicalVector(values),
             SexpValue::IntegerVector(values) => RValue::IntegerVector(values),
             SexpValue::RealVector(values) => RValue::RealVector(values),
-            SexpValue::StringVector(values) => RValue::StringVector(
-                values
-                    .into_iter()
-                    .map(|value| value.unwrap_or_default())
-                    .collect(),
-            ),
+            SexpValue::StringVector(values) => RValue::StringVector(values),
             SexpValue::RawVector(values) => RValue::RawVector(values),
             SexpValue::ComplexVector(values) => RValue::ComplexVector(
                 values
@@ -427,6 +422,14 @@ pub fn qnorm_free(p: f64, mean: f64, sd: f64) -> f64 {
 mod tests {
     use super::*;
 
+    fn string_vector(values: Vec<String>) -> RValue {
+        RValue::StringVector(values.into_iter().map(Some).collect())
+    }
+
+    fn literal_string_vector(values: &[&str]) -> RValue {
+        string_vector(values.iter().map(|value| (*value).to_string()).collect())
+    }
+
     #[test]
     fn test_session_new() {
         let mut session = RSession::new();
@@ -468,7 +471,7 @@ mod tests {
         let lib_paths = session.eval(".libPaths()");
         assert_eq!(
             lib_paths.typed,
-            RValue::StringVector(vec![
+            string_vector(vec![
                 files
                     .join("R")
                     .join("library")
@@ -481,13 +484,13 @@ mod tests {
         let base_path = session.eval("find.package(\"base\")");
         assert_eq!(
             base_path.typed,
-            RValue::StringVector(vec![base_pkg.to_string_lossy().into_owned()])
+            string_vector(vec![base_pkg.to_string_lossy().into_owned()])
         );
 
         let tempdir = session.eval("tempdir()");
         assert_eq!(
             tempdir.typed,
-            RValue::StringVector(vec![cache.join("Rtmp").to_string_lossy().into_owned()])
+            string_vector(vec![cache.join("Rtmp").to_string_lossy().into_owned()])
         );
         assert_eq!(session.eval("file.exists(tempdir())").output, "[1] TRUE");
 
@@ -526,20 +529,19 @@ mod tests {
     fn test_eval_returns_owned_typed_values() {
         let mut session = RSession::new();
         let strings = session.eval("c(\"a\", \"b\")");
+        let strings_with_na = session.eval("c(\"a\", NA_character_)");
         let logical = session.eval("TRUE");
         let list = session.eval("list(1, \"x\")");
 
+        assert_eq!(strings.typed, literal_string_vector(&["a", "b"]));
         assert_eq!(
-            strings.typed,
-            RValue::StringVector(vec!["a".to_string(), "b".to_string()])
+            strings_with_na.typed,
+            RValue::StringVector(vec![Some("a".to_string()), None])
         );
         assert_eq!(logical.typed, RValue::Logical(Some(true)));
         assert_eq!(
             list.typed,
-            RValue::List(vec![
-                RValue::Real(Some(1.0)),
-                RValue::StringVector(vec!["x".to_string()])
-            ])
+            RValue::List(vec![RValue::Real(Some(1.0)), literal_string_vector(&["x"])])
         );
     }
 
@@ -711,14 +713,11 @@ mod tests {
 
         let printed = session.eval("capture.output(print(1))");
         assert_eq!(printed.output, "[1] \"[1] 1\"");
-        assert_eq!(
-            printed.typed,
-            RValue::StringVector(vec!["[1] 1".to_string()])
-        );
+        assert_eq!(printed.typed, literal_string_vector(&["[1] 1"]));
 
         let cat = session.eval("capture.output(cat(\"hello\"))");
         assert_eq!(cat.output, "[1] \"hello\"");
-        assert_eq!(cat.typed, RValue::StringVector(vec!["hello".to_string()]));
+        assert_eq!(cat.typed, literal_string_vector(&["hello"]));
     }
 
     #[test]
@@ -822,10 +821,7 @@ mod tests {
         let mut session = RSession::new();
         let sorted = session.eval("y <- 2; x <- 1; ls()");
         assert_eq!(sorted.output, "[1] \"x\" \"y\"");
-        assert_eq!(
-            sorted.typed,
-            RValue::StringVector(vec!["x".to_string(), "y".to_string()])
-        );
+        assert_eq!(sorted.typed, literal_string_vector(&["x", "y"]));
 
         let mut session = RSession::new();
         let hidden = session.eval(".hidden <- 1; visible <- 2; ls()");
@@ -870,7 +866,7 @@ mod tests {
 
         let interned = session.eval("system(\"printf hi\", intern = TRUE)");
         assert_eq!(interned.output, "[1] \"hi\"");
-        assert_eq!(interned.typed, RValue::StringVector(vec!["hi".to_string()]));
+        assert_eq!(interned.typed, literal_string_vector(&["hi"]));
 
         let status = session.eval("status <- system(\"false\"); status");
         assert_eq!(status.output, "[1] 1");

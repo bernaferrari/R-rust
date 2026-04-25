@@ -95,7 +95,7 @@ pub struct RValue {
     pub logical_values: Vec<Option<bool>>,
     pub integer_values: Vec<Option<i32>>,
     pub real_values: Vec<Option<f64>>,
-    pub string_values: Vec<String>,
+    pub string_values: Vec<Option<String>>,
     pub raw_values: Vec<u8>,
     pub complex_values: Vec<Option<RComplexValue>>,
     pub list_values: Vec<RValue>,
@@ -479,6 +479,15 @@ mod tests {
         assert_eq!(result.output, "[1] 1 2 3");
         assert_eq!(result.value.kind, RValueKind::IntegerVector);
         assert_eq!(result.value.integer_values, vec![Some(1), Some(2), Some(3)]);
+
+        let strings = session
+            .eval_result("c(\"a\", NA_character_)".to_string())
+            .expect("eval strings");
+        assert_eq!(strings.value.kind, RValueKind::StringVector);
+        assert_eq!(
+            strings.value.string_values,
+            vec![Some("a".to_string()), None]
+        );
     }
 
     #[test]
@@ -541,12 +550,14 @@ mod tests {
         assert_eq!(
             result.value.string_values,
             vec![
-                files
-                    .join("R")
-                    .join("library")
-                    .to_string_lossy()
-                    .into_owned(),
-                bundled.to_string_lossy().into_owned()
+                Some(
+                    files
+                        .join("R")
+                        .join("library")
+                        .to_string_lossy()
+                        .into_owned()
+                ),
+                Some(bundled.to_string_lossy().into_owned())
             ]
         );
 
