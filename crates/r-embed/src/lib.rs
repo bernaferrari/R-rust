@@ -947,6 +947,7 @@ impl Drop for RSession {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::path::{Path, PathBuf};
     use std::sync::{Arc, Barrier};
 
     struct DecodedPng {
@@ -1001,7 +1002,18 @@ mod tests {
         }
     }
 
-    fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+    fn unique_test_root(root_name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "{root_name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn make_test_package(root_name: &str) -> (PathBuf, PathBuf) {
         make_test_package_with_source(
             root_name,
             "export(tiny_value)\n",
@@ -1013,37 +1025,78 @@ mod tests {
         root_name: &str,
         namespace: &str,
         source: &str,
-    ) -> (std::path::PathBuf, std::path::PathBuf) {
-        let root = std::env::temp_dir().join(format!(
-            "{root_name}-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock should be after epoch")
-                .as_nanos()
-        ));
+    ) -> (PathBuf, PathBuf) {
+        let root = unique_test_root(root_name);
         let bundled = root.join("bundled-library");
-        let pkg = bundled.join("tiny");
+        let pkg = write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "tiny",
+                description: concat!(
+                    "Package: tiny\n",
+                    "Version: 0.0.1\n",
+                    "Title: Tiny Test Package\n",
+                    "Description: Tiny package for Android runtime tests\n",
+                    "License: MIT\n",
+                    "Depends: R (>= 4.0.0)\n",
+                    "Imports: depall, depfrom\n",
+                    "Suggests: testthat\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace,
+                sources: &[("tiny.R", source)],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        (root, pkg)
+    }
+
+    struct FixturePackage<'a> {
+        name: &'a str,
+        description: &'a str,
+        namespace: &'a str,
+        sources: &'a [(&'a str, &'a str)],
+        data_sources: &'a [(&'a str, &'a str)],
+        extra_files: &'a [(&'a str, &'a [u8])],
+    }
+
+    fn write_fixture_package(library: &Path, package: FixturePackage<'_>) -> PathBuf {
+        let pkg = library.join(package.name);
         let r_dir = pkg.join("R");
         std::fs::create_dir_all(&r_dir).expect("package R dir");
-        std::fs::write(
-            pkg.join("DESCRIPTION"),
-            concat!(
-                "Package: tiny\n",
-                "Version: 0.0.1\n",
-                "Title: Tiny Test Package\n",
-                "Description: Tiny package for Android runtime tests\n",
-                "License: MIT\n",
-                "Depends: R (>= 4.0.0)\n",
-                "Imports: depall, depfrom\n",
-                "Suggests: testthat\n",
-                "NeedsCompilation: no\n",
+        std::fs::write(pkg.join("DESCRIPTION"), package.description).expect("description");
+        std::fs::write(pkg.join("NAMESPACE"), package.namespace).expect("namespace");
+        for (file, source) in package.sources {
+            std::fs::write(r_dir.join(file), source).expect("R source");
+        }
+        if !package.data_sources.is_empty() {
+            let data_dir = pkg.join("data");
+            std::fs::create_dir_all(&data_dir).expect("data dir");
+            for (file, source) in package.data_sources {
+                std::fs::write(data_dir.join(file), source).expect("data source");
+            }
+        }
+        for (file, bytes) in package.extra_files {
+            let path = pkg.join(file);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent).expect("extra file parent");
+            }
+            std::fs::write(path, bytes).expect("extra file");
+        }
+        pkg
+    }
+
+    fn android_paths_for(root: &Path) -> AndroidRuntimePaths {
+        AndroidRuntimePaths::new(
+            root.join("files").to_str().expect("utf8 files path"),
+            root.join("cache").to_str().expect("utf8 cache path"),
+            Some(
+                root.join("bundled-library")
+                    .to_str()
+                    .expect("utf8 bundled path"),
             ),
         )
-        .expect("description");
-        std::fs::write(pkg.join("NAMESPACE"), namespace).expect("namespace");
-        std::fs::write(r_dir.join("tiny.R"), source).expect("R source");
-        (root, pkg)
     }
 
     #[test]
@@ -1227,6 +1280,297 @@ mod tests {
         assert_eq!(session.eval("tiny_value()").expect("eval"), "[1] 42");
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pure_r_package_corpus_smoke_lists_loads_and_runs_supported_packages() {
+        let root = unique_test_root("rport-embed-corpus");
+        let bundled = root.join("bundled-library");
+
+        let base_pkg = write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corpbase",
+                description: concat!(
+                    "Package: corpbase\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Base Package\n",
+                    "Description: Exercises exports, S3 methods, and source-form data.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(base_value, make_corp, corp_generic)\nS3method(corp_generic, corpclass)\n",
+                sources: &[(
+                    "base.R",
+                    concat!(
+                        "base_value <- function() 10L\n",
+                        "make_corp <- function() { x <- 1L; class(x) <- \"corpclass\"; x }\n",
+                        "corp_generic <- function(x) UseMethod(\"corp_generic\", x)\n",
+                        "corp_generic.corpclass <- function(x) 123L\n",
+                    ),
+                )],
+                data_sources: &[("corp_data.R", "corp_data <- 55L\n")],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corpimport",
+                description: concat!(
+                    "Package: corpimport\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Import Package\n",
+                    "Description: Exercises whole-package namespace imports.\n",
+                    "License: MIT\n",
+                    "Imports: corpbase\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "import(corpbase)\nexport(import_value)\n",
+                sources: &[("import.R", "import_value <- function() base_value() + 5L\n")],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corpfrom",
+                description: concat!(
+                    "Package: corpfrom\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus ImportFrom Package\n",
+                    "Description: Exercises selective namespace imports.\n",
+                    "License: MIT\n",
+                    "Imports: corpbase\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "importFrom(corpbase, base_value)\nexport(from_value)\n",
+                sources: &[("from.R", "from_value <- function() base_value() + 7L\n")],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corppattern",
+                description: concat!(
+                    "Package: corppattern\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Export Pattern Package\n",
+                    "Description: Exercises NAMESPACE exportPattern handling.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "exportPattern(\"^pat_\")\n",
+                sources: &[(
+                    "pattern.R",
+                    "pat_value <- function() 31L\nhidden_value <- function() 99L\n",
+                )],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corpnative",
+                description: concat!(
+                    "Package: corpnative\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Native Policy Package\n",
+                    "Description: Exercises explicit native-code rejection.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "useDynLib(corpnative)\nexport(native_value)\n",
+                sources: &[("native.R", "native_value <- function() 1L\n")],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corpcompiled",
+                description: concat!(
+                    "Package: corpcompiled\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Compiled Policy Package\n",
+                    "Description: Exercises DESCRIPTION NeedsCompilation rejection.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: yes\n",
+                ),
+                namespace: "export(compiled_value)\n",
+                sources: &[("compiled.R", "compiled_value <- function() 1L\n")],
+                data_sources: &[],
+                extra_files: &[],
+            },
+        );
+        write_fixture_package(
+            &bundled,
+            FixturePackage {
+                name: "corplazydata",
+                description: concat!(
+                    "Package: corplazydata\n",
+                    "Version: 0.1.0\n",
+                    "Title: Corpus Lazy Data Policy Package\n",
+                    "Description: Exercises serialized data rejection.\n",
+                    "License: MIT\n",
+                    "NeedsCompilation: no\n",
+                ),
+                namespace: "export(lazy_value)\n",
+                sources: &[("lazy.R", "lazy_value <- function() 1L\n")],
+                data_sources: &[],
+                extra_files: &[("data/lazy_data.rda", b"unsupported serialized data")],
+            },
+        );
+
+        let paths = android_paths_for(&root);
+        let mut session = RSession::new().expect("session");
+        session
+            .configure_android_runtime(&paths)
+            .expect("path config");
+
+        let installed_names = session
+            .installed_packages()
+            .into_iter()
+            .map(|package| package.name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            installed_names,
+            vec![
+                "corpbase",
+                "corpcompiled",
+                "corpfrom",
+                "corpimport",
+                "corplazydata",
+                "corpnative",
+                "corppattern",
+            ]
+        );
+        assert_eq!(
+            session.package_path("corpbase"),
+            Some(base_pkg.to_string_lossy().into_owned())
+        );
+
+        session.load_package("corpbase").expect("load corpbase");
+        assert_eq!(session.eval("base_value()").expect("base value"), "[1] 10");
+        assert_eq!(
+            session
+                .eval("corp_generic(make_corp())")
+                .expect("s3 dispatch"),
+            "[1] 123"
+        );
+        assert_eq!(
+            session
+                .eval("data(package = \"corpbase\")")
+                .expect("list data"),
+            "[1] \"corp_data\""
+        );
+        assert_eq!(
+            session
+                .eval("data(\"corp_data\", package = \"corpbase\")\ncorp_data")
+                .expect("load data"),
+            "[1] 55"
+        );
+
+        session.load_package("corpimport").expect("load import");
+        assert_eq!(
+            session.eval("import_value()").expect("import value"),
+            "[1] 15"
+        );
+        session.load_package("corpfrom").expect("load importFrom");
+        assert_eq!(session.eval("from_value()").expect("from value"), "[1] 17");
+        session
+            .load_package("corppattern")
+            .expect("load exportPattern");
+        assert_eq!(
+            session.eval("pat_value()").expect("pattern value"),
+            "[1] 31"
+        );
+        let hidden = session
+            .eval("hidden_value")
+            .expect_err("hidden pattern symbol should not be attached");
+        assert!(hidden.to_string().contains("not found"), "{hidden}");
+
+        let native = session
+            .load_package("corpnative")
+            .expect_err("native package should be rejected");
+        assert!(
+            native.to_string().contains("useDynLib(corpnative)"),
+            "{native}"
+        );
+        assert!(
+            native.to_string().contains("pure-R Android runtime"),
+            "{native}"
+        );
+        let compiled = session
+            .load_package("corpcompiled")
+            .expect_err("compiled package should be rejected");
+        assert!(
+            compiled.to_string().contains("NeedsCompilation: yes"),
+            "{compiled}"
+        );
+        session
+            .load_package("corplazydata")
+            .expect("load lazy-data package namespace");
+        let lazy = session
+            .eval_result("data(\"lazy_data\", package = \"corplazydata\")")
+            .expect_err("serialized lazy data should be rejected");
+        assert!(
+            lazy.to_string()
+                .contains("unsupported serialized/lazy data"),
+            "{lazy}"
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn pure_r_package_corpus_keeps_same_named_packages_isolated_by_session() {
+        let make_root = |name: &str, value: i32| {
+            let root = unique_test_root(name);
+            let bundled = root.join("bundled-library");
+            write_fixture_package(
+                &bundled,
+                FixturePackage {
+                    name: "corpbase",
+                    description: concat!(
+                        "Package: corpbase\n",
+                        "Version: 0.1.0\n",
+                        "Title: Corpus Base Package\n",
+                        "Description: Same package name, different library path.\n",
+                        "License: MIT\n",
+                        "NeedsCompilation: no\n",
+                    ),
+                    namespace: "export(base_value)\n",
+                    sources: &[("base.R", &format!("base_value <- function() {value}L\n"))],
+                    data_sources: &[],
+                    extra_files: &[],
+                },
+            );
+            root
+        };
+        let left_root = make_root("rport-embed-corpus-left", 21);
+        let right_root = make_root("rport-embed-corpus-right", 84);
+
+        let mut left = RSession::new().expect("left session");
+        left.configure_android_runtime(&android_paths_for(&left_root))
+            .expect("left paths");
+        let mut right = RSession::new().expect("right session");
+        right
+            .configure_android_runtime(&android_paths_for(&right_root))
+            .expect("right paths");
+
+        left.load_package("corpbase").expect("left load");
+        right.load_package("corpbase").expect("right load");
+        assert_eq!(left.eval("base_value()").expect("left value"), "[1] 21");
+        assert_eq!(right.eval("base_value()").expect("right value"), "[1] 84");
+
+        let _ = std::fs::remove_dir_all(left_root);
+        let _ = std::fs::remove_dir_all(right_root);
     }
 
     #[test]
