@@ -10,7 +10,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::output::{start_capture, stop_capture};
-use crate::sexp::safe::Sexp;
+use crate::sexp::object::Sexp;
 
 fn some<T>(opt: Option<T>) -> T {
     opt.unwrap_or_else(|| panic!("unexpected None in test"))
@@ -689,8 +689,8 @@ fn test_eval_arithmetic_direct() {
     let expr = must(parser::parse("1 + 2", &mut arena));
 
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
-    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
-    let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+    let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
+    let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
 
     let result = eval_safe(e, env);
     assert!(result.is_ok(), "eval failed: {:?}", result);
@@ -717,7 +717,7 @@ fn test_eval_abs_debug() {
 
     let mut arena = crate::sexp::memory::RArena::new();
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
-    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+    let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
     let expr = must(parser::parse("abs(-5)", &mut arena));
     eprintln!("expr ptr={:p}", expr);
@@ -734,7 +734,7 @@ fn test_eval_abs_debug() {
         eprintln!("inner_arg1 type={}", unsafe { TYPEOF(inner_arg1) });
     }
 
-    let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+    let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
     let result = eval_safe(e, env);
     eprintln!(
         "result: {:?}",
@@ -745,7 +745,7 @@ fn test_eval_abs_debug() {
 
     let inner_expr = unsafe { CAR(CDR(expr)) };
     eprintln!("inner_expr type={}", unsafe { TYPEOF(inner_expr) });
-    let inner_e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(inner_expr) };
+    let inner_e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(inner_expr) };
     let inner_result = eval_safe(inner_e, env);
     eprintln!(
         "inner_result: {:?}",
@@ -775,7 +775,7 @@ fn test_eval_math_builtins() {
 
     let mut arena = crate::sexp::memory::RArena::new();
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
-    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+    let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
     let cases: Vec<(&str, f64)> = vec![
         ("abs(-5)", 5.0),
@@ -796,7 +796,7 @@ fn test_eval_math_builtins() {
 
     for (code, expected) in cases {
         let expr = must(parser::parse(code, &mut arena));
-        let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+        let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
         let result = eval_safe(e, env);
         assert!(result.is_ok(), "eval '{}' failed: {:?}", code, result);
         let val = must(result);
@@ -831,10 +831,10 @@ fn test_eval_length_builtin() {
 
     let mut arena = crate::sexp::memory::RArena::new();
     let global_env = unsafe { crate::sexp::globals::R_GlobalEnv() };
-    let env = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(global_env) };
+    let env = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(global_env) };
 
     let expr = must(parser::parse("length(42)", &mut arena));
-    let e = unsafe { crate::sexp::safe::Sexp::from_raw_unchecked(expr) };
+    let e = unsafe { crate::sexp::object::Sexp::from_raw_unchecked(expr) };
     let result = must(eval_safe(e, env));
     let v = result.integer_elt(0).unwrap_or(0);
     assert_eq!(v, 1, "length(42) should be 1, got {}", v);

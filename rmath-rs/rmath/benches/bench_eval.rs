@@ -9,7 +9,7 @@ use test::Bencher;
 use rmath::sexp::constructors::*;
 use rmath::sexp::ffi::{SEXP, SEXPTYPE};
 use rmath::sexp::globals::R_NilValue;
-use rmath::sexp::safe::Sexp;
+use rmath::sexp::object::Sexp;
 
 fn make_env() -> SEXP {
     unsafe {

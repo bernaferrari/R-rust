@@ -15,7 +15,7 @@
 //!   cplx_eq (complex equality with NA/NaN handling)
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::safe::Sexp;
+use crate::sexp::object::Sexp;
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{

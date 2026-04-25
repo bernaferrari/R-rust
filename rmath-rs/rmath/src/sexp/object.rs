@@ -1,9 +1,9 @@
-//! Safe wrapper types for R SEXP objects.
+//! Rust object model for R SEXP values.
 //!
-//! This module provides idiomatic Rust abstractions over the raw FFI
-//! `SEXP` pointers. The [`Sexp`] type wraps raw pointers with lifetime
-//! tracking and safe accessor methods, while [`PairlistIter`] provides
-//! iteration over pairlist chains.
+//! This module is the safe, Rust-facing layer over raw R `SEXP` pointers. It
+//! keeps R's object categories recognizable while adding lifetime tracking,
+//! checked accessors, type-directed borrowed views, owned projections, and
+//! pairlist iteration.
 //!
 //! # Design
 //!

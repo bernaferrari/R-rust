@@ -24,7 +24,7 @@ use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::memory_ext::NewEnvironment;
-use super::safe::{PairlistIter, Sexp, SexpError};
+use super::object::{PairlistIter, Sexp, SexpError};
 use super::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------

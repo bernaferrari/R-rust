@@ -15,7 +15,7 @@ use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
-use crate::sexp::safe::{PairlistIter, Sexp, SexpError};
+use crate::sexp::object::{PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::eval::Rf_eval;

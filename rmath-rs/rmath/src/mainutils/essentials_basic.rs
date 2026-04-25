@@ -129,7 +129,7 @@ pub unsafe fn do_print(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
         return R_NilValue();
     }
-    if let Some(sexp) = crate::sexp::safe::Sexp::from_raw(x) {
+    if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
         crate::sexp::output::print_value(sexp);
     }
     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);

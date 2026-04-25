@@ -28,7 +28,7 @@ use std::os::raw::c_int;
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use super::memory::with_arena;
-use super::safe::Sexp;
+use super::object::Sexp;
 
 /// ALTREP data payload types.
 #[derive(Debug)]

@@ -30,7 +30,7 @@ use crate::sexp::globals::{
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
-use crate::sexp::safe::{PairlistIter, Sexp, SexpError};
+use crate::sexp::object::{PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::R_DotsSymbol;
 use crate::sexp::symbol::symbol_name_from_ptr;
 

@@ -11,7 +11,7 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::{self};
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
-use super::safe::Sexp;
+use super::object::Sexp;
 
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE

@@ -8,7 +8,7 @@ use std::os::raw::{c_double, c_int};
 
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::memory::with_arena;
-use crate::sexp::safe::{Sexp, SexpError};
+use crate::sexp::object::{Sexp, SexpError};
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")

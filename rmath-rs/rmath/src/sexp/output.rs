@@ -6,7 +6,7 @@
 
 use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
 use super::globals::R_NaString;
-use super::safe::Sexp;
+use super::object::Sexp;
 
 /// Captured R output.
 #[derive(Debug, Clone, Default)]
@@ -74,7 +74,7 @@ pub fn format_sexp(x: SEXP) -> String {
     if x.is_null() {
         return "NULL".to_string();
     }
-    if let Some(sexp) = crate::sexp::safe::Sexp::from_raw(x) {
+    if let Some(sexp) = crate::sexp::object::Sexp::from_raw(x) {
         format_sexp_direct(sexp)
     } else {
         "NULL".to_string()

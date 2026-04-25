@@ -19,7 +19,7 @@ use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::output;
-use crate::sexp::safe::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
+use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use crate::sexp::session::CancellationFlag;
 
 // ---------------------------------------------------------------------------

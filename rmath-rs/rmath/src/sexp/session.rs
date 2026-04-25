@@ -42,7 +42,7 @@ use super::instance::{
 };
 use super::memory::{ArenaBudget, RArena};
 use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
-use super::safe::Sexp;
+use super::object::Sexp;
 
 /// Error returned by safe session evaluation APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]

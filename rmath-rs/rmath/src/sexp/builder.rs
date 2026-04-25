@@ -45,7 +45,7 @@ use std::ptr;
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory::RArena;
-use super::safe::{Sexp, SexpError, SexpResult};
+use super::object::{Sexp, SexpError, SexpResult};
 
 // ---------------------------------------------------------------------------
 // Builder for integer vectors

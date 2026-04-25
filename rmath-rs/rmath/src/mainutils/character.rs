@@ -22,7 +22,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::protect::*;
-use crate::sexp::safe::Sexp;
+use crate::sexp::object::Sexp;
 
 /// Copy a string using memmove (handles overlapping regions).
 pub fn mystrcpy(dest: &mut [u8], src: &[u8]) {

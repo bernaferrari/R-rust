@@ -47,7 +47,7 @@ use crate::sexp::ffi::{
 use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
-use crate::sexp::safe::Sexp;
+use crate::sexp::object::Sexp;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------

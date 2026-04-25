@@ -28,7 +28,7 @@ pub mod memory;
 pub mod memory_ext;
 pub mod output;
 pub mod protect;
-pub mod safe;
+pub mod object;
 pub mod session;
 pub mod symbol;
 
@@ -49,7 +49,7 @@ pub use output::{
     RCapturedOutput, capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture,
 };
 
-pub use safe::{
+pub use object::{
     PairlistIter, Sexp, SexpAttribute, SexpComplex, SexpError, SexpMetadata, SexpResult, SexpValue,
     SexpView,
 };
