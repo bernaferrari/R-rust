@@ -178,11 +178,34 @@ impl RArena {
         Some(buf.layout)
     }
 
+    fn can_activate_node(&self) -> bool {
+        self.budget.max_nodes == 0 || self.node_count() < self.budget.max_nodes
+    }
+
+    fn can_grow_bytes_by(&self, bytes: usize) -> bool {
+        self.budget.max_bytes == 0
+            || self
+                .total_bytes_allocated
+                .checked_add(bytes)
+                .is_some_and(|total| total <= self.budget.max_bytes)
+    }
+
+    fn can_allocate_new_node_with_payload(&self, bytes: usize) -> bool {
+        self.can_activate_node()
+            && bytes
+                .checked_add(std::mem::size_of::<SexprecCore>())
+                .is_some_and(|total| self.can_grow_bytes_by(total))
+    }
+
     /// Allocate a scalar SexprecCore node.
     ///
     /// Returns a raw SEXP pointer to the allocated node.
     /// The pointer is valid for the lifetime of the arena.
     pub fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
+        if !self.can_activate_node() {
+            return ptr::null_mut();
+        }
+
         if let Some(ptr) = self.free_list.pop() {
             unsafe {
                 *ptr = SexprecCore::new(sexptype);
@@ -201,6 +224,10 @@ impl RArena {
                 }
                 return ptr;
             }
+        }
+
+        if !self.can_grow_bytes_by(std::mem::size_of::<SexprecCore>()) {
+            return ptr::null_mut();
         }
 
         let mut boxed = Box::new(SexprecCore::new(sexptype));
@@ -231,6 +258,10 @@ impl RArena {
             Some(n) => n,
             None => return ptr::null_mut(),
         };
+
+        if !self.can_allocate_new_node_with_payload(total_bytes) {
+            return ptr::null_mut();
+        }
 
         let mut boxed = Box::new(SexprecCore::new_vector(sexptype, length));
 
@@ -358,15 +389,18 @@ impl RArena {
     pub fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
         let len = s.len() as R_xlen_t;
 
+        let total_bytes = match (len as usize).checked_add(1) {
+            Some(n) => n,
+            None => return ptr::null_mut(),
+        };
+        if !self.can_allocate_new_node_with_payload(total_bytes) {
+            return ptr::null_mut();
+        }
+
         let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::CHARSXP));
 
         boxed.data = SexprecData {
             charsxp_truelen: len,
-        };
-
-        let total_bytes = match (len as usize).checked_add(1) {
-            Some(n) => n,
-            None => return ptr::null_mut(),
         };
         let layout = match Layout::from_size_align(total_bytes, 1) {
             Ok(l) => l,
@@ -426,6 +460,10 @@ impl RArena {
     /// Add an existing Box to the arena, returning a raw pointer.
     /// The arena takes ownership of the Box.
     pub fn add_node(&mut self, mut node: Box<SexprecCore>) -> SEXP {
+        if !self.can_allocate_new_node_with_payload(0) {
+            return ptr::null_mut();
+        }
+
         let ptr: SEXP = &mut *node as *mut _;
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(node);
@@ -846,6 +884,35 @@ mod tests {
     }
 
     #[test]
+    fn test_arena_node_budget_applies_to_raw_alloc_node() {
+        let mut arena = RArena::with_budget(ArenaBudget::new(0, 1));
+        let first = arena.alloc_node(SEXPTYPE::INTSXP);
+        assert!(!first.is_null());
+        let second = arena.alloc_node(SEXPTYPE::REALSXP);
+        assert!(second.is_null());
+
+        arena.free_node(first);
+        let reused = arena.alloc_node(SEXPTYPE::REALSXP);
+        assert_eq!(reused, first);
+    }
+
+    #[test]
+    fn test_arena_byte_budget_applies_to_raw_allocations() {
+        let node_bytes = std::mem::size_of::<SexprecCore>();
+
+        let mut arena = RArena::with_budget(ArenaBudget::new(node_bytes, 0));
+        let node = arena.alloc_node(SEXPTYPE::INTSXP);
+        assert!(!node.is_null());
+        assert!(arena.alloc_charsxp(b"x").is_null());
+        arena.free_node(node);
+        assert_eq!(arena.alloc_node(SEXPTYPE::REALSXP), node);
+
+        let mut arena = RArena::with_budget(ArenaBudget::new(node_bytes + 8, 0));
+        assert!(!arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
+        assert!(arena.alloc_vector(SEXPTYPE::REALSXP, 1).is_null());
+    }
+
+    #[test]
     fn test_arena_default() {
         let arena = RArena::default();
         assert_eq!(arena.node_count(), 0);
@@ -859,5 +926,21 @@ mod tests {
         let ptr = arena.add_node(boxed);
         assert!(!ptr.is_null());
         assert_eq!(arena.node_count(), 1);
+    }
+
+    #[test]
+    fn test_arena_add_node_obeys_budget() {
+        let node_bytes = std::mem::size_of::<SexprecCore>();
+        let mut arena = RArena::with_budget(ArenaBudget::new(node_bytes, 1));
+        assert!(
+            !arena
+                .add_node(Box::new(SexprecCore::new(SEXPTYPE::INTSXP)))
+                .is_null()
+        );
+        assert!(
+            arena
+                .add_node(Box::new(SexprecCore::new(SEXPTYPE::REALSXP)))
+                .is_null()
+        );
     }
 }

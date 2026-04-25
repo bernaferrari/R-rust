@@ -37,7 +37,7 @@ use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
 use super::instance::{
     RInstance, clear_current_instance_if, replace_current_instance, set_current_instance,
 };
-use super::memory::RArena;
+use super::memory::{ArenaBudget, RArena};
 use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 use super::safe::Sexp;
 
@@ -290,6 +290,19 @@ impl RSession {
         }
         let _guard = self.activate();
         Some(f(&mut self.instance.arena))
+    }
+
+    /// Return the current arena budget for this session.
+    pub fn arena_budget(&self) -> ArenaBudget {
+        self.instance.arena.budget()
+    }
+
+    /// Set the arena budget for this session.
+    ///
+    /// Existing allocations are kept; future allocations fail if retained arena
+    /// memory or active node count would exceed the configured limit.
+    pub fn set_arena_budget(&mut self, budget: ArenaBudget) {
+        self.instance.arena.set_budget(budget);
     }
 
     /// Run a function in a protected scope.
@@ -601,6 +614,26 @@ mod tests {
         let session = RSession::new();
         // Should not panic
         session.gc();
+    }
+
+    #[test]
+    fn test_session_arena_budget_controls_future_allocations() {
+        let mut session = RSession::new();
+        let node_bytes = std::mem::size_of::<crate::sexp::ffi::SexprecCore>();
+        let current_bytes = session
+            .with_arena(|arena| arena.total_bytes_allocated())
+            .unwrap();
+        let current_nodes = session.with_arena(|arena| arena.node_count()).unwrap();
+        let budget = ArenaBudget::new(current_bytes + node_bytes, current_nodes + 1);
+        session.set_arena_budget(budget);
+        assert_eq!(session.arena_budget(), budget);
+
+        session
+            .with_arena(|arena| {
+                assert!(!arena.alloc_node(SEXPTYPE::INTSXP).is_null());
+                assert!(arena.alloc_node(SEXPTYPE::REALSXP).is_null());
+            })
+            .unwrap();
     }
 
     #[test]
