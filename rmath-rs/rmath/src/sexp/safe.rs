@@ -32,8 +32,11 @@
 
 use std::os::raw::{c_double, c_int, c_void};
 
-use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
-use super::globals::R_NilValue;
+use super::ffi::{
+    NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
+    SexprecCore,
+};
+use super::globals::{R_NaString, R_NilValue};
 
 // ---------------------------------------------------------------------------
 // Errors and views
@@ -106,6 +109,33 @@ pub enum SexpView<'a> {
     Symbol(Sexp<'a>),
     Function(Sexp<'a>),
     Other(Sexp<'a>),
+}
+
+/// Owned complex value for safe Rust/UniFFI boundaries.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SexpComplex {
+    pub real: f64,
+    pub imaginary: f64,
+}
+
+/// Owned, Rust-shaped projection of an R object.
+///
+/// This keeps R's broad SEXP categories recognizable while removing raw
+/// pointer lifetimes from embedding and mobile boundaries.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SexpValue {
+    Null,
+    Logical(Option<bool>),
+    Integer(Option<i32>),
+    Real(Option<f64>),
+    LogicalVector(Vec<Option<bool>>),
+    IntegerVector(Vec<Option<i32>>),
+    RealVector(Vec<Option<f64>>),
+    StringVector(Vec<Option<String>>),
+    RawVector(Vec<u8>),
+    ComplexVector(Vec<Option<SexpComplex>>),
+    List(Vec<SexpValue>),
+    Unsupported { type_name: String },
 }
 
 fn sexptype_name(t: SEXPTYPE) -> &'static str {
@@ -401,6 +431,130 @@ impl<'a> Sexp<'a> {
             }
             _ => Ok(SexpView::Other(self)),
         }
+    }
+
+    /// Convert this SEXP into an owned Rust value.
+    ///
+    /// Scalar logical, integer, and real vectors of length one become scalar
+    /// variants. Other atomic vectors remain vectors. Missing R values are
+    /// represented as `None`, and nested generic/expression vectors are
+    /// recursively projected.
+    pub fn to_owned_value(self) -> SexpResult<SexpValue> {
+        let len = self.len();
+        match self.typeof_() {
+            SEXPTYPE::NILSXP => Ok(SexpValue::Null),
+            SEXPTYPE::LGLSXP => {
+                let values = self.try_logical_values()?;
+                if len == 1 {
+                    Ok(SexpValue::Logical(values.into_iter().next().flatten()))
+                } else {
+                    Ok(SexpValue::LogicalVector(values))
+                }
+            }
+            SEXPTYPE::INTSXP => {
+                let values = self.try_integer_values()?;
+                if len == 1 {
+                    Ok(SexpValue::Integer(values.into_iter().next().flatten()))
+                } else {
+                    Ok(SexpValue::IntegerVector(values))
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let values = self.try_real_values()?;
+                if len == 1 {
+                    Ok(SexpValue::Real(values.into_iter().next().flatten()))
+                } else {
+                    Ok(SexpValue::RealVector(values))
+                }
+            }
+            SEXPTYPE::STRSXP => self.try_string_values().map(SexpValue::StringVector),
+            SEXPTYPE::RAWSXP => self
+                .try_as_raw_slice()
+                .map(|values| SexpValue::RawVector(values.to_vec())),
+            SEXPTYPE::CPLXSXP => self.try_complex_values().map(SexpValue::ComplexVector),
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
+                let mut values = Vec::with_capacity(len as usize);
+                for i in 0..len {
+                    values.push(self.try_vector_elt(i)?.to_owned_value()?);
+                }
+                Ok(SexpValue::List(values))
+            }
+            _ => Ok(SexpValue::Unsupported {
+                type_name: sexptype_name(self.typeof_()).to_string(),
+            }),
+        }
+    }
+
+    fn try_logical_values(self) -> SexpResult<Vec<Option<bool>>> {
+        (0..self.len())
+            .map(|i| {
+                self.try_logical_elt(i).map(|value| match value {
+                    NA_LOGICAL => None,
+                    0 => Some(false),
+                    _ => Some(true),
+                })
+            })
+            .collect()
+    }
+
+    fn try_integer_values(self) -> SexpResult<Vec<Option<i32>>> {
+        (0..self.len())
+            .map(|i| {
+                self.try_integer_elt(i).map(|value| {
+                    if value == NA_INTEGER {
+                        None
+                    } else {
+                        Some(value)
+                    }
+                })
+            })
+            .collect()
+    }
+
+    fn try_real_values(self) -> SexpResult<Vec<Option<f64>>> {
+        (0..self.len())
+            .map(|i| {
+                self.try_real_elt(i).map(|value| {
+                    if value.to_bits() == R_NA_BIT_PATTERN {
+                        None
+                    } else {
+                        Some(value)
+                    }
+                })
+            })
+            .collect()
+    }
+
+    fn try_string_values(self) -> SexpResult<Vec<Option<String>>> {
+        (0..self.len())
+            .map(|i| {
+                let chars = self.try_string_elt(i)?;
+                if chars.as_raw() == unsafe { R_NaString() } {
+                    Ok(None)
+                } else {
+                    chars.try_as_str().map(|value| Some(value.to_string()))
+                }
+            })
+            .collect()
+    }
+
+    fn try_complex_values(self) -> SexpResult<Vec<Option<SexpComplex>>> {
+        (0..self.len())
+            .map(|i| {
+                self.try_complex_elt(i).map(|value| {
+                    if value.r.to_bits() == R_NA_BIT_PATTERN
+                        || value.i.to_bits() == R_NA_BIT_PATTERN
+                    {
+                        None
+                    } else {
+                        Some(SexpComplex {
+                            real: value.r,
+                            imaginary: value.i,
+                        })
+                    }
+                })
+            })
+            .collect()
     }
 
     #[inline]
@@ -1561,6 +1715,7 @@ mod tests {
     use std::ptr;
 
     use super::*;
+    use crate::sexp::ffi::NA_REAL;
     use crate::sexp::memory::RArena;
 
     fn some<T>(opt: Option<T>) -> T {
@@ -1882,6 +2037,83 @@ mod tests {
             SexpView::Real(values) => assert_eq!(values, &[1.5, 2.5]),
             other => panic!("unexpected view: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_to_owned_value_maps_atomic_na_values() {
+        let mut arena = RArena::new();
+        let logical = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::LGLSXP, 3)));
+        logical.try_set_logical_elt(0, 1).expect("set logical");
+        logical.try_set_logical_elt(1, 0).expect("set logical");
+        logical
+            .try_set_logical_elt(2, NA_LOGICAL)
+            .expect("set logical");
+
+        let integer = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
+        integer.try_set_integer_elt(0, 10).expect("set integer");
+        integer
+            .try_set_integer_elt(1, NA_INTEGER)
+            .expect("set integer");
+
+        let real = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1)));
+        real.try_set_real_elt(0, NA_REAL).expect("set real");
+
+        assert_eq!(
+            logical.to_owned_value().expect("logical value"),
+            SexpValue::LogicalVector(vec![Some(true), Some(false), None])
+        );
+        assert_eq!(
+            integer.to_owned_value().expect("integer value"),
+            SexpValue::IntegerVector(vec![Some(10), None])
+        );
+        assert_eq!(
+            real.to_owned_value().expect("real value"),
+            SexpValue::Real(None)
+        );
+    }
+
+    #[test]
+    fn test_to_owned_value_maps_strings_raw_complex_and_lists() {
+        let mut arena = RArena::new();
+        let strings = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
+        let hello = some(Sexp::from_raw(arena.alloc_charsxp(b"hello")));
+        let na_string = some(Sexp::from_raw(unsafe { R_NaString() }));
+        strings.try_set_string_elt(0, hello).expect("set string");
+        strings
+            .try_set_string_elt(1, na_string)
+            .expect("set string");
+
+        let raw = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::RAWSXP, 2)));
+        raw.try_set_raw_elt(0, 0x41).expect("set raw");
+        raw.try_set_raw_elt(1, 0x5a).expect("set raw");
+
+        let complex = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)));
+        complex
+            .try_set_complex_elt(0, Rcomplex { r: 1.0, i: -2.0 })
+            .expect("set complex");
+        complex
+            .try_set_complex_elt(1, Rcomplex { r: NA_REAL, i: 0.0 })
+            .expect("set complex");
+
+        let list = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::VECSXP, 3)));
+        list.try_set_vector_elt(0, strings).expect("set list");
+        list.try_set_vector_elt(1, raw).expect("set list");
+        list.try_set_vector_elt(2, complex).expect("set list");
+
+        assert_eq!(
+            list.to_owned_value().expect("list value"),
+            SexpValue::List(vec![
+                SexpValue::StringVector(vec![Some("hello".to_string()), None]),
+                SexpValue::RawVector(vec![0x41, 0x5a]),
+                SexpValue::ComplexVector(vec![
+                    Some(SexpComplex {
+                        real: 1.0,
+                        imaginary: -2.0,
+                    }),
+                    None,
+                ]),
+            ])
+        );
     }
 
     #[test]

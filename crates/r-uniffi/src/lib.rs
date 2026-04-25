@@ -64,9 +64,26 @@ pub enum RValueKind {
     IntegerVector,
     RealVector,
     StringVector,
+    RawVector,
+    ComplexVector,
     List,
     Unsupported,
     Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, uniffi::Record)]
+pub struct RComplexValue {
+    pub real: f64,
+    pub imaginary: f64,
+}
+
+impl From<r_embed::RComplexValue> for RComplexValue {
+    fn from(value: r_embed::RComplexValue) -> Self {
+        RComplexValue {
+            real: value.real,
+            imaginary: value.imaginary,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, uniffi::Record)]
@@ -79,6 +96,8 @@ pub struct RValue {
     pub integer_values: Vec<Option<i32>>,
     pub real_values: Vec<Option<f64>>,
     pub string_values: Vec<String>,
+    pub raw_values: Vec<u8>,
+    pub complex_values: Vec<Option<RComplexValue>>,
     pub list_values: Vec<RValue>,
     pub type_name: String,
     pub display: String,
@@ -101,6 +120,8 @@ fn empty_value(kind: RValueKind) -> RValue {
         integer_values: Vec::new(),
         real_values: Vec::new(),
         string_values: Vec::new(),
+        raw_values: Vec::new(),
+        complex_values: Vec::new(),
         list_values: Vec::new(),
         type_name: String::new(),
         display: String::new(),
@@ -139,6 +160,17 @@ impl From<r_embed::RValue> for RValue {
             r_embed::RValue::StringVector(values) => RValue {
                 string_values: values,
                 ..empty_value(RValueKind::StringVector)
+            },
+            r_embed::RValue::RawVector(values) => RValue {
+                raw_values: values,
+                ..empty_value(RValueKind::RawVector)
+            },
+            r_embed::RValue::ComplexVector(values) => RValue {
+                complex_values: values
+                    .into_iter()
+                    .map(|value| value.map(RComplexValue::from))
+                    .collect(),
+                ..empty_value(RValueKind::ComplexVector)
             },
             r_embed::RValue::List(values) => RValue {
                 list_values: values.into_iter().map(RValue::from).collect(),
@@ -447,6 +479,36 @@ mod tests {
         assert_eq!(result.output, "[1] 1 2 3");
         assert_eq!(result.value.kind, RValueKind::IntegerVector);
         assert_eq!(result.value.integer_values, vec![Some(1), Some(2), Some(3)]);
+    }
+
+    #[test]
+    fn eval_result_preserves_raw_and_complex_values() {
+        let session = RSession::new().expect("session");
+
+        let raw = session
+            .eval_result("as.raw(c(65, 90))".to_string())
+            .expect("eval");
+        assert_eq!(raw.value.kind, RValueKind::RawVector);
+        assert_eq!(raw.value.raw_values, vec![0x41, 0x5a]);
+
+        let complex = RValue::from(r_embed::RValue::ComplexVector(vec![
+            Some(r_embed::RComplexValue {
+                real: 1.0,
+                imaginary: -2.0,
+            }),
+            None,
+        ]));
+        assert_eq!(complex.kind, RValueKind::ComplexVector);
+        assert_eq!(
+            complex.complex_values,
+            vec![
+                Some(RComplexValue {
+                    real: 1.0,
+                    imaginary: -2.0,
+                }),
+                None,
+            ]
+        );
     }
 
     #[test]

@@ -9,7 +9,7 @@ use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
 use std::sync::{Arc, atomic::AtomicBool};
 
-pub use rmath::android::RValue;
+pub use rmath::android::{RComplexValue, RValue};
 
 use thiserror::Error;
 

@@ -18,9 +18,9 @@
 use crate::eval::parser;
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
-use crate::sexp::ffi::{NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, SEXPTYPE};
+use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::output;
-use crate::sexp::safe::Sexp;
+use crate::sexp::safe::{Sexp, SexpComplex, SexpValue};
 use crate::sexp::session::CancellationFlag;
 
 // ---------------------------------------------------------------------------
@@ -301,139 +301,73 @@ pub enum RValue {
     IntegerVector(Vec<Option<i32>>),
     RealVector(Vec<Option<f64>>),
     StringVector(Vec<String>),
+    RawVector(Vec<u8>),
+    ComplexVector(Vec<Option<RComplexValue>>),
     List(Vec<RValue>),
     Unsupported { type_name: String, display: String },
     Error(String),
 }
 
-impl RValue {
-    pub fn from_sexp(sexp: Sexp<'_>) -> Self {
-        let len = sexp.len();
-        match sexp.typeof_() {
-            SEXPTYPE::NILSXP => RValue::Null,
-            SEXPTYPE::LGLSXP => {
-                let values = logical_values(sexp);
-                if len == 1 {
-                    values
-                        .into_iter()
-                        .next()
-                        .map(RValue::Logical)
-                        .unwrap_or(RValue::Null)
-                } else {
-                    RValue::LogicalVector(values)
-                }
-            }
-            SEXPTYPE::INTSXP => {
-                let values = integer_values(sexp);
-                if len == 1 {
-                    values
-                        .into_iter()
-                        .next()
-                        .map(RValue::Integer)
-                        .unwrap_or(RValue::Null)
-                } else {
-                    RValue::IntegerVector(values)
-                }
-            }
-            SEXPTYPE::REALSXP => {
-                let values = real_values(sexp);
-                if len == 1 {
-                    values
-                        .into_iter()
-                        .next()
-                        .map(RValue::Real)
-                        .unwrap_or(RValue::Null)
-                } else {
-                    RValue::RealVector(values)
-                }
-            }
-            SEXPTYPE::STRSXP => RValue::StringVector(string_values(sexp)),
-            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
-                let mut values = Vec::with_capacity(len as usize);
-                for i in 0..len {
-                    if let Some(value) = sexp.vector_elt(i) {
-                        values.push(RValue::from_sexp(value));
-                    } else {
-                        values.push(RValue::Null);
-                    }
-                }
-                RValue::List(values)
-            }
-            _ => RValue::Unsupported {
-                type_name: sexp_type_name(sexp.typeof_()).to_string(),
-                display: output::format_sexp_direct(sexp),
-            },
+/// Owned complex number for Android/UniFFI callers.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RComplexValue {
+    pub real: f64,
+    pub imaginary: f64,
+}
+
+impl From<SexpComplex> for RComplexValue {
+    fn from(value: SexpComplex) -> Self {
+        RComplexValue {
+            real: value.real,
+            imaginary: value.imaginary,
         }
     }
 }
 
-fn logical_values(sexp: Sexp<'_>) -> Vec<Option<bool>> {
-    (0..sexp.len())
-        .map(|i| match sexp.logical_elt(i) {
-            Some(NA_LOGICAL) | None => None,
-            Some(0) => Some(false),
-            Some(_) => Some(true),
-        })
-        .collect()
-}
+impl RValue {
+    pub fn from_sexp(sexp: Sexp<'_>) -> Self {
+        match sexp.to_owned_value() {
+            Ok(value) => RValue::from_owned_value(value, Some(sexp)),
+            Err(error) => RValue::Unsupported {
+                type_name: format!("invalid {}", sexp.typeof_().0),
+                display: error.to_string(),
+            },
+        }
+    }
 
-fn integer_values(sexp: Sexp<'_>) -> Vec<Option<i32>> {
-    (0..sexp.len())
-        .map(|i| match sexp.integer_elt(i) {
-            Some(NA_INTEGER) | None => None,
-            Some(value) => Some(value),
-        })
-        .collect()
-}
-
-fn real_values(sexp: Sexp<'_>) -> Vec<Option<f64>> {
-    (0..sexp.len())
-        .map(|i| match sexp.real_elt(i) {
-            Some(value) if value.to_bits() == R_NA_BIT_PATTERN => None,
-            Some(value) => Some(value),
-            None => None,
-        })
-        .collect()
-}
-
-fn string_values(sexp: Sexp<'_>) -> Vec<String> {
-    (0..sexp.len())
-        .map(|i| {
-            sexp.string_elt(i)
-                .and_then(|chars| chars.as_str())
-                .unwrap_or("")
-                .to_string()
-        })
-        .collect()
-}
-
-fn sexp_type_name(t: SEXPTYPE) -> &'static str {
-    match t {
-        SEXPTYPE::NILSXP => "NULL",
-        SEXPTYPE::SYMSXP => "symbol",
-        SEXPTYPE::LISTSXP => "pairlist",
-        SEXPTYPE::CLOSXP => "closure",
-        SEXPTYPE::ENVSXP => "environment",
-        SEXPTYPE::PROMSXP => "promise",
-        SEXPTYPE::LANGSXP => "language",
-        SEXPTYPE::SPECIALSXP => "special",
-        SEXPTYPE::BUILTINSXP => "builtin",
-        SEXPTYPE::CHARSXP => "char",
-        SEXPTYPE::LGLSXP => "logical",
-        SEXPTYPE::INTSXP => "integer",
-        SEXPTYPE::REALSXP => "double",
-        SEXPTYPE::CPLXSXP => "complex",
-        SEXPTYPE::STRSXP => "character",
-        SEXPTYPE::DOTSXP => "dots",
-        SEXPTYPE::ANYSXP => "any",
-        SEXPTYPE::VECSXP => "list",
-        SEXPTYPE::EXPRSXP => "expression",
-        SEXPTYPE::BCODESXP => "bytecode",
-        SEXPTYPE::EXTPTRSXP => "externalptr",
-        SEXPTYPE::WEAKREFSXP => "weakref",
-        SEXPTYPE::RAWSXP => "raw",
-        SEXPTYPE::S4SXP => "S4",
-        _ => "unknown",
+    fn from_owned_value(value: SexpValue, original: Option<Sexp<'_>>) -> Self {
+        match value {
+            SexpValue::Null => RValue::Null,
+            SexpValue::Logical(value) => RValue::Logical(value),
+            SexpValue::Integer(value) => RValue::Integer(value),
+            SexpValue::Real(value) => RValue::Real(value),
+            SexpValue::LogicalVector(values) => RValue::LogicalVector(values),
+            SexpValue::IntegerVector(values) => RValue::IntegerVector(values),
+            SexpValue::RealVector(values) => RValue::RealVector(values),
+            SexpValue::StringVector(values) => RValue::StringVector(
+                values
+                    .into_iter()
+                    .map(|value| value.unwrap_or_default())
+                    .collect(),
+            ),
+            SexpValue::RawVector(values) => RValue::RawVector(values),
+            SexpValue::ComplexVector(values) => RValue::ComplexVector(
+                values
+                    .into_iter()
+                    .map(|value| value.map(RComplexValue::from))
+                    .collect(),
+            ),
+            SexpValue::List(values) => RValue::List(
+                values
+                    .into_iter()
+                    .map(|value| RValue::from_owned_value(value, None))
+                    .collect(),
+            ),
+            SexpValue::Unsupported { type_name } => RValue::Unsupported {
+                type_name,
+                display: original.map(output::format_sexp_direct).unwrap_or_default(),
+            },
+        }
     }
 }
 
@@ -605,6 +539,39 @@ mod tests {
             RValue::List(vec![
                 RValue::Real(Some(1.0)),
                 RValue::StringVector(vec!["x".to_string()])
+            ])
+        );
+    }
+
+    #[test]
+    fn test_typed_values_expose_raw_and_complex_without_print_parsing() {
+        let mut session = RSession::new();
+        let raw = session.eval("as.raw(c(65, 90))");
+        assert_eq!(raw.typed, RValue::RawVector(vec![0x41, 0x5a]));
+
+        let mut arena = crate::sexp::memory::RArena::new();
+        let complex = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::CPLXSXP, 2)).unwrap();
+        complex
+            .try_set_complex_elt(0, crate::sexp::Rcomplex { r: 1.0, i: -2.0 })
+            .unwrap();
+        complex
+            .try_set_complex_elt(
+                1,
+                crate::sexp::Rcomplex {
+                    r: crate::sexp::NA_REAL,
+                    i: 0.0,
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            RValue::from_sexp(complex),
+            RValue::ComplexVector(vec![
+                Some(RComplexValue {
+                    real: 1.0,
+                    imaginary: -2.0,
+                }),
+                None,
             ])
         );
     }
