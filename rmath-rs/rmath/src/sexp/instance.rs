@@ -231,6 +231,8 @@ pub struct RInstance {
     /// Owned environment sentinel nodes for empty/base/global environments.
     #[allow(clippy::vec_box)]
     pub(crate) env_nodes: Vec<Box<SexprecCore>>,
+    /// Whether this instance has completed R-level initialization.
+    pub(crate) initialized: bool,
     /// The protection stack for this instance.
     pub protect_stack: Vec<SEXP>,
     /// The permanent preserve stack for this instance.
@@ -356,6 +358,7 @@ impl RInstance {
             base_env,
             empty_env,
             env_nodes,
+            initialized: false,
             protect_stack: Vec::new(),
             preserve_stack: Vec::new(),
             context_stack: Vec::new(),

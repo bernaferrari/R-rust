@@ -9,7 +9,7 @@ use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
 use std::sync::{Arc, atomic::AtomicBool};
 
-pub use rmath::android::{RComplexValue, RValue};
+pub use rmath::android::{RAttribute, RComplexValue, RMetadata, RValue};
 
 use thiserror::Error;
 
@@ -268,6 +268,7 @@ fn numeric_series(value: RValue) -> Result<Vec<f64>, RSessionError> {
             .filter_map(|value| value.map(|value| value as f64))
             .collect(),
         RValue::RealVector(values) => values.into_iter().flatten().collect(),
+        RValue::Attributed { value, .. } => return numeric_series(*value),
         other => {
             return Err(RSessionError::RenderError(format!(
                 "plot data must be numeric, got {other:?}"

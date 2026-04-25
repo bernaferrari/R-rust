@@ -503,6 +503,12 @@ impl<'arena> Parser<'arena> {
         }
     }
 
+    fn install_symbol(&self, name: &str) -> Result<SEXP, ParseError> {
+        let c_name =
+            CString::new(name).map_err(|_| ParseError(format!("symbol contains NUL: {name:?}")))?;
+        Ok(unsafe { Rf_install(c_name.as_ptr()) })
+    }
+
     fn cons(&mut self, car: SEXP, cdr: SEXP) -> SEXP {
         self.arena.cons(car, cdr, std::ptr::null_mut())
     }
@@ -625,7 +631,7 @@ impl<'arena> Parser<'arena> {
 
         // Multiple expressions → wrap in { }
         unsafe {
-            let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+            let brace_sym = Rf_install(c"{".as_ptr());
             let nil = R_NilValue();
             let mut list = self.cons(exprs.pop().unwrap_or(nil), nil);
             while let Some(e) = exprs.pop() {
@@ -658,7 +664,7 @@ impl<'arena> Parser<'arena> {
                 self.skip_newlines();
                 let right = self.parse_assignment()?;
                 unsafe {
-                    let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
+                    let op_sym = Rf_install(c"<-".as_ptr());
                     Ok(self.lang3(op_sym, left, right))
                 }
             }
@@ -668,7 +674,7 @@ impl<'arena> Parser<'arena> {
                 let right = self.parse_assignment()?;
                 // x -> y is equivalent to y <- x
                 unsafe {
-                    let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
+                    let op_sym = Rf_install(c"<-".as_ptr());
                     Ok(self.lang3(op_sym, right, left))
                 }
             }
@@ -685,7 +691,7 @@ impl<'arena> Parser<'arena> {
                 self.skip_newlines();
                 let right = self.parse_or()?;
                 unsafe {
-                    let op = Rf_install(CString::new("~").unwrap_or_default().as_ptr());
+                    let op = Rf_install(c"~".as_ptr());
                     left = self.lang3(op, left, right);
                 }
             } else {
@@ -704,7 +710,7 @@ impl<'arena> Parser<'arena> {
                     self.skip_newlines();
                     let right = self.parse_and()?;
                     unsafe {
-                        let op = Rf_install(CString::new("||").unwrap_or_default().as_ptr());
+                        let op = Rf_install(c"||".as_ptr());
                         left = self.lang3(op, left, right);
                     }
                 }
@@ -713,7 +719,7 @@ impl<'arena> Parser<'arena> {
                     self.skip_newlines();
                     let right = self.parse_and()?;
                     unsafe {
-                        let op = Rf_install(CString::new("|").unwrap_or_default().as_ptr());
+                        let op = Rf_install(c"|".as_ptr());
                         left = self.lang3(op, left, right);
                     }
                 }
@@ -731,7 +737,7 @@ impl<'arena> Parser<'arena> {
                     self.skip_newlines();
                     let right = self.parse_not()?;
                     unsafe {
-                        let op = Rf_install(CString::new("&&").unwrap_or_default().as_ptr());
+                        let op = Rf_install(c"&&".as_ptr());
                         left = self.lang3(op, left, right);
                     }
                 }
@@ -740,7 +746,7 @@ impl<'arena> Parser<'arena> {
                     self.skip_newlines();
                     let right = self.parse_not()?;
                     unsafe {
-                        let op = Rf_install(CString::new("&").unwrap_or_default().as_ptr());
+                        let op = Rf_install(c"&".as_ptr());
                         left = self.lang3(op, left, right);
                     }
                 }
@@ -754,7 +760,7 @@ impl<'arena> Parser<'arena> {
             self.advance();
             let operand = self.parse_comparison()?;
             unsafe {
-                let op = Rf_install(CString::new("!").unwrap_or_default().as_ptr());
+                let op = Rf_install(c"!".as_ptr());
                 Ok(self.lang2(op, operand))
             }
         } else {
@@ -777,10 +783,8 @@ impl<'arena> Parser<'arena> {
             self.advance();
             self.skip_newlines();
             let right = self.parse_addition()?;
-            unsafe {
-                let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
-                left = self.lang3(op, left, right);
-            }
+            let op = self.install_symbol(op_name)?;
+            left = self.lang3(op, left, right);
         }
     }
 
@@ -795,10 +799,8 @@ impl<'arena> Parser<'arena> {
             self.advance();
             self.skip_newlines();
             let right = self.parse_multiplication()?;
-            unsafe {
-                let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
-                left = self.lang3(op, left, right);
-            }
+            let op = self.install_symbol(op_name)?;
+            left = self.lang3(op, left, right);
         }
     }
 
@@ -814,10 +816,8 @@ impl<'arena> Parser<'arena> {
             self.advance();
             self.skip_newlines();
             let right = self.parse_power()?;
-            unsafe {
-                let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
-                left = self.lang3(op, left, right);
-            }
+            let op = self.install_symbol(&op_name)?;
+            left = self.lang3(op, left, right);
         }
     }
 
@@ -828,7 +828,7 @@ impl<'arena> Parser<'arena> {
             self.skip_newlines();
             let exp = self.parse_colon()?;
             unsafe {
-                let op = Rf_install(CString::new("^").unwrap_or_default().as_ptr());
+                let op = Rf_install(c"^".as_ptr());
                 Ok(self.lang3(op, base, exp))
             }
         } else {
@@ -845,7 +845,7 @@ impl<'arena> Parser<'arena> {
                 self.skip_newlines();
                 let right = self.parse_unary()?;
                 unsafe {
-                    let op = Rf_install(CString::new(":").unwrap_or_default().as_ptr());
+                    let op = Rf_install(c":".as_ptr());
                     left = self.lang3(op, left, right);
                 }
             } else {
@@ -861,7 +861,7 @@ impl<'arena> Parser<'arena> {
                 self.advance();
                 let operand = self.parse_unary()?;
                 unsafe {
-                    let op = Rf_install(CString::new("-").unwrap_or_default().as_ptr());
+                    let op = Rf_install(c"-".as_ptr());
                     Ok(self.lang2(op, operand))
                 }
             }
@@ -873,7 +873,7 @@ impl<'arena> Parser<'arena> {
                 self.advance();
                 let operand = self.parse_unary()?;
                 unsafe {
-                    let op = Rf_install(CString::new("!").unwrap_or_default().as_ptr());
+                    let op = Rf_install(c"!".as_ptr());
                     Ok(self.lang2(op, operand))
                 }
             }
@@ -904,7 +904,7 @@ impl<'arena> Parser<'arena> {
                         for (name, val) in args.into_iter().rev() {
                             let cell = self.cons(val, arg_list);
                             if let Some(n) = name {
-                                let sym = Rf_install(CString::new(n).unwrap_or_default().as_ptr());
+                                let sym = self.install_symbol(&n)?;
                                 crate::sexp::accessors::SETTAG(cell, sym);
                             }
                             arg_list = cell;
@@ -939,8 +939,7 @@ impl<'arena> Parser<'arena> {
                     self.expect(&Token::RBracket)?;
 
                     unsafe {
-                        let bracket_sym =
-                            Rf_install(CString::new("[").unwrap_or_default().as_ptr());
+                        let bracket_sym = Rf_install(c"[".as_ptr());
                         let nil = R_NilValue();
                         let mut args = nil;
                         for idx in indices.into_iter().rev() {
@@ -962,8 +961,7 @@ impl<'arena> Parser<'arena> {
                     self.expect(&Token::RDoubleBracket)?;
 
                     unsafe {
-                        let dbracket_sym =
-                            Rf_install(CString::new("[[").unwrap_or_default().as_ptr());
+                        let dbracket_sym = Rf_install(c"[[".as_ptr());
                         let nil = R_NilValue();
                         let idx_cell = self.cons(idx, nil);
                         let args = self.cons(expr, idx_cell);
@@ -979,7 +977,7 @@ impl<'arena> Parser<'arena> {
                     self.advance();
                     let name = self.parse_member_name()?;
                     unsafe {
-                        let dollar_sym = Rf_install(CString::new("$").unwrap_or_default().as_ptr());
+                        let dollar_sym = Rf_install(c"$".as_ptr());
                         let nil = R_NilValue();
                         let name_cell = self.cons(name, nil);
                         let args = self.cons(expr, name_cell);
@@ -995,7 +993,7 @@ impl<'arena> Parser<'arena> {
                     self.advance();
                     let name = self.parse_member_name()?;
                     unsafe {
-                        let at_sym = Rf_install(CString::new("@").unwrap_or_default().as_ptr());
+                        let at_sym = Rf_install(c"@".as_ptr());
                         let nil = R_NilValue();
                         let name_cell = self.cons(name, nil);
                         let args = self.cons(expr, name_cell);
@@ -1017,21 +1015,13 @@ impl<'arena> Parser<'arena> {
             Token::Ident(name) => {
                 let name = name.clone();
                 self.advance();
-                unsafe {
-                    Ok(Rf_install(
-                        CString::new(name.as_str()).unwrap_or_default().as_ptr(),
-                    ))
-                }
+                self.install_symbol(&name)
             }
             Token::Str(name) => {
                 // Allow "name" after $ for compatibility
                 let name = name.clone();
                 self.advance();
-                unsafe {
-                    Ok(Rf_install(
-                        CString::new(name.as_str()).unwrap_or_default().as_ptr(),
-                    ))
-                }
+                self.install_symbol(&name)
             }
             _ => Err(ParseError(format!(
                 "expected name after $ or @, got {:?}",
@@ -1055,14 +1045,14 @@ impl<'arena> Parser<'arena> {
             Token::KwBreak => {
                 self.advance();
                 unsafe {
-                    let sym = Rf_install(CString::new("break").unwrap_or_default().as_ptr());
+                    let sym = Rf_install(c"break".as_ptr());
                     Ok(self.lang2(sym, R_NilValue()))
                 }
             }
             Token::KwNext => {
                 self.advance();
                 unsafe {
-                    let sym = Rf_install(CString::new("next").unwrap_or_default().as_ptr());
+                    let sym = Rf_install(c"next".as_ptr());
                     Ok(self.lang2(sym, R_NilValue()))
                 }
             }
@@ -1079,7 +1069,7 @@ impl<'arena> Parser<'arena> {
                     self.parse_expr()?
                 };
                 unsafe {
-                    let sym = Rf_install(CString::new("return").unwrap_or_default().as_ptr());
+                    let sym = Rf_install(c"return".as_ptr());
                     Ok(self.lang2(sym, val))
                 }
             }
@@ -1126,7 +1116,7 @@ impl<'arena> Parser<'arena> {
             self.skip_newlines();
             let alt = self.parse_expr()?;
             unsafe {
-                let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
+                let if_sym = Rf_install(c"if".as_ptr());
                 let nil = R_NilValue();
                 let alt_cell = self.cons(alt, nil);
                 let body_cell = self.cons(body, alt_cell);
@@ -1139,7 +1129,7 @@ impl<'arena> Parser<'arena> {
             }
         } else {
             unsafe {
-                let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
+                let if_sym = Rf_install(c"if".as_ptr());
                 Ok(self.lang3(if_sym, cond, body))
             }
         }
@@ -1160,7 +1150,7 @@ impl<'arena> Parser<'arena> {
                 )));
             }
         };
-        let var = unsafe { Rf_install(CString::new(var_name).unwrap_or_default().as_ptr()) };
+        let var = self.install_symbol(&var_name)?;
 
         self.expect(&Token::KwIn)?;
         let seq = self.parse_expr()?;
@@ -1170,7 +1160,7 @@ impl<'arena> Parser<'arena> {
         let body = self.parse_expr()?;
 
         unsafe {
-            let for_sym = Rf_install(CString::new("for").unwrap_or_default().as_ptr());
+            let for_sym = Rf_install(c"for".as_ptr());
             let nil = R_NilValue();
             let body_cell = self.cons(body, nil);
             let seq_cell = self.cons(seq, body_cell);
@@ -1194,7 +1184,7 @@ impl<'arena> Parser<'arena> {
         let body = self.parse_expr()?;
 
         unsafe {
-            let while_sym = Rf_install(CString::new("while").unwrap_or_default().as_ptr());
+            let while_sym = Rf_install(c"while".as_ptr());
             Ok(self.lang3(while_sym, cond, body))
         }
     }
@@ -1206,7 +1196,7 @@ impl<'arena> Parser<'arena> {
         let body = self.parse_expr()?;
 
         unsafe {
-            let repeat_sym = Rf_install(CString::new("repeat").unwrap_or_default().as_ptr());
+            let repeat_sym = Rf_install(c"repeat".as_ptr());
             Ok(self.lang2(repeat_sym, body))
         }
     }
@@ -1222,7 +1212,7 @@ impl<'arena> Parser<'arena> {
         let body = self.parse_expr()?;
 
         unsafe {
-            let fn_sym = Rf_install(CString::new("function").unwrap_or_default().as_ptr());
+            let fn_sym = Rf_install(c"function".as_ptr());
             let nil = R_NilValue();
             let body_cell = self.cons(body, nil);
             let formals_cell = self.cons(formals, body_cell);
@@ -1279,7 +1269,7 @@ impl<'arena> Parser<'arena> {
             let mut list = nil;
             for (name, default) in pairs.into_iter().rev() {
                 let cell = self.cons(default, list);
-                let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
+                let sym = self.install_symbol(&name)?;
                 crate::sexp::accessors::SETTAG(cell, sym);
                 list = cell;
             }
@@ -1305,17 +1295,17 @@ impl<'arena> Parser<'arena> {
 
         if exprs.is_empty() {
             unsafe {
-                let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+                let brace_sym = Rf_install(c"{".as_ptr());
                 Ok(self.lang2(brace_sym, R_NilValue()))
             }
         } else if exprs.len() == 1 {
             unsafe {
-                let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+                let brace_sym = Rf_install(c"{".as_ptr());
                 Ok(self.lang2(brace_sym, exprs.into_iter().next().unwrap()))
             }
         } else {
             unsafe {
-                let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
+                let brace_sym = Rf_install(c"{".as_ptr());
                 let nil = R_NilValue();
                 let mut list = self.cons(exprs.pop().unwrap_or(nil), nil);
                 while let Some(e) = exprs.pop() {
@@ -1351,7 +1341,7 @@ impl<'arena> Parser<'arena> {
             Token::DotDotDot => {
                 self.advance();
                 unsafe {
-                    let sym = Rf_install(CString::new("...").unwrap_or_default().as_ptr());
+                    let sym = Rf_install(c"...".as_ptr());
                     Ok(sym)
                 }
             }
@@ -1368,11 +1358,7 @@ impl<'arena> Parser<'arena> {
                     "NA_real_" => Ok(self.scalar_real(crate::sexp::ffi::NA_REAL)),
                     "NA_integer_" => Ok(self.scalar_integer(crate::sexp::ffi::NA_INTEGER)),
                     "NA_character_" => Ok(self.scalar_na_string()),
-                    _ => unsafe {
-                        let sym =
-                            Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
-                        Ok(sym)
-                    },
+                    _ => self.install_symbol(&name),
                 }
             }
             ref tok => Err(ParseError(format!("unexpected token: {:?}", tok))),
@@ -1434,7 +1420,7 @@ impl<'arena> Parser<'arena> {
             Token::DotDotDot => {
                 self.advance();
                 unsafe {
-                    let sym = Rf_install(CString::new("...").unwrap_or_default().as_ptr());
+                    let sym = Rf_install(c"...".as_ptr());
                     Ok((None, sym))
                 }
             }

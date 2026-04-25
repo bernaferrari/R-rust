@@ -22,88 +22,52 @@ use super::symbol::Rf_install;
 
 /// Get the "class" symbol.
 pub unsafe fn R_ClassSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("class").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"class".as_ptr()) }
 }
 
 /// Get the "names" symbol.
 pub unsafe fn R_NamesSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("names").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"names".as_ptr()) }
 }
 
 /// Get the "dim" symbol.
 pub unsafe fn R_DimSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("dim").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"dim".as_ptr()) }
 }
 
 /// Get the "dimnames" symbol.
 pub unsafe fn R_DimNamesSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("dimnames")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"dimnames".as_ptr()) }
 }
 
 /// Get the "levels" symbol.
 pub unsafe fn R_LevelsSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("levels")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"levels".as_ptr()) }
 }
 
 /// Get the "tsp" symbol.
 pub unsafe fn R_TspSymbol() -> SEXP {
-    unsafe { Rf_install(std::ffi::CString::new("tsp").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"tsp".as_ptr()) }
 }
 
 /// Get the "srcref" symbol.
 pub unsafe fn R_SrcRefSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("srcref")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"srcref".as_ptr()) }
 }
 
 /// Get the "srcfile" symbol.
 pub unsafe fn R_SrcFileSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("srcfile")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"srcfile".as_ptr()) }
 }
 
 /// Get the "row.names" symbol.
 pub unsafe fn R_RowNamesSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new("row.names")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c"row.names".as_ptr()) }
 }
 
 /// Get the ".Environment" symbol.
 pub unsafe fn R_EnvironmentSymbol() -> SEXP {
-    unsafe {
-        Rf_install(
-            std::ffi::CString::new(".Environment")
-                .unwrap_or_default()
-                .as_ptr(),
-        )
-    }
+    unsafe { Rf_install(c".Environment".as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -160,18 +124,11 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
                 // Found — replace value
                 SETCAR(current, value);
                 // Update OBJECT flag for "class" attribute
-                let name = super::accessors::PRINTNAME(which);
-                if !name.is_null() {
-                    let s = super::accessors::CHAR(name);
-                    if !s.is_null() {
-                        let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                        if name_str == "class" {
-                            if value.is_null() || value == R_NilValue() {
-                                super::accessors::SET_OBJECT(x, 0);
-                            } else {
-                                super::accessors::SET_OBJECT(x, 1);
-                            }
-                        }
+                if which == R_ClassSymbol() {
+                    if value.is_null() || value == R_NilValue() {
+                        super::accessors::SET_OBJECT(x, 0);
+                    } else {
+                        super::accessors::SET_OBJECT(x, 1);
                     }
                 }
                 return;
@@ -187,17 +144,8 @@ pub unsafe fn setAttrib(x: SEXP, which: SEXP, value: SEXP) {
         }
 
         // Set OBJECT flag if setting "class" to non-nil
-        if !value.is_null() && value != R_NilValue() {
-            let name = super::accessors::PRINTNAME(which);
-            if !name.is_null() {
-                let s = super::accessors::CHAR(name);
-                if !s.is_null() {
-                    let name_str = std::ffi::CStr::from_ptr(s).to_str().unwrap_or("");
-                    if name_str == "class" {
-                        super::accessors::SET_OBJECT(x, 1);
-                    }
-                }
-            }
+        if which == R_ClassSymbol() && !value.is_null() && value != R_NilValue() {
+            super::accessors::SET_OBJECT(x, 1);
         }
     }
 }
@@ -251,16 +199,16 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
             // Return the default class based on type
             let t = TYPEOF(x);
             let name = match t {
-                10 => "logical",
-                13 => "integer",
-                14 => "numeric",
-                15 => "complex",
-                16 => "character",
-                24 => "raw",
-                19 => "list",
-                _ => "unknown",
+                10 => c"logical",
+                13 => c"integer",
+                14 => c"numeric",
+                15 => c"complex",
+                16 => c"character",
+                24 => c"raw",
+                19 => c"list",
+                _ => c"unknown",
             };
-            return Rf_mkString(std::ffi::CString::new(name).unwrap_or_default().as_ptr());
+            return Rf_mkString(name.as_ptr());
         }
         class_val
     }
@@ -273,11 +221,7 @@ pub unsafe fn R_data_class(x: SEXP) -> SEXP {
 /// Get the length of an object via the "length" attribute.
 pub unsafe fn R_length_gets(x: SEXP) -> c_int {
     unsafe {
-        let len_sym = Rf_install(
-            std::ffi::CString::new("length")
-                .unwrap_or_default()
-                .as_ptr(),
-        );
+        let len_sym = Rf_install(c"length".as_ptr());
         let val = getAttrib(x, len_sym);
         if !val.is_null() && TYPEOF(val) == SEXPTYPE::INTSXP {
             let data = super::accessors::INTEGER(val);

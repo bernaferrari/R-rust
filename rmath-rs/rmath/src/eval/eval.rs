@@ -503,8 +503,8 @@ fn call_head_name(call: Sexp<'_>) -> String {
         } else {
             std::ffi::CStr::from_ptr(s)
                 .to_str()
-                .unwrap_or("")
-                .to_string()
+                .map(str::to_string)
+                .unwrap_or_default()
         }
     }
 }
@@ -5211,7 +5211,9 @@ fn try_s3_dispatch<'a>(
             if class_str.is_null() {
                 continue;
             }
-            let class_str = std::ffi::CStr::from_ptr(class_str).to_str().unwrap_or("");
+            let Ok(class_str) = std::ffi::CStr::from_ptr(class_str).to_str() else {
+                continue;
+            };
             if class_str.is_empty() {
                 continue;
             }
@@ -5377,8 +5379,7 @@ fn do_source_impl(file_path: &str, rho: SEXP) -> Result<SEXP, String> {
                 if !sym_name.is_null() {
                     let name_str = crate::sexp::accessors::CHAR(sym_name);
                     if !name_str.is_null() {
-                        let name = std::ffi::CStr::from_ptr(name_str).to_str().unwrap_or("");
-                        if name == "{" {
+                        if std::ffi::CStr::from_ptr(name_str).to_str() == Ok("{") {
                             // It's a block — evaluate each sub-expression
                             let mut current = CDR(parsed);
                             let mut last_result = R_NilValue();

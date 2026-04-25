@@ -20,7 +20,7 @@ use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::output;
-use crate::sexp::safe::{Sexp, SexpComplex, SexpValue};
+use crate::sexp::safe::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use crate::sexp::session::CancellationFlag;
 
 // ---------------------------------------------------------------------------
@@ -40,28 +40,11 @@ pub struct RSession {
     core: CoreRSession,
 }
 
-fn extract_numeric_value(s: Sexp<'_>) -> f64 {
-    match s.typeof_() {
-        SEXPTYPE::INTSXP => s.integer_elt(0).unwrap_or(0) as f64,
-        SEXPTYPE::REALSXP => s.real_elt(0).unwrap_or(0.0),
-        SEXPTYPE::LGLSXP => {
-            let v = s.logical_elt(0).unwrap_or(0);
-            if v == 1 {
-                1.0
-            } else if v == 0 {
-                0.0
-            } else {
-                f64::NAN
-            }
-        }
-        _ => 0.0,
-    }
-}
-
 fn result_from_sexp(sexp: Sexp<'_>) -> RResult {
+    let typed = RValue::from_sexp(sexp);
     RResult {
-        value: extract_numeric_value(sexp),
-        typed: RValue::from_sexp(sexp),
+        value: typed.numeric_scalar_value(),
+        typed,
         output: output::format_sexp_direct(sexp),
     }
 }
@@ -76,9 +59,10 @@ fn result_from_eval(sexp: Sexp<'_>, captured: output::RCapturedOutput, visible: 
         }
         display.push_str(&output::format_sexp_direct(sexp));
     }
+    let typed = RValue::from_sexp(sexp);
     RResult {
-        value: extract_numeric_value(sexp),
-        typed: RValue::from_sexp(sexp),
+        value: typed.numeric_scalar_value(),
+        typed,
         output: display,
     }
 }
@@ -304,8 +288,31 @@ pub enum RValue {
     RawVector(Vec<u8>),
     ComplexVector(Vec<Option<RComplexValue>>),
     List(Vec<RValue>),
-    Unsupported { type_name: String },
+    Attributed {
+        value: Box<RValue>,
+        metadata: RMetadata,
+    },
+    Unsupported {
+        type_name: String,
+    },
     Error(String),
+}
+
+/// Named owned R attribute for Android/UniFFI callers.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RAttribute {
+    pub name: String,
+    pub value: RValue,
+}
+
+/// Owned R metadata for Android/UniFFI callers.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct RMetadata {
+    pub names: Option<Vec<Option<String>>>,
+    pub dim: Option<Vec<i32>>,
+    pub class: Option<Vec<Option<String>>>,
+    pub levels: Option<Vec<Option<String>>>,
+    pub attributes: Vec<RAttribute>,
 }
 
 /// Owned complex number for Android/UniFFI callers.
@@ -354,7 +361,63 @@ impl RValue {
             SexpValue::List(values) => {
                 RValue::List(values.into_iter().map(RValue::from_owned_value).collect())
             }
+            SexpValue::Attributed { value, metadata } => RValue::Attributed {
+                value: Box::new(RValue::from_owned_value(*value)),
+                metadata: RMetadata::from(metadata),
+            },
             SexpValue::Unsupported { type_name } => RValue::Unsupported { type_name },
+        }
+    }
+
+    fn numeric_scalar_value(&self) -> f64 {
+        match self {
+            RValue::Integer(Some(value)) => *value as f64,
+            RValue::Integer(None) => f64::NAN,
+            RValue::Real(Some(value)) => *value,
+            RValue::Real(None) => f64::NAN,
+            RValue::Logical(Some(true)) => 1.0,
+            RValue::Logical(Some(false)) => 0.0,
+            RValue::Logical(None) => f64::NAN,
+            RValue::IntegerVector(values) => values
+                .first()
+                .and_then(|value| *value)
+                .map(|value| value as f64)
+                .unwrap_or(f64::NAN),
+            RValue::RealVector(values) => {
+                values.first().and_then(|value| *value).unwrap_or(f64::NAN)
+            }
+            RValue::LogicalVector(values) => match values.first().copied().flatten() {
+                Some(true) => 1.0,
+                Some(false) => 0.0,
+                None => f64::NAN,
+            },
+            RValue::Attributed { value, .. } => value.numeric_scalar_value(),
+            _ => 0.0,
+        }
+    }
+}
+
+impl From<SexpAttribute> for RAttribute {
+    fn from(attribute: SexpAttribute) -> Self {
+        RAttribute {
+            name: attribute.name,
+            value: RValue::from_owned_value(attribute.value),
+        }
+    }
+}
+
+impl From<SexpMetadata> for RMetadata {
+    fn from(metadata: SexpMetadata) -> Self {
+        RMetadata {
+            names: metadata.names,
+            dim: metadata.dim,
+            class: metadata.class,
+            levels: metadata.levels,
+            attributes: metadata
+                .attributes
+                .into_iter()
+                .map(RAttribute::from)
+                .collect(),
         }
     }
 }
@@ -539,6 +602,59 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_preserves_metadata_in_owned_typed_values() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = crate::sexp::memory::RArena::new();
+        let vector = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)).expect("vector");
+        vector.try_set_integer_elt(0, 1).expect("set integer");
+        vector.try_set_integer_elt(1, 2).expect("set integer");
+
+        let names = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)).expect("names");
+        names
+            .try_set_string_elt(0, Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("name"))
+            .expect("set name");
+        names
+            .try_set_string_elt(1, Sexp::from_raw(arena.alloc_charsxp(b"b")).expect("name"))
+            .expect("set name");
+
+        let class = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)).expect("class");
+        class
+            .try_set_string_elt(
+                0,
+                Sexp::from_raw(arena.alloc_charsxp(b"foo")).expect("class"),
+            )
+            .expect("set class");
+
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        let class_cell = arena.cons(class.as_raw(), nil, unsafe {
+            crate::sexp::symbol::Rf_install(c"class".as_ptr())
+        });
+        let names_cell = arena.cons(names.as_raw(), class_cell, unsafe {
+            crate::sexp::symbol::Rf_install(c"names".as_ptr())
+        });
+        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.as_raw(), names_cell) };
+
+        let typed = RValue::from_sexp(vector);
+        let RValue::Attributed { value, metadata } = typed else {
+            panic!("expected attributed value");
+        };
+
+        assert_eq!(*value, RValue::IntegerVector(vec![Some(1), Some(2)]));
+        assert_eq!(
+            metadata.names,
+            Some(vec![Some("a".to_string()), Some("b".to_string())])
+        );
+        assert_eq!(metadata.class, Some(vec![Some("foo".to_string())]));
+        assert!(
+            metadata
+                .attributes
+                .iter()
+                .any(|attribute| attribute.name == "names")
+        );
+        assert_eq!(value.numeric_scalar_value(), 1.0);
+    }
+
+    #[test]
     fn test_typed_values_expose_raw_and_complex_without_print_parsing() {
         let mut session = RSession::new();
         let raw = session.eval("as.raw(c(65, 90))");
@@ -700,16 +816,30 @@ mod tests {
 
         let visible = session.eval("withVisible(1)");
         assert_eq!(visible.output, "$value\n[1] 1\n\n$visible\n[1] TRUE");
+        let RValue::Attributed { value, metadata } = visible.typed else {
+            panic!("expected attributed withVisible result");
+        };
         assert_eq!(
-            visible.typed,
+            *value,
             RValue::List(vec![RValue::Real(Some(1.0)), RValue::Logical(Some(true))])
+        );
+        assert_eq!(
+            metadata.names,
+            Some(vec![Some("value".to_string()), Some("visible".to_string())])
         );
 
         let invisible = session.eval("withVisible(invisible(1))");
         assert_eq!(invisible.output, "$value\n[1] 1\n\n$visible\n[1] FALSE");
+        let RValue::Attributed { value, metadata } = invisible.typed else {
+            panic!("expected attributed withVisible result");
+        };
         assert_eq!(
-            invisible.typed,
+            *value,
             RValue::List(vec![RValue::Real(Some(1.0)), RValue::Logical(Some(false))])
+        );
+        assert_eq!(
+            metadata.names,
+            Some(vec![Some("value".to_string()), Some("visible".to_string())])
         );
     }
 

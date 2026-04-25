@@ -258,7 +258,6 @@ unsafe fn tryDispatch(
     pv: *mut SEXP,
 ) -> c_int {
     unsafe {
-        let generic_str = std::ffi::CStr::from_ptr(generic).to_str().unwrap_or("");
         let generic_sym = Rf_install(generic);
 
         let pargs = Rf_protect(promiseArgs(CDR(call), rho));
@@ -359,8 +358,9 @@ pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
     unsafe {
         if srcref.is_null() || srcref == R_NilValue() {
             if !prefix.is_null() {
-                let s = std::ffi::CStr::from_ptr(prefix).to_str().unwrap_or("");
-                eprint!("{}: ", s);
+                if let Ok(s) = std::ffi::CStr::from_ptr(prefix).to_str() {
+                    eprint!("{}: ", s);
+                }
             }
             return;
         }
@@ -388,22 +388,24 @@ pub unsafe fn SrcrefPrompt(prefix: *const c_char, srcref: SEXP) {
                     0
                 };
                 if !fname_cs.is_null() && *fname_cs != 0 {
-                    let fname = std::ffi::CStr::from_ptr(fname_cs).to_str().unwrap_or("???");
-                    let pfx = if !prefix.is_null() {
-                        std::ffi::CStr::from_ptr(prefix).to_str().unwrap_or("")
-                    } else {
-                        ""
-                    };
-                    eprintln!("{} at {}#{}: ", pfx, fname, line_num);
-                    return;
+                    if let Ok(fname) = std::ffi::CStr::from_ptr(fname_cs).to_str() {
+                        let pfx = if !prefix.is_null() {
+                            std::ffi::CStr::from_ptr(prefix).to_str().ok()
+                        } else {
+                            None
+                        };
+                        eprintln!("{} at {}#{}: ", pfx.unwrap_or_default(), fname, line_num);
+                        return;
+                    }
                 }
             }
         }
 
         // Default
         if !prefix.is_null() {
-            let s = std::ffi::CStr::from_ptr(prefix).to_str().unwrap_or("");
-            eprint!("{}: ", s);
+            if let Ok(s) = std::ffi::CStr::from_ptr(prefix).to_str() {
+                eprint!("{}: ", s);
+            }
         }
     }
 }
@@ -566,8 +568,8 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
                     if !s.is_null() {
                         std::ffi::CStr::from_ptr(s)
                             .to_str()
-                            .unwrap_or("???")
-                            .to_string()
+                            .map(str::to_string)
+                            .unwrap_or_else(|_| "???".to_string())
                     } else {
                         "???".to_string()
                     }
@@ -684,8 +686,8 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
                 if !s.is_null() {
                     std::ffi::CStr::from_ptr(s)
                         .to_str()
-                        .unwrap_or("???")
-                        .to_string()
+                        .map(str::to_string)
+                        .unwrap_or_else(|_| "???".to_string())
                 } else {
                     "???".to_string()
                 }
@@ -696,7 +698,9 @@ pub unsafe fn signalMissingArgError(call: SEXP, _rho: SEXP, arg_sym: SEXP) {
         };
         crate::mainutils::errors::errorcall_cpy(
             call,
-            std::ffi::CString::new(msg).unwrap_or_default().as_ptr(),
+            std::ffi::CString::new(msg)
+                .expect("generated missing-argument message has no interior NUL")
+                .as_ptr(),
         );
     }
 }

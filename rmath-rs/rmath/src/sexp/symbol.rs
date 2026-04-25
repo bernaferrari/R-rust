@@ -7,7 +7,6 @@
 //! separate chaining for collision resolution.
 
 use std::collections::HashMap;
-use std::ffi::CString;
 use std::os::raw::c_char;
 use std::ptr;
 
@@ -158,102 +157,102 @@ pub unsafe fn Rf_installChar(name: *const c_char, len: R_xlen_t) -> SEXP {
 
 /// Get or create the "base" symbol.
 pub unsafe fn R_BaseSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("base").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"base".as_ptr()) }
 }
 
 /// Get or create the "{ brace" symbol.
 pub unsafe fn R_BraceSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("{").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"{".as_ptr()) }
 }
 
 /// Get or create the "[[" symbol.
 pub unsafe fn R_Bracket2Symbol() -> SEXP {
-    unsafe { Rf_install(CString::new("[[").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"[[".as_ptr()) }
 }
 
 /// Get or create the "[" symbol.
 pub unsafe fn R_BracketSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("[").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"[".as_ptr()) }
 }
 
 /// Get or create the "function" symbol.
 pub unsafe fn R_FunctionSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("function").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"function".as_ptr()) }
 }
 
 /// Get or create the "while" symbol.
 pub unsafe fn R_WhileSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("while").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"while".as_ptr()) }
 }
 
 /// Get or create the "for" symbol.
 pub unsafe fn R_ForSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("for").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"for".as_ptr()) }
 }
 
 /// Get or create the "if" symbol.
 pub unsafe fn R_IfSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("if").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"if".as_ptr()) }
 }
 
 /// Get or create the "repeat" symbol.
 pub unsafe fn R_RepeatSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("repeat").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"repeat".as_ptr()) }
 }
 
 /// Get or create the "break" symbol.
 pub unsafe fn R_BreakSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("break").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"break".as_ptr()) }
 }
 
 /// Get or create the "next" symbol.
 pub unsafe fn R_NextSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("next").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"next".as_ptr()) }
 }
 
 /// Get or create the "..." symbol.
 pub unsafe fn R_DotsSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("...").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"...".as_ptr()) }
 }
 
 /// Get or create the "double colon" symbol (::).
 pub unsafe fn R_DoubleColonSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("::").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"::".as_ptr()) }
 }
 
 /// Get or create the "triple colon" symbol (:::).
 pub unsafe fn R_TripleColonSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new(":::").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c":::".as_ptr()) }
 }
 
 /// Get or create the "$" symbol.
 pub unsafe fn R_DollarSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("$").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"$".as_ptr()) }
 }
 
 /// Get or create the "@" symbol.
 pub unsafe fn R_AtSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("@").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"@".as_ptr()) }
 }
 
 /// Get or create the "=" symbol.
 pub unsafe fn R_EqSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("=").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"=".as_ptr()) }
 }
 
 /// Get or create the "<-" symbol.
 pub unsafe fn R_LeftAssignSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("<-").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"<-".as_ptr()) }
 }
 
 /// Get or create the "<<" symbol.
 pub unsafe fn R_DoubleLeftAssignSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("<<-").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"<<-".as_ptr()) }
 }
 
 /// Get or create the "as" symbol.
 pub unsafe fn R_AsSymbol() -> SEXP {
-    unsafe { Rf_install(CString::new("as").unwrap_or_default().as_ptr()) }
+    unsafe { Rf_install(c"as".as_ptr()) }
 }
 
 // ---------------------------------------------------------------------------
@@ -276,7 +275,7 @@ mod tests {
     #[test]
     fn test_install_basic() {
         with_session(|| unsafe {
-            let s1 = Rf_install(CString::new("hello").unwrap_or_default().as_ptr());
+            let s1 = Rf_install(c"hello".as_ptr());
             assert!(!s1.is_null());
             assert_eq!((*s1).sxpinfo.type_of(), SEXPTYPE::SYMSXP);
         });
@@ -285,8 +284,8 @@ mod tests {
     #[test]
     fn test_install_interning() {
         with_session(|| unsafe {
-            let s1 = Rf_install(CString::new("myvar").unwrap_or_default().as_ptr());
-            let s2 = Rf_install(CString::new("myvar").unwrap_or_default().as_ptr());
+            let s1 = Rf_install(c"myvar".as_ptr());
+            let s2 = Rf_install(c"myvar".as_ptr());
             assert_eq!(s1, s2); // Same pointer
         });
     }
@@ -294,8 +293,8 @@ mod tests {
     #[test]
     fn test_install_different() {
         with_session(|| unsafe {
-            let s1 = Rf_install(CString::new("x").unwrap_or_default().as_ptr());
-            let s2 = Rf_install(CString::new("y").unwrap_or_default().as_ptr());
+            let s1 = Rf_install(c"x".as_ptr());
+            let s2 = Rf_install(c"y".as_ptr());
             assert_ne!(s1, s2);
         });
     }
@@ -306,19 +305,13 @@ mod tests {
         let mut right = RSession::new();
 
         let left_a = left
-            .with_arena(|_| unsafe {
-                Rf_install(CString::new("session_local_symbol").unwrap().as_ptr())
-            })
+            .with_arena(|_| unsafe { Rf_install(c"session_local_symbol".as_ptr()) })
             .unwrap();
         let left_b = left
-            .with_arena(|_| unsafe {
-                Rf_install(CString::new("session_local_symbol").unwrap().as_ptr())
-            })
+            .with_arena(|_| unsafe { Rf_install(c"session_local_symbol".as_ptr()) })
             .unwrap();
         let right_a = right
-            .with_arena(|_| unsafe {
-                Rf_install(CString::new("session_local_symbol").unwrap().as_ptr())
-            })
+            .with_arena(|_| unsafe { Rf_install(c"session_local_symbol".as_ptr()) })
             .unwrap();
 
         assert_eq!(left_a, left_b);

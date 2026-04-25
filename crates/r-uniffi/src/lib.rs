@@ -101,6 +101,22 @@ pub struct RValue {
     pub list_values: Vec<RValue>,
     pub type_name: String,
     pub error: String,
+    pub metadata: RMetadata,
+}
+
+#[derive(Debug, Clone, PartialEq, uniffi::Record)]
+pub struct RAttribute {
+    pub name: String,
+    pub value: RValue,
+}
+
+#[derive(Debug, Clone, PartialEq, Default, uniffi::Record)]
+pub struct RMetadata {
+    pub names: Option<Vec<Option<String>>>,
+    pub dim: Option<Vec<i32>>,
+    pub class: Option<Vec<Option<String>>>,
+    pub levels: Option<Vec<Option<String>>>,
+    pub attributes: Vec<RAttribute>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -124,6 +140,7 @@ fn empty_value(kind: RValueKind) -> RValue {
         list_values: Vec::new(),
         type_name: String::new(),
         error: String::new(),
+        metadata: RMetadata::default(),
     }
 }
 
@@ -174,6 +191,11 @@ impl From<r_embed::RValue> for RValue {
                 list_values: values.into_iter().map(RValue::from).collect(),
                 ..empty_value(RValueKind::List)
             },
+            r_embed::RValue::Attributed { value, metadata } => {
+                let mut value = RValue::from(*value);
+                value.metadata = RMetadata::from(metadata);
+                value
+            }
             r_embed::RValue::Unsupported { type_name } => RValue {
                 type_name,
                 ..empty_value(RValueKind::Unsupported)
@@ -182,6 +204,31 @@ impl From<r_embed::RValue> for RValue {
                 error: message,
                 ..empty_value(RValueKind::Error)
             },
+        }
+    }
+}
+
+impl From<r_embed::RAttribute> for RAttribute {
+    fn from(attribute: r_embed::RAttribute) -> Self {
+        RAttribute {
+            name: attribute.name,
+            value: RValue::from(attribute.value),
+        }
+    }
+}
+
+impl From<r_embed::RMetadata> for RMetadata {
+    fn from(metadata: r_embed::RMetadata) -> Self {
+        RMetadata {
+            names: metadata.names,
+            dim: metadata.dim,
+            class: metadata.class,
+            levels: metadata.levels,
+            attributes: metadata
+                .attributes
+                .into_iter()
+                .map(RAttribute::from)
+                .collect(),
         }
     }
 }
@@ -485,6 +532,26 @@ mod tests {
             strings.value.string_values,
             vec![Some("a".to_string()), None]
         );
+    }
+
+    #[test]
+    fn eval_result_preserves_value_metadata() {
+        let value = RValue::from(r_embed::RValue::Attributed {
+            value: Box::new(r_embed::RValue::IntegerVector(vec![Some(1), Some(2)])),
+            metadata: r_embed::RMetadata {
+                names: Some(vec![Some("a".to_string()), Some("b".to_string())]),
+                class: Some(vec![Some("foo".to_string())]),
+                ..r_embed::RMetadata::default()
+            },
+        });
+
+        assert_eq!(value.kind, RValueKind::IntegerVector);
+        assert_eq!(value.integer_values, vec![Some(1), Some(2)]);
+        assert_eq!(
+            value.metadata.names,
+            Some(vec![Some("a".to_string()), Some("b".to_string())])
+        );
+        assert_eq!(value.metadata.class, Some(vec![Some("foo".to_string())]));
     }
 
     #[test]

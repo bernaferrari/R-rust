@@ -17,6 +17,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::globals::{set_R_BaseEnv, set_R_EmptyEnv, set_R_GlobalEnv};
+use super::instance::with_current_instance;
 use super::memory_ext::NewPersistentEnvironment;
 use super::symbol::Rf_install;
 
@@ -25,12 +26,22 @@ static R_INITIALIZED: AtomicBool = AtomicBool::new(false);
 static INIT_LOCK: Mutex<()> = Mutex::new(());
 
 pub fn is_initialized() -> bool {
-    R_INITIALIZED.load(Ordering::Acquire)
+    with_current_instance(|inst| inst.initialized)
+        .unwrap_or_else(|| R_INITIALIZED.load(Ordering::Acquire))
 }
 
 pub unsafe fn initialize_r() {
     unsafe {
         super::context::install_r_panic_hook();
+
+        if let Some(()) = with_current_instance(|inst| {
+            if !inst.initialized {
+                initialize_base_bindings(inst.base_env);
+                inst.initialized = true;
+            }
+        }) {
+            return;
+        }
 
         if R_INITIALIZED.load(Ordering::Acquire) {
             return;
@@ -190,7 +201,7 @@ unsafe fn pre_intern_symbols() {
         ];
 
         for name in &symbols {
-            let c_name = CString::new(*name).unwrap_or_default();
+            let c_name = CString::new(*name).expect("static R symbol name has no interior NUL");
             Rf_install(c_name.as_ptr());
         }
     }
@@ -198,6 +209,12 @@ unsafe fn pre_intern_symbols() {
 
 pub unsafe fn shutdown_r() {
     unsafe {
+        if let Some(()) = with_current_instance(|inst| {
+            inst.initialized = false;
+        }) {
+            return;
+        }
+
         if !R_INITIALIZED.load(Ordering::Acquire) {
             return;
         }
@@ -277,13 +294,13 @@ mod tests {
         unsafe {
             initialize_r();
 
-            let plus = Rf_install(CString::new("+").unwrap_or_default().as_ptr());
+            let plus = Rf_install(c"+".as_ptr());
             assert!(!plus.is_null());
 
-            let plus2 = Rf_install(CString::new("+").unwrap_or_default().as_ptr());
+            let plus2 = Rf_install(c"+".as_ptr());
             assert_eq!(plus, plus2);
 
-            let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
+            let if_sym = Rf_install(c"if".as_ptr());
             assert!(!if_sym.is_null());
 
             shutdown_r();

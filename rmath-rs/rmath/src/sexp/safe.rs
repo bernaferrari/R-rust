@@ -118,6 +118,23 @@ pub struct SexpComplex {
     pub imaginary: f64,
 }
 
+/// Named owned attribute value.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SexpAttribute {
+    pub name: String,
+    pub value: SexpValue,
+}
+
+/// Owned projection of the R metadata commonly needed by embedders.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct SexpMetadata {
+    pub names: Option<Vec<Option<String>>>,
+    pub dim: Option<Vec<i32>>,
+    pub class: Option<Vec<Option<String>>>,
+    pub levels: Option<Vec<Option<String>>>,
+    pub attributes: Vec<SexpAttribute>,
+}
+
 /// Owned, Rust-shaped projection of an R object.
 ///
 /// This keeps R's broad SEXP categories recognizable while removing raw
@@ -135,8 +152,16 @@ pub enum SexpValue {
     RawVector(Vec<u8>),
     ComplexVector(Vec<Option<SexpComplex>>),
     List(Vec<SexpValue>),
-    Unsupported { type_name: String },
+    Attributed {
+        value: Box<SexpValue>,
+        metadata: SexpMetadata,
+    },
+    Unsupported {
+        type_name: String,
+    },
 }
+
+const OWNED_VALUE_ATTRIBUTE_DEPTH_LIMIT: usize = 8;
 
 fn sexptype_name(t: SEXPTYPE) -> &'static str {
     match t {
@@ -440,6 +465,26 @@ impl<'a> Sexp<'a> {
     /// represented as `None`, and nested generic/expression vectors are
     /// recursively projected.
     pub fn to_owned_value(self) -> SexpResult<SexpValue> {
+        self.to_owned_value_inner(0)
+    }
+
+    fn to_owned_value_inner(self, depth: usize) -> SexpResult<SexpValue> {
+        let value = self.to_owned_value_without_attributes(depth)?;
+        if depth >= OWNED_VALUE_ATTRIBUTE_DEPTH_LIMIT {
+            return Ok(value);
+        }
+
+        let Some(metadata) = self.to_owned_metadata(depth)? else {
+            return Ok(value);
+        };
+
+        Ok(SexpValue::Attributed {
+            value: Box::new(value),
+            metadata,
+        })
+    }
+
+    fn to_owned_value_without_attributes(self, depth: usize) -> SexpResult<SexpValue> {
         let len = self.len();
         match self.typeof_() {
             SEXPTYPE::NILSXP => Ok(SexpValue::Null),
@@ -475,7 +520,7 @@ impl<'a> Sexp<'a> {
             SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => {
                 let mut values = Vec::with_capacity(len as usize);
                 for i in 0..len {
-                    values.push(self.try_vector_elt(i)?.to_owned_value()?);
+                    values.push(self.try_vector_elt(i)?.to_owned_value_inner(depth + 1)?);
                 }
                 Ok(SexpValue::List(values))
             }
@@ -483,6 +528,59 @@ impl<'a> Sexp<'a> {
                 type_name: sexptype_name(self.typeof_()).to_string(),
             }),
         }
+    }
+
+    fn to_owned_metadata(self, depth: usize) -> SexpResult<Option<SexpMetadata>> {
+        let Some(attrib) = self.attrib() else {
+            return Ok(None);
+        };
+        if attrib.is_nil() {
+            return Ok(None);
+        }
+
+        let mut metadata = SexpMetadata::default();
+        for cell in PairlistIter::new(attrib) {
+            let Some(name) = cell.attribute_name()? else {
+                continue;
+            };
+            let value = cell.try_car()?;
+
+            match name.as_str() {
+                "names" => metadata.names = value.try_string_values().ok(),
+                "dim" => {
+                    metadata.dim = value
+                        .try_integer_values()
+                        .ok()
+                        .and_then(|values| values.into_iter().collect());
+                }
+                "class" => metadata.class = value.try_string_values().ok(),
+                "levels" => metadata.levels = value.try_string_values().ok(),
+                _ => {}
+            }
+
+            metadata.attributes.push(SexpAttribute {
+                name,
+                value: value.to_owned_value_inner(depth + 1)?,
+            });
+        }
+
+        if metadata.attributes.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(metadata))
+        }
+    }
+
+    fn attribute_name(self) -> SexpResult<Option<String>> {
+        let tag = self.try_tag()?;
+        if tag.is_nil() {
+            return Ok(None);
+        }
+        if tag.typeof_() != SEXPTYPE::SYMSXP {
+            return Ok(None);
+        }
+
+        Ok(Some(tag.try_printname()?.try_as_str()?.to_string()))
     }
 
     fn try_logical_values(self) -> SexpResult<Vec<Option<bool>>> {
@@ -2114,6 +2212,58 @@ mod tests {
                 ]),
             ])
         );
+    }
+
+    #[test]
+    fn test_to_owned_value_preserves_core_metadata() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = RArena::new();
+        let vector = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
+        vector.try_set_integer_elt(0, 10).expect("set integer");
+        vector.try_set_integer_elt(1, 20).expect("set integer");
+
+        let names = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 2)));
+        names
+            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"a"))))
+            .expect("set name");
+        names
+            .try_set_string_elt(1, some(Sexp::from_raw(arena.alloc_charsxp(b"b"))))
+            .expect("set name");
+
+        let dim = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::INTSXP, 2)));
+        dim.try_set_integer_elt(0, 1).expect("set dim");
+        dim.try_set_integer_elt(1, 2).expect("set dim");
+
+        let class = some(Sexp::from_raw(arena.alloc_vector(SEXPTYPE::STRSXP, 1)));
+        class
+            .try_set_string_elt(0, some(Sexp::from_raw(arena.alloc_charsxp(b"matrix"))))
+            .expect("set class");
+
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        let class_cell = arena.cons(class.as_raw(), nil, unsafe {
+            crate::sexp::symbol::Rf_install(c"class".as_ptr())
+        });
+        let dim_cell = arena.cons(dim.as_raw(), class_cell, unsafe {
+            crate::sexp::symbol::Rf_install(c"dim".as_ptr())
+        });
+        let names_cell = arena.cons(names.as_raw(), dim_cell, unsafe {
+            crate::sexp::symbol::Rf_install(c"names".as_ptr())
+        });
+        unsafe { crate::sexp::accessors::SET_ATTRIB(vector.as_raw(), names_cell) };
+
+        let value = vector.to_owned_value().expect("owned value");
+        let SexpValue::Attributed { value, metadata } = value else {
+            panic!("expected attributed value");
+        };
+
+        assert_eq!(*value, SexpValue::IntegerVector(vec![Some(10), Some(20)]));
+        assert_eq!(
+            metadata.names,
+            Some(vec![Some("a".to_string()), Some("b".to_string())])
+        );
+        assert_eq!(metadata.dim, Some(vec![1, 2]));
+        assert_eq!(metadata.class, Some(vec![Some("matrix".to_string())]));
+        assert_eq!(metadata.attributes.len(), 3);
     }
 
     #[test]

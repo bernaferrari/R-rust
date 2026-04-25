@@ -291,7 +291,11 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
             return Rf_eval(call, rho);
         }
 
-        match std::ffi::CStr::from_ptr(name).to_str().unwrap_or("") {
+        let Ok(name) = std::ffi::CStr::from_ptr(name).to_str() else {
+            return Rf_eval(call, rho);
+        };
+
+        match name {
             "[<-" => crate::mainutils::subassign::do_subassign_dflt(call, assign_fn, args, rho),
             "[[<-" => crate::mainutils::subassign::do_subassign2_dflt(call, assign_fn, args, rho),
             _ => Rf_eval(call, rho),
@@ -378,9 +382,12 @@ fn get_assign_fcn_sym(sym: SEXP) -> SEXP {
         if name.is_null() {
             return R_NilValue();
         }
-        let s = std::ffi::CStr::from_ptr(name).to_str().unwrap_or("");
+        let Ok(s) = std::ffi::CStr::from_ptr(name).to_str() else {
+            return R_NilValue();
+        };
         let assign_name = format!("{}<-", s);
-        let c_name = std::ffi::CString::new(assign_name).unwrap_or_default();
+        let c_name = std::ffi::CString::new(assign_name)
+            .expect("assignment symbol derived from a CStr cannot contain NUL");
         crate::sexp::symbol::Rf_install(c_name.as_ptr())
     }
 }
