@@ -49,11 +49,14 @@ runtime core.
 
 - Long-running evaluation uses cooperative cancellation through explicit tokens.
   Cancellation is scoped to the evaluation call and restored afterward.
-- Cancellation checks cover evaluator loops and common Android-facing entry
-  points. Native blocking calls should be avoided or wrapped in future
+- Android hosts can set per-session limits for evaluation depth, cooperative
+  wall-clock checks, arena bytes, and arena node count.
+- Cancellation and time checks cover evaluator loops and common Android-facing
+  entry points. Native blocking calls should be avoided or wrapped in future
   host-owned policies before they become Android-facing.
-- Hard CPU, heap, and wall-clock quotas are not complete yet. Track that work
-  separately before accepting arbitrary untrusted code in production.
+- Preemptive CPU quotas are outside the current pure-R runtime and should be
+  enforced by the Android host process/thread policy if arbitrary untrusted code
+  is accepted.
 
 ## Release Gates
 

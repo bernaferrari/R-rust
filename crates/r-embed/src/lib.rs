@@ -10,7 +10,9 @@ use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderP
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
-pub use rmath::android::{RAttribute, RComplexValue, RMetadata, RRuntimeInfo, RValue};
+pub use rmath::android::{
+    RAttribute, RComplexValue, RMetadata, RResourceLimits, RRuntimeInfo, RValue,
+};
 
 use thiserror::Error;
 
@@ -200,6 +202,20 @@ impl RSession {
     /// Return host-visible runtime path/session state.
     pub fn runtime_info(&self) -> RRuntimeInfo {
         self.inner.runtime_info()
+    }
+
+    /// Return this session's Android-facing resource limits.
+    pub fn resource_limits(&self) -> RResourceLimits {
+        self.inner.resource_limits()
+    }
+
+    /// Set this session's Android-facing resource limits.
+    pub fn set_resource_limits(&mut self, limits: RResourceLimits) -> Result<(), RSessionError> {
+        if !self.active {
+            return Err(RSessionError::EvalError("Session closed".into()));
+        }
+        self.inner.set_resource_limits(limits);
+        Ok(())
     }
 
     /// Return true when a package exists in this session's configured library paths.
@@ -989,6 +1005,31 @@ mod tests {
             strings.value,
             RValue::StringVector(vec![Some("a".to_string()), None])
         );
+    }
+
+    #[test]
+    fn resource_limits_are_session_owned_and_enforced() {
+        let mut limited = RSession::new().expect("limited session");
+        let mut normal = RSession::new().expect("normal session");
+
+        limited
+            .set_resource_limits(RResourceLimits {
+                max_eval_depth: 1,
+                max_execution_time_ms: 0,
+                max_alloc_bytes: 0,
+                max_arena_nodes: 0,
+            })
+            .expect("set limits");
+
+        let limits = limited.resource_limits();
+        assert_eq!(limits.max_eval_depth, 1);
+        assert_eq!(normal.resource_limits().max_eval_depth, 500);
+
+        let err = limited
+            .eval_result("{ 1 + 1 }")
+            .expect_err("depth limit should reject nested eval");
+        assert!(err.to_string().contains("too deeply"));
+        assert_eq!(normal.eval("1 + 1").expect("normal eval"), "[1] 2");
     }
 
     #[test]

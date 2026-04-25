@@ -74,6 +74,8 @@ Android embedding is app-owned and session-owned:
   `tempfile()` resolve through `RInstance::path_policy`.
 - `render(code, width, height)` returns PNG bytes from a headless renderer and
   evaluates plot data on the worker session.
+- Resource limits for evaluation depth, cooperative wall-clock checks, arena
+  bytes, and arena node count are host-configurable per session.
 - `system()` is disabled on Android. Host builds keep it enabled for stock-R
   parity and conformance checks.
 - Native package loading through `useDynLib()` is rejected until an Android

@@ -19,6 +19,7 @@ use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
 #[cfg(test)]
 use crate::sexp::ffi::SEXPTYPE;
+use crate::sexp::memory::ArenaBudget;
 use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 use crate::sexp::output;
 use crate::sexp::session::CancellationFlag;
@@ -115,6 +116,29 @@ impl RSession {
                 .collect(),
             temp_dir: self.core.temp_dir().to_string_lossy().into_owned(),
         }
+    }
+
+    pub fn resource_limits(&self) -> RResourceLimits {
+        let eval = self.core.eval_limits();
+        let arena = self.core.arena_budget();
+        RResourceLimits {
+            max_eval_depth: eval.max_eval_depth as u64,
+            max_execution_time_ms: eval.max_execution_time_ms,
+            max_alloc_bytes: arena.max_bytes as u64,
+            max_arena_nodes: arena.max_nodes as u64,
+        }
+    }
+
+    pub fn set_resource_limits(&mut self, limits: RResourceLimits) {
+        self.core.set_eval_limits(crate::eval::eval::EvalLimits {
+            max_eval_depth: saturating_usize(limits.max_eval_depth),
+            max_execution_time_ms: limits.max_execution_time_ms,
+            max_alloc_bytes: saturating_usize(limits.max_alloc_bytes),
+        });
+        self.core.set_arena_budget(ArenaBudget::new(
+            saturating_usize(limits.max_alloc_bytes),
+            saturating_usize(limits.max_arena_nodes),
+        ));
     }
 
     /// Return true when a package exists in this session's configured library paths.
@@ -315,12 +339,39 @@ pub struct RResult {
     pub output: String,
 }
 
+fn saturating_usize(value: u64) -> usize {
+    usize::try_from(value).unwrap_or(usize::MAX)
+}
+
 /// Runtime state needed by Android hosts to wire package libraries and temp files.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RRuntimeInfo {
     pub is_active: bool,
     pub library_paths: Vec<String>,
     pub temp_dir: String,
+}
+
+/// Host-owned resource limits for Android sessions.
+///
+/// A value of `0` means unlimited for that dimension, except
+/// `max_eval_depth`, where `0` selects the evaluator default.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RResourceLimits {
+    pub max_eval_depth: u64,
+    pub max_execution_time_ms: u64,
+    pub max_alloc_bytes: u64,
+    pub max_arena_nodes: u64,
+}
+
+impl Default for RResourceLimits {
+    fn default() -> Self {
+        RResourceLimits {
+            max_eval_depth: 500,
+            max_execution_time_ms: 0,
+            max_alloc_bytes: 0,
+            max_arena_nodes: 0,
+        }
+    }
 }
 
 impl RResult {

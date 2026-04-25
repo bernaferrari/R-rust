@@ -286,6 +286,7 @@ impl<'a> EvalContext<'a> {
 /// evaluator-side cancellation/visibility setup that the legacy raw `Rf_eval`
 /// shim used to own, then delegates to the safe evaluator implementation.
 pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    let _timer = EvalTimerGuard::start_if_needed();
     crate::sexp::instance::check_cancellation();
     set_R_Visible(TRUE);
 
@@ -295,6 +296,32 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
             Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
         }
         Err(message) => Err(message),
+    }
+}
+
+struct EvalTimerGuard {
+    started: bool,
+}
+
+impl EvalTimerGuard {
+    fn start_if_needed() -> Self {
+        let started = with_required_current_instance(|inst| {
+            if inst.eval_state.start_time.is_some() {
+                false
+            } else {
+                inst.eval_state.start_time = Some(Instant::now());
+                true
+            }
+        });
+        EvalTimerGuard { started }
+    }
+}
+
+impl Drop for EvalTimerGuard {
+    fn drop(&mut self) {
+        if self.started {
+            with_required_current_instance(|inst| inst.eval_state.start_time = None);
+        }
     }
 }
 

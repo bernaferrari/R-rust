@@ -132,6 +132,36 @@ pub struct RuntimeInfo {
     pub temp_dir: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Record)]
+pub struct ResourceLimits {
+    pub max_eval_depth: u64,
+    pub max_execution_time_ms: u64,
+    pub max_alloc_bytes: u64,
+    pub max_arena_nodes: u64,
+}
+
+impl From<r_embed::RResourceLimits> for ResourceLimits {
+    fn from(limits: r_embed::RResourceLimits) -> Self {
+        ResourceLimits {
+            max_eval_depth: limits.max_eval_depth,
+            max_execution_time_ms: limits.max_execution_time_ms,
+            max_alloc_bytes: limits.max_alloc_bytes,
+            max_arena_nodes: limits.max_arena_nodes,
+        }
+    }
+}
+
+impl From<ResourceLimits> for r_embed::RResourceLimits {
+    fn from(limits: ResourceLimits) -> Self {
+        r_embed::RResourceLimits {
+            max_eval_depth: limits.max_eval_depth,
+            max_execution_time_ms: limits.max_execution_time_ms,
+            max_alloc_bytes: limits.max_alloc_bytes,
+            max_arena_nodes: limits.max_arena_nodes,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct AndroidRuntimePaths {
     pub app_files_dir: String,
@@ -307,6 +337,13 @@ enum SessionCommand {
     RuntimeInfo {
         reply: Sender<Result<RuntimeInfo, RError>>,
     },
+    ResourceLimits {
+        reply: Sender<Result<ResourceLimits, RError>>,
+    },
+    SetResourceLimits {
+        limits: ResourceLimits,
+        reply: Sender<Result<(), RError>>,
+    },
     PackageAvailable {
         package: String,
         reply: Sender<Result<bool, RError>>,
@@ -409,6 +446,15 @@ fn spawn_worker(
                         library_paths: info.library_paths,
                         temp_dir: info.temp_dir,
                     }));
+                }
+                SessionCommand::ResourceLimits { reply } => {
+                    let _ = reply.send(Ok(session.resource_limits().into()));
+                }
+                SessionCommand::SetResourceLimits { limits, reply } => {
+                    let result = session
+                        .set_resource_limits(limits.into())
+                        .map_err(|err| RError::EvalError(err.to_string()));
+                    let _ = reply.send(result);
                 }
                 SessionCommand::PackageAvailable { package, reply } => {
                     let _ = reply.send(Ok(session.package_available(&package)));
@@ -562,6 +608,14 @@ impl RSession {
 
     pub fn runtime_info(&self) -> Result<RuntimeInfo, RError> {
         self.request(|reply| SessionCommand::RuntimeInfo { reply })
+    }
+
+    pub fn resource_limits(&self) -> Result<ResourceLimits, RError> {
+        self.request(|reply| SessionCommand::ResourceLimits { reply })
+    }
+
+    pub fn set_resource_limits(&self, limits: ResourceLimits) -> Result<(), RError> {
+        self.request(|reply| SessionCommand::SetResourceLimits { limits, reply })
     }
 
     pub fn package_available(&self, package: String) -> Result<bool, RError> {
@@ -887,6 +941,25 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn resource_limits_run_on_worker_session() {
+        let session = RSession::new().expect("session");
+        session
+            .set_resource_limits(ResourceLimits {
+                max_eval_depth: 1,
+                max_execution_time_ms: 0,
+                max_alloc_bytes: 0,
+                max_arena_nodes: 0,
+            })
+            .expect("set limits");
+
+        assert_eq!(session.resource_limits().expect("limits").max_eval_depth, 1);
+        let err = session
+            .eval_result("{ 1 + 1 }".to_string())
+            .expect_err("nested eval should hit depth limit");
+        assert!(err.to_string().contains("too deeply"));
     }
 
     #[test]

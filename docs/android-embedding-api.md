@@ -21,6 +21,8 @@ The Android-facing API is intentionally an owned-value boundary.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
 - Long-running evaluations can opt into cooperative cancellation with
   `r_embed::CancellationToken`; the token is explicit and per evaluation.
+- Android hosts can set per-session resource limits for evaluation depth,
+  cooperative wall-clock time checks, arena bytes, and arena node count.
 
 `SEXP` remains inside the runtime core. Code that crosses into Android, Kotlin,
 or other FFI callers should convert immediately into `RValue`, `String`,
