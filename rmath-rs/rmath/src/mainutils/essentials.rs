@@ -244,45 +244,98 @@ pub unsafe fn do_seq(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 
 /// R's `rep(x, times)` — repeats a vector `times` times.
 pub unsafe fn do_rep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let x = CAR(args);
-    let times_arg = CAR(CDR(args));
+    let mut x = R_NilValue();
+    let mut times_arg = R_NilValue();
+    let mut length_out_arg = R_NilValue();
+    let mut each_arg = R_NilValue();
+    let mut positional = 0;
+    let mut current = args;
+    while !current.is_null() && current != R_NilValue() {
+        let value = CAR(current);
+        match tag_name(current).as_deref() {
+            Some("x") => x = value,
+            Some("times") => times_arg = value,
+            Some("length.out") => length_out_arg = value,
+            Some("each") => each_arg = value,
+            _ => {
+                match positional {
+                    0 => x = value,
+                    1 => times_arg = value,
+                    2 => length_out_arg = value,
+                    3 => each_arg = value,
+                    _ => {}
+                }
+                positional += 1;
+            }
+        }
+        current = CDR(current);
+    }
 
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
 
-    let times = if times_arg.is_null() || times_arg == R_NilValue() {
-        1
+    let each = if each_arg.is_null() || each_arg == R_NilValue() {
+        1_usize
     } else {
-        real_or_default(times_arg, 1.0) as i64
+        (real_or_default(each_arg, 1.0) as i64).max(0) as usize
     };
-    let times = times.max(0) as usize;
-
     let n = XLENGTH(x);
-    let total = n * times as R_xlen_t;
+    let times_len = if times_arg.is_null() || times_arg == R_NilValue() {
+        0
+    } else {
+        XLENGTH(times_arg)
+    };
+    let times_scalar = if times_len == 0 {
+        1_usize
+    } else if times_len == 1 {
+        (real_or_default(times_arg, 1.0) as i64).max(0) as usize
+    } else {
+        0
+    };
+
+    let mut indices: Vec<R_xlen_t> = Vec::new();
+    if times_len > 1 {
+        for i in 0..n {
+            let repeats = numeric_elt_as_count(times_arg, i);
+            for _ in 0..repeats {
+                for _ in 0..each {
+                    indices.push(i);
+                }
+            }
+        }
+    } else {
+        let mut expanded: Vec<R_xlen_t> = Vec::new();
+        for i in 0..n {
+            for _ in 0..each {
+                expanded.push(i);
+            }
+        }
+        for _ in 0..times_scalar {
+            indices.extend_from_slice(&expanded);
+        }
+    }
+
+    if !(length_out_arg.is_null() || length_out_arg == R_NilValue()) {
+        let length_out = (real_or_default(length_out_arg, indices.len() as f64) as i64).max(0);
+        let length_out = length_out as usize;
+        if indices.is_empty() && length_out > 0 {
+            return Rf_allocVector3(TYPEOF(x), 0);
+        }
+        indices = (0..length_out)
+            .map(|i| indices[i % indices.len()])
+            .collect();
+    }
 
     let t = TYPEOF(x);
-    let result = Rf_allocVector3(t, total);
+    let result = Rf_allocVector3(t, indices.len() as R_xlen_t);
     if result.is_null() {
         return R_NilValue();
     }
     let _p = Rf_protect(result);
 
-    for rep in 0..times {
-        let offset = rep as R_xlen_t * n;
-        if t == SEXPTYPE::REALSXP {
-            let src = REAL(x);
-            let dst = REAL(result);
-            for i in 0..n {
-                *dst.add((offset + i) as usize) = *src.add(i as usize);
-            }
-        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let src = INTEGER(x);
-            let dst = INTEGER(result);
-            for i in 0..n {
-                *dst.add((offset + i) as usize) = *src.add(i as usize);
-            }
-        }
+    for (out_idx, &src_idx) in indices.iter().enumerate() {
+        copy_vector_elt(result, out_idx as R_xlen_t, x, src_idx);
     }
 
     crate::sexp::protect::Rf_unprotect(1);
@@ -313,8 +366,15 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let _p = Rf_protect(result);
     let dst = INTEGER(result);
     for i in 0..n {
-        let s = elt_to_string(x, i);
-        *dst.add(i as usize) = s.len() as c_int;
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
+            let charsxp = STRING_ELT(x, idx);
+            if charsxp == crate::sexp::globals::R_NaString() {
+                *dst.add(i as usize) = NA_INTEGER;
+                continue;
+            }
+        }
+        *dst.add(i as usize) = elt_to_string(x, i).len() as c_int;
     }
     crate::sexp::protect::Rf_unprotect(1);
     result
@@ -333,10 +393,6 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
-    let start = real_or_default(start_arg, 1.0) as usize;
-    let stop = real_or_default(stop_arg, 1000.0) as usize;
-    let start = start.max(1) - 1; // Convert to 0-indexed
-
     let n = XLENGTH(x).max(1);
     let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
     if result.is_null() {
@@ -345,7 +401,16 @@ pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
     let _p = Rf_protect(result);
 
     for i in 0..n {
+        if TYPEOF(x) == SEXPTYPE::STRSXP {
+            let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
+            if STRING_ELT(x, idx) == crate::sexp::globals::R_NaString() {
+                SET_STRING_ELT(result, i, crate::sexp::globals::R_NaString());
+                continue;
+            }
+        }
         let s = elt_to_string(x, i);
+        let start = (real_elt_or_default(start_arg, i, 1.0) as usize).max(1) - 1;
+        let stop = real_elt_or_default(stop_arg, i, 1000.0) as usize;
         let chars: Vec<char> = s.chars().collect();
         let end = stop.min(chars.len());
         let sub: String = if start < chars.len() {
@@ -1315,6 +1380,7 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         let v = elt_real_safe(x, i);
         indices.push((v, i));
     }
+    let decreasing = named_logical_arg(args, "decreasing").unwrap_or(false);
     indices.sort_by(|a, b| {
         let a_na = a.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
         let b_na = b.0.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN;
@@ -1327,7 +1393,12 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if b_na {
             return std::cmp::Ordering::Less;
         }
-        a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal)
+        let ordering = a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal);
+        if decreasing {
+            ordering.reverse()
+        } else {
+            ordering
+        }
     });
     let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
     if result.is_null() {
@@ -4330,6 +4401,82 @@ fn real_or_default(x: SEXP, default: f64) -> f64 {
             if v == NA_INTEGER { NA_REAL } else { v as f64 }
         } else {
             default
+        }
+    }
+}
+
+fn real_elt_or_default(x: SEXP, i: R_xlen_t, default: f64) -> f64 {
+    unsafe {
+        if x.is_null() || x == R_NilValue() {
+            return default;
+        }
+        let n = XLENGTH(x);
+        if n == 0 {
+            return default;
+        }
+        let idx = i % n;
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::REALSXP {
+            *REAL(x).add(idx as usize)
+        } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+            let v = *INTEGER(x).add(idx as usize);
+            if v == NA_INTEGER { default } else { v as f64 }
+        } else {
+            default
+        }
+    }
+}
+
+fn numeric_elt_as_count(x: SEXP, i: R_xlen_t) -> usize {
+    let value = real_elt_or_default(x, i, 0.0);
+    if value.is_finite() {
+        (value as i64).max(0) as usize
+    } else {
+        0
+    }
+}
+
+fn named_logical_arg(args: SEXP, name: &str) -> Option<bool> {
+    unsafe {
+        let mut current = args;
+        while !current.is_null() && current != R_NilValue() {
+            if tag_name(current).as_deref() == Some(name) {
+                let value = CAR(current);
+                if value.is_null() || value == R_NilValue() || XLENGTH(value) == 0 {
+                    return None;
+                }
+                let raw = if TYPEOF(value) == SEXPTYPE::LGLSXP || TYPEOF(value) == SEXPTYPE::INTSXP
+                {
+                    *INTEGER(value)
+                } else if TYPEOF(value) == SEXPTYPE::REALSXP {
+                    *REAL(value) as c_int
+                } else {
+                    return None;
+                };
+                return (raw != NA_INTEGER).then_some(raw != 0);
+            }
+            current = CDR(current);
+        }
+        None
+    }
+}
+
+fn copy_vector_elt(dst: SEXP, dst_idx: R_xlen_t, src: SEXP, src_idx: R_xlen_t) {
+    unsafe {
+        match TYPEOF(src) {
+            t if t == SEXPTYPE::REALSXP => {
+                *REAL(dst).add(dst_idx as usize) = *REAL(src).add(src_idx as usize);
+            }
+            t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP => {
+                *INTEGER(dst).add(dst_idx as usize) = *INTEGER(src).add(src_idx as usize);
+            }
+            t if t == SEXPTYPE::STRSXP => {
+                SET_STRING_ELT(dst, dst_idx, STRING_ELT(src, src_idx));
+            }
+            t if t == SEXPTYPE::RAWSXP => {
+                *RAW(dst).add(dst_idx as usize) = *RAW(src).add(src_idx as usize);
+            }
+            _ => {}
         }
     }
 }

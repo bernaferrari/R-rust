@@ -4,8 +4,8 @@ use std::os::raw::c_int;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
-    STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT, SET_VECTOR_ELT,
+    STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -25,26 +25,34 @@ use crate::mainutils::essentials::elt_to_string;
 
 /// R's `paste(..., sep=" ")` — concatenates vectors element-wise with recycling.
 pub unsafe fn do_paste(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_paste_impl(args, " ")
+    do_paste_impl(args, " ", false)
 }
 
 /// R's `paste0(...)` — same as paste with sep="".
 pub unsafe fn do_paste0(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_paste_impl(args, "")
+    do_paste_impl(args, "", true)
 }
 
-unsafe fn do_paste_impl(args: SEXP, sep: &str) -> SEXP {
+unsafe fn do_paste_impl(args: SEXP, default_sep: &str, paste0: bool) -> SEXP {
     // Collect all args, find max length
     let mut arg_vecs: Vec<SEXP> = Vec::new();
     let mut max_len: R_xlen_t = 0;
+    let mut sep = default_sep.to_string();
+    let mut collapse: Option<String> = None;
     let mut current = args;
     while !current.is_null() && current != R_NilValue() {
         let arg = CAR(current);
-        if !arg.is_null() && arg != R_NilValue() {
-            arg_vecs.push(arg);
-            let n = XLENGTH(arg);
-            if n > max_len {
-                max_len = n;
+        match arg_tag_name(current).as_deref() {
+            Some("sep") if !paste0 => sep = elt_to_string(arg, 0),
+            Some("collapse") => collapse = Some(elt_to_string(arg, 0)),
+            _ => {
+                if !arg.is_null() && arg != R_NilValue() {
+                    arg_vecs.push(arg);
+                    let n = XLENGTH(arg);
+                    if n > max_len {
+                        max_len = n;
+                    }
+                }
             }
         }
         current = CDR(current);
@@ -72,13 +80,23 @@ unsafe fn do_paste_impl(args: SEXP, sep: &str) -> SEXP {
             let s = elt_to_string(arg, idx);
             parts.push(s);
         }
-        let joined = parts.join(sep);
+        let joined = parts.join(&sep);
         let cstr = CString::new(joined).unwrap_or_default();
         let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
         if !charsxp.is_null() {
-            let data = (*result).gengc_next_node as *mut SEXP;
-            *data.add(i as usize) = charsxp;
+            SET_STRING_ELT(result, i, charsxp);
         }
+    }
+
+    if let Some(collapse) = collapse {
+        let collapsed = (0..max_len)
+            .map(|i| elt_to_string(result, i))
+            .collect::<Vec<_>>()
+            .join(&collapse);
+        let cstr = CString::new(collapsed).unwrap_or_default();
+        let out = Rf_mkString(cstr.as_ptr());
+        crate::sexp::protect::Rf_unprotect(1);
+        return out;
     }
 
     crate::sexp::protect::Rf_unprotect(1);
@@ -191,9 +209,11 @@ pub unsafe fn do_is_na(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     for i in 0..n {
         let is_na = if t == SEXPTYPE::REALSXP {
             let v = *REAL(x).add(i as usize);
-            v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN
+            v.is_nan()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             *INTEGER(x).add(i as usize) == NA_INTEGER
+        } else if t == SEXPTYPE::STRSXP {
+            STRING_ELT(x, i) == crate::sexp::globals::R_NaString()
         } else {
             false
         };
@@ -294,13 +314,21 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
     for i in 0..n {
         let test_idx = if test_n == 0 { 0 } else { i % test_n };
-        let cond = if TYPEOF(test) == SEXPTYPE::LGLSXP {
-            *LOGICAL(test).add(test_idx as usize) != 0
+        let test_value = if TYPEOF(test) == SEXPTYPE::LGLSXP {
+            *LOGICAL(test).add(test_idx as usize)
         } else if TYPEOF(test) == SEXPTYPE::INTSXP {
-            *INTEGER(test).add(test_idx as usize) != 0
+            *INTEGER(test).add(test_idx as usize)
+        } else if TYPEOF(test) == SEXPTYPE::REALSXP {
+            let v = *REAL(test).add(test_idx as usize);
+            if v.is_nan() { NA_INTEGER } else { v as c_int }
         } else {
-            false
+            0
         };
+        if test_value == NA_INTEGER {
+            *dst.add(i as usize) = NA_REAL;
+            continue;
+        }
+        let cond = test_value != 0;
 
         let src = if cond { yes } else { no };
         let src_n = if cond { yes_n } else { no_n };
@@ -319,6 +347,25 @@ pub unsafe fn do_ifelse(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
     crate::sexp::protect::Rf_unprotect(1);
     result
+}
+
+fn arg_tag_name(cell: SEXP) -> Option<String> {
+    unsafe {
+        let tag = TAG(cell);
+        if tag.is_null() || tag == R_NilValue() {
+            return None;
+        }
+        let pname = PRINTNAME(tag);
+        if pname.is_null() {
+            return None;
+        }
+        let chars = CHAR(pname);
+        if chars.is_null() {
+            None
+        } else {
+            Some(std::ffi::CStr::from_ptr(chars).to_str().ok()?.to_string())
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
