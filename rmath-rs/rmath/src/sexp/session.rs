@@ -67,12 +67,12 @@ fn install_symbol(name: &str) -> Option<SEXP> {
     if symbol.is_null() { None } else { Some(symbol) }
 }
 
-fn catch_eval<F>(f: F) -> RResult<SEXP>
+fn catch_eval_result<'a, F>(f: F) -> RResult<Sexp<'a>>
 where
-    F: FnOnce() -> SEXP,
+    F: FnOnce() -> Result<Sexp<'a>, String>,
 {
     match catch_unwind(AssertUnwindSafe(f)) {
-        Ok(value) => Ok(value),
+        Ok(value) => value.map_err(|message| REvalError { message }),
         Err(payload) => match payload.downcast::<RSignal>() {
             Ok(signal) => match *signal {
                 RSignal::Error { message } => Err(REvalError { message }),
@@ -85,6 +85,14 @@ where
                 Err(payload) => std::panic::resume_unwind(payload),
             },
         },
+    }
+}
+
+fn expr_or_nil(expr: SEXP) -> SEXP {
+    if expr.is_null() {
+        unsafe { R_NilValue() }
+    } else {
+        expr
     }
 }
 
@@ -202,21 +210,34 @@ impl RSession {
     ///
     /// The `expr` pointer must be a valid SEXP or null.
     pub fn eval(&self, expr: SEXP) -> RResult<SEXP> {
+        self.eval_sexp_raw(expr).map(Sexp::as_raw)
+    }
+
+    /// Evaluate a raw expression pointer after proving it belongs to this session.
+    pub fn eval_sexp_raw(&self, expr: SEXP) -> RResult<Sexp<'_>> {
+        let expr = expr_or_nil(expr);
+        let expr = self.sexp(expr).ok_or_else(|| REvalError {
+            message: "expression does not belong to this session".to_string(),
+        })?;
+        self.eval_sexp(expr)
+    }
+
+    /// Evaluate an expression and return a session-scoped safe wrapper.
+    pub fn eval_sexp<'session>(&'session self, expr: Sexp<'_>) -> RResult<Sexp<'session>> {
         if !self.active {
             return Err(REvalError {
                 message: "session is closed".to_string(),
             });
         }
-        self.with_active(|| {
-            catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) })
-        })
-    }
 
-    /// Evaluate an expression and return a session-scoped safe wrapper.
-    pub fn eval_sexp<'session>(&'session self, expr: Sexp<'_>) -> RResult<Sexp<'session>> {
-        let result = self.eval(expr.as_raw())?;
-        self.sexp(result).ok_or_else(|| REvalError {
-            message: "evaluation returned a SEXP outside this session".to_string(),
+        self.with_active(|| {
+            let expr = self.sexp(expr.as_raw()).ok_or_else(|| REvalError {
+                message: "expression does not belong to this session".to_string(),
+            })?;
+            let env = self.global_env().ok_or_else(|| REvalError {
+                message: "session has no global environment".to_string(),
+            })?;
+            catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))
         })
     }
 
@@ -229,6 +250,29 @@ impl RSession {
         &self,
         expr: SEXP,
     ) -> (RResult<SEXP>, super::output::RCapturedOutput, bool) {
+        let Some(expr) = self.sexp(expr_or_nil(expr)) else {
+            return (
+                Err(REvalError {
+                    message: "expression does not belong to this session".to_string(),
+                }),
+                super::output::RCapturedOutput::default(),
+                false,
+            );
+        };
+        let (result, output, visible) = self.eval_sexp_with_output_capture(expr);
+        (result.map(Sexp::as_raw), output, visible)
+    }
+
+    /// Evaluate an expression while capturing output and returning a typed
+    /// session-scoped result.
+    pub fn eval_sexp_with_output_capture<'session>(
+        &'session self,
+        expr: Sexp<'_>,
+    ) -> (
+        RResult<Sexp<'session>>,
+        super::output::RCapturedOutput,
+        bool,
+    ) {
         if !self.active {
             return (
                 Err(REvalError {
@@ -240,9 +284,7 @@ impl RSession {
         }
         self.with_active(|| {
             super::output::start_capture();
-            let result = catch_eval(|| unsafe {
-                crate::eval::eval::Rf_eval(expr, self.instance.global_env)
-            });
+            let result = self.eval_sexp(expr);
             let visible = super::globals::R_Visible() != 0;
             let output = super::output::stop_capture();
             (result, output, visible)
@@ -260,12 +302,13 @@ impl RSession {
     ///
     /// Both `expr` and `env` pointers must be valid SEXPs or null.
     pub fn eval_in(&self, expr: SEXP, env: SEXP) -> RResult<SEXP> {
-        if !self.active {
-            return Err(REvalError {
-                message: "session is closed".to_string(),
-            });
-        }
-        self.with_active(|| catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, env) }))
+        let expr = self.sexp(expr_or_nil(expr)).ok_or_else(|| REvalError {
+            message: "expression does not belong to this session".to_string(),
+        })?;
+        let env = self.sexp(env).ok_or_else(|| REvalError {
+            message: "environment does not belong to this session".to_string(),
+        })?;
+        self.eval_sexp_in(expr, env).map(Sexp::as_raw)
     }
 
     /// Evaluate an expression in a custom environment and return a
@@ -275,9 +318,20 @@ impl RSession {
         expr: Sexp<'_>,
         env: Sexp<'_>,
     ) -> RResult<Sexp<'session>> {
-        let result = self.eval_in(expr.as_raw(), env.as_raw())?;
-        self.sexp(result).ok_or_else(|| REvalError {
-            message: "evaluation returned a SEXP outside this session".to_string(),
+        if !self.active {
+            return Err(REvalError {
+                message: "session is closed".to_string(),
+            });
+        }
+
+        self.with_active(|| {
+            let expr = self.sexp(expr.as_raw()).ok_or_else(|| REvalError {
+                message: "expression does not belong to this session".to_string(),
+            })?;
+            let env = self.sexp(env.as_raw()).ok_or_else(|| REvalError {
+                message: "environment does not belong to this session".to_string(),
+            })?;
+            catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))
         })
     }
 
@@ -509,6 +563,26 @@ mod tests {
             .expect("self-evaluating scalar should evaluate");
 
         assert_eq!(result.integer_elt(0), Some(7));
+    }
+
+    #[test]
+    fn test_session_eval_with_output_capture_returns_typed_wrapper() {
+        let mut session = RSession::new();
+        let expr = session
+            .with_arena(|arena| {
+                crate::sexp::builder::scalar_integer_in(arena, 8)
+                    .expect("scalar allocation should succeed")
+                    .as_raw()
+            })
+            .expect("session should be active");
+        let expr = session.sexp(expr).expect("expr belongs to session");
+
+        let (result, output, visible) = session.eval_sexp_with_output_capture(expr);
+        let result = result.expect("self-evaluating scalar should evaluate");
+
+        assert_eq!(result.integer_elt(0), Some(8));
+        assert!(output.stdout.is_empty());
+        assert!(visible);
     }
 
     #[test]

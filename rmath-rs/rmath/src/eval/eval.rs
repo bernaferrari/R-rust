@@ -12,13 +12,10 @@
 //!
 //! # Architecture
 //!
-//! The module uses a two-layer design:
-//! - **Safe layer**: Functions like [`eval_safe`], [`eval_lang_safe`], and
-//!   [`find_var_safe`] work with `Sexp<'a>` and return `Result<Sexp<'a>, String>`.
-//!   These are the idiomatic Rust APIs.
-//! - **FFI layer**: Functions like [`Rf_eval`] are thin shims that convert
-//!   raw `SEXP` pointers to `Sexp<'a>`, delegate to the safe layer, and
-//!   convert back.
+//! Rust code should enter through [`EvalContext`] or [`eval_expr`], which work
+//! with owner-scoped `Sexp<'a>` handles and return `Result<Sexp<'a>, String>`.
+//! The C-shaped [`Rf_eval`] entrypoint is kept as a compatibility shell for
+//! ported code that still passes raw `SEXP` pointers.
 
 use std::ffi::CString;
 use std::os::raw::c_int;
@@ -217,6 +214,51 @@ pub fn reset_eval_limits() {
 // ---------------------------------------------------------------------------
 // Safe eval API — the primary internal implementation
 // ---------------------------------------------------------------------------
+
+/// Rust-shaped evaluator bound to one environment.
+///
+/// This is the preferred entrypoint for Rust code. It keeps expression and
+/// environment ownership in the type system; raw `SEXP` pointers should only
+/// reach this layer after an arena or session has wrapped them as `Sexp`.
+#[derive(Clone, Copy, Debug)]
+pub struct EvalContext<'a> {
+    env: Sexp<'a>,
+}
+
+impl<'a> EvalContext<'a> {
+    /// Create an evaluator for `env`.
+    pub fn new(env: Sexp<'a>) -> Self {
+        EvalContext { env }
+    }
+
+    /// Return the environment used by this evaluator.
+    pub fn env(self) -> Sexp<'a> {
+        self.env
+    }
+
+    /// Evaluate an expression in this context.
+    pub fn eval(self, expr: Sexp<'a>) -> Result<Sexp<'a>, String> {
+        eval_expr(expr, self.env)
+    }
+}
+
+/// Evaluate an expression using owner-scoped Rust handles.
+///
+/// This function is the Rust-shaped evaluator entrypoint. It performs the
+/// evaluator-side cancellation/visibility setup that the legacy raw `Rf_eval`
+/// shim used to own, then delegates to the safe evaluator implementation.
+pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    crate::sexp::instance::check_cancellation();
+    set_R_Visible(TRUE);
+
+    match eval_safe(expr, env) {
+        Ok(result) => Ok(result),
+        Err(message) if is_simple_warning_hook_call(expr) => {
+            Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
+        }
+        Err(message) => Err(message),
+    }
+}
 
 /// Depth guard that decrements R_EvalDepth when dropped.
 struct DepthGuard(c_int);
@@ -5445,16 +5487,10 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 #[must_use]
 #[unsafe(no_mangle)]
 pub unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
-    crate::sexp::instance::check_cancellation();
-    set_R_Visible(TRUE);
-
     match (Sexp::from_raw(e), Sexp::from_raw(rho)) {
-        (Some(expr), Some(env)) => match eval_safe(expr, env) {
+        (Some(expr), Some(env)) => match eval_expr(expr, env) {
             Ok(result) => result.as_raw(),
             Err(msg) => {
-                if is_simple_warning_hook_call(expr) {
-                    return R_NilValue();
-                }
                 std::panic::panic_any(crate::sexp::context::RSignal::Error { message: msg });
             }
         },
@@ -5659,5 +5695,32 @@ pub unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         );
         Rf_unprotect(1);
         ans
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::builder::scalar_integer_in;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn eval_context_evaluates_owner_scoped_expression() {
+        let mut session = RSession::new();
+        let expr = session
+            .with_arena(|arena| {
+                scalar_integer_in(arena, 123)
+                    .expect("scalar allocation should succeed")
+                    .as_raw()
+            })
+            .expect("session should be active");
+        let expr = session.sexp(expr).expect("expr belongs to session");
+        let env = session.global_env().expect("global env should exist");
+
+        let result = EvalContext::new(env)
+            .eval(expr)
+            .expect("self-evaluating scalar should evaluate");
+
+        assert_eq!(result.integer_elt(0), Some(123));
     }
 }

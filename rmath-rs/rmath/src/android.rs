@@ -228,20 +228,13 @@ impl RSession {
             };
         }
 
-        let (result, captured, visible) = self.core.eval_with_output_capture(sexp);
+        let Some(expr) = self.core.sexp(sexp) else {
+            return error_result("parsed expression does not belong to session");
+        };
+
+        let (result, captured, visible) = self.core.eval_sexp_with_output_capture(expr);
         match result {
-            Ok(result) => match Sexp::from_raw(result) {
-                Some(result) => result_from_eval(result, captured, visible),
-                None => RResult {
-                    value: 0.0,
-                    typed: RValue::Null,
-                    output: if visible {
-                        "NULL".to_string()
-                    } else {
-                        String::new()
-                    },
-                },
-            },
+            Ok(result) => result_from_eval(result, captured, visible),
             Err(e) => error_result(e.to_string()),
         }
     }
