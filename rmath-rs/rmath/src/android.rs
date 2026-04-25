@@ -90,6 +90,19 @@ impl RSession {
         self.core.is_active()
     }
 
+    pub fn runtime_info(&self) -> RRuntimeInfo {
+        RRuntimeInfo {
+            is_active: self.is_active(),
+            library_paths: self
+                .core
+                .library_paths()
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+            temp_dir: self.core.temp_dir().to_string_lossy().into_owned(),
+        }
+    }
+
     pub fn set_cancellation_flag(&mut self, flag: Option<CancellationFlag>) {
         self.core.set_cancellation_flag(flag);
     }
@@ -244,6 +257,14 @@ pub struct RResult {
     pub typed: RValue,
     /// R-style display output.
     pub output: String,
+}
+
+/// Runtime state needed by Android hosts to wire package libraries and temp files.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RRuntimeInfo {
+    pub is_active: bool,
+    pub library_paths: Vec<String>,
+    pub temp_dir: String,
 }
 
 impl RResult {
@@ -530,6 +551,21 @@ mod tests {
             string_vector(vec![cache.join("Rtmp").to_string_lossy().into_owned()])
         );
         assert_eq!(session.eval("file.exists(tempdir())").output, "[1] TRUE");
+        assert_eq!(
+            session.runtime_info(),
+            RRuntimeInfo {
+                is_active: true,
+                library_paths: vec![
+                    files
+                        .join("R")
+                        .join("library")
+                        .to_string_lossy()
+                        .into_owned(),
+                    bundled.to_string_lossy().into_owned()
+                ],
+                temp_dir: cache.join("Rtmp").to_string_lossy().into_owned(),
+            }
+        );
 
         let _ = std::fs::remove_dir_all(root);
     }

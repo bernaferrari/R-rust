@@ -9,7 +9,7 @@ use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
 use std::sync::{Arc, atomic::AtomicBool};
 
-pub use rmath::android::{RAttribute, RComplexValue, RMetadata, RValue};
+pub use rmath::android::{RAttribute, RComplexValue, RMetadata, RRuntimeInfo, RValue};
 
 use thiserror::Error;
 
@@ -127,6 +127,11 @@ impl RSession {
         self.inner
             .configure_paths(app_files_dir, cache_dir, bundled_library_dir)
             .map_err(RSessionError::InitFailed)
+    }
+
+    /// Return host-visible runtime path/session state.
+    pub fn runtime_info(&self) -> RRuntimeInfo {
+        self.inner.runtime_info()
     }
 
     fn eval_result_with_cancel(
@@ -495,6 +500,21 @@ mod tests {
                 ),
                 Some(bundled.to_string_lossy().into_owned())
             ])
+        );
+        assert_eq!(
+            session.runtime_info(),
+            RRuntimeInfo {
+                is_active: true,
+                library_paths: vec![
+                    files
+                        .join("R")
+                        .join("library")
+                        .to_string_lossy()
+                        .into_owned(),
+                    bundled.to_string_lossy().into_owned()
+                ],
+                temp_dir: cache.join("Rtmp").to_string_lossy().into_owned(),
+            }
         );
 
         let _ = std::fs::remove_dir_all(root);

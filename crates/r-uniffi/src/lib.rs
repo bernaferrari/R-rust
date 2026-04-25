@@ -125,6 +125,13 @@ pub struct EvalResult {
     pub value: RValue,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct RuntimeInfo {
+    pub is_active: bool,
+    pub library_paths: Vec<String>,
+    pub temp_dir: String,
+}
+
 fn empty_value(kind: RValueKind) -> RValue {
     RValue {
         kind,
@@ -257,6 +264,9 @@ enum SessionCommand {
         bundled_library_dir: Option<String>,
         reply: Sender<Result<(), RError>>,
     },
+    RuntimeInfo {
+        reply: Sender<Result<RuntimeInfo, RError>>,
+    },
     Eval {
         code: String,
         reply: Sender<Result<EvalResult, RError>>,
@@ -320,6 +330,14 @@ fn spawn_worker(
                         )
                         .map_err(|e| RError::InitFailed);
                     let _ = reply.send(result);
+                }
+                SessionCommand::RuntimeInfo { reply } => {
+                    let info = session.runtime_info();
+                    let _ = reply.send(Ok(RuntimeInfo {
+                        is_active: info.is_active,
+                        library_paths: info.library_paths,
+                        temp_dir: info.temp_dir,
+                    }));
                 }
                 SessionCommand::Eval { code, reply } => {
                     let result = session
@@ -434,6 +452,15 @@ impl RSession {
             reply: reply_tx,
         })
         .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
+    pub fn runtime_info(&self) -> Result<RuntimeInfo, RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::RuntimeInfo { reply: reply_tx })
+            .map_err(|_| RError::SessionClosed)?;
         reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
 
@@ -633,6 +660,21 @@ mod tests {
                 ),
                 Some(bundled.to_string_lossy().into_owned())
             ]
+        );
+        assert_eq!(
+            session.runtime_info().expect("runtime info"),
+            RuntimeInfo {
+                is_active: true,
+                library_paths: vec![
+                    files
+                        .join("R")
+                        .join("library")
+                        .to_string_lossy()
+                        .into_owned(),
+                    bundled.to_string_lossy().into_owned()
+                ],
+                temp_dir: cache.join("Rtmp").to_string_lossy().into_owned(),
+            }
         );
 
         let _ = std::fs::remove_dir_all(root);
