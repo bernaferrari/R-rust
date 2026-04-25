@@ -567,6 +567,14 @@ impl RSession {
             .map_err(|_| RError::SessionClosed)?;
         reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
+
+    fn shutdown_worker(&self) {
+        self.cancel();
+        let mut tx_guard = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(tx) = tx_guard.take() {
+            let _ = tx.send(SessionCommand::Shutdown);
+        }
+    }
 }
 
 #[uniffi::export]
@@ -708,23 +716,11 @@ impl RSession {
     pub fn cancel_current_operation(&self) {
         self.cancel();
     }
-
-    pub fn close(&self) {
-        self.destroy();
-    }
-
-    pub fn destroy(&self) {
-        self.cancel();
-        let mut tx_guard = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(tx) = tx_guard.take() {
-            let _ = tx.send(SessionCommand::Shutdown);
-        }
-    }
 }
 
 impl Drop for RSession {
     fn drop(&mut self) {
-        self.destroy();
+        self.shutdown_worker();
     }
 }
 
@@ -785,11 +781,11 @@ mod tests {
     }
 
     #[test]
-    fn lifecycle_aliases_close_session() {
+    fn shutdown_worker_closes_session() {
         let session = RSession::new().expect("session");
 
         assert!(session.is_active());
-        session.close();
+        session.shutdown_worker();
         assert!(!session.is_active());
         assert!(matches!(
             session.eval("1 + 1".to_string()),

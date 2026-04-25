@@ -37,6 +37,12 @@ android {
     buildFeatures {
         compose = true
     }
+    sourceSets {
+        getByName("main") {
+            java.srcDirs("src/main/kotlin", "generated/kotlin")
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
     packaging {
         jniLibs {
             useLegacyPackaging = true
@@ -45,8 +51,8 @@ android {
 }
 
 dependencies {
-    implementation(project(":crates:rport-android"))
     implementation(libs.androidx.core.ktx)
+    implementation("androidx.annotation:annotation:1.9.1")
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
@@ -55,4 +61,5 @@ dependencies {
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
     implementation(libs.coil.compose)
+    implementation("net.java.dev.jna:jna:5.14.0@aar")
 }

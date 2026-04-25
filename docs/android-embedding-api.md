@@ -8,10 +8,10 @@ The Android-facing API is intentionally an owned-value boundary.
 - `r_embed::RSession::eval_result()` returns display output plus an owned `RValue`.
 - UniFFI `RSession::eval_result()` returns the same boundary shape as an
   `EvalResult { output, value }` record for Kotlin/Java callers.
-- UniFFI sessions expose `is_active()`, `close()`, and
-  `cancel_current_operation()` as Android-friendly lifecycle controls. The older
-  `destroy()` and `cancel()` names remain as compatibility aliases.
-- Android hosts should call `configure_android_paths(appFilesDir, cacheDir,
+- UniFFI sessions expose `isActive()` and `cancelCurrentOperation()` as explicit
+  runtime controls. Kotlin callers release the object with UniFFI's generated
+  `AutoCloseable.close()`, which shuts down the worker through Rust `Drop`.
+- Android hosts should call `configureAndroidPaths(appFilesDir, cacheDir,
   bundledLibraryDir)` before evaluation when app-private library and temp paths
   are known. The configured paths drive `.libPaths()`, `find.package()`,
   `library()`, `require()`, `tempdir()`, and `tempfile()` for that session.
@@ -46,16 +46,16 @@ The Android sandbox and package/process policy is documented in
 
 ```kotlin
 val session = RSession()
-check(session.is_active())
+check(session.isActive())
 
-val paths = android_runtime_paths(
+val paths = androidRuntimePaths(
     appFilesDir.absolutePath,
     cacheDir.absolutePath,
     bundledLibraryDir?.absolutePath,
 )
-session.configure_android_runtime(paths)
+session.configureAndroidRuntime(paths)
 
-val result = session.eval_result("c(1, 2, 3)")
+val result = session.evalResult("c(1, 2, 3)")
 val linePlot = session.render(
     "plot(c(1, 2, 3), c(1, 4, 9), type = \"l\", col = \"blue\", lwd = 2)",
     800u,
@@ -67,7 +67,7 @@ val pointPlot = session.render(
     600u,
 )
 
-session.cancel_current_operation()
+session.cancelCurrentOperation()
 session.close()
 ```
 
