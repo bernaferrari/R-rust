@@ -29,7 +29,6 @@
 use std::ffi::CStr;
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
-use std::sync::OnceLock;
 
 use crate::eval::attrib_core::{
     R_ClassSymbol, R_DimNamesSymbol, R_DimSymbol, R_LevelsSymbol, R_NamesSymbol, getAttrib,
@@ -42,12 +41,11 @@ use crate::sexp::constructors::*;
 use crate::sexp::context::RError;
 use crate::sexp::ffi::{
     NA_INTEGER, NA_LOGICAL, R_NA_BIT_PATTERN, R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE,
-    SexprecCore,
 };
-use crate::sexp::globals::{R_GlobalEnv, R_NilValue};
+use crate::sexp::globals::{R_GlobalEnv, R_NaString as R_GlobalNaString, R_NilValue};
 use crate::sexp::memory_ext::allocSExp;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::object::Sexp;
+use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -106,20 +104,6 @@ pub const WARN_RAW: c_int = 8;
 // ---------------------------------------------------------------------------
 // Internal helper: NA_STRING sentinel
 // ---------------------------------------------------------------------------
-
-/// Get (or create) the NA_STRING sentinel -- a special CHARSXP representing NA.
-///
-/// In R, NA_STRING is a specific CHARSXP with the NA bit set in its gp field.
-/// We use a OnceLock to create it once and reuse it.
-fn get_na_string() -> SEXP {
-    static NA_STRING_VAL: OnceLock<usize> = OnceLock::new();
-    let val = NA_STRING_VAL.get_or_init(|| {
-        let mut node = SexprecCore::new_vector(SEXPTYPE::CHARSXP, 2);
-        node.sxpinfo.set_gp(1);
-        Box::into_raw(Box::new(node)) as usize
-    });
-    *val as SEXP
-}
 
 // ---------------------------------------------------------------------------
 // Internal helpers: xlength, isBlankString wrappers
@@ -292,7 +276,7 @@ unsafe fn errorcall(_call: SEXP, msg: &str) -> ! {
 
 /// Get R_NaString -- returns the NA string CHARSXP.
 fn R_NaString() -> SEXP {
-    get_na_string()
+    unsafe { R_GlobalNaString() }
 }
 
 /// Get R_BlankString -- returns the empty string CHARSXP.
@@ -3916,6 +3900,12 @@ mod tests {
 
         let s_na = unsafe { StringFromReal_impl(R_NA_REAL(), std::ptr::null_mut()) };
         assert!(!s_na.is_null());
+    }
+
+    #[test]
+    fn test_na_string_uses_global_sentinel() {
+        let _session = crate::sexp::session::RSession::new();
+        assert_eq!(R_NaString(), unsafe { crate::sexp::globals::R_NaString() });
     }
 
     #[test]

@@ -21,8 +21,8 @@ use std::os::raw::c_int;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::*;
 use crate::sexp::object::Sexp;
+use crate::sexp::protect::*;
 
 /// Copy a string using memmove (handles overlapping regions).
 pub fn mystrcpy(dest: &mut [u8], src: &[u8]) {
@@ -331,15 +331,7 @@ pub fn xtable_key_comp(key: char, entry: &XtableT) -> std::cmp::Ordering {
 ///
 /// In R, NA_STRING is a specific CHARSXP with the NA bit set in its gp field.
 unsafe fn get_na_string() -> SEXP {
-    use crate::sexp::ffi::SexprecCore;
-    use std::sync::OnceLock;
-    static NA_STRING_VAL: OnceLock<usize> = OnceLock::new();
-    let val = NA_STRING_VAL.get_or_init(|| {
-        let mut node = SexprecCore::new_vector(SEXPTYPE::CHARSXP, 2);
-        node.sxpinfo.set_gp(1);
-        Box::into_raw(Box::new(node)) as usize
-    });
-    *val as SEXP
+    unsafe { crate::sexp::globals::R_NaString() }
 }
 
 /// Get R_BlankString -- the empty string CHARSXP.
@@ -1540,5 +1532,13 @@ mod tests {
             let cs = Rf_mkCharLen(c"hello".as_ptr(), 5);
             assert_eq!(charsxp_byte_len(cs), 5);
         }
+    }
+
+    #[test]
+    fn test_na_string_uses_global_sentinel() {
+        let _session = crate::sexp::session::RSession::new();
+        assert_eq!(unsafe { get_na_string() }, unsafe {
+            crate::sexp::globals::R_NaString()
+        });
     }
 }
