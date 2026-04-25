@@ -19,21 +19,24 @@
 //!
 //! # Convenience Functions
 //!
-//! For simple cases, use the top-level convenience functions:
-//! [`int_vec`], [`real_vec`], [`logical_vec`], [`raw_vec`], [`string_vec`],
-//! and [`seq`].
+//! For simple cases, use the top-level `_in` convenience functions with an
+//! explicit arena borrow: [`int_vec_in`], [`real_vec_in`], [`logical_vec_in`],
+//! [`raw_vec_in`], [`string_vec_in`], and [`seq_in`].
 //!
 //! # Examples
 //!
 //! ```
-//! use rmath::sexp::builder::{IntVector, RealVector, seq};
+//! use rmath::sexp::builder::{IntVector, RealVector, seq_in};
+//! use rmath::sexp::memory::RArena;
+//!
+//! let mut arena = RArena::new();
 //!
 //! // Using builders
-//! let ints = IntVector::new(&[1, 2, 3]).build();
-//! let reals = RealVector::seq(0.0, 1.0, 0.25).build();
+//! let ints = IntVector::new(&[1, 2, 3]).build_in(&mut arena);
+//! let reals = RealVector::seq(0.0, 1.0, 0.25).build_in(&mut arena);
 //!
 //! // Using convenience functions
-//! let s = seq(0.0, 2.0, 1.0);
+//! let s = seq_in(&mut arena, 0.0, 2.0, 1.0);
 //! ```
 
 use std::os::raw::{c_double, c_int};
@@ -41,7 +44,7 @@ use std::ptr;
 
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
-use super::memory::{RArena, with_arena};
+use super::memory::RArena;
 use super::safe::Sexp;
 
 // ---------------------------------------------------------------------------
@@ -58,9 +61,10 @@ use super::safe::Sexp;
 /// ```
 /// use rmath::sexp::builder::IntVector;
 ///
-/// let vec = IntVector::new(&[1, 2, 3, 4, 5]).build();
-/// let zeros = IntVector::zeros(10).build();
-/// let nas = IntVector::with_na(3).build();
+/// let mut arena = rmath::sexp::memory::RArena::new();
+/// let vec = IntVector::new(&[1, 2, 3, 4, 5]).build_in(&mut arena);
+/// let zeros = IntVector::zeros(10).build_in(&mut arena);
+/// let nas = IntVector::with_na(3).build_in(&mut arena);
 /// ```
 pub struct IntVector {
     values: Vec<c_int>,
@@ -86,11 +90,7 @@ impl IntVector {
         IntVector { values: vec![0; n] }
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let len = self.values.len() as R_xlen_t;
         let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, len);
         if ptr.is_null() {
@@ -122,8 +122,9 @@ impl IntVector {
 /// ```
 /// use rmath::sexp::builder::RealVector;
 ///
-/// let vec = RealVector::new(&[1.5, 2.5, 3.5]).build();
-/// let seq = RealVector::seq(0.0, 1.0, 0.1).build();
+/// let mut arena = rmath::sexp::memory::RArena::new();
+/// let vec = RealVector::new(&[1.5, 2.5, 3.5]).build_in(&mut arena);
+/// let seq = RealVector::seq(0.0, 1.0, 0.1).build_in(&mut arena);
 /// ```
 pub struct RealVector {
     values: Vec<c_double>,
@@ -176,11 +177,7 @@ impl RealVector {
         RealVector { values }
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let len = self.values.len() as R_xlen_t;
         let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, len);
         if ptr.is_null() {
@@ -211,7 +208,8 @@ impl RealVector {
 /// ```
 /// use rmath::sexp::builder::LogicalVector;
 ///
-/// let vec = LogicalVector::new(&[true, false, true]).build();
+/// let mut arena = rmath::sexp::memory::RArena::new();
+/// let vec = LogicalVector::new(&[true, false, true]).build_in(&mut arena);
 /// ```
 pub struct LogicalVector {
     values: Vec<c_int>,
@@ -232,11 +230,7 @@ impl LogicalVector {
         }
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let len = self.values.len() as R_xlen_t;
         let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, len);
         if ptr.is_null() {
@@ -264,7 +258,8 @@ impl LogicalVector {
 /// ```
 /// use rmath::sexp::builder::RawVector;
 ///
-/// let vec = RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build();
+/// let mut arena = rmath::sexp::memory::RArena::new();
+/// let vec = RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build_in(&mut arena);
 /// ```
 pub struct RawVector {
     values: Vec<Rbyte>,
@@ -283,11 +278,7 @@ impl RawVector {
         RawVector { values: vec![0; n] }
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let len = self.values.len() as R_xlen_t;
         let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, len);
         if ptr.is_null() {
@@ -317,7 +308,8 @@ impl RawVector {
 /// ```
 /// use rmath::sexp::builder::StringVector;
 ///
-/// let vec = StringVector::new(&["hello", "world"]).build();
+/// let mut arena = rmath::sexp::memory::RArena::new();
+/// let vec = StringVector::new(&["hello", "world"]).build_in(&mut arena);
 /// ```
 pub struct StringVector {
     values: Vec<String>,
@@ -331,11 +323,7 @@ impl StringVector {
         }
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let len = self.values.len() as R_xlen_t;
         let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, len);
         if ptr.is_null() {
@@ -369,10 +357,16 @@ impl StringVector {
 /// ```
 /// use rmath::sexp::builder::{GenericVector, IntVector};
 ///
-/// let int_v = IntVector::new(&[1, 2]).build().unwrap_or_else(|| panic!("failed to build IntVector"));
+/// let mut arena = rmath::sexp::memory::RArena::new();
+/// let int_v = {
+///     let int_v = IntVector::new(&[1, 2])
+///         .build_in(&mut arena)
+///         .unwrap_or_else(|| panic!("failed to build IntVector"));
+///     int_v.as_raw()
+/// };
 /// let vec = GenericVector::with_length(2)
-///     .set(0, int_v.as_raw())
-///     .build();
+///     .set(0, int_v)
+///     .build_in(&mut arena);
 /// ```
 pub struct GenericVector {
     elements: Vec<SEXP>,
@@ -396,11 +390,7 @@ impl GenericVector {
         self
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let len = self.elements.len() as R_xlen_t;
         let ptr = arena.alloc_vector(SEXPTYPE::VECSXP, len);
         if ptr.is_null() {
@@ -437,7 +427,7 @@ impl GenericVector {
 /// let a = arena.alloc_node(SEXPTYPE::INTSXP);
 /// let list = PairlistBuilder::new()
 ///     .push_untagged(a)
-///     .build();
+///     .build_in(&mut arena);
 /// ```
 pub struct PairlistBuilder {
     elements: Vec<(SEXP, SEXP)>, // (car, tag) pairs
@@ -462,11 +452,7 @@ impl PairlistBuilder {
         self.push(car, ptr::null_mut())
     }
 
-    pub fn build(self) -> Option<Sexp<'static>> {
-        with_arena(|arena| self.build_in(arena))
-    }
-
-    pub fn build_in(self, arena: &mut RArena) -> Option<Sexp<'static>> {
+    pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
         let mut result: SEXP = ptr::null_mut();
         for (car, tag) in self.elements.into_iter().rev() {
             result = arena.cons(car, result, tag);
@@ -485,51 +471,32 @@ impl Default for PairlistBuilder {
 // Convenience functions
 // ---------------------------------------------------------------------------
 
-pub fn int_vec(values: &[c_int]) -> Option<Sexp<'static>> {
-    IntVector::new(values).build()
-}
-
-pub fn int_vec_in(arena: &mut RArena, values: &[c_int]) -> Option<Sexp<'static>> {
+pub fn int_vec_in<'arena>(arena: &'arena mut RArena, values: &[c_int]) -> Option<Sexp<'arena>> {
     IntVector::new(values).build_in(arena)
 }
 
-pub fn real_vec(values: &[c_double]) -> Option<Sexp<'static>> {
-    RealVector::new(values).build()
-}
-
-pub fn real_vec_in(arena: &mut RArena, values: &[c_double]) -> Option<Sexp<'static>> {
+pub fn real_vec_in<'arena>(arena: &'arena mut RArena, values: &[c_double]) -> Option<Sexp<'arena>> {
     RealVector::new(values).build_in(arena)
 }
 
-pub fn logical_vec(values: &[bool]) -> Option<Sexp<'static>> {
-    LogicalVector::new(values).build()
-}
-
-pub fn logical_vec_in(arena: &mut RArena, values: &[bool]) -> Option<Sexp<'static>> {
+pub fn logical_vec_in<'arena>(arena: &'arena mut RArena, values: &[bool]) -> Option<Sexp<'arena>> {
     LogicalVector::new(values).build_in(arena)
 }
 
-pub fn raw_vec(values: &[Rbyte]) -> Option<Sexp<'static>> {
-    RawVector::new(values).build()
-}
-
-pub fn raw_vec_in(arena: &mut RArena, values: &[Rbyte]) -> Option<Sexp<'static>> {
+pub fn raw_vec_in<'arena>(arena: &'arena mut RArena, values: &[Rbyte]) -> Option<Sexp<'arena>> {
     RawVector::new(values).build_in(arena)
 }
 
-pub fn string_vec(values: &[&str]) -> Option<Sexp<'static>> {
-    StringVector::new(values).build()
-}
-
-pub fn string_vec_in(arena: &mut RArena, values: &[&str]) -> Option<Sexp<'static>> {
+pub fn string_vec_in<'arena>(arena: &'arena mut RArena, values: &[&str]) -> Option<Sexp<'arena>> {
     StringVector::new(values).build_in(arena)
 }
 
-pub fn seq(start: f64, end: f64, step: f64) -> Option<Sexp<'static>> {
-    RealVector::seq(start, end, step).build()
-}
-
-pub fn seq_in(arena: &mut RArena, start: f64, end: f64, step: f64) -> Option<Sexp<'static>> {
+pub fn seq_in<'arena>(
+    arena: &'arena mut RArena,
+    start: f64,
+    end: f64,
+    step: f64,
+) -> Option<Sexp<'arena>> {
     RealVector::seq(start, end, step).build_in(arena)
 }
 
@@ -537,11 +504,7 @@ pub fn seq_in(arena: &mut RArena, start: f64, end: f64, step: f64) -> Option<Sex
 // Safe scalar constructors
 // ---------------------------------------------------------------------------
 
-pub fn scalar_integer(x: c_int) -> Option<Sexp<'static>> {
-    with_arena(|arena| scalar_integer_in(arena, x))
-}
-
-pub fn scalar_integer_in(arena: &mut RArena, x: c_int) -> Option<Sexp<'static>> {
+pub fn scalar_integer_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<Sexp<'arena>> {
     let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
     if ptr.is_null() {
         return None;
@@ -557,11 +520,7 @@ pub fn scalar_integer_in(arena: &mut RArena, x: c_int) -> Option<Sexp<'static>> 
     Sexp::from_raw(ptr)
 }
 
-pub fn scalar_real(x: c_double) -> Option<Sexp<'static>> {
-    with_arena(|arena| scalar_real_in(arena, x))
-}
-
-pub fn scalar_real_in(arena: &mut RArena, x: c_double) -> Option<Sexp<'static>> {
+pub fn scalar_real_in<'arena>(arena: &'arena mut RArena, x: c_double) -> Option<Sexp<'arena>> {
     let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
     if ptr.is_null() {
         return None;
@@ -577,11 +536,7 @@ pub fn scalar_real_in(arena: &mut RArena, x: c_double) -> Option<Sexp<'static>> 
     Sexp::from_raw(ptr)
 }
 
-pub fn scalar_logical(x: c_int) -> Option<Sexp<'static>> {
-    with_arena(|arena| scalar_logical_in(arena, x))
-}
-
-pub fn scalar_logical_in(arena: &mut RArena, x: c_int) -> Option<Sexp<'static>> {
+pub fn scalar_logical_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<Sexp<'arena>> {
     let ptr = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
     if ptr.is_null() {
         return None;
@@ -597,11 +552,7 @@ pub fn scalar_logical_in(arena: &mut RArena, x: c_int) -> Option<Sexp<'static>> 
     Sexp::from_raw(ptr)
 }
 
-pub fn scalar_raw(x: Rbyte) -> Option<Sexp<'static>> {
-    with_arena(|arena| scalar_raw_in(arena, x))
-}
-
-pub fn scalar_raw_in(arena: &mut RArena, x: Rbyte) -> Option<Sexp<'static>> {
+pub fn scalar_raw_in<'arena>(arena: &'arena mut RArena, x: Rbyte) -> Option<Sexp<'arena>> {
     let ptr = arena.alloc_vector(SEXPTYPE::RAWSXP, 1);
     if ptr.is_null() {
         return None;
@@ -617,11 +568,7 @@ pub fn scalar_raw_in(arena: &mut RArena, x: Rbyte) -> Option<Sexp<'static>> {
     Sexp::from_raw(ptr)
 }
 
-pub fn scalar_string(s: &str) -> Option<Sexp<'static>> {
-    with_arena(|arena| scalar_string_in(arena, s))
-}
-
-pub fn scalar_string_in(arena: &mut RArena, s: &str) -> Option<Sexp<'static>> {
+pub fn scalar_string_in<'arena>(arena: &'arena mut RArena, s: &str) -> Option<Sexp<'arena>> {
     let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 1);
     if ptr.is_null() {
         return None;
@@ -637,11 +584,11 @@ pub fn scalar_string_in(arena: &mut RArena, s: &str) -> Option<Sexp<'static>> {
     Sexp::from_raw(ptr)
 }
 
-pub fn scalar_complex(r: c_double, i: c_double) -> Option<Sexp<'static>> {
-    with_arena(|arena| scalar_complex_in(arena, r, i))
-}
-
-pub fn scalar_complex_in(arena: &mut RArena, r: c_double, i: c_double) -> Option<Sexp<'static>> {
+pub fn scalar_complex_in<'arena>(
+    arena: &'arena mut RArena,
+    r: c_double,
+    i: c_double,
+) -> Option<Sexp<'arena>> {
     let ptr = arena.alloc_vector(SEXPTYPE::CPLXSXP, 1);
     if ptr.is_null() {
         return None;
@@ -659,11 +606,7 @@ pub fn scalar_complex_in(arena: &mut RArena, r: c_double, i: c_double) -> Option
     Sexp::from_raw(ptr)
 }
 
-pub fn mk_char(s: &[u8]) -> Option<Sexp<'static>> {
-    with_arena(|arena| mk_char_in(arena, s))
-}
-
-pub fn mk_char_in(arena: &mut RArena, s: &[u8]) -> Option<Sexp<'static>> {
+pub fn mk_char_in<'arena>(arena: &'arena mut RArena, s: &[u8]) -> Option<Sexp<'arena>> {
     Sexp::from_raw(arena.alloc_charsxp(s))
 }
 
@@ -671,25 +614,21 @@ pub fn mk_char_in(arena: &mut RArena, s: &[u8]) -> Option<Sexp<'static>> {
 // Safe language/pairlist constructors
 // ---------------------------------------------------------------------------
 
-pub fn cons(car: Sexp<'_>, cdr: Sexp<'_>, tag: Option<Sexp<'_>>) -> Option<Sexp<'static>> {
-    with_arena(|arena| cons_in(arena, car, cdr, tag))
-}
-
-pub fn cons_in(
-    arena: &mut RArena,
+pub fn cons_in<'arena>(
+    arena: &'arena mut RArena,
     car: Sexp<'_>,
     cdr: Sexp<'_>,
     tag: Option<Sexp<'_>>,
-) -> Option<Sexp<'static>> {
+) -> Option<Sexp<'arena>> {
     let tag_raw = tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut());
     Sexp::from_raw(arena.cons(car.as_raw(), cdr.as_raw(), tag_raw))
 }
 
-pub fn lang2(car: Sexp<'_>, arg: Sexp<'_>) -> Option<Sexp<'static>> {
-    with_arena(|arena| lang2_in(arena, car, arg))
-}
-
-pub fn lang2_in(arena: &mut RArena, car: Sexp<'_>, arg: Sexp<'_>) -> Option<Sexp<'static>> {
+pub fn lang2_in<'arena>(
+    arena: &'arena mut RArena,
+    car: Sexp<'_>,
+    arg: Sexp<'_>,
+) -> Option<Sexp<'arena>> {
     let cdr = arena.alloc_node(SEXPTYPE::LANGSXP);
     if cdr.is_null() {
         return None;
@@ -711,16 +650,12 @@ pub fn lang2_in(arena: &mut RArena, car: Sexp<'_>, arg: Sexp<'_>) -> Option<Sexp
     Sexp::from_raw(head)
 }
 
-pub fn lang3(car: Sexp<'_>, arg1: Sexp<'_>, arg2: Sexp<'_>) -> Option<Sexp<'static>> {
-    with_arena(|arena| lang3_in(arena, car, arg1, arg2))
-}
-
-pub fn lang3_in(
-    arena: &mut RArena,
+pub fn lang3_in<'arena>(
+    arena: &'arena mut RArena,
     car: Sexp<'_>,
     arg1: Sexp<'_>,
     arg2: Sexp<'_>,
-) -> Option<Sexp<'static>> {
+) -> Option<Sexp<'arena>> {
     let c2 = arena.alloc_node(SEXPTYPE::LANGSXP);
     if c2.is_null() {
         return None;
@@ -765,7 +700,8 @@ mod tests {
 
     #[test]
     fn test_int_vector_builder() {
-        let vec = some(IntVector::new(&[1, 2, 3]).build());
+        let mut arena = RArena::new();
+        let vec = some(IntVector::new(&[1, 2, 3]).build_in(&mut arena));
         assert!(vec.is_vector());
         assert_eq!(vec.len(), 3);
         assert_eq!(vec.integer_elt(0), Some(1));
@@ -775,7 +711,8 @@ mod tests {
 
     #[test]
     fn test_int_vector_zeros() {
-        let vec = some(IntVector::zeros(5).build());
+        let mut arena = RArena::new();
+        let vec = some(IntVector::zeros(5).build_in(&mut arena));
         assert_eq!(vec.len(), 5);
         for i in 0..5 {
             assert_eq!(vec.integer_elt(i as R_xlen_t), Some(0));
@@ -784,7 +721,8 @@ mod tests {
 
     #[test]
     fn test_int_vector_na() {
-        let vec = some(IntVector::with_na(3).build());
+        let mut arena = RArena::new();
+        let vec = some(IntVector::with_na(3).build_in(&mut arena));
         assert_eq!(vec.len(), 3);
         for i in 0..3 {
             assert_eq!(
@@ -796,7 +734,8 @@ mod tests {
 
     #[test]
     fn test_real_vector_builder() {
-        let vec = some(RealVector::new(&[1.5, 2.5, 3.5]).build());
+        let mut arena = RArena::new();
+        let vec = some(RealVector::new(&[1.5, 2.5, 3.5]).build_in(&mut arena));
         assert_eq!(vec.len(), 3);
         assert!((some(vec.real_elt(0)) - 1.5).abs() < f64::EPSILON);
         assert!((some(vec.real_elt(1)) - 2.5).abs() < f64::EPSILON);
@@ -805,7 +744,8 @@ mod tests {
 
     #[test]
     fn test_real_vector_seq() {
-        let vec = some(RealVector::seq(0.0, 1.0, 0.25).build());
+        let mut arena = RArena::new();
+        let vec = some(RealVector::seq(0.0, 1.0, 0.25).build_in(&mut arena));
         assert_eq!(vec.len(), 5);
         assert!((some(vec.real_elt(0)) - 0.0).abs() < f64::EPSILON);
         assert!((some(vec.real_elt(4)) - 1.0).abs() < f64::EPSILON);
@@ -813,7 +753,8 @@ mod tests {
 
     #[test]
     fn test_logical_vector_builder() {
-        let vec = some(LogicalVector::new(&[true, false, true]).build());
+        let mut arena = RArena::new();
+        let vec = some(LogicalVector::new(&[true, false, true]).build_in(&mut arena));
         assert_eq!(vec.len(), 3);
         assert_eq!(vec.logical_elt(0), Some(1));
         assert_eq!(vec.logical_elt(1), Some(0));
@@ -822,7 +763,8 @@ mod tests {
 
     #[test]
     fn test_raw_vector_builder() {
-        let vec = some(RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build());
+        let mut arena = RArena::new();
+        let vec = some(RawVector::new(&[0xDE, 0xAD, 0xBE, 0xEF]).build_in(&mut arena));
         assert_eq!(vec.len(), 4);
         assert_eq!(vec.raw_elt(0), Some(0xDE));
         assert_eq!(vec.raw_elt(1), Some(0xAD));
@@ -832,7 +774,8 @@ mod tests {
 
     #[test]
     fn test_string_vector_builder() {
-        let vec = some(StringVector::new(&["hello", "world"]).build());
+        let mut arena = RArena::new();
+        let vec = some(StringVector::new(&["hello", "world"]).build_in(&mut arena));
         assert_eq!(vec.len(), 2);
         assert!(vec.string_elt(0).is_some());
         assert!(vec.string_elt(1).is_some());
@@ -840,13 +783,20 @@ mod tests {
 
     #[test]
     fn test_generic_vector_builder() {
-        let int_v = some(IntVector::new(&[1, 2]).build());
-        let real_v = some(RealVector::new(&[3.0, 4.0]).build());
+        let mut arena = RArena::new();
+        let int_v = {
+            let int_v = some(IntVector::new(&[1, 2]).build_in(&mut arena));
+            int_v.as_raw()
+        };
+        let real_v = {
+            let real_v = some(RealVector::new(&[3.0, 4.0]).build_in(&mut arena));
+            real_v.as_raw()
+        };
         let vec = some(
             GenericVector::with_length(2)
-                .set(0, int_v.as_raw())
-                .set(1, real_v.as_raw())
-                .build(),
+                .set(0, int_v)
+                .set(1, real_v)
+                .build_in(&mut arena),
         );
         assert_eq!(vec.len(), 2);
         assert!(vec.vector_elt(0).is_some());
@@ -862,7 +812,7 @@ mod tests {
             PairlistBuilder::new()
                 .push_untagged(a)
                 .push_untagged(b)
-                .build(),
+                .build_in(&mut arena),
         );
         assert!(list.is_pairlist());
         assert!(list.car().is_some());
@@ -871,45 +821,57 @@ mod tests {
 
     #[test]
     fn test_convenience_functions() {
-        let v1 = some(int_vec(&[10, 20, 30]));
+        let mut arena = RArena::new();
+        let v1 = some(int_vec_in(&mut arena, &[10, 20, 30]));
         assert_eq!(v1.integer_elt(0), Some(10));
 
-        let v2 = some(real_vec(&[1.0, 2.0]));
+        let mut arena = RArena::new();
+        let v2 = some(real_vec_in(&mut arena, &[1.0, 2.0]));
         assert!((some(v2.real_elt(0)) - 1.0).abs() < f64::EPSILON);
 
-        let v3 = some(logical_vec(&[true, false]));
+        let mut arena = RArena::new();
+        let v3 = some(logical_vec_in(&mut arena, &[true, false]));
         assert_eq!(v3.logical_elt(0), Some(1));
 
-        let v4 = some(raw_vec(&[0xFF]));
+        let mut arena = RArena::new();
+        let v4 = some(raw_vec_in(&mut arena, &[0xFF]));
         assert_eq!(v4.raw_elt(0), Some(0xFF));
 
-        let v5 = some(string_vec(&["test"]));
+        let mut arena = RArena::new();
+        let v5 = some(string_vec_in(&mut arena, &["test"]));
         assert_eq!(v5.len(), 1);
 
-        let v6 = some(seq(0.0, 2.0, 1.0));
+        let mut arena = RArena::new();
+        let v6 = some(seq_in(&mut arena, 0.0, 2.0, 1.0));
         assert_eq!(v6.len(), 3);
     }
 
     #[test]
     fn test_scalar_constructors() {
-        let si = some(scalar_integer(42));
+        let mut arena = RArena::new();
+        let si = some(scalar_integer_in(&mut arena, 42));
         assert_eq!(si.integer_elt(0), Some(42));
         assert_eq!(si.len(), 1);
 
-        let sr = some(scalar_real(3.14));
+        let mut arena = RArena::new();
+        let sr = some(scalar_real_in(&mut arena, 3.14));
         assert!((some(sr.real_elt(0)) - 3.14).abs() < f64::EPSILON);
 
-        let sl = some(scalar_logical(1));
+        let mut arena = RArena::new();
+        let sl = some(scalar_logical_in(&mut arena, 1));
         assert_eq!(sl.logical_elt(0), Some(1));
 
-        let sraw = some(scalar_raw(0xAB));
+        let mut arena = RArena::new();
+        let sraw = some(scalar_raw_in(&mut arena, 0xAB));
         assert_eq!(sraw.raw_elt(0), Some(0xAB));
 
-        let ss = some(scalar_string("hello"));
+        let mut arena = RArena::new();
+        let ss = some(scalar_string_in(&mut arena, "hello"));
         assert_eq!(ss.len(), 1);
         assert!(ss.string_elt(0).is_some());
 
-        let sc = some(scalar_complex(1.0, 2.0));
+        let mut arena = RArena::new();
+        let sc = some(scalar_complex_in(&mut arena, 1.0, 2.0));
         let c = some(sc.complex_elt(0));
         assert!((c.r - 1.0).abs() < f64::EPSILON);
         assert!((c.i - 2.0).abs() < f64::EPSILON);
@@ -917,7 +879,8 @@ mod tests {
 
     #[test]
     fn test_mk_char() {
-        let c = some(mk_char(b"hello"));
+        let mut arena = RArena::new();
+        let c = some(mk_char_in(&mut arena, b"hello"));
         assert!(c.is_charsxp());
         assert_eq!(c.as_str(), Some("hello"));
         assert_eq!(c.as_bytes(), Some(&b"hello"[..]));
@@ -925,9 +888,21 @@ mod tests {
 
     #[test]
     fn test_cons_constructor() {
-        let car = some(scalar_integer(1));
-        let cdr = some(scalar_real(2.0));
-        let cell = some(cons(car, cdr, None));
+        let mut arena = RArena::new();
+        let car = {
+            let car = some(scalar_integer_in(&mut arena, 1));
+            car.as_raw()
+        };
+        let cdr = {
+            let cdr = some(scalar_real_in(&mut arena, 2.0));
+            cdr.as_raw()
+        };
+        let cell = some(cons_in(
+            &mut arena,
+            some(Sexp::from_raw(car)),
+            some(Sexp::from_raw(cdr)),
+            None,
+        ));
         assert!(cell.is_pairlist());
         assert!(some(cell.car()).is_vector());
     }
@@ -937,13 +912,19 @@ mod tests {
         let mut arena = crate::sexp::memory::RArena::new();
         let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
         let fun = some(Sexp::from_raw(sym));
-        let arg = some(scalar_integer(1));
+        let arg = {
+            let arg = some(scalar_integer_in(&mut arena, 1));
+            some(Sexp::from_raw(arg.as_raw()))
+        };
 
-        let call = some(lang2(fun, arg));
+        let call = some(lang2_in(&mut arena, fun, arg));
         assert!(call.is_pairlist());
 
-        let arg2 = some(scalar_real(2.0));
-        let call3 = some(lang3(fun, arg, arg2));
+        let arg2 = {
+            let arg2 = some(scalar_real_in(&mut arena, 2.0));
+            some(Sexp::from_raw(arg2.as_raw()))
+        };
+        let call3 = some(lang3_in(&mut arena, fun, arg, arg2));
         assert!(call3.is_pairlist());
         assert!(call3.car().is_some());
     }

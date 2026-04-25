@@ -62,52 +62,60 @@ pub const BCneg: c_int = 41;
 pub const BCmod: c_int = 42;
 pub const BCpow: c_int = 43;
 
-fn make_lgl(val: c_int) -> Sexp<'static> {
-    with_arena(|arena| {
-        let lgl = arena.alloc_vector(SEXPTYPE::LGLSXP, 1);
-        unsafe {
-            let data = (*lgl).gengc_next_node as *mut c_int;
-            if !data.is_null() {
-                *data = val;
-            }
+fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
+    let lgl = with_arena(|arena| arena.alloc_vector(SEXPTYPE::LGLSXP, 1));
+    if lgl.is_null() {
+        return Err("failed to allocate logical scalar".to_string());
+    }
+    unsafe {
+        let data = (*lgl).gengc_next_node as *mut c_int;
+        if data.is_null() {
+            return Err("logical scalar has no data buffer".to_string());
         }
-        Sexp::from_raw(lgl).unwrap_or_else(|| unsafe {
-            Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue())
-        })
-    })
+        *data = val;
+        (*lgl).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())
 }
 
-fn make_real(val: c_double) -> Sexp<'static> {
-    with_arena(|arena| {
-        let real = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
-        unsafe {
-            let data = (*real).gengc_next_node as *mut c_double;
-            if !data.is_null() {
-                *data = val;
-            }
+fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
+    let real = with_arena(|arena| arena.alloc_vector(SEXPTYPE::REALSXP, 1));
+    if real.is_null() {
+        return Err("failed to allocate real scalar".to_string());
+    }
+    unsafe {
+        let data = (*real).gengc_next_node as *mut c_double;
+        if data.is_null() {
+            return Err("real scalar has no data buffer".to_string());
         }
-        Sexp::from_raw(real).unwrap_or_else(|| unsafe {
-            Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue())
-        })
-    })
+        *data = val;
+        (*real).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())
 }
 
-fn make_int(val: c_int) -> Sexp<'static> {
-    with_arena(|arena| {
-        let int = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
-        unsafe {
-            let data = (*int).gengc_next_node as *mut c_int;
-            if !data.is_null() {
-                *data = val;
-            }
+fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
+    let int = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+    if int.is_null() {
+        return Err("failed to allocate integer scalar".to_string());
+    }
+    unsafe {
+        let data = (*int).gengc_next_node as *mut c_int;
+        if data.is_null() {
+            return Err("integer scalar has no data buffer".to_string());
         }
-        Sexp::from_raw(int).unwrap_or_else(|| unsafe {
-            Sexp::from_raw_unchecked(crate::sexp::globals::R_NilValue())
-        })
-    })
+        *data = val;
+        (*int).sxpinfo.set_scalar(true);
+    }
+    Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())
 }
 
-fn apply_binary_op<FR, FI>(a: Sexp, b: Sexp, real_op: FR, int_op: FI) -> Sexp<'static>
+fn apply_binary_op<'a, FR, FI>(
+    a: Sexp<'a>,
+    b: Sexp<'a>,
+    real_op: FR,
+    int_op: FI,
+) -> Result<Sexp<'a>, String>
 where
     FR: Fn(c_double, c_double) -> c_double,
     FI: Fn(c_int, c_int) -> c_int,
@@ -139,7 +147,7 @@ where
     }
 }
 
-fn apply_comparison<F>(a: Sexp, b: Sexp, cmp: F) -> Sexp<'static>
+fn apply_comparison<'a, F>(a: Sexp<'a>, b: Sexp<'a>, cmp: F) -> Result<Sexp<'a>, String>
 where
     F: Fn(c_double, c_double) -> bool,
 {
@@ -238,7 +246,7 @@ fn eval_bytecode_loop<'a>(
                 } else {
                     0
                 };
-                stack.push(make_lgl(if v != 0 { 0 } else { 1 }));
+                stack.push(make_lgl(if v != 0 { 0 } else { 1 })?);
             }
             BCadd => {
                 let b = stack
@@ -252,7 +260,7 @@ fn eval_bytecode_loop<'a>(
                     b,
                     |x, y| x + y,
                     |x, y| x.wrapping_add(y),
-                ));
+                )?);
             }
             BCsub => {
                 let b = stack
@@ -266,7 +274,7 @@ fn eval_bytecode_loop<'a>(
                     b,
                     |x, y| x - y,
                     |x, y| x.wrapping_sub(y),
-                ));
+                )?);
             }
             BCmul => {
                 let b = stack
@@ -280,7 +288,7 @@ fn eval_bytecode_loop<'a>(
                     b,
                     |x, y| x * y,
                     |x, y| x.wrapping_mul(y),
-                ));
+                )?);
             }
             BCdiv => {
                 let b = stack
@@ -289,7 +297,7 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on div".to_string())?;
-                stack.push(apply_binary_op(a, b, |x, y| x / y, |x, y| x / y));
+                stack.push(apply_binary_op(a, b, |x, y| x / y, |x, y| x / y)?);
             }
             BCmod => {
                 let b = stack
@@ -301,16 +309,16 @@ fn eval_bytecode_loop<'a>(
                 if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
                     stack.push(make_real(
                         a.real_elt(0).unwrap_or(0.0) % b.real_elt(0).unwrap_or(0.0),
-                    ));
+                    )?);
                 } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
                     let bv = b.integer_elt(0).unwrap_or(0);
                     if bv != 0 {
-                        stack.push(make_int(a.integer_elt(0).unwrap_or(0) % bv));
+                        stack.push(make_int(a.integer_elt(0).unwrap_or(0) % bv)?);
                     } else {
-                        stack.push(make_real(f64::NAN));
+                        stack.push(make_real(f64::NAN)?);
                     }
                 } else {
-                    stack.push(make_real(a.as_f64() % b.as_f64()));
+                    stack.push(make_real(a.as_f64() % b.as_f64())?);
                 }
             }
             BCpow => {
@@ -320,37 +328,37 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on pow".to_string())?;
-                stack.push(make_real(a.as_f64().powf(b.as_f64())));
+                stack.push(make_real(a.as_f64().powf(b.as_f64()))?);
             }
             BCeq => {
                 let b = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x == y));
+                stack.push(apply_comparison(a, b, |x, y| x == y)?);
             }
             BCne => {
                 let b = stack.pop().ok_or_else(|| "empty stack on ne".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on ne".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x != y));
+                stack.push(apply_comparison(a, b, |x, y| x != y)?);
             }
             BClt => {
                 let b = stack.pop().ok_or_else(|| "empty stack on lt".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on lt".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x < y));
+                stack.push(apply_comparison(a, b, |x, y| x < y)?);
             }
             BCle => {
                 let b = stack.pop().ok_or_else(|| "empty stack on le".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on le".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x <= y));
+                stack.push(apply_comparison(a, b, |x, y| x <= y)?);
             }
             BCgt => {
                 let b = stack.pop().ok_or_else(|| "empty stack on gt".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on gt".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x > y));
+                stack.push(apply_comparison(a, b, |x, y| x > y)?);
             }
             BCge => {
                 let b = stack.pop().ok_or_else(|| "empty stack on ge".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on ge".to_string())?;
-                stack.push(apply_comparison(a, b, |x, y| x >= y));
+                stack.push(apply_comparison(a, b, |x, y| x >= y)?);
             }
             BCand => {
                 let b = stack
@@ -359,12 +367,12 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on and".to_string())?;
-                stack.push(make_lgl(if a.to_bool() && b.to_bool() { 1 } else { 0 }));
+                stack.push(make_lgl(if a.to_bool() && b.to_bool() { 1 } else { 0 })?);
             }
             BCor => {
                 let b = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
-                stack.push(make_lgl(if a.to_bool() || b.to_bool() { 1 } else { 0 }));
+                stack.push(make_lgl(if a.to_bool() || b.to_bool() { 1 } else { 0 })?);
             }
             BCcall => {
                 let idx = bytecode[*pc] as usize;
@@ -499,11 +507,11 @@ fn eval_bytecode_loop<'a>(
 
                 for i in 0..len as usize {
                     let idx_val = if seq_val.typeof_() == SEXPTYPE::INTSXP {
-                        make_int(seq_val.integer_elt(i as i64).unwrap_or(0))
+                        make_int(seq_val.integer_elt(i as i64).unwrap_or(0))?
                     } else if seq_val.typeof_() == SEXPTYPE::REALSXP {
-                        make_real(seq_val.real_elt(i as i64).unwrap_or(0.0))
+                        make_real(seq_val.real_elt(i as i64).unwrap_or(0.0))?
                     } else {
-                        make_int(i as c_int)
+                        make_int(i as c_int)?
                     };
 
                     unsafe {
@@ -521,7 +529,7 @@ fn eval_bytecode_loop<'a>(
 
                     if control == ControlFlow::Break {
                         *pc = end_offset;
-                        return Ok((make_lgl(0), ControlFlow::Normal));
+                        return Ok((make_lgl(0)?, ControlFlow::Normal));
                     }
                 }
                 *pc = end_offset;
@@ -544,7 +552,7 @@ fn eval_bytecode_loop<'a>(
 
                     if !cond_result.to_bool() {
                         *pc = end_offset;
-                        return Ok((make_lgl(0), ControlFlow::Normal));
+                        return Ok((make_lgl(0)?, ControlFlow::Normal));
                     }
 
                     let mut body_pc = body_offset;
@@ -575,10 +583,10 @@ fn eval_bytecode_loop<'a>(
                 }
             }
             BCbreak => {
-                return Ok((make_lgl(0), ControlFlow::Break));
+                return Ok((make_lgl(0)?, ControlFlow::Break));
             }
             BCnext => {
-                return Ok((make_lgl(0), ControlFlow::Next));
+                return Ok((make_lgl(0)?, ControlFlow::Next));
             }
             BCspecial => {
                 let idx = bytecode[*pc] as usize;
@@ -659,9 +667,9 @@ fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on neg".to_string())?;
                 if val.typeof_() == SEXPTYPE::REALSXP {
-                    stack.push(make_real(-val.real_elt(0).unwrap_or(0.0)));
+                    stack.push(make_real(-val.real_elt(0).unwrap_or(0.0))?);
                 } else if val.typeof_() == SEXPTYPE::INTSXP {
-                    stack.push(make_int(-val.integer_elt(0).unwrap_or(0)));
+                    stack.push(make_int(-val.integer_elt(0).unwrap_or(0))?);
                 } else {
                     stack.push(val);
                 }

@@ -112,43 +112,31 @@ impl RSession {
     }
 
     pub fn eval_integer(&mut self, value: i32) -> RResult {
-        match self
-            .core
-            .with_arena(|arena| builder::scalar_integer_in(arena, value))
-        {
-            Some(Some(s)) => result_from_sexp(s),
-            _ => allocation_error(),
-        }
+        self.core
+            .with_arena(|arena| builder::scalar_integer_in(arena, value).map(result_from_sexp))
+            .flatten()
+            .unwrap_or_else(allocation_error)
     }
 
     pub fn eval_real(&mut self, value: f64) -> RResult {
-        match self
-            .core
-            .with_arena(|arena| builder::scalar_real_in(arena, value))
-        {
-            Some(Some(s)) => result_from_sexp(s),
-            _ => allocation_error(),
-        }
+        self.core
+            .with_arena(|arena| builder::scalar_real_in(arena, value).map(result_from_sexp))
+            .flatten()
+            .unwrap_or_else(allocation_error)
     }
 
     pub fn eval_int_vector(&mut self, values: &[i32]) -> RResult {
-        match self
-            .core
-            .with_arena(|arena| builder::int_vec_in(arena, values))
-        {
-            Some(Some(s)) => result_from_sexp(s),
-            _ => allocation_error(),
-        }
+        self.core
+            .with_arena(|arena| builder::int_vec_in(arena, values).map(result_from_sexp))
+            .flatten()
+            .unwrap_or_else(allocation_error)
     }
 
     pub fn eval_real_vector(&mut self, values: &[f64]) -> RResult {
-        match self
-            .core
-            .with_arena(|arena| builder::real_vec_in(arena, values))
-        {
-            Some(Some(s)) => result_from_sexp(s),
-            _ => allocation_error(),
-        }
+        self.core
+            .with_arena(|arena| builder::real_vec_in(arena, values).map(result_from_sexp))
+            .flatten()
+            .unwrap_or_else(allocation_error)
     }
 
     /// Compute a mathematical function on a single value.

@@ -5364,7 +5364,7 @@ pub fn eval_with_limits<'a>(
 }
 
 /// Internal safe eval implementation (legacy, delegates to eval_safe).
-unsafe fn eval_inner_safe(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_inner_safe<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     if e.is_null() {
         return Ok(Sexp::from_raw_unchecked(R_NilValue()));
     }
@@ -5401,14 +5401,14 @@ fn is_self_evaluating(t: c_int) -> bool {
 }
 
 /// Dispatch evaluation based on SEXPTYPE (legacy, delegates to eval_safe).
-unsafe fn eval_dispatch(t: c_int, e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_dispatch<'a>(t: c_int, e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let expr = Sexp::from_raw_unchecked(e);
     let env = Sexp::from_raw_unchecked(rho);
     eval_safe(expr, env)
 }
 
 /// Evaluate a symbol (SYMSXP) — variable lookup (legacy).
-unsafe fn eval_symbol(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_symbol<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let expr = Sexp::from_raw_unchecked(e);
     let env = Sexp::from_raw_unchecked(rho);
     eval_safe(expr, env)
@@ -5485,14 +5485,14 @@ pub unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Evaluate a LANGSXP (function call expression) — legacy wrapper.
-unsafe fn eval_lang(e: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_lang<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let expr = Sexp::from_raw_unchecked(e);
     let env = Sexp::from_raw_unchecked(rho);
     eval_lang_safe(expr, env)
 }
 
 /// Evaluate a SPECIAL function (arguments not evaluated) — legacy wrapper.
-unsafe fn eval_special(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_special<'a>(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let fun = Sexp::from_raw_unchecked(op);
     let call = Sexp::from_raw_unchecked(e);
     let arglist = Sexp::from_raw_unchecked(args);
@@ -5501,7 +5501,7 @@ unsafe fn eval_special(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<
 }
 
 /// Evaluate a BUILTIN function (arguments evaluated first) — legacy wrapper.
-unsafe fn eval_builtin(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_builtin<'a>(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let fun = Sexp::from_raw_unchecked(op);
     let call = Sexp::from_raw_unchecked(e);
     let arglist = Sexp::from_raw_unchecked(args);
@@ -5510,7 +5510,7 @@ unsafe fn eval_builtin(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<Sexp<
 }
 
 /// Evaluate a CLOSXP (user-defined function) — legacy wrapper.
-unsafe fn eval_closure(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'static>, String> {
+unsafe fn eval_closure<'a>(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let fun = Sexp::from_raw_unchecked(op);
     let args = if let Some(cdr) = Sexp::from_raw_unchecked(e).cdr() {
         cdr
