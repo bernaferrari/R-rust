@@ -368,6 +368,33 @@ pub fn eval_safe<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
 }
 
 fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
+    match classify_expr(expr) {
+        EvalKind::SelfEvaluating => Ok(expr),
+        EvalKind::Symbol => {
+            find_var_result(expr, env)?.ok_or_else(|| format!("object '{}' not found", expr))
+        }
+        EvalKind::Language => eval_lang_safe(expr, env),
+        EvalKind::Closure => Ok(expr),
+        EvalKind::Promise => eval_promise_safe(expr, env),
+        EvalKind::Dots => eval_dots_safe(expr, env),
+        EvalKind::Bytecode => super::bytecode::eval_bytecode(expr, env),
+        EvalKind::Unsupported(kind) => Err(format!("cannot evaluate type {:?}", kind)),
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum EvalKind {
+    SelfEvaluating,
+    Symbol,
+    Language,
+    Closure,
+    Promise,
+    Dots,
+    Bytecode,
+    Unsupported(SEXPTYPE),
+}
+
+fn classify_expr(expr: Sexp<'_>) -> EvalKind {
     match expr.typeof_() {
         SEXPTYPE::NILSXP
         | SEXPTYPE::LISTSXP
@@ -379,35 +406,15 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
         | SEXPTYPE::RAWSXP
         | SEXPTYPE::VECSXP
         | SEXPTYPE::EXPRSXP
-        | SEXPTYPE::EXTPTRSXP => return Ok(expr),
-        _ => {}
+        | SEXPTYPE::EXTPTRSXP => EvalKind::SelfEvaluating,
+        SEXPTYPE::SYMSXP => EvalKind::Symbol,
+        SEXPTYPE::LANGSXP => EvalKind::Language,
+        SEXPTYPE::CLOSXP => EvalKind::Closure,
+        SEXPTYPE::PROMSXP => EvalKind::Promise,
+        SEXPTYPE::DOTSXP => EvalKind::Dots,
+        SEXPTYPE::BCODESXP => EvalKind::Bytecode,
+        kind => EvalKind::Unsupported(kind),
     }
-
-    if expr.is_symbol() {
-        return find_var_result(expr, env)?.ok_or_else(|| format!("object '{}' not found", expr));
-    }
-
-    if expr.is_pairlist() || expr.typeof_() == SEXPTYPE::LANGSXP {
-        return eval_lang_safe(expr, env);
-    }
-
-    if expr.is_closure() {
-        return Ok(expr);
-    }
-
-    if expr.typeof_() == SEXPTYPE::PROMSXP {
-        return eval_promise_safe(expr, env);
-    }
-
-    if expr.typeof_() == SEXPTYPE::DOTSXP {
-        return eval_dots_safe(expr, env);
-    }
-
-    if expr.typeof_() == SEXPTYPE::BCODESXP {
-        return super::bytecode::eval_bytecode(expr, env);
-    }
-
-    Err(format!("cannot evaluate type {:?}", expr.typeof_()))
 }
 
 /// Safe evaluation of a language object (function call).
@@ -5914,7 +5921,9 @@ pub unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 mod tests {
     use super::*;
     use crate::sexp::builder::scalar_integer_in;
+    use crate::sexp::constructors::{Rf_ScalarInteger, Rf_lang2};
     use crate::sexp::session::RSession;
+    use crate::sexp::symbol::Rf_install;
 
     #[test]
     fn eval_context_evaluates_owner_scoped_expression() {
@@ -5948,5 +5957,21 @@ mod tests {
         assert!(descriptor.offset >= 0);
         assert_eq!(unsafe { PRIMNAME(primitive) }, "+");
         assert_eq!(unsafe { PRIMPRINT(primitive) }, descriptor.print_flag);
+    }
+
+    #[test]
+    fn eval_classifier_names_core_evaluation_phases() {
+        let _session = RSession::new();
+        unsafe {
+            let int_expr = Sexp::from_raw(Rf_ScalarInteger(1)).expect("integer scalar");
+            assert_eq!(classify_expr(int_expr), EvalKind::SelfEvaluating);
+
+            let symbol = Sexp::from_raw(Rf_install(c"x".as_ptr())).expect("symbol");
+            assert_eq!(classify_expr(symbol), EvalKind::Symbol);
+
+            let call = Sexp::from_raw(Rf_lang2(Rf_install(c"quote".as_ptr()), Rf_ScalarInteger(1)))
+                .expect("language call");
+            assert_eq!(classify_expr(call), EvalKind::Language);
+        }
     }
 }
