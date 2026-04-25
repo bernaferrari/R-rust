@@ -3,6 +3,7 @@
 //!
 //! These are the most fundamental R functions that every R program uses.
 
+use std::collections::BTreeMap;
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
 use std::path::{Path, PathBuf};
@@ -2906,12 +2907,10 @@ pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 
 /// R's `installed.packages(...)` — list installed packages.
 pub unsafe fn do_installed_packages(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
-    // Simplified: return an empty data frame (VECSXP with 0 rows)
-    let result = Rf_allocVector3(SEXPTYPE::VECSXP, 0);
-    if result.is_null() {
-        return R_NilValue();
+    unsafe {
+        let packages = installed_package_rows();
+        installed_packages_matrix(&packages)
     }
-    result
 }
 
 /// R's `find.package(package, ...)` — find the path to a package.
@@ -3733,6 +3732,158 @@ fn find_package_path(package: &str) -> String {
     })
 }
 
+const INSTALLED_PACKAGE_COLUMNS: [&str; 16] = [
+    "Package",
+    "LibPath",
+    "Version",
+    "Priority",
+    "Depends",
+    "Imports",
+    "LinkingTo",
+    "Suggests",
+    "Enhances",
+    "License",
+    "License_is_FOSS",
+    "License_restricts_use",
+    "OS_type",
+    "MD5sum",
+    "NeedsCompilation",
+    "Built",
+];
+
+#[derive(Debug)]
+struct InstalledPackageRow {
+    package: String,
+    library_path: String,
+    fields: BTreeMap<String, String>,
+}
+
+impl InstalledPackageRow {
+    fn value_for(&self, column: &str) -> String {
+        match column {
+            "Package" => self.package.clone(),
+            "LibPath" => self.library_path.clone(),
+            _ => self.fields.get(column).cloned().unwrap_or_default(),
+        }
+    }
+}
+
+fn installed_package_rows() -> Vec<InstalledPackageRow> {
+    let library_paths = crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.path_policy.library_paths().to_vec()
+    });
+    let mut packages = Vec::<InstalledPackageRow>::new();
+    let mut seen = Vec::<String>::new();
+
+    for library_path in library_paths {
+        let Ok(entries) = std::fs::read_dir(&library_path) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let package_dir = entry.path();
+            let description = package_dir.join("DESCRIPTION");
+            if !package_dir.is_dir() || !description.is_file() {
+                continue;
+            }
+            let Some(fallback_name) = package_dir.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let Ok(content) = std::fs::read_to_string(&description) else {
+                continue;
+            };
+            let fields = description_fields(&content);
+            let package = fields
+                .get("Package")
+                .cloned()
+                .unwrap_or_else(|| fallback_name.to_string());
+            if package.is_empty() || seen.contains(&package) {
+                continue;
+            }
+            seen.push(package.clone());
+            packages.push(InstalledPackageRow {
+                package,
+                library_path: library_path.to_string_lossy().into_owned(),
+                fields,
+            });
+        }
+    }
+
+    packages.sort_by(|left, right| left.package.cmp(&right.package));
+    packages
+}
+
+unsafe fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
+    unsafe {
+        let nrow = packages.len();
+        let ncol = INSTALLED_PACKAGE_COLUMNS.len();
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, (nrow * ncol) as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _result_guard = Rf_protect(result);
+
+        for (col_idx, column) in INSTALLED_PACKAGE_COLUMNS.iter().enumerate() {
+            for (row_idx, package) in packages.iter().enumerate() {
+                let value = package.value_for(column);
+                SET_STRING_ELT(
+                    result,
+                    (col_idx * nrow + row_idx) as R_xlen_t,
+                    Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()),
+                );
+            }
+        }
+
+        let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
+        if dim.is_null() {
+            crate::sexp::protect::Rf_unprotect(1);
+            return R_NilValue();
+        }
+        let _dim_guard = Rf_protect(dim);
+        *INTEGER(dim).add(0) = nrow as c_int;
+        *INTEGER(dim).add(1) = ncol as c_int;
+        crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
+
+        let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if dimnames.is_null() {
+            crate::sexp::protect::Rf_unprotect(2);
+            return R_NilValue();
+        }
+        let _dimnames_guard = Rf_protect(dimnames);
+        let row_name_values = packages
+            .iter()
+            .map(|package| package.package.clone())
+            .collect::<Vec<_>>();
+        let row_names = string_vector(&row_name_values);
+        if row_names.is_null() {
+            crate::sexp::protect::Rf_unprotect(3);
+            return R_NilValue();
+        }
+        let _row_names_guard = Rf_protect(row_names);
+
+        let col_name_values = INSTALLED_PACKAGE_COLUMNS
+            .iter()
+            .map(|column| column.to_string())
+            .collect::<Vec<_>>();
+        let col_names = string_vector(&col_name_values);
+        if col_names.is_null() {
+            crate::sexp::protect::Rf_unprotect(4);
+            return R_NilValue();
+        }
+        let _col_names_guard = Rf_protect(col_names);
+
+        SET_VECTOR_ELT(dimnames, 0, row_names);
+        SET_VECTOR_ELT(dimnames, 1, col_names);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_DimNamesSymbol(),
+            dimnames,
+        );
+
+        crate::sexp::protect::Rf_unprotect(5);
+        result
+    }
+}
+
 fn package_error(message: impl Into<String>) -> ! {
     std::panic::panic_any(crate::sexp::context::RError {
         message: message.into(),
@@ -3806,16 +3957,16 @@ unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), S
 fn package_needs_compilation(description: &Path) -> Result<bool, String> {
     let content = std::fs::read_to_string(description)
         .map_err(|err| format!("could not read {}: {err}", description.display()))?;
-    Ok(
-        description_field(&content, "NeedsCompilation").is_some_and(|value| {
+    Ok(description_fields(&content)
+        .get("NeedsCompilation")
+        .is_some_and(|value| {
             value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
-        }),
-    )
+        }))
 }
 
-fn description_field(description: &str, key: &str) -> Option<String> {
-    let mut current_key: Option<&str> = None;
-    let mut current_value = String::new();
+fn description_fields(description: &str) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::<String, String>::new();
+    let mut current_key: Option<String> = None;
 
     for line in description.lines() {
         if line.trim().is_empty() {
@@ -3823,35 +3974,32 @@ fn description_field(description: &str, key: &str) -> Option<String> {
         }
 
         if line.starts_with(' ') || line.starts_with('\t') {
-            if current_key == Some(key) {
-                if !current_value.is_empty() {
-                    current_value.push('\n');
+            if let Some(key) = current_key.as_ref()
+                && let Some(value) = fields.get_mut(key)
+            {
+                if !value.is_empty() {
+                    value.push('\n');
                 }
-                current_value.push_str(line.trim());
+                value.push_str(line.trim());
             }
             continue;
         }
 
-        if current_key == Some(key) {
-            return (!current_value.is_empty()).then_some(current_value);
-        }
-
         let Some((field, value)) = line.split_once(':') else {
             current_key = None;
-            current_value.clear();
             continue;
         };
         let field = field.trim();
         if field.is_empty() || field.chars().any(char::is_whitespace) {
             current_key = None;
-            current_value.clear();
             continue;
         }
+        let field = field.to_string();
+        fields.insert(field.clone(), value.trim().to_string());
         current_key = Some(field);
-        current_value = value.trim().to_string();
     }
 
-    (current_key == Some(key) && !current_value.is_empty()).then_some(current_value)
+    fields
 }
 
 unsafe fn load_package_namespace(

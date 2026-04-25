@@ -682,6 +682,20 @@ mod tests {
             base_path.typed,
             string_vector(vec![base_pkg.to_string_lossy().into_owned()])
         );
+        let installed = session.eval("installed.packages()");
+        match installed.typed {
+            RValue::Attributed { value, metadata } => {
+                assert_eq!(metadata.dim, Some(vec![1, 16]));
+                match *value {
+                    RValue::StringVector(values) => {
+                        assert_eq!(values[0], Some("base".to_string()));
+                        assert_eq!(values[1], Some(bundled.to_string_lossy().into_owned()));
+                    }
+                    other => panic!("expected installed package string matrix, got {other:?}"),
+                }
+            }
+            other => panic!("expected attributed installed package matrix, got {other:?}"),
+        }
 
         let tempdir = session.eval("tempdir()");
         assert_eq!(
