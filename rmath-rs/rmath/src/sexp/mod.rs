@@ -49,5 +49,5 @@ pub use output::{
     RCapturedOutput, capture_stderr, capture_stdout, is_capturing, start_capture, stop_capture,
 };
 
-pub use safe::{PairlistIter, Sexp};
+pub use safe::{PairlistIter, Sexp, SexpError, SexpResult, SexpView};
 pub use session::RSession;

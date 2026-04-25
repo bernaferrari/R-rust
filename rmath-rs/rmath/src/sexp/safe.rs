@@ -12,8 +12,9 @@
 //! through an owner such as [`RArena`](crate::sexp::memory::RArena) or
 //! [`RSession`](crate::sexp::session::RSession), so the returned wrapper is
 //! tied to the arena or session that owns the object. All element access is
-//! bounds-checked, returning `Option<T>` rather than panicking on
-//! out-of-bounds access.
+//! bounds-checked. Legacy `Option<T>` accessors are kept for existing ported
+//! C-shaped code, while new Rust code should prefer the `try_*` methods and
+//! [`SexpView`] so type mistakes and bounds errors stay explicit.
 //!
 //! # Type Predicates
 //!
@@ -29,10 +30,108 @@
 //! (e.g., [`as_integer_slice`](Sexp::as_integer_slice)) or iterators
 //! (e.g., [`iter_integer`](Sexp::iter_integer)).
 
-use std::os::raw::{c_double, c_int};
+use std::os::raw::{c_double, c_int, c_void};
 
 use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore};
 use super::globals::R_NilValue;
+
+// ---------------------------------------------------------------------------
+// Errors and views
+// ---------------------------------------------------------------------------
+
+/// Error returned by Rust-shaped SEXP accessors.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SexpError {
+    /// A raw pointer was null.
+    NullPointer,
+    /// A raw pointer was visibly not aligned for `SexprecCore`.
+    MisalignedPointer { address: usize },
+    /// The SEXP had the wrong R type for the requested operation.
+    TypeMismatch {
+        expected: &'static str,
+        actual: SEXPTYPE,
+    },
+    /// An element index was outside the vector length.
+    OutOfBounds { index: R_xlen_t, len: R_xlen_t },
+    /// A vector-like object had no data buffer.
+    MissingData { sexptype: SEXPTYPE },
+    /// A string value was not valid UTF-8.
+    InvalidUtf8,
+}
+
+impl std::fmt::Display for SexpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SexpError::NullPointer => write!(f, "SEXP pointer is null"),
+            SexpError::MisalignedPointer { address } => {
+                write!(f, "SEXP pointer {address:#x} is misaligned")
+            }
+            SexpError::TypeMismatch { expected, actual } => {
+                write!(f, "expected {expected}, got {:?}", actual.0)
+            }
+            SexpError::OutOfBounds { index, len } => {
+                write!(f, "index {index} is outside vector length {len}")
+            }
+            SexpError::MissingData { sexptype } => {
+                write!(f, "SEXP {:?} has no data buffer", sexptype.0)
+            }
+            SexpError::InvalidUtf8 => write!(f, "CHARSXP bytes are not valid UTF-8"),
+        }
+    }
+}
+
+impl std::error::Error for SexpError {}
+
+pub type SexpResult<T> = Result<T, SexpError>;
+
+/// Borrowed, type-directed view over a `Sexp`.
+#[derive(Debug, Clone, Copy)]
+pub enum SexpView<'a> {
+    Nil,
+    Logical(&'a [c_int]),
+    Integer(&'a [c_int]),
+    Real(&'a [c_double]),
+    Complex(&'a [Rcomplex]),
+    Raw(&'a [Rbyte]),
+    Char(&'a [u8]),
+    StringVector(Sexp<'a>),
+    GenericVector(Sexp<'a>),
+    Pairlist(Sexp<'a>),
+    Environment(Sexp<'a>),
+    Symbol(Sexp<'a>),
+    Function(Sexp<'a>),
+    Other(Sexp<'a>),
+}
+
+fn sexptype_name(t: SEXPTYPE) -> &'static str {
+    match t {
+        SEXPTYPE::NILSXP => "NULL",
+        SEXPTYPE::SYMSXP => "symbol",
+        SEXPTYPE::LISTSXP => "pairlist",
+        SEXPTYPE::CLOSXP => "closure",
+        SEXPTYPE::ENVSXP => "environment",
+        SEXPTYPE::PROMSXP => "promise",
+        SEXPTYPE::LANGSXP => "language object",
+        SEXPTYPE::SPECIALSXP => "special primitive",
+        SEXPTYPE::BUILTINSXP => "builtin primitive",
+        SEXPTYPE::CHARSXP => "character scalar",
+        SEXPTYPE::LGLSXP => "logical vector",
+        SEXPTYPE::INTSXP => "integer vector",
+        SEXPTYPE::REALSXP => "real vector",
+        SEXPTYPE::CPLXSXP => "complex vector",
+        SEXPTYPE::STRSXP => "string vector",
+        SEXPTYPE::DOTSXP => "dots",
+        SEXPTYPE::ANYSXP => "any",
+        SEXPTYPE::VECSXP => "generic vector",
+        SEXPTYPE::EXPRSXP => "expression vector",
+        SEXPTYPE::BCODESXP => "bytecode",
+        SEXPTYPE::EXTPTRSXP => "external pointer",
+        SEXPTYPE::WEAKREFSXP => "weak reference",
+        SEXPTYPE::RAWSXP => "raw vector",
+        SEXPTYPE::S4SXP => "S4 object",
+        _ => "SEXP",
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Sexp — safe wrapper around SEXP
@@ -81,12 +180,22 @@ impl<'a> Sexp<'a> {
     /// `RSession::sexp` instead.
     #[inline]
     pub(crate) fn from_raw(ptr: SEXP) -> Option<Self> {
+        Self::try_from_raw(ptr).ok()
+    }
+
+    /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
+    ///
+    /// Unlike [`from_raw`](Self::from_raw), this reports why wrapping failed.
+    #[inline]
+    pub(crate) fn try_from_raw(ptr: SEXP) -> SexpResult<Self> {
         if ptr.is_null() {
-            None
+            Err(SexpError::NullPointer)
         } else if (ptr as usize) % std::mem::align_of::<SexprecCore>() != 0 {
-            None
+            Err(SexpError::MisalignedPointer {
+                address: ptr as usize,
+            })
         } else {
-            Some(Sexp {
+            Ok(Sexp {
                 ptr,
                 _marker: std::marker::PhantomData,
             })
@@ -118,56 +227,196 @@ impl<'a> Sexp<'a> {
 
     #[inline]
     fn typed_data<T>(self, expected: SEXPTYPE) -> Option<*const T> {
-        if self.typeof_() != expected {
-            return None;
-        }
+        self.try_typed_data::<T>(expected, sexptype_name(expected))
+            .ok()
+    }
+
+    #[inline]
+    fn try_typed_data<T>(
+        self,
+        expected: SEXPTYPE,
+        expected_name: &'static str,
+    ) -> SexpResult<*const T> {
+        self.expect_type(expected, expected_name)?;
         let data = unsafe { (*self.ptr).gengc_next_node as *const T };
-        if data.is_null() { None } else { Some(data) }
+        if data.is_null() {
+            Err(SexpError::MissingData { sexptype: expected })
+        } else {
+            Ok(data)
+        }
+    }
+
+    #[inline]
+    fn expect_type(self, expected: SEXPTYPE, expected_name: &'static str) -> SexpResult<()> {
+        if self.typeof_() != expected {
+            Err(SexpError::TypeMismatch {
+                expected: expected_name,
+                actual: self.typeof_(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+
+    #[inline]
+    fn expect_any_type(self, expected_name: &'static str, expected: &[SEXPTYPE]) -> SexpResult<()> {
+        let actual = self.typeof_();
+        if expected.contains(&actual) {
+            Ok(())
+        } else {
+            Err(SexpError::TypeMismatch {
+                expected: expected_name,
+                actual,
+            })
+        }
     }
 
     #[inline]
     fn typed_data_mut<T>(self, expected: SEXPTYPE) -> Option<*mut T> {
-        if self.typeof_() != expected {
-            return None;
-        }
+        self.try_typed_data_mut::<T>(expected, sexptype_name(expected))
+            .ok()
+    }
+
+    #[inline]
+    fn try_typed_data_mut<T>(
+        self,
+        expected: SEXPTYPE,
+        expected_name: &'static str,
+    ) -> SexpResult<*mut T> {
+        self.expect_type(expected, expected_name)?;
         let data = unsafe { (*self.ptr).gengc_next_node as *mut T };
-        if data.is_null() { None } else { Some(data) }
+        if data.is_null() {
+            Err(SexpError::MissingData { sexptype: expected })
+        } else {
+            Ok(data)
+        }
     }
 
     #[inline]
     fn typed_slice<T>(self, expected: SEXPTYPE) -> Option<&'a [T]> {
-        if self.typeof_() != expected {
-            return None;
-        }
+        self.try_typed_slice::<T>(expected, sexptype_name(expected))
+            .ok()
+    }
+
+    #[inline]
+    fn try_typed_slice<T>(
+        self,
+        expected: SEXPTYPE,
+        expected_name: &'static str,
+    ) -> SexpResult<&'a [T]> {
+        self.expect_type(expected, expected_name)?;
         let len = self.len() as usize;
         if len == 0 {
-            return Some(&[]);
+            return Ok(&[]);
         }
-        let data = self.typed_data::<T>(expected)?;
-        Some(unsafe { std::slice::from_raw_parts(data, len) })
+        let data = self.try_typed_data::<T>(expected, expected_name)?;
+        Ok(unsafe { std::slice::from_raw_parts(data, len) })
+    }
+
+    #[inline]
+    fn try_index(self, i: R_xlen_t) -> SexpResult<usize> {
+        let len = self.len();
+        if i >= 0 && i < len {
+            Ok(i as usize)
+        } else {
+            Err(SexpError::OutOfBounds { index: i, len })
+        }
     }
 
     #[inline]
     fn vector_sexp_data(self) -> Option<*const SEXP> {
+        self.try_vector_sexp_data().ok()
+    }
+
+    #[inline]
+    fn try_vector_sexp_data(self) -> SexpResult<*const SEXP> {
         if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
-            return None;
+            return Err(SexpError::TypeMismatch {
+                expected: "generic or expression vector",
+                actual: self.typeof_(),
+            });
         }
         let data = unsafe { (*self.ptr).gengc_next_node as *const SEXP };
-        if data.is_null() { None } else { Some(data) }
+        if data.is_null() {
+            Err(SexpError::MissingData {
+                sexptype: self.typeof_(),
+            })
+        } else {
+            Ok(data)
+        }
     }
 
     #[inline]
     fn vector_sexp_data_mut(self) -> Option<*mut SEXP> {
+        self.try_vector_sexp_data_mut().ok()
+    }
+
+    #[inline]
+    fn try_vector_sexp_data_mut(self) -> SexpResult<*mut SEXP> {
         if !matches!(self.typeof_(), SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP) {
-            return None;
+            return Err(SexpError::TypeMismatch {
+                expected: "generic or expression vector",
+                actual: self.typeof_(),
+            });
         }
         let data = unsafe { (*self.ptr).gengc_next_node as *mut SEXP };
-        if data.is_null() { None } else { Some(data) }
+        if data.is_null() {
+            Err(SexpError::MissingData {
+                sexptype: self.typeof_(),
+            })
+        } else {
+            Ok(data)
+        }
     }
 
     #[inline]
     fn valid_index(self, i: R_xlen_t) -> bool {
-        i >= 0 && i < self.len()
+        self.try_index(i).is_ok()
+    }
+
+    /// Return a Rust-shaped borrowed view for this SEXP.
+    pub fn view(self) -> SexpResult<SexpView<'a>> {
+        if self.is_nil() {
+            return Ok(SexpView::Nil);
+        }
+        match self.typeof_() {
+            SEXPTYPE::LGLSXP => Ok(SexpView::Logical(self.try_as_logical_slice()?)),
+            SEXPTYPE::INTSXP => Ok(SexpView::Integer(self.try_as_integer_slice()?)),
+            SEXPTYPE::REALSXP => Ok(SexpView::Real(self.try_as_real_slice()?)),
+            SEXPTYPE::CPLXSXP => Ok(SexpView::Complex(self.try_as_complex_slice()?)),
+            SEXPTYPE::RAWSXP => Ok(SexpView::Raw(self.try_as_raw_slice()?)),
+            SEXPTYPE::CHARSXP => Ok(SexpView::Char(self.try_as_bytes()?)),
+            SEXPTYPE::STRSXP => Ok(SexpView::StringVector(self)),
+            SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => Ok(SexpView::GenericVector(self)),
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => Ok(SexpView::Pairlist(self)),
+            SEXPTYPE::ENVSXP => Ok(SexpView::Environment(self)),
+            SEXPTYPE::SYMSXP => Ok(SexpView::Symbol(self)),
+            SEXPTYPE::CLOSXP | SEXPTYPE::SPECIALSXP | SEXPTYPE::BUILTINSXP => {
+                Ok(SexpView::Function(self))
+            }
+            _ => Ok(SexpView::Other(self)),
+        }
+    }
+
+    #[inline]
+    fn checked_child(ptr: SEXP) -> SexpResult<Sexp<'a>> {
+        if ptr.is_null() {
+            Ok(unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
+        } else {
+            Sexp::try_from_raw(ptr)
+        }
+    }
+
+    #[inline]
+    fn try_pairlist(self) -> SexpResult<()> {
+        if self.is_pairlist() {
+            Ok(())
+        } else {
+            Err(SexpError::TypeMismatch {
+                expected: "pairlist or language object",
+                actual: self.typeof_(),
+            })
+        }
     }
 
     /// Get the type of this SEXP.
@@ -205,14 +454,23 @@ impl<'a> Sexp<'a> {
     /// Returns true for non-NULL values, or the actual boolean/logical value
     /// for LGLSXP/INTSXP types.
     pub fn to_bool(self) -> bool {
+        self.try_to_bool().unwrap_or(true)
+    }
+
+    /// Convert to a boolean value with typed error reporting.
+    ///
+    /// `NULL` is false. Numeric and logical vectors use their first element;
+    /// empty vectors report [`SexpError::OutOfBounds`]. Other values are true,
+    /// matching R's broad truthiness at this wrapper layer.
+    pub fn try_to_bool(self) -> SexpResult<bool> {
         if self.is_nil() {
-            return false;
+            return Ok(false);
         }
         match self.typeof_() {
-            SEXPTYPE::LGLSXP => self.logical_elt(0).unwrap_or(0) != 0,
-            SEXPTYPE::INTSXP => self.integer_elt(0).unwrap_or(0) != 0,
-            SEXPTYPE::REALSXP => self.real_elt(0).unwrap_or(0.0) != 0.0,
-            _ => true,
+            SEXPTYPE::LGLSXP => self.try_logical_elt(0).map(|value| value != 0),
+            SEXPTYPE::INTSXP => self.try_integer_elt(0).map(|value| value != 0),
+            SEXPTYPE::REALSXP => self.try_real_elt(0).map(|value| value != 0.0),
+            _ => Ok(true),
         }
     }
 
@@ -220,11 +478,19 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns 0.0 for non-numeric types.
     pub fn as_f64(self) -> f64 {
+        self.try_as_f64().unwrap_or(0.0)
+    }
+
+    /// Convert the first logical/integer/real element to `f64`.
+    pub fn try_as_f64(self) -> SexpResult<f64> {
         match self.typeof_() {
-            SEXPTYPE::REALSXP => self.real_elt(0).unwrap_or(0.0),
-            SEXPTYPE::INTSXP => self.integer_elt(0).unwrap_or(0) as f64,
-            SEXPTYPE::LGLSXP => self.logical_elt(0).unwrap_or(0) as f64,
-            _ => 0.0,
+            SEXPTYPE::REALSXP => self.try_real_elt(0),
+            SEXPTYPE::INTSXP => self.try_integer_elt(0).map(|value| value as f64),
+            SEXPTYPE::LGLSXP => self.try_logical_elt(0).map(|value| value as f64),
+            _ => Err(SexpError::TypeMismatch {
+                expected: "logical, integer, or real vector",
+                actual: self.typeof_(),
+            }),
         }
     }
 
@@ -284,11 +550,15 @@ impl<'a> Sexp<'a> {
     /// bounds, or the data pointer is null.
     #[inline]
     pub fn logical_elt(self, i: R_xlen_t) -> Option<c_int> {
-        if !self.valid_index(i) {
-            return None;
-        }
-        let data = self.typed_data::<c_int>(SEXPTYPE::LGLSXP)?;
-        Some(unsafe { *data.add(i as usize) })
+        self.try_logical_elt(i).ok()
+    }
+
+    /// Get the i-th logical value with typed error reporting.
+    #[inline]
+    pub fn try_logical_elt(self, i: R_xlen_t) -> SexpResult<c_int> {
+        let data = self.try_typed_data::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
+        let i = self.try_index(i)?;
+        Ok(unsafe { *data.add(i) })
     }
 
     /// Get the i-th integer value with bounds checking.
@@ -297,11 +567,15 @@ impl<'a> Sexp<'a> {
     /// bounds, or the data pointer is null.
     #[inline]
     pub fn integer_elt(self, i: R_xlen_t) -> Option<c_int> {
-        if !self.valid_index(i) {
-            return None;
-        }
-        let data = self.typed_data::<c_int>(SEXPTYPE::INTSXP)?;
-        Some(unsafe { *data.add(i as usize) })
+        self.try_integer_elt(i).ok()
+    }
+
+    /// Get the i-th integer value with typed error reporting.
+    #[inline]
+    pub fn try_integer_elt(self, i: R_xlen_t) -> SexpResult<c_int> {
+        let data = self.try_typed_data::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
+        let i = self.try_index(i)?;
+        Ok(unsafe { *data.add(i) })
     }
 
     /// Get the i-th real (double) value with bounds checking.
@@ -310,11 +584,15 @@ impl<'a> Sexp<'a> {
     /// or the data pointer is null.
     #[inline]
     pub fn real_elt(self, i: R_xlen_t) -> Option<c_double> {
-        if !self.valid_index(i) {
-            return None;
-        }
-        let data = self.typed_data::<c_double>(SEXPTYPE::REALSXP)?;
-        Some(unsafe { *data.add(i as usize) })
+        self.try_real_elt(i).ok()
+    }
+
+    /// Get the i-th real value with typed error reporting.
+    #[inline]
+    pub fn try_real_elt(self, i: R_xlen_t) -> SexpResult<c_double> {
+        let data = self.try_typed_data::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
+        let i = self.try_index(i)?;
+        Ok(unsafe { *data.add(i) })
     }
 
     /// Get the i-th raw byte with bounds checking.
@@ -323,11 +601,15 @@ impl<'a> Sexp<'a> {
     /// or the data pointer is null.
     #[inline]
     pub fn raw_elt(self, i: R_xlen_t) -> Option<Rbyte> {
-        if !self.valid_index(i) {
-            return None;
-        }
-        let data = self.typed_data::<Rbyte>(SEXPTYPE::RAWSXP)?;
-        Some(unsafe { *data.add(i as usize) })
+        self.try_raw_elt(i).ok()
+    }
+
+    /// Get the i-th raw byte with typed error reporting.
+    #[inline]
+    pub fn try_raw_elt(self, i: R_xlen_t) -> SexpResult<Rbyte> {
+        let data = self.try_typed_data::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
+        let i = self.try_index(i)?;
+        Ok(unsafe { *data.add(i) })
     }
 
     /// Get the i-th complex value with bounds checking.
@@ -336,11 +618,15 @@ impl<'a> Sexp<'a> {
     /// bounds, or the data pointer is null.
     #[inline]
     pub fn complex_elt(self, i: R_xlen_t) -> Option<Rcomplex> {
-        if !self.valid_index(i) {
-            return None;
-        }
-        let data = self.typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP)?;
-        Some(unsafe { *data.add(i as usize) })
+        self.try_complex_elt(i).ok()
+    }
+
+    /// Get the i-th complex value with typed error reporting.
+    #[inline]
+    pub fn try_complex_elt(self, i: R_xlen_t) -> SexpResult<Rcomplex> {
+        let data = self.try_typed_data::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
+        let i = self.try_index(i)?;
+        Ok(unsafe { *data.add(i) })
     }
 
     /// Get the i-th string element (CHARSXP) with bounds checking.
@@ -349,11 +635,15 @@ impl<'a> Sexp<'a> {
     /// or the element itself is null.
     #[inline]
     pub fn string_elt(self, i: R_xlen_t) -> Option<Sexp<'a>> {
-        if self.typeof_() != SEXPTYPE::STRSXP || !self.valid_index(i) {
-            return None;
-        }
-        let data = self.typed_data::<SEXP>(SEXPTYPE::STRSXP)?;
-        Self::from_raw(unsafe { *data.add(i as usize) })
+        self.try_string_elt(i).ok()
+    }
+
+    /// Get the i-th string element with typed error reporting.
+    #[inline]
+    pub fn try_string_elt(self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        let data = self.try_typed_data::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
+        let i = self.try_index(i)?;
+        Self::checked_child(unsafe { *data.add(i) })
     }
 
     /// Get the i-th vector element with bounds checking.
@@ -362,11 +652,15 @@ impl<'a> Sexp<'a> {
     /// or the element itself is null.
     #[inline]
     pub fn vector_elt(self, i: R_xlen_t) -> Option<Sexp<'a>> {
-        if !self.valid_index(i) {
-            return None;
-        }
-        let data = self.vector_sexp_data()?;
-        Self::from_raw(unsafe { *data.add(i as usize) })
+        self.try_vector_elt(i).ok()
+    }
+
+    /// Get the i-th generic/expression vector element with typed error reporting.
+    #[inline]
+    pub fn try_vector_elt(self, i: R_xlen_t) -> SexpResult<Sexp<'a>> {
+        let data = self.try_vector_sexp_data()?;
+        let i = self.try_index(i)?;
+        Self::checked_child(unsafe { *data.add(i) })
     }
 
     // --- Pairlist iteration ---
@@ -383,6 +677,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the CAR with typed error reporting.
+    #[inline]
+    pub fn try_car(self) -> SexpResult<Sexp<'a>> {
+        self.try_pairlist()?;
+        Self::checked_child(unsafe { (*self.ptr).data.listsxp.carval })
+    }
+
     /// Get the CDR (next cell) of a pairlist element.
     ///
     /// Returns `None` if this is not a pairlist or the CDR is null.
@@ -395,6 +696,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the CDR with typed error reporting.
+    #[inline]
+    pub fn try_cdr(self) -> SexpResult<Sexp<'a>> {
+        self.try_pairlist()?;
+        Self::checked_child(unsafe { (*self.ptr).data.listsxp.cdrval })
+    }
+
     /// Get the TAG (name) of a pairlist element.
     ///
     /// Returns `None` if this is not a pairlist or the TAG is null.
@@ -405,6 +713,13 @@ impl<'a> Sexp<'a> {
         } else {
             None
         }
+    }
+
+    /// Get the TAG with typed error reporting.
+    #[inline]
+    pub fn try_tag(self) -> SexpResult<Sexp<'a>> {
+        self.try_pairlist()?;
+        Self::checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
     }
 
     // --- Closure accessors ---
@@ -421,6 +736,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the formal parameters of a closure with typed error reporting.
+    #[inline]
+    pub fn try_formals(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
+        Self::checked_child(unsafe { (*self.ptr).data.closxp.formals })
+    }
+
     /// Get the body of a closure.
     ///
     /// Returns `None` if this is not a closure or the body is null.
@@ -433,6 +755,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the body of a closure with typed error reporting.
+    #[inline]
+    pub fn try_body(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
+        Self::checked_child(unsafe { (*self.ptr).data.closxp.body })
+    }
+
     /// Get the environment of a closure.
     ///
     /// Returns `None` if this is not a closure or the environment is null.
@@ -443,6 +772,13 @@ impl<'a> Sexp<'a> {
         } else {
             None
         }
+    }
+
+    /// Get the environment of a closure with typed error reporting.
+    #[inline]
+    pub fn try_cloenv(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::CLOSXP, "closure")?;
+        Self::checked_child(unsafe { (*self.ptr).data.closxp.env })
     }
 
     // --- Environment accessors ---
@@ -459,6 +795,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the frame of an environment with typed error reporting.
+    #[inline]
+    pub fn try_frame(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
+        Self::checked_child(unsafe { (*self.ptr).data.envsxp.frame })
+    }
+
     /// Get the enclosing (parent) environment.
     ///
     /// Returns `None` if this is not an environment or the enclosing env is null.
@@ -471,6 +814,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the enclosing environment with typed error reporting.
+    #[inline]
+    pub fn try_enclos(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
+        Self::checked_child(unsafe { (*self.ptr).data.envsxp.enclos })
+    }
+
     /// Get the hash table of an environment.
     ///
     /// Returns `None` if this is not an environment or the hashtab is null.
@@ -481,6 +831,13 @@ impl<'a> Sexp<'a> {
         } else {
             None
         }
+    }
+
+    /// Get the hash table of an environment with typed error reporting.
+    #[inline]
+    pub fn try_hashtab(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::ENVSXP, "environment")?;
+        Self::checked_child(unsafe { (*self.ptr).data.envsxp.hashtab })
     }
 
     // --- Promise accessors ---
@@ -497,6 +854,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the value of a promise with typed error reporting.
+    #[inline]
+    pub fn try_prvalue(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
+        Self::checked_child(unsafe { (*self.ptr).data.promsxp.value })
+    }
+
     /// Get the code/expression of a promise.
     ///
     /// Returns `None` if this is not a promise or the code is null.
@@ -509,6 +873,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the code/expression of a promise with typed error reporting.
+    #[inline]
+    pub fn try_prcode(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
+        Self::checked_child(unsafe { (*self.ptr).data.promsxp.expr })
+    }
+
     /// Get the environment of a promise.
     ///
     /// Returns `None` if this is not a promise or the environment is null.
@@ -519,6 +890,13 @@ impl<'a> Sexp<'a> {
         } else {
             None
         }
+    }
+
+    /// Get the environment of a promise with typed error reporting.
+    #[inline]
+    pub fn try_prenv(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::PROMSXP, "promise")?;
+        Self::checked_child(unsafe { (*self.ptr).data.promsxp.env })
     }
 
     // --- Symbol accessors ---
@@ -535,6 +913,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the value of a symbol binding with typed error reporting.
+    #[inline]
+    pub fn try_symvalue(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::SYMSXP, "symbol")?;
+        Self::checked_child(unsafe { (*self.ptr).data.symsxp.internal })
+    }
+
     /// Get the print name of a symbol.
     ///
     /// Returns `None` if this is not a symbol or the print name is null.
@@ -547,6 +932,13 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the print name of a symbol with typed error reporting.
+    #[inline]
+    pub fn try_printname(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::SYMSXP, "symbol")?;
+        Self::checked_child(unsafe { (*self.ptr).data.symsxp.pname })
+    }
+
     // --- Attribute access ---
 
     /// Get the attributes of this SEXP.
@@ -555,6 +947,12 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn attrib(self) -> Option<Sexp<'a>> {
         Sexp::from_raw(unsafe { (*self.ptr).attrib })
+    }
+
+    /// Get the attributes of this SEXP, returning `NULL` when there are none.
+    #[inline]
+    pub fn try_attrib(self) -> SexpResult<Sexp<'a>> {
+        Self::checked_child(unsafe { (*self.ptr).attrib })
     }
 
     /// Check if this object has the OBJECT flag set (has a class attribute).
@@ -591,6 +989,15 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the primitive offset with typed error reporting.
+    pub fn try_primoffset(self) -> SexpResult<c_int> {
+        self.expect_any_type(
+            "special or builtin primitive",
+            &[SEXPTYPE::SPECIALSXP, SEXPTYPE::BUILTINSXP],
+        )?;
+        Ok(unsafe { (*self.ptr).data.primsxp.offset })
+    }
+
     // --- CHARSXP accessors ---
 
     #[inline]
@@ -606,41 +1013,62 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Return the CHARSXP byte length with typed error reporting.
+    pub fn try_char_len(self) -> SexpResult<R_xlen_t> {
+        self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
+        Ok(unsafe { (*self.ptr).data.charsxp_truelen })
+    }
+
     pub fn as_bytes(self) -> Option<&'a [u8]> {
-        if self.is_charsxp() {
-            let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
-            let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
-            if len == 0 {
-                return Some(&[]);
-            }
-            if data.is_null() {
-                return None;
-            }
-            Some(unsafe { std::slice::from_raw_parts(data, len) })
-        } else {
-            None
+        self.try_as_bytes().ok()
+    }
+
+    /// Return the CHARSXP bytes with typed error reporting.
+    pub fn try_as_bytes(self) -> SexpResult<&'a [u8]> {
+        self.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
+        let len = unsafe { (*self.ptr).data.charsxp_truelen } as usize;
+        let data = unsafe { (*self.ptr).gengc_next_node as *const u8 };
+        if len == 0 {
+            return Ok(&[]);
         }
+        if data.is_null() {
+            return Err(SexpError::MissingData {
+                sexptype: SEXPTYPE::CHARSXP,
+            });
+        }
+        Ok(unsafe { std::slice::from_raw_parts(data, len) })
     }
 
     pub fn as_str(self) -> Option<&'a str> {
-        self.as_bytes().and_then(|b| std::str::from_utf8(b).ok())
+        self.try_as_str().ok()
+    }
+
+    /// Return the CHARSXP bytes as UTF-8 with typed error reporting.
+    pub fn try_as_str(self) -> SexpResult<&'a str> {
+        std::str::from_utf8(self.try_as_bytes()?).map_err(|_| SexpError::InvalidUtf8)
     }
 
     // --- Complex vector accessors ---
 
     pub fn set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> bool {
-        if !self.valid_index(i) {
-            return false;
-        }
-        let Some(data) = self.typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP) else {
-            return false;
-        };
-        unsafe { *data.add(i as usize) = v };
-        true
+        self.try_set_complex_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th complex value with typed error reporting.
+    pub fn try_set_complex_elt(self, i: R_xlen_t, v: Rcomplex) -> SexpResult<()> {
+        let data = self.try_typed_data_mut::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")?;
+        let i = self.try_index(i)?;
+        unsafe { *data.add(i) = v };
+        Ok(())
     }
 
     pub fn as_complex_slice(self) -> Option<&'a [Rcomplex]> {
-        self.typed_slice::<Rcomplex>(SEXPTYPE::CPLXSXP)
+        self.try_as_complex_slice().ok()
+    }
+
+    /// Get a complex slice view with typed error reporting.
+    pub fn try_as_complex_slice(self) -> SexpResult<&'a [Rcomplex]> {
+        self.try_typed_slice::<Rcomplex>(SEXPTYPE::CPLXSXP, "complex vector")
     }
 
     pub fn iter_complex(self) -> impl Iterator<Item = Rcomplex> + 'a {
@@ -668,12 +1096,20 @@ impl<'a> Sexp<'a> {
         self.typeof_() == SEXPTYPE::EXTPTRSXP
     }
 
-    pub fn extptr_ptr(self) -> Option<*mut std::os::raw::c_void> {
+    pub fn extptr_ptr(self) -> Option<*mut c_void> {
         if self.is_extptr() {
             Some(unsafe { (*self.ptr).data.extptr[0] })
         } else {
             None
         }
+    }
+
+    /// Get the external pointer payload with typed error reporting.
+    ///
+    /// A null external pointer payload is a valid R value and is returned as-is.
+    pub fn try_extptr_ptr(self) -> SexpResult<*mut c_void> {
+        self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
+        Ok(unsafe { (*self.ptr).data.extptr[0] })
     }
 
     pub fn extptr_tag(self) -> Option<Sexp<'a>> {
@@ -684,12 +1120,24 @@ impl<'a> Sexp<'a> {
         }
     }
 
+    /// Get the external pointer tag with typed error reporting.
+    pub fn try_extptr_tag(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
+        Self::checked_child(unsafe { (*self.ptr).data.extptr[1] as SEXP })
+    }
+
     pub fn extprot(self) -> Option<Sexp<'a>> {
         if self.is_extptr() {
             Sexp::from_raw(unsafe { (*self.ptr).data.extptr[2] as SEXP })
         } else {
             None
         }
+    }
+
+    /// Get the external pointer protected value with typed error reporting.
+    pub fn try_extprot(self) -> SexpResult<Sexp<'a>> {
+        self.expect_type(SEXPTYPE::EXTPTRSXP, "external pointer")?;
+        Self::checked_child(unsafe { (*self.ptr).data.extptr[2] as SEXP })
     }
 
     // --- Weak reference (WEAKREFSXP) ---
@@ -729,12 +1177,27 @@ impl<'a> Sexp<'a> {
     /// The returned pointer points to the element data buffer (same as
     /// R's `DATAPTR()`).
     #[inline]
-    pub fn data_ptr(self) -> Option<*mut std::os::raw::c_void> {
+    pub fn data_ptr(self) -> Option<*mut c_void> {
+        self.try_data_ptr().ok()
+    }
+
+    /// Get the raw data pointer for vector-like objects with typed errors.
+    #[inline]
+    pub fn try_data_ptr(self) -> SexpResult<*mut c_void> {
         if self.typeof_().is_vector_type() || self.typeof_() == SEXPTYPE::CHARSXP {
-            let ptr = unsafe { (*self.ptr).gengc_next_node as *mut std::os::raw::c_void };
-            if ptr.is_null() { None } else { Some(ptr) }
+            let ptr = unsafe { (*self.ptr).gengc_next_node as *mut c_void };
+            if ptr.is_null() {
+                Err(SexpError::MissingData {
+                    sexptype: self.typeof_(),
+                })
+            } else {
+                Ok(ptr)
+            }
         } else {
-            None
+            Err(SexpError::TypeMismatch {
+                expected: "vector or character scalar",
+                actual: self.typeof_(),
+            })
         }
     }
 }
@@ -782,64 +1245,68 @@ impl<'a> Sexp<'a> {
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     pub fn set_logical_elt(self, i: R_xlen_t, v: c_int) -> bool {
-        if !self.valid_index(i) {
-            return false;
-        }
-        let Some(data) = self.typed_data_mut::<c_int>(SEXPTYPE::LGLSXP) else {
-            return false;
-        };
+        self.try_set_logical_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th logical value with typed error reporting.
+    pub fn try_set_logical_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+        let data = self.try_typed_data_mut::<c_int>(SEXPTYPE::LGLSXP, "logical vector")?;
+        let i = self.try_index(i)?;
         unsafe {
-            *data.add(i as usize) = v;
+            *data.add(i) = v;
         }
-        true
+        Ok(())
     }
 
     /// Set the i-th integer value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     pub fn set_integer_elt(self, i: R_xlen_t, v: c_int) -> bool {
-        if !self.valid_index(i) {
-            return false;
-        }
-        let Some(data) = self.typed_data_mut::<c_int>(SEXPTYPE::INTSXP) else {
-            return false;
-        };
+        self.try_set_integer_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th integer value with typed error reporting.
+    pub fn try_set_integer_elt(self, i: R_xlen_t, v: c_int) -> SexpResult<()> {
+        let data = self.try_typed_data_mut::<c_int>(SEXPTYPE::INTSXP, "integer vector")?;
+        let i = self.try_index(i)?;
         unsafe {
-            *data.add(i as usize) = v;
+            *data.add(i) = v;
         }
-        true
+        Ok(())
     }
 
     /// Set the i-th real (double) value.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     pub fn set_real_elt(self, i: R_xlen_t, v: c_double) -> bool {
-        if !self.valid_index(i) {
-            return false;
-        }
-        let Some(data) = self.typed_data_mut::<c_double>(SEXPTYPE::REALSXP) else {
-            return false;
-        };
+        self.try_set_real_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th real value with typed error reporting.
+    pub fn try_set_real_elt(self, i: R_xlen_t, v: c_double) -> SexpResult<()> {
+        let data = self.try_typed_data_mut::<c_double>(SEXPTYPE::REALSXP, "real vector")?;
+        let i = self.try_index(i)?;
         unsafe {
-            *data.add(i as usize) = v;
+            *data.add(i) = v;
         }
-        true
+        Ok(())
     }
 
     /// Set the i-th raw byte.
     ///
     /// Returns `false` if out of bounds, wrong type, or data pointer is null.
     pub fn set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> bool {
-        if !self.valid_index(i) {
-            return false;
-        }
-        let Some(data) = self.typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP) else {
-            return false;
-        };
+        self.try_set_raw_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th raw byte with typed error reporting.
+    pub fn try_set_raw_elt(self, i: R_xlen_t, v: Rbyte) -> SexpResult<()> {
+        let data = self.try_typed_data_mut::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")?;
+        let i = self.try_index(i)?;
         unsafe {
-            *data.add(i as usize) = v;
+            *data.add(i) = v;
         }
-        true
+        Ok(())
     }
 
     /// Set the i-th string element.
@@ -847,16 +1314,18 @@ impl<'a> Sexp<'a> {
     /// Returns `false` if this is not a string vector, `v` is not CHARSXP,
     /// the index is out of bounds, or data pointer is null.
     pub fn set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        if !self.valid_index(i) || !v.is_charsxp() {
-            return false;
-        }
-        let Some(data) = self.typed_data_mut::<SEXP>(SEXPTYPE::STRSXP) else {
-            return false;
-        };
+        self.try_set_string_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th string element with typed error reporting.
+    pub fn try_set_string_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+        v.expect_type(SEXPTYPE::CHARSXP, "character scalar")?;
+        let data = self.try_typed_data_mut::<SEXP>(SEXPTYPE::STRSXP, "string vector")?;
+        let i = self.try_index(i)?;
         unsafe {
-            *data.add(i as usize) = v.as_raw();
+            *data.add(i) = v.as_raw();
         }
-        true
+        Ok(())
     }
 
     /// Set the i-th vector element.
@@ -864,16 +1333,17 @@ impl<'a> Sexp<'a> {
     /// Returns `false` if this is not a generic/expression vector, the index is
     /// out of bounds, or data pointer is null.
     pub fn set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> bool {
-        if !self.valid_index(i) {
-            return false;
-        }
-        let Some(data) = self.vector_sexp_data_mut() else {
-            return false;
-        };
+        self.try_set_vector_elt(i, v).is_ok()
+    }
+
+    /// Set the i-th generic/expression vector element with typed error reporting.
+    pub fn try_set_vector_elt(self, i: R_xlen_t, v: Sexp<'a>) -> SexpResult<()> {
+        let data = self.try_vector_sexp_data_mut()?;
+        let i = self.try_index(i)?;
         unsafe {
-            *data.add(i as usize) = v.as_raw();
+            *data.add(i) = v.as_raw();
         }
-        true
+        Ok(())
     }
 
     // --- Slice views ---
@@ -883,28 +1353,48 @@ impl<'a> Sexp<'a> {
     /// Returns `None` if this is not a logical vector or the data pointer is null.
     /// The slice is valid for the lifetime `'a` of the `Sexp`.
     pub fn as_logical_slice(self) -> Option<&'a [c_int]> {
-        self.typed_slice::<c_int>(SEXPTYPE::LGLSXP)
+        self.try_as_logical_slice().ok()
+    }
+
+    /// Get a logical slice view with typed error reporting.
+    pub fn try_as_logical_slice(self) -> SexpResult<&'a [c_int]> {
+        self.try_typed_slice::<c_int>(SEXPTYPE::LGLSXP, "logical vector")
     }
 
     /// Get a slice view of the integer data.
     ///
     /// Returns `None` if this is not an integer vector or the data pointer is null.
     pub fn as_integer_slice(self) -> Option<&'a [c_int]> {
-        self.typed_slice::<c_int>(SEXPTYPE::INTSXP)
+        self.try_as_integer_slice().ok()
+    }
+
+    /// Get an integer slice view with typed error reporting.
+    pub fn try_as_integer_slice(self) -> SexpResult<&'a [c_int]> {
+        self.try_typed_slice::<c_int>(SEXPTYPE::INTSXP, "integer vector")
     }
 
     /// Get a slice view of the real (double) data.
     ///
     /// Returns `None` if this is not a real vector or the data pointer is null.
     pub fn as_real_slice(self) -> Option<&'a [c_double]> {
-        self.typed_slice::<c_double>(SEXPTYPE::REALSXP)
+        self.try_as_real_slice().ok()
+    }
+
+    /// Get a real slice view with typed error reporting.
+    pub fn try_as_real_slice(self) -> SexpResult<&'a [c_double]> {
+        self.try_typed_slice::<c_double>(SEXPTYPE::REALSXP, "real vector")
     }
 
     /// Get a slice view of the raw byte data.
     ///
     /// Returns `None` if this is not a raw vector or the data pointer is null.
     pub fn as_raw_slice(self) -> Option<&'a [Rbyte]> {
-        self.typed_slice::<Rbyte>(SEXPTYPE::RAWSXP)
+        self.try_as_raw_slice().ok()
+    }
+
+    /// Get a raw byte slice view with typed error reporting.
+    pub fn try_as_raw_slice(self) -> SexpResult<&'a [Rbyte]> {
+        self.try_typed_slice::<Rbyte>(SEXPTYPE::RAWSXP, "raw vector")
     }
 
     // --- Iterators ---
@@ -1295,6 +1785,75 @@ mod tests {
         assert!(sexp.set_raw_elt(3, 0xEF));
         let slice = some(sexp.as_raw_slice());
         assert_eq!(slice, &[0xDE, 0xAD, 0xBE, 0xEF]);
+    }
+
+    #[test]
+    fn test_try_accessors_report_type_and_bounds_errors() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 2);
+        let sexp = some(Sexp::from_raw(ptr));
+        sexp.try_set_integer_elt(0, 10).expect("set integer");
+        sexp.try_set_integer_elt(1, 20).expect("set integer");
+
+        assert_eq!(sexp.try_integer_elt(1), Ok(20));
+        assert!(matches!(
+            sexp.try_integer_elt(2),
+            Err(SexpError::OutOfBounds { index: 2, len: 2 })
+        ));
+        assert!(matches!(
+            sexp.try_real_elt(0),
+            Err(SexpError::TypeMismatch { expected, .. }) if expected == "real vector"
+        ));
+    }
+
+    #[test]
+    fn test_sexp_view_exposes_typed_borrow() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::REALSXP, 2);
+        let sexp = some(Sexp::from_raw(ptr));
+        sexp.try_set_real_elt(0, 1.5).expect("set real");
+        sexp.try_set_real_elt(1, 2.5).expect("set real");
+
+        match sexp.view().expect("view") {
+            SexpView::Real(values) => assert_eq!(values, &[1.5, 2.5]),
+            other => panic!("unexpected view: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn test_try_accessors_cover_non_vector_slots() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+        let sexp = some(Sexp::from_raw(ptr));
+        sexp.try_set_integer_elt(0, 7).expect("set integer");
+
+        assert_eq!(sexp.try_as_f64(), Ok(7.0));
+        assert_eq!(sexp.try_to_bool(), Ok(true));
+        assert_eq!(sexp.try_attrib().expect("attribute").as_raw(), unsafe {
+            R_NilValue()
+        });
+        assert!(sexp.try_data_ptr().is_ok());
+        assert!(matches!(
+            sexp.try_formals(),
+            Err(SexpError::TypeMismatch { expected, .. }) if expected == "closure"
+        ));
+
+        let symbol = some(Sexp::from_raw(arena.alloc_node(SEXPTYPE::SYMSXP)));
+        assert!(matches!(
+            symbol.try_data_ptr(),
+            Err(SexpError::TypeMismatch { expected, .. }) if expected == "vector or character scalar"
+        ));
+
+        let extptr = some(Sexp::from_raw(arena.alloc_node(SEXPTYPE::EXTPTRSXP)));
+        assert!(extptr.try_extptr_ptr().expect("external pointer").is_null());
+        assert_eq!(
+            extptr.try_extptr_tag().expect("external tag").as_raw(),
+            unsafe { R_NilValue() }
+        );
+        assert_eq!(
+            extptr.try_extprot().expect("external prot").as_raw(),
+            unsafe { R_NilValue() }
+        );
     }
 
     #[test]

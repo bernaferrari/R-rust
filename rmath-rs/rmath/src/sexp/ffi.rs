@@ -382,7 +382,10 @@ pub union SexprecData {
 impl Default for SexprecData {
     fn default() -> Self {
         SexprecData {
-            vecsxp: Vecsxp::default(),
+            // Initialize through the largest pointer-shaped scalar variant so
+            // every byte in the union starts as zero. Vector constructors then
+            // overwrite `vecsxp` with the requested length.
+            extptr: [std::ptr::null_mut(); 3],
         }
     }
 }

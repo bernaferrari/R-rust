@@ -45,7 +45,7 @@ use std::ptr;
 use super::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use super::globals::R_NilValue;
 use super::memory::RArena;
-use super::safe::Sexp;
+use super::safe::{Sexp, SexpError, SexpResult};
 
 // ---------------------------------------------------------------------------
 // Builder for integer vectors
@@ -382,12 +382,36 @@ impl GenericVector {
 
     /// Set the element at the given index.
     ///
-    /// Silently ignores indices that are out of bounds.
+    /// Silently ignores indices that are out of bounds. New Rust code should
+    /// prefer [`try_set_value`](Self::try_set_value), which reports mistakes.
     pub fn set(mut self, index: usize, value: SEXP) -> Self {
         if index < self.elements.len() {
             self.elements[index] = value;
         }
         self
+    }
+
+    /// Set the element at the given index from a typed SEXP handle.
+    ///
+    /// Silently ignores indices that are out of bounds, matching
+    /// [`set`](Self::set). Use [`try_set_value`](Self::try_set_value) when the
+    /// index should be checked.
+    pub fn set_value(self, index: usize, value: Sexp<'_>) -> Self {
+        self.set(index, value.as_raw())
+    }
+
+    /// Set the element at the given index from a typed SEXP handle, returning
+    /// a typed error if the index is out of bounds.
+    pub fn try_set_value(mut self, index: usize, value: Sexp<'_>) -> SexpResult<Self> {
+        if index < self.elements.len() {
+            self.elements[index] = value.as_raw();
+            Ok(self)
+        } else {
+            Err(SexpError::OutOfBounds {
+                index: index as R_xlen_t,
+                len: self.elements.len() as R_xlen_t,
+            })
+        }
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
@@ -447,9 +471,19 @@ impl PairlistBuilder {
         self
     }
 
+    /// Add an element from typed SEXP handles.
+    pub fn push_value(self, car: Sexp<'_>, tag: Option<Sexp<'_>>) -> Self {
+        self.push(car.as_raw(), tag.map_or(ptr::null_mut(), Sexp::as_raw))
+    }
+
     /// Add an untagged element.
     pub fn push_untagged(self, car: SEXP) -> Self {
         self.push(car, ptr::null_mut())
+    }
+
+    /// Add an untagged element from a typed SEXP handle.
+    pub fn push_untagged_value(self, car: Sexp<'_>) -> Self {
+        self.push_untagged(car.as_raw())
     }
 
     pub fn build_in<'arena>(self, arena: &'arena mut RArena) -> Option<Sexp<'arena>> {
@@ -805,6 +839,19 @@ mod tests {
     }
 
     #[test]
+    fn test_generic_vector_typed_set_reports_bounds() {
+        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let builder = GenericVector::with_length(1)
+            .try_set_value(0, nil)
+            .expect("in-bounds typed set should succeed");
+
+        assert!(matches!(
+            builder.try_set_value(2, nil),
+            Err(SexpError::OutOfBounds { index: 2, len: 1 })
+        ));
+    }
+
+    #[test]
     fn test_pairlist_builder() {
         let mut arena = crate::sexp::memory::RArena::new();
         let a = arena.alloc_node(SEXPTYPE::INTSXP);
@@ -818,6 +865,20 @@ mod tests {
         assert!(list.is_pairlist());
         assert!(list.car().is_some());
         assert!(list.cdr().is_some());
+    }
+
+    #[test]
+    fn test_pairlist_builder_accepts_typed_values() {
+        let nil = some(Sexp::from_raw(unsafe { R_NilValue() }));
+        let mut arena = crate::sexp::memory::RArena::new();
+        let list = some(
+            PairlistBuilder::new()
+                .push_untagged_value(nil)
+                .build_in(&mut arena),
+        );
+
+        assert!(list.is_pairlist());
+        assert!(list.car().is_some());
     }
 
     #[test]
