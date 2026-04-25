@@ -81,50 +81,83 @@ pub type PRIMFUN = unsafe extern "C" fn(
     SEXP, // rho (environment)
 ) -> SEXP;
 
+/// Rust-shaped view over an R primitive descriptor.
+#[derive(Clone, Copy)]
+pub struct PrimitiveDescriptor {
+    pub op: SEXP,
+    pub offset: c_int,
+    pub kind: c_int,
+    pub name: &'static str,
+    pub print_flag: c_int,
+    pub fun: Option<PRIMFUN>,
+}
+
+impl PrimitiveDescriptor {
+    pub unsafe fn from_op(op: SEXP) -> Option<Self> {
+        if op.is_null() {
+            return None;
+        }
+        let kind = unsafe { TYPEOF(op) };
+        if kind != SEXPTYPE::SPECIALSXP && kind != SEXPTYPE::BUILTINSXP {
+            return None;
+        }
+        let offset = unsafe { PRIMOFFSET(op) };
+        let entry = fun_tab_descriptor(offset)?;
+        Some(Self {
+            op,
+            offset,
+            kind,
+            name: fun_tab_name(entry.name),
+            // Preserve the previous evaluator behavior. This field now has a
+            // single home, so matching R's PRIMPRINT macro later is localized.
+            print_flag: 0,
+            fun: entry.cfun,
+        })
+    }
+}
+
 /// Get the primitive function pointer for a SPECIAL or BUILTIN.
 pub unsafe fn get_primfun(op: SEXP) -> Option<PRIMFUN> {
-    if op.is_null() {
-        return None;
-    }
-    let t = TYPEOF(op);
-    if t != SPECIALSXP && t != BUILTINSXP {
-        return None;
-    }
-    let offset = PRIMOFFSET(op);
-    if offset < 0 {
-        return None;
-    }
-    get_fun_tab_entry(offset)
+    unsafe { PrimitiveDescriptor::from_op(op) }.and_then(|primitive| primitive.fun)
 }
 
 /// Get a function table entry by offset.
 ///
 /// Looks up the canonical R_FunTab and returns the C function pointer at the given offset.
 pub unsafe fn get_fun_tab_entry(offset: c_int) -> Option<PRIMFUN> {
+    fun_tab_descriptor(offset).and_then(|entry| entry.cfun)
+}
+
+fn fun_tab_descriptor(offset: c_int) -> Option<&'static crate::mainutils::names::FunTabEntry> {
+    if offset < 0 {
+        return None;
+    }
     let tab = crate::mainutils::names::R_FunTab;
     let idx = offset as usize;
     if idx < tab.len() && !tab[idx].is_sentinel() {
-        tab[idx].cfun
+        Some(&tab[idx])
     } else {
         None
     }
 }
 
+fn fun_tab_name(name: &'static [u8]) -> &'static str {
+    let bytes = name.strip_suffix(&[0]).unwrap_or(name);
+    std::str::from_utf8(bytes).unwrap_or("unknown")
+}
+
 /// Check the PRIMPRINT flag (visibility hint for primitives).
 pub unsafe fn PRIMPRINT(op: SEXP) -> c_int {
-    if op.is_null() {
-        return 0;
-    }
-    let t = TYPEOF(op);
-    if t != SPECIALSXP && t != BUILTINSXP {
-        return 0;
-    }
-    0
+    unsafe { PrimitiveDescriptor::from_op(op) }
+        .map(|primitive| primitive.print_flag)
+        .unwrap_or(0)
 }
 
 /// Get the PRIMNAME for a primitive.
 pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
-    "unknown"
+    unsafe { PrimitiveDescriptor::from_op(op) }
+        .map(|primitive| primitive.name)
+        .unwrap_or("unknown")
 }
 
 // ---------------------------------------------------------------------------
@@ -542,11 +575,12 @@ fn apply_special_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
-    let flag = unsafe { PRIMPRINT(fun.as_raw()) };
+    let primitive = unsafe { PrimitiveDescriptor::from_op(fun.as_raw()) };
+    let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
     let op_name = call_head_name(call);
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
-    let tmp = if let Some(primfun) = unsafe { get_primfun(fun.as_raw()) } {
+    let tmp = if let Some(primfun) = primitive.and_then(|primitive| primitive.fun) {
         unsafe { primfun(call.as_raw(), fun.as_raw(), args.as_raw(), rho.as_raw()) }
     } else {
         unsafe {
@@ -574,7 +608,8 @@ fn apply_builtin_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
-    let flag = unsafe { PRIMPRINT(fun.as_raw()) };
+    let primitive = unsafe { PrimitiveDescriptor::from_op(fun.as_raw()) };
+    let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
     let op_name = call_head_name(call);
@@ -5754,5 +5789,19 @@ mod tests {
             .expect("self-evaluating scalar should evaluate");
 
         assert_eq!(result.integer_elt(0), Some(123));
+    }
+
+    #[test]
+    fn primitive_descriptor_exposes_funtab_metadata() {
+        let _session = RSession::new();
+        let primitive = unsafe { crate::mainutils::names::R_Primitive(c"+".as_ptr()) };
+        let descriptor =
+            unsafe { PrimitiveDescriptor::from_op(primitive) }.expect("primitive descriptor");
+
+        assert_eq!(descriptor.name, "+");
+        assert_eq!(descriptor.kind, BUILTINSXP);
+        assert!(descriptor.offset >= 0);
+        assert_eq!(unsafe { PRIMNAME(primitive) }, "+");
+        assert_eq!(unsafe { PRIMPRINT(primitive) }, descriptor.print_flag);
     }
 }
