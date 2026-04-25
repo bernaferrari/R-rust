@@ -679,7 +679,7 @@ pub fn android_runtime_paths(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use std::sync::{Arc, Barrier};
     use std::time::Duration;
 
     fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
@@ -935,6 +935,60 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn parallel_worker_sessions_keep_state_isolated() {
+        const WORKERS: usize = 4;
+
+        let barrier = Arc::new(Barrier::new(WORKERS));
+        let handles = (0..WORKERS)
+            .map(|index| {
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let session = RSession::new().expect("session");
+                    let value = 200 + index as i32;
+
+                    barrier.wait();
+
+                    assert_eq!(
+                        session
+                            .eval(format!("x <- {value}L\nx"))
+                            .expect("assign global"),
+                        format!("[1] {value}")
+                    );
+                    assert_eq!(
+                        session.eval("x".to_string()).expect("read global"),
+                        format!("[1] {value}")
+                    );
+
+                    let plot = session
+                        .render(
+                            format!(
+                                "plot(c(1, 2, 3), c({value}, {next}, {last}), main = \"worker {index}\", col = \"red\", type = \"l\")",
+                                next = value + 1,
+                                last = value + 2,
+                            ),
+                            220,
+                            160,
+                        )
+                        .expect("render");
+                    assert_eq!(plot.width, 220);
+                    assert_eq!(plot.height, 160);
+                    assert!(plot.pixels.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
+                    assert!(plot.pixels.len() > 256);
+
+                    value
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut values = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("worker should not panic"))
+            .collect::<Vec<_>>();
+        values.sort_unstable();
+        assert_eq!(values, vec![200, 201, 202, 203]);
     }
 
     #[test]

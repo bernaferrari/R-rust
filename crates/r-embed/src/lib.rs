@@ -877,6 +877,7 @@ impl Drop for RSession {
 mod tests {
     use super::*;
     use std::io::Cursor;
+    use std::sync::{Arc, Barrier};
 
     struct DecodedPng {
         width: u32,
@@ -931,6 +932,18 @@ mod tests {
     }
 
     fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        make_test_package_with_source(
+            root_name,
+            "export(tiny_value)\n",
+            "tiny_value <- function() 42L\n",
+        )
+    }
+
+    fn make_test_package_with_source(
+        root_name: &str,
+        namespace: &str,
+        source: &str,
+    ) -> (std::path::PathBuf, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
             "{root_name}-{}-{}",
             std::process::id(),
@@ -945,7 +958,8 @@ mod tests {
         std::fs::create_dir_all(&r_dir).expect("package R dir");
         std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
             .expect("description");
-        std::fs::write(r_dir.join("tiny.R"), "tiny_value <- function() 42L\n").expect("R source");
+        std::fs::write(pkg.join("NAMESPACE"), namespace).expect("namespace");
+        std::fs::write(r_dir.join("tiny.R"), source).expect("R source");
         (root, pkg)
     }
 
@@ -1098,6 +1112,107 @@ mod tests {
         assert_eq!(session.eval("tiny_value()").expect("eval"), "[1] 42");
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn parallel_sessions_keep_android_runtime_state_isolated() {
+        const WORKERS: usize = 4;
+
+        let barrier = Arc::new(Barrier::new(WORKERS));
+        let handles = (0..WORKERS)
+            .map(|index| {
+                let barrier = barrier.clone();
+                std::thread::spawn(move || {
+                    let value = 100 + index as i32;
+                    let namespace =
+                        "export(tiny_value, make_tiny, tiny_generic)\nS3method(tiny_generic, tinything)\n";
+                    let source = format!(
+                        r#"
+tiny_value <- function() {value}L
+make_tiny <- function() {{
+    x <- {value}L
+    class(x) <- "tinything"
+    x
+}}
+tiny_generic <- function(x) UseMethod("tiny_generic", x)
+tiny_generic.tinything <- function(x) {value}L
+"#
+                    );
+                    let (root, _pkg) = make_test_package_with_source(
+                        &format!("rport-embed-parallel-{index}"),
+                        namespace,
+                        &source,
+                    );
+                    let files = root.join("files");
+                    let cache = root.join("cache");
+                    let bundled = root.join("bundled-library");
+                    let paths = AndroidRuntimePaths::new(
+                        files.to_str().expect("utf8 files path"),
+                        cache.to_str().expect("utf8 cache path"),
+                        Some(bundled.to_str().expect("utf8 bundled path")),
+                    );
+
+                    let mut session = RSession::new().expect("session");
+                    session
+                        .configure_android_runtime(&paths)
+                        .expect("path config");
+
+                    barrier.wait();
+
+                    session.load_package("tiny").expect("load package");
+                    assert_eq!(
+                        session.eval("tiny_value()").expect("tiny value"),
+                        format!("[1] {value}")
+                    );
+
+                    assert_eq!(
+                        session
+                            .eval("tiny_generic(make_tiny())")
+                            .expect("s3 dispatch"),
+                        format!("[1] {value}")
+                    );
+
+                    let captured = session
+                        .eval("capture.output({ cat(\"session local\\n\") })")
+                        .expect("capture output");
+                    assert!(captured.contains("session local"), "{captured}");
+
+                    let err = session
+                        .eval("unknown_symbol")
+                        .expect_err("undefined symbol should fail");
+                    assert!(err.to_string().contains("not found"));
+                    assert_eq!(
+                        session.eval("tiny_value()").expect("eval after error"),
+                        format!("[1] {value}")
+                    );
+
+                    let png = session
+                        .render_with_dimensions(
+                            &format!(
+                                "plot(c(1, 2, 3), c({value}, {next}, {last}), main = \"session {index}\", col = \"red\", type = \"l\")",
+                                next = value + 1,
+                                last = value + 2,
+                            ),
+                            240,
+                            180,
+                        )
+                        .expect("render");
+                    let decoded = decode_png_rgba(&png);
+                    assert!(decoded.red_pixels() > 5);
+                    assert!(decoded.non_white_in_region(0, 0, decoded.width, 40) > 5);
+
+                    let _ = std::fs::remove_dir_all(root);
+                    value
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut values = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("worker should not panic"))
+            .collect::<Vec<_>>();
+        values.sort_unstable();
+        assert_eq!(values, vec![100, 101, 102, 103]);
     }
 
     #[test]
