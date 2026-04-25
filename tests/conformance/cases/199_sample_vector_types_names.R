@@ -1,0 +1,8 @@
+x <- c(a = 10, b = 20, c = 30)
+y <- sample(x, 2)
+print(is.numeric(y))
+print(all(c(length(names(y)) == 2, names(y) %in% names(x))))
+print(is.character(sample(c("a", "b", "c"), 2)))
+print(is.logical(sample(c(TRUE, FALSE), 2)))
+print(all(sample(c("a", "b", "c"), 5, TRUE, c(0, 0, 1)) == "c"))
+print(all(sample(1:3, 2, FALSE, c(0, 1, 1)) != 1L))

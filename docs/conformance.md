@@ -53,8 +53,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 164 |
-| Passing | 164 |
+| Total parity cases | 206 |
+| Passing | 206 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -63,14 +63,14 @@ Current domain coverage:
 
 | Domain | Passing Cases | Notes |
 | --- | ---: | --- |
-| Parser and scalar basics | 12 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
+| Parser and scalar basics | 34 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 20 | Vectors, lists, names, subsetting, factors, class replacement |
-| Base functions, conditions, and platform helpers | 65 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
-| Stats, math, and RNG | 52 | Numeric summaries, distributions, cumulative helpers, `sample.int` invariants |
+| Vectors, lists, attributes, and objects | 29 | Vectors, lists, names, subsetting, factors, class replacement |
+| Base functions, conditions, and platform helpers | 71 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
+| Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 0 | Covered by unit/package smoke tests today; parity fixtures are tracked by `rport-ifek` and `rport-x3pp` |
 | Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |
-| Error semantics | 5 | Missing argument, `stop`, `stopifnot`, and selected expected errors |
+| Error semantics | 6 | Missing argument, `stop`, `stopifnot`, sampling errors, and selected expected errors |
 
 The generated report is the source of truth for exact current counts. Do not
 hand-edit release numbers without rerunning the report command.
@@ -106,3 +106,14 @@ remaining coverage expansions:
 New behavior should land with a stock-R fixture whenever possible. If exact
 stock-R parity is intentionally out of scope for Android, add a policy note and
 an owner bead instead of silently broadening claims.
+
+## RNG Policy
+
+RNG state is session-owned, reproducible within a session, and isolated across
+parallel sessions. Conformance fixtures avoid asserting exact random streams
+unless the result is deterministic by construction, such as zero-weight
+sampling. This keeps the parity gate focused on stock-R behavior contracts:
+shape, type, replacement rules, probability validation, tail/log flags, and
+numeric edge handling. Exact byte-for-byte `.Random.seed` stream parity with a
+specific stock R release is a separate compatibility target and should be
+tracked explicitly if required by a package or demo.

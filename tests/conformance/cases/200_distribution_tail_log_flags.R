@@ -1,0 +1,5 @@
+print(dnorm(0, 0, 1, TRUE))
+print(pnorm(1, 0, 1, FALSE, FALSE))
+print(pnorm(1, 0, 1, TRUE, TRUE))
+print(qnorm(0.25, 0, 1, FALSE, FALSE))
+print(qnorm(log(0.25), 0, 1, TRUE, TRUE))

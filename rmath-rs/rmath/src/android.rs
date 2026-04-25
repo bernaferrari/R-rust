@@ -1349,6 +1349,47 @@ mod tests {
     }
 
     #[test]
+    fn test_sample_matches_core_r_shape_and_type_rules() {
+        let mut session = RSession::new();
+
+        let shortcut = session.eval("all(sort(sample(5)) == 1:5)");
+        assert_eq!(shortcut.output, "[1] TRUE");
+
+        let integer_type = session.eval("is.integer(sample(5, 3))");
+        assert_eq!(integer_type.typed, RValue::Logical(Some(true)));
+
+        let character_type = session.eval("is.character(sample(c(\"a\", \"b\", \"c\"), 2))");
+        assert_eq!(character_type.typed, RValue::Logical(Some(true)));
+
+        let logical_type = session.eval("is.logical(sample(c(TRUE, FALSE), 2))");
+        assert_eq!(logical_type.typed, RValue::Logical(Some(true)));
+
+        let names = session.eval(
+            "x <- c(a = 10, b = 20, c = 30)\ny <- sample(x, 2)\nall(c(length(names(y)) == 2, names(y) %in% names(x)))",
+        );
+        assert_eq!(names.typed, RValue::Logical(Some(true)));
+
+        let too_large = session.eval("sample(c(\"a\", \"b\"), 3, FALSE)");
+        assert!(matches!(too_large.typed, RValue::Error(_)));
+        assert!(
+            too_large
+                .output
+                .contains("cannot take a sample larger than the population when 'replace = FALSE'")
+        );
+
+        let weighted_replace =
+            session.eval("all(sample(c(\"a\", \"b\", \"c\"), 5, TRUE, c(0, 0, 1)) == \"c\")");
+        assert_eq!(weighted_replace.typed, RValue::Logical(Some(true)));
+
+        let weighted_no_replace = session.eval("all(sample(1:3, 2, FALSE, c(0, 1, 1)) != 1L)");
+        assert_eq!(weighted_no_replace.typed, RValue::Logical(Some(true)));
+
+        let impossible = session.eval("sample(1:3, 2, FALSE, c(1, 0, 0))");
+        assert!(matches!(impossible.typed, RValue::Error(_)));
+        assert!(impossible.output.contains("too few positive probabilities"));
+    }
+
+    #[test]
     fn test_proc_time_shape_matches_r_contract() {
         let mut session = RSession::new();
 
