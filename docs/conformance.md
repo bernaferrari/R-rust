@@ -1,120 +1,108 @@
-# Conformance Matrix
+# Conformance Dashboard
 
-`scripts/conformance_parity.sh` runs a small golden suite against two engines:
-
-- stock C R via `Rscript`
-- the Rust interpreter runner in `tests/conformance`
+`scripts/conformance_parity.sh` compares the Rust runtime against stock C R.
+It is the release-facing proof that a checked-in fixture behaves the same in
+both engines.
 
 The harness:
 
-- reads scripted cases from `tests/conformance/cases/*.R`
-- normalizes output deterministically
-- compares both engines against checked-in goldens in `tests/conformance/golden/*.out`
-- compares expected-error fixtures from `tests/conformance/error_cases/*.R`
-  against normalized goldens in `tests/conformance/error_golden/*.out`
-- treats entries in `tests/conformance/xfail.tsv` as known gaps that must have
-  an owner bead and reason
-- exits successfully with a clear skip message if `Rscript` is not available
+- runs normal fixtures from `tests/conformance/cases/*.R`
+- runs expected-error fixtures from `tests/conformance/error_cases/*.R`
+- executes stock C R with `Rscript --vanilla`
+- executes the Rust interpreter through `tests/conformance/src/main.rs`
+- normalizes deterministic output and error text
+- compares both engines against checked-in goldens
+- treats `tests/conformance/xfail.tsv` as the owned known-gap list
+- optionally writes machine-readable JSON and human-readable Markdown reports
 
-## Usage
+## Commands
+
+Run parity only:
 
 ```bash
-./scripts/conformance_parity.sh
+./scripts/conformance_parity.sh --check
 ```
 
-The script is non-interactive and safe to run in CI. It uses `Rscript --vanilla`
-and a standalone Rust runner, so it does not depend on the interactive REPL. It
-builds `rmath` before compiling the runner so parity checks never reuse a stale
-Rust artifact after source edits.
+Run parity and write reports:
 
-## Current cases
+```bash
+./scripts/conformance_parity.sh --check --report target/conformance-report
+```
 
-- `001_arithmetic.R` checks scalar arithmetic
-- `002_min_scalar.R` checks scalar builtin evaluation
-- `003_integer_vector.R` checks integer vector formatting
-- `004_logical_scalar.R` checks logical comparison output
-- `005_string_scalar.R` checks string formatting
-- `006_control_flow.R` checks `if` expression evaluation
-- `007_scalar_math.R` checks math builtin composition
-- `008_na_arithmetic.R` checks scalar `NA` arithmetic behavior
-- `009_index_assignment.R` checks basic index assignment behavior
-- `010_factor_labels.R` checks factor label formatting
-- `011_closure_positional.R` checks positional closure arguments
-- `012_closure_lexical_scope.R` checks closure environment capture
-- `013_closure_default_arg.R` checks default argument promises
-- `014_closure_lazy_unused_arg.R` checks lazy unused arguments
-- `015_closure_named_args.R` checks exact named argument matching
-- `016_closure_return.R` checks return unwinding inside closures
-- `017_missing_arg_true.R` checks `missing(x)` for absent formals
-- `018_missing_arg_false.R` checks `missing(x)` for supplied formals
-- `019_while_break.R` checks loop break unwinding
-- `020_while_next.R` checks loop next unwinding
-- `021_missing_arg_error.R` checks missing formal argument errors
-- `022_vector_recycling_scalar.R` checks scalar recycling in vector arithmetic
-- `023_vector_pairwise_add.R` checks pairwise vector arithmetic
-- `024_logical_numeric_coercion.R` checks logical-to-numeric arithmetic coercion
-- `025_vector_multi_subset.R` checks integer vector subsetting
-- `026_named_vector_names.R` checks named vector construction via `c()`
-- `027_list_print.R` checks unnamed list output
-- `028_named_list_print.R` checks named list output
-- `029_lapply_closure.R` checks `lapply()` with closure results
-- `030_dollar_exact_list.R` checks exact `$` list extraction
-- `031_dollar_partial_list.R` checks partial `$` list extraction
-- `032_dollar_missing_list.R` checks missing `$` list extraction
-- `033_mean_numeric.R` checks numeric `mean()` evaluation
-- `034_mean_na_rm.R` checks `mean()` with `na.rm`
-- `035_mean_sequence.R` checks `mean()` over `:` sequences
-- `036_mean_na.R` checks `mean()` with `NA`
-- `037_sum_na_rm.R` checks `sum()` with `na.rm`
-- `038_min_na_rm.R` checks `min()` with `na.rm`
-- `039_range_na_rm.R` checks `range()` with `na.rm`
+That writes:
 
-## Domain Matrix
+- `target/conformance-report/summary.json`
+- `target/conformance-report/summary.md`
 
-| Domain | Status | Gate | Owner |
-| --- | --- | --- | --- |
-| Parser syntax | Seeded | `scripts/conformance_parity.sh` cases 001, 006 | `rport-ur1` |
-| Evaluator/scoping/promises | Seeded | parity cases 011-020 plus Android closure tests | `rport-t57` |
-| Vector semantics | Seeded | parity cases 003, 008, 009, 022-026 | `rport-c2w` |
-| Base functions | Seeded | parity cases 002, 029, 033-039 plus Android eval smoke tests | `rport-6p2` |
-| Stats/math | Seeded | parity case 007, Android dnorm/pnorm/Bessel tests | `rport-pm0` |
-| Packages/namespaces | Open | no parity gate yet | `rport-97s` |
-| Object systems | Open | factor parity case 010; no broader S3/S4 gate yet | `rport-fs5` |
-| Graphics/grid/grDevices | Infrastructure | session-state unit tests and Android global ratchet | `rport-5jd` |
-| Android embedding API | Seeded | `scripts/android_toolchain_check.sh`, `android::tests` | `rport-usi` |
-| Android cancellation | Open | no gate yet | `rport-ece` |
-| Android package paths | Open | no gate yet | `rport-k0l` |
-| Platform globals/session safety | Gated | `scripts/check_android_globals.sh` and Android target compile | `rport-dg0.2` |
+You can also choose explicit output paths:
 
-## Gap Report
-
-The project is past proof-of-concept for isolated sessions, scalar/vector smoke
-evaluation, math wrappers, and Android cross-compilation. It is not yet close to
-full R compatibility: parser coverage is narrow, promises and lexical scoping
-need stock-R goldens, package loading is mostly policy work, and graphics still
-needs the Android device bridge.
-
-Current parity status is 39 passing cases and 0 expected failures.
-
-There are currently no entries in `tests/conformance/xfail.tsv`.
-
-Near-term conformance work should land in this order:
-
-1. Expand parser/evaluator goldens for functions, calls, promises, lexical
-   scope, assignment forms, and errors.
-2. Expand vector goldens for recycling, attributes, coercion, subsetting,
-   factors, lists, complex/raw vectors, and NA/NaN edge cases.
-3. Add base function goldens for `match`, `unique`, `order`, `sort`, strings,
-   dates, connections, conditions, and serialization.
-4. Add stats/math goldens with tolerances for distributions, RNG, linear
-   algebra, FFT, optimization, and model helpers.
-5. Add package/namespace fixtures for a minimal pure-R package, then decide the
-   Android native package policy.
-6. Add graphics goldens once the Android device bridge can capture deterministic
-   plot artifacts.
-
-## Skip behavior
+```bash
+./scripts/conformance_parity.sh \
+  --check \
+  --json target/conformance-summary.json \
+  --markdown target/conformance-summary.md
+```
 
 If `Rscript` is missing, the harness prints a deterministic skip message and
-returns exit code `0`. That keeps local and CI runs from failing unexpectedly
-when stock C R is not installed.
+returns `0`. That keeps local runs from failing unexpectedly on machines without
+stock R installed; release gates should install stock R and require this command.
+
+## Current Status
+
+As of the latest local run:
+
+| Metric | Count |
+| --- | ---: |
+| Total parity cases | 164 |
+| Passing | 164 |
+| Failing | 0 |
+| Expected failures | 0 |
+| Unexpected passes | 0 |
+
+Current domain coverage:
+
+| Domain | Passing Cases | Notes |
+| --- | ---: | --- |
+| Parser and scalar basics | 12 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
+| Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
+| Vectors, lists, attributes, and objects | 20 | Vectors, lists, names, subsetting, factors, class replacement |
+| Base functions, conditions, and platform helpers | 65 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
+| Stats, math, and RNG | 52 | Numeric summaries, distributions, cumulative helpers, `sample.int` invariants |
+| Packages, namespaces, and S3 | 0 | Covered by unit/package smoke tests today; parity fixtures are tracked by `rport-ifek` and `rport-x3pp` |
+| Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |
+| Error semantics | 5 | Missing argument, `stop`, `stopifnot`, and selected expected errors |
+
+The generated report is the source of truth for exact current counts. Do not
+hand-edit release numbers without rerunning the report command.
+
+## Status Policy
+
+- `pass`: stock C R, checked-in golden output, and the Rust runtime agree after
+  deterministic normalization.
+- `fail`: behavior differs and must be fixed or added to `xfail.tsv`.
+- `xfail`: accepted known gap with an owner bead and reason.
+- `xpass`: stale expected failure; remove it from `xfail.tsv` or update the
+  owner bead.
+
+`xfail.tsv` rows are tab-separated:
+
+```text
+case_id<TAB>owner_bead<TAB>reason
+```
+
+## Release Gaps
+
+The parity suite is strong enough to catch regressions in the covered surface,
+but it is not a full R compatibility claim. The release roadmap tracks the
+remaining coverage expansions:
+
+- `rport-az2r`: base language parity top-50 gaps
+- `rport-x3pp`: S3 release parity beyond the first registry slice
+- `rport-dgn7`: stats, RNG, and numeric fidelity release slice
+- `rport-ifek`: pure-R package corpus smoke test
+- `rport-c6ap`: graphics path release quality
+- `rport-89pz`: Android UniFFI release surface hardening
+
+New behavior should land with a stock-R fixture whenever possible. If exact
+stock-R parity is intentionally out of scope for Android, add a policy note and
+an owner bead instead of silently broadening claims.
