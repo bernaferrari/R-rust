@@ -1396,24 +1396,17 @@ pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
 
     use crate::sexp::accessors::{CADR, CAR, CDR, TYPEOF};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
     use crate::sexp::session::RSession;
 
-    thread_local! {
-        static TEST_SESSION: RefCell<RSession> = RefCell::new(RSession::new());
-    }
-
     fn parse_str(input: &str) -> Result<SEXP, ParseError> {
-        TEST_SESSION.with(|session| {
-            session
-                .borrow_mut()
-                .with_arena(|arena| parse(input, arena))
-                .unwrap_or_else(|| Err(ParseError("test session is closed".to_string())))
-        })
+        let session = Box::leak(Box::new(RSession::new()));
+        session
+            .with_arena(|arena| parse(input, arena))
+            .unwrap_or_else(|| Err(ParseError("test session is closed".to_string())))
     }
 
     fn must<T, E: std::fmt::Debug>(r: Result<T, E>) -> T {

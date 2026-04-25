@@ -2252,6 +2252,7 @@ mod tests {
 
     #[test]
     fn test_scalar_index_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(scalarIndex(ptr::null_mut()), -1);
         }
@@ -2259,6 +2260,7 @@ mod tests {
 
     #[test]
     fn test_scalar_index_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(scalarIndex(R_NilValue()), -1);
         }
@@ -2266,6 +2268,7 @@ mod tests {
 
     #[test]
     fn test_extract_exact_arg_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = ExtractExactArg(R_NilValue());
             assert_eq!(result, 1);
@@ -2274,6 +2277,7 @@ mod tests {
 
     #[test]
     fn test_r_dispatch_or_eval_sp_no_dispatch() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut ans: SEXP = ptr::null_mut();
             let result = R_DispatchOrEvalSP(
@@ -2290,6 +2294,7 @@ mod tests {
 
     #[test]
     fn test_extract_arg_empty_list() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = ExtractArg(R_NilValue(), R_NilValue());
             assert_eq!(result, R_NilValue());
@@ -2298,6 +2303,7 @@ mod tests {
 
     #[test]
     fn test_extract_drop_arg_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut drop: c_int = 0;
             ExtractDropArg(R_NilValue(), &mut drop);
@@ -2307,6 +2313,7 @@ mod tests {
 
     #[test]
     fn test_as_logical_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(asLogical(R_NilValue()), NA_LOGICAL);
         }
@@ -2314,6 +2321,7 @@ mod tests {
 
     #[test]
     fn test_nthcdr_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = nthcdr(R_NilValue(), 5);
             assert_eq!(result, R_NilValue());
@@ -2322,6 +2330,7 @@ mod tests {
 
     #[test]
     fn test_pstrmatch_null_target() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = pstrmatch(R_NilValue(), R_NilValue(), 3);
             assert_eq!(result, pmatch::NO_MATCH);
@@ -2330,6 +2339,7 @@ mod tests {
 
     #[test]
     fn test_type_checking_helpers() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             /* NILSXP */
             assert!(isNull(R_NilValue()));
@@ -2343,6 +2353,7 @@ mod tests {
 
     #[test]
     fn test_vector_subset_missing_arg() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             /* When x is a simple integer vector and s is missing, should duplicate */
             let x = Rf_allocVector(SEXPTYPE::INTSXP, 3);
@@ -2362,6 +2373,7 @@ mod tests {
 
     #[test]
     fn test_extract_subset_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = ExtractSubset(R_NilValue(), R_NilValue(), R_NilValue());
             assert_eq!(result, R_NilValue());
@@ -2370,6 +2382,7 @@ mod tests {
 
     #[test]
     fn test_find_a_sub_index() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             /* Simple 2D case: subs = [[1,2], [3,4]], indx = [0, 0], offset = [1, 3] */
             let sub0: Vec<c_int> = vec![1, 2];
@@ -2392,6 +2405,7 @@ mod tests {
 
     #[test]
     fn test_find_a_sub_index_na() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let sub0: Vec<c_int> = vec![1, NA_INTEGER];
             let sub1: Vec<c_int> = vec![3, 4];
@@ -2412,6 +2426,7 @@ mod tests {
 
     #[test]
     fn test_r_finite() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(R_FINITE(1.0));
         assert!(R_FINITE(-1.0));
         assert!(R_FINITE(0.0));

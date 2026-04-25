@@ -1490,6 +1490,7 @@ mod tests {
 
     #[test]
     fn test_relop_constants() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(EQOP, 1);
         assert_eq!(NEOP, 2);
         assert_eq!(LTOP, 3);
@@ -1500,6 +1501,7 @@ mod tests {
 
     #[test]
     fn test_is_na_int() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(is_na_int(NA_INTEGER));
         assert!(!is_na_int(0));
         assert!(!is_na_int(1));
@@ -1509,6 +1511,7 @@ mod tests {
 
     #[test]
     fn test_is_scalar_string_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert!(!is_scalar_string(ptr::null_mut()));
         }
@@ -1516,6 +1519,7 @@ mod tests {
 
     #[test]
     fn test_is_scalar_string_non_string() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             assert!(!is_scalar_string(v));
@@ -1524,6 +1528,7 @@ mod tests {
 
     #[test]
     fn test_is_scalar_string_correct() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::STRSXP, 1);
             assert!(is_scalar_string(v));
@@ -1532,6 +1537,7 @@ mod tests {
 
     #[test]
     fn test_is_scalar_string_wrong_length() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             assert!(!is_scalar_string(v));
@@ -1540,6 +1546,7 @@ mod tests {
 
     #[test]
     fn test_numeric_op() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(numeric_op(EQOP, 1.0, 1.0), 1);
         assert_eq!(numeric_op(EQOP, 1.0, 2.0), 0);
         assert_eq!(numeric_op(NEOP, 1.0, 2.0), 1);
@@ -1558,6 +1565,7 @@ mod tests {
 
     #[test]
     fn test_raw_op() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(raw_op(EQOP, 10, 10), 1);
         assert_eq!(raw_op(EQOP, 10, 20), 0);
         assert_eq!(raw_op(NEOP, 10, 20), 1);
@@ -1576,6 +1584,7 @@ mod tests {
 
     #[test]
     fn test_numeric_relop_int_vectors() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create two integer vectors
             let s1 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
@@ -1604,6 +1613,7 @@ mod tests {
 
     #[test]
     fn test_numeric_relop_na_handling() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
             let s2 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
@@ -1624,6 +1634,7 @@ mod tests {
 
     #[test]
     fn test_numeric_relop_recycling() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             let s2 = Rf_allocVector(SEXPTYPE::INTSXP, 3);
@@ -1642,6 +1653,7 @@ mod tests {
 
     #[test]
     fn test_numeric_relop_real_vectors() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
             let s2 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
@@ -1659,6 +1671,7 @@ mod tests {
 
     #[test]
     fn test_numeric_relop_nan_handling() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
             let s2 = Rf_allocVector(SEXPTYPE::REALSXP, 2);
@@ -1676,6 +1689,7 @@ mod tests {
 
     #[test]
     fn test_raw_relop_vectors() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = Rf_allocVector(SEXPTYPE::RAWSXP, 3);
             let s2 = Rf_allocVector(SEXPTYPE::RAWSXP, 3);
@@ -1701,6 +1715,7 @@ mod tests {
 
     #[test]
     fn test_mod_iterate2_basic() {
+        let _session = crate::sexp::session::RSession::new();
         let mut results: Vec<(i64, i64, i64)> = Vec::new();
         mod_iterate2(5, 3, 2, |i, i1, i2| {
             results.push((i, i1, i2));
@@ -1713,6 +1728,7 @@ mod tests {
 
     #[test]
     fn test_mod_iterate2_single() {
+        let _session = crate::sexp::session::RSession::new();
         let mut results: Vec<(i64, i64, i64)> = Vec::new();
         mod_iterate2(4, 1, 4, |i, i1, i2| {
             results.push((i, i1, i2));

@@ -3138,6 +3138,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_exact_match() {
+        let _session = crate::sexp::session::RSession::new();
         let signature = b"print.default\0";
         let left = b"print\0";
         let right = b"default\0";
@@ -3155,6 +3156,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_no_match() {
+        let _session = crate::sexp::session::RSession::new();
         let signature = b"print.data.frame\0";
         let left = b"print\0";
         let right = b"default\0";
@@ -3172,6 +3174,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_empty_right() {
+        let _session = crate::sexp::session::RSession::new();
         let signature = b"foo.bar\0";
         let left = b"foo\0";
         let right = b"baz\0";
@@ -3189,6 +3192,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_missing_dot() {
+        let _session = crate::sexp::session::RSession::new();
         let signature = b"foobar\0";
         let left = b"foo\0";
         let right = b"bar\0";
@@ -3206,6 +3210,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_signature_longer() {
+        let _session = crate::sexp::session::RSession::new();
         let signature = b"print.default.extra\0";
         let left = b"print\0";
         let right = b"default\0";
@@ -3223,6 +3228,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_null_pointers() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(
             unsafe {
                 equalS3Signature(
@@ -3237,6 +3243,7 @@ mod tests {
 
     #[test]
     fn test_equalS3Signature_single_char() {
+        let _session = crate::sexp::session::RSession::new();
         let signature = b"a.b\0";
         let left = b"a\0";
         let right = b"b\0";
@@ -3254,16 +3261,19 @@ mod tests {
 
     #[test]
     fn test_IS_S4_OBJECT_null() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(unsafe { IS_S4_OBJECT(ptr::null_mut()) }, FALSE);
     }
 
     #[test]
     fn test_isS4_null() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(unsafe { isS4(ptr::null_mut()) }, FALSE);
     }
 
     #[test]
     fn test_isS4_with_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             assert_eq!(isS4(v), FALSE);
@@ -3272,6 +3282,7 @@ mod tests {
 
     #[test]
     fn test_SET_S4_OBJECT_and_check() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             assert_eq!(IS_S4_OBJECT(v), FALSE);
@@ -3284,6 +3295,7 @@ mod tests {
 
     #[test]
     fn test_isString() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_mkString(b"hello\0".as_ptr() as *const c_char);
             assert_eq!(isString(s), TRUE);
@@ -3294,6 +3306,7 @@ mod tests {
 
     #[test]
     fn test_isFunction_checks() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isFunction(ptr::null_mut()), FALSE);
             assert_eq!(isPrimitive(ptr::null_mut()), FALSE);
@@ -3303,6 +3316,7 @@ mod tests {
 
     #[test]
     fn test_isObject_checks() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             assert_eq!(isObject(v), FALSE);
@@ -3311,6 +3325,7 @@ mod tests {
 
     #[test]
     fn test_isValidString() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_mkString(b"hello\0".as_ptr() as *const c_char);
             assert_eq!(isValidString(s), TRUE);
@@ -3322,6 +3337,7 @@ mod tests {
 
     #[test]
     fn test_length() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(length(ptr::null_mut()), 0);
             assert_eq!(length(R_NilValue()), 0);
@@ -3332,6 +3348,7 @@ mod tests {
 
     #[test]
     fn test_isNull() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isNull(ptr::null_mut()), TRUE);
             assert_eq!(isNull(R_NilValue()), TRUE);
@@ -3342,6 +3359,7 @@ mod tests {
 
     #[test]
     fn test_asRbool() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let t = Rf_ScalarLogical(TRUE);
             assert_eq!(asRbool(t, ptr::null_mut()), TRUE);
@@ -3352,6 +3370,7 @@ mod tests {
 
     #[test]
     fn test_inherits2_null() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(
             unsafe { inherits2(ptr::null_mut(), b"foo\0".as_ptr() as *const c_char) },
             FALSE
@@ -3360,6 +3379,7 @@ mod tests {
 
     #[test]
     fn test_inherits2_no_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             assert_eq!(inherits2(v, b"numeric\0".as_ptr() as *const c_char), FALSE);
@@ -3368,6 +3388,7 @@ mod tests {
 
     #[test]
     fn test_inherits2_with_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
@@ -3390,6 +3411,7 @@ mod tests {
 
     #[test]
     fn test_do_inherits_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let what = Rf_mkString(b"integer\0".as_ptr() as *const c_char);
@@ -3402,6 +3424,7 @@ mod tests {
 
     #[test]
     fn test_do_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let args = Rf_cons(v, R_NilValue());
@@ -3413,6 +3436,7 @@ mod tests {
 
     #[test]
     fn test_do_isobject() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let args = Rf_cons(v, R_NilValue());
@@ -3425,6 +3449,7 @@ mod tests {
 
     #[test]
     fn test_do_isS4() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let args = Rf_cons(v, R_NilValue());
@@ -3435,6 +3460,7 @@ mod tests {
 
     #[test]
     fn test_do_oldClass() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let args = Rf_cons(v, R_NilValue());
@@ -3445,6 +3471,7 @@ mod tests {
 
     #[test]
     fn test_do_procdest() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_procdest(
                 ptr::null_mut(),
@@ -3458,6 +3485,7 @@ mod tests {
 
     #[test]
     fn test_do_S4on() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_S4on(
                 ptr::null_mut(),
@@ -3471,6 +3499,7 @@ mod tests {
 
     #[test]
     fn test_isMethodsDispatchOn_initial() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isMethodsDispatchOn(), FALSE);
         }
@@ -3478,6 +3507,7 @@ mod tests {
 
     #[test]
     fn test_R_set_standardGeneric_ptr_roundtrip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let old = R_set_standardGeneric_ptr(None, ptr::null_mut());
             assert!(old.is_none());
@@ -3487,6 +3517,7 @@ mod tests {
 
     #[test]
     fn test_isBasicClass() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(
             unsafe { isBasicClass(b"numeric\0".as_ptr() as *const c_char) },
             FALSE
@@ -3495,11 +3526,13 @@ mod tests {
 
     #[test]
     fn test_R_has_methods_attached() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(unsafe { R_has_methods_attached() }, FALSE);
     }
 
     #[test]
     fn test_R_check_class_etc() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let valid: Vec<*const c_char> = vec![b"foo\0".as_ptr() as *const c_char, ptr::null()];
             assert_eq!(R_check_class_etc(ptr::null_mut(), valid.as_ptr()), -1);
@@ -3508,6 +3541,7 @@ mod tests {
 
     #[test]
     fn test_R_check_class_and_super() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let valid: Vec<*const c_char> = vec![b"foo\0".as_ptr() as *const c_char, ptr::null()];
             assert_eq!(
@@ -3519,6 +3553,7 @@ mod tests {
 
     #[test]
     fn test_R_check_class_and_super_with_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
@@ -3547,6 +3582,7 @@ mod tests {
 
     #[test]
     fn test_R_has_methods() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_has_methods(ptr::null_mut()), FALSE);
         }
@@ -3554,6 +3590,7 @@ mod tests {
 
     #[test]
     fn test_R_deferred_default_method() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_deferred_default_method();
             assert!(!result.is_null());
@@ -3562,6 +3599,7 @@ mod tests {
 
     #[test]
     fn test_R_do_MAKE_CLASS() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_do_MAKE_CLASS(b"foo\0".as_ptr() as *const c_char);
             assert!(result.is_null() || result == R_NilValue());
@@ -3570,6 +3608,7 @@ mod tests {
 
     #[test]
     fn test_R_getClassDef() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_getClassDef(b"foo\0".as_ptr() as *const c_char);
             assert!(result.is_null() || result == R_NilValue());
@@ -3578,6 +3617,7 @@ mod tests {
 
     #[test]
     fn test_R_seemsOldStyleS4Object() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_seemsOldStyleS4Object(ptr::null_mut()), FALSE);
         }
@@ -3585,6 +3625,7 @@ mod tests {
 
     #[test]
     fn test_R_possible_dispatch() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_possible_dispatch(
                 ptr::null_mut(),
@@ -3599,6 +3640,7 @@ mod tests {
 
     #[test]
     fn test_usemethod_returns_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut ans: SEXP = ptr::null_mut();
             assert_eq!(
@@ -3619,6 +3661,7 @@ mod tests {
 
     #[test]
     fn test_prim_methods_t_values() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(prim_methods_t::NO_METHODS as c_int, 0);
         assert_eq!(prim_methods_t::NEEDS_RESET as c_int, 1);
         assert_eq!(prim_methods_t::HAS_METHODS as c_int, 2);
@@ -3627,6 +3670,7 @@ mod tests {
 
     #[test]
     fn test_createS3Vars() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let generic = Rf_mkString(b"print\0".as_ptr() as *const c_char);
             let group = Rf_mkString(b"\x00".as_ptr() as *const c_char);
@@ -3651,6 +3695,7 @@ mod tests {
 
     #[test]
     fn test_addS3Var() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let name = sym(".Generic");
             let value = Rf_mkString(b"print\0".as_ptr() as *const c_char);
@@ -3664,6 +3709,7 @@ mod tests {
 
     #[test]
     fn test_newintoold_empty_new() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let old = Rf_cons(Rf_ScalarInteger(1), R_NilValue());
             let result = newintoold(R_NilValue(), old);
@@ -3673,6 +3719,7 @@ mod tests {
 
     #[test]
     fn test_listAppend() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v1 = Rf_ScalarInteger(1);
             let v2 = Rf_ScalarInteger(2);
@@ -3689,6 +3736,7 @@ mod tests {
 
     #[test]
     fn test_listAppend_null_t() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_cons(Rf_ScalarInteger(1), R_NilValue());
             let result = listAppend(R_NilValue(), s);
@@ -3698,6 +3746,7 @@ mod tests {
 
     #[test]
     fn test_stringPositionTr() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             Rf_protect(klass);
@@ -3731,6 +3780,7 @@ mod tests {
 
     #[test]
     fn test_stringSuffix() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let klass = Rf_allocVector(SEXPTYPE::STRSXP, 3);
             Rf_protect(klass);
@@ -3756,6 +3806,7 @@ mod tests {
 
     #[test]
     fn test_do_setS4Object_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_setS4Object(
                 ptr::null_mut(),
@@ -3769,6 +3820,7 @@ mod tests {
 
     #[test]
     fn test_do_setS4Object_set() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let flag = Rf_ScalarLogical(TRUE);
@@ -3782,6 +3834,7 @@ mod tests {
 
     #[test]
     fn test_do_setS4Object_unset() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             SET_S4_OBJECT(v);
@@ -3796,6 +3849,7 @@ mod tests {
 
     #[test]
     fn test_do_asS4_set() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let args = Rf_cons(
@@ -3813,6 +3867,7 @@ mod tests {
 
     #[test]
     fn test_do_setClass() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_setClass(
                 ptr::null_mut(),
@@ -3826,6 +3881,7 @@ mod tests {
 
     #[test]
     fn test_do_setRefClass() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_setRefClass(
                 ptr::null_mut(),
@@ -3839,6 +3895,7 @@ mod tests {
 
     #[test]
     fn test_R_S4_method_dispatch() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_S4_method_dispatch(
                 ptr::null_mut(),
@@ -3853,6 +3910,7 @@ mod tests {
 
     #[test]
     fn test_findmethod_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut method: SEXP = ptr::null_mut();
             let result = findmethod(
@@ -3871,6 +3929,7 @@ mod tests {
 
     #[test]
     fn test_DispatchGroup_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = DispatchGroup(
                 ptr::null_mut(),
@@ -3886,6 +3945,7 @@ mod tests {
 
     #[test]
     fn test_DispatchOrEval_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut ans: SEXP = ptr::null_mut();
             let result = DispatchOrEval_objects(
@@ -3902,6 +3962,7 @@ mod tests {
 
     #[test]
     fn test_do_standardGeneric_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_standardGeneric(
                 ptr::null_mut(),
@@ -3915,6 +3976,7 @@ mod tests {
 
     #[test]
     fn test_readS3VarsFromFrame_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut generic: SEXP = ptr::null_mut();
             let mut group: SEXP = ptr::null_mut();
@@ -3937,6 +3999,7 @@ mod tests {
 
     #[test]
     fn test_R_do_new_object() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_do_new_object(ptr::null_mut());
             assert!(result.is_null() || result == R_NilValue());
@@ -3945,6 +4008,7 @@ mod tests {
 
     #[test]
     fn test_R_isVirtualClass() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_isVirtualClass(ptr::null_mut(), ptr::null_mut()), FALSE);
         }
@@ -3952,6 +4016,7 @@ mod tests {
 
     #[test]
     fn test_R_extends() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 R_extends(ptr::null_mut(), ptr::null_mut(), ptr::null_mut()),
@@ -3962,6 +4027,7 @@ mod tests {
 
     #[test]
     fn test_R_set_prim_method() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_set_prim_method(
                 R_NilValue(),
@@ -3976,6 +4042,7 @@ mod tests {
 
     #[test]
     fn test_R_primitive_methods() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_primitive_methods(ptr::null_mut());
             assert!(result.is_null() || result == R_NilValue());
@@ -3984,6 +4051,7 @@ mod tests {
 
     #[test]
     fn test_R_primitive_generic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_primitive_generic(ptr::null_mut());
             assert!(result.is_null() || result == R_NilValue());
@@ -3992,6 +4060,7 @@ mod tests {
 
     #[test]
     fn test_R_set_quick_method_check() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_set_quick_method_check(None);
             // Should not crash
@@ -4000,6 +4069,7 @@ mod tests {
 
     #[test]
     fn test_R_getClassDef_R() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_getClassDef_R(R_NilValue());
             assert!(result.is_null() || result == R_NilValue());
@@ -4008,6 +4078,7 @@ mod tests {
 
     #[test]
     fn test_do_nextmethod_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         // do_nextmethod panics via R_GlobalContext() with null context,
         // which is expected. Just verify the function signature is valid.
         // We can't easily test it because the panic goes through extern "C"
@@ -4016,12 +4087,14 @@ mod tests {
 
     #[test]
     fn test_do_usemethod_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         // do_usemethod panics with null args, so we can't easily test it
         // Just verify it compiles
     }
 
     #[test]
     fn test_objects_do_unclass_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = objects_do_unclass(
                 ptr::null_mut(),
@@ -4035,6 +4108,7 @@ mod tests {
 
     #[test]
     fn test_objects_do_unclass_no_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let args = Rf_cons(v, R_NilValue());
@@ -4047,6 +4121,7 @@ mod tests {
 
     #[test]
     fn test_objects_do_unclass_with_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 1);
@@ -4072,6 +4147,7 @@ mod tests {
 
     #[test]
     fn test_inherits3_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let what = Rf_mkString(b"integer\0".as_ptr() as *const c_char);
@@ -4085,6 +4161,7 @@ mod tests {
 
     #[test]
     fn test_inherits3_which_true() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let what = Rf_allocVector(SEXPTYPE::STRSXP, 2);
@@ -4102,6 +4179,7 @@ mod tests {
 
     #[test]
     fn test_inherits3_with_explicit_class() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
@@ -4129,6 +4207,7 @@ mod tests {
 
     #[test]
     fn test_asS4_flag_matches() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             // S4 bit not set, flag=TRUE -> should set it
@@ -4143,6 +4222,7 @@ mod tests {
 
     #[test]
     fn test_asS4_unset_conditional() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             SET_S4_OBJECT(v);
@@ -4156,6 +4236,7 @@ mod tests {
 
     #[test]
     fn test_install_pname() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_install(
                 std::ffi::CString::new("test_sym")
@@ -4174,6 +4255,7 @@ mod tests {
 
     #[test]
     fn test_do_oldClass_set() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();
@@ -4197,6 +4279,7 @@ mod tests {
 
     #[test]
     fn test_do_oldClass_clear() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(42);
             let class_sym = R_ClassSymbol();

@@ -170,6 +170,7 @@ mod tests {
 
     #[test]
     fn test_mkprimsxp_builtin() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let p = mkPRIMSXP(0, 1);
             assert!(!p.is_null());
@@ -180,6 +181,7 @@ mod tests {
 
     #[test]
     fn test_mkprimsxp_special() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let p = mkPRIMSXP(5, 0);
             assert!(!p.is_null());
@@ -190,6 +192,7 @@ mod tests {
 
     #[test]
     fn test_mkclosxp_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let formals = arena.alloc_node(SEXPTYPE::NILSXP);
@@ -207,6 +210,7 @@ mod tests {
 
     #[test]
     fn test_mkclosxp_nil_env() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let formals = arena.alloc_node(SEXPTYPE::NILSXP);
@@ -220,6 +224,7 @@ mod tests {
 
     #[test]
     fn test_mkclosure_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let formals = arena.alloc_node(SEXPTYPE::NILSXP);
@@ -234,6 +239,7 @@ mod tests {
 
     #[test]
     fn test_isddname() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             // "..1" is a dd name
@@ -263,6 +269,7 @@ mod tests {
 
     #[test]
     fn test_mksymsxp_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let name = arena.alloc_charsxp(b"myvar");
@@ -278,6 +285,7 @@ mod tests {
 
     #[test]
     fn test_mksymsxp_ddname() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let name = arena.alloc_charsxp(b"..1");
@@ -293,6 +301,7 @@ mod tests {
 
     #[test]
     fn test_mksymsxp_non_ddname() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let name = arena.alloc_charsxp(b"normal");

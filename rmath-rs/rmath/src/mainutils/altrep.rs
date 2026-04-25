@@ -685,6 +685,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_altrep_class_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_altrep_class(std::ptr::null_mut());
         }
@@ -692,6 +693,7 @@ mod tests {
 
     #[test]
     fn test_altrep_length_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_altrep_length(std::ptr::null_mut()), 0);
         }
@@ -700,6 +702,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_altrep_data_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_altrep_data1(std::ptr::null_mut());
             R_altrep_data2(std::ptr::null_mut());
@@ -708,6 +711,7 @@ mod tests {
 
     #[test]
     fn test_new_altrep_creates_altrep_object() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let data1 = R_NilValue();
             let data2 = R_NilValue();
@@ -721,6 +725,7 @@ mod tests {
 
     #[test]
     fn test_compact_intseq_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let seq = R_compact_intseq(42, 42);
             assert!(!seq.is_null());
@@ -732,6 +737,7 @@ mod tests {
 
     #[test]
     fn test_compact_realseq_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let seq = R_compact_realseq(3.14, 1.0, 1);
             assert!(!seq.is_null());
@@ -743,6 +749,7 @@ mod tests {
 
     #[test]
     fn test_altrep_set_data() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let altrep = R_new_altrep(R_NilValue(), R_NilValue(), R_NilValue());
             assert!(!altrep.is_null());
@@ -769,6 +776,7 @@ mod tests {
 
     #[test]
     fn test_altinteger_elt_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(ALTINTEGER_ELT(std::ptr::null_mut(), 0), NA_INTEGER);
         }
@@ -776,6 +784,7 @@ mod tests {
 
     #[test]
     fn test_altreal_elt_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert!(ALTREAL_ELT(std::ptr::null_mut(), 0).is_nan());
         }

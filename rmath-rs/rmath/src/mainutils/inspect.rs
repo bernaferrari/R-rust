@@ -613,21 +613,25 @@ mod tests {
 
     #[test]
     fn test_pp_zero() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(pp(0), "");
     }
 
     #[test]
     fn test_pp_one() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(pp(1), "  ");
     }
 
     #[test]
     fn test_pp_five() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(pp(5), "          ");
     }
 
     #[test]
     fn test_typeof_integer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_ScalarInteger(42);
             Rf_protect(x);
@@ -648,6 +652,7 @@ mod tests {
 
     #[test]
     fn test_typeof_real() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_ScalarReal(3.14);
             Rf_protect(x);
@@ -666,6 +671,7 @@ mod tests {
 
     #[test]
     fn test_typeof_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_typeof(
                 ptr::null_mut(),
@@ -681,6 +687,7 @@ mod tests {
 
     #[test]
     fn test_isnull_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_isnull(
                 ptr::null_mut(),
@@ -694,6 +701,7 @@ mod tests {
 
     #[test]
     fn test_isnull_not_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_ScalarInteger(1);
             Rf_protect(x);
@@ -710,6 +718,7 @@ mod tests {
 
     #[test]
     fn test_length_integer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 5));
             let result = do_length(
@@ -725,6 +734,7 @@ mod tests {
 
     #[test]
     fn test_length_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_length(
                 ptr::null_mut(),
@@ -738,6 +748,7 @@ mod tests {
 
     #[test]
     fn test_sexptype2char() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(sexptype2char(SEXPTYPE::INTSXP.into()), "integer");
         assert_eq!(sexptype2char(SEXPTYPE::REALSXP.into()), "double");
         assert_eq!(sexptype2char(SEXPTYPE::STRSXP.into()), "character");

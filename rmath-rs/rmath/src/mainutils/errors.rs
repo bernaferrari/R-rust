@@ -3162,6 +3162,7 @@ mod tests {
 
     #[test]
     fn test_wd() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(wd("hello"), 5);
         assert_eq!(wd(""), 0);
         assert_eq!(wd("hello world"), 11);
@@ -3169,6 +3170,7 @@ mod tests {
 
     #[test]
     fn test_R_SetErrmessage() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         R_SetErrmessage("test error");
@@ -3180,6 +3182,7 @@ mod tests {
 
     #[test]
     fn test_error_catches_panic() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         let result = std::panic::catch_unwind(|| {
@@ -3193,6 +3196,7 @@ mod tests {
 
     #[test]
     fn test_count_format_args() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(count_format_args("hello %s world %d"), 2);
         assert_eq!(count_format_args("no args"), 0);
         assert_eq!(count_format_args("%% escaped"), 0);
@@ -3200,6 +3204,7 @@ mod tests {
 
     #[test]
     fn test_in_error_flag() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         assert_eq!(R_GetInError(), 0);
@@ -3210,6 +3215,7 @@ mod tests {
 
     #[test]
     fn test_session_error_flags_are_local_on_same_thread() {
+        let _session = crate::sexp::session::RSession::new();
         let mut left = RSession::new();
         let mut right = RSession::new();
 
@@ -3259,6 +3265,7 @@ mod tests {
 
     #[test]
     fn test_session_warning_collection_is_local_on_same_thread() {
+        let _session = crate::sexp::session::RSession::new();
         let mut left = RSession::new();
         let mut right = RSession::new();
 
@@ -3295,6 +3302,7 @@ mod tests {
 
     #[test]
     fn test_session_handler_and_restart_stacks_are_local_on_same_thread() {
+        let _session = crate::sexp::session::RSession::new();
         let mut left = RSession::new();
         let mut right = RSession::new();
 
@@ -3335,6 +3343,7 @@ mod tests {
 
     #[test]
     fn test_format_to_buf() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = [0u8; BUFSIZE + 1];
         let (len, truncated) = format_to_buf(&mut buf, "hello world");
         assert_eq!(len, 11);
@@ -3349,6 +3358,7 @@ mod tests {
 
     #[test]
     fn test_format_to_buf_long() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = [0u8; BUFSIZE + 1];
         let long_str = "x".repeat(BUFSIZE + 100);
         let (len, truncated) = format_to_buf(&mut buf, &long_str);
@@ -3358,6 +3368,7 @@ mod tests {
 
     #[test]
     fn test_bufcat() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = [0u8; BUFSIZE + 1];
         format_to_buf(&mut buf, "hello");
         bufcat(&mut buf, " world");
@@ -3371,6 +3382,7 @@ mod tests {
 
     #[test]
     fn test_print_trunc() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = [0u8; BUFSIZE + 1];
         format_to_buf(&mut buf, "hello");
         print_trunc(&mut buf, true);
@@ -3384,6 +3396,7 @@ mod tests {
 
     #[test]
     fn test_print_trunc_not_truncated() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = [0u8; BUFSIZE + 1];
         format_to_buf(&mut buf, "hello");
         print_trunc(&mut buf, false);
@@ -3398,6 +3411,7 @@ mod tests {
 
     #[test]
     fn test_mkHandlerEntry() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let klass = Rf_mkString(b"error\x00".as_ptr() as *const c_char);
             let handler = Rf_mkString(b"handler\x00".as_ptr() as *const c_char);
@@ -3418,6 +3432,7 @@ mod tests {
 
     #[test]
     fn test_r_makeErrorCondition() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3436,6 +3451,7 @@ mod tests {
 
     #[test]
     fn test_r_makeErrorCondition_with_subclass() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3460,6 +3476,7 @@ mod tests {
 
     #[test]
     fn test_concise_traceback_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_ConciseTraceback(ptr::null_mut(), 0);
             assert_eq!(result, "");
@@ -3468,6 +3485,7 @@ mod tests {
 
     #[test]
     fn test_interrupts_suspended() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         assert!(!R_InterruptsSuspended());
@@ -3479,6 +3497,7 @@ mod tests {
 
     #[test]
     fn test_warning_collection() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3497,6 +3516,7 @@ mod tests {
 
     #[test]
     fn test_handler_stack_operations() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         set_handler_stack(ptr::null_mut());
@@ -3513,6 +3533,7 @@ mod tests {
 
     #[test]
     fn test_restart_stack_operations() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         set_restart_stack(ptr::null_mut());
@@ -3529,6 +3550,7 @@ mod tests {
 
     #[test]
     fn test_error_codes() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(error_codes::ERROR_NUMARGS, 1);
         assert_eq!(error_codes::ERROR_UNKNOWN, 6);
         assert_eq!(warning_codes::WARNING_coerce_NA, 0);
@@ -3537,6 +3559,7 @@ mod tests {
 
     #[test]
     fn test_errbufcat_macro() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = [0u8; BUFSIZE + 1];
         buf[0] = 0;
         ERRBUFCAT!(buf, "hello");
@@ -3559,6 +3582,7 @@ mod tests {
 
     #[test]
     fn test_format_varargs_null_format() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = format_varargs(ptr::null(), ptr::null_mut());
             assert_eq!(result, "");
@@ -3567,6 +3591,7 @@ mod tests {
 
     #[test]
     fn test_format_varargs_null_ap() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msg = std::ffi::CString::new("hello world").unwrap_or_default();
             let result = format_varargs(msg.as_ptr(), ptr::null_mut());
@@ -3576,6 +3601,7 @@ mod tests {
 
     #[test]
     fn test_format_varargs_to_buf_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let (s, truncated) = format_varargs_to_buf(ptr::null(), ptr::null_mut());
             assert_eq!(s, "");
@@ -3585,6 +3611,7 @@ mod tests {
 
     #[test]
     fn test_format_varargs_to_buf_null_ap() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let msg = std::ffi::CString::new("test message").unwrap_or_default();
             let (s, truncated) = format_varargs_to_buf(msg.as_ptr(), ptr::null_mut());
@@ -3595,6 +3622,7 @@ mod tests {
 
     #[test]
     fn test_r_make_warning_condition() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3612,6 +3640,7 @@ mod tests {
 
     #[test]
     fn test_r_make_c_stack_overflow_error() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3624,6 +3653,7 @@ mod tests {
 
     #[test]
     fn test_r_make_not_subsettable_error() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3637,6 +3667,7 @@ mod tests {
 
     #[test]
     fn test_r_make_missing_subscript_error() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3649,6 +3680,7 @@ mod tests {
 
     #[test]
     fn test_r_make_missing_subscript_error1() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3660,6 +3692,7 @@ mod tests {
 
     #[test]
     fn test_r_make_out_of_bounds_error() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3674,6 +3707,7 @@ mod tests {
 
     #[test]
     fn test_r_make_partial_match_warning_condition() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3688,6 +3722,7 @@ mod tests {
     #[test]
     #[ignore = "cannot catch_unwind across extern \"C\" boundary"]
     fn test_r_missing_arg_error_c() {
+        let _session = crate::sexp::session::RSession::new();
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
             let msg = std::ffi::CString::new("my_arg").unwrap_or_default();
             R_MissingArgError_c(msg.as_ptr(), ptr::null_mut(), ptr::null_mut());
@@ -3697,6 +3732,7 @@ mod tests {
 
     #[test]
     fn test_r_expressions_management() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         let val = R_Expressions();
@@ -3710,6 +3746,7 @@ mod tests {
 
     #[test]
     fn test_warn_length() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         R_SetWarnLength(500);
@@ -3722,6 +3759,7 @@ mod tests {
 
     #[test]
     fn test_show_error_messages_flag() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         R_SetShowErrorMessages(true);
@@ -3732,6 +3770,7 @@ mod tests {
 
     #[test]
     fn test_r_print_deferred_warnings_no_warnings() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
 
         unsafe {
@@ -3744,6 +3783,7 @@ mod tests {
 
     #[test]
     fn test_r_signal_warning_condition_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_signalWarningCondition(ptr::null_mut());
             // Should not panic on null
@@ -3752,6 +3792,7 @@ mod tests {
 
     #[test]
     fn test_r_signal_warning_condition_valid() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
         unsafe {
             let cond = R_makeWarningCondition(
@@ -3767,6 +3808,7 @@ mod tests {
 
     #[test]
     fn test_r_get_current_srcref() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_GetCurrentSrcref(0);
             // Returns R_NilValue since srcref not implemented
@@ -3776,6 +3818,7 @@ mod tests {
 
     #[test]
     fn test_r_get_src_filename() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_GetSrcFilename(ptr::null_mut());
             assert!(!result.is_null());
@@ -3785,6 +3828,7 @@ mod tests {
 
     #[test]
     fn test_rf_errorcall_fmt() {
+        let _session = crate::sexp::session::RSession::new();
         let fmt = std::ffi::CString::new("hello %s world %s").unwrap_or_default();
         let arg1 = must(std::ffi::CStr::from_bytes_with_nul(b"beautiful\0"));
         let arg2 = must(std::ffi::CStr::from_bytes_with_nul(b"today\0"));
@@ -3797,6 +3841,7 @@ mod tests {
 
     #[test]
     fn test_entry_macros() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let entry = Rf_allocVector(SEXPTYPE::VECSXP, 5);
             // Set up some values
@@ -3826,16 +3871,19 @@ mod tests {
 
     #[test]
     fn test_longwarn_constant() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(LONGWARN, 75);
     }
 
     #[test]
     fn test_bufsize_constant() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(BUFSIZE, 8192);
     }
 
     #[test]
     fn test_r_nwarnings_default() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(R_NWARNINGS_DEFAULT, 50);
     }
 }

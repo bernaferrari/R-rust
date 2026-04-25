@@ -1039,6 +1039,7 @@ mod tests {
 
     #[test]
     fn test_mystrcpy() {
+        let _session = crate::sexp::session::RSession::new();
         let mut dest = [0u8; 10];
         let src = b"hello";
         mystrcpy(&mut dest, src);
@@ -1047,6 +1048,7 @@ mod tests {
 
     #[test]
     fn test_mystrcpy_overlap() {
+        let _session = crate::sexp::session::RSession::new();
         let mut buf = b"abcdef".to_vec();
         // Copy buf[2..5] = "cde" into buf[0..3], overlapping
         buf.copy_within(2..5, 0);
@@ -1055,6 +1057,7 @@ mod tests {
 
     #[test]
     fn test_iswvowel() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(iswvowel('a'));
         assert!(iswvowel('e'));
         assert!(iswvowel('i'));
@@ -1067,6 +1070,7 @@ mod tests {
 
     #[test]
     fn test_tr_build_spec_chars() {
+        let _session = crate::sexp::session::RSession::new();
         let spec = tr_build_spec(b"abc");
         assert!(spec.is_some());
         let mut p = spec;
@@ -1078,6 +1082,7 @@ mod tests {
 
     #[test]
     fn test_tr_build_spec_range() {
+        let _session = crate::sexp::session::RSession::new();
         let spec = tr_build_spec(b"a-c");
         assert!(spec.is_some());
         let mut p = spec;
@@ -1089,6 +1094,7 @@ mod tests {
 
     #[test]
     fn test_tr_build_spec_mixed() {
+        let _session = crate::sexp::session::RSession::new();
         let spec = tr_build_spec(b"a-cx");
         assert!(spec.is_some());
         let mut p = spec;
@@ -1101,6 +1107,7 @@ mod tests {
 
     #[test]
     fn test_tr_build_spec_single() {
+        let _session = crate::sexp::session::RSession::new();
         let spec = tr_build_spec(b"z");
         assert!(spec.is_some());
         let mut p = spec;
@@ -1110,11 +1117,13 @@ mod tests {
 
     #[test]
     fn test_tr_build_spec_empty() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(tr_build_spec(b"").is_none());
     }
 
     #[test]
     fn test_wtr_build_spec_range() {
+        let _session = crate::sexp::session::RSession::new();
         let chars: Vec<char> = "a-c".chars().collect();
         let spec = wtr_build_spec(&chars);
         assert!(spec.is_some());
@@ -1127,6 +1136,7 @@ mod tests {
 
     #[test]
     fn test_xtable_comp() {
+        let _session = crate::sexp::session::RSession::new();
         let a = XtableT {
             c_old: 'a',
             c_new: 'x',
@@ -1142,6 +1152,7 @@ mod tests {
 
     #[test]
     fn test_xtable_key_comp() {
+        let _session = crate::sexp::session::RSession::new();
         let entry = XtableT {
             c_old: 'm',
             c_new: 'x',
@@ -1211,6 +1222,7 @@ mod tests {
 
     #[test]
     fn test_do_toupper_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello", "world"]);
             let args = make_args(&[x]);
@@ -1225,6 +1237,7 @@ mod tests {
 
     #[test]
     fn test_do_toupper_already_upper() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["ABC", "XYZ"]);
             let args = make_args(&[x]);
@@ -1236,6 +1249,7 @@ mod tests {
 
     #[test]
     fn test_do_toupper_mixed() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["HeLLo", "WoRlD"]);
             let args = make_args(&[x]);
@@ -1247,6 +1261,7 @@ mod tests {
 
     #[test]
     fn test_do_toupper_empty_string() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&[""]);
             let args = make_args(&[x]);
@@ -1259,6 +1274,7 @@ mod tests {
 
     #[test]
     fn test_do_tolower_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["HELLO", "WORLD"]);
             let args = make_args(&[x]);
@@ -1273,6 +1289,7 @@ mod tests {
 
     #[test]
     fn test_do_tolower_already_lower() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["abc", "xyz"]);
             let args = make_args(&[x]);
@@ -1284,6 +1301,7 @@ mod tests {
 
     #[test]
     fn test_do_tolower_mixed() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["HeLLo", "WoRlD"]);
             let args = make_args(&[x]);
@@ -1297,6 +1315,7 @@ mod tests {
 
     #[test]
     fn test_do_chartr_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let old = make_strsxp(&["aeiou"]);
             let new = make_strsxp(&["AEIOU"]);
@@ -1312,6 +1331,7 @@ mod tests {
 
     #[test]
     fn test_do_chartr_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let old = make_strsxp(&["a-z"]);
             let new = make_strsxp(&["A-Z"]);
@@ -1324,6 +1344,7 @@ mod tests {
 
     #[test]
     fn test_do_chartr_multiple_strings() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let old = make_strsxp(&["ab"]);
             let new = make_strsxp(&["BA"]);
@@ -1337,6 +1358,7 @@ mod tests {
 
     #[test]
     fn test_do_chartr_no_match() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let old = make_strsxp(&["xyz"]);
             let new = make_strsxp(&["XYZ"]);
@@ -1352,6 +1374,7 @@ mod tests {
 
     #[test]
     fn test_do_nchar_bytes() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello", "world", ""]);
             let stype = make_strsxp(&["bytes"]);
@@ -1370,6 +1393,7 @@ mod tests {
 
     #[test]
     fn test_do_nchar_chars() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["abc", "de"]);
             let stype = make_strsxp(&["chars"]);
@@ -1384,6 +1408,7 @@ mod tests {
 
     #[test]
     fn test_do_nchar_width() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["test"]);
             let stype = make_strsxp(&["width"]);
@@ -1397,6 +1422,7 @@ mod tests {
 
     #[test]
     fn test_do_nchar_keep_na_false() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // For non-width types, default keepNA = TRUE
             let x = make_strsxp(&["hello"]);
@@ -1414,6 +1440,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello"]);
             let start = make_intsxp(&[2]);
@@ -1429,6 +1456,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_full_string() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello"]);
             let start = make_intsxp(&[1]);
@@ -1441,6 +1469,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_beyond_end() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello"]);
             let start = make_intsxp(&[3]);
@@ -1454,6 +1483,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_empty_result() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello"]);
             let start = make_intsxp(&[4]);
@@ -1467,6 +1497,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_multiple_strings() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello", "world"]);
             let start = make_intsxp(&[2]);
@@ -1481,6 +1512,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_single_char() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&["hello"]);
             let start = make_intsxp(&[3]);
@@ -1493,6 +1525,7 @@ mod tests {
 
     #[test]
     fn test_do_substr_empty_input() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_strsxp(&[]);
             let start = make_intsxp(&[1]);
@@ -1508,6 +1541,7 @@ mod tests {
 
     #[test]
     fn test_as_logical() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let t = make_lglsxp(&[1]);
             let f = make_lglsxp(&[0]);
@@ -1518,6 +1552,7 @@ mod tests {
 
     #[test]
     fn test_as_integer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_intsxp(&[42]);
             assert_eq!(as_integer(v), 42);
@@ -1526,6 +1561,7 @@ mod tests {
 
     #[test]
     fn test_charsxp_byte_len() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let cs = Rf_mkCharLen(c"hello".as_ptr(), 5);
             assert_eq!(charsxp_byte_len(cs), 5);

@@ -1323,6 +1323,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let d = duplicate(R_NilValue());
             assert_eq!(d, R_NilValue());
@@ -1331,6 +1332,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_integer_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_int_vector(&[1, 2, 3]);
             let d = duplicate(v);
@@ -1346,6 +1348,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_real_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_real_vector(&[1.5, 2.5, 3.5]);
             let d = duplicate(v);
@@ -1361,6 +1364,7 @@ mod tests {
 
     #[test]
     fn test_shallow_duplicate_integer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_int_vector(&[10, 20]);
             let d = shallow_duplicate(v);
@@ -1373,6 +1377,7 @@ mod tests {
 
     #[test]
     fn test_lazy_duplicate() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_int_vector(&[5, 6, 7]);
             let d = lazy_duplicate(v);
@@ -1383,6 +1388,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_pairlist() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let car = Rf_ScalarInteger(1);
             // Create a proper nil-terminated pairlist: (1)
@@ -1402,6 +1408,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_closure() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let formals = arena.alloc_node(SEXPTYPE::NILSXP);
@@ -1423,6 +1430,7 @@ mod tests {
 
     #[test]
     fn test_cycle_detected_self() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_ScalarInteger(1);
             // Self-reference is a cycle for most types
@@ -1432,6 +1440,7 @@ mod tests {
 
     #[test]
     fn test_cycle_detected_nil_ok() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // NILSXP self-reference is OK
             assert_eq!(R_cycle_detected(R_NilValue(), R_NilValue()), 0);
@@ -1440,6 +1449,7 @@ mod tests {
 
     #[test]
     fn test_cycle_detected_sym_ok() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut arena = RArena::new();
             let sym = arena.alloc_node(SEXPTYPE::SYMSXP);
@@ -1450,6 +1460,7 @@ mod tests {
 
     #[test]
     fn test_cycle_detected_no_cycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(1);
             let b = Rf_ScalarInteger(2);
@@ -1459,6 +1470,7 @@ mod tests {
 
     #[test]
     fn test_copy_vector_int() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             let src = make_int_vector(&[10, 20, 30]);
@@ -1471,6 +1483,7 @@ mod tests {
 
     #[test]
     fn test_copy_vector_real() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
             let src = make_real_vector(&[1.0, 2.0, 3.0]);
@@ -1483,6 +1496,7 @@ mod tests {
 
     #[test]
     fn test_copy_vector_with_recycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::INTSXP, 6);
             let src = make_int_vector(&[1, 2]);
@@ -1498,6 +1512,7 @@ mod tests {
 
     #[test]
     fn test_xcopy_real_no_recycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 3);
             let src = make_real_vector(&[1.0, 2.0, 3.0]);
@@ -1510,6 +1525,7 @@ mod tests {
 
     #[test]
     fn test_xcopy_real_with_recycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 5);
             let src = make_real_vector(&[10.0, 20.0]);
@@ -1524,6 +1540,7 @@ mod tests {
 
     #[test]
     fn test_xcopy_real_scalar_recycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::REALSXP, 4);
             let src = make_real_vector(&[42.0]);
@@ -1536,6 +1553,7 @@ mod tests {
 
     #[test]
     fn test_xcopy_int_with_recycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dst = Rf_allocVector3(SEXPTYPE::INTSXP, 5);
             let src = make_int_vector(&[7, 8, 9]);
@@ -1550,6 +1568,7 @@ mod tests {
 
     #[test]
     fn test_xcopy_null_pointers() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Should not crash
             xcopyRealWithRecycle(ptr::null_mut(), ptr::null(), 0, 0, 0);
@@ -1559,6 +1578,7 @@ mod tests {
 
     #[test]
     fn test_shallow_duplicate_attr() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_int_vector(&[1, 2, 3]);
             let d = R_shallow_duplicate_attr(v);
@@ -1568,6 +1588,7 @@ mod tests {
 
     #[test]
     fn test_deep_duplicate_attr() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = make_int_vector(&[1, 2, 3]);
             let d = R_duplicate_attr(v);
@@ -1577,6 +1598,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_raw_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector3(SEXPTYPE::RAWSXP, 4);
             *RAW(v).add(0) = 0xAA;
@@ -1596,6 +1618,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_logical_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector3(SEXPTYPE::LGLSXP, 2);
             *LOGICAL(v).add(0) = 1;
@@ -1608,6 +1631,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_complex_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 2);
             *COMPLEX(v).add(0) = Rcomplex { r: 1.0, i: 2.0 };
@@ -1624,6 +1648,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_string_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s1 = Rf_allocVector3(SEXPTYPE::CHARSXP, 0); // placeholder CHARSXP
             let s2 = Rf_allocVector3(SEXPTYPE::CHARSXP, 0);
@@ -1641,6 +1666,7 @@ mod tests {
 
     #[test]
     fn test_duplicate_vecsxp() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let elem1 = Rf_ScalarInteger(10);
             let elem2 = Rf_ScalarInteger(20);

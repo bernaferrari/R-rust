@@ -458,10 +458,18 @@ pub unsafe fn initGPar(dd: pGEDevDesc) {
     SET_VECTOR_ELT(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
 
     // GP_LINEEND (11): round cap
-    SET_VECTOR_ELT(gp, GP_LINEEND as R_xlen_t, Rf_ScalarInteger(ge::GE_ROUND_CAP));
+    SET_VECTOR_ELT(
+        gp,
+        GP_LINEEND as R_xlen_t,
+        Rf_ScalarInteger(ge::GE_ROUND_CAP),
+    );
 
     // GP_LINEJOIN (12): round join
-    SET_VECTOR_ELT(gp, GP_LINEJOIN as R_xlen_t, Rf_ScalarInteger(ge::GE_ROUND_JOIN));
+    SET_VECTOR_ELT(
+        gp,
+        GP_LINEJOIN as R_xlen_t,
+        Rf_ScalarInteger(ge::GE_ROUND_JOIN),
+    );
 
     // GP_LINEMITRE (13): 10.0
     SET_VECTOR_ELT(gp, GP_LINEMITRE as R_xlen_t, Rf_ScalarReal(10.0));
@@ -486,7 +494,11 @@ mod tests {
         SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(1));
         SET_VECTOR_ELT(gp, GP_COL as R_xlen_t, Rf_ScalarInteger(1));
         SET_VECTOR_ELT(gp, GP_GAMMA as R_xlen_t, Rf_ScalarReal(1.0));
-        SET_VECTOR_ELT(gp, GP_LTY as R_xlen_t, Rf_mkString(b"dashed\0".as_ptr() as *const c_char));
+        SET_VECTOR_ELT(
+            gp,
+            GP_LTY as R_xlen_t,
+            Rf_mkString(b"dashed\0".as_ptr() as *const c_char),
+        );
         SET_VECTOR_ELT(gp, GP_LWD as R_xlen_t, Rf_ScalarReal(1.0));
         SET_VECTOR_ELT(gp, GP_CEX as R_xlen_t, Rf_ScalarReal(1.0));
         SET_VECTOR_ELT(gp, GP_FONTSIZE as R_xlen_t, Rf_ScalarReal(12.0));
@@ -494,8 +506,16 @@ mod tests {
         SET_VECTOR_ELT(gp, GP_FONT as R_xlen_t, Rf_ScalarInteger(1));
 
         let fontfamily = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        SET_STRING_ELT(fontfamily, 0, Rf_mkChar(b"sans\0".as_ptr() as *const c_char));
-        SET_STRING_ELT(fontfamily, 1, Rf_mkChar(b"serif\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(
+            fontfamily,
+            0,
+            Rf_mkChar(b"sans\0".as_ptr() as *const c_char),
+        );
+        SET_STRING_ELT(
+            fontfamily,
+            1,
+            Rf_mkChar(b"serif\0".as_ptr() as *const c_char),
+        );
         SET_VECTOR_ELT(gp, GP_FONTFAMILY as R_xlen_t, fontfamily);
 
         SET_VECTOR_ELT(gp, GP_ALPHA as R_xlen_t, Rf_ScalarReal(1.0));
@@ -515,6 +535,7 @@ mod tests {
 
     #[test]
     fn test_gp_linetype_parses_names_and_patterns() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gp = make_gpar();
             SET_VECTOR_ELT(
@@ -536,6 +557,7 @@ mod tests {
 
     #[test]
     fn test_gp_color_null_falls_back_to_transparent_white() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(gpCol(R_NilValue(), 0), R_TRANWHITE);
             assert_eq!(gpFill(R_NilValue(), 0), R_TRANWHITE);
@@ -544,6 +566,7 @@ mod tests {
 
     #[test]
     fn test_gp_lineend_and_join_delegate_to_engine_parsers() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gp = make_gpar();
 
@@ -566,6 +589,7 @@ mod tests {
 
     #[test]
     fn test_init_and_update_gcontext_set_scalar_flags() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gp = make_gpar();
             let mut flags = [c_int::MIN; GP_FONTFACE as usize + 1];

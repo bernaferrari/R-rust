@@ -406,6 +406,7 @@ mod tests {
 
     #[test]
     fn test_do_machine() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_machine(
                 ptr::null_mut(),
@@ -419,6 +420,7 @@ mod tests {
 
     #[test]
     fn test_expand_filename_no_tilde() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let path = CString::new("/usr/lib/R").unwrap_or_default();
             let result = R_ExpandFileName(path.as_ptr());
@@ -428,6 +430,7 @@ mod tests {
 
     #[test]
     fn test_expand_filename_tilde() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
             let path = CString::new("~/Documents").unwrap_or_default();
@@ -440,6 +443,7 @@ mod tests {
 
     #[test]
     fn test_expand_filename_tilde_only() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let home = env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
             let path = CString::new("~").unwrap_or_default();
@@ -451,6 +455,7 @@ mod tests {
 
     #[test]
     fn test_expand_filename_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_ExpandFileName(ptr::null());
             assert!(result.is_null());
@@ -459,6 +464,7 @@ mod tests {
 
     #[test]
     fn test_set_start_time() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_setStartTime();
             assert!(clk_tck.with(|v| v.get()) > 0.0);
@@ -468,6 +474,7 @@ mod tests {
 
     #[test]
     fn test_get_clock_increment() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_setStartTime();
             let increment = R_getClockIncrement();
@@ -478,6 +485,7 @@ mod tests {
 
     #[test]
     fn test_get_proc_time() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_setStartTime();
             let mut data = [0.0f64; 5];
@@ -489,6 +497,7 @@ mod tests {
 
     #[test]
     fn test_fpu_setup() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             fpu_setup(1);
             fpu_setup(0);
@@ -497,6 +506,7 @@ mod tests {
 
     #[test]
     fn test_do_sysinfo() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_sysinfo(
                 ptr::null_mut(),

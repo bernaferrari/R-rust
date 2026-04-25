@@ -1803,6 +1803,7 @@ mod tests {
 
     #[test]
     fn test_R_GE_getVersion() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_GE_getVersion(), R_GE_version);
         }
@@ -1810,6 +1811,7 @@ mod tests {
 
     #[test]
     fn test_R_GE_checkVersionOrDie_matching() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Should not panic when version matches
             R_GE_checkVersionOrDie(R_GE_version);
@@ -1818,6 +1820,7 @@ mod tests {
 
     #[test]
     fn test_coordinate_transforms_passthrough() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let val = 1.0;
             assert_eq!(fromDeviceX(val, GE_DEVICE, ptr::null_mut()), 1.0);
@@ -1833,6 +1836,7 @@ mod tests {
 
     #[test]
     fn test_GEhandleEvent_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = GEhandleEvent(0, ptr::null_mut(), ptr::null_mut());
             assert_eq!(result, R_NilValue());
@@ -1841,6 +1845,7 @@ mod tests {
 
     #[test]
     fn test_graphics_system_count_is_session_local_on_same_thread() {
+        let _session = crate::sexp::session::RSession::new();
         let left = RSession::new();
         let right = RSession::new();
 
@@ -1869,6 +1874,7 @@ mod tests {
 
     #[test]
     fn test_GEMetricInfo_returns_defaults() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut a = 1.0;
             let mut d = 1.0;
@@ -1882,6 +1888,7 @@ mod tests {
 
     #[test]
     fn test_GEStrWidth_returns_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 GEStrWidth(ptr::null(), 0, ptr::null(), ptr::null_mut()),
@@ -1892,6 +1899,7 @@ mod tests {
 
     #[test]
     fn test_GEStrHeight_returns_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 GEStrHeight(ptr::null(), 0, ptr::null(), ptr::null_mut()),
@@ -1902,6 +1910,7 @@ mod tests {
 
     #[test]
     fn test_GEStrMetric_returns_zeros() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut a = 1.0;
             let mut d = 1.0;
@@ -1923,6 +1932,7 @@ mod tests {
 
     #[test]
     fn test_GEdeviceDirty_returns_false() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(GEdeviceDirty(ptr::null_mut()), 0);
         }
@@ -1930,6 +1940,7 @@ mod tests {
 
     #[test]
     fn test_GEcheckState_returns_false_for_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // null device = headless, returns FALSE (0) meaning no device state to check
             assert_eq!(GEcheckState(ptr::null_mut()), 0);
@@ -1938,6 +1949,7 @@ mod tests {
 
     #[test]
     fn test_GErecording_returns_false() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(GErecording(ptr::null_mut(), ptr::null_mut()), 0);
         }
@@ -1945,6 +1957,7 @@ mod tests {
 
     #[test]
     fn test_GEstring_to_pch_returns_na() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(GEstring_to_pch(ptr::null_mut()), c_int::MIN);
         }
@@ -1952,6 +1965,7 @@ mod tests {
 
     #[test]
     fn test_GEstring_to_pch_reads_first_character() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let pch = Rf_mkString(c"A".as_ptr());
             assert_eq!(GEstring_to_pch(pch), 'A' as c_int);
@@ -1960,6 +1974,7 @@ mod tests {
 
     #[test]
     fn test_GE_LTYpar_parses_named_and_hex_styles() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let named = make_string_vector(&["dotted"]);
             let custom = make_string_vector(&["3313"]);
@@ -1970,6 +1985,7 @@ mod tests {
 
     #[test]
     fn test_GE_LTYpar_numeric_mapping() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let numeric = Rf_ScalarInteger(2);
             assert_eq!(GE_LTYpar(numeric, 0), LTY_DASHED as c_uint);
@@ -1978,6 +1994,7 @@ mod tests {
 
     #[test]
     fn test_GE_LTYget_round_trips_named_values() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let out = GE_LTYget(LTY_LONGDASH as c_uint);
             let name = std::ffi::CStr::from_ptr(CHAR(STRING_ELT(out, 0)))
@@ -1989,6 +2006,7 @@ mod tests {
 
     #[test]
     fn test_GECap_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = GECap(ptr::null_mut());
             assert_eq!(result, R_NilValue());
@@ -1997,6 +2015,7 @@ mod tests {
 
     #[test]
     fn test_GEXspline_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = GEXspline(
                 0,
@@ -2015,6 +2034,7 @@ mod tests {
 
     #[test]
     fn test_GEdos_return_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 do_getSnapshot(
@@ -2048,6 +2068,7 @@ mod tests {
 
     #[test]
     fn test_GEGlyphInfo_stubs_return_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_GE_glyphInfoGlyphs(ptr::null_mut()), R_NilValue());
             assert_eq!(R_GE_glyphInfoFonts(ptr::null_mut()), R_NilValue());
@@ -2063,6 +2084,7 @@ mod tests {
 
     #[test]
     fn test_GEGlyphFontInfo_stubs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_GE_hasGlyphRotation(ptr::null_mut()), 0);
             assert_eq!(R_GE_glyphFontFile(ptr::null_mut()), ptr::null());
@@ -2080,6 +2102,7 @@ mod tests {
 
     #[test]
     fn test_R_GE_rasterRotatedSize() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut wnew: c_int = 0;
             let mut hnew: c_int = 0;
@@ -2091,6 +2114,7 @@ mod tests {
 
     #[test]
     fn test_R_GE_rasterRotatedOffset() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut xoff = 1.0;
             let mut yoff = 1.0;
@@ -2102,6 +2126,7 @@ mod tests {
 
     #[test]
     fn test_Rf_eval_with_gd_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
             let result = Rf_eval_with_gd(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
@@ -2111,6 +2136,7 @@ mod tests {
 
     #[test]
     fn test_GEPretty_rounds_interval() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut lo = 1.2_f64;
             let mut up = 4.8_f64;
@@ -2124,6 +2150,7 @@ mod tests {
 
     #[test]
     fn test_R_GE_rasterScale_identity() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let src: [c_uint; 4] = [1, 2, 3, 4];
             let mut dst: [c_uint; 4] = [0; 4];
@@ -2134,6 +2161,7 @@ mod tests {
 
     #[test]
     fn test_LEND_LJOIN_parse_and_get() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let lend = make_string_vector(&["square"]);
             let ljoin = make_string_vector(&["bevel"]);

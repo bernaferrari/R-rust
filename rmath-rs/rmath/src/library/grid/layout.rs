@@ -25,12 +25,12 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, Rf_isNull, SET_VECTOR_ELT, VECTOR_ELT};
-use crate::sexp::constructors::{Rf_allocVector, Rf_ScalarInteger, Rf_ScalarReal};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
-use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
 use super::types::*;
+use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
 use super::viewport::{
     viewportHeightCM, viewportLayout, viewportLayoutHeights, viewportLayoutPosCol,
     viewportLayoutPosRow, viewportLayoutWidths, viewportWidthCM,
@@ -264,20 +264,8 @@ unsafe fn allocateRespected(
 ) {
     let widths = layoutWidths(_layout);
     let heights = layoutHeights(_layout);
-    let sum_width = totalWidth(
-        _layout,
-        _relativeWidths,
-        _parentContext,
-        _parentgc,
-        _dd,
-    );
-    let sum_height = totalHeight(
-        _layout,
-        _relativeHeights,
-        _parentContext,
-        _parentgc,
-        _dd,
-    );
+    let sum_width = totalWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
+    let sum_height = totalHeight(_layout, _relativeHeights, _parentContext, _parentgc, _dd);
 
     let temp_width_cm = *_reducedWidthCM;
     let temp_height_cm = *_reducedHeightCM;
@@ -416,20 +404,13 @@ unsafe fn allocateRemainingWidth(
     _dd: *const u8,
     npcWidths: *mut f64,
 ) {
-    let sum_width = totalUnrespectedWidth(
-        _layout,
-        _relativeWidths,
-        _parentContext,
-        _parentgc,
-        _dd,
-    );
+    let sum_width = totalUnrespectedWidth(_layout, _relativeWidths, _parentContext, _parentgc, _dd);
     if sum_width > 0.0 {
         let widths = layoutWidths(_layout);
         for i in 0..layoutNCol(_layout) {
             if *_relativeWidths.add(i as usize) != 0 && colRespected(i, _layout) == 0 {
-                *npcWidths.add(i as usize) = _remainingWidthCM
-                    * pureNullUnitValue(widths, i)
-                    / sum_width;
+                *npcWidths.add(i as usize) =
+                    _remainingWidthCM * pureNullUnitValue(widths, i) / sum_width;
             }
         }
     } else {
@@ -446,20 +427,14 @@ unsafe fn allocateRemainingHeight(
     _dd: *const u8,
     npcHeights: *mut f64,
 ) {
-    let sum_height = totalUnrespectedHeight(
-        _layout,
-        _relativeHeights,
-        _parentContext,
-        _parentgc,
-        _dd,
-    );
+    let sum_height =
+        totalUnrespectedHeight(_layout, _relativeHeights, _parentContext, _parentgc, _dd);
     if sum_height > 0.0 {
         let heights = layoutHeights(_layout);
         for i in 0..layoutNRow(_layout) {
             if *_relativeHeights.add(i as usize) != 0 && rowRespected(i, _layout) == 0 {
-                *npcHeights.add(i as usize) = _remainingHeightCM
-                    * pureNullUnitValue(heights, i)
-                    / sum_height;
+                *npcHeights.add(i as usize) =
+                    _remainingHeightCM * pureNullUnitValue(heights, i) / sum_height;
             }
         }
     } else {
@@ -594,7 +569,11 @@ pub unsafe fn calcViewportLayout(
             npcHeights.as_mut_ptr(),
         );
     } else {
-        setRemainingHeightZero(layout, relativeHeights.as_mut_ptr(), npcHeights.as_mut_ptr());
+        setRemainingHeightZero(
+            layout,
+            relativeHeights.as_mut_ptr(),
+            npcHeights.as_mut_ptr(),
+        );
     }
 
     let currentWidths = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncol));
@@ -647,12 +626,18 @@ pub unsafe fn calcViewportLocationFromLayout(
     let (minrow, maxrow) = if Rf_isNull(layoutPosRow) != 0 {
         (0, layoutNRow(layout) - 1)
     } else {
-        (*INTEGER(layoutPosRow) - 1, *INTEGER(layoutPosRow).add(1) - 1)
+        (
+            *INTEGER(layoutPosRow) - 1,
+            *INTEGER(layoutPosRow).add(1) - 1,
+        )
     };
     let (mincol, maxcol) = if Rf_isNull(layoutPosCol) != 0 {
         (0, layoutNCol(layout) - 1)
     } else {
-        (*INTEGER(layoutPosCol) - 1, *INTEGER(layoutPosCol).add(1) - 1)
+        (
+            *INTEGER(layoutPosCol) - 1,
+            *INTEGER(layoutPosCol).add(1) - 1,
+        )
     };
 
     let widths = REAL(viewportLayoutWidths(parent));
@@ -720,7 +705,7 @@ unsafe fn subRegion(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::library::grid::unit::{constructUnits, unit, unitLength, unitUnit, L_CM, L_NULL};
+    use crate::library::grid::unit::{L_CM, L_NULL, constructUnits, unit, unitLength, unitUnit};
     use crate::sexp::constructors::Rf_allocVector;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
@@ -739,7 +724,13 @@ mod tests {
         result
     }
 
-    unsafe fn mk_layout(widths: SEXP, heights: SEXP, respect_mat: &[c_int], nrow: c_int, ncol: c_int) -> SEXP {
+    unsafe fn mk_layout(
+        widths: SEXP,
+        heights: SEXP,
+        respect_mat: &[c_int],
+        nrow: c_int,
+        ncol: c_int,
+    ) -> SEXP {
         let layout = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 9));
         SET_VECTOR_ELT(layout, LAYOUT_NROW as R_xlen_t, Rf_ScalarInteger(nrow));
         SET_VECTOR_ELT(layout, LAYOUT_NCOL as R_xlen_t, Rf_ScalarInteger(ncol));
@@ -773,6 +764,7 @@ mod tests {
 
     #[test]
     fn relative_unit_tracks_null_units() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let null_unit = unit(1.0, L_NULL);
             let cm_unit = unit(1.0, L_CM);
@@ -784,6 +776,7 @@ mod tests {
 
     #[test]
     fn calc_viewport_layout_allocates_known_and_null_units() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let widths = mk_unit_vec(&[1.0, 1.0, 1.0], L_NULL);
             let heights = mk_unit_vec(&[1.0, 1.0], L_CM);
@@ -812,6 +805,7 @@ mod tests {
 
     #[test]
     fn calc_viewport_location_from_layout_uses_layout_slices() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let widths = mk_unit_vec(&[1.0, 1.0, 1.0], L_NULL);
             let heights = mk_unit_vec(&[1.0, 1.0], L_CM);
@@ -848,7 +842,9 @@ mod tests {
             assert_eq!(unitUnit(vpl.x, 0), L_CM);
             assert!((crate::library::grid::unit::unitValue(vpl.x, 0) - 10.0 / 3.0).abs() < 1e-12);
             assert_eq!(unitUnit(vpl.width, 0), L_CM);
-            assert!((crate::library::grid::unit::unitValue(vpl.width, 0) - 20.0 / 3.0).abs() < 1e-12);
+            assert!(
+                (crate::library::grid::unit::unitValue(vpl.width, 0) - 20.0 / 3.0).abs() < 1e-12
+            );
             assert_eq!(unitUnit(vpl.height, 0), L_CM);
             assert!((crate::library::grid::unit::unitValue(vpl.height, 0) - 2.0).abs() < 1e-12);
             Rf_unprotect(2);

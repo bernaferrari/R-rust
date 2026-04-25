@@ -195,6 +195,7 @@ mod tests {
 
     #[test]
     fn test_do_mapply_null_args_returns_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let empty_list = Rf_allocVector3(SEXPTYPE::LISTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(3);

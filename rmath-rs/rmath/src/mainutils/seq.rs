@@ -2207,6 +2207,7 @@ mod tests {
 
     #[test]
     fn test_seq_colon_simple_int_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let call = ptr::null_mut();
             let ans = seq_colon(1.0, 5.0, call);
@@ -2222,6 +2223,7 @@ mod tests {
 
     #[test]
     fn test_seq_colon_descending() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let ans = seq_colon(5.0, 1.0, ptr::null_mut());
             assert!(!ans.is_null());
@@ -2234,6 +2236,7 @@ mod tests {
 
     #[test]
     fn test_seq_colon_single_element() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let ans = seq_colon(3.0, 3.0, ptr::null_mut());
             assert!(!ans.is_null());
@@ -2245,6 +2248,7 @@ mod tests {
 
     #[test]
     fn test_seq_colon_real_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Non-integer values produce REALSXP
             let ans = seq_colon(1.5, 3.5, ptr::null_mut());
@@ -2260,6 +2264,7 @@ mod tests {
 
     #[test]
     fn test_seq_colon_descending_real() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let ans = seq_colon(3.5, 1.5, ptr::null_mut());
             assert!(!ans.is_null());
@@ -2273,6 +2278,7 @@ mod tests {
 
     #[test]
     fn test_seq_colon_large_range_still_int() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Large range that fits in integer
             let ans = seq_colon(1.0, 100.0, ptr::null_mut());
@@ -2290,6 +2296,7 @@ mod tests {
 
     #[test]
     fn test_rep3_basic_integer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = make_int_vec(&[1, 2, 3]);
             let ans = rep3(s, 3, 9); // repeat 3-element vector 3 times
@@ -2311,6 +2318,7 @@ mod tests {
 
     #[test]
     fn test_rep3_partial_cycle() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = make_int_vec(&[10, 20, 30]);
             let ans = rep3(s, 3, 5); // only 5 of the 6
@@ -2327,6 +2335,7 @@ mod tests {
 
     #[test]
     fn test_rep3_real_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = make_real_vec(&[1.5, 2.5]);
             let ans = rep3(s, 2, 4);
@@ -2343,6 +2352,7 @@ mod tests {
 
     #[test]
     fn test_rep3_zero_length_output() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = make_int_vec(&[1, 2, 3]);
             let ans = rep3(s, 3, 0);
@@ -2357,6 +2367,7 @@ mod tests {
 
     #[test]
     fn test_rep2_vector_times() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = make_int_vec(&[1, 2, 3]);
             let ncopy = make_int_vec(&[2, 1, 3]);
@@ -2380,6 +2391,7 @@ mod tests {
 
     #[test]
     fn test_do_seq_len_simple() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let len_arg = make_int_vec(&[5]);
             let args = Rf_cons(len_arg, R_NilValue());
@@ -2395,6 +2407,7 @@ mod tests {
 
     #[test]
     fn test_do_seq_len_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let len_arg = make_int_vec(&[0]);
             let args = Rf_cons(len_arg, R_NilValue());
@@ -2406,6 +2419,7 @@ mod tests {
 
     #[test]
     fn test_do_seq_len_one() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let len_arg = make_int_vec(&[1]);
             let args = Rf_cons(len_arg, R_NilValue());
@@ -2423,6 +2437,7 @@ mod tests {
 
     #[test]
     fn test_do_seq_along() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vec(&[10, 20, 30, 40]);
             let args = Rf_cons(x, R_NilValue());
@@ -2438,6 +2453,7 @@ mod tests {
 
     #[test]
     fn test_do_seq_along_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_allocVector(INTSXP_VAL, 0);
             let args = Rf_cons(x, R_NilValue());
@@ -2453,6 +2469,7 @@ mod tests {
 
     #[test]
     fn test_do_sequence_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let lengths = make_int_vec(&[3, 2]);
             let from = make_int_vec(&[1, 10]);
@@ -2481,6 +2498,7 @@ mod tests {
 
     #[test]
     fn test_do_sequence_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let lengths = Rf_allocVector(INTSXP_VAL, 0);
             let from = make_int_vec(&[1]);

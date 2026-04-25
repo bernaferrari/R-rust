@@ -1196,6 +1196,7 @@ mod tests {
 
     #[test]
     fn test_sexptype2char_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 std::ffi::CStr::from_ptr(sexptype2char(SEXPTYPE::NILSXP))
@@ -1220,6 +1221,7 @@ mod tests {
 
     #[test]
     fn test_gc_running() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let running = R_gc_running();
             assert_eq!(running, 0); // GC should not be running initially
@@ -1228,6 +1230,7 @@ mod tests {
 
     #[test]
     fn test_gc_does_not_crash() {
+        let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
             R_gc();
@@ -1238,6 +1241,7 @@ mod tests {
 
     #[test]
     fn test_init_memory_does_not_crash() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             InitMemory();
             initStack();
@@ -1246,6 +1250,7 @@ mod tests {
 
     #[test]
     fn test_r_allocld() {
+        let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
             let ptr = R_allocLD(10);
@@ -1256,6 +1261,7 @@ mod tests {
 
     #[test]
     fn test_r_string_buffer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut buf = R_StringBuffer::default();
             let ptr = R_AllocStringBuffer(100, &mut buf);
@@ -1268,6 +1274,7 @@ mod tests {
 
     #[test]
     fn test_r_string_buffer_grow() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut buf = R_StringBuffer::default();
             // Initial allocation
@@ -1281,6 +1288,7 @@ mod tests {
 
     #[test]
     fn test_r_string_buffer_default_size() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut buf = R_StringBuffer::default();
             // Small allocation within default size
@@ -1296,6 +1304,7 @@ mod tests {
 
     #[test]
     fn test_weak_ref_stubs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let key = crate::sexp::constructors::Rf_ScalarInteger(42);
             let val = crate::sexp::constructors::Rf_ScalarInteger(99);
@@ -1316,6 +1325,7 @@ mod tests {
 
     #[test]
     fn test_external_ptr_stubs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create with null values
             let p = R_MakeExternalPtr(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
@@ -1340,6 +1350,7 @@ mod tests {
 
     #[test]
     fn test_external_ptr_roundtrip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create an external pointer with a real address
             let mut data: i32 = 42;
@@ -1358,6 +1369,7 @@ mod tests {
 
     #[test]
     fn test_external_ptr_setters() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let p = R_MakeExternalPtr(ptr::null_mut(), ptr::null_mut(), ptr::null_mut());
             assert!(!p.is_null());
@@ -1385,6 +1397,7 @@ mod tests {
 
     #[test]
     fn test_external_ptr_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Null input should not crash
             assert!(R_ExternalPtrAddr(ptr::null_mut()).is_null());
@@ -1401,6 +1414,7 @@ mod tests {
 
     #[test]
     fn test_resizable_vector_stubs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_isResizable(ptr::null_mut()), 0);
             assert_eq!(R_maxLength(ptr::null_mut()), 0);
@@ -1409,6 +1423,7 @@ mod tests {
 
     #[test]
     fn test_finalizer_stubs() {
+        let _session = crate::sexp::session::RSession::new();
         let session = RSession::new();
         session.with_protected(|| unsafe {
             R_RegisterFinalizer(ptr::null_mut(), ptr::null_mut());
@@ -1427,6 +1442,7 @@ mod tests {
 
     #[test]
     fn test_chk_calloc() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let p = R_chk_calloc(10, 8);
             assert!(!p.is_null());
@@ -1436,6 +1452,7 @@ mod tests {
 
     #[test]
     fn test_chk_memcpy_memset() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let buf = R_chk_calloc(100, 1);
             assert!(!buf.is_null());
@@ -1461,6 +1478,7 @@ mod tests {
 
     #[test]
     fn test_type_checking_functions() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // R_NilValue should be detected as NULL
             assert_eq!(Rf_isNull_memory(R_NilValue()), 1);
@@ -1473,6 +1491,7 @@ mod tests {
 
     #[test]
     fn test_seql() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Same pointer should be equal
             let fake = 0x1 as SEXP;
@@ -1482,6 +1501,7 @@ mod tests {
 
     #[test]
     fn test_readline_stub() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = readline(ptr::null_mut());
             assert!(result.is_null());

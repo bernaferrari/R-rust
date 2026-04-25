@@ -172,7 +172,10 @@ fn lzma2_raw_encode(input: &[u8], _out_cap: usize) -> Result<Vec<u8>, std::io::E
     let mut compressed = Vec::new();
     let mut reader = BufReader::new(Cursor::new(input));
     lzma_rs::lzma2_compress(&mut reader, &mut compressed).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, format!("lzma2 compress: {e}"))
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("lzma2 compress: {e}"),
+        )
     })?;
     Ok(compressed)
 }
@@ -181,7 +184,10 @@ fn lzma2_raw_decode(input: &[u8], expected_len: usize) -> Result<Vec<u8>, std::i
     let mut decompressed = Vec::with_capacity(expected_len);
     let mut reader = BufReader::new(input);
     lzma_rs::lzma2_decompress(&mut reader, &mut decompressed).map_err(|e| {
-        std::io::Error::new(std::io::ErrorKind::InvalidData, format!("lzma2 decompress: {e}"))
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidData,
+            format!("lzma2 decompress: {e}"),
+        )
     })?;
     if decompressed.len() != expected_len {
         return Err(std::io::Error::new(
@@ -3041,6 +3047,7 @@ mod tests {
 
     #[test]
     fn test_default_serialize_version() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = defaultSerializeVersion();
             assert_eq!(v, 3);
@@ -3049,6 +3056,7 @@ mod tests {
 
     #[test]
     fn test_binary_writer_reader_i32() {
+        let _session = crate::sexp::session::RSession::new();
         let mut writer = BinaryWriter::new();
         writer.write_i32(42);
         writer.write_i32(-1);
@@ -3064,6 +3072,7 @@ mod tests {
 
     #[test]
     fn test_binary_writer_reader_f64() {
+        let _session = crate::sexp::session::RSession::new();
         let mut writer = BinaryWriter::new();
         writer.write_f64(3.14);
         writer.write_f64(-1.0);
@@ -3078,6 +3087,7 @@ mod tests {
 
     #[test]
     fn test_binary_writer_reader_bytes() {
+        let _session = crate::sexp::session::RSession::new();
         let mut writer = BinaryWriter::new();
         writer.write_byte(0xFF);
         writer.write_byte(0x00);
@@ -3092,6 +3102,7 @@ mod tests {
 
     #[test]
     fn test_pack_flags() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Type only, no flags
             let flags = PackFlags(13, 0, 0, 0, 0);
@@ -3113,6 +3124,7 @@ mod tests {
 
     #[test]
     fn test_unpack_flags() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut ptype = 0i32;
             let mut plevs = 0i32;
@@ -3139,6 +3151,7 @@ mod tests {
 
     #[test]
     fn test_decode_version() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut v = 0i32;
             let mut p = 0i32;
@@ -3162,6 +3175,7 @@ mod tests {
 
     #[test]
     fn test_write_hash_table() {
+        let _session = crate::sexp::session::RSession::new();
         let mut ht = WriteHashTable::new();
         assert_eq!(ht.count, 0);
 
@@ -3184,6 +3198,7 @@ mod tests {
 
     #[test]
     fn test_read_ref_table() {
+        let _session = crate::sexp::session::RSession::new();
         let mut rt = ReadRefTable::new();
         let fake1 = 0x1000 as *mut std::os::raw::c_void as SEXP;
         let fake2 = 0x2000 as *mut std::os::raw::c_void as SEXP;
@@ -3198,6 +3213,7 @@ mod tests {
 
     #[test]
     fn test_c_read_ref_table_helpers() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let table = MakeReadRefTable();
             let a = Rf_ScalarInteger(11);
@@ -3211,6 +3227,7 @@ mod tests {
 
     #[test]
     fn test_c_hash_table_helpers() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let ht = MakeHashTable();
             let a = Rf_ScalarInteger(1);
@@ -3225,6 +3242,7 @@ mod tests {
 
     #[test]
     fn test_writebc_readbc_round_trip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut out_stream: R_outpstream_st = mem::zeroed();
             let mut out_buf = membuf_st {
@@ -3267,6 +3285,7 @@ mod tests {
 
     #[test]
     fn test_conn_stream_file_callbacks() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let fp = libc::tmpfile();
             assert!(!fp.is_null());
@@ -3313,6 +3332,7 @@ mod tests {
 
     #[test]
     fn test_r_write_connection_file_round_trip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let fp = libc::tmpfile();
             assert!(!fp.is_null());
@@ -3333,6 +3353,7 @@ mod tests {
 
     #[test]
     fn test_instringvec_round_trip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let src = Rf_allocVector3(SEXPTYPE::STRSXP, 3);
             SET_STRING_ELT(src, 0, Rf_mkChar(c"foo".as_ptr()));
@@ -3387,6 +3408,7 @@ mod tests {
 
     #[test]
     fn test_ref_index_packing() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut writer = BinaryWriter::new();
             // Small index: packed into single integer
@@ -3401,6 +3423,7 @@ mod tests {
 
     #[test]
     fn test_constants() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(HASHSIZE, 1009);
         assert_eq!(INITIAL_REFREAD_TABLE_SIZE, 128);
         assert_eq!(REFSXP, 255);
@@ -3416,6 +3439,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_r_serialize_returns_nil_for_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_serialize(
                 ptr::null_mut(),
@@ -3431,6 +3455,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_r_unserialize_returns_nil_for_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_unserialize(R_NilValue(), R_NilValue());
             assert_eq!(result, R_NilValue());
@@ -3440,6 +3465,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_r_unserialize_returns_nil_for_empty_raw() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let raw = Rf_allocVector3(SEXPTYPE::RAWSXP, 0);
             let result = R_unserialize(raw, R_NilValue());
@@ -3450,6 +3476,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_r_unserialize_returns_nil_for_non_raw() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
             let result = R_unserialize(s, R_NilValue());
@@ -3460,6 +3487,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_r_serialize_info_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_SerializeInfo(ptr::null_mut());
             assert_eq!(result, R_NilValue());
@@ -3468,6 +3496,7 @@ mod tests {
 
     #[test]
     fn test_r_serialize_info_reports_header() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let value = Rf_ScalarInteger(123);
             let raw = R_serialize(
@@ -3538,6 +3567,7 @@ mod tests {
 
     #[test]
     fn test_r_serialize_honors_requested_version_2() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let value = Rf_ScalarInteger(123);
             let version = Rf_ScalarInteger(2);
@@ -3581,6 +3611,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_do_serialize_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_serialize(
                 ptr::null_mut(),
@@ -3595,6 +3626,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_do_serialize_to_conn_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_serializeToConn(
                 ptr::null_mut(),
@@ -3609,6 +3641,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_do_unserialize_from_conn_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_unserializeFromConn(
                 ptr::null_mut(),
@@ -3622,6 +3655,7 @@ mod tests {
 
     #[test]
     fn test_do_lazy_load_db_flush_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let path = temp_path("flush");
             let path_str = path.to_str().unwrap().to_owned();
@@ -3635,6 +3669,7 @@ mod tests {
 
     #[test]
     fn test_do_lazy_load_db_insert_and_fetch_round_trip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let path = temp_path("lazyload");
             let path_str = path.to_str().unwrap().to_owned();
@@ -3678,6 +3713,7 @@ mod tests {
 
     #[test]
     fn test_do_get_vars_from_frame_returns_values() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = R_NewHashedEnv(R_BaseEnv(), 29);
             let sym = Rf_install(c"x".as_ptr());
@@ -3698,6 +3734,7 @@ mod tests {
 
     #[test]
     fn test_r_compress_decompress_round_trip() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let raw = make_raw(&[0, 1, 2, 3, 4, 5, 6, 7]);
             let mut err: Rboolean = 0;
@@ -3736,6 +3773,7 @@ mod tests {
 
     #[test]
     fn test_r_decompress_rejects_truncated_input() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let raw = make_raw(&[1, 2, 3, 4]);
             let mut err: Rboolean = 0;
@@ -3752,6 +3790,7 @@ mod tests {
 
     #[test]
     fn test_r_decompress2_3_support_legacy_markers() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let expected = [10, 20, 30, 40, 50, 60, 70, 80];
             let raw = make_raw(&expected);
@@ -3794,6 +3833,7 @@ mod tests {
 
     #[test]
     fn test_r_decompress2_3_reject_unknown_marker() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut blob = Vec::new();
             blob.extend_from_slice(&swapped_len_bytes(0));
@@ -3810,6 +3850,7 @@ mod tests {
 
     #[test]
     fn test_r_write_connection_returns_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let n = R_WriteConnection(ptr::null_mut(), ptr::null(), 42);
             assert_eq!(n, 0);
@@ -3820,6 +3861,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_integer_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_ScalarInteger(42);
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -3836,6 +3878,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_real_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_ScalarReal(3.14159);
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -3851,6 +3894,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_logical_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_ScalarLogical(1); // TRUE
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -3866,6 +3910,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_integer_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             let data = INTEGER(s);
@@ -3889,6 +3934,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_real_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
             let data = REAL(s);
@@ -3910,6 +3956,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_complex_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_ScalarComplex(Rcomplex { r: 1.0, i: 2.0 });
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -3927,6 +3974,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_string_scalar() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_mkString(c"hello".as_ptr());
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -3946,6 +3994,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_string_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::STRSXP, 2);
             let c1 = Rf_mkChar(c"foo".as_ptr());
@@ -3971,6 +4020,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_raw_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::RAWSXP, 3);
             let data = RAW(s);
@@ -3994,6 +4044,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_empty_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -4008,6 +4059,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = R_NilValue();
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -4020,6 +4072,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_na_string() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = make_na_string_vector();
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -4035,6 +4088,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_special_singletons() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut values = vec![R_NilValue(), R_UnboundValue(), R_MissingArg()];
             for env in [R_GlobalEnv(), R_BaseEnv(), R_EmptyEnv()] {
@@ -4060,6 +4114,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_generic_list() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create a list(c(1, 2), c(3.0, 4.0))
             let vec1 = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
@@ -4100,6 +4155,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_nested_list() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create list(list(1, 2), list(3, 4))
             let inner1 = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
@@ -4157,6 +4213,7 @@ mod tests {
 
     #[test]
     fn test_serialized_format_header() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_ScalarInteger(1);
             let raw = R_serialize(s, R_NilValue(), R_NilValue(), R_NilValue(), R_NilValue());
@@ -4176,6 +4233,7 @@ mod tests {
 
     #[test]
     fn test_roundtrip_large_integer_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let n: i32 = 100;
             let s = Rf_allocVector3(SEXPTYPE::INTSXP, n as R_xlen_t);
@@ -4200,6 +4258,7 @@ mod tests {
 
     #[test]
     fn test_binary_reader_errors() {
+        let _session = crate::sexp::session::RSession::new();
         let data = [0u8; 3]; // Too short for an i32
         let mut reader = BinaryReader::new(&data);
         assert!(reader.read_i32().is_err());
@@ -4209,6 +4268,7 @@ mod tests {
 
     #[test]
     fn test_binary_reader_remaining() {
+        let _session = crate::sexp::session::RSession::new();
         let data = [1u8, 2, 3, 4, 5];
         let mut reader = BinaryReader::new(&data);
         assert_eq!(reader.remaining(), 5);

@@ -745,6 +745,7 @@ mod tests {
 
     #[test]
     fn test_find_var_in_frame_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"x\0".as_ptr() as *const _);
@@ -755,6 +756,7 @@ mod tests {
 
     #[test]
     fn test_define_and_find_var() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"x\0".as_ptr() as *const _);
@@ -769,6 +771,7 @@ mod tests {
 
     #[test]
     fn test_define_var_overwrite() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"x\0".as_ptr() as *const _);
@@ -785,6 +788,7 @@ mod tests {
 
     #[test]
     fn test_exists_var_in_frame() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"y\0".as_ptr() as *const _);
@@ -800,6 +804,7 @@ mod tests {
 
     #[test]
     fn test_is_missing() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"z\0".as_ptr() as *const _);
@@ -810,6 +815,7 @@ mod tests {
 
     #[test]
     fn test_new_environment() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = NewEnvironment(ptr::null_mut(), R_NilValue(), ptr::null_mut());
             assert!(!env.is_null());
@@ -819,6 +825,7 @@ mod tests {
 
     #[test]
     fn test_mk_promise() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let expr = Rf_ScalarInteger(99);
             let prom = super::super::memory_ext::mkPROMISE(expr, R_NilValue());
@@ -829,6 +836,7 @@ mod tests {
 
     #[test]
     fn test_type_to_char() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             R_typeToChar(SEXPTYPE::INTSXP.into());
             R_typeToChar(SEXPTYPE::REALSXP.into());
@@ -838,6 +846,7 @@ mod tests {
 
     #[test]
     fn test_find_var_null_inputs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 R_findVar(ptr::null_mut(), ptr::null_mut()),
@@ -852,6 +861,7 @@ mod tests {
 
     #[test]
     fn test_set_var_not_found() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let parent = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
@@ -866,6 +876,7 @@ mod tests {
 
     #[test]
     fn test_safe_find_var_in_frame() {
+        let _session = crate::sexp::session::RSession::new();
         let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
         let Some(sexp_env) = Sexp::from_raw(env) else {
             return;
@@ -877,6 +888,7 @@ mod tests {
 
     #[test]
     fn test_safe_define_and_find_var() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"x\0".as_ptr() as *const _);
@@ -905,6 +917,7 @@ mod tests {
 
     #[test]
     fn test_safe_is_missing() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"z\0".as_ptr() as *const _);
@@ -922,6 +935,7 @@ mod tests {
 
     #[test]
     fn test_safe_exists_var_in_frame() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
             let sym = Rf_install(b"y\0".as_ptr() as *const _);

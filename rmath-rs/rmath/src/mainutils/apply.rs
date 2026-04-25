@@ -1067,6 +1067,7 @@ mod tests {
 
     #[test]
     fn test_checkArgIsSymbol_null() {
+        let _session = crate::sexp::session::RSession::new();
         // checkArgIsSymbol panics on null, so we don't test that directly
         // Test with a non-null value
         unsafe {
@@ -1079,6 +1080,7 @@ mod tests {
 
     #[test]
     fn test_islistfactor_recursive_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = islistfactor_recursive(ptr::null_mut());
             assert_eq!(result, NA_LOGICAL);
@@ -1087,6 +1089,7 @@ mod tests {
 
     #[test]
     fn test_islistfactor_recursive_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = islistfactor_recursive(R_NilValue());
             assert_eq!(result, NA_LOGICAL);
@@ -1095,6 +1098,7 @@ mod tests {
 
     #[test]
     fn test_do_one_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_one(
                 ptr::null_mut(),
@@ -1112,6 +1116,7 @@ mod tests {
 
     #[test]
     fn test_do_one_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_one(
                 R_NilValue(),
@@ -1128,6 +1133,7 @@ mod tests {
 
     #[test]
     fn test_asLogical_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(asLogical(ptr::null_mut()), NA_LOGICAL);
             assert_eq!(asLogical(R_NilValue()), NA_LOGICAL);
@@ -1136,6 +1142,7 @@ mod tests {
 
     #[test]
     fn test_isVectorList_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isVectorList(ptr::null_mut()), 0);
             assert_eq!(isVectorList(R_NilValue()), 0);
@@ -1144,6 +1151,7 @@ mod tests {
 
     #[test]
     fn test_isFunction_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isFunction(ptr::null_mut()), 0);
             assert_eq!(isFunction(R_NilValue()), 0);
@@ -1152,6 +1160,7 @@ mod tests {
 
     #[test]
     fn test_isString_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isString(ptr::null_mut()), 0);
             assert_eq!(isString(R_NilValue()), 0);
@@ -1160,6 +1169,7 @@ mod tests {
 
     #[test]
     fn test_isVector_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isVector(ptr::null_mut()), 0);
             assert_eq!(isVector(R_NilValue()), 0);
@@ -1168,6 +1178,7 @@ mod tests {
 
     #[test]
     fn test_length_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(length(ptr::null_mut()), 0);
             assert_eq!(length(R_NilValue()), 0);
@@ -1176,6 +1187,7 @@ mod tests {
 
     #[test]
     fn test_Seql_same_pointer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = Rf_install(CString::new("test").unwrap_or_default().as_ptr());
             assert_eq!(Seql(s, s), 1);
@@ -1184,6 +1196,7 @@ mod tests {
 
     #[test]
     fn test_Seql_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(Seql(ptr::null_mut(), ptr::null_mut()), 1);
             assert_eq!(Seql(ptr::null_mut(), R_NilValue()), 0);
@@ -1192,6 +1205,7 @@ mod tests {
 
     #[test]
     fn test_isFactor_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(isFactor(ptr::null_mut()), 0);
             assert_eq!(isFactor(R_NilValue()), 0);
@@ -1200,6 +1214,7 @@ mod tests {
 
     #[test]
     fn test_do_islistfactor_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_islistfactor(
                 ptr::null_mut(),
@@ -1215,6 +1230,7 @@ mod tests {
 
     #[test]
     fn test_do_islistfactor_empty_list() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let empty = Rf_allocVector(VECSXP_VAL, 0);
             Rf_protect(empty);
@@ -1233,6 +1249,7 @@ mod tests {
 
     #[test]
     fn test_MARK_NOT_MUTABLE_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             MARK_NOT_MUTABLE(ptr::null_mut()); // Should not crash
         }
@@ -1240,6 +1257,7 @@ mod tests {
 
     #[test]
     fn test_INCREMENT_NAMED_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             INCREMENT_NAMED(ptr::null_mut()); // Should not crash
         }
@@ -1247,6 +1265,7 @@ mod tests {
 
     #[test]
     fn test_MAYBE_REFERENCED_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(MAYBE_REFERENCED(ptr::null_mut()), false);
         }
@@ -1254,6 +1273,7 @@ mod tests {
 
     #[test]
     fn test_MAYBE_SHARED_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(MAYBE_SHARED(ptr::null_mut()), false);
         }
@@ -1261,6 +1281,7 @@ mod tests {
 
     #[test]
     fn test_LCONS() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let car = Rf_ScalarInteger(1);
             let cdr = Rf_ScalarInteger(2);
@@ -1274,6 +1295,7 @@ mod tests {
 
     #[test]
     fn test_R_typeToChar_local() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let iv = Rf_allocVector(INTSXP_VAL, 1);
             let name_ptr = R_typeToChar_local(iv);

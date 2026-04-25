@@ -1329,6 +1329,7 @@ mod tests {
 
     #[test]
     fn test_integer_one_index_positive() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // 1-based index 3 -> 0-based index 2
             assert_eq!(integerOneIndex(3, 10, ptr::null_mut()), 2);
@@ -1340,6 +1341,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_integer_one_index_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             integerOneIndex(0, 10, ptr::null_mut());
         }
@@ -1347,6 +1349,7 @@ mod tests {
 
     #[test]
     fn test_integer_one_index_negative_len2() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // For length-2 vector, -1 selects element 1, -2 selects element 0
             assert_eq!(integerOneIndex(-1, 2, ptr::null_mut()), 1);
@@ -1357,6 +1360,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_integer_one_index_negative_len2_out_of_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             integerOneIndex(-3, 2, ptr::null_mut());
         }
@@ -1365,6 +1369,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_integer_one_index_negative_other_lengths() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             integerOneIndex(-1, 1, ptr::null_mut());
         }
@@ -1373,6 +1378,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_one_index_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut newname: SEXP = ptr::null_mut();
             OneIndex(
@@ -1390,6 +1396,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_get1index_null_args() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, -1, ptr::null_mut());
         }
@@ -1398,6 +1405,7 @@ mod tests {
     #[test]
     #[should_panic]
     fn test_get1index_pos_out_of_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             get1index(ptr::null_mut(), ptr::null_mut(), 10, 0, 5, ptr::null_mut());
         }
@@ -1405,6 +1413,7 @@ mod tests {
 
     #[test]
     fn test_vector_index_null_input_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = vectorIndex(
                 ptr::null_mut(),
@@ -1421,6 +1430,7 @@ mod tests {
 
     #[test]
     fn test_mat2indsub_converts_matrix_subscripts() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dims = make_int_vector(&[2, 3]);
             let s = make_dim_matrix(&[1, 2, 1, 3], 2, 2);
@@ -1434,6 +1444,7 @@ mod tests {
 
     #[test]
     fn test_strmat2intmat_converts_matrix_names() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let dimnames = make_dimnames_list(&[b"a\0", b"b\0"], &[b"c\0", b"d\0"]);
             let x = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
@@ -1461,6 +1472,7 @@ mod tests {
 
     #[test]
     fn test_ecall_out_of_bounds_reports_context() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, 2, 3]);
             let msg = panic_message(|| {
@@ -1475,6 +1487,7 @@ mod tests {
 
     #[test]
     fn test_ecall_missing_subs_reports_context() {
+        let _session = crate::sexp::session::RSession::new();
         let msg = panic_message(|| {
             unsafe { ECALL_MissingSubs(ptr::null_mut()) };
         });
@@ -1483,6 +1496,7 @@ mod tests {
 
     #[test]
     fn test_ecall_out_of_bounds_char_reports_context() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_real_vector(&[1.0]);
             let sindex = Rf_mkString(b"foo\0".as_ptr() as *const c_char);
@@ -1498,6 +1512,7 @@ mod tests {
 
     #[test]
     fn test_make_subscript_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut stretch: R_xlen_t = 0;
             let result =
@@ -1511,6 +1526,7 @@ mod tests {
 
     #[test]
     fn test_make_subscript_scalar_int_in_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[10, 20, 30]);
             let s = Rf_ScalarInteger(2);
@@ -1524,6 +1540,7 @@ mod tests {
 
     #[test]
     fn test_make_subscript_scalar_real_in_range() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[10, 20, 30]);
             let s = Rf_ScalarReal(2.0);
@@ -1537,6 +1554,7 @@ mod tests {
 
     #[test]
     fn test_int_array_subscript_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = int_arraySubscript(
                 0,
@@ -1553,6 +1571,7 @@ mod tests {
 
     #[test]
     fn test_array_subscript_delegates() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = arraySubscript(0, R_NilValue(), ptr::null_mut(), 0, 0, ptr::null_mut());
             // arraySubscript delegates to int_arraySubscript which returns empty INTSXP
@@ -1563,11 +1582,13 @@ mod tests {
 
     #[test]
     fn test_na_real_is_nan() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(NA_REAL.is_nan());
     }
 
     #[test]
     fn test_constants() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(NA_INTEGER, c_int::MIN);
         assert_eq!(NA_LOGICAL, c_int::MIN);
         assert_eq!(TRUE, 1);

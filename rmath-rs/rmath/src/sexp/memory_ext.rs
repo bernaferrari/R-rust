@@ -352,6 +352,7 @@ mod tests {
 
     #[test]
     fn test_new_environment() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let env = NewEnvironment(ptr::null_mut(), R_NilValue(), ptr::null_mut());
             assert!(!env.is_null());
@@ -361,6 +362,7 @@ mod tests {
 
     #[test]
     fn test_mk_promise() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let expr = Rf_ScalarInteger(42);
             let prom = mkPROMISE(expr, R_NilValue());
@@ -372,6 +374,7 @@ mod tests {
 
     #[test]
     fn test_alloc_s_exp() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = allocSExp(SEXPTYPE::SYMSXP);
             assert!(!s.is_null());
@@ -381,6 +384,7 @@ mod tests {
 
     #[test]
     fn test_cons_nr() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let car = Rf_ScalarInteger(1);
             let cdr = Rf_ScalarInteger(2);
@@ -392,6 +396,7 @@ mod tests {
 
     #[test]
     fn test_alloc_lang() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let lang = allocLang(3);
             assert!(!lang.is_null());
@@ -401,6 +406,7 @@ mod tests {
 
     #[test]
     fn test_r_alloc_and_vmaxset() {
+        let _session = crate::sexp::session::RSession::new();
         let _session = RSession::new();
         unsafe {
             let mark = vmaxget();
@@ -416,6 +422,7 @@ mod tests {
 
     #[test]
     fn test_session_raw_cons_and_vmax_are_local_on_same_thread() {
+        let _session = crate::sexp::session::RSession::new();
         let mut left = RSession::new();
         let mut right = RSession::new();
 

@@ -625,7 +625,8 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         let skip = if let Some(tag) = current.tag() {
             if let Some(pname) = tag.printname() {
                 if let Some(name_bytes) = pname.data_ptr() {
-                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
+                    let name_str =
+                        unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
                     name_str.to_bytes() == b"na.rm"
                 } else {
                     false
@@ -709,7 +710,8 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
         let skip = if let Some(tag) = current.tag() {
             if let Some(pname) = tag.printname() {
                 if let Some(name_bytes) = pname.data_ptr() {
-                    let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
+                    let name_str =
+                        unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
                     name_str.to_bytes() == b"na.rm"
                 } else {
                     false
@@ -849,6 +851,7 @@ mod tests {
 
     #[test]
     fn test_scatter_deterministic() {
+        let _session = crate::sexp::session::RSession::new();
         let h1 = scatter(12345, 16);
         let h2 = scatter(12345, 16);
         assert_eq!(h1, h2);
@@ -856,6 +859,7 @@ mod tests {
 
     #[test]
     fn test_scatter_different_keys() {
+        let _session = crate::sexp::session::RSession::new();
         let h1 = scatter(12345, 16);
         let h2 = scatter(67890, 16);
         assert_ne!(h1, h2);
@@ -863,6 +867,7 @@ mod tests {
 
     #[test]
     fn test_scatter_range() {
+        let _session = crate::sexp::session::RSession::new();
         // With K=16, result should be in [0, 65535]
         for &key in &[0u32, 1, 42, 0xFFFFFFFF] {
             let h = scatter(key, 16);
@@ -872,6 +877,7 @@ mod tests {
 
     #[test]
     fn test_unify_complex_na_normal() {
+        let _session = crate::sexp::session::RSession::new();
         let z = Rcomplex { r: 1.0, i: 2.0 };
         let ans = unify_complex_na(z);
         assert_eq!(ans.r, 1.0);
@@ -880,6 +886,7 @@ mod tests {
 
     #[test]
     fn test_unify_complex_na_neg_zero() {
+        let _session = crate::sexp::session::RSession::new();
         let z = Rcomplex { r: -0.0, i: 0.0 };
         let ans = unify_complex_na(z);
         assert_eq!(ans.r, 0.0);
@@ -888,6 +895,7 @@ mod tests {
 
     #[test]
     fn test_unify_complex_na_rna() {
+        let _session = crate::sexp::session::RSession::new();
         let na = f64::from_bits(R_NA_BIT_PATTERN);
         let z = Rcomplex { r: na, i: 1.0 };
         let ans = unify_complex_na(z);
@@ -897,6 +905,7 @@ mod tests {
 
     #[test]
     fn test_unify_complex_na_nan() {
+        let _session = crate::sexp::session::RSession::new();
         let z = Rcomplex {
             r: f64::NAN,
             i: 1.0,
@@ -908,6 +917,7 @@ mod tests {
 
     #[test]
     fn test_PTRHASH_deterministic() {
+        let _session = crate::sexp::session::RSession::new();
         let h1 = PTRHASH(0x12345678 as usize);
         let h2 = PTRHASH(0x12345678 as usize);
         assert_eq!(h1, h2);
@@ -915,6 +925,7 @@ mod tests {
 
     #[test]
     fn test_PTRHASH_different() {
+        let _session = crate::sexp::session::RSession::new();
         let h1 = PTRHASH(0x12345678 as usize);
         let h2 = PTRHASH(0x87654321 as usize);
         assert_ne!(h1, h2);
@@ -922,6 +933,7 @@ mod tests {
 
     #[test]
     fn test_cplx_eq_normal() {
+        let _session = crate::sexp::session::RSession::new();
         let x = Rcomplex { r: 1.0, i: 2.0 };
         let y = Rcomplex { r: 1.0, i: 2.0 };
         assert!(cplx_eq(x, y));
@@ -932,6 +944,7 @@ mod tests {
 
     #[test]
     fn test_cplx_eq_na() {
+        let _session = crate::sexp::session::RSession::new();
         let na = f64::from_bits(R_NA_BIT_PATTERN);
         let x = Rcomplex { r: na, i: 1.0 };
         let y = Rcomplex { r: na, i: 2.0 };
@@ -943,6 +956,7 @@ mod tests {
 
     #[test]
     fn test_cplx_eq_nan() {
+        let _session = crate::sexp::session::RSession::new();
         let x = Rcomplex {
             r: f64::NAN,
             i: 2.0,
@@ -962,6 +976,7 @@ mod tests {
 
     #[test]
     fn test_cplx_eq_mixed() {
+        let _session = crate::sexp::session::RSession::new();
         let na = f64::from_bits(R_NA_BIT_PATTERN);
         // NA vs NaN: not equal (different kinds of missing)
         let x = Rcomplex { r: na, i: 0.0 };
@@ -978,11 +993,13 @@ mod tests {
 
     #[test]
     fn test_nil_constant() {
+        let _session = crate::sexp::session::RSession::new();
         assert_eq!(NIL, -1);
     }
 
     #[test]
     fn test_mk_setup_basic() {
+        let _session = crate::sexp::session::RSession::new();
         // n=10 should give M >= 20 (power of 2), so M=32, K=5
         let (m, k, nmax) = unsafe { mk_setup(10, i64::MIN) };
         assert_eq!(m, 32);
@@ -992,6 +1009,7 @@ mod tests {
 
     #[test]
     fn test_mk_setup_nmax_override() {
+        let _session = crate::sexp::session::RSession::new();
         // nmax=5 should override n=10
         let (m, k, nmax) = unsafe { mk_setup(10, 5) };
         assert_eq!(m, 16); // 2*5 = 10, next power of 2 is 16
@@ -1001,6 +1019,7 @@ mod tests {
 
     #[test]
     fn test_mk_setup_large() {
+        let _session = crate::sexp::session::RSession::new();
         let (m, k, _) = unsafe { mk_setup(1000, i64::MIN) };
         assert_eq!(m, 2048); // 2*1000=2000, next power of 2 is 2048
         assert_eq!(k, 11);
@@ -1008,6 +1027,7 @@ mod tests {
 
     #[test]
     fn test_mk_setup_nmax_one() {
+        let _session = crate::sexp::session::RSession::new();
         // nmax=1 is special: not used
         let (m, k, nmax) = unsafe { mk_setup(10, 1) };
         assert_eq!(nmax, 10); // original n used
@@ -1020,6 +1040,7 @@ mod tests {
 
     #[test]
     fn test_rhash_deterministic() {
+        let _session = crate::sexp::session::RSession::new();
         // Test scatter directly (the core of rhash) on known inputs
         let bits = 0.0_f64.to_bits();
         let lo = bits as u32;
@@ -1038,6 +1059,7 @@ mod tests {
 
     #[test]
     fn test_requal_normal() {
+        let _session = crate::sexp::session::RSession::new();
         // Test requal via its pure logic (requires SEXP, so test indirectly)
         // NA equals NA
         let na = f64::from_bits(R_NA_BIT_PATTERN);
@@ -1090,6 +1112,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_int_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, 2, 3, 2, 1]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1105,6 +1128,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_int_all_unique() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, 2, 3, 4, 5]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1117,6 +1141,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_int_all_same() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[7, 7, 7, 7]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1130,6 +1155,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_int_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1139,6 +1165,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_int_single() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[42]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1150,6 +1177,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_int_with_na() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, NA_INTEGER, 3, NA_INTEGER, 1]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1165,6 +1193,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_logical_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_logical_vector(&[1, 0, 1, 0, NA_LOGICAL]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1180,6 +1209,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_real_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_real_vector(&[1.0, 2.5, 1.0, 3.0]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1193,6 +1223,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_real_with_na() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let na = f64::from_bits(R_NA_BIT_PATTERN);
             let x = make_real_vector(&[1.0, na, 3.0, na]);
@@ -1207,6 +1238,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_real_with_nan() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_real_vector(&[1.0, f64::NAN, 3.0, f64::NAN]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1220,6 +1252,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_real_signed_zero() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_real_vector(&[0.0, -0.0]);
             let dup = duplicated_impl(x, false, NA_INTEGER);
@@ -1236,6 +1269,7 @@ mod tests {
 
     #[test]
     fn test_do_unique_int_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, 2, 3, 2, 1]);
             let args = crate::sexp::memory_ext::allocList(4);
@@ -1261,6 +1295,7 @@ mod tests {
 
     #[test]
     fn test_do_unique_int_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(4);
@@ -1281,6 +1316,7 @@ mod tests {
 
     #[test]
     fn test_do_unique_int_all_unique() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[5, 4, 3, 2, 1]);
             let args = crate::sexp::memory_ext::allocList(4);
@@ -1305,6 +1341,7 @@ mod tests {
 
     #[test]
     fn test_do_duplicated_int() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, 2, 3, 2, 1]);
             let args = crate::sexp::memory_ext::allocList(4);
@@ -1330,6 +1367,7 @@ mod tests {
 
     #[test]
     fn test_do_duplicated_empty() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = Rf_allocVector3(SEXPTYPE::INTSXP, 0);
             let args = crate::sexp::memory_ext::allocList(4);
@@ -1381,6 +1419,7 @@ mod tests {
 
     #[test]
     fn test_check_values_any_all_true() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[0, 0, 1, 0]);
         // any: finds TRUE -> returns 1
         assert_eq!(check_values(2, false, x, 4), 1);
@@ -1388,6 +1427,7 @@ mod tests {
 
     #[test]
     fn test_check_values_any_all_false() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[0, 0, 0, 0]);
         // any: no TRUE -> returns 0
         assert_eq!(check_values(2, false, x, 4), 0);
@@ -1395,6 +1435,7 @@ mod tests {
 
     #[test]
     fn test_check_values_any_with_na() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
         // any with NA: returns NA
         assert_eq!(check_values(2, false, x, 3), NA_LOGICAL);
@@ -1402,6 +1443,7 @@ mod tests {
 
     #[test]
     fn test_check_values_any_with_na_narm() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[NA_LOGICAL, 0, 0]);
         // any with NA and na.rm=TRUE: returns 0 (FALSE)
         assert_eq!(check_values(2, true, x, 3), 0);
@@ -1409,6 +1451,7 @@ mod tests {
 
     #[test]
     fn test_check_values_any_true_over_na() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[NA_LOGICAL, 1, 0]);
         // any: finds TRUE -> returns 1 immediately
         assert_eq!(check_values(2, false, x, 3), 1);
@@ -1416,6 +1459,7 @@ mod tests {
 
     #[test]
     fn test_check_values_all_all_true() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[1, 1, 1]);
         // all: no FALSE -> returns 1 (TRUE)
         assert_eq!(check_values(1, false, x, 3), 1);
@@ -1423,6 +1467,7 @@ mod tests {
 
     #[test]
     fn test_check_values_all_has_false() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[1, 0, 1]);
         // all: finds FALSE -> returns 0
         assert_eq!(check_values(1, false, x, 3), 0);
@@ -1430,6 +1475,7 @@ mod tests {
 
     #[test]
     fn test_check_values_all_with_na() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
         // all with NA: returns NA
         assert_eq!(check_values(1, false, x, 3), NA_LOGICAL);
@@ -1437,6 +1483,7 @@ mod tests {
 
     #[test]
     fn test_check_values_all_with_na_narm() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[1, NA_LOGICAL, 1]);
         // all with NA and na.rm=TRUE: returns 1 (TRUE)
         assert_eq!(check_values(1, true, x, 3), 1);
@@ -1444,6 +1491,7 @@ mod tests {
 
     #[test]
     fn test_check_values_all_false_over_na() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[1, 0, NA_LOGICAL]);
         // all: finds FALSE -> returns 0 immediately
         assert_eq!(check_values(1, false, x, 3), 0);
@@ -1451,6 +1499,7 @@ mod tests {
 
     #[test]
     fn test_check_values_empty_any() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[]);
         // any of empty: returns 0 (FALSE)
         assert_eq!(check_values(2, false, x, 0), 0);
@@ -1458,6 +1507,7 @@ mod tests {
 
     #[test]
     fn test_check_values_empty_all() {
+        let _session = crate::sexp::session::RSession::new();
         let x = make_logical_vector(&[]);
         // all of empty: returns 1 (TRUE)
         assert_eq!(check_values(1, false, x, 0), 1);
@@ -1469,6 +1519,7 @@ mod tests {
 
     #[test]
     fn test_do_any_simple() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create args list: (logical_vector)  -- no na.rm named arg
             let x = make_logical_vector(&[0, 0, 1, 0]);
@@ -1488,6 +1539,7 @@ mod tests {
 
     #[test]
     fn test_do_any_all_false() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_logical_vector(&[0, 0, 0]);
             let args = crate::sexp::memory_ext::allocList(1);
@@ -1505,6 +1557,7 @@ mod tests {
 
     #[test]
     fn test_do_all_simple() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_logical_vector(&[1, 1, 1]);
             let args = crate::sexp::memory_ext::allocList(1);
@@ -1523,6 +1576,7 @@ mod tests {
 
     #[test]
     fn test_do_all_has_false() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_logical_vector(&[1, 0, 1]);
             let args = crate::sexp::memory_ext::allocList(1);
@@ -1544,6 +1598,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_complex_basic() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 3);
             let cx = COMPLEX(v);
@@ -1562,6 +1617,7 @@ mod tests {
 
     #[test]
     fn test_duplicated_complex_na() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector3(SEXPTYPE::CPLXSXP, 3);
             let cx = COMPLEX(v);
@@ -1584,6 +1640,7 @@ mod tests {
 
     #[test]
     fn test_hash_table_setup_int() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_int_vector(&[1, 2, 3]);
             let data = hash_table_setup(x, NA_INTEGER);
@@ -1595,6 +1652,7 @@ mod tests {
 
     #[test]
     fn test_hash_table_setup_logical() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = make_logical_vector(&[1, 0, 1]);
             let data = hash_table_setup(x, NA_INTEGER);
@@ -1606,6 +1664,7 @@ mod tests {
 
     #[test]
     fn test_hash_table_setup_raw() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_allocVector3(SEXPTYPE::RAWSXP, 5);
             let raw_ptr = RAW(v);

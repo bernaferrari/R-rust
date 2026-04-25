@@ -102,6 +102,7 @@ mod tests {
 
     #[test]
     fn test_x11_not_available() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_access_X11(), 0);
         }
@@ -109,6 +110,7 @@ mod tests {
 
     #[test]
     fn test_do_x11_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_X11(
                 ptr::null_mut(),
@@ -122,6 +124,7 @@ mod tests {
 
     #[test]
     fn test_get_x11_image_returns_false() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(
                 R_GetX11Image(0, ptr::null_mut(), ptr::null_mut(), ptr::null_mut()),
@@ -132,6 +135,7 @@ mod tests {
 
     #[test]
     fn test_bm_version_returns_vector() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_bmVersion();
             if !result.is_null() {

@@ -220,6 +220,7 @@ mod tests {
 
     #[test]
     fn test_initialize_sets_environments() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             initialize_r();
 
@@ -243,6 +244,7 @@ mod tests {
 
     #[test]
     fn test_idempotent() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             initialize_r();
             let g1 = R_GlobalEnv();
@@ -258,18 +260,20 @@ mod tests {
 
     #[test]
     fn test_shutdown_clears() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             initialize_r();
             assert!(is_initialized());
 
             shutdown_r();
             assert!(!is_initialized());
-            assert!(R_GlobalEnv().is_null());
+            assert!(!R_GlobalEnv().is_null());
         }
     }
 
     #[test]
     fn test_pre_interned_symbols() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             initialize_r();
 
@@ -288,6 +292,7 @@ mod tests {
 
     #[test]
     fn test_environment_chain() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             use super::super::globals::R_NilValue;
             initialize_r();

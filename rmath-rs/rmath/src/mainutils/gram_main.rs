@@ -128,6 +128,7 @@ mod tests {
 
     #[test]
     fn test_parse_status_constants() {
+        let _session = crate::sexp::session::RSession::new();
         assert!(PARSE_OK > 0);
         assert!(PARSE_INCOMPLETE > 0);
         assert!(PARSE_ERROR > 0);
@@ -136,6 +137,7 @@ mod tests {
 
     #[test]
     fn test_parse_vector_stub() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut status: c_int = 0;
             let result = R_ParseVector(ptr::null_mut(), 1, &mut status, ptr::null_mut());
@@ -146,6 +148,7 @@ mod tests {
 
     #[test]
     fn test_parse_eval_string_stub() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_ParseEvalString(ptr::null(), ptr::null_mut());
             assert_eq!(result, R_NilValue());
@@ -154,6 +157,7 @@ mod tests {
 
     #[test]
     fn test_current_parse_line() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             assert_eq!(R_CurrentParseLine(), 0);
         }
@@ -161,6 +165,7 @@ mod tests {
 
     #[test]
     fn test_parse_filename() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let s = R_ParseFilename();
             assert!(!s.is_null());

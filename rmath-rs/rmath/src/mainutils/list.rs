@@ -181,7 +181,8 @@ mod tests {
     fn make_sym(name: &str) -> SEXP {
         use crate::mainutils::dstruct::mkSYMSXP;
         use crate::sexp::constructors::Rf_mkChar;
-        let charsxp = unsafe { Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr()) };
+        let charsxp =
+            unsafe { Rf_mkChar(std::ffi::CString::new(name).unwrap_or_default().as_ptr()) };
         unsafe { mkSYMSXP(charsxp, R_NilValue()) }
     }
 
@@ -193,6 +194,7 @@ mod tests {
 
     #[test]
     fn test_namewalk_simple_symbol() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let sym = make_sym("x");
             let mut data = NameWalkData {
@@ -210,6 +212,7 @@ mod tests {
 
     #[test]
     fn test_namewalk_empty_symbol_skipped() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let sym = make_sym("");
             let mut data = NameWalkData {
@@ -227,6 +230,7 @@ mod tests {
 
     #[test]
     fn test_namewalk_max_count() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let sym = make_sym("a");
             let mut data = NameWalkData {

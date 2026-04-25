@@ -2825,6 +2825,7 @@ mod tests {
 
     #[test]
     fn test_do_subassign_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_subassign(
                 std::ptr::null_mut(),
@@ -2839,6 +2840,7 @@ mod tests {
 
     #[test]
     fn test_do_subassign_dflt_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_subassign_dflt(
                 std::ptr::null_mut(),
@@ -2853,6 +2855,7 @@ mod tests {
 
     #[test]
     fn test_do_subassign2_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_subassign2(
                 std::ptr::null_mut(),
@@ -2867,6 +2870,7 @@ mod tests {
 
     #[test]
     fn test_do_subassign2_dflt_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = do_subassign2_dflt(
                 std::ptr::null_mut(),
@@ -2881,6 +2885,7 @@ mod tests {
 
     #[test]
     fn test_do_subassign3_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         // do_subassign3 calls fixSubset3Args which panics with RError on nil args.
         // Just verify the function exists and has the right signature.
         // A full integration test would need proper SEXP arguments.
@@ -2889,6 +2894,7 @@ mod tests {
 
     #[test]
     fn test_R_subassign3_dflt_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = R_subassign3_dflt(
                 std::ptr::null_mut(),
@@ -2903,6 +2909,7 @@ mod tests {
 
     #[test]
     fn test_SubassignTypeSym_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = SubassignTypeSym();
             // Should not be null (it's an installed symbol)
@@ -2912,6 +2919,7 @@ mod tests {
 
     #[test]
     fn test_SubassignDotsNames_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = SubassignDotsNames(std::ptr::null_mut(), std::ptr::null_mut());
             assert_eq!(result, R_NilValue());
@@ -2920,6 +2928,7 @@ mod tests {
 
     #[test]
     fn test_GetSubassignSxpVec_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = GetSubassignSxpVec(std::ptr::null_mut(), std::ptr::null_mut());
             assert_eq!(result, R_NilValue());
@@ -2928,6 +2937,7 @@ mod tests {
 
     #[test]
     fn test_var_assign_returns_nil() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = var_assign(
                 std::ptr::null_mut(),
@@ -2942,6 +2952,7 @@ mod tests {
 
     #[test]
     fn test_getNames_null() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let result = getNames(R_NilValue());
             assert_eq!(result, R_NilValue());
@@ -2950,6 +2961,7 @@ mod tests {
 
     #[test]
     fn test_gi_integer() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let v = Rf_protect(Rf_allocVector3(INTSXP, 3));
             let p = INTEGER(v);
@@ -2965,6 +2977,7 @@ mod tests {
 
     #[test]
     fn test_SubAssignArgs_two_args() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             // Create args: x, y (no subscripts)
             let y_val = Rf_protect(Rf_allocVector3(INTSXP, 1));
@@ -2984,6 +2997,7 @@ mod tests {
 
     #[test]
     fn test_SubassignTypeFix_same_type() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let mut xv: SEXP = Rf_protect(Rf_allocVector3(INTSXP, 1));
             let mut yv: SEXP = Rf_protect(Rf_allocVector3(INTSXP, 1));

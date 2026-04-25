@@ -228,7 +228,10 @@ unsafe fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
     CHAR(STRING_ELT(data, (index % LENGTH(data)) as R_xlen_t))
 }
 
-fn fallback_string_metrics(text: *const c_char, gc: pGEcontext) -> (c_double, c_double, c_double, c_double) {
+fn fallback_string_metrics(
+    text: *const c_char,
+    gc: pGEcontext,
+) -> (c_double, c_double, c_double, c_double) {
     let lineheight = unsafe { gc_lineheight_inches(gc) };
     let char_width = unsafe { gc_pointsize_inches(gc) * 0.6 };
     if text.is_null() {
@@ -269,7 +272,15 @@ unsafe fn string_metrics_inches(
     let mut ascent = 0.0;
     let mut descent = 0.0;
     let mut width = 0.0;
-    rmath_ge_str_metric(text, 0, ffi_gc, &mut ascent, &mut descent, &mut width, ffi_dd);
+    rmath_ge_str_metric(
+        text,
+        0,
+        ffi_gc,
+        &mut ascent,
+        &mut descent,
+        &mut width,
+        ffi_dd,
+    );
     let mut height = rmath_ge_str_height(text, 0, ffi_gc, ffi_dd);
 
     width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
@@ -296,7 +307,14 @@ unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_dou
     let mut ascent = 0.0;
     let mut descent = 0.0;
     let mut width = 0.0;
-    rmath_ge_metric_info('M' as c_int, ffi_gc, &mut ascent, &mut descent, &mut width, ffi_dd);
+    rmath_ge_metric_info(
+        'M' as c_int,
+        ffi_gc,
+        &mut ascent,
+        &mut descent,
+        &mut width,
+        ffi_dd,
+    );
     let height = rmath_ge_from_device_height(ascent + descent, GE_INCHES, ffi_dd);
     let width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
     if width == 0.0 && height == 0.0 {
@@ -304,7 +322,11 @@ unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_dou
         let lineheight = gc_lineheight_inches(gc);
         (pointsize * 0.6, lineheight, 0.0)
     } else {
-        (width, height.max(gc_lineheight_inches(gc)), rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd))
+        (
+            width,
+            height.max(gc_lineheight_inches(gc)),
+            rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd),
+        )
     }
 }
 
@@ -702,9 +724,7 @@ pub unsafe fn transformXtoINCHES(
         L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
         L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
         L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
-        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => {
-            0.0
-        }
+        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => 0.0,
         L_NULL => 0.0,
         _ => 0.0,
     }
@@ -1307,13 +1327,20 @@ mod tests {
 
     #[test]
     fn transform_to_inches_supports_extended_absolute_units() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let units = [
                 (unit(2.54, L_CM), 1.0),
                 (unit(POINTS_PER_INCH / 12.0, L_PICAS), 1.0),
                 (unit(POINTS_PER_INCH * DIDA_PER_POINT_RATIO, L_DIDA), 1.0),
-                (unit(POINTS_PER_INCH * CICERO_PER_PICA_RATIO / 12.0, L_CICERO), 1.0),
-                (unit(POINTS_PER_INCH * SCALEDPOINTS_PER_POINT, L_SCALEDPOINTS), 1.0),
+                (
+                    unit(POINTS_PER_INCH * CICERO_PER_PICA_RATIO / 12.0, L_CICERO),
+                    1.0,
+                ),
+                (
+                    unit(POINTS_PER_INCH * SCALEDPOINTS_PER_POINT, L_SCALEDPOINTS),
+                    1.0,
+                ),
             ];
 
             for (value, expected_inches) in units {
@@ -1338,7 +1365,11 @@ mod tests {
         *REAL(amount).add(0) = value;
         let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
         let chars = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        SET_STRING_ELT(chars, 0, Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int));
+        SET_STRING_ELT(
+            chars,
+            0,
+            Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int),
+        );
         SET_VECTOR_ELT(data, 0, chars);
         let unit_type = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
         *INTEGER(unit_type).add(0) = unit_id;
@@ -1349,6 +1380,7 @@ mod tests {
 
     #[test]
     fn text_units_use_context_fallbacks_without_a_device() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let gc = Box::new(crate::mainutils::graphics_ffi::R_GE_gcontext {
                 col: 0,
@@ -1366,26 +1398,59 @@ mod tests {
                 fontfamily: [0; 201],
                 patternFill: R_NilValue(),
             });
-            let gc_ptr = (&*gc as *const crate::mainutils::graphics_ffi::R_GE_gcontext).cast::<c_void>();
+            let gc_ptr =
+                (&*gc as *const crate::mainutils::graphics_ffi::R_GE_gcontext).cast::<c_void>();
             let line_unit = unit(2.0, L_LINES);
             let char_unit = unit(3.0, L_CHAR);
             let string_width = string_unit(1.0, b"abcd", L_STRINGWIDTH);
             let string_height = string_unit(1.0, b"one\ntwo", L_STRINGHEIGHT);
 
             approx_eq(
-                transformXtoINCHES(line_unit, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                transformXtoINCHES(
+                    line_unit,
+                    0,
+                    LViewportContext::default(),
+                    gc_ptr,
+                    0.0,
+                    0.0,
+                    std::ptr::null_mut(),
+                ),
                 2.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 1.5,
             );
             approx_eq(
-                transformWidthtoINCHES(char_unit, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                transformWidthtoINCHES(
+                    char_unit,
+                    0,
+                    LViewportContext::default(),
+                    gc_ptr,
+                    0.0,
+                    0.0,
+                    std::ptr::null_mut(),
+                ),
                 3.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 0.6,
             );
             approx_eq(
-                transformWidthtoINCHES(string_width, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                transformWidthtoINCHES(
+                    string_width,
+                    0,
+                    LViewportContext::default(),
+                    gc_ptr,
+                    0.0,
+                    0.0,
+                    std::ptr::null_mut(),
+                ),
                 4.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 0.6,
             );
             approx_eq(
-                transformHeighttoINCHES(string_height, 0, LViewportContext::default(), gc_ptr, 0.0, 0.0, std::ptr::null_mut()),
+                transformHeighttoINCHES(
+                    string_height,
+                    0,
+                    LViewportContext::default(),
+                    gc_ptr,
+                    0.0,
+                    0.0,
+                    std::ptr::null_mut(),
+                ),
                 2.0 * (10.0 * 2.0 / POINTS_PER_INCH) * 1.5,
             );
         }
@@ -1405,6 +1470,7 @@ mod tests {
 
     #[test]
     fn transform_locn_applies_viewport_transform_matrix() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let x = unit(1.0, L_INCHES);
             let y = unit(2.0, L_INCHES);
@@ -1436,6 +1502,7 @@ mod tests {
 
     #[test]
     fn transform_dimn_applies_rotation_matrix() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let w = unit(1.0, L_INCHES);
             let h = unit(0.0, L_INCHES);

@@ -13452,9 +13452,15 @@ pub unsafe fn do_proc_time(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> S
         let names = Rf_allocVector3(SEXPTYPE::STRSXP, 5);
         if !names.is_null() {
             let _np = Rf_protect(names);
-            for (i, name) in ["user.self", "sys.self", "elapsed", "user.child", "sys.child"]
-                .iter()
-                .enumerate()
+            for (i, name) in [
+                "user.self",
+                "sys.self",
+                "elapsed",
+                "user.child",
+                "sys.child",
+            ]
+            .iter()
+            .enumerate()
             {
                 let cstr = CString::new(*name).unwrap_or_default();
                 SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
@@ -16175,6 +16181,7 @@ mod tests {
 
     #[test]
     fn test_do_log2_default_base_two() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             crate::sexp::init::initialize_r();
 
@@ -16194,6 +16201,7 @@ mod tests {
 
     #[test]
     fn test_do_log2_explicit_base_is_preserved() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             crate::sexp::init::initialize_r();
 

@@ -196,6 +196,7 @@ mod tests {
 
     #[test]
     fn test_init_machine_runs() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             Init_R_Machine(R_NilValue());
             // Verify machar ran and set some values
