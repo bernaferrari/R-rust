@@ -103,7 +103,7 @@ impl IntVector {
         unsafe {
             std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
         }
-        Sexp::from_raw(ptr)
+        arena.sexp(ptr)
     }
 }
 
@@ -190,7 +190,7 @@ impl RealVector {
         unsafe {
             std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
         }
-        Sexp::from_raw(ptr)
+        arena.sexp(ptr)
     }
 }
 
@@ -243,7 +243,7 @@ impl LogicalVector {
         unsafe {
             std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
         }
-        Sexp::from_raw(ptr)
+        arena.sexp(ptr)
     }
 }
 
@@ -291,7 +291,7 @@ impl RawVector {
         unsafe {
             std::ptr::copy_nonoverlapping(self.values.as_ptr(), data, self.values.len());
         }
-        Sexp::from_raw(ptr)
+        arena.sexp(ptr)
     }
 }
 
@@ -339,7 +339,7 @@ impl StringVector {
                 *data.add(i) = charsxp;
             }
         }
-        Sexp::from_raw(ptr)
+        arena.sexp(ptr)
     }
 }
 
@@ -403,7 +403,7 @@ impl GenericVector {
         unsafe {
             std::ptr::copy_nonoverlapping(self.elements.as_ptr(), data, self.elements.len());
         }
-        Sexp::from_raw(ptr)
+        arena.sexp(ptr)
     }
 }
 
@@ -457,7 +457,7 @@ impl PairlistBuilder {
         for (car, tag) in self.elements.into_iter().rev() {
             result = arena.cons(car, result, tag);
         }
-        Sexp::from_raw(result)
+        arena.sexp(result)
     }
 }
 
@@ -517,7 +517,7 @@ pub fn scalar_integer_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<
     unsafe {
         (*ptr).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(ptr)
+    arena.sexp(ptr)
 }
 
 pub fn scalar_real_in<'arena>(arena: &'arena mut RArena, x: c_double) -> Option<Sexp<'arena>> {
@@ -533,7 +533,7 @@ pub fn scalar_real_in<'arena>(arena: &'arena mut RArena, x: c_double) -> Option<
     unsafe {
         (*ptr).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(ptr)
+    arena.sexp(ptr)
 }
 
 pub fn scalar_logical_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<Sexp<'arena>> {
@@ -549,7 +549,7 @@ pub fn scalar_logical_in<'arena>(arena: &'arena mut RArena, x: c_int) -> Option<
     unsafe {
         (*ptr).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(ptr)
+    arena.sexp(ptr)
 }
 
 pub fn scalar_raw_in<'arena>(arena: &'arena mut RArena, x: Rbyte) -> Option<Sexp<'arena>> {
@@ -565,7 +565,7 @@ pub fn scalar_raw_in<'arena>(arena: &'arena mut RArena, x: Rbyte) -> Option<Sexp
     unsafe {
         (*ptr).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(ptr)
+    arena.sexp(ptr)
 }
 
 pub fn scalar_string_in<'arena>(arena: &'arena mut RArena, s: &str) -> Option<Sexp<'arena>> {
@@ -581,7 +581,7 @@ pub fn scalar_string_in<'arena>(arena: &'arena mut RArena, s: &str) -> Option<Se
     unsafe {
         *data = charsxp;
     }
-    Sexp::from_raw(ptr)
+    arena.sexp(ptr)
 }
 
 pub fn scalar_complex_in<'arena>(
@@ -603,11 +603,11 @@ pub fn scalar_complex_in<'arena>(
     unsafe {
         (*ptr).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(ptr)
+    arena.sexp(ptr)
 }
 
 pub fn mk_char_in<'arena>(arena: &'arena mut RArena, s: &[u8]) -> Option<Sexp<'arena>> {
-    Sexp::from_raw(arena.alloc_charsxp(s))
+    arena.alloc_charsxp_sexp(s)
 }
 
 // ---------------------------------------------------------------------------
@@ -621,7 +621,8 @@ pub fn cons_in<'arena>(
     tag: Option<Sexp<'_>>,
 ) -> Option<Sexp<'arena>> {
     let tag_raw = tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut());
-    Sexp::from_raw(arena.cons(car.as_raw(), cdr.as_raw(), tag_raw))
+    let ptr = arena.cons(car.as_raw(), cdr.as_raw(), tag_raw);
+    arena.sexp(ptr)
 }
 
 pub fn lang2_in<'arena>(
@@ -647,7 +648,7 @@ pub fn lang2_in<'arena>(
         (*head).data.listsxp.cdrval = cdr;
         (*head).data.listsxp.tagval = ptr::null_mut();
     }
-    Sexp::from_raw(head)
+    arena.sexp(head)
 }
 
 pub fn lang3_in<'arena>(
@@ -683,7 +684,7 @@ pub fn lang3_in<'arena>(
         (*head).data.listsxp.cdrval = c1;
         (*head).data.listsxp.tagval = ptr::null_mut();
     }
-    Sexp::from_raw(head)
+    arena.sexp(head)
 }
 
 // ---------------------------------------------------------------------------

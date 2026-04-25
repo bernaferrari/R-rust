@@ -11,6 +11,7 @@ use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::{self};
 
 use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::safe::Sexp;
 
 // ---------------------------------------------------------------------------
 // Element sizes by SEXPTYPE
@@ -237,6 +238,12 @@ impl RArena {
         ptr
     }
 
+    /// Allocate a scalar node and return an arena-scoped safe wrapper.
+    pub fn alloc_node_sexp(&mut self, sexptype: SEXPTYPE) -> Option<Sexp<'_>> {
+        let ptr = self.alloc_node(sexptype);
+        self.sexp(ptr)
+    }
+
     /// Allocate a vector SexprecCore node with associated data buffer.
     ///
     /// For INTSXP with length n: allocates n * 4 bytes.
@@ -298,6 +305,12 @@ impl RArena {
         self.total_bytes_allocated += std::mem::size_of::<SexprecCore>();
         self.nodes.push(boxed);
         ptr
+    }
+
+    /// Allocate a vector node and return an arena-scoped safe wrapper.
+    pub fn alloc_vector_sexp(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> Option<Sexp<'_>> {
+        let ptr = self.alloc_vector(sexptype, length);
+        self.sexp(ptr)
     }
 
     /// Allocate a vector SexprecCore node with associated data buffer,
@@ -383,6 +396,17 @@ impl RArena {
         Ok(ptr)
     }
 
+    /// Allocate a vector node and return an arena-scoped safe wrapper with a
+    /// descriptive allocation error.
+    pub fn alloc_vector_checked_sexp(
+        &mut self,
+        sexptype: SEXPTYPE,
+        length: R_xlen_t,
+    ) -> Result<Sexp<'_>, ArenaError> {
+        let ptr = self.alloc_vector_checked(sexptype, length)?;
+        self.sexp(ptr).ok_or(ArenaError::OutOfMemory)
+    }
+
     /// Allocate a CHARSXP with inline string data.
     ///
     /// Returns null if allocation fails (OOM safety).
@@ -428,6 +452,12 @@ impl RArena {
         ptr
     }
 
+    /// Allocate a CHARSXP and return an arena-scoped safe wrapper.
+    pub fn alloc_charsxp_sexp(&mut self, s: &[u8]) -> Option<Sexp<'_>> {
+        let ptr = self.alloc_charsxp(s);
+        self.sexp(ptr)
+    }
+
     /// Allocate a cons cell (LISTSXP).
     pub fn cons(&mut self, car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
         let ptr = self.alloc_node(SEXPTYPE::LISTSXP);
@@ -440,6 +470,22 @@ impl RArena {
             (*ptr).data.listsxp.tagval = tag;
         }
         ptr
+    }
+
+    /// Allocate a cons cell from safe wrappers and return an arena-scoped
+    /// wrapper for the new cell.
+    pub fn cons_sexp<'a>(
+        &'a mut self,
+        car: Sexp<'_>,
+        cdr: Sexp<'_>,
+        tag: Option<Sexp<'_>>,
+    ) -> Option<Sexp<'a>> {
+        let ptr = self.cons(
+            car.as_raw(),
+            cdr.as_raw(),
+            tag.map_or(ptr::null_mut(), Sexp::as_raw),
+        );
+        self.sexp(ptr)
     }
 
     /// Allocate a nil-terminated pairlist chain of n elements.
@@ -473,6 +519,28 @@ impl RArena {
     /// Get the number of nodes allocated in this arena.
     pub fn node_count(&self) -> usize {
         self.nodes.len() - self.free_list.len()
+    }
+
+    /// Return true if this pointer is one of the arena's active nodes.
+    pub fn contains(&self, ptr: SEXP) -> bool {
+        if ptr.is_null() {
+            return false;
+        }
+        self.nodes.iter().any(|b| std::ptr::eq(&**b, ptr))
+            && !self.free_list.iter().any(|free| std::ptr::eq(*free, ptr))
+    }
+
+    /// Wrap an active arena-owned pointer in a safe `Sexp`.
+    ///
+    /// Unlike raw construction, this checks that the pointer belongs to this
+    /// arena and is not currently on the free list, tying the wrapper lifetime
+    /// to the arena borrow.
+    pub fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
+        if self.contains(ptr) {
+            Sexp::from_raw(ptr)
+        } else {
+            None
+        }
     }
 
     /// Iterate over all arena nodes.
@@ -657,6 +725,26 @@ mod tests {
             assert_eq!(*data.add(1), 0);
             assert_eq!(*data.add(2), 0);
         }
+    }
+
+    #[test]
+    fn test_arena_sexp_wraps_only_owned_active_nodes() {
+        let mut arena = RArena::new();
+        let ptr = arena.alloc_node(SEXPTYPE::INTSXP);
+        assert!(arena.sexp(ptr).is_some());
+
+        arena.free_node(ptr);
+        assert!(arena.sexp(ptr).is_none());
+    }
+
+    #[test]
+    fn test_arena_sexp_rejects_foreign_nodes() {
+        let mut owner = RArena::new();
+        let foreign = RArena::new();
+        let ptr = owner.alloc_node(SEXPTYPE::INTSXP);
+
+        assert!(owner.sexp(ptr).is_some());
+        assert!(foreign.sexp(ptr).is_none());
     }
 
     #[test]

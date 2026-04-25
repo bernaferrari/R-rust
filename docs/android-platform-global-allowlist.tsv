@@ -30,12 +30,10 @@ rmath-rs/rmath/src/library/grdevices/device_registry.rs	test-only	allow-test	rpo
 rmath-rs/rmath/src/library/methods/methods_list_dispatch.rs	method-cache	sessionize	rport-97s	S4 dispatch cache state; sessionize before methods/package support is Android-facing.
 rmath-rs/rmath/src/library/parallel/fork.rs	unsupported-platform	disabled-android	rport-dg0.2	Fork process state; Android embedding should not expose fork backend.
 rmath-rs/rmath/src/library/stats/bspline.rs	numeric-workspace	sessionize	rport-pm0	Stats spline scratch state; move into session for stats conformance.
-rmath-rs/rmath/src/library/stats/deriv.rs	immutable-symbol-cache	allow-immutable	rport-pm0	Derivative symbol/cache state; check immutability before Android stats surface.
 rmath-rs/rmath/src/library/stats/fexact.rs	numeric-workspace	sessionize	rport-pm0	Fisher exact scratch/workspace state; sessionize for parallel stats calls.
 rmath-rs/rmath/src/library/stats/fft.rs	numeric-workspace	sessionize	rport-pm0	FFT factorization cache; move into session or call-local workspace.
 rmath-rs/rmath/src/library/stats/loessc.rs	numeric-workspace	sessionize	rport-pm0	LOESS workspace pointers; move into session or call-local workspace.
 rmath-rs/rmath/src/library/stats/model.rs	stats-runtime	sessionize	rport-pm0	Model frame/runtime scratch state; sessionize before model helpers are exposed.
-rmath-rs/rmath/src/library/stats/pacf.rs	immutable-symbol-cache	allow-immutable	rport-pm0	PACF tag cache; verify immutable symbol handling.
 rmath-rs/rmath/src/library/tcltk/tcltk.rs	desktop-ui	disabled-android	rport-dg0.2	Tcl/Tk interpreter pointer; disabled for Android.
 rmath-rs/rmath/src/mainutils/CommandLineArgs.rs	process-startup	disabled-android	rport-dg0.2	Command-line startup state; Android host config should pass explicit session options.
 rmath-rs/rmath/src/mainutils/Rmain.rs	process-startup	disabled-android	rport-dg0.2	Standalone R main flag; not part of embedded Android runtime.

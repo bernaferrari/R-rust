@@ -23,12 +23,11 @@
 
 use std::ffi::CString;
 
-use crate::sexp::constructors::{
-    Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_cons, Rf_lang2, Rf_lang3, Rf_mkNAString,
-    Rf_mkString,
+use crate::sexp::builder::{
+    scalar_integer_in, scalar_logical_in, scalar_real_in, scalar_string_in,
 };
 use crate::sexp::ffi::{FALSE, NA_LOGICAL, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::memory::RArena;
 use crate::sexp::symbol::Rf_install;
 
@@ -479,14 +478,14 @@ impl std::error::Error for ParseError {}
 // Parser
 // ---------------------------------------------------------------------------
 
-pub struct Parser {
+pub struct Parser<'arena> {
     tokens: Vec<Token>,
     pos: usize,
-    arena: *mut RArena,
+    arena: &'arena mut RArena,
 }
 
-impl Parser {
-    pub fn new(input: &str, arena: &mut RArena) -> Self {
+impl<'arena> Parser<'arena> {
+    pub fn new(input: &str, arena: &'arena mut RArena) -> Self {
         let mut lexer = Lexer::new(input);
         let mut tokens = Vec::new();
         loop {
@@ -500,8 +499,67 @@ impl Parser {
         Parser {
             tokens,
             pos: 0,
-            arena: arena as *mut RArena,
+            arena,
         }
+    }
+
+    fn cons(&mut self, car: SEXP, cdr: SEXP) -> SEXP {
+        self.arena.cons(car, cdr, std::ptr::null_mut())
+    }
+
+    fn lang2(&mut self, car: SEXP, arg: SEXP) -> SEXP {
+        let nil = unsafe { R_NilValue() };
+        let arg_cell = self.cons(arg, nil);
+        let call = self.cons(car, arg_cell);
+        if !call.is_null() {
+            unsafe {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+        }
+        call
+    }
+
+    fn lang3(&mut self, car: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP {
+        let nil = unsafe { R_NilValue() };
+        let arg2_cell = self.cons(arg2, nil);
+        let arg1_cell = self.cons(arg1, arg2_cell);
+        let call = self.cons(car, arg1_cell);
+        if !call.is_null() {
+            unsafe {
+                (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+            }
+        }
+        call
+    }
+
+    fn scalar_real(&mut self, value: f64) -> SEXP {
+        scalar_real_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    }
+
+    fn scalar_integer(&mut self, value: i32) -> SEXP {
+        scalar_integer_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    }
+
+    fn scalar_logical(&mut self, value: i32) -> SEXP {
+        scalar_logical_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    }
+
+    fn scalar_string(&mut self, value: &str) -> SEXP {
+        scalar_string_in(self.arena, value).map_or(std::ptr::null_mut(), |s| s.as_raw())
+    }
+
+    fn scalar_na_string(&mut self) -> SEXP {
+        let Some(strings) = self.arena.alloc_vector_sexp(SEXPTYPE::STRSXP, 1) else {
+            return std::ptr::null_mut();
+        };
+        let data = unsafe { (*strings.as_raw()).gengc_next_node as *mut SEXP };
+        if data.is_null() {
+            return std::ptr::null_mut();
+        }
+        unsafe {
+            *data = R_NaString();
+        }
+        strings.as_raw()
     }
 
     fn peek(&self) -> &Token {
@@ -569,12 +627,12 @@ impl Parser {
         unsafe {
             let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
             let nil = R_NilValue();
-            let mut list = Rf_cons(exprs.pop().unwrap_or(nil), nil);
+            let mut list = self.cons(exprs.pop().unwrap_or(nil), nil);
             while let Some(e) = exprs.pop() {
-                let cell = Rf_cons(e, list);
+                let cell = self.cons(e, list);
                 list = cell;
             }
-            let call = Rf_cons(brace_sym, list);
+            let call = self.cons(brace_sym, list);
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -601,7 +659,7 @@ impl Parser {
                 let right = self.parse_assignment()?;
                 unsafe {
                     let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang3(op_sym, left, right))
+                    Ok(self.lang3(op_sym, left, right))
                 }
             }
             Token::RightAssign => {
@@ -611,7 +669,7 @@ impl Parser {
                 // x -> y is equivalent to y <- x
                 unsafe {
                     let op_sym = Rf_install(CString::new("<-").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang3(op_sym, right, left))
+                    Ok(self.lang3(op_sym, right, left))
                 }
             }
             _ => Ok(left),
@@ -628,7 +686,7 @@ impl Parser {
                 let right = self.parse_or()?;
                 unsafe {
                     let op = Rf_install(CString::new("~").unwrap_or_default().as_ptr());
-                    left = Rf_lang3(op, left, right);
+                    left = self.lang3(op, left, right);
                 }
             } else {
                 break;
@@ -647,7 +705,7 @@ impl Parser {
                     let right = self.parse_and()?;
                     unsafe {
                         let op = Rf_install(CString::new("||").unwrap_or_default().as_ptr());
-                        left = Rf_lang3(op, left, right);
+                        left = self.lang3(op, left, right);
                     }
                 }
                 Token::Or => {
@@ -656,7 +714,7 @@ impl Parser {
                     let right = self.parse_and()?;
                     unsafe {
                         let op = Rf_install(CString::new("|").unwrap_or_default().as_ptr());
-                        left = Rf_lang3(op, left, right);
+                        left = self.lang3(op, left, right);
                     }
                 }
                 _ => return Ok(left),
@@ -674,7 +732,7 @@ impl Parser {
                     let right = self.parse_not()?;
                     unsafe {
                         let op = Rf_install(CString::new("&&").unwrap_or_default().as_ptr());
-                        left = Rf_lang3(op, left, right);
+                        left = self.lang3(op, left, right);
                     }
                 }
                 Token::And => {
@@ -683,7 +741,7 @@ impl Parser {
                     let right = self.parse_not()?;
                     unsafe {
                         let op = Rf_install(CString::new("&").unwrap_or_default().as_ptr());
-                        left = Rf_lang3(op, left, right);
+                        left = self.lang3(op, left, right);
                     }
                 }
                 _ => return Ok(left),
@@ -697,7 +755,7 @@ impl Parser {
             let operand = self.parse_comparison()?;
             unsafe {
                 let op = Rf_install(CString::new("!").unwrap_or_default().as_ptr());
-                Ok(Rf_lang2(op, operand))
+                Ok(self.lang2(op, operand))
             }
         } else {
             self.parse_comparison()
@@ -721,7 +779,7 @@ impl Parser {
             let right = self.parse_addition()?;
             unsafe {
                 let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
-                left = Rf_lang3(op, left, right);
+                left = self.lang3(op, left, right);
             }
         }
     }
@@ -739,7 +797,7 @@ impl Parser {
             let right = self.parse_multiplication()?;
             unsafe {
                 let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
-                left = Rf_lang3(op, left, right);
+                left = self.lang3(op, left, right);
             }
         }
     }
@@ -758,7 +816,7 @@ impl Parser {
             let right = self.parse_power()?;
             unsafe {
                 let op = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
-                left = Rf_lang3(op, left, right);
+                left = self.lang3(op, left, right);
             }
         }
     }
@@ -771,7 +829,7 @@ impl Parser {
             let exp = self.parse_colon()?;
             unsafe {
                 let op = Rf_install(CString::new("^").unwrap_or_default().as_ptr());
-                Ok(Rf_lang3(op, base, exp))
+                Ok(self.lang3(op, base, exp))
             }
         } else {
             Ok(base)
@@ -788,7 +846,7 @@ impl Parser {
                 let right = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(CString::new(":").unwrap_or_default().as_ptr());
-                    left = Rf_lang3(op, left, right);
+                    left = self.lang3(op, left, right);
                 }
             } else {
                 break;
@@ -804,7 +862,7 @@ impl Parser {
                 let operand = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(CString::new("-").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang2(op, operand))
+                    Ok(self.lang2(op, operand))
                 }
             }
             Token::Plus => {
@@ -816,7 +874,7 @@ impl Parser {
                 let operand = self.parse_unary()?;
                 unsafe {
                     let op = Rf_install(CString::new("!").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang2(op, operand))
+                    Ok(self.lang2(op, operand))
                 }
             }
             _ => self.parse_postfix(),
@@ -844,14 +902,14 @@ impl Parser {
                         let nil = R_NilValue();
                         let mut arg_list = nil;
                         for (name, val) in args.into_iter().rev() {
-                            let cell = Rf_cons(val, arg_list);
+                            let cell = self.cons(val, arg_list);
                             if let Some(n) = name {
                                 let sym = Rf_install(CString::new(n).unwrap_or_default().as_ptr());
                                 crate::sexp::accessors::SETTAG(cell, sym);
                             }
                             arg_list = cell;
                         }
-                        let call = Rf_cons(expr, arg_list);
+                        let call = self.cons(expr, arg_list);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -886,10 +944,10 @@ impl Parser {
                         let nil = R_NilValue();
                         let mut args = nil;
                         for idx in indices.into_iter().rev() {
-                            args = Rf_cons(idx, args);
+                            args = self.cons(idx, args);
                         }
-                        args = Rf_cons(expr, args);
-                        let call = Rf_cons(bracket_sym, args);
+                        args = self.cons(expr, args);
+                        let call = self.cons(bracket_sym, args);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -907,8 +965,9 @@ impl Parser {
                         let dbracket_sym =
                             Rf_install(CString::new("[[").unwrap_or_default().as_ptr());
                         let nil = R_NilValue();
-                        let args = Rf_cons(expr, Rf_cons(idx, nil));
-                        let call = Rf_cons(dbracket_sym, args);
+                        let idx_cell = self.cons(idx, nil);
+                        let args = self.cons(expr, idx_cell);
+                        let call = self.cons(dbracket_sym, args);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -922,8 +981,9 @@ impl Parser {
                     unsafe {
                         let dollar_sym = Rf_install(CString::new("$").unwrap_or_default().as_ptr());
                         let nil = R_NilValue();
-                        let args = Rf_cons(expr, Rf_cons(name, nil));
-                        let call = Rf_cons(dollar_sym, args);
+                        let name_cell = self.cons(name, nil);
+                        let args = self.cons(expr, name_cell);
+                        let call = self.cons(dollar_sym, args);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -937,8 +997,9 @@ impl Parser {
                     unsafe {
                         let at_sym = Rf_install(CString::new("@").unwrap_or_default().as_ptr());
                         let nil = R_NilValue();
-                        let args = Rf_cons(expr, Rf_cons(name, nil));
-                        let call = Rf_cons(at_sym, args);
+                        let name_cell = self.cons(name, nil);
+                        let args = self.cons(expr, name_cell);
+                        let call = self.cons(at_sym, args);
                         if !call.is_null() {
                             (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                         }
@@ -995,14 +1056,14 @@ impl Parser {
                 self.advance();
                 unsafe {
                     let sym = Rf_install(CString::new("break").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang2(sym, R_NilValue()))
+                    Ok(self.lang2(sym, R_NilValue()))
                 }
             }
             Token::KwNext => {
                 self.advance();
                 unsafe {
                     let sym = Rf_install(CString::new("next").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang2(sym, R_NilValue()))
+                    Ok(self.lang2(sym, R_NilValue()))
                 }
             }
             Token::KwReturn => {
@@ -1019,7 +1080,7 @@ impl Parser {
                 };
                 unsafe {
                     let sym = Rf_install(CString::new("return").unwrap_or_default().as_ptr());
-                    Ok(Rf_lang2(sym, val))
+                    Ok(self.lang2(sym, val))
                 }
             }
             // Block: { expr; expr; ... }
@@ -1067,7 +1128,10 @@ impl Parser {
             unsafe {
                 let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
                 let nil = R_NilValue();
-                let call = Rf_cons(if_sym, Rf_cons(cond, Rf_cons(body, Rf_cons(alt, nil))));
+                let alt_cell = self.cons(alt, nil);
+                let body_cell = self.cons(body, alt_cell);
+                let cond_cell = self.cons(cond, body_cell);
+                let call = self.cons(if_sym, cond_cell);
                 if !call.is_null() {
                     (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
@@ -1076,7 +1140,7 @@ impl Parser {
         } else {
             unsafe {
                 let if_sym = Rf_install(CString::new("if").unwrap_or_default().as_ptr());
-                Ok(Rf_lang3(if_sym, cond, body))
+                Ok(self.lang3(if_sym, cond, body))
             }
         }
     }
@@ -1108,7 +1172,10 @@ impl Parser {
         unsafe {
             let for_sym = Rf_install(CString::new("for").unwrap_or_default().as_ptr());
             let nil = R_NilValue();
-            let call = Rf_cons(for_sym, Rf_cons(var, Rf_cons(seq, Rf_cons(body, nil))));
+            let body_cell = self.cons(body, nil);
+            let seq_cell = self.cons(seq, body_cell);
+            let var_cell = self.cons(var, seq_cell);
+            let call = self.cons(for_sym, var_cell);
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -1128,7 +1195,7 @@ impl Parser {
 
         unsafe {
             let while_sym = Rf_install(CString::new("while").unwrap_or_default().as_ptr());
-            Ok(Rf_lang3(while_sym, cond, body))
+            Ok(self.lang3(while_sym, cond, body))
         }
     }
 
@@ -1140,7 +1207,7 @@ impl Parser {
 
         unsafe {
             let repeat_sym = Rf_install(CString::new("repeat").unwrap_or_default().as_ptr());
-            Ok(Rf_lang2(repeat_sym, body))
+            Ok(self.lang2(repeat_sym, body))
         }
     }
 
@@ -1157,7 +1224,9 @@ impl Parser {
         unsafe {
             let fn_sym = Rf_install(CString::new("function").unwrap_or_default().as_ptr());
             let nil = R_NilValue();
-            let call = Rf_cons(fn_sym, Rf_cons(formals, Rf_cons(body, nil)));
+            let body_cell = self.cons(body, nil);
+            let formals_cell = self.cons(formals, body_cell);
+            let call = self.cons(fn_sym, formals_cell);
             if !call.is_null() {
                 (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
@@ -1209,7 +1278,7 @@ impl Parser {
         unsafe {
             let mut list = nil;
             for (name, default) in pairs.into_iter().rev() {
-                let cell = Rf_cons(default, list);
+                let cell = self.cons(default, list);
                 let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
                 crate::sexp::accessors::SETTAG(cell, sym);
                 list = cell;
@@ -1237,22 +1306,22 @@ impl Parser {
         if exprs.is_empty() {
             unsafe {
                 let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
-                Ok(Rf_lang2(brace_sym, R_NilValue()))
+                Ok(self.lang2(brace_sym, R_NilValue()))
             }
         } else if exprs.len() == 1 {
             unsafe {
                 let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
-                Ok(Rf_lang2(brace_sym, exprs.into_iter().next().unwrap()))
+                Ok(self.lang2(brace_sym, exprs.into_iter().next().unwrap()))
             }
         } else {
             unsafe {
                 let brace_sym = Rf_install(CString::new("{").unwrap_or_default().as_ptr());
                 let nil = R_NilValue();
-                let mut list = Rf_cons(exprs.pop().unwrap_or(nil), nil);
+                let mut list = self.cons(exprs.pop().unwrap_or(nil), nil);
                 while let Some(e) = exprs.pop() {
-                    list = Rf_cons(e, list);
+                    list = self.cons(e, list);
                 }
-                let call = Rf_cons(brace_sym, list);
+                let call = self.cons(brace_sym, list);
                 if !call.is_null() {
                     (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
@@ -1269,18 +1338,15 @@ impl Parser {
         match self.peek().clone() {
             Token::Number(n) => {
                 self.advance();
-                unsafe { Ok(Rf_ScalarReal(n)) }
+                Ok(self.scalar_real(n))
             }
             Token::Int(n) => {
                 self.advance();
-                unsafe { Ok(Rf_ScalarInteger(n)) }
+                Ok(self.scalar_integer(n))
             }
             Token::Str(s) => {
                 self.advance();
-                unsafe {
-                    let c_s = CString::new(s.as_str()).unwrap_or_default();
-                    Ok(Rf_mkString(c_s.as_ptr()))
-                }
+                Ok(self.scalar_string(&s))
             }
             Token::DotDotDot => {
                 self.advance();
@@ -1293,15 +1359,15 @@ impl Parser {
                 let name = name.clone();
                 self.advance();
                 match name.as_str() {
-                    "TRUE" => unsafe { Ok(Rf_ScalarLogical(TRUE)) },
-                    "FALSE" => unsafe { Ok(Rf_ScalarLogical(FALSE)) },
+                    "TRUE" => Ok(self.scalar_logical(TRUE)),
+                    "FALSE" => Ok(self.scalar_logical(FALSE)),
                     "NULL" => unsafe { Ok(R_NilValue()) },
-                    "NA" => unsafe { Ok(Rf_ScalarLogical(NA_LOGICAL)) },
-                    "Inf" => unsafe { Ok(Rf_ScalarReal(f64::INFINITY)) },
-                    "NaN" => unsafe { Ok(Rf_ScalarReal(f64::NAN)) },
-                    "NA_real_" => unsafe { Ok(Rf_ScalarReal(crate::sexp::ffi::NA_REAL)) },
-                    "NA_integer_" => unsafe { Ok(Rf_ScalarInteger(crate::sexp::ffi::NA_INTEGER)) },
-                    "NA_character_" => unsafe { Ok(Rf_mkNAString()) },
+                    "NA" => Ok(self.scalar_logical(NA_LOGICAL)),
+                    "Inf" => Ok(self.scalar_real(f64::INFINITY)),
+                    "NaN" => Ok(self.scalar_real(f64::NAN)),
+                    "NA_real_" => Ok(self.scalar_real(crate::sexp::ffi::NA_REAL)),
+                    "NA_integer_" => Ok(self.scalar_integer(crate::sexp::ffi::NA_INTEGER)),
+                    "NA_character_" => Ok(self.scalar_na_string()),
                     _ => unsafe {
                         let sym =
                             Rf_install(CString::new(name.as_str()).unwrap_or_default().as_ptr());
@@ -1384,6 +1450,11 @@ impl Parser {
 // Public API
 // ---------------------------------------------------------------------------
 
+/// Parse R source into an expression tree allocated in `arena`.
+///
+/// The arena should belong to the active `RSession`: symbols are interned in
+/// the active session while expression nodes and literals are allocated in this
+/// borrowed arena.
 pub fn parse(input: &str, arena: &mut RArena) -> Result<SEXP, ParseError> {
     let mut parser = Parser::new(input, arena);
     parser.parse_program()

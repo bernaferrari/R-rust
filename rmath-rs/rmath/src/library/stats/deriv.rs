@@ -26,13 +26,12 @@
 
 use std::os::raw::{c_char, c_double, c_int};
 use std::ptr;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::memory_ext::{allocLang, vmaxget, vmaxset, R_alloc};
+use crate::sexp::memory_ext::{R_alloc, allocLang, vmaxget, vmaxset};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -253,66 +252,141 @@ unsafe fn inherits(x: SEXP, class_name: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
-// Static derivative symbols (OnceLock<usize> pattern, thread-safe)
+// Per-session derivative symbols
 // ---------------------------------------------------------------------------
-
-use std::collections::HashMap;
-use std::ffi::CString;
-use std::sync::{Mutex, OnceLock};
 
 unsafe fn deriv_symbol(name: &str) -> SEXP {
-    static CACHE: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut map = cache.lock().unwrap();
-    *map.entry(name.to_string())
-        .or_insert_with(|| {
-            let c = CString::new(name).unwrap_or_default();
-            Rf_install(c.as_ptr()) as usize
-        }) as SEXP
+    if let Some(symbol) = crate::sexp::instance::with_current_instance(|inst| {
+        inst.stats_deriv_symbols.get(name).copied()
+    })
+    .flatten()
+    {
+        return symbol;
+    }
+
+    let c = std::ffi::CString::new(name).unwrap_or_default();
+    let symbol = Rf_install(c.as_ptr());
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        *inst
+            .stats_deriv_symbols
+            .entry(name.to_string())
+            .or_insert(symbol)
+    })
 }
 
-unsafe fn ParenSymbol() -> SEXP { deriv_symbol("(") }
-unsafe fn PlusSymbol() -> SEXP { deriv_symbol("+") }
-unsafe fn MinusSymbol() -> SEXP { deriv_symbol("-") }
-unsafe fn TimesSymbol() -> SEXP { deriv_symbol("*") }
-unsafe fn DivideSymbol() -> SEXP { deriv_symbol("/") }
-unsafe fn PowerSymbol() -> SEXP { deriv_symbol("^") }
-unsafe fn ExpSymbol() -> SEXP { deriv_symbol("exp") }
-unsafe fn LogSymbol() -> SEXP { deriv_symbol("log") }
-unsafe fn SinSymbol() -> SEXP { deriv_symbol("sin") }
-unsafe fn CosSymbol() -> SEXP { deriv_symbol("cos") }
-unsafe fn TanSymbol() -> SEXP { deriv_symbol("tan") }
-unsafe fn SinhSymbol() -> SEXP { deriv_symbol("sinh") }
-unsafe fn CoshSymbol() -> SEXP { deriv_symbol("cosh") }
-unsafe fn TanhSymbol() -> SEXP { deriv_symbol("tanh") }
-unsafe fn SqrtSymbol() -> SEXP { deriv_symbol("sqrt") }
-unsafe fn PnormSymbol() -> SEXP { deriv_symbol("pnorm") }
-unsafe fn DnormSymbol() -> SEXP { deriv_symbol("dnorm") }
-unsafe fn AsinSymbol() -> SEXP { deriv_symbol("asin") }
-unsafe fn AcosSymbol() -> SEXP { deriv_symbol("acos") }
-unsafe fn AtanSymbol() -> SEXP { deriv_symbol("atan") }
-unsafe fn GammaSymbol() -> SEXP { deriv_symbol("gamma") }
-unsafe fn LGammaSymbol() -> SEXP { deriv_symbol("lgamma") }
-unsafe fn DiGammaSymbol() -> SEXP { deriv_symbol("digamma") }
-unsafe fn TriGammaSymbol() -> SEXP { deriv_symbol("trigamma") }
-unsafe fn PsiSymbol() -> SEXP { deriv_symbol("psigamma") }
-unsafe fn PiSymbol() -> SEXP { deriv_symbol("pi") }
-unsafe fn ExpM1Symbol() -> SEXP { deriv_symbol("expm1") }
-unsafe fn Log1PSymbol() -> SEXP { deriv_symbol("log1p") }
-unsafe fn Log2Symbol() -> SEXP { deriv_symbol("log2") }
-unsafe fn Log10Symbol() -> SEXP { deriv_symbol("log10") }
-unsafe fn SinPiSymbol() -> SEXP { deriv_symbol("sinpi") }
-unsafe fn CosPiSymbol() -> SEXP { deriv_symbol("cospi") }
-unsafe fn TanPiSymbol() -> SEXP { deriv_symbol("tanpi") }
-unsafe fn FactorialSymbol() -> SEXP { deriv_symbol("factorial") }
-unsafe fn LFactorialSymbol() -> SEXP { deriv_symbol("lfactorial") }
+unsafe fn ParenSymbol() -> SEXP {
+    deriv_symbol("(")
+}
+unsafe fn PlusSymbol() -> SEXP {
+    deriv_symbol("+")
+}
+unsafe fn MinusSymbol() -> SEXP {
+    deriv_symbol("-")
+}
+unsafe fn TimesSymbol() -> SEXP {
+    deriv_symbol("*")
+}
+unsafe fn DivideSymbol() -> SEXP {
+    deriv_symbol("/")
+}
+unsafe fn PowerSymbol() -> SEXP {
+    deriv_symbol("^")
+}
+unsafe fn ExpSymbol() -> SEXP {
+    deriv_symbol("exp")
+}
+unsafe fn LogSymbol() -> SEXP {
+    deriv_symbol("log")
+}
+unsafe fn SinSymbol() -> SEXP {
+    deriv_symbol("sin")
+}
+unsafe fn CosSymbol() -> SEXP {
+    deriv_symbol("cos")
+}
+unsafe fn TanSymbol() -> SEXP {
+    deriv_symbol("tan")
+}
+unsafe fn SinhSymbol() -> SEXP {
+    deriv_symbol("sinh")
+}
+unsafe fn CoshSymbol() -> SEXP {
+    deriv_symbol("cosh")
+}
+unsafe fn TanhSymbol() -> SEXP {
+    deriv_symbol("tanh")
+}
+unsafe fn SqrtSymbol() -> SEXP {
+    deriv_symbol("sqrt")
+}
+unsafe fn PnormSymbol() -> SEXP {
+    deriv_symbol("pnorm")
+}
+unsafe fn DnormSymbol() -> SEXP {
+    deriv_symbol("dnorm")
+}
+unsafe fn AsinSymbol() -> SEXP {
+    deriv_symbol("asin")
+}
+unsafe fn AcosSymbol() -> SEXP {
+    deriv_symbol("acos")
+}
+unsafe fn AtanSymbol() -> SEXP {
+    deriv_symbol("atan")
+}
+unsafe fn GammaSymbol() -> SEXP {
+    deriv_symbol("gamma")
+}
+unsafe fn LGammaSymbol() -> SEXP {
+    deriv_symbol("lgamma")
+}
+unsafe fn DiGammaSymbol() -> SEXP {
+    deriv_symbol("digamma")
+}
+unsafe fn TriGammaSymbol() -> SEXP {
+    deriv_symbol("trigamma")
+}
+unsafe fn PsiSymbol() -> SEXP {
+    deriv_symbol("psigamma")
+}
+unsafe fn PiSymbol() -> SEXP {
+    deriv_symbol("pi")
+}
+unsafe fn ExpM1Symbol() -> SEXP {
+    deriv_symbol("expm1")
+}
+unsafe fn Log1PSymbol() -> SEXP {
+    deriv_symbol("log1p")
+}
+unsafe fn Log2Symbol() -> SEXP {
+    deriv_symbol("log2")
+}
+unsafe fn Log10Symbol() -> SEXP {
+    deriv_symbol("log10")
+}
+unsafe fn SinPiSymbol() -> SEXP {
+    deriv_symbol("sinpi")
+}
+unsafe fn CosPiSymbol() -> SEXP {
+    deriv_symbol("cospi")
+}
+unsafe fn TanPiSymbol() -> SEXP {
+    deriv_symbol("tanpi")
+}
+unsafe fn FactorialSymbol() -> SEXP {
+    deriv_symbol("factorial")
+}
+unsafe fn LFactorialSymbol() -> SEXP {
+    deriv_symbol("lfactorial")
+}
 
 // ---------------------------------------------------------------------------
-// InitDerivSymbols -- no-op, symbols auto-init via OnceLock
+// InitDerivSymbols -- no-op, symbols auto-init per RInstance
 // ---------------------------------------------------------------------------
 
 /// Initialize derivative symbols. In the Rust port, symbols are lazily
-/// initialized via OnceLock, so this is a no-op but kept for API compatibility.
+/// initialized in the active `RInstance`, so this is a no-op kept for API
+/// compatibility.
 #[allow(dead_code)]
 unsafe fn InitDerivSymbols() {
     // Touch all symbols to ensure they're initialized
@@ -659,7 +733,7 @@ pub unsafe fn doD(args: SEXP) -> SEXP {
     InitDerivSymbols();
     let mut expr = expr;
     expr = D(expr, var);
-                Rf_protect(expr);
+    Rf_protect(expr);
     expr = AddParens(expr);
     Rf_unprotect(1);
     expr
@@ -1001,18 +1075,15 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
 
     let mut args = CDR(args);
     InitDerivSymbols();
-    let exprlist = Rf_protect(LCONS(
-        crate::sexp::symbol::R_BraceSymbol(),
-        R_NilValue(),
-    ));
+    let exprlist = Rf_protect(LCONS(crate::sexp::symbol::R_BraceSymbol(), R_NilValue()));
 
     /* expr: */
     if isExpression(CAR(args)) {
         expr = VECTOR_ELT(CAR(args), 0);
-                Rf_protect(expr);
+        Rf_protect(expr);
     } else {
         expr = CAR(args);
-                Rf_protect(expr);
+        Rf_protect(expr);
     }
     args = CDR(args);
 
@@ -1052,7 +1123,7 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
 
     /* NOTE: FindSubexprs is destructive, hence the duplication. */
     ans = duplicate(expr);
-                Rf_protect(ans);
+    Rf_protect(ans);
     f_index = FindSubexprs(ans, exprlist, tag);
     Rf_unprotect(1); // ans
 
@@ -1070,14 +1141,14 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
     k = 0;
     while ii < nderiv {
         ans = duplicate(expr);
-                Rf_protect(ans);
+        Rf_protect(ans);
         ans = D(ans, installTrChar(STRING_ELT(names, ii as i64)));
-                Rf_protect(ans);
+        Rf_protect(ans);
         ans2 = duplicate(ans);
-                Rf_protect(ans2);
+        Rf_protect(ans2);
         *d_index.add(ii as usize) = FindSubexprs(ans, exprlist, tag);
         ans = duplicate(ans2);
-                Rf_protect(ans);
+        Rf_protect(ans);
         if hessian {
             j = ii;
             while j < nderiv {
@@ -1099,7 +1170,7 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
         Accumulate2(MakeVariable(f_index, tag), exprlist);
     } else {
         ans = duplicate(expr);
-                Rf_protect(ans);
+        Rf_protect(ans);
         Accumulate2(expr, exprlist);
         Rf_unprotect(1);
     }
@@ -1121,15 +1192,12 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
                 j = ii;
                 while j < nderiv {
                     if *d2_index.add(k as usize) != 0 {
-                        Accumulate2(
-                            MakeVariable(*d2_index.add(k as usize), tag),
-                            exprlist,
-                        );
+                        Accumulate2(MakeVariable(*d2_index.add(k as usize), tag), exprlist);
                     } else {
                         ans2 = duplicate(ans);
-                Rf_protect(ans2);
+                        Rf_protect(ans2);
                         ans2 = D(ans2, installTrChar(STRING_ELT(names, j as i64)));
-                Rf_protect(ans2);
+                        Rf_protect(ans2);
                         Accumulate2(ans2, exprlist);
                         Rf_unprotect(2);
                     }
@@ -1155,7 +1223,10 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
             SETCAR(ans_ptr, R_MissingArg());
         } else {
             let var = Rf_protect(MakeVariable(ii + 1, tag));
-            SETCAR(ans_ptr, lang3(install_str("<-"), var, AddParens(CAR(ans_ptr))));
+            SETCAR(
+                ans_ptr,
+                lang3(install_str("<-"), var, AddParens(CAR(ans_ptr))),
+            );
             Rf_unprotect(1);
         }
     }
@@ -1197,10 +1268,7 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
                     if ii == j {
                         SETCAR(
                             ans_ptr,
-                            HessAssign1(
-                                STRING_ELT(names, ii as i64),
-                                AddParens(CAR(ans_ptr)),
-                            ),
+                            HessAssign1(STRING_ELT(names, ii as i64), AddParens(CAR(ans_ptr))),
                         );
                     } else {
                         SETCAR(
@@ -1242,7 +1310,7 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
         funarg = R_mkClosure(formals, exprlist, rho);
     } else if isString(funarg) {
         names = duplicate(funarg);
-                Rf_protect(names);
+        Rf_protect(names);
         let a = Rf_protect(crate::sexp::constructors::Rf_allocList(length(names)));
         let mut aa = a;
         for ii in 0..length(names) {
@@ -1255,4 +1323,32 @@ pub unsafe fn deriv(args: SEXP) -> SEXP {
     vmaxset(vmax);
     Rf_unprotect(2); // exprlist, expr
     funarg
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn derivative_symbols_are_owned_by_active_session() {
+        let mut left = RSession::new();
+        let left_plus = unsafe { PlusSymbol() };
+        let mut right = RSession::new();
+        let right_plus = unsafe { PlusSymbol() };
+
+        assert!(!left_plus.is_null());
+        assert!(!right_plus.is_null());
+        assert_ne!(left_plus, right_plus);
+
+        let left_again = left
+            .with_arena(|_| unsafe { PlusSymbol() })
+            .expect("left session should be active");
+        assert_eq!(left_plus, left_again);
+
+        let right_again = right
+            .with_arena(|_| unsafe { PlusSymbol() })
+            .expect("right session should be active");
+        assert_eq!(right_plus, right_again);
+    }
 }

@@ -8,10 +8,12 @@
 //! # Design
 //!
 //! [`Sexp<'a>`] wraps a raw `SEXP` pointer with a `PhantomData` marker
-//! to track the lifetime of the underlying memory. This ensures that
-//! `Sexp` references cannot outlive the arena or session that owns the
-//! data. All element access is bounds-checked, returning `Option<T>`
-//! rather than panicking on out-of-bounds access.
+//! to track the lifetime of the underlying memory. Safe construction goes
+//! through an owner such as [`RArena`](crate::sexp::memory::RArena) or
+//! [`RSession`](crate::sexp::session::RSession), so the returned wrapper is
+//! tied to the arena or session that owns the object. All element access is
+//! bounds-checked, returning `Option<T>` rather than panicking on
+//! out-of-bounds access.
 //!
 //! # Type Predicates
 //!
@@ -39,9 +41,13 @@ use super::globals::R_NilValue;
 /// A safe, lifetime-tracked wrapper around an R SEXP pointer.
 ///
 /// This type provides bounds-checked access to R objects while maintaining
-/// FFI compatibility through [`as_raw`](Sexp::as_raw) and
-/// [`from_raw`](Sexp::from_raw). The lifetime parameter `'a` ensures
-/// that the `Sexp` cannot outlive the memory it points to.
+/// FFI compatibility through [`as_raw`](Sexp::as_raw). Safe construction is
+/// owner-scoped via [`RArena::sexp`](crate::sexp::memory::RArena::sexp) or
+/// [`RSession::sexp`](crate::sexp::session::RSession::sexp). Raw pointer
+/// construction is kept crate-local, and internal FFI boundary code that must
+/// cross the boundary explicitly uses a crate-private unchecked wrapper.
+/// The lifetime parameter `'a` ensures that the `Sexp` cannot outlive the
+/// memory it points to.
 ///
 /// # Examples
 ///
@@ -51,7 +57,7 @@ use super::globals::R_NilValue;
 ///
 /// let mut arena = RArena::new();
 /// let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-/// let sexp = Sexp::from_raw(ptr).expect("from_raw returned None");
+/// let sexp = arena.sexp(ptr).expect("arena allocation returned invalid pointer");
 /// assert_eq!(sexp.len(), 3);
 /// assert!(sexp.is_vector());
 /// ```
@@ -68,20 +74,13 @@ pub struct Sexp<'a> {
 }
 
 impl<'a> Sexp<'a> {
-    /// Create a `Sexp` from a raw SEXP pointer.
+    /// Create a `Sexp` from a raw SEXP pointer for internal boundary code.
     ///
-    /// Returns `None` if the pointer is null.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use rmath::sexp::Sexp;
-    /// use std::ptr;
-    ///
-    /// assert!(Sexp::from_raw(ptr::null_mut()).is_none());
-    /// ```
+    /// Returns `None` if the pointer is null or visibly invalid. Public safe
+    /// code should use owner-scoped wrapping through `RArena::sexp` or
+    /// `RSession::sexp` instead.
     #[inline]
-    pub fn from_raw(ptr: SEXP) -> Option<Self> {
+    pub(crate) fn from_raw(ptr: SEXP) -> Option<Self> {
         if ptr.is_null() {
             None
         } else if (ptr as usize) % std::mem::align_of::<SexprecCore>() != 0 {
@@ -101,7 +100,7 @@ impl<'a> Sexp<'a> {
     /// The pointer must be non-null and point to a valid `SexprecCore`
     /// that lives at least as long as `'a`.
     #[inline]
-    pub const unsafe fn from_raw_unchecked(ptr: SEXP) -> Self {
+    pub(crate) const unsafe fn from_raw_unchecked(ptr: SEXP) -> Self {
         Sexp {
             ptr,
             _marker: std::marker::PhantomData,
@@ -967,7 +966,7 @@ impl<'a> Sexp<'a> {
 ///
 /// let mut arena = RArena::new();
 /// let list = arena.alloc_list_chain(3);
-/// let sexp = Sexp::from_raw(list).expect("from_raw returned None");
+/// let sexp = arena.sexp(list).expect("list belongs to arena");
 /// let items: Vec<_> = PairlistIter::new(sexp).collect();
 /// assert_eq!(items.len(), 3);
 /// ```

@@ -55,20 +55,12 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 
 #[inline]
 fn imax(a: c_int, b: c_int) -> c_int {
-    if a > b {
-        a
-    } else {
-        b
-    }
+    if a > b { a } else { b }
 }
 
 #[inline]
 fn imin(a: c_int, b: c_int) -> c_int {
-    if a > b {
-        b
-    } else {
-        a
-    }
+    if a > b { b } else { a }
 }
 
 // ---------------------------------------------------------------------------
@@ -77,9 +69,7 @@ fn imin(a: c_int, b: c_int) -> c_int {
 
 unsafe fn partrans_fn(p: c_int, raw: &[f64], new_: &mut [f64]) {
     if p > 100 {
-        Rf_error(
-            b"can only transform 100 pars in arima0\0".as_ptr() as *const libc::c_char,
-        );
+        Rf_error(b"can only transform 100 pars in arima0\0".as_ptr() as *const libc::c_char);
         return;
     }
     let mut work = [0.0_f64; 100];
@@ -101,9 +91,7 @@ unsafe fn partrans_fn(p: c_int, raw: &[f64], new_: &mut [f64]) {
 
 unsafe fn invpartrans_fn(p: c_int, phi: &[f64], new_: &mut [f64]) {
     if p > 100 {
-        Rf_error(
-            b"can only transform 100 pars in arima0\0".as_ptr() as *const libc::c_char,
-        );
+        Rf_error(b"can only transform 100 pars in arima0\0".as_ptr() as *const libc::c_char);
         return;
     }
     let mut work = [0.0_f64; 100];
@@ -198,23 +186,28 @@ pub unsafe fn pacf1(acf: SEXP, lmax: SEXP) -> SEXP {
 // Starma external pointer helpers
 // ---------------------------------------------------------------------------
 
-use std::sync::OnceLock;
-
 /// Tag symbol for Starma external pointer identification.
-/// We store it as a once-initialized global to mimic C's static variable behavior.
-static STARMA_TAG: OnceLock<SEXP> = OnceLock::new();
-
 unsafe fn get_starma_tag() -> SEXP {
-    *STARMA_TAG.get_or_init(|| {
-        Rf_install(b"STARMA_TAG\0".as_ptr() as *const libc::c_char)
+    if let Some(tag) = crate::sexp::instance::with_current_instance(|inst| {
+        (!inst.stats_starma_tag.is_null()).then_some(inst.stats_starma_tag)
+    })
+    .flatten()
+    {
+        return tag;
+    }
+
+    let tag = Rf_install(b"STARMA_TAG\0".as_ptr() as *const libc::c_char);
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        if inst.stats_starma_tag.is_null() {
+            inst.stats_starma_tag = tag;
+        }
+        inst.stats_starma_tag
     })
 }
 /// Retrieve Starma struct from external pointer, or error.
 unsafe fn get_starma(pG: SEXP) -> *mut starma_struct {
     if TYPEOF(pG) != SEXPTYPE::EXTPTRSXP || R_ExternalPtrTag(pG) != get_starma_tag() {
-        Rf_error(
-            b"bad Starma struct\0".as_ptr() as *const libc::c_char,
-        );
+        Rf_error(b"bad Starma struct\0".as_ptr() as *const libc::c_char);
         return ptr::null_mut();
     }
     R_ExternalPtrAddr(pG) as *mut starma_struct
@@ -266,7 +259,8 @@ pub unsafe fn setup_starma(
     (*g_ptr).m = m;
 
     let total_params = (mp + mq + msp + msq + m) as usize;
-    let params_layout = Layout::array::<c_double>(total_params).unwrap_or_else(|_| handle_alloc_error(Layout::new::<c_double>()));
+    let params_layout = Layout::array::<c_double>(total_params)
+        .unwrap_or_else(|_| handle_alloc_error(Layout::new::<c_double>()));
     (*g_ptr).params = alloc(params_layout) as *mut c_double;
 
     let ip = ns * msp + mp;
@@ -438,14 +432,10 @@ pub unsafe fn arma0fa(pG: SEXP, inparams: SEXP) -> SEXP {
 
     // Transform parameters
     {
-        let raw_params = std::slice::from_raw_parts(
-            REAL(inparams),
-            (mp + mq + msp + msq + m) as usize,
-        );
-        let out_params = std::slice::from_raw_parts_mut(
-            (*G).params,
-            (mp + mq + msp + msq + m) as usize,
-        );
+        let raw_params =
+            std::slice::from_raw_parts(REAL(inparams), (mp + mq + msp + msq + m) as usize);
+        let out_params =
+            std::slice::from_raw_parts_mut((*G).params, (mp + mq + msp + msq + m) as usize);
         dotrans_fn(mp, mq, msp, msq, m, (*G).trans, raw_params, out_params);
     }
 
@@ -515,12 +505,7 @@ pub unsafe fn get_resid(pG: SEXP) -> SEXP {
 // arma0_kfore — ARIMA forecasting
 // ---------------------------------------------------------------------------
 
-pub unsafe fn arma0_kfore(
-    pG: SEXP,
-    pd: SEXP,
-    psd: SEXP,
-    nahead: SEXP,
-) -> SEXP {
+pub unsafe fn arma0_kfore(pG: SEXP, pd: SEXP, psd: SEXP, nahead: SEXP) -> SEXP {
     let G = get_starma(pG);
     if G.is_null() {
         return R_NilValue();
@@ -566,9 +551,7 @@ pub unsafe fn arma0_kfore(
     );
     if ifault != 0 {
         Rf_unprotect(3);
-        Rf_error(
-            b"forkal error\0".as_ptr() as *const libc::c_char,
-        );
+        Rf_error(b"forkal error\0".as_ptr() as *const libc::c_char);
         return R_NilValue();
     }
 
@@ -747,9 +730,7 @@ pub unsafe fn Gradtrans(pG: SEXP, x: SEXP) -> SEXP {
 pub unsafe fn ARMAtoMA(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
     let m = asInteger(lag_max);
     if m <= 0 || m == NA_INTEGER {
-        Rf_error(
-            b"invalid value of lag.max\0".as_ptr() as *const libc::c_char,
-        );
+        Rf_error(b"invalid value of lag.max\0".as_ptr() as *const libc::c_char);
         return R_NilValue();
     }
 
@@ -764,10 +745,43 @@ pub unsafe fn ARMAtoMA(ar: SEXP, ma: SEXP, lag_max: SEXP) -> SEXP {
     for i in 0..(m as usize) {
         let mut tmp = if i < q as usize { *theta.add(i) } else { 0.0 };
         for j in 0..imin(i as c_int + 1, p) as usize {
-            tmp += *phi.add(j) * if i - j - 1 >= 0 { *psi.add(i - j - 1) } else { 1.0 };
+            tmp += *phi.add(j)
+                * if i - j - 1 >= 0 {
+                    *psi.add(i - j - 1)
+                } else {
+                    1.0
+                };
         }
     }
 
     Rf_unprotect(1);
     res
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::sexp::session::RSession;
+
+    #[test]
+    fn starma_tag_is_owned_by_active_session() {
+        let mut left = RSession::new();
+        let left_tag = unsafe { get_starma_tag() };
+        let mut right = RSession::new();
+        let right_tag = unsafe { get_starma_tag() };
+
+        assert!(!left_tag.is_null());
+        assert!(!right_tag.is_null());
+        assert_ne!(left_tag, right_tag);
+
+        let left_again = left
+            .with_arena(|_| unsafe { get_starma_tag() })
+            .expect("left session should be active");
+        assert_eq!(left_tag, left_again);
+
+        let right_again = right
+            .with_arena(|_| unsafe { get_starma_tag() })
+            .expect("right session should be active");
+        assert_eq!(right_tag, right_again);
+    }
 }

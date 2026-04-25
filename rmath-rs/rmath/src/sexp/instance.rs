@@ -283,6 +283,10 @@ pub struct RInstance {
     pub(crate) signrank_cache: HashMap<i32, Vec<f64>>,
     /// Per-instance Wilcoxon rank-sum distribution memo table.
     pub(crate) wilcox_cache: HashMap<(i32, i32), Vec<f64>>,
+    /// Per-instance stats::pacf Starma external-pointer tag symbol.
+    pub(crate) stats_starma_tag: SEXP,
+    /// Per-instance stats::deriv operator/function symbol cache.
+    pub(crate) stats_deriv_symbols: HashMap<String, SEXP>,
     /// Per-instance dist::binomial sampler cache.
     pub(crate) dist_binom_state: crate::dist::binomial::RbinomState,
     /// Per-instance nmath::dist::binomial sampler cache.
@@ -375,6 +379,8 @@ impl RInstance {
             env_hash_tables: hashbrown::HashMap::new(),
             signrank_cache: HashMap::new(),
             wilcox_cache: HashMap::new(),
+            stats_starma_tag: std::ptr::null_mut(),
+            stats_deriv_symbols: HashMap::new(),
             dist_binom_state: crate::dist::binomial::RbinomState::new(),
             nmath_binom_state: crate::nmath::dist::binomial::RbinomState::new(),
             dist_pois_state: crate::dist::poisson::RpoisState::new(),
@@ -430,6 +436,24 @@ impl RInstance {
         }
         env_nodes.push(boxed);
         env
+    }
+
+    /// Return true if this instance owns the given SEXP pointer.
+    ///
+    /// This covers arena nodes plus the persistent nodes stored directly on the
+    /// instance (environment sentinels, interned symbols, and raw cons cells).
+    pub(crate) fn owns_sexp(&self, ptr: SEXP) -> bool {
+        if ptr.is_null() {
+            return false;
+        }
+
+        self.arena.contains(ptr)
+            || self.env_nodes.iter().any(|node| std::ptr::eq(&**node, ptr))
+            || self
+                .symbol_nodes
+                .iter()
+                .any(|node| std::ptr::eq(&**node, ptr))
+            || self.raw_cons.iter().any(|raw| std::ptr::eq(*raw, ptr))
     }
 }
 

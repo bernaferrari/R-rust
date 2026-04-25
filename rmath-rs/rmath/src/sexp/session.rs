@@ -34,7 +34,9 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use super::context::{RError, RSignal};
 use super::ffi::{SEXP, SEXPTYPE};
-use super::globals::{R_BaseEnv, R_GlobalEnv, R_NilValue, R_UnboundValue};
+use super::globals::{
+    R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue, R_RestartToken, R_UnboundValue,
+};
 use super::instance::{
     RInstance, clear_current_instance_if, replace_current_instance, set_current_instance,
 };
@@ -162,14 +164,31 @@ impl RSession {
     ///
     /// Returns `None` if the global environment pointer is null.
     pub fn global_env(&self) -> Option<Sexp<'_>> {
-        Sexp::from_raw(self.instance.global_env)
+        self.sexp(self.instance.global_env)
     }
 
     /// Get the base environment.
     ///
     /// Returns `None` if the base environment pointer is null.
     pub fn base_env(&self) -> Option<Sexp<'_>> {
-        Sexp::from_raw(self.instance.base_env)
+        self.sexp(self.instance.base_env)
+    }
+
+    /// Wrap a raw pointer known to belong to this session.
+    ///
+    /// This is the safe public boundary for turning C-shaped `SEXP` values into
+    /// Rust `Sexp` handles. The pointer must be owned by this session's arena or
+    /// persistent instance storage, or be one of R's process-wide immutable
+    /// sentinels such as `R_NilValue`.
+    pub fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
+        if ptr.is_null() {
+            return None;
+        }
+        if self.instance.owns_sexp(ptr) || is_immutable_singleton(ptr) {
+            Sexp::from_raw(ptr)
+        } else {
+            None
+        }
     }
 
     /// Evaluate an expression in this session's global environment.
@@ -190,6 +209,14 @@ impl RSession {
         }
         self.with_active(|| {
             catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, self.instance.global_env) })
+        })
+    }
+
+    /// Evaluate an expression and return a session-scoped safe wrapper.
+    pub fn eval_sexp<'session>(&'session self, expr: Sexp<'_>) -> RResult<Sexp<'session>> {
+        let result = self.eval(expr.as_raw())?;
+        self.sexp(result).ok_or_else(|| REvalError {
+            message: "evaluation returned a SEXP outside this session".to_string(),
         })
     }
 
@@ -241,6 +268,19 @@ impl RSession {
         self.with_active(|| catch_eval(|| unsafe { crate::eval::eval::Rf_eval(expr, env) }))
     }
 
+    /// Evaluate an expression in a custom environment and return a
+    /// session-scoped safe wrapper.
+    pub fn eval_sexp_in<'session>(
+        &'session self,
+        expr: Sexp<'_>,
+        env: Sexp<'_>,
+    ) -> RResult<Sexp<'session>> {
+        let result = self.eval_in(expr.as_raw(), env.as_raw())?;
+        self.sexp(result).ok_or_else(|| REvalError {
+            message: "evaluation returned a SEXP outside this session".to_string(),
+        })
+    }
+
     /// Find a variable by name in the global environment.
     ///
     /// Returns `None` if the variable is not found, is unbound, or
@@ -254,7 +294,7 @@ impl RSession {
             if result == unsafe { R_UnboundValue() } || result == unsafe { R_NilValue() } {
                 None
             } else {
-                Sexp::from_raw(result)
+                self.sexp(result)
             }
         })
     }
@@ -397,6 +437,15 @@ impl RSession {
     }
 }
 
+fn is_immutable_singleton(ptr: SEXP) -> bool {
+    unsafe {
+        ptr == R_NilValue()
+            || ptr == R_UnboundValue()
+            || ptr == R_MissingArg()
+            || ptr == R_RestartToken()
+    }
+}
+
 impl Default for RSession {
     fn default() -> Self {
         Self::new()
@@ -428,6 +477,38 @@ mod tests {
         assert!(session.is_active());
         assert!(session.global_env().is_some());
         assert!(session.base_env().is_some());
+    }
+
+    #[test]
+    fn test_session_sexp_rejects_foreign_arena_pointer() {
+        let mut left = RSession::new();
+        let right = RSession::new();
+
+        let ptr = left
+            .with_arena(|arena| arena.alloc_node(SEXPTYPE::INTSXP))
+            .expect("left session should be active");
+
+        assert!(left.sexp(ptr).is_some());
+        assert!(right.sexp(ptr).is_none());
+    }
+
+    #[test]
+    fn test_session_eval_sexp_returns_session_scoped_wrapper() {
+        let mut session = RSession::new();
+        let expr = session
+            .with_arena(|arena| {
+                crate::sexp::builder::scalar_integer_in(arena, 7)
+                    .expect("scalar allocation should succeed")
+                    .as_raw()
+            })
+            .expect("session should be active");
+        let expr = session.sexp(expr).expect("expr belongs to session");
+
+        let result = session
+            .eval_sexp(expr)
+            .expect("self-evaluating scalar should evaluate");
+
+        assert_eq!(result.integer_elt(0), Some(7));
     }
 
     #[test]
