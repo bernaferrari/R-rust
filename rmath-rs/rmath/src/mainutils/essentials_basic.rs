@@ -383,17 +383,27 @@ pub unsafe fn do_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         return R_NilValue();
     }
 
-    let n = XLENGTH(x);
-    let mut counts: BTreeMap<i64, i64> = BTreeMap::new();
-
-    for i in 0..n {
-        let key = if t == SEXPTYPE::REALSXP {
-            (*REAL(x).add(i as usize)).to_bits() as i64
-        } else {
-            *INTEGER(x).add(i as usize) as i64
-        };
-        *counts.entry(key).or_insert(0) += 1;
-    }
+    let (labels, counts) = if let Some(levels) = factor_levels(x) {
+        let mut counts = vec![0_i64; XLENGTH(levels) as usize];
+        for i in 0..XLENGTH(x) {
+            let code = *INTEGER(x).add(i as usize);
+            if code > 0 && (code as usize) <= counts.len() {
+                counts[(code - 1) as usize] += 1;
+            }
+        }
+        let labels: Vec<String> = (0..XLENGTH(levels))
+            .map(|i| crate::mainutils::essentials::elt_to_string(levels, i))
+            .collect();
+        (labels, counts)
+    } else {
+        let mut counts: BTreeMap<String, i64> = BTreeMap::new();
+        for i in 0..XLENGTH(x) {
+            let key = crate::mainutils::essentials::elt_to_string(x, i);
+            *counts.entry(key).or_insert(0) += 1;
+        }
+        let (labels, counts): (Vec<String>, Vec<i64>) = counts.into_iter().unzip();
+        (labels, counts)
+    };
 
     let len = counts.len() as R_xlen_t;
     let result = Rf_allocVector3(SEXPTYPE::INTSXP, len);
@@ -402,11 +412,60 @@ pub unsafe fn do_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     }
     let _p = Rf_protect(result);
     let dst = INTEGER(result);
-    for (i, (_, &count)) in counts.iter().enumerate() {
+    for (i, &count) in counts.iter().enumerate() {
         *dst.add(i) = count.min(c_int::MAX as i64) as c_int;
     }
+
+    let names = Rf_allocVector3(SEXPTYPE::STRSXP, len);
+    if !names.is_null() {
+        let _names_p = Rf_protect(names);
+        for (i, label) in labels.iter().enumerate() {
+            let cstr = CString::new(label.as_str()).unwrap_or_default();
+            SET_STRING_ELT(names, i as R_xlen_t, Rf_mkChar(cstr.as_ptr()));
+        }
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_NamesSymbol(),
+            names,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    let class = Rf_mkString(CString::new("table").unwrap_or_default().as_ptr());
+    if !class.is_null() {
+        let _class_p = Rf_protect(class);
+        crate::sexp::attrib_core::setAttrib(
+            result,
+            crate::sexp::attrib_core::R_ClassSymbol(),
+            class,
+        );
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
     crate::sexp::protect::Rf_unprotect(1);
     result
+}
+
+fn factor_levels(x: SEXP) -> Option<SEXP> {
+    unsafe {
+        let class =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_ClassSymbol());
+        if class.is_null() || class == R_NilValue() || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return None;
+        }
+        let is_factor = (0..XLENGTH(class))
+            .any(|i| crate::mainutils::essentials::elt_to_string(class, i) == "factor");
+        if !is_factor {
+            return None;
+        }
+        let levels =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_LevelsSymbol());
+        if levels.is_null() || levels == R_NilValue() || TYPEOF(levels) != SEXPTYPE::STRSXP {
+            None
+        } else {
+            Some(levels)
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -425,6 +484,26 @@ pub unsafe fn do_as_double(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// R's `as.character(x)` — coerce to STRSXP.
 pub unsafe fn do_as_character(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    if let Some(levels) = factor_levels(x) {
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        for i in 0..n {
+            let code = *INTEGER(x).add(i as usize);
+            let value = if code > 0 && (code as R_xlen_t) <= XLENGTH(levels) {
+                STRING_ELT(levels, (code - 1) as R_xlen_t)
+            } else {
+                crate::sexp::globals::R_NaString()
+            };
+            SET_STRING_ELT(result, i, value);
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        return result;
+    }
     coerce_to_type(args, SEXPTYPE::STRSXP.as_c_int())
 }
 

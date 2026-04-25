@@ -8818,8 +8818,32 @@ pub unsafe fn do_print_table(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             println!();
         }
     } else {
-        // 1D table or unknown: print vector
-        let n = XLENGTH(x).max(1);
+        let n = XLENGTH(x);
+        let names =
+            crate::sexp::attrib_core::getAttrib(x, crate::sexp::attrib_core::R_NamesSymbol());
+        let has_names = !names.is_null() && TYPEOF(names) == SEXPTYPE::STRSXP;
+        if has_names {
+            let labels = (0..n)
+                .map(|i| elt_to_string(names, i))
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{}", labels);
+            let values = (0..n)
+                .map(|i| {
+                    if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
+                        (*INTEGER(x).add(i as usize)).to_string()
+                    } else if t == SEXPTYPE::REALSXP {
+                        format!("{}", *REAL(x).add(i as usize))
+                    } else {
+                        elt_to_string(x, i)
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            println!("{}", values);
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return x;
+        }
         for i in 0..n {
             let val = elt_to_string(x, i);
             println!("  {}", val);

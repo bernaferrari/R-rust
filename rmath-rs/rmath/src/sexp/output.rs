@@ -379,6 +379,33 @@ fn format_factor(x: Sexp<'_>) -> Option<String> {
     ))
 }
 
+fn table_names(x: Sexp<'_>) -> Option<Vec<String>> {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        if !string_vector_contains(class, "table") {
+            return None;
+        }
+        let names = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_NamesSymbol(),
+        );
+        string_vector_values(names).filter(|names| names.len() == x.len() as usize)
+    }
+}
+
+fn format_table(x: Sexp<'_>) -> Option<String> {
+    let names = table_names(x)?;
+    let values: Vec<String> = match x.typeof_() {
+        SEXPTYPE::INTSXP => (0..x.len()).map(|i| format_integer_element(x, i)).collect(),
+        SEXPTYPE::REALSXP => (0..x.len()).map(|i| format_real_element(x, i)).collect(),
+        _ => return None,
+    };
+    Some(format!("\n{}\n{}", names.join(" "), values.join(" ")))
+}
+
 fn list_names(x: Sexp<'_>) -> Vec<String> {
     unsafe {
         let names = crate::sexp::attrib_core::getAttrib(
@@ -428,6 +455,10 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
+            if let Some(output) = format_table(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             if let Some(output) = format_factor(x) {
                 emit(&format!("{output}\n"));
                 return;
@@ -448,6 +479,10 @@ pub fn print_value(x: Sexp<'_>) {
         }
         SEXPTYPE::REALSXP => {
             if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
+            if let Some(output) = format_table(x) {
                 emit(&format!("{output}\n"));
                 return;
             }
