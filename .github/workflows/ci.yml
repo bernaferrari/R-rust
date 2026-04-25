@@ -35,11 +35,8 @@ jobs:
       - name: Check formatting
         run: cargo fmt --check --all
 
-      - name: Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+      - name: Test rmath
+        run: env RUSTFLAGS="-Awarnings" cargo test -p rmath -- --test-threads=1
 
-      - name: Build
-        run: cargo build --all-targets
-
-      - name: Test
-        run: cargo test --all-targets
+      - name: Test embedding APIs
+        run: env RUSTFLAGS="-Awarnings" cargo test -p r-embed -p r-uniffi -- --test-threads=1

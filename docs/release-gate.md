@@ -1,0 +1,86 @@
+# Release Gate
+
+`scripts/release_gate.sh` is the local release-candidate proof command. It
+collects the checks that matter for the Android-first Rust port into one
+repeatable gate with subsystem labels in the output.
+
+The GitHub workflows use the same policy split: formatting and focused tests
+are enforced, Android checks run through `scripts/android_toolchain_check.sh`,
+and strict clippy remains tracked separately by bead `rport-0dbg`.
+
+## Commands
+
+Default release gate:
+
+```bash
+scripts/release_gate.sh
+```
+
+Full local gate, including the slower packaging and generated binding checks:
+
+```bash
+scripts/release_gate.sh --full
+```
+
+Host-only development run when an Android SDK/NDK is not available:
+
+```bash
+scripts/release_gate.sh --no-android
+```
+
+Do not use `--no-android` for release signoff. The default gate includes the
+Android mutable-global scanner and an `aarch64-linux-android` cargo check.
+
+## Matrix
+
+| Area | Default | Full | Command |
+| --- | --- | --- | --- |
+| Rust formatting | yes | yes | `cargo fmt --check --all` |
+| Rust tests | yes | yes | `cargo test -p rmath`, `cargo test -p r-embed -p r-uniffi` |
+| Android global-state scan | yes | yes | `scripts/check_android_globals.sh` through `scripts/android_toolchain_check.sh` |
+| Android aarch64 cargo check | yes | yes | `scripts/android_toolchain_check.sh` |
+| Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
+| Artifact sanity | yes | yes | JSON/Markdown conformance report validation |
+| Git whitespace | yes | yes | `git diff --check` |
+| Desktop host smoke | optional | yes | `scripts/desktop_host_smoke.sh` |
+| UniFFI binding generation | optional | yes | `scripts/generate_uniffi_bindings.sh --check` |
+| Android Gradle package smoke | optional | yes | `scripts/android_package_smoke.sh --check` |
+| Strict clippy | optional | optional | `scripts/release_gate.sh --strict-clippy` |
+
+## Prerequisites
+
+- Rust stable toolchain with `cargo`, `rustfmt`, and the Android target
+- Stock C R with `Rscript` for the conformance harness
+- Python 3 for conformance artifact validation
+- Android SDK/NDK for the default Android target check
+- Java 17 and Gradle wrapper support for `--full` Android packaging
+- `uniffi-bindgen` for `--full`; the binding script installs the pinned CLI if
+  it is missing
+
+## Warning Policy
+
+The gate enforces formatting today. For compile/test checks it temporarily adds
+`-Awarnings` to `RUSTFLAGS`, matching the current porting state where legacy
+C-shaped modules still contain warning and clippy debt.
+
+Strict clippy is intentionally not part of the passing default gate yet. Run it
+manually with:
+
+```bash
+scripts/release_gate.sh --strict-clippy
+```
+
+The zero-warning cleanup is tracked by bead `rport-0dbg`. Until that closes,
+release claims should cite the passing release gate and the explicit warning
+policy rather than claiming a zero-warning workspace.
+
+## Artifacts
+
+The gate writes conformance reports to:
+
+- `target/release-gate/conformance/summary.json`
+- `target/release-gate/conformance/summary.md`
+
+The JSON report is checked for nonzero total cases and zero failing or
+unexpected-passing cases. The Markdown report is the human-readable release
+attachment.

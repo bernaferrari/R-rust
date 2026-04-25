@@ -8,6 +8,15 @@ cd "$ROOT_DIR"
 
 scripts/check_android_globals.sh
 
+RUSTFLAGS_FOR_BUILD="${RUSTFLAGS:-}"
+if [[ "$RUSTFLAGS_FOR_BUILD" != *"-Awarnings"* ]]; then
+    RUSTFLAGS_FOR_BUILD="${RUSTFLAGS_FOR_BUILD:+$RUSTFLAGS_FOR_BUILD }-Awarnings"
+fi
+
+run_cargo() {
+    env RUSTFLAGS="$RUSTFLAGS_FOR_BUILD" cargo "$@"
+}
+
 SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
 if [[ -z "$SDK_ROOT" ]]; then
     for candidate in "$HOME/Library/Android/sdk" "$HOME/Android/Sdk" "/usr/local/lib/android/sdk"; do
@@ -43,8 +52,12 @@ for tool in llvm-ar "${TARGET}21-clang"; do
     fi
 done
 
-cargo check -p r-device-android-headless
-cargo check -p r-uniffi
-cargo check --target "$TARGET" -p r-device-android-headless
+run_cargo check -p r-device-android-headless
+run_cargo check -p r-uniffi
+run_cargo check --target "$TARGET" \
+    -p rmath \
+    -p r-embed \
+    -p r-uniffi \
+    -p r-device-android-headless
 
 echo "Android toolchain check passed for $TARGET."

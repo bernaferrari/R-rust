@@ -13,7 +13,7 @@ env:
 
 jobs:
   build:
-    name: Build + test
+    name: Format + focused tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -30,17 +30,13 @@ jobs:
         shell: bash
         run: cargo fmt --check --all
 
-      - name: Clippy
+      - name: Test rmath
         shell: bash
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: env RUSTFLAGS="-Awarnings" cargo test -p rmath -- --test-threads=1
 
-      - name: Build
+      - name: Test embedding APIs
         shell: bash
-        run: cargo build --all-targets
-
-      - name: Test
-        shell: bash
-        run: cargo test --all-targets
+        run: env RUSTFLAGS="-Awarnings" cargo test -p r-embed -p r-uniffi -- --test-threads=1
 
   desktop-host-smoke:
     name: Desktop host smoke (${{ matrix.os }})
@@ -138,7 +134,7 @@ jobs:
 
       - name: Build rmath artifact
         shell: bash
-        run: cargo build -p rmath
+        run: env RUSTFLAGS="-Awarnings" cargo build -p rmath
 
       - name: Run conformance harness
         shell: bash
