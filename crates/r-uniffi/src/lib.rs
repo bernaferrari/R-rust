@@ -421,6 +421,11 @@ fn validate_plot_dimensions(width: u32, height: u32) -> Result<(), RError> {
             "plot width and height must be greater than zero".to_string(),
         ));
     }
+    if width < 32 || height < 32 {
+        return Err(RError::InvalidInput(
+            "plot width and height must be at least 32 pixels".to_string(),
+        ));
+    }
     Ok(())
 }
 
@@ -803,6 +808,10 @@ mod tests {
         assert!(matches!(
             session.render("plot(c(1), c(1))".to_string(), 0, 120),
             Err(RError::InvalidInput(message)) if message.contains("width")
+        ));
+        assert!(matches!(
+            session.render("plot(c(1), c(1))".to_string(), 31, 120),
+            Err(RError::InvalidInput(message)) if message.contains("32 pixels")
         ));
     }
 

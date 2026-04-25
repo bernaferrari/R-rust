@@ -15,6 +15,17 @@ Minimal working Kotlin Multiplatform Android sample demonstrating:
 - ✅ PNG plot rendering with Coil
 - ✅ Clean Material 3 interface
 
+## Demo Plots
+
+The renderer path is intentionally small but useful for Android demos:
+
+```r
+plot(c(1, 2, 3, 4), c(1, 4, 9, 16), type = "l", col = "blue", lwd = 2,
+     main = "Quadratic growth", xlab = "x", ylab = "x^2")
+plot(c(1, 2, 3), c(3, 1, 2), type = "p", col = "green", cex = 1.4,
+     main = "Point sample", xlab = "group", ylab = "value")
+```
+
 ## Build
 ```bash
 ./gradlew assembleDebug

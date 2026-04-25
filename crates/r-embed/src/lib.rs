@@ -320,6 +320,11 @@ impl RSession {
         if !self.active {
             return Err(RSessionError::RenderError("Session closed".into()));
         }
+        if width < 32 || height < 32 {
+            return Err(RSessionError::RenderError(
+                "plot width and height must be at least 32 pixels".to_string(),
+            ));
+        }
         let mut renderer = AndroidHeadlessRenderer::new(width, height);
         renderer.clear(Color::WHITE);
         if !code.trim().is_empty() {
@@ -477,6 +482,8 @@ struct PlotOptions {
     ylab: Option<String>,
     color: Color,
     plot_type: PlotType,
+    line_width: f32,
+    point_radius: f32,
 }
 
 impl Default for PlotOptions {
@@ -487,6 +494,8 @@ impl Default for PlotOptions {
             ylab: None,
             color: Color::BLUE,
             plot_type: PlotType::Both,
+            line_width: 1.5,
+            point_radius: 2.5,
         }
     }
 }
@@ -604,8 +613,22 @@ fn apply_plot_option(options: &mut PlotOptions, name: &str, value: &str) {
                 options.plot_type = plot_type;
             }
         }
+        "lwd" => {
+            if let Some(width) = numeric_literal(value).filter(|width| *width > 0.0) {
+                options.line_width = width;
+            }
+        }
+        "cex" => {
+            if let Some(scale) = numeric_literal(value).filter(|scale| *scale > 0.0) {
+                options.point_radius = 2.5 * scale;
+            }
+        }
         _ => {}
     }
+}
+
+fn numeric_literal(value: &str) -> Option<f32> {
+    value.trim().parse::<f32>().ok()
 }
 
 fn string_literal(value: &str) -> Option<String> {
@@ -793,10 +816,24 @@ fn draw_series(
         if series.options.plot_type != PlotType::Points
             && let Some((px, py)) = prev
         {
-            draw_line(renderer, px, py, x, y, series.options.color, 1.5);
+            draw_line(
+                renderer,
+                px,
+                py,
+                x,
+                y,
+                series.options.color,
+                series.options.line_width,
+            );
         }
         if series.options.plot_type != PlotType::Lines {
-            draw_point(renderer, x, y, series.options.color);
+            draw_point(
+                renderer,
+                x,
+                y,
+                series.options.color,
+                series.options.point_radius,
+            );
         }
         prev = Some((x, y));
     }
@@ -927,8 +964,10 @@ fn draw_line(
     });
 }
 
-fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32, color: Color) {
-    renderer.draw_path(&Path::rect(x - 2.5, y - 2.5, 5.0, 5.0).with_fill(color));
+fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32, color: Color, radius: f32) {
+    renderer.draw_path(
+        &Path::rect(x - radius, y - radius, radius * 2.0, radius * 2.0).with_fill(color),
+    );
 }
 
 impl Default for RSession {
@@ -974,9 +1013,17 @@ mod tests {
         }
 
         fn red_pixels(&self) -> usize {
+            self.pixels_matching(|rgba| rgba[0] > 180 && rgba[1] < 120 && rgba[2] < 120)
+        }
+
+        fn green_pixels(&self) -> usize {
+            self.pixels_matching(|rgba| rgba[0] < 120 && rgba[1] > 100 && rgba[2] < 120)
+        }
+
+        fn pixels_matching(&self, matches: impl Fn(&[u8]) -> bool) -> usize {
             self.rgba
                 .chunks_exact(4)
-                .filter(|rgba| rgba[0] > 180 && rgba[1] < 120 && rgba[2] < 120 && rgba[3] > 0)
+                .filter(|rgba| matches(rgba) && rgba[3] > 0)
                 .count()
         }
     }
@@ -1706,6 +1753,23 @@ tiny_generic.tinything <- function(x) {value}L
         assert_eq!(call.options.ylab.as_deref(), Some("value"));
         assert_eq!(call.options.color, Color::RED);
         assert_eq!(call.options.plot_type, PlotType::Lines);
+        assert_eq!(call.options.line_width, 1.5);
+
+        let styled = parse_plot_call(
+            "plot(c(1, 2, 3), c(4, 5, 6), type = \"p\", col = \"green\", lwd = 3, cex = 1.5)",
+        );
+        assert_eq!(styled.options.plot_type, PlotType::Points);
+        assert_eq!(
+            styled.options.color,
+            Color {
+                r: 0,
+                g: 128,
+                b: 0,
+                a: 255,
+            }
+        );
+        assert_eq!(styled.options.line_width, 3.0);
+        assert_eq!(styled.options.point_radius, 3.75);
     }
 
     #[test]
@@ -1726,6 +1790,56 @@ tiny_generic.tinything <- function(x) {value}L
             decoded.non_white_in_region(0, decoded.height - 40, decoded.width, decoded.height) > 5
         );
         assert!(decoded.non_white_in_region(0, 58, 48, decoded.height - 52) > 5);
+    }
+
+    #[test]
+    fn render_supports_point_mode_and_responsive_dimensions() {
+        let mut session = RSession::new().expect("session");
+        let small = session
+            .render_with_dimensions(
+                "plot(c(1, 2, 3), c(3, 1, 2), type = \"p\", col = \"green\", cex = 1.4)",
+                96,
+                96,
+            )
+            .expect("small render");
+        let small = decode_png_rgba(&small);
+        assert_eq!(small.width, 96);
+        assert_eq!(small.height, 96);
+        assert!(small.green_pixels() > 5);
+        assert!(small.non_white_in_region(0, 0, small.width, small.height) > 20);
+
+        let large = session
+            .render_with_dimensions(
+                "plot(c(1, 2, 3, 4, 5), c(1, 4, 9, 16, 25), main = \"Large plot\", type = \"b\", col = \"blue\", lwd = 2)",
+                1024,
+                640,
+            )
+            .expect("large render");
+        let large = decode_png_rgba(&large);
+        assert_eq!(large.width, 1024);
+        assert_eq!(large.height, 640);
+        assert!(large.non_white_in_region(0, 0, large.width, 56) > 20);
+        assert!(large.non_white_in_region(0, 0, large.width, large.height) > 100);
+    }
+
+    #[test]
+    fn render_reports_actionable_plot_errors() {
+        let mut session = RSession::new().expect("session");
+
+        let too_small = session
+            .render_with_dimensions("plot(c(1), c(1))", 0, 120)
+            .expect_err("zero width should fail");
+        assert!(too_small.to_string().contains("at least 32 pixels"));
+
+        let non_numeric = session
+            .render_with_dimensions("plot(c(\"a\", \"b\"))", 320, 240)
+            .expect_err("non-numeric plot should fail");
+        assert!(non_numeric.to_string().contains("numeric"));
+
+        let non_finite = session
+            .render_with_dimensions("plot(c(1, Inf))", 320, 240)
+            .expect_err("non-finite plot should fail");
+        assert!(non_finite.to_string().contains("finite"));
     }
 
     #[test]

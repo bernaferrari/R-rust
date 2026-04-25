@@ -15,9 +15,11 @@ The Android-facing API is intentionally an owned-value boundary.
   bundledLibraryDir)` before evaluation when app-private library and temp paths
   are known. The configured paths drive `.libPaths()`, `find.package()`,
   `library()`, `require()`, `tempdir()`, and `tempfile()` for that session.
-- `render(code, width, height)` evaluates simple numeric plot expressions such
-  as `plot(c(1, 2, 3), c(1, 4, 9))` on the worker session and returns PNG bytes.
-  Width and height must be greater than zero.
+- `render(code, width, height)` evaluates simple numeric `plot(...)`
+  expressions on the worker session and returns PNG bytes. The current Android
+  renderer supports points, lines, combined point/line plots, title and axis
+  labels, tick labels, common colors, `lwd`, and `cex`. Width and height must be
+  at least 32 pixels.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
 - Long-running evaluations can opt into cooperative cancellation with
   `r_embed::CancellationToken`; the token is explicit and per evaluation.
@@ -54,7 +56,16 @@ val paths = android_runtime_paths(
 session.configure_android_runtime(paths)
 
 val result = session.eval_result("c(1, 2, 3)")
-val png = session.render("plot(c(1, 2, 3), c(1, 4, 9))", 800u, 600u)
+val linePlot = session.render(
+    "plot(c(1, 2, 3), c(1, 4, 9), type = \"l\", col = \"blue\", lwd = 2)",
+    800u,
+    600u,
+)
+val pointPlot = session.render(
+    "plot(c(1, 2, 3), c(3, 1, 2), type = \"p\", col = \"green\", cex = 1.4)",
+    800u,
+    600u,
+)
 
 session.cancel_current_operation()
 session.close()
@@ -63,4 +74,5 @@ session.close()
 Errors are typed through `RError`: invalid package names and zero-sized plots
 return `InvalidInput`, closed sessions return `SessionClosed`, cancelled
 evaluations return `Cancelled`, and R/runtime failures carry an explanatory
-string in `EvalError`, `RenderError`, or `InitFailed`.
+string in `EvalError`, `RenderError`, or `InitFailed`. Plot dimensions below
+the renderer minimum return an actionable `RenderError`.
