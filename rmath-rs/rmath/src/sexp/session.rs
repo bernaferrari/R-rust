@@ -557,7 +557,45 @@ impl RSession {
     /// Sharing an `Arc<AtomicBool>` lets an embedding host request cancellation
     /// from another thread without exposing runtime internals.
     pub fn set_cancellation_flag(&mut self, flag: Option<CancellationFlag>) {
-        self.instance.eval_state.cancellation = flag;
+        if self.active {
+            self.instance.eval_state.cancellation = flag;
+        }
+    }
+
+    /// Replace this session's cooperative cancellation flag, returning the old one.
+    ///
+    /// This gives embedders a scoped, owner-checked way to install a
+    /// cancellation token for one evaluation and then restore the previous
+    /// state. Closed sessions ignore new flags.
+    pub fn replace_cancellation_flag(
+        &mut self,
+        flag: Option<CancellationFlag>,
+    ) -> Option<CancellationFlag> {
+        if self.active {
+            std::mem::replace(&mut self.instance.eval_state.cancellation, flag)
+        } else {
+            None
+        }
+    }
+
+    /// Return this session's current evaluation limits.
+    pub fn eval_limits(&self) -> crate::eval::eval::EvalLimits {
+        self.instance.eval_state.limits
+    }
+
+    /// Set this session's evaluation limits.
+    ///
+    /// This is the session-owned facade for the evaluator's historical
+    /// current-instance limit accessors.
+    pub fn set_eval_limits(&mut self, limits: crate::eval::eval::EvalLimits) {
+        if self.active {
+            self.instance.eval_state.limits = limits;
+        }
+    }
+
+    /// Reset this session's evaluation limits to the evaluator defaults.
+    pub fn reset_eval_limits(&mut self) {
+        self.set_eval_limits(crate::eval::eval::EvalLimits::default());
     }
 
     /// Generate a standard normal random number using this session's RNG state.
@@ -778,6 +816,57 @@ mod tests {
         assert_eq!(left_output.stderr, "left err");
         assert_eq!(right_output.stdout, "right out");
         assert_eq!(right_output.stderr, "right err");
+    }
+
+    #[test]
+    fn test_session_eval_limits_are_local_on_same_thread() {
+        let mut left = RSession::new();
+        let mut right = RSession::new();
+
+        left.set_eval_limits(crate::eval::eval::EvalLimits {
+            max_eval_depth: 7,
+            max_execution_time_ms: 0,
+            max_alloc_bytes: 0,
+        });
+        right.set_eval_limits(crate::eval::eval::EvalLimits {
+            max_eval_depth: 19,
+            max_execution_time_ms: 0,
+            max_alloc_bytes: 0,
+        });
+
+        assert_eq!(left.eval_limits().max_eval_depth, 7);
+        assert_eq!(right.eval_limits().max_eval_depth, 19);
+        assert_eq!(
+            left.with_active(crate::eval::eval::get_eval_limits)
+                .max_eval_depth,
+            7
+        );
+        assert_eq!(
+            right
+                .with_active(crate::eval::eval::get_eval_limits)
+                .max_eval_depth,
+            19
+        );
+
+        left.reset_eval_limits();
+        assert_eq!(left.eval_limits(), crate::eval::eval::EvalLimits::default());
+        assert_eq!(right.eval_limits().max_eval_depth, 19);
+    }
+
+    #[test]
+    fn test_session_cancellation_flag_is_session_owned() {
+        let mut cancelled = RSession::new();
+        let mut active = RSession::new();
+        let flag = Arc::new(AtomicBool::new(true));
+
+        cancelled.set_cancellation_flag(Some(flag));
+        let (result, _, _) = cancelled.eval_code_with_output_capture("1 + 1");
+        let err = result.expect_err("cancelled session should reject eval");
+        assert_eq!(err.message, "operation cancelled");
+
+        let (result, _, _) = active.eval_code_with_output_capture("1 + 1");
+        let result = result.expect("second session should not inherit cancellation");
+        assert_eq!(result.real_elt(0), Some(2.0));
     }
 
     #[test]

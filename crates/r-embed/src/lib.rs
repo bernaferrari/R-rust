@@ -270,9 +270,7 @@ impl RSession {
             return Err(RSessionError::EvalError("Session closed".into()));
         }
 
-        self.inner.set_cancellation_flag(cancellation);
-        let result = self.inner.eval(code);
-        self.inner.set_cancellation_flag(None);
+        let result = self.inner.eval_with_cancellation_flag(code, cancellation);
 
         if let Some(message) = result.output.strip_prefix("Error: ") {
             if message == "operation cancelled" {

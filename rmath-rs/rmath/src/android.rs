@@ -148,6 +148,21 @@ impl RSession {
         self.core.set_cancellation_flag(flag);
     }
 
+    /// Evaluate with a cancellation flag scoped to this call.
+    ///
+    /// The previous flag is restored afterward, so a cancelled Android tab does
+    /// not poison later work in the same session or any other session.
+    pub fn eval_with_cancellation_flag(
+        &mut self,
+        code: &str,
+        flag: Option<CancellationFlag>,
+    ) -> RResult {
+        let previous = self.core.replace_cancellation_flag(flag);
+        let result = self.eval(code);
+        self.core.set_cancellation_flag(previous);
+        result
+    }
+
     /// Configure app-private runtime paths for Android embedding.
     ///
     /// `app_files_dir` owns the writable user library, `cache_dir` owns
@@ -1761,6 +1776,22 @@ mod tests {
 
         assert!((left.join().expect("left session panicked") - 101.0).abs() < 1e-10);
         assert!((right.join().expect("right session panicked") - 202.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_eval_cancellation_flag_is_scoped_to_session_call() {
+        let mut cancelled = RSession::new();
+        let mut active = RSession::new();
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+
+        let cancelled_result = cancelled.eval_with_cancellation_flag("1 + 1", Some(flag));
+        assert_eq!(cancelled_result.output, "Error: operation cancelled");
+
+        let active_result = active.eval("1 + 1");
+        assert_eq!(active_result.output, "[1] 2");
+
+        let next_cancelled_eval = cancelled.eval("1 + 1");
+        assert_eq!(next_cancelled_eval.output, "[1] 2");
     }
 
     #[test]
