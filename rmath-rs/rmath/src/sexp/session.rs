@@ -7,7 +7,8 @@
 //!
 //! [`RSession`] encapsulates an [`RInstance`] that owns its own arena,
 //! protection stack, and environment state, enabling multiple independent
-//! R sessions to coexist within the same process.
+//! R sessions to coexist within the same process when each session stays on
+//! the thread that created it.
 //!
 //! # Examples
 //!
@@ -107,8 +108,9 @@ impl Drop for CurrentInstanceGuard {
 ///
 /// # Thread Safety
 ///
-/// `RSession` is `Send` but not `Sync`. Each thread should create its
-/// own session instance.
+/// `RSession` is thread-confined. Each worker thread should create and keep its
+/// own session instance; moving a live session across threads would invalidate
+/// the thread-local compatibility dispatch pointer.
 pub struct RSession {
     /// Whether this session is active.
     active: bool,

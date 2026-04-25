@@ -7,8 +7,9 @@
 //!
 //! - **No raw pointers cross the FFI boundary.** All inputs/outputs are
 //!   owned Rust types (strings, numbers, Vec) or opaque handles.
-//! - **Thread-safe.** Each `RSession` owns its own arena and can be
-//!   used from any thread (no global state).
+//! - **Thread-confined sessions.** Each `RSession` owns its own arena and
+//!   should be created on the worker thread that uses it; hosts can run
+//!   multiple sessions in parallel by giving each tab its own worker.
 //! - **Minimal surface.** Only the operations needed for Android embedding
 //!   are exposed — eval, print, math, ALTREP.
 //! - **Zero-cost.** The safe wrappers compile down to the same operations
@@ -33,13 +34,11 @@ use crate::sexp::session::CancellationFlag;
 ///
 /// # Thread Safety
 ///
-/// `RSession` is `Send` but not `Sync`. Each thread should create its
-/// own session. Internally, the arena uses `RefCell` which is not `Sync`.
+/// `RSession` is thread-confined. Each worker thread should create and keep its
+/// own session; multiple sessions can run in parallel on different workers.
 pub struct RSession {
     core: CoreRSession,
 }
-
-unsafe impl Send for RSession {}
 
 fn extract_numeric_value(s: Sexp<'_>) -> f64 {
     match s.typeof_() {
@@ -680,10 +679,7 @@ mod tests {
         );
 
         let invisible = session.eval("withVisible(invisible(1))");
-        assert_eq!(
-            invisible.output,
-            "$value\n[1] 1\n\n$visible\n[1] FALSE"
-        );
+        assert_eq!(invisible.output, "$value\n[1] 1\n\n$visible\n[1] FALSE");
         assert_eq!(
             invisible.typed,
             RValue::List(vec![RValue::Real(Some(1.0)), RValue::Logical(Some(false))])
@@ -696,7 +692,10 @@ mod tests {
 
         let printed = session.eval("capture.output(print(1))");
         assert_eq!(printed.output, "[1] \"[1] 1\"");
-        assert_eq!(printed.typed, RValue::StringVector(vec!["[1] 1".to_string()]));
+        assert_eq!(
+            printed.typed,
+            RValue::StringVector(vec!["[1] 1".to_string()])
+        );
 
         let cat = session.eval("capture.output(cat(\"hello\"))");
         assert_eq!(cat.output, "[1] \"hello\"");
@@ -734,7 +733,8 @@ mod tests {
             "[1]  2 -1\nattr(,\"match.length\")\n[1]  1 -1\nattr(,\"index.type\")\n[1] \"chars\"\nattr(,\"useBytes\")\n[1] TRUE"
         );
 
-        let match_length = session.eval("attr(regexpr(\"a\", c(\"cat\", \"dog\")), \"match.length\")");
+        let match_length =
+            session.eval("attr(regexpr(\"a\", c(\"cat\", \"dog\")), \"match.length\")");
         assert_eq!(match_length.output, "[1]  1 -1");
 
         let use_bytes = session.eval("attr(regexpr(\"a\", \"cat\"), \"useBytes\")");
@@ -753,9 +753,11 @@ mod tests {
 
         let too_large = session.eval("sample.int(3, 4, FALSE)");
         assert!(matches!(too_large.typed, RValue::Error(_)));
-        assert!(too_large.output.contains(
-            "cannot take a sample larger than the population when 'replace = FALSE'"
-        ));
+        assert!(
+            too_large
+                .output
+                .contains("cannot take a sample larger than the population when 'replace = FALSE'")
+        );
     }
 
     #[test]

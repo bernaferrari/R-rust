@@ -212,11 +212,10 @@ impl Default for EvalControlState {
 /// Each `RInstance` has its own arena, environments, and protection stack,
 /// completely isolated from other instances and from the process-wide globals.
 ///
-/// # Safety
-///
-/// `RInstance` is `Send` because all fields are owned and no `Rc`/`Arc` or
-/// thread-local state is stored inside. However, it is NOT `Sync` because
-/// the arena and protect stack are `!Sync`.
+/// `RInstance` is deliberately thread-confined. The compatibility dispatch
+/// layer stores a raw current-instance pointer in thread-local state, so moving
+/// an instance to another thread could leave the original thread with a stale
+/// active-session pointer.
 ///
 /// The raw SEXP pointers inside are valid for as long as the arena is alive.
 pub struct RInstance {
@@ -328,11 +327,6 @@ pub struct RInstance {
     /// Per-instance transient allocations for R_alloc/vmaxget/vmaxset.
     pub(crate) vmax: Vec<(*mut u8, Layout)>,
 }
-
-// SAFETY: RInstance owns all its data. The SEXP pointers point into the
-// arena's Box allocations which are stable as long as the arena lives.
-// No reference counting or shared mutable state is involved.
-unsafe impl Send for RInstance {}
 
 impl RInstance {
     /// Create a new, fully independent R instance.
