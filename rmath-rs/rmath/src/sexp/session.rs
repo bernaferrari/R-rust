@@ -202,6 +202,16 @@ impl RSession {
         }
     }
 
+    fn owned_sexp<'session>(
+        &'session self,
+        ptr: SEXP,
+        description: &'static str,
+    ) -> RResult<Sexp<'session>> {
+        self.sexp(ptr).ok_or_else(|| REvalError {
+            message: format!("{description} does not belong to this session"),
+        })
+    }
+
     /// Evaluate an expression in this session's global environment.
     ///
     /// # Errors
@@ -219,9 +229,7 @@ impl RSession {
     /// Evaluate a raw expression pointer after proving it belongs to this session.
     pub fn eval_sexp_raw(&self, expr: SEXP) -> RResult<Sexp<'_>> {
         let expr = expr_or_nil(expr);
-        let expr = self.sexp(expr).ok_or_else(|| REvalError {
-            message: "expression does not belong to this session".to_string(),
-        })?;
+        let expr = self.owned_sexp(expr, "expression")?;
         self.eval_sexp(expr)
     }
 
@@ -234,9 +242,7 @@ impl RSession {
         }
 
         self.with_active(|| {
-            let expr = self.sexp(expr.as_raw()).ok_or_else(|| REvalError {
-                message: "expression does not belong to this session".to_string(),
-            })?;
+            let expr = self.owned_sexp(expr.as_raw(), "expression")?;
             let env = self.global_env().ok_or_else(|| REvalError {
                 message: "session has no global environment".to_string(),
             })?;
@@ -253,14 +259,11 @@ impl RSession {
         &self,
         expr: SEXP,
     ) -> (RResult<SEXP>, super::output::RCapturedOutput, bool) {
-        let Some(expr) = self.sexp(expr_or_nil(expr)) else {
-            return (
-                Err(REvalError {
-                    message: "expression does not belong to this session".to_string(),
-                }),
-                super::output::RCapturedOutput::default(),
-                false,
-            );
+        let expr = match self.owned_sexp(expr_or_nil(expr), "expression") {
+            Ok(expr) => expr,
+            Err(err) => {
+                return (Err(err), super::output::RCapturedOutput::default(), false);
+            }
         };
         let (result, output, visible) = self.eval_sexp_with_output_capture(expr);
         (result.map(Sexp::as_raw), output, visible)
@@ -332,14 +335,11 @@ impl RSession {
                 );
             }
         };
-        let Some(expr) = self.sexp(raw_expr) else {
-            return (
-                Err(REvalError {
-                    message: "parsed expression does not belong to this session".to_string(),
-                }),
-                super::output::RCapturedOutput::default(),
-                false,
-            );
+        let expr = match self.owned_sexp(raw_expr, "parsed expression") {
+            Ok(expr) => expr,
+            Err(err) => {
+                return (Err(err), super::output::RCapturedOutput::default(), false);
+            }
         };
         self.eval_sexp_with_output_capture(expr)
     }
@@ -355,12 +355,8 @@ impl RSession {
     /// evaluation. Prefer [`RSession::eval_sexp_in`] when the caller already has
     /// lifetime-bound [`Sexp`] handles.
     pub fn eval_in(&self, expr: SEXP, env: SEXP) -> RResult<SEXP> {
-        let expr = self.sexp(expr_or_nil(expr)).ok_or_else(|| REvalError {
-            message: "expression does not belong to this session".to_string(),
-        })?;
-        let env = self.sexp(env).ok_or_else(|| REvalError {
-            message: "environment does not belong to this session".to_string(),
-        })?;
+        let expr = self.owned_sexp(expr_or_nil(expr), "expression")?;
+        let env = self.owned_sexp(env, "environment")?;
         self.eval_sexp_in(expr, env).map(Sexp::as_raw)
     }
 
@@ -378,12 +374,8 @@ impl RSession {
         }
 
         self.with_active(|| {
-            let expr = self.sexp(expr.as_raw()).ok_or_else(|| REvalError {
-                message: "expression does not belong to this session".to_string(),
-            })?;
-            let env = self.sexp(env.as_raw()).ok_or_else(|| REvalError {
-                message: "environment does not belong to this session".to_string(),
-            })?;
+            let expr = self.owned_sexp(expr.as_raw(), "expression")?;
+            let env = self.owned_sexp(env.as_raw(), "environment")?;
             catch_eval_result(|| crate::eval::eval::EvalContext::new(env).eval(expr))
         })
     }
@@ -416,18 +408,15 @@ impl RSession {
     /// The value must belong to this session, except for immutable singleton
     /// sentinels such as `NULL`.
     pub fn define_var(&self, name: &str, value: Sexp<'_>) -> bool {
-        if self.sexp(value.as_raw()).is_none() {
-            return false;
-        }
-        unsafe { self.define_var_raw(name, value.as_raw()) }
+        self.define_var_raw(name, value.as_raw())
     }
 
     /// Define a variable from a raw pointer for internal compatibility paths.
     ///
-    /// Safe Rust code should use [`define_var`](Self::define_var), which
-    /// checks that the value is owned by this session before installing it.
-    pub(crate) unsafe fn define_var_raw(&self, name: &str, value: SEXP) -> bool {
-        if !self.active {
+    /// The raw value is accepted only after proving it belongs to this session
+    /// or is one of R's immutable singleton sentinels.
+    fn define_var_raw(&self, name: &str, value: SEXP) -> bool {
+        if !self.active || self.sexp(value).is_none() {
             return false;
         }
         self.with_active(|| {
