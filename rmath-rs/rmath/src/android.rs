@@ -2046,4 +2046,73 @@ mod tests {
         let f = session.eval("FALSE");
         assert!((f.value - 0.0).abs() < 1e-10);
     }
+
+    fn adversarial_iterations(default: u64) -> u64 {
+        std::env::var("RPORT_ADVERSARIAL_ITERS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(default)
+    }
+
+    #[test]
+    fn adversarial_eval_errors_and_subsets_do_not_panic() {
+        let fixed = [
+            "stop('intentional')",
+            "f <- function(x) x; f()",
+            "c(1, 2, 3)[[10]]",
+            "c(1, 2, 3)[c(1, -2)]",
+            "list(a = 1)$missing$value",
+            "if (c(TRUE, FALSE)) 1 else 2",
+            "while (TRUE) { stop('bounded error') }",
+        ];
+
+        for code in fixed {
+            let mut session = RSession::new();
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.eval(code)));
+            assert!(result.is_ok(), "eval panicked for fixed input: {code:?}");
+        }
+
+        for seed in 0..adversarial_iterations(128).min(512) {
+            let mut session = RSession::new();
+            let a = (seed % 7) as i32 - 2;
+            let b = ((seed / 7) % 7) as i32 - 2;
+            let c = ((seed / 49) % 7) as i32 - 2;
+            let code = format!("c(10, 20, 30)[c({a}, {b}, {c})]");
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| session.eval(&code)));
+            assert!(
+                result.is_ok(),
+                "subset eval panicked for seed {seed}: {code}"
+            );
+        }
+    }
+
+    #[test]
+    fn adversarial_owned_value_conversion_handles_generated_vectors() {
+        for seed in 0..adversarial_iterations(32).min(128) {
+            let mut session = RSession::new();
+            let len = (seed % 8) + 1;
+            let values = (0..len)
+                .map(|idx| ((seed + idx * 13) % 17).to_string())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let numeric = session.eval(&format!("c({values})"));
+            match numeric.typed {
+                RValue::RealVector(items) => assert_eq!(items.len(), len as usize),
+                RValue::Real(_) if len == 1 => {}
+                ref other => panic!("expected real vector for seed {seed}, got {other:?}"),
+            }
+
+            let strings = (0..len)
+                .map(|idx| format!("\"s{seed}_{idx}\""))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let character = session.eval(&format!("c({strings})"));
+            match character.typed {
+                RValue::StringVector(items) => assert_eq!(items.len(), len as usize),
+                ref other => panic!("expected string vector for seed {seed}, got {other:?}"),
+            }
+        }
+    }
 }

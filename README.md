@@ -129,13 +129,21 @@ mutable-global scanning, stock C R conformance parity, generated conformance
 artifacts, the public safe API audit, optional Android packaging, and whitespace
 validation.
 
+Focused adversarial checks for parser/eval/namespace/memory-facing owned values:
+
+```bash
+scripts/adversarial_safety_checks.sh --check
+scripts/adversarial_safety_checks.sh --long
+```
+
 Conformance reports are written to:
 
 - `target/release-gate/conformance/summary.json`
 - `target/release-gate/conformance/summary.md`
 
-See `docs/conformance.md`, `docs/release-gate.md`, and
-`docs/rust-r-port-architecture.md` for the detailed policy.
+See `docs/conformance.md`, `docs/release-gate.md`,
+`docs/adversarial-testing.md`, and `docs/rust-r-port-architecture.md` for the
+detailed policy.
 
 ## Upstream Porting Discipline
 

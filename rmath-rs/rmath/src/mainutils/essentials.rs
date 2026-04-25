@@ -10,8 +10,8 @@ use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
-    CAR, CDR, CHAR, FRAME, INTEGER, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, SET_STRING_ELT,
-    SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
+    CAR, CDR, CHAR, FRAME, INTEGER, INTEGER_ELT, LENGTH, LOGICAL, PRINTNAME, RAW, REAL, REAL_ELT,
+    SET_STRING_ELT, SET_VECTOR_ELT, STRING_ELT, TAG, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 #[allow(unused_imports)]
 use crate::sexp::constructors::{
@@ -108,9 +108,9 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let dst = REAL(result);
                 for i in 0..n {
                     let val = if t == SEXPTYPE::REALSXP {
-                        *REAL(arg).add(i as usize)
+                        REAL_ELT(arg, i as c_int)
                     } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                        let v = *INTEGER(arg).add(i as usize);
+                        let v = INTEGER_ELT(arg, i as c_int);
                         if v == NA_INTEGER { NA_REAL } else { v as f64 }
                     } else {
                         NA_REAL
@@ -121,7 +121,7 @@ pub unsafe fn do_c(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let dst = INTEGER(result);
                 for i in 0..n {
                     let val = if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                        *INTEGER(arg).add(i as usize)
+                        INTEGER_ELT(arg, i as c_int)
                     } else {
                         NA_INTEGER
                     };
@@ -18296,6 +18296,88 @@ pub unsafe fn do_match_fun(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn generated_namespace_input(mut seed: u64, len: usize) -> String {
+        const ALPHABET: &[u8] =
+            b"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.,()#'\"`\\ \n\t";
+        let mut out = String::with_capacity(len);
+        for _ in 0..len {
+            seed = seed
+                .wrapping_mul(2862933555777941757)
+                .wrapping_add(3037000493);
+            out.push(ALPHABET[((seed >> 33) as usize) % ALPHABET.len()] as char);
+        }
+        out
+    }
+
+    fn adversarial_iterations(default: u64) -> u64 {
+        std::env::var("RPORT_ADVERSARIAL_ITERS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(default)
+    }
+
+    #[test]
+    fn namespace_parser_handles_strings_comments_and_nested_calls() {
+        let directives = parse_namespace_directives(
+            r#"
+            export(foo, "bar,baz", `quux`)
+            exportPattern("^as\\.")
+            import(stats)
+            importFrom(utils, head, tail)
+            S3method(print,myclass)
+            S3method(format,myclass,format_myclass)
+            useDynLib(nativebits)
+            # export(commented_out)
+            export("hash#inside")
+            export(call_like(default = f(a, b)))
+            "#,
+        );
+
+        assert_eq!(directives.exports[0], "foo");
+        assert!(directives.exports.contains(&"bar,baz".to_string()));
+        assert!(directives.exports.contains(&"quux".to_string()));
+        assert!(directives.exports.contains(&"hash#inside".to_string()));
+        assert!(
+            directives
+                .exports
+                .contains(&"call_like(default = f(a, b))".to_string())
+        );
+        assert_eq!(directives.export_patterns, vec!["^as\\\\.".to_string()]);
+        assert_eq!(directives.imports.len(), 2);
+        assert_eq!(directives.s3_methods.len(), 2);
+        assert_eq!(directives.native_libraries, vec!["nativebits".to_string()]);
+    }
+
+    #[test]
+    fn adversarial_namespace_inputs_do_not_panic() {
+        let fixed = [
+            "export(",
+            "export(foo",
+            "export(foo, # comment\n bar)",
+            "S3method(print,",
+            "useDynLib('unterminated)",
+            "importFrom(pkg, f(a, b), c)",
+            "export(`odd name`, \"comma,name\", 'hash#name')",
+        ];
+
+        for input in fixed {
+            let result = std::panic::catch_unwind(|| parse_namespace_directives(input));
+            assert!(
+                result.is_ok(),
+                "namespace parser panicked for fixed input: {input:?}"
+            );
+        }
+
+        for seed in 0..adversarial_iterations(256) {
+            let input = generated_namespace_input(seed, (seed as usize % 128) + 1);
+            let result = std::panic::catch_unwind(|| parse_namespace_directives(&input));
+            assert!(
+                result.is_ok(),
+                "namespace parser panicked for seed {seed}: {input:?}"
+            );
+        }
+    }
 
     #[test]
     fn test_do_log2_default_base_two() {

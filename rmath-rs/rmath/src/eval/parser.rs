@@ -1473,6 +1473,55 @@ mod tests {
         }
     }
 
+    fn generated_parser_input(mut seed: u64, len: usize) -> String {
+        const ALPHABET: &[u8] = b"abcxyz0123456789+-*/^<>=!&|(){}[],$@_.'\"`# \n\t;:";
+        let mut out = String::with_capacity(len);
+        for _ in 0..len {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1);
+            out.push(ALPHABET[((seed >> 32) as usize) % ALPHABET.len()] as char);
+        }
+        out
+    }
+
+    fn adversarial_iterations(default: u64) -> u64 {
+        std::env::var("RPORT_ADVERSARIAL_ITERS")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(default)
+    }
+
+    #[test]
+    fn adversarial_parser_inputs_do_not_panic() {
+        let mut session = RSession::new();
+        let fixed = [
+            ")",
+            "(((((((((",
+            "\"unterminated",
+            "'unterminated\\",
+            "`unterminated",
+            "x[[[[1]]",
+            "function(x,,y) x",
+            "if (TRUE) { # comment without close",
+            "a <- 1 +\n# comment\n)",
+            "repeat { next; break; } }",
+        ];
+
+        for input in fixed {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.with_arena(|arena| parse(input, arena))
+            }));
+            assert!(result.is_ok(), "parser panicked for fixed input: {input:?}");
+        }
+
+        for seed in 0..adversarial_iterations(256) {
+            let input = generated_parser_input(seed, (seed as usize % 96) + 1);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                session.with_arena(|arena| parse(&input, arena))
+            }));
+            assert!(result.is_ok(), "parser panicked for seed {seed}: {input:?}");
+        }
+    }
+
     // --- Basic atoms ---
 
     #[test]
