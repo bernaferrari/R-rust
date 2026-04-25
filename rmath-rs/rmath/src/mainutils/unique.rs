@@ -560,12 +560,12 @@ fn unique_safe(x: Sexp<'_>, from_last: bool, nmax_arg: i32) -> Result<SEXP, &'st
 ///
 /// Returns `TRUE`, `FALSE`, or `NA_LOGICAL`.
 /// `op`: 1 = all, 2 = any
-fn check_values_safe(x: Sexp<'_>, op: i32, na_rm: bool) -> Result<i32, &'static str> {
+fn check_values_safe(x: Sexp<'_>, op: i32, na_rm: bool) -> Result<i32, String> {
     let n = x.len();
     let mut has_na = false;
 
     for i in 0..n {
-        let xi = x.logical_elt(i).ok_or("invalid logical element")?;
+        let xi = x.try_logical_elt(i).map_err(|err| err.to_string())?;
         if !na_rm && xi == NA_LOGICAL {
             has_na = true;
         } else {
@@ -588,79 +588,58 @@ fn check_values_safe(x: Sexp<'_>, op: i32, na_rm: bool) -> Result<i32, &'static 
 /// Safe wrapper for `any` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` with a scalar logical result.
-fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
+fn any_safe(args: Sexp<'_>) -> Result<SEXP, String> {
     let mut val: i32 = 0;
     let mut has_na = false;
     let mut na_rm = false;
 
-    // First pass: look for na.rm argument
-    let mut arg_list = Some(args);
+    let mut arg_list = if args.is_nil() { None } else { Some(args) };
     while let Some(current) = arg_list {
-        if current.is_nil() {
-            break;
-        }
-        if let Some(tag) = current.tag()
-            && let Some(pname) = tag.printname()
-            && let Some(name_bytes) = pname.data_ptr()
+        if current
+            .try_tag_name_eq(b"na.rm")
+            .map_err(|err| err.to_string())?
         {
-            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
-            if name_str.to_bytes() == b"na.rm"
-                && let Some(na_val) = current.car()
-                && let Some(nrm) = na_val.logical_elt(0)
-            {
+            let na_val = current.try_car().map_err(|err| err.to_string())?;
+            if let Ok(nrm) = na_val.try_logical_elt(0) {
                 na_rm = nrm == 1;
             }
         }
-        arg_list = current.cdr();
+        arg_list = current
+            .try_next_pairlist_cell()
+            .map_err(|err| err.to_string())?;
     }
 
-    // Process non-na.rm arguments
-    let mut s = Some(args);
+    let mut s = if args.is_nil() { None } else { Some(args) };
     while let Some(current) = s {
-        if current.is_nil() {
-            break;
-        }
-
-        // Skip na.rm argument
-        let skip = if let Some(tag) = current.tag() {
-            if let Some(pname) = tag.printname() {
-                if let Some(name_bytes) = pname.data_ptr() {
-                    let name_str =
-                        unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
-                    name_str.to_bytes() == b"na.rm"
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        if skip {
-            s = current.cdr();
+        if current
+            .try_tag_name_eq(b"na.rm")
+            .map_err(|err| err.to_string())?
+        {
+            s = current
+                .try_next_pairlist_cell()
+                .map_err(|err| err.to_string())?;
             continue;
         }
 
-        if let Some(t) = current.car() {
-            let n = t.len();
-            if n > 0 {
-                let cv = check_values_safe(t, 2, na_rm)?;
-                if cv != NA_LOGICAL {
-                    if cv == 1 {
-                        val = 1;
-                        has_na = false;
-                        break;
-                    }
-                } else {
-                    has_na = true;
+        let t = current.try_car().map_err(|err| err.to_string())?;
+        let n = t.len();
+        if n > 0 {
+            let cv = check_values_safe(t, 2, na_rm)?;
+            if cv != NA_LOGICAL {
+                if cv == 1 {
+                    val = 1;
+                    has_na = false;
+                    break;
                 }
-                val = cv;
+            } else {
+                has_na = true;
             }
+            val = cv;
         }
 
-        s = current.cdr();
+        s = current
+            .try_next_pairlist_cell()
+            .map_err(|err| err.to_string())?;
     }
 
     if has_na {
@@ -673,79 +652,58 @@ fn any_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
 /// Safe wrapper for `all` using `Sexp<'a>`.
 ///
 /// Returns `Ok(SEXP)` with a scalar logical result.
-fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
+fn all_safe(args: Sexp<'_>) -> Result<SEXP, String> {
     let mut val: i32 = 1;
     let mut has_na = false;
     let mut na_rm = false;
 
-    // First pass: look for na.rm argument
-    let mut arg_list = Some(args);
+    let mut arg_list = if args.is_nil() { None } else { Some(args) };
     while let Some(current) = arg_list {
-        if current.is_nil() {
-            break;
-        }
-        if let Some(tag) = current.tag()
-            && let Some(pname) = tag.printname()
-            && let Some(name_bytes) = pname.data_ptr()
+        if current
+            .try_tag_name_eq(b"na.rm")
+            .map_err(|err| err.to_string())?
         {
-            let name_str = unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
-            if name_str.to_bytes() == b"na.rm"
-                && let Some(na_val) = current.car()
-                && let Some(nrm) = na_val.logical_elt(0)
-            {
+            let na_val = current.try_car().map_err(|err| err.to_string())?;
+            if let Ok(nrm) = na_val.try_logical_elt(0) {
                 na_rm = nrm == 1;
             }
         }
-        arg_list = current.cdr();
+        arg_list = current
+            .try_next_pairlist_cell()
+            .map_err(|err| err.to_string())?;
     }
 
-    // Process non-na.rm arguments
-    let mut s = Some(args);
+    let mut s = if args.is_nil() { None } else { Some(args) };
     while let Some(current) = s {
-        if current.is_nil() {
-            break;
-        }
-
-        // Skip na.rm argument
-        let skip = if let Some(tag) = current.tag() {
-            if let Some(pname) = tag.printname() {
-                if let Some(name_bytes) = pname.data_ptr() {
-                    let name_str =
-                        unsafe { std::ffi::CStr::from_ptr(name_bytes as *const libc::c_char) };
-                    name_str.to_bytes() == b"na.rm"
-                } else {
-                    false
-                }
-            } else {
-                false
-            }
-        } else {
-            false
-        };
-
-        if skip {
-            s = current.cdr();
+        if current
+            .try_tag_name_eq(b"na.rm")
+            .map_err(|err| err.to_string())?
+        {
+            s = current
+                .try_next_pairlist_cell()
+                .map_err(|err| err.to_string())?;
             continue;
         }
 
-        if let Some(t) = current.car() {
-            let n = t.len();
-            if n > 0 {
-                let cv = check_values_safe(t, 1, na_rm)?;
-                if cv != NA_LOGICAL {
-                    if cv == 0 {
-                        has_na = false;
-                        val = 0;
-                        break;
-                    }
-                } else {
-                    has_na = true;
+        let t = current.try_car().map_err(|err| err.to_string())?;
+        let n = t.len();
+        if n > 0 {
+            let cv = check_values_safe(t, 1, na_rm)?;
+            if cv != NA_LOGICAL {
+                if cv == 0 {
+                    has_na = false;
+                    val = 0;
+                    break;
                 }
-                val = cv;
+            } else {
+                has_na = true;
             }
+            val = cv;
         }
 
-        s = current.cdr();
+        s = current
+            .try_next_pairlist_cell()
+            .map_err(|err| err.to_string())?;
     }
 
     if has_na {
@@ -765,13 +723,13 @@ fn all_safe(args: Sexp<'_>) -> Result<SEXP, &'static str> {
 /// PRIMVAL(op) == 1 in the C source; here called directly as do_unique.
 pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
         match unique_safe(x, false, NA_INTEGER) {
             Ok(result) => result,
@@ -786,13 +744,13 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// `.Internal(duplicated(x, incomparables, fromLast, nmax))`
 pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
         match duplicated_safe(x, false, NA_INTEGER) {
             Ok(result) => result,
@@ -808,9 +766,9 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 /// PRIMVAL(op) == 2 in the C source.
 pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
         match any_safe(args_s) {
             Ok(result) => result,
@@ -826,9 +784,9 @@ pub unsafe fn do_any(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// PRIMVAL(op) == 1 in the C source.
 pub unsafe fn do_all(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
         match all_safe(args_s) {
             Ok(result) => result,

@@ -2469,13 +2469,13 @@ fn is_atomic_safe(x: Sexp) -> c_int {
 /// `as.character`, `as.integer`, `as.double`, `as.complex`, `as.logical`, `as.raw`.
 pub unsafe fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
         let op0 = PRIMVAL(op);
         match as_atomic_safe(x, op0) {
@@ -2491,20 +2491,17 @@ pub unsafe fn do_asatomic(call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 /// This is the `do_asvector()` function from coerce.c.
 pub unsafe fn do_asvector(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let Some(cdr) = args_s.cdr() else {
-            return x.as_raw();
-        };
-        let mode_str = match cdr.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let mode_str = match args_s.try_pairlist_arg(1) {
+            Ok(s) => s,
+            Err(_) => return x.as_raw(),
         };
         match as_vector_safe(x, mode_str) {
             Ok(result) => result,
@@ -2584,13 +2581,13 @@ unsafe fn elem_is_na(s: SEXP) -> c_int {
 /// is.logical, is.integer, is.double, is.complex, is.character, etc.
 pub unsafe fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return Rf_ScalarLogical(0),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return Rf_ScalarLogical(0),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return Rf_ScalarLogical(0),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return Rf_ScalarLogical(0),
         };
         let op0 = PRIMVAL(op);
         match is_type_safe(x, op0) {
@@ -2606,20 +2603,17 @@ pub unsafe fn do_is(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
 /// This is the `do_isvector()` function from coerce.c.
 pub unsafe fn do_isvector(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return Rf_ScalarLogical(0),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return Rf_ScalarLogical(0),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return Rf_ScalarLogical(0),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return Rf_ScalarLogical(0),
         };
-        let mode_arg = match args_s.cdr() {
-            Some(s) => match s.car() {
-                Some(s) => s,
-                None => return Rf_ScalarLogical(0),
-            },
-            None => return Rf_ScalarLogical(0),
+        let mode_arg = match args_s.try_pairlist_arg(1) {
+            Ok(s) => s,
+            Err(_) => return Rf_ScalarLogical(0),
         };
         match is_vector_type_safe(x, mode_arg) {
             Ok(result) => Rf_ScalarLogical(result),
@@ -3049,20 +3043,17 @@ pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
 /// behavior for `as.vector()`, `as.expression()`, `as.list()`, etc.
 pub unsafe fn do_coerce(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return R_NilValue(),
         };
-        let Some(cdr) = args_s.cdr() else {
-            return x.as_raw();
-        };
-        let mode_str = match cdr.car() {
-            Some(s) => s,
-            None => return R_NilValue(),
+        let mode_str = match args_s.try_pairlist_arg(1) {
+            Ok(s) => s,
+            Err(_) => return x.as_raw(),
         };
         match coerce_vector_safe(x, mode_str) {
             Ok(result) => result,

@@ -592,29 +592,21 @@ pub fn chartr_safe<'a>(x: Sexp<'a>, old: Sexp<'a>, new: Sexp<'a>) -> Result<SEXP
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let old = match args_s.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let old = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let args2 = match args_s.cdr() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let new = match args_s.try_pairlist_arg(1) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let new = match args2.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
-        };
-        let args3 = match args2.cdr() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
-        };
-        let x = match args3.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let x = match args_s.try_pairlist_arg(2) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
         match chartr_safe(x, old, new) {
@@ -640,13 +632,13 @@ pub fn toupper_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_toupper(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
         match toupper_safe(x) {
@@ -672,13 +664,13 @@ pub fn tolower_safe(x: Sexp<'_>) -> Result<SEXP, String> {
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_tolower(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
         match tolower_safe(x) {
@@ -806,34 +798,32 @@ pub fn nchar_safe(
 pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         unsafe {
-            let args_s = match Sexp::from_raw(args) {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
+            let args_s = match Sexp::try_from_raw(args) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
             };
 
-            let x_arg = match args_s.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
+            let x_arg = match args_s.try_pairlist_arg(0) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
             };
 
-            // Parse type argument (second arg)
-            let args2 = match args_s.cdr() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
-            };
-            let stype = match args2.car() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
+            let stype = match args_s.try_pairlist_arg(1) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
             };
 
             if stype.typeof_() != SEXPTYPE::STRSXP || stype.len() != 1 {
                 return crate::sexp::globals::R_NilValue();
             }
-            let type_char = match stype.string_elt(0) {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
+            let type_char = match stype.try_string_elt(0) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
             };
-            let type_str = std::ffi::CStr::from_ptr(CHAR(type_char.as_raw())).to_string_lossy();
+            let type_str = match type_char.try_as_str() {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
+            };
             let type_str_trimmed = type_str.trim();
 
             let type_code: NcharType = if type_str_trimmed.starts_with("bytes") {
@@ -846,17 +836,11 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 return crate::sexp::globals::R_NilValue();
             };
 
-            // Parse allowNA (third arg)
-            let args3 = match args2.cdr() {
-                Some(s) => s,
-                None => return crate::sexp::globals::R_NilValue(),
+            let allow_na_arg = match args_s.try_pairlist_arg(2) {
+                Ok(s) => s,
+                Err(_) => return crate::sexp::globals::R_NilValue(),
             };
-            let allow_na_val = as_logical(
-                args3
-                    .car()
-                    .map(|s| s.as_raw())
-                    .unwrap_or_else(|| crate::sexp::globals::R_NilValue()),
-            );
+            let allow_na_val = as_logical(allow_na_arg.as_raw());
             let allow_na = if allow_na_val == crate::sexp::ffi::NA_LOGICAL {
                 false
             } else {
@@ -867,16 +851,11 @@ pub unsafe fn do_nchar(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             let nargs = crate::sexp::constructors::Rf_length(args);
             let keep_na: bool;
             if nargs >= 4 {
-                let args4 = match args3.cdr() {
-                    Some(s) => s,
-                    None => return crate::sexp::globals::R_NilValue(),
+                let keep_na_arg = match args_s.try_pairlist_arg(3) {
+                    Ok(s) => s,
+                    Err(_) => return crate::sexp::globals::R_NilValue(),
                 };
-                let keep_na_val = as_logical(
-                    args4
-                        .car()
-                        .map(|s| s.as_raw())
-                        .unwrap_or_else(|| crate::sexp::globals::R_NilValue()),
-                );
+                let keep_na_val = as_logical(keep_na_arg.as_raw());
                 if keep_na_val == crate::sexp::ffi::NA_LOGICAL {
                     keep_na = type_code != NcharType::Width;
                 } else {
@@ -993,30 +972,25 @@ pub fn substr_safe<'a>(
 /// For this port we use the byte-level (non-MBCS) path.
 pub unsafe fn do_substr(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let args_s = match Sexp::from_raw(args) {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let args_s = match Sexp::try_from_raw(args) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
-        let x = match args_s.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let x = match args_s.try_pairlist_arg(0) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
-        let args2 = match args_s.cdr() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
-        };
-        let sa = match args2.car() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let sa = match args_s.try_pairlist_arg(1) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
 
-        let args3 = match args2.cdr() {
-            Some(s) => s,
-            None => return crate::sexp::globals::R_NilValue(),
+        let so = match args_s.try_optional_pairlist_arg(2) {
+            Ok(s) => s,
+            Err(_) => return crate::sexp::globals::R_NilValue(),
         };
-        let so = args3.car();
 
         match substr_safe(x, sa, so) {
             Ok(result) => result,

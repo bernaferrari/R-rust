@@ -53,6 +53,8 @@ pub enum SexpError {
     },
     /// An element index was outside the vector length.
     OutOfBounds { index: R_xlen_t, len: R_xlen_t },
+    /// A requested pairlist argument was not present.
+    MissingArgument { index: usize },
     /// A vector-like object had no data buffer.
     MissingData { sexptype: SEXPTYPE },
     /// A string value was not valid UTF-8.
@@ -71,6 +73,9 @@ impl std::fmt::Display for SexpError {
             }
             SexpError::OutOfBounds { index, len } => {
                 write!(f, "index {index} is outside vector length {len}")
+            }
+            SexpError::MissingArgument { index } => {
+                write!(f, "missing pairlist argument at index {index}")
             }
             SexpError::MissingData { sexptype } => {
                 write!(f, "SEXP {:?} has no data buffer", sexptype.0)
@@ -720,6 +725,65 @@ impl<'a> Sexp<'a> {
     pub fn try_tag(self) -> SexpResult<Sexp<'a>> {
         self.try_pairlist()?;
         Self::checked_child(unsafe { (*self.ptr).data.listsxp.tagval })
+    }
+
+    /// Return the next pairlist cell, or `None` at the end of the chain.
+    #[inline]
+    pub(crate) fn try_next_pairlist_cell(self) -> SexpResult<Option<Sexp<'a>>> {
+        let next = self.try_cdr()?;
+        if next.is_nil() {
+            Ok(None)
+        } else {
+            Ok(Some(next))
+        }
+    }
+
+    /// Return the value at the `index`th pairlist cell.
+    pub(crate) fn try_pairlist_arg(mut self, index: usize) -> SexpResult<Sexp<'a>> {
+        for _ in 0..index {
+            if self.is_nil() {
+                return Err(SexpError::MissingArgument { index });
+            }
+            self = self.try_cdr()?;
+        }
+
+        if self.is_nil() {
+            Err(SexpError::MissingArgument { index })
+        } else {
+            self.try_car()
+        }
+    }
+
+    /// Return the value at the `index`th pairlist cell, or `None` when absent.
+    pub(crate) fn try_optional_pairlist_arg(
+        mut self,
+        index: usize,
+    ) -> SexpResult<Option<Sexp<'a>>> {
+        for _ in 0..index {
+            if self.is_nil() {
+                return Ok(None);
+            }
+            self = self.try_cdr()?;
+        }
+
+        if self.is_nil() {
+            Ok(None)
+        } else {
+            self.try_car().map(Some)
+        }
+    }
+
+    /// Compare a pairlist cell's symbol tag to a byte name.
+    ///
+    /// Untagged cells and non-symbol tags are valid R list cells; they simply
+    /// do not match.
+    pub(crate) fn try_tag_name_eq(self, name: &[u8]) -> SexpResult<bool> {
+        let tag = self.try_tag()?;
+        if tag.is_nil() || tag.typeof_() != SEXPTYPE::SYMSXP {
+            return Ok(false);
+        }
+
+        Ok(tag.try_printname()?.try_as_bytes()? == name)
     }
 
     // --- Closure accessors ---
@@ -1897,6 +1961,37 @@ mod tests {
         assert!(sexp.tag().is_some());
         assert!(some(sexp.car()).is_symbol() == false);
         assert!(some(sexp.tag()).is_symbol());
+    }
+
+    #[test]
+    fn test_pairlist_argument_helpers() {
+        let _session = crate::sexp::session::RSession::new();
+        let mut arena = RArena::new();
+        let first_value = arena.alloc_node(SEXPTYPE::INTSXP);
+        let second_value = arena.alloc_node(SEXPTYPE::REALSXP);
+        let na_rm = unsafe { crate::sexp::symbol::Rf_install(c"na.rm".as_ptr()) };
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        let second_cell = arena.cons(second_value, nil, nil);
+        let first_cell = arena.cons(first_value, second_cell, na_rm);
+
+        let first = some(Sexp::from_raw(first_cell));
+        let second = some(Sexp::from_raw(second_cell));
+
+        assert_eq!(first.try_pairlist_arg(0).unwrap().as_raw(), first_value);
+        assert_eq!(first.try_pairlist_arg(1).unwrap().as_raw(), second_value);
+        assert!(matches!(
+            first.try_pairlist_arg(2),
+            Err(SexpError::MissingArgument { index: 2 })
+        ));
+        assert!(first.try_optional_pairlist_arg(2).unwrap().is_none());
+        assert!(first.try_optional_pairlist_arg(10).unwrap().is_none());
+        assert_eq!(
+            first.try_next_pairlist_cell().unwrap().unwrap().as_raw(),
+            second_cell
+        );
+        assert!(second.try_next_pairlist_cell().unwrap().is_none());
+        assert!(first.try_tag_name_eq(b"na.rm").unwrap());
+        assert!(!second.try_tag_name_eq(b"na.rm").unwrap());
     }
 
     #[test]
