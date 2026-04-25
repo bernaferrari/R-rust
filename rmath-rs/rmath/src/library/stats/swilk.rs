@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Shapiro-Wilk W test
 //! Port of r-source/src/library/stats/src/swilk.c
 //! Based on Applied Statistics algorithms AS181, R94

@@ -32,9 +32,8 @@
 #![allow(clippy::borrow_as_ptr)]
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 #![allow(clippy::ptr_eq)]
-// Legacy ported modules use `unsafe fn` as their boundary, matching the
-// original C entry points. New Android-facing APIs remain safe-audited.
-#![allow(unsafe_op_in_unsafe_fn)]
+// Legacy ported modules that still need `unsafe_op_in_unsafe_fn` are
+// tracked with measured module-level allows in docs/unsafe-op-allowlist.tsv.
 // Math code style: single-char variables, precise constants, float comparisons
 #![allow(clippy::many_single_char_names)]
 #![allow(clippy::similar_names)]

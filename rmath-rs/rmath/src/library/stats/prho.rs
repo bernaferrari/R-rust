@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Spearman's rho probability (AS 89)
 //! Port of r-source/src/library/stats/src/prho.c
 

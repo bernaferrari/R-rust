@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Cairo graphics device module (devCairo.c, 94 lines)
 //!
 //! Provides Cairo device initialization by dynamically loading the

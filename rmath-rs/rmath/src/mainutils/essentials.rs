@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Essential R built-in functions — c(), seq(), rep(), paste(), cat(), typeof(), is.na(), names().
 //!
 //! These are the most fundamental R functions that every R program uses.

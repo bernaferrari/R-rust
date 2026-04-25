@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Quartz graphics device module (devQuartz.c, 3569 lines)
 //!
 //! Provides the macOS-native Quartz graphics device, including on-screen

@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  * Ported from R's Fortran B-spline routines:
  *   - bsplvd.f / bsplvb.f : B-spline value and derivative evaluation

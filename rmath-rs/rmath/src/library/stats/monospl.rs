@@ -1,3 +1,5 @@
+#![allow(unsafe_op_in_unsafe_fn)]
+// legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2010	The R Foundation
  *  Copyright (C) 2016	The R Core Team

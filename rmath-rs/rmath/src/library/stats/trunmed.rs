@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Port of R's Trunmed.c -- running median smoother using a double heap algorithm
 //! (Haerdle & Steiger, 1995, DOI:10.2307/2986349).
 //!

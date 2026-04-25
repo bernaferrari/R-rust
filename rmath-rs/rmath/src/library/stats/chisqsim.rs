@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Chi-squared simulation for contingency tables
 //! Port of r-source/src/library/stats/src/chisqsim.c
 

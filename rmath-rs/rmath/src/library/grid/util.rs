@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Port of R's src/library/grid/src/util.c -- grid utility functions.
 //!
 //! Contains list element access, numeric extraction, rectangle geometry,

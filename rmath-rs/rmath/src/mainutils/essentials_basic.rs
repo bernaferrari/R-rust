@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 use std::collections::BTreeMap;
 use std::ffi::CString;
 use std::os::raw::c_int;

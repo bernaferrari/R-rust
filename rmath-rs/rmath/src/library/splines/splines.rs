@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! B-spline basis evaluation and spline value computation.
 //!
 //! Port of r-source/src/library/splines/src/splines.c

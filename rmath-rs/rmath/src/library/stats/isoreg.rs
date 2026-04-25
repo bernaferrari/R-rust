@@ -1,3 +1,5 @@
+#![allow(unsafe_op_in_unsafe_fn)]
+// legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /* --- Isotonic regression ---
  * code simplified from VR_mds_fn() which is part of MASS.c,
  * Copyright (C) 1995  Brian Ripley

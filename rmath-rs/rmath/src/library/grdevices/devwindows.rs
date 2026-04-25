@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Windows graphics device module (devWindows.c, 4053 lines)
 //!
 //! Provides Windows GDI-based graphics device (devga), savePlot,

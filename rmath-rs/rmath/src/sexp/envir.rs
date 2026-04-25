@@ -1,3 +1,4 @@
+#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Environment operations — ports R's src/main/envir.c.
