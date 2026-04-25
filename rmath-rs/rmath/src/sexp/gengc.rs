@@ -1502,14 +1502,15 @@ mod tests {
     fn test_minor_gc_traces_global_environment_bindings() {
         let session = RSession::new();
 
-        let value = with_arena(|arena| {
+        let value_raw = with_arena(|arena| {
             let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
             unsafe {
                 *(crate::sexp::accessors::INTEGER(value)) = 123;
             }
             value
         });
-        session.define_var("kept_by_global_env", value);
+        let value = session.sexp(value_raw).expect("value belongs to session");
+        assert!(session.define_var("kept_by_global_env", value));
 
         with_arena(|arena| {
             let garbage = arena.alloc_node(SEXPTYPE::REALSXP);
@@ -1524,11 +1525,11 @@ mod tests {
         });
 
         let found = session.find_var("kept_by_global_env").unwrap();
-        assert_eq!(found.as_raw(), value);
+        assert_eq!(found.as_raw(), value_raw);
         unsafe {
-            assert_eq!((*value).sxpinfo.type_of(), SEXPTYPE::INTSXP);
-            assert_eq!((*value).vecsxp_length(), 1);
-            assert_eq!(*(crate::sexp::accessors::INTEGER(value)), 123);
+            assert_eq!((*value_raw).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!((*value_raw).vecsxp_length(), 1);
+            assert_eq!(*(crate::sexp::accessors::INTEGER(value_raw)), 123);
         }
     }
 

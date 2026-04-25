@@ -41,8 +41,8 @@ use super::instance::{
     RInstance, clear_current_instance_if, replace_current_instance, set_current_instance,
 };
 use super::memory::{ArenaBudget, RArena};
-use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 use super::object::Sexp;
+use super::protect::{R_ProtectCount, Rf_protect, Rf_unprotect};
 
 /// Error returned by safe session evaluation APIs.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -410,19 +410,32 @@ impl RSession {
     ///
     /// Names with interior NUL bytes are rejected.
     ///
-    /// The `value` pointer must be a valid SEXP or null.
-    pub fn define_var(&self, name: &str, value: SEXP) {
+    /// The value must belong to this session, except for immutable singleton
+    /// sentinels such as `NULL`.
+    pub fn define_var(&self, name: &str, value: Sexp<'_>) -> bool {
+        if self.sexp(value.as_raw()).is_none() {
+            return false;
+        }
+        unsafe { self.define_var_raw(name, value.as_raw()) }
+    }
+
+    /// Define a variable from a raw pointer for internal compatibility paths.
+    ///
+    /// Safe Rust code should use [`define_var`](Self::define_var), which
+    /// checks that the value is owned by this session before installing it.
+    pub(crate) unsafe fn define_var_raw(&self, name: &str, value: SEXP) -> bool {
         if !self.active {
-            return;
+            return false;
         }
         self.with_active(|| {
             let Some(symbol) = install_symbol(name) else {
-                return;
+                return false;
             };
             unsafe {
                 crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
             }
-        });
+            true
+        })
     }
 
     /// Run a closure with mutable access to this session's arena.
@@ -785,7 +798,8 @@ mod tests {
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
         assert!(sexp.set_integer_elt(0, 42));
 
-        session.define_var("session_defined_value", value);
+        let value = session.sexp(value).expect("value belongs to session");
+        assert!(session.define_var("session_defined_value", value));
 
         let found = session
             .find_var("session_defined_value")
@@ -804,7 +818,8 @@ mod tests {
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
         assert!(sexp.set_integer_elt(0, 123));
 
-        older.define_var("session_local_symbol", value);
+        let value = older.sexp(value).expect("value belongs to older session");
+        assert!(older.define_var("session_local_symbol", value));
 
         let found = older
             .find_var("session_local_symbol")
@@ -814,13 +829,28 @@ mod tests {
     }
 
     #[test]
+    fn test_session_define_var_rejects_foreign_value() {
+        let mut owner = RSession::new();
+        let other = RSession::new();
+
+        let value = owner
+            .with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1))
+            .expect("owner session should be active");
+        let value = owner.sexp(value).expect("value belongs to owner");
+
+        assert!(!other.define_var("foreign_value", value));
+        assert!(other.find_var("foreign_value").is_none());
+    }
+
+    #[test]
     fn test_session_rejects_interior_nul_symbol_names() {
         let session = RSession::new();
         let value = with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
         let sexp = Sexp::from_raw(value).expect("integer vector allocation failed");
         assert!(sexp.set_integer_elt(0, 99));
 
-        session.define_var("session_bad\0name", value);
+        let value = session.sexp(value).expect("value belongs to session");
+        assert!(!session.define_var("session_bad\0name", value));
 
         assert!(session.find_var("session_bad\0name").is_none());
         assert!(session.find_var("session_bad").is_none());
