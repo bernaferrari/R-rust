@@ -4,9 +4,9 @@
 collects the checks that matter for the Android-first Rust port into one
 repeatable gate with subsystem labels in the output.
 
-The GitHub workflows use the same policy split: formatting and focused tests
-are enforced, Android checks run through `scripts/android_toolchain_check.sh`,
-and strict clippy remains tracked separately by bead `rport-0dbg`.
+The GitHub workflows use the same policy split: formatting, strict clippy,
+focused tests, Android checks, conformance parity, artifact validation, and the
+safe API audit are the default release bar.
 
 ## Commands
 
@@ -20,6 +20,12 @@ Full local gate, including the slower packaging and generated binding checks:
 
 ```bash
 scripts/release_gate.sh --full
+```
+
+Android packaging without the rest of `--full`:
+
+```bash
+scripts/release_gate.sh --android-package
 ```
 
 Host-only development run when an Android SDK/NDK is not available:
@@ -46,7 +52,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Desktop host smoke | optional | yes | `scripts/desktop_host_smoke.sh` |
 | UniFFI binding generation | optional | yes | `scripts/generate_uniffi_bindings.sh --check` |
 | Android Gradle package smoke | optional | yes | `scripts/android_package_smoke.sh --check` |
-| Strict clippy | optional | optional | `scripts/release_gate.sh --strict-clippy` |
+| Strict clippy | yes | yes | `cargo clippy --all-targets --all-features -- -D warnings` |
 
 ## Prerequisites
 
@@ -60,20 +66,11 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 
 ## Warning Policy
 
-The gate enforces formatting today. For compile/test checks it temporarily adds
-`-Awarnings` to `RUSTFLAGS`, matching the current porting state where legacy
-C-shaped modules still contain warning and clippy debt.
-
-Strict clippy is intentionally not part of the passing default gate yet. Run it
-manually with:
-
-```bash
-scripts/release_gate.sh --strict-clippy
-```
-
-The zero-warning cleanup is tracked by bead `rport-0dbg`. Until that closes,
-release claims should cite the passing release gate and the explicit warning
-policy rather than claiming a zero-warning workspace.
+The gate enforces formatting and strict clippy. For compile/test commands it
+adds `-Awarnings` to `RUSTFLAGS`, matching the current porting state where some
+legacy translated modules still emit ordinary compiler warnings. Do not treat
+that as permission to add warnings in Rust-shaped public surfaces; app-facing
+crates are also checked by `scripts/audit_safe_api.sh`.
 
 ## Artifacts
 
@@ -85,3 +82,15 @@ The gate writes conformance reports to:
 The JSON report is checked for nonzero total cases and zero failing or
 unexpected-passing cases. The Markdown report is the human-readable release
 attachment.
+
+The Android showcase script writes separate demo artifacts:
+
+- `target/android-showcase/showcase-transcript.txt`
+- `target/android-showcase/line-plot.png`
+- `target/android-showcase/point-plot.png`
+
+Generate them with:
+
+```bash
+scripts/android_showcase_artifacts.sh --check
+```

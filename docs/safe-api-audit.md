@@ -32,7 +32,7 @@ The release gate runs this script by default.
 The app boundary is clean, but the core interpreter still has legitimate raw
 and unsafe internals while the C port is being sessionized. Track those through:
 
-- `rport-0dbg`: strict clippy and Rust 2024 unsafe-op cleanup
+- `rport-0dbg`: remaining Rust 2024 unsafe-op cleanup below the app boundary
 - `rport-x3pp`: object/S3 parity, including package-created list-object S3 dispatch
 - `rport-e6q`: older broad unsafe/raw SEXP audit issue; use this document and
   `rport-erop` as the release-facing audit source
