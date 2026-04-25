@@ -22,11 +22,13 @@ use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
-    COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL, REAL_ELT,
-    STRING_ELT, TYPEOF, XLENGTH,
+    CHAR, COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL,
+    REAL_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
+use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
 // R_PrintData struct -- full R_print parameters for printvector.c
@@ -1184,13 +1186,6 @@ pub unsafe fn GetMatrixDimnames(
 ) {
     unsafe {
         // Extract dimnames[[1]], dimnames[[2]], names(dimnames)[1], names(dimnames)[2]
-        // This requires getAttrib which is in attrib_core.rs
-        unsafe extern "C" {
-            fn Rf_install(name: *const c_char) -> SEXP;
-            fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-        }
-        use crate::eval::attrib_core::getAttrib;
-
         // Initialize outputs to NilValue/null
         if !rl.is_null() {
             *rl = R_NilValue();
@@ -1237,7 +1232,6 @@ pub unsafe fn GetMatrixDimnames(
 
         // names(dimnames)[[1]] and [[2]] are CHARSXP values
         unsafe extern "C" {
-            fn CHAR(x: SEXP) -> *const c_char;
             fn Rf_isNull(x: SEXP) -> c_int;
         }
 

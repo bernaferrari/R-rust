@@ -4753,6 +4753,30 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "dimnames<-" => unsafe {
+            crate::mainutils::essentials::do_dimnames_set(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "rownames<-" => unsafe {
+            crate::mainutils::essentials::do_rownames_set(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "colnames<-" => unsafe {
+            crate::mainutils::essentials::do_colnames_set(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         // Environment
         "exists" => unsafe {
             crate::mainutils::essentials::do_exists(

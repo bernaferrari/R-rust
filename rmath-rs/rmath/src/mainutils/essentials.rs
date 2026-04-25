@@ -3218,6 +3218,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "Names",
         "attr",
         "names<-",
+        "dimnames<-",
+        "rownames<-",
+        "colnames<-",
         "class<-",
         "noquote",
         "deparse",
@@ -7658,6 +7661,13 @@ pub unsafe fn do_rownames(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
+    let dimnames = crate::sexp::attrib_core::getAttrib(
+        x,
+        Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
+    );
+    if !dimnames.is_null() && TYPEOF(dimnames) == SEXPTYPE::VECSXP && LENGTH(dimnames) >= 1 {
+        return VECTOR_ELT(dimnames, 0);
+    }
     crate::sexp::attrib_core::getAttrib(
         x,
         Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
@@ -7698,6 +7708,60 @@ pub unsafe fn do_names_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
         value,
     );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `dimnames(x) <- value` — set matrix/array dimension names.
+pub unsafe fn do_dimnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+    crate::sexp::attrib_core::setAttrib(
+        x,
+        Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr()),
+        value,
+    );
+    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+    x
+}
+
+/// R's `rownames(x) <- value` — set matrix row names through dimnames[[1]].
+pub unsafe fn do_rownames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    set_matrix_dimname(args, 0)
+}
+
+/// R's `colnames(x) <- value` — set matrix column names through dimnames[[2]].
+pub unsafe fn do_colnames_set(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    set_matrix_dimname(args, 1)
+}
+
+unsafe fn set_matrix_dimname(args: SEXP, axis: i64) -> SEXP {
+    let x = CAR(args);
+    let value = CAR(CDR(args));
+    if x.is_null() || x == R_NilValue() {
+        return R_NilValue();
+    }
+
+    let dimnames_sym = Rf_install(CString::new("dimnames").unwrap_or_default().as_ptr());
+    let mut dimnames = crate::sexp::attrib_core::getAttrib(x, dimnames_sym);
+    if dimnames.is_null() || dimnames == R_NilValue() || TYPEOF(dimnames) != SEXPTYPE::VECSXP {
+        dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
+        if dimnames.is_null() {
+            return x;
+        }
+        let _p = Rf_protect(dimnames);
+        SET_VECTOR_ELT(dimnames, 0, R_NilValue());
+        SET_VECTOR_ELT(dimnames, 1, R_NilValue());
+        crate::sexp::attrib_core::setAttrib(x, dimnames_sym, dimnames);
+        crate::sexp::protect::Rf_unprotect(1);
+    }
+
+    if LENGTH(dimnames) > axis as i32 {
+        SET_VECTOR_ELT(dimnames, axis, value);
+    }
     crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
     x
 }

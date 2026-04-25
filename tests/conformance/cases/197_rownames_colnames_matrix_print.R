@@ -1,0 +1,6 @@
+m <- matrix(1:4, nrow = 2)
+rownames(m) <- c("a", "b")
+colnames(m) <- c("x", "y")
+print(m)
+print(rownames(m))
+print(colnames(m))

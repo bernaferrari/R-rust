@@ -298,6 +298,16 @@ unsafe fn apply_replacement_call(assign_fn: SEXP, call: SEXP, args: SEXP, rho: S
         match name {
             "[<-" => crate::mainutils::subassign::do_subassign_dflt(call, assign_fn, args, rho),
             "[[<-" => crate::mainutils::subassign::do_subassign2_dflt(call, assign_fn, args, rho),
+            "names<-" => crate::mainutils::essentials::do_names_set(call, assign_fn, args, rho),
+            "dimnames<-" => {
+                crate::mainutils::essentials::do_dimnames_set(call, assign_fn, args, rho)
+            }
+            "rownames<-" => {
+                crate::mainutils::essentials::do_rownames_set(call, assign_fn, args, rho)
+            }
+            "colnames<-" => {
+                crate::mainutils::essentials::do_colnames_set(call, assign_fn, args, rho)
+            }
             _ => Rf_eval(call, rho),
         }
     }
