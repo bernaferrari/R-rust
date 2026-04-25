@@ -4650,22 +4650,22 @@ pub unsafe fn do_rm(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 /// R's `dnorm(x, mean=0, sd=1)` — normal density.
 pub unsafe fn do_dnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_dist_unary(args, 0.0, 1.0, |x, m, s| {
-        crate::dist::normal::dnorm4_inner(x, m, s, false)
+    do_dist_unary_with_log(args, 0.0, 1.0, |x, m, s, give_log| {
+        crate::dist::normal::dnorm4_inner(x, m, s, give_log)
     })
 }
 
 /// R's `pnorm(q, mean=0, sd=1)` — normal CDF.
 pub unsafe fn do_pnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_dist_unary(args, 0.0, 1.0, |q, m, s| {
-        crate::dist::normal::pnorm5_inner(q, m, s, true, false)
+    do_dist_unary_with_tail_log(args, 0.0, 1.0, |q, m, s, lower_tail, log_p| {
+        crate::dist::normal::pnorm5_inner(q, m, s, lower_tail, log_p)
     })
 }
 
 /// R's `qnorm(p, mean=0, sd=1)` — normal quantile.
 pub unsafe fn do_qnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    do_dist_unary(args, 0.0, 1.0, |p, m, s| {
-        crate::dist::normal::qnorm5_inner(p, m, s, true, false)
+    do_dist_unary_with_tail_log(args, 0.0, 1.0, |p, m, s, lower_tail, log_p| {
+        crate::dist::normal::qnorm5_inner(p, m, s, lower_tail, log_p)
     })
 }
 
@@ -5147,6 +5147,78 @@ fn do_dist_unary(
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i), p1, p2);
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
+    }
+}
+
+fn do_dist_unary_with_log(
+    args: SEXP,
+    default_p1: f64,
+    default_p2: f64,
+    f: fn(f64, f64, f64, bool) -> f64,
+) -> SEXP {
+    unsafe {
+        let [x, p1_arg, p2_arg, log_arg, ..] = dist_args::<4>(args);
+        let p1 = real_or_default(p1_arg, default_p1);
+        let p2 = real_or_default(p2_arg, default_p2);
+        let give_log = logical_arg(log_arg, false);
+        map_real_distribution(x, |x| f(x, p1, p2, give_log))
+    }
+}
+
+fn do_dist_unary_with_tail_log(
+    args: SEXP,
+    default_p1: f64,
+    default_p2: f64,
+    f: fn(f64, f64, f64, bool, bool) -> f64,
+) -> SEXP {
+    unsafe {
+        let [x, p1_arg, p2_arg, lower_tail_arg, log_p_arg] = dist_args::<5>(args);
+        let p1 = real_or_default(p1_arg, default_p1);
+        let p2 = real_or_default(p2_arg, default_p2);
+        let lower_tail = logical_arg(lower_tail_arg, true);
+        let log_p = logical_arg(log_p_arg, false);
+        map_real_distribution(x, |x| f(x, p1, p2, lower_tail, log_p))
+    }
+}
+
+unsafe fn dist_args<const N: usize>(args: SEXP) -> [SEXP; N] {
+    unsafe {
+        let mut out = [R_NilValue(); N];
+        let mut cur = args;
+        for slot in &mut out {
+            if cur.is_null() || cur == R_NilValue() {
+                break;
+            }
+            *slot = CAR(cur);
+            cur = CDR(cur);
+        }
+        out
+    }
+}
+
+unsafe fn map_real_distribution(mut x: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
+    unsafe {
+        if x.is_null() {
+            return R_NilValue();
+        }
+        if x == R_NilValue() {
+            x = Rf_allocVector3(SEXPTYPE::REALSXP, 0);
+            if x.is_null() {
+                return R_NilValue();
+            }
+        }
+        let n = XLENGTH(x);
+        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        if result.is_null() {
+            return R_NilValue();
+        }
+        let _p = Rf_protect(result);
+        let dst = REAL(result);
+        for i in 0..n {
+            *dst.add(i as usize) = f(elt_real_safe(x, i));
         }
         crate::sexp::protect::Rf_unprotect(1);
         result

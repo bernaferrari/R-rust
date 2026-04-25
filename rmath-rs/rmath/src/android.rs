@@ -18,8 +18,8 @@
 use crate::sexp::RSession as CoreRSession;
 use crate::sexp::builder;
 use crate::sexp::ffi::SEXPTYPE;
-use crate::sexp::output;
 use crate::sexp::object::{Sexp, SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
+use crate::sexp::output;
 use crate::sexp::session::CancellationFlag;
 
 // ---------------------------------------------------------------------------
@@ -1275,6 +1275,25 @@ mod tests {
         assert!((dcauchy.value - 0.3183098861837907).abs() < 1e-12);
         assert_eq!(cumsum.output, "[1] 1 3 6");
         assert_eq!(cumprod.output, "[1] 1 2 6");
+    }
+
+    #[test]
+    fn test_eval_normal_helpers_respect_tail_and_log_flags() {
+        let mut session = RSession::new();
+
+        let dnorm_log = session.eval("dnorm(0, 0, 1, TRUE)");
+        let pnorm_upper = session.eval("pnorm(1, 0, 1, FALSE, FALSE)");
+        let pnorm_log = session.eval("pnorm(1, 0, 1, TRUE, TRUE)");
+        let qnorm_upper = session.eval("qnorm(0.25, 0, 1, FALSE, FALSE)");
+        let qnorm_log = session.eval("qnorm(log(0.25), 0, 1, TRUE, TRUE)");
+
+        assert!((dnorm_log.value - session.dnorm(0.0, 0.0, 1.0, true)).abs() < 1e-12);
+        assert!((pnorm_upper.value - session.pnorm(1.0, 0.0, 1.0, false, false)).abs() < 1e-12);
+        assert!((pnorm_log.value - session.pnorm(1.0, 0.0, 1.0, true, true)).abs() < 1e-12);
+        assert!((qnorm_upper.value - session.qnorm(0.25, 0.0, 1.0, false, false)).abs() < 1e-12);
+        assert!(
+            (qnorm_log.value - session.qnorm(0.25_f64.ln(), 0.0, 1.0, true, true)).abs() < 1e-12
+        );
     }
 
     #[test]
