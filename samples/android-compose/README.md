@@ -28,6 +28,16 @@ cargo ndk -t arm64-v8a -o samples/android-compose/app/src/main/jniLibs build -p 
 The checked-in `crates/r-uniffi/uniffi.toml` sets the Kotlin package to
 `com.rport.uniffi`, which matches the sample imports.
 
+For a versioned local release layout instead of editing the sample tree
+directly, run:
+
+```bash
+scripts/package_release_artifacts.sh --check
+```
+
+The generated bundle contains Kotlin bindings under `bindings/kotlin/` and the
+Android shared library at `android/jniLibs/arm64-v8a/libr_uniffi.so`.
+
 ## Build And Run
 
 ```bash

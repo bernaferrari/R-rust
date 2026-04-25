@@ -142,13 +142,19 @@ Performance and memory snapshots:
 scripts/performance_report.sh --quick --check
 ```
 
+Local release bundle:
+
+```bash
+scripts/package_release_artifacts.sh --check
+```
+
 Conformance reports are written to:
 
 - `target/release-gate/conformance/summary.json`
 - `target/release-gate/conformance/summary.md`
 
 See `docs/conformance.md`, `docs/release-gate.md`,
-`docs/adversarial-testing.md`, `docs/performance.md`,
+`docs/release-packaging.md`, `docs/adversarial-testing.md`, `docs/performance.md`,
 `docs/upstream-port-map.md`, and `docs/rust-r-port-architecture.md` for the
 detailed policy.
 

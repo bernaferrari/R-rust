@@ -111,3 +111,10 @@ gate because wall-clock timings are machine-sensitive:
 ```bash
 scripts/performance_report.sh --quick --check
 ```
+
+Release packaging is also explicit, because it writes a distributable local
+bundle under `target/release-artifacts`:
+
+```bash
+scripts/package_release_artifacts.sh --check
+```
