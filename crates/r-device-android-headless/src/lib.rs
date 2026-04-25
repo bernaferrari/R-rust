@@ -39,9 +39,10 @@ impl std::fmt::Debug for TextFont {
 fn load_system_font() -> Option<TextFont> {
     for path in SYSTEM_FONT_PATHS {
         if let Ok(data) = std::fs::read(path)
-            && let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default()) {
-                return Some(TextFont(font));
-            }
+            && let Ok(font) = fontdue::Font::from_bytes(data, fontdue::FontSettings::default())
+        {
+            return Some(TextFont(font));
+        }
     }
     None
 }
@@ -212,9 +213,6 @@ impl RenderPlot for AndroidHeadlessRenderer {
         let mut x_cursor = pos.x;
 
         for ch in text.chars() {
-            if !ch.is_ascii() {
-                continue;
-            }
             if ch == ' ' {
                 let (space_metrics, _) = font.rasterize(' ', font_size);
                 x_cursor += space_metrics.advance_width;
@@ -316,5 +314,32 @@ mod tests {
         );
         let png = renderer.finish();
         assert!(!png.is_empty());
+    }
+
+    #[test]
+    fn test_draw_text_keeps_non_ascii_glyphs() {
+        let mut renderer = AndroidHeadlessRenderer::new(120, 60);
+        renderer.clear(Color::WHITE);
+        if renderer.font.is_none() {
+            return;
+        }
+
+        renderer.draw_text(
+            "μ",
+            Point { x: 12.0, y: 34.0 },
+            &PlotParameters {
+                font_size: 28.0,
+                text_color: Color::BLACK,
+                dpi: 96.0,
+            },
+        );
+
+        let pixmap = renderer.pixmap.as_ref().expect("pixmap");
+        assert!(
+            pixmap
+                .data()
+                .chunks_exact(4)
+                .any(|rgba| rgba != [255, 255, 255, 255])
+        );
     }
 }

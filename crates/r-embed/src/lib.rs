@@ -309,16 +309,26 @@ impl RSession {
 
     fn plot_series(&mut self, code: &str) -> Result<PlotSeries, RSessionError> {
         let call = parse_plot_call(code);
-        let values = match call {
-            PlotCall::One(expr) => {
+        let values = match call.positional.as_slice() {
+            [expr] => {
                 let y = numeric_series(self.eval_result(expr)?.value)?;
                 let x = (1..=y.len()).map(|value| value as f64).collect();
-                PlotSeries { x, y }
+                PlotSeries {
+                    x,
+                    y,
+                    options: call.options.with_default_labels("Index", expr),
+                }
             }
-            PlotCall::Two(x_expr, y_expr) => PlotSeries {
+            [x_expr, y_expr, ..] => PlotSeries {
                 x: numeric_series(self.eval_result(x_expr)?.value)?,
                 y: numeric_series(self.eval_result(y_expr)?.value)?,
+                options: call.options.with_default_labels(x_expr, y_expr),
             },
+            [] => {
+                return Err(RSessionError::RenderError(
+                    "plot requires at least one numeric expression".to_string(),
+                ));
+            }
         };
 
         if values.x.is_empty() || values.y.is_empty() {
@@ -382,11 +392,52 @@ fn description_field(description: &str, key: &str) -> Option<String> {
 struct PlotSeries {
     x: Vec<f64>,
     y: Vec<f64>,
+    options: PlotOptions,
 }
 
-enum PlotCall<'a> {
-    One(&'a str),
-    Two(&'a str, &'a str),
+struct PlotCall<'a> {
+    positional: Vec<&'a str>,
+    options: PlotOptions,
+}
+
+#[derive(Debug, Clone)]
+struct PlotOptions {
+    main: Option<String>,
+    xlab: Option<String>,
+    ylab: Option<String>,
+    color: Color,
+    plot_type: PlotType,
+}
+
+impl Default for PlotOptions {
+    fn default() -> Self {
+        Self {
+            main: None,
+            xlab: None,
+            ylab: None,
+            color: Color::BLUE,
+            plot_type: PlotType::Both,
+        }
+    }
+}
+
+impl PlotOptions {
+    fn with_default_labels(mut self, xlab: &str, ylab: &str) -> Self {
+        if self.xlab.is_none() {
+            self.xlab = Some(short_label(xlab));
+        }
+        if self.ylab.is_none() {
+            self.ylab = Some(short_label(ylab));
+        }
+        self
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PlotType {
+    Points,
+    Lines,
+    Both,
 }
 
 fn parse_plot_call(code: &str) -> PlotCall<'_> {
@@ -395,15 +446,51 @@ fn parse_plot_call(code: &str) -> PlotCall<'_> {
         .strip_prefix("plot(")
         .and_then(|value| value.strip_suffix(')'))
     else {
-        return PlotCall::One(trimmed);
+        return PlotCall {
+            positional: vec![trimmed],
+            options: PlotOptions::default(),
+        };
     };
-    match split_top_level_comma(inner) {
-        Some((x, y)) => PlotCall::Two(x.trim(), y.trim()),
-        None => PlotCall::One(inner.trim()),
+
+    let mut positional = Vec::new();
+    let mut options = PlotOptions::default();
+    for arg in split_top_level_args(inner) {
+        let arg = arg.trim();
+        if arg.is_empty() {
+            continue;
+        }
+        if let Some((name, value)) = split_top_level_equals(arg) {
+            apply_plot_option(&mut options, name.trim(), value.trim());
+        } else {
+            positional.push(arg);
+        }
+    }
+    PlotCall {
+        positional,
+        options,
     }
 }
 
 fn split_top_level_comma(input: &str) -> Option<(&str, &str)> {
+    split_top_level_at(input, ',')
+}
+
+fn split_top_level_args(input: &str) -> Vec<&str> {
+    let mut args = Vec::new();
+    let mut rest = input;
+    while let Some((head, tail)) = split_top_level_comma(rest) {
+        args.push(head);
+        rest = tail;
+    }
+    args.push(rest);
+    args
+}
+
+fn split_top_level_equals(input: &str) -> Option<(&str, &str)> {
+    split_top_level_at(input, '=')
+}
+
+fn split_top_level_at(input: &str, needle: char) -> Option<(&str, &str)> {
     let mut depth = 0usize;
     let mut in_string = None;
     let mut escaped = false;
@@ -423,11 +510,90 @@ fn split_top_level_comma(input: &str) -> Option<(&str, &str)> {
             '"' | '\'' => in_string = Some(ch),
             '(' | '[' | '{' => depth += 1,
             ')' | ']' | '}' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => return Some((&input[..idx], &input[idx + ch.len_utf8()..])),
+            ch if ch == needle && depth == 0 => {
+                return Some((&input[..idx], &input[idx + ch.len_utf8()..]));
+            }
             _ => {}
         }
     }
     None
+}
+
+fn apply_plot_option(options: &mut PlotOptions, name: &str, value: &str) {
+    match name {
+        "main" => options.main = string_literal(value),
+        "xlab" => options.xlab = string_literal(value),
+        "ylab" => options.ylab = string_literal(value),
+        "col" => {
+            if let Some(color) = string_literal(value).as_deref().and_then(parse_color) {
+                options.color = color;
+            }
+        }
+        "type" => {
+            if let Some(plot_type) = string_literal(value).as_deref().and_then(parse_plot_type) {
+                options.plot_type = plot_type;
+            }
+        }
+        _ => {}
+    }
+}
+
+fn string_literal(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.len() >= 2
+        && ((value.starts_with('"') && value.ends_with('"'))
+            || (value.starts_with('\'') && value.ends_with('\'')))
+    {
+        Some(
+            value[1..value.len() - 1]
+                .replace("\\\"", "\"")
+                .replace("\\'", "'"),
+        )
+    } else {
+        None
+    }
+}
+
+fn parse_color(value: &str) -> Option<Color> {
+    match value.to_ascii_lowercase().as_str() {
+        "black" => Some(Color::BLACK),
+        "blue" => Some(Color::BLUE),
+        "red" => Some(Color::RED),
+        "gray" | "grey" => Some(Color {
+            r: 128,
+            g: 128,
+            b: 128,
+            a: 255,
+        }),
+        "darkgreen" | "green" => Some(Color {
+            r: 0,
+            g: 128,
+            b: 0,
+            a: 255,
+        }),
+        _ => None,
+    }
+}
+
+fn parse_plot_type(value: &str) -> Option<PlotType> {
+    match value {
+        "p" => Some(PlotType::Points),
+        "l" => Some(PlotType::Lines),
+        "b" | "o" => Some(PlotType::Both),
+        _ => None,
+    }
+}
+
+fn short_label(expr: &str) -> String {
+    let label = expr.trim();
+    let char_count = label.chars().count();
+    if char_count > 28 {
+        let mut shortened = label.chars().take(25).collect::<String>();
+        shortened.push_str("...");
+        shortened
+    } else {
+        label.to_string()
+    }
 }
 
 fn numeric_series(value: RValue) -> Result<Vec<f64>, RSessionError> {
@@ -469,17 +635,29 @@ fn draw_series(
         return;
     }
 
-    let left = 54.0f32;
-    let right = (width as f32 - 18.0).max(left + 1.0);
-    let top = 24.0f32;
-    let bottom = (height as f32 - 42.0).max(top + 1.0);
+    let left = 58.0f32;
+    let right = (width as f32 - 24.0).max(left + 1.0);
+    let top = if series.options.main.is_some() {
+        48.0
+    } else {
+        34.0
+    };
+    let bottom = (height as f32 - 62.0).max(top + 1.0);
     let xmin = min_max(&series.x[..n]).0;
     let xmax = min_max(&series.x[..n]).1;
     let ymin = min_max(&series.y[..n]).0;
     let ymax = min_max(&series.y[..n]).1;
 
+    let text_params = PlotParameters {
+        font_size: 11.0,
+        text_color: Color::BLACK,
+        dpi: 96.0,
+    };
+
     draw_line(renderer, left, bottom, right, bottom, Color::BLACK, 1.5);
     draw_line(renderer, left, top, left, bottom, Color::BLACK, 1.5);
+    draw_line(renderer, right, top, right, bottom, Color::BLACK, 0.75);
+    draw_line(renderer, left, top, right, top, Color::BLACK, 0.75);
 
     for i in 0..5 {
         let t = i as f32 / 4.0;
@@ -513,24 +691,96 @@ fn draw_series(
             },
             0.75,
         );
+        draw_line(renderer, x, bottom, x, bottom + 4.0, Color::BLACK, 1.0);
+        draw_line(renderer, left - 4.0, y, left, y, Color::BLACK, 1.0);
+
+        let x_value = xmin + (xmax - xmin) * t as f64;
+        let y_value = ymax - (ymax - ymin) * t as f64;
+        let x_label = tick_label(x_value);
+        let y_label = tick_label(y_value);
+        renderer.draw_text(
+            &x_label,
+            Point {
+                x: x - estimated_text_width(&x_label, 11.0) / 2.0,
+                y: bottom + 17.0,
+            },
+            &text_params,
+        );
+        renderer.draw_text(
+            &y_label,
+            Point {
+                x: (left - estimated_text_width(&y_label, 11.0) - 8.0).max(0.0),
+                y: y + 4.0,
+            },
+            &text_params,
+        );
     }
 
     let mut prev = None;
     for i in 0..n {
         let x = map_value(series.x[i], xmin, xmax, left, right);
         let y = map_value(series.y[i], ymin, ymax, bottom, top);
-        if let Some((px, py)) = prev {
-            draw_line(renderer, px, py, x, y, Color::BLUE, 1.25);
+        if series.options.plot_type != PlotType::Points
+            && let Some((px, py)) = prev
+        {
+            draw_line(renderer, px, py, x, y, series.options.color, 1.5);
         }
-        draw_point(renderer, x, y);
+        if series.options.plot_type != PlotType::Lines {
+            draw_point(renderer, x, y, series.options.color);
+        }
         prev = Some((x, y));
     }
 
-    let text = format!("n = {n}");
+    if let Some(main) = &series.options.main {
+        renderer.draw_text(
+            main,
+            Point {
+                x: centered_text_x(main, width as f32, 16.0),
+                y: 24.0,
+            },
+            &PlotParameters {
+                font_size: 16.0,
+                text_color: Color::BLACK,
+                dpi: 96.0,
+            },
+        );
+    }
+
+    if let Some(xlab) = &series.options.xlab {
+        renderer.draw_text(
+            xlab,
+            Point {
+                x: centered_text_x(xlab, width as f32, 12.0),
+                y: height as f32 - 22.0,
+            },
+            &PlotParameters {
+                font_size: 12.0,
+                text_color: Color::BLACK,
+                dpi: 96.0,
+            },
+        );
+    }
+
+    if let Some(ylab) = &series.options.ylab {
+        renderer.draw_text(
+            ylab,
+            Point {
+                x: 6.0,
+                y: (top + bottom) / 2.0,
+            },
+            &PlotParameters {
+                font_size: 12.0,
+                text_color: Color::BLACK,
+                dpi: 96.0,
+            },
+        );
+    }
+
+    let count_label = format!("n = {n}");
     renderer.draw_text(
-        &text,
+        &count_label,
         Point {
-            x: left,
+            x: right - estimated_text_width(&count_label, 12.0),
             y: height as f32 - 18.0,
         },
         &PlotParameters {
@@ -549,6 +799,31 @@ fn min_max(values: &[f64]) -> (f64, f64) {
     } else {
         (min, max)
     }
+}
+
+fn tick_label(value: f64) -> String {
+    if value == 0.0 {
+        "0".to_string()
+    } else if value.abs() >= 10_000.0 || value.abs() < 0.01 {
+        format!("{value:.1e}")
+    } else {
+        let mut label = format!("{value:.2}");
+        while label.contains('.') && label.ends_with('0') {
+            label.pop();
+        }
+        if label.ends_with('.') {
+            label.pop();
+        }
+        label
+    }
+}
+
+fn estimated_text_width(text: &str, font_size: f32) -> f32 {
+    text.chars().count() as f32 * font_size * 0.56
+}
+
+fn centered_text_x(text: &str, width: f32, font_size: f32) -> f32 {
+    ((width - estimated_text_width(text, font_size)) / 2.0).max(0.0)
 }
 
 fn map_value(value: f64, min: f64, max: f64, out_min: f32, out_max: f32) -> f32 {
@@ -582,8 +857,8 @@ fn draw_line(
     });
 }
 
-fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32) {
-    renderer.draw_path(&Path::rect(x - 2.5, y - 2.5, 5.0, 5.0).with_fill(Color::BLUE));
+fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32, color: Color) {
+    renderer.draw_path(&Path::rect(x - 2.5, y - 2.5, 5.0, 5.0).with_fill(color));
 }
 
 impl Default for RSession {
@@ -601,6 +876,59 @@ impl Drop for RSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
+
+    struct DecodedPng {
+        width: u32,
+        height: u32,
+        rgba: Vec<u8>,
+    }
+
+    impl DecodedPng {
+        fn non_white_in_region(&self, x0: u32, y0: u32, x1: u32, y1: u32) -> usize {
+            let x1 = x1.min(self.width);
+            let y1 = y1.min(self.height);
+            let mut count = 0;
+            for y in y0.min(self.height)..y1 {
+                for x in x0.min(self.width)..x1 {
+                    let offset = ((y * self.width + x) * 4) as usize;
+                    let pixel = &self.rgba[offset..offset + 4];
+                    if pixel != [255, 255, 255, 255] {
+                        count += 1;
+                    }
+                }
+            }
+            count
+        }
+
+        fn red_pixels(&self) -> usize {
+            self.rgba
+                .chunks_exact(4)
+                .filter(|rgba| rgba[0] > 180 && rgba[1] < 120 && rgba[2] < 120 && rgba[3] > 0)
+                .count()
+        }
+    }
+
+    fn decode_png_rgba(png_bytes: &[u8]) -> DecodedPng {
+        let decoder = png::Decoder::new(Cursor::new(png_bytes));
+        let mut reader = decoder.read_info().expect("png reader");
+        let mut buffer = vec![0; reader.output_buffer_size()];
+        let info = reader.next_frame(&mut buffer).expect("png frame");
+        let bytes = &buffer[..info.buffer_size()];
+        let rgba = match info.color_type {
+            png::ColorType::Rgba => bytes.to_vec(),
+            png::ColorType::Rgb => bytes
+                .chunks_exact(3)
+                .flat_map(|rgb| [rgb[0], rgb[1], rgb[2], 255])
+                .collect(),
+            other => panic!("unexpected png color type: {other:?}"),
+        };
+        DecodedPng {
+            width: info.width,
+            height: info.height,
+            rgba,
+        }
+    }
 
     fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
         let root = std::env::temp_dir().join(format!(
@@ -790,6 +1118,40 @@ mod tests {
 
         assert!(png.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
         assert!(png.len() > 256);
+    }
+
+    #[test]
+    fn plot_call_parser_handles_common_named_options() {
+        let call = parse_plot_call(
+            "plot(c(1, 2, 3), c(4, 5, 6), main = \"Revenue μ\", xlab = 'day', ylab = \"value\", col = \"red\", type = \"l\")",
+        );
+
+        assert_eq!(call.positional, vec!["c(1, 2, 3)", "c(4, 5, 6)"]);
+        assert_eq!(call.options.main.as_deref(), Some("Revenue μ"));
+        assert_eq!(call.options.xlab.as_deref(), Some("day"));
+        assert_eq!(call.options.ylab.as_deref(), Some("value"));
+        assert_eq!(call.options.color, Color::RED);
+        assert_eq!(call.options.plot_type, PlotType::Lines);
+    }
+
+    #[test]
+    fn render_honors_plot_labels_and_color() {
+        let mut session = RSession::new().expect("session");
+        let png = session
+            .render_with_dimensions(
+                "plot(c(1, 2, 3, 4), c(1, 4, 9, 16), main = \"Revenue μ\", xlab = \"day\", ylab = \"value\", col = \"red\", type = \"l\")",
+                360,
+                260,
+            )
+            .expect("render");
+        let decoded = decode_png_rgba(&png);
+
+        assert!(decoded.red_pixels() > 10);
+        assert!(decoded.non_white_in_region(0, 0, decoded.width, 42) > 5);
+        assert!(
+            decoded.non_white_in_region(0, decoded.height - 40, decoded.width, decoded.height) > 5
+        );
+        assert!(decoded.non_white_in_region(0, 58, 48, decoded.height - 52) > 5);
     }
 
     #[test]
