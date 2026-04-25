@@ -25,6 +25,7 @@ use crate::sexp::envir::{R_findVar, R_findVarInFrame, R_isMissing, forcePromise}
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
+use crate::sexp::object::PairlistBuilder;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::R_DotsSymbol;
 
@@ -45,8 +46,7 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
             return R_NilValue();
         }
 
-        let mut result: SEXP = R_NilValue();
-        let mut result_tail: SEXP = R_NilValue();
+        let mut result = PairlistBuilder::new();
 
         let mut current = el;
         let mut count: c_int = 0;
@@ -56,26 +56,13 @@ pub unsafe fn evalList(el: SEXP, rho: SEXP, call: SEXP, nargs: c_int) -> SEXP {
             }
 
             let val = Rf_eval(CAR(current), rho);
-            let cell = Rf_cons(val, R_NilValue());
-            if !cell.is_null() {
-                SETTAG(cell, TAG(current));
-                if result.is_null() || result == R_NilValue() {
-                    result = cell;
-                    result_tail = cell;
-                } else {
-                    SETCDR(result_tail, cell);
-                    result_tail = cell;
-                }
-            }
+            let _ = result.push_raw(val, TAG(current));
 
             current = CDR(current);
             count += 1;
         }
 
-        if result.is_null() {
-            result = R_NilValue();
-        }
-        result
+        result.finish_raw()
     }
 }
 
@@ -92,8 +79,7 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
             return R_NilValue();
         }
 
-        let mut result: SEXP = R_NilValue();
-        let mut result_tail: SEXP = R_NilValue();
+        let mut result = PairlistBuilder::new();
 
         let mut current = call;
         while !current.is_null() && current != R_NilValue() {
@@ -102,25 +88,12 @@ pub unsafe fn promiseArgs(call: SEXP, rho: SEXP) -> SEXP {
 
             // Create a promise for each argument
             let prom = mkPROMISE(arg_expr, rho);
-            let cell = Rf_cons(prom, R_NilValue());
-            if !cell.is_null() {
-                SETTAG(cell, tag);
-                if result.is_null() || result == R_NilValue() {
-                    result = cell;
-                    result_tail = cell;
-                } else {
-                    SETCDR(result_tail, cell);
-                    result_tail = cell;
-                }
-            }
+            let _ = result.push_raw(prom, tag);
 
             current = CDR(current);
         }
 
-        if result.is_null() {
-            result = R_NilValue();
-        }
-        result
+        result.finish_raw()
     }
 }
 
@@ -143,8 +116,7 @@ unsafe fn evalArgs(
             return R_NilValue();
         }
 
-        let mut result: SEXP = R_NilValue();
-        let mut tail: SEXP = R_NilValue();
+        let mut result = PairlistBuilder::new();
         let mut current = args;
 
         while !current.is_null() && current != R_NilValue() {
@@ -163,17 +135,11 @@ unsafe fn evalArgs(
                 continue;
             }
 
-            let cell = Rf_cons(val, R_NilValue());
-            if !result.is_null() && result != R_NilValue() {
-                SETCDR(tail, cell);
-            } else {
-                result = cell;
-            }
-            tail = cell;
+            let _ = result.push_raw(val, TAG(current));
             current = CDR(current);
         }
 
-        result
+        result.finish_raw()
     }
 }
 
@@ -187,10 +153,7 @@ unsafe fn isFunction(x: SEXP) -> c_int {
             return FALSE;
         }
         let t = TYPEOF(x);
-        if t == SEXPTYPE::CLOSXP
-            || t == SEXPTYPE::BUILTINSXP
-            || t == SEXPTYPE::SPECIALSXP
-        {
+        if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
             TRUE
         } else {
             FALSE

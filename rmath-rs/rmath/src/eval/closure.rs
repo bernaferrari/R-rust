@@ -15,7 +15,7 @@ use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
-use crate::sexp::object::{PairlistIter, Sexp, SexpError};
+use crate::sexp::object::{PairlistBuilder, PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::eval::Rf_eval;
@@ -95,49 +95,29 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
         return Ok(args);
     }
 
-    crate::sexp::memory::with_arena(|arena| {
-        let mut result: SEXP = ptr::null_mut();
-        let mut tail: SEXP = ptr::null_mut();
+    let mut builder = PairlistBuilder::new();
+    let mut formal_iter = PairlistIter::new(formals);
+    let mut arg_iter = PairlistIter::new(args);
 
-        let mut formal_iter = PairlistIter::new(formals);
-        let mut arg_iter = PairlistIter::new(args);
+    for formal in &mut formal_iter {
+        let arg = arg_iter.next();
+        let tag = formal
+            .try_tag()
+            .map_err(|err| sexp_err("formal argument tag lookup", err))?;
 
-        for formal in &mut formal_iter {
-            let arg = arg_iter.next();
-            let tag = formal
-                .try_tag()
-                .map_err(|err| sexp_err("formal argument tag lookup", err))?;
+        let val = if let Some(ref a) = arg {
+            a.try_car()
+                .map_err(|err| sexp_err("actual argument value lookup", err))?
+        } else {
+            unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
+        };
 
-            let val = if let Some(ref a) = arg {
-                a.try_car()
-                    .map_err(|err| sexp_err("actual argument value lookup", err))?
-            } else {
-                unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
-            };
+        builder
+            .push(val, (!tag.is_nil()).then_some(tag))
+            .map_err(|err| sexp_err("matched argument pairlist build", err))?;
+    }
 
-            let cell = arena.cons(
-                val.as_raw(),
-                ptr::null_mut(),
-                if tag.is_nil() {
-                    ptr::null_mut()
-                } else {
-                    tag.as_raw()
-                },
-            );
-
-            if result.is_null() {
-                result = cell;
-                tail = cell;
-            } else {
-                unsafe {
-                    (*tail).data.listsxp.cdrval = cell;
-                }
-                tail = cell;
-            }
-        }
-
-        Ok(unsafe { Sexp::from_raw_unchecked(result) })
-    })
+    unsafe { builder.finish_as() }.map_err(|err| sexp_err("matched argument pairlist wrap", err))
 }
 
 /// Safe environment creation.
@@ -291,8 +271,7 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> 
         }
         let mut used = vec![false; supplied_cells.len()];
 
-        let mut result = R_NilValue();
-        let mut tail = R_NilValue();
+        let mut result = PairlistBuilder::new();
         let mut positional = 0usize;
 
         let mut formal = formals;
@@ -332,18 +311,7 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> 
                 }
             }
 
-            let cell = crate::sexp::constructors::Rf_cons(value, R_NilValue());
-            if cell.is_null() {
-                return Err(());
-            }
-            SETTAG(cell, formal_tag);
-
-            if result == R_NilValue() {
-                result = cell;
-            } else {
-                SETCDR(tail, cell);
-            }
-            tail = cell;
+            result.push_raw(value, formal_tag).map_err(|_| ())?;
             formal = CDR(formal);
         }
 
@@ -351,34 +319,24 @@ unsafe fn match_closure_args(formals: SEXP, supplied: SEXP) -> Result<SEXP, ()> 
             return Err(());
         }
 
-        Ok(result)
+        Ok(result.finish_raw())
     }
 }
 
 unsafe fn collect_unused_args(supplied_cells: &[SEXP], used: &mut [bool]) -> SEXP {
     unsafe {
-        let mut dots = R_NilValue();
-        let mut tail = R_NilValue();
+        let mut dots = PairlistBuilder::new();
 
         for (idx, supplied_cell) in supplied_cells.iter().enumerate() {
             if used[idx] {
                 continue;
             }
             used[idx] = true;
-            let cell = crate::sexp::constructors::Rf_cons(CAR(*supplied_cell), R_NilValue());
-            SETTAG(cell, TAG(*supplied_cell));
-            if dots == R_NilValue() {
-                dots = cell;
-            } else {
-                SETCDR(tail, cell);
-            }
-            tail = cell;
+            let _ = dots.push_raw(CAR(*supplied_cell), TAG(*supplied_cell));
         }
 
-        if dots != R_NilValue() {
-            (*dots).sxpinfo.set_type(SEXPTYPE::DOTSXP);
-        }
-        dots
+        dots.finish_with_type(SEXPTYPE::DOTSXP)
+            .unwrap_or_else(|_| R_NilValue())
     }
 }
 

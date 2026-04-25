@@ -39,6 +39,7 @@ mod value;
 mod view;
 
 pub use error::{SexpError, SexpResult};
+pub(crate) use pairlist::PairlistBuilder;
 pub use pairlist::PairlistIter;
 pub use value::{SexpAttribute, SexpComplex, SexpMetadata, SexpValue};
 pub use view::SexpView;

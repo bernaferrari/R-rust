@@ -16,6 +16,8 @@ pub enum SexpError {
     OutOfBounds { index: R_xlen_t, len: R_xlen_t },
     /// A requested pairlist argument was not present.
     MissingArgument { index: usize },
+    /// Allocation returned a null pointer while building an object.
+    AllocationFailed { object: &'static str },
     /// A vector-like object had no data buffer.
     MissingData { sexptype: SEXPTYPE },
     /// A string value was not valid UTF-8.
@@ -38,6 +40,7 @@ impl std::fmt::Display for SexpError {
             SexpError::MissingArgument { index } => {
                 write!(f, "missing pairlist argument at index {index}")
             }
+            SexpError::AllocationFailed { object } => write!(f, "failed to allocate {object}"),
             SexpError::MissingData { sexptype } => {
                 write!(f, "SEXP {:?} has no data buffer", sexptype.0)
             }
