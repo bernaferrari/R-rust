@@ -34,6 +34,7 @@ use std::ptr;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use super::context::{RError, RSignal};
+use super::envir::Environment;
 use super::ffi::SEXP;
 #[cfg(test)]
 use super::ffi::SEXPTYPE;
@@ -388,12 +389,15 @@ impl RSession {
     /// Names with interior NUL bytes are rejected.
     pub fn find_var(&self, name: &str) -> Option<Sexp<'_>> {
         self.with_active(|| {
-            let symbol = install_symbol(name)?;
-            let result = unsafe { crate::sexp::envir::R_findVar(symbol, self.instance.global_env) };
-            if result == unsafe { R_UnboundValue() } || result == unsafe { R_NilValue() } {
+            let symbol = self.sexp(install_symbol(name)?)?;
+            let env = Environment::new(self.global_env()?).ok()?;
+            let result = env.find(symbol).ok().flatten()?;
+            if result.as_raw() == unsafe { R_UnboundValue() }
+                || result.as_raw() == unsafe { R_NilValue() }
+            {
                 None
             } else {
-                self.sexp(result)
+                Some(result)
             }
         })
     }
@@ -416,17 +420,25 @@ impl RSession {
     /// The raw value is accepted only after proving it belongs to this session
     /// or is one of R's immutable singleton sentinels.
     fn define_var_raw(&self, name: &str, value: SEXP) -> bool {
-        if !self.active || self.sexp(value).is_none() {
+        if !self.active {
             return false;
         }
         self.with_active(|| {
+            let Some(value) = self.sexp(value) else {
+                return false;
+            };
             let Some(symbol) = install_symbol(name) else {
                 return false;
             };
-            unsafe {
-                crate::sexp::envir::defineVar(symbol, value, self.instance.global_env);
-            }
-            true
+            let Some(symbol) = self.sexp(symbol) else {
+                return false;
+            };
+            let Some(env) = self.global_env() else {
+                return false;
+            };
+            Environment::new(env)
+                .and_then(|env| env.define(symbol, value))
+                .is_ok()
         })
     }
 

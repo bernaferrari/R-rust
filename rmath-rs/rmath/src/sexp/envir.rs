@@ -8,12 +8,9 @@
 //!
 //! # Design
 //!
-//! This module provides two layers of API:
-//! 1. **Safe functions** (e.g., `find_var_in_frame_safe`, `define_var_safe`) that use
-//!    the `Sexp` wrapper type, `Option`/`Result` returns, and `PairlistIter`
-//!    for idiomatic Rust code.
-//! 2. **FFI functions** (e.g., `R_findVar`, `defineVar`) that are `extern "C"`
-//!    and delegate to the safe versions, maintaining C ABI compatibility.
+//! New Rust code should use [`Environment`], a typed facade over an
+//! owner-scoped [`Sexp`] environment. The raw-pointer functions at the bottom
+//! are legacy shims for translated code that has not yet moved to typed values.
 
 use std::os::raw::c_int;
 use std::ptr;
@@ -40,6 +37,61 @@ pub type EnvResult<T> = Result<T, String>;
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
+}
+
+/// Typed, owner-scoped environment facade.
+///
+/// This is the Rust-first API for binding and lookup. It validates the
+/// underlying SEXP once and keeps subsequent operations on lifetime-tracked
+/// handles instead of raw `SEXP` pointers.
+#[derive(Clone, Copy, Debug)]
+pub struct Environment<'a> {
+    env: Sexp<'a>,
+}
+
+impl<'a> Environment<'a> {
+    /// Wrap a SEXP handle as an environment.
+    pub fn new(env: Sexp<'a>) -> EnvResult<Self> {
+        if env.is_environment() {
+            Ok(Self { env })
+        } else {
+            Err(format!("expected environment, got {:?}", env.typeof_()))
+        }
+    }
+
+    /// Return the underlying environment handle.
+    pub fn as_sexp(self) -> Sexp<'a> {
+        self.env
+    }
+
+    /// Find a binding in this environment frame only.
+    pub fn find_in_frame(self, symbol: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+        find_var_in_frame_result(self.env, symbol)
+    }
+
+    /// Find a binding through this environment's parent chain.
+    pub fn find(self, symbol: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
+        find_var_result(symbol, self.env)
+    }
+
+    /// Define or update a binding in this environment frame.
+    pub fn define(self, symbol: Sexp<'_>, value: Sexp<'_>) -> EnvResult<()> {
+        if define_var_safe(symbol, value, self.env) {
+            Ok(())
+        } else {
+            Err("failed to define environment binding".to_string())
+        }
+    }
+
+    /// Set a binding through the parent chain, falling back to the global env.
+    pub fn set(self, symbol: Sexp<'_>, value: Sexp<'_>) {
+        set_var_safe(symbol, value, self.env);
+    }
+
+    /// Return whether a symbol exists in this environment frame.
+    pub fn exists_in_frame(self, symbol: Sexp<'a>) -> bool {
+        exists_var_in_frame_safe(self.env, symbol)
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1008,6 +1060,31 @@ mod tests {
                 return;
             };
             assert_eq!(r.as_raw(), value);
+        }
+    }
+
+    #[test]
+    fn test_environment_facade_define_find_and_exists() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
+            let sym = Rf_install(b"facade\0".as_ptr() as *const _);
+            let value = Rf_ScalarInteger(7);
+
+            let env =
+                Environment::new(Sexp::from_raw(env).expect("environment")).expect("env facade");
+            let sym = Sexp::from_raw(sym).expect("symbol");
+            let value = Sexp::from_raw(value).expect("value");
+
+            assert!(!env.exists_in_frame(sym));
+            env.define(sym, value).expect("define through facade");
+            assert!(env.exists_in_frame(sym));
+
+            let found = env
+                .find_in_frame(sym)
+                .expect("lookup through facade")
+                .expect("binding exists");
+            assert_eq!(found.integer_elt(0), Some(7));
         }
     }
 

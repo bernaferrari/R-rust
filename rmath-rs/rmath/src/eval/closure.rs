@@ -12,7 +12,7 @@ use std::os::raw::c_int;
 use std::ptr;
 
 use crate::sexp::accessors::{BODY, CAR, CDR, SETCAR, TAG, TYPEOF};
-use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
+use crate::sexp::envir::{Environment, addMissingVarsToNewEnv};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
@@ -64,6 +64,7 @@ pub fn apply_closure_safe<'a>(
     let frame = new_env
         .try_frame()
         .map_err(|err| sexp_err("new closure environment frame lookup", err))?;
+    let new_env_bindings = Environment::new(new_env)?;
     for cell in PairlistIter::new(frame) {
         let sym = cell
             .try_tag()
@@ -72,9 +73,7 @@ pub fn apply_closure_safe<'a>(
             let val = cell
                 .try_car()
                 .map_err(|err| sexp_err("matched argument value lookup", err))?;
-            unsafe {
-                defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
-            }
+            new_env_bindings.define(sym, val)?;
         }
     }
 
