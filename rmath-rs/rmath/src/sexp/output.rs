@@ -159,6 +159,28 @@ fn format_logical_value(v: i32) -> String {
     }
 }
 
+fn format_access_error(err: impl std::fmt::Display) -> String {
+    format!("<{err}>")
+}
+
+fn format_integer_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    x.try_integer_elt(i)
+        .map(format_integer_value)
+        .unwrap_or_else(format_access_error)
+}
+
+fn format_real_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    x.try_real_elt(i)
+        .map(format_real_value)
+        .unwrap_or_else(format_access_error)
+}
+
+fn format_logical_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    x.try_logical_elt(i)
+        .map(format_logical_value)
+        .unwrap_or_else(format_access_error)
+}
+
 fn format_raw_value(v: u8) -> String {
     format!("{v:02x}")
 }
@@ -257,13 +279,13 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
     let (nrow, ncol) = matrix_dims(x)?;
     match x.typeof_() {
         SEXPTYPE::INTSXP => Some(format_matrix_with(nrow, ncol, |r, c| {
-            format_integer_value(x.integer_elt((r + c * nrow) as i64).unwrap_or(NA_INTEGER))
+            format_integer_element(x, (r + c * nrow) as i64)
         })),
         SEXPTYPE::REALSXP => Some(format_matrix_with(nrow, ncol, |r, c| {
-            format_real_value(x.real_elt((r + c * nrow) as i64).unwrap_or(f64::NAN))
+            format_real_element(x, (r + c * nrow) as i64)
         })),
         SEXPTYPE::LGLSXP => Some(format_matrix_with(nrow, ncol, |r, c| {
-            format_logical_value(x.logical_elt((r + c * nrow) as i64).unwrap_or(NA_INTEGER))
+            format_logical_element(x, (r + c * nrow) as i64)
         })),
         _ => None,
     }
@@ -415,13 +437,10 @@ pub fn print_value(x: Sexp<'_>) {
                 return;
             }
             if x.len() == 1 {
-                let v = x.integer_elt(0).unwrap_or(0);
-                emit(&format!("[1] {}\n", format_integer_value(v)));
+                emit(&format!("[1] {}\n", format_integer_element(x, 0)));
             } else {
-                let vals: Vec<String> = x
-                    .iter_integer()
-                    .take(10)
-                    .map(format_integer_value)
+                let vals: Vec<String> = (0..x.len().min(10))
+                    .map(|i| format_integer_element(x, i))
                     .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
@@ -433,10 +452,11 @@ pub fn print_value(x: Sexp<'_>) {
                 return;
             }
             if x.len() == 1 {
-                let v = x.real_elt(0).unwrap_or(0.0);
-                emit(&format!("[1] {}\n", format_real_value(v)));
+                emit(&format!("[1] {}\n", format_real_element(x, 0)));
             } else {
-                let vals: Vec<String> = x.iter_real().take(10).map(format_real_value).collect();
+                let vals: Vec<String> = (0..x.len().min(10))
+                    .map(|i| format_real_element(x, i))
+                    .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
             }
@@ -446,10 +466,8 @@ pub fn print_value(x: Sexp<'_>) {
                 emit(&format!("{output}\n"));
                 return;
             }
-            let vals: Vec<String> = x
-                .iter_logical()
-                .take(10)
-                .map(format_logical_value)
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_logical_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
@@ -514,13 +532,10 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 return output;
             }
             let base = if x.len() == 1 {
-                let v = x.integer_elt(0).unwrap_or(0);
-                format!("[1] {}", format_integer_value(v))
+                format!("[1] {}", format_integer_element(x, 0))
             } else {
-                let vals: Vec<String> = x
-                    .iter_integer()
-                    .take(10)
-                    .map(format_integer_value)
+                let vals: Vec<String> = (0..x.len().min(10))
+                    .map(|i| format_integer_element(x, i))
                     .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", format_aligned_values(vals), suffix)
@@ -535,10 +550,11 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
                 return output;
             }
             if x.len() == 1 {
-                let v = x.real_elt(0).unwrap_or(0.0);
-                format!("[1] {}", format_real_value(v))
+                format!("[1] {}", format_real_element(x, 0))
             } else {
-                let vals: Vec<String> = x.iter_real().take(10).map(format_real_value).collect();
+                let vals: Vec<String> = (0..x.len().min(10))
+                    .map(|i| format_real_element(x, i))
+                    .collect();
                 let suffix = if x.len() > 10 { " ..." } else { "" };
                 format!("[1] {}{}", format_aligned_values(vals), suffix)
             }
@@ -550,10 +566,8 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             if let Some(output) = format_matrix(x) {
                 return output;
             }
-            let vals: Vec<String> = x
-                .iter_logical()
-                .take(10)
-                .map(format_logical_value)
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_logical_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             format!("[1] {}{}", format_aligned_values(vals), suffix)
@@ -747,6 +761,20 @@ mod tests {
                 print_value(sexp);
                 let output = stop_capture();
                 assert_eq!(output.stdout, "[1] \"a\" NA\n");
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_atomic_element_formatting_reports_access_errors() {
+        let mut session = RSession::new();
+        session
+            .with_arena(|arena| {
+                let real = Sexp::from_raw(arena.alloc_vector(SEXPTYPE::REALSXP, 1))
+                    .expect("real vector allocation failed");
+
+                assert!(format_integer_element(real, 0).contains("expected integer vector"));
+                assert!(format_real_element(real, 2).contains("outside vector length"));
             })
             .unwrap();
     }
