@@ -9,9 +9,10 @@ use crate::sexp::accessors::{
     CADR, CAR, CDDR, CDR, INTEGER_ELT, LOGICAL_ELT, REAL_ELT, SET_INTEGER_ELT, SET_LOGICAL_ELT,
     SET_REAL_ELT, SETTAG, STRING_ELT, TAG, TYPEOF, XLENGTH,
 };
-use crate::sexp::envir::{defineVar, setVar};
+use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
+use crate::sexp::object::Sexp;
 use crate::sexp::protect::Rf_protect;
 
 use super::eval::Rf_eval;
@@ -67,12 +68,32 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
 unsafe fn assign_to_symbol(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
     unsafe {
-        if primval == 2 {
-            setVar(sym, value, ENCLOS(rho));
-        } else {
-            defineVar(sym, value, rho);
-        }
+        bind_assignment(sym, value, primval, rho);
         set_R_Visible(FALSE);
+    }
+}
+
+fn bind_assignment(sym: SEXP, value: SEXP, primval: i32, rho: SEXP) {
+    let target_env = if primval == 2 {
+        unsafe { ENCLOS(rho) }
+    } else {
+        rho
+    };
+    let (Some(sym), Some(value), Some(target_env)) = (
+        Sexp::from_raw(sym),
+        Sexp::from_raw(value),
+        Sexp::from_raw(target_env),
+    ) else {
+        return;
+    };
+    let Ok(env) = Environment::new(target_env) else {
+        return;
+    };
+
+    if primval == 2 {
+        env.set(sym, value);
+    } else {
+        let _ = env.define(sym, value);
     }
 }
 
@@ -191,11 +212,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         } else {
                             var_sym
                         };
-                    if primval == 2 {
-                        setVar(deep_sym, result, ENCLOS(rho));
-                    } else {
-                        defineVar(deep_sym, result, rho);
-                    }
+                    bind_assignment(deep_sym, result, primval, rho);
                 }
 
                 crate::sexp::protect::Rf_unprotect(3);
@@ -250,11 +267,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
             let var_sym = CADR(lhs);
             if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
-                if primval == 2 {
-                    setVar(var_sym, result, ENCLOS(rho));
-                } else {
-                    defineVar(var_sym, result, rho);
-                }
+                bind_assignment(var_sym, result, primval, rho);
             }
 
             set_R_Visible(FALSE);
