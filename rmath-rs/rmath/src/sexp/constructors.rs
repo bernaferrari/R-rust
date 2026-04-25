@@ -386,9 +386,11 @@ pub unsafe fn Rf_isEnvironment(x: SEXP) -> c_int {
 mod tests {
     use super::super::ffi::*;
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_alloc_vector_real() {
+        let _session = RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::REALSXP, 3);
             assert!(!v.is_null());
@@ -399,6 +401,7 @@ mod tests {
 
     #[test]
     fn test_alloc_vector_int() {
+        let _session = RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::INTSXP, 2);
             assert!(!v.is_null());
@@ -408,6 +411,7 @@ mod tests {
 
     #[test]
     fn test_alloc_vector_logical() {
+        let _session = RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
             assert!(!v.is_null());
@@ -417,6 +421,7 @@ mod tests {
 
     #[test]
     fn test_alloc_vector_string() {
+        let _session = RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             assert!(!v.is_null());
@@ -426,6 +431,7 @@ mod tests {
 
     #[test]
     fn test_alloc_vector_raw() {
+        let _session = RSession::new();
         unsafe {
             let v = Rf_allocVector(SEXPTYPE::RAWSXP, 4);
             assert!(!v.is_null());
@@ -435,6 +441,7 @@ mod tests {
 
     #[test]
     fn test_scalar_integer() {
+        let _session = RSession::new();
         unsafe {
             let s = Rf_ScalarInteger(42);
             assert!(!s.is_null());
@@ -447,6 +454,7 @@ mod tests {
 
     #[test]
     fn test_scalar_real() {
+        let _session = RSession::new();
         unsafe {
             let s = Rf_ScalarReal(3.14);
             assert!(!s.is_null());
@@ -457,6 +465,7 @@ mod tests {
 
     #[test]
     fn test_scalar_logical() {
+        let _session = RSession::new();
         unsafe {
             let s = Rf_ScalarLogical(1);
             assert!(!s.is_null());
@@ -467,6 +476,7 @@ mod tests {
 
     #[test]
     fn test_cons() {
+        let _session = RSession::new();
         unsafe {
             let car = Rf_ScalarInteger(1);
             let cdr = Rf_ScalarInteger(2);
@@ -480,6 +490,7 @@ mod tests {
 
     #[test]
     fn test_mk_string() {
+        let _session = RSession::new();
         unsafe {
             let s = Rf_mkString(b"hello\0".as_ptr() as *const c_char);
             assert!(!s.is_null());
@@ -490,6 +501,7 @@ mod tests {
 
     #[test]
     fn test_mk_char() {
+        let _session = RSession::new();
         unsafe {
             let cs = Rf_mkChar(b"test\0".as_ptr() as *const c_char);
             assert!(!cs.is_null());
@@ -499,6 +511,7 @@ mod tests {
 
     #[test]
     fn test_is_null() {
+        let _session = RSession::new();
         unsafe {
             assert_eq!(Rf_isNull(ptr::null_mut()), 1);
             assert_eq!(Rf_isNull(R_NilValue()), 1);
@@ -509,6 +522,7 @@ mod tests {
 
     #[test]
     fn test_is_type_checks() {
+        let _session = RSession::new();
         unsafe {
             let iv = Rf_allocVector(SEXPTYPE::INTSXP, 1);
             assert_eq!(Rf_isInteger(iv), 1);

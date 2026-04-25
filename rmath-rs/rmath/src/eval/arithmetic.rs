@@ -990,9 +990,11 @@ pub unsafe fn register_special_forms(env: SEXP) {
 mod tests {
     use super::*;
     use crate::sexp::accessors::TYPEOF;
+    use crate::sexp::session::RSession;
 
     #[test]
     fn test_scalar_addition() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(1);
             let b = Rf_ScalarInteger(2);
@@ -1004,6 +1006,7 @@ mod tests {
 
     #[test]
     fn test_real_addition() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarReal(1.5);
             let b = Rf_ScalarReal(2.5);
@@ -1016,6 +1019,7 @@ mod tests {
 
     #[test]
     fn test_scalar_multiplication() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(3);
             let b = Rf_ScalarInteger(4);
@@ -1026,6 +1030,7 @@ mod tests {
 
     #[test]
     fn test_division_produces_real() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(10);
             let b = Rf_ScalarInteger(3);
@@ -1038,6 +1043,7 @@ mod tests {
 
     #[test]
     fn test_scalar_power() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(2);
             let b = Rf_ScalarInteger(10);
@@ -1048,6 +1054,7 @@ mod tests {
 
     #[test]
     fn test_comparison_lt() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(1);
             let b = Rf_ScalarInteger(2);
@@ -1058,6 +1065,7 @@ mod tests {
 
     #[test]
     fn test_comparison_eq() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(5);
             let b = Rf_ScalarInteger(5);
@@ -1068,6 +1076,7 @@ mod tests {
 
     #[test]
     fn test_comparison_ne() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarReal(1.0);
             let b = Rf_ScalarReal(2.0);
@@ -1078,6 +1087,7 @@ mod tests {
 
     #[test]
     fn test_scalar_modulo() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(10);
             let b = Rf_ScalarInteger(3);
@@ -1088,6 +1098,7 @@ mod tests {
 
     #[test]
     fn test_scalar_integer_division() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(10);
             let b = Rf_ScalarInteger(3);
@@ -1100,6 +1111,7 @@ mod tests {
 
     #[test]
     fn test_vector_addition_with_recycling() {
+        let _session = RSession::new();
         unsafe {
             // c(1,2,3) + c(10,20) should recycle → c(11, 22, 13)
             let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
@@ -1122,6 +1134,7 @@ mod tests {
 
     #[test]
     fn test_vector_comparison() {
+        let _session = RSession::new();
         unsafe {
             // c(1,2,3) > c(2,1,2) → c(FALSE, TRUE, TRUE)
             let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
@@ -1145,6 +1158,7 @@ mod tests {
 
     #[test]
     fn test_vector_na_propagation() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarInteger(NA_INTEGER);
             let b = Rf_ScalarInteger(5);
@@ -1156,6 +1170,7 @@ mod tests {
 
     #[test]
     fn test_scalar_plus_vector() {
+        let _session = RSession::new();
         unsafe {
             // 1 + c(10, 20, 30) → c(11, 21, 31)
             let a = Rf_ScalarInteger(1);
@@ -1174,6 +1189,7 @@ mod tests {
 
     #[test]
     fn test_unary_minus_vector() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_allocVector3(SEXPTYPE::INTSXP, 3);
             *INTEGER(a).add(0) = 1;
@@ -1190,6 +1206,7 @@ mod tests {
 
     #[test]
     fn test_real_plus_int_produces_real() {
+        let _session = RSession::new();
         unsafe {
             let a = Rf_ScalarReal(1.5);
             let b = Rf_ScalarInteger(2);
