@@ -468,6 +468,11 @@ impl RSession {
         self.instance.path_policy.library_paths().to_vec()
     }
 
+    /// Find an installed package in this session's library search paths.
+    pub fn find_package_path(&self, package: &str) -> Option<std::path::PathBuf> {
+        self.instance.path_policy.find_package_path(package)
+    }
+
     /// Replace this session's R library search paths.
     pub fn set_library_paths<I, P>(&mut self, paths: I)
     where

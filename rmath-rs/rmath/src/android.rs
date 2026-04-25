@@ -75,6 +75,19 @@ fn error_result(message: impl Into<String>) -> RResult {
     .with_error_output()
 }
 
+fn is_valid_package_name(package: &str) -> bool {
+    let mut chars = package.chars();
+    let Some(first) = chars.next() else {
+        return false;
+    };
+    first.is_ascii_alphabetic()
+        && package
+            .as_bytes()
+            .last()
+            .is_some_and(u8::is_ascii_alphanumeric)
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '.')
+}
+
 impl RSession {
     pub fn new() -> Self {
         RSession {
@@ -100,6 +113,33 @@ impl RSession {
                 .map(|path| path.to_string_lossy().into_owned())
                 .collect(),
             temp_dir: self.core.temp_dir().to_string_lossy().into_owned(),
+        }
+    }
+
+    /// Return true when a package exists in this session's configured library paths.
+    pub fn package_available(&self, package: &str) -> bool {
+        is_valid_package_name(package) && self.core.find_package_path(package).is_some()
+    }
+
+    /// Return the resolved package directory, if it exists in this session.
+    pub fn package_path(&self, package: &str) -> Option<String> {
+        if !is_valid_package_name(package) {
+            return None;
+        }
+        self.core
+            .find_package_path(package)
+            .map(|path| path.to_string_lossy().into_owned())
+    }
+
+    /// Load a pure-R package by name through the same evaluator path as `library()`.
+    pub fn load_package(&mut self, package: &str) -> Result<(), String> {
+        if !is_valid_package_name(package) {
+            return Err("invalid package name".to_string());
+        }
+        let result = self.eval(&format!("library(\"{package}\")"));
+        match result.typed {
+            RValue::Error(message) => Err(message),
+            _ => Ok(()),
         }
     }
 
@@ -565,6 +605,54 @@ mod tests {
                 ],
                 temp_dir: cache.join("Rtmp").to_string_lossy().into_owned(),
             }
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_library_loads_pure_r_package_from_android_paths() {
+        let root = std::env::temp_dir().join(format!(
+            "rport-android-package-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ));
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        let pkg = bundled.join("tiny");
+        let r_dir = pkg.join("R");
+        std::fs::create_dir_all(&r_dir).expect("package R dir");
+        std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
+            .expect("description");
+        std::fs::write(
+            r_dir.join("tiny.R"),
+            "tiny_value <- function() 42L\ntiny_label <- \"loaded\"\n",
+        )
+        .expect("R source");
+
+        let mut session = RSession::new();
+        session
+            .configure_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("configure paths");
+
+        assert_eq!(session.eval("require(\"tiny\")").output, "[1] TRUE");
+        assert_eq!(session.eval("tiny_value()").output, "[1] 42");
+        assert_eq!(
+            session.eval("tiny_label").typed,
+            string_vector(vec!["loaded".to_string()])
+        );
+        assert_eq!(session.eval("library(\"tiny\")").output, "");
+        assert_eq!(
+            session.eval("find.package(\"tiny\")").typed,
+            string_vector(vec![pkg.to_string_lossy().into_owned()])
         );
 
         let _ = std::fs::remove_dir_all(root);

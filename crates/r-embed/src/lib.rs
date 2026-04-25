@@ -193,6 +193,23 @@ impl RSession {
         self.inner.runtime_info()
     }
 
+    /// Return true when a package exists in this session's configured library paths.
+    pub fn package_available(&self, package: &str) -> bool {
+        self.inner.package_available(package)
+    }
+
+    /// Return the resolved package directory for a package, if available.
+    pub fn package_path(&self, package: &str) -> Option<String> {
+        self.inner.package_path(package)
+    }
+
+    /// Load a pure-R package into this session.
+    pub fn load_package(&mut self, package: &str) -> Result<(), RSessionError> {
+        self.inner
+            .load_package(package)
+            .map_err(RSessionError::EvalError)
+    }
+
     fn eval_result_with_cancel(
         &mut self,
         code: &str,
@@ -493,6 +510,25 @@ impl Drop for RSession {
 mod tests {
     use super::*;
 
+    fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "{root_name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ));
+        let bundled = root.join("bundled-library");
+        let pkg = bundled.join("tiny");
+        let r_dir = pkg.join("R");
+        std::fs::create_dir_all(&r_dir).expect("package R dir");
+        std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
+            .expect("description");
+        std::fs::write(r_dir.join("tiny.R"), "tiny_value <- function() 42L\n").expect("R source");
+        (root, pkg)
+    }
+
     #[test]
     fn eval_uses_isolated_session_state() {
         let mut left = RSession::new().expect("left session");
@@ -600,6 +636,35 @@ mod tests {
                 temp_dir: cache.join("Rtmp").to_string_lossy().into_owned(),
             }
         );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn package_helpers_load_android_library_package() {
+        let (root, pkg) = make_test_package("rport-embed-package");
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        let paths = AndroidRuntimePaths::new(
+            files.to_str().expect("utf8 files path"),
+            cache.to_str().expect("utf8 cache path"),
+            Some(bundled.to_str().expect("utf8 bundled path")),
+        );
+
+        let mut session = RSession::new().expect("session");
+        session
+            .configure_android_runtime(&paths)
+            .expect("path config");
+
+        assert!(session.package_available("tiny"));
+        assert_eq!(
+            session.package_path("tiny"),
+            Some(pkg.to_string_lossy().into_owned())
+        );
+        assert!(!session.package_available("../tiny"));
+        session.load_package("tiny").expect("load package");
+        assert_eq!(session.eval("tiny_value()").expect("eval"), "[1] 42");
 
         let _ = std::fs::remove_dir_all(root);
     }

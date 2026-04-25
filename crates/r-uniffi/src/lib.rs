@@ -288,6 +288,18 @@ enum SessionCommand {
     RuntimeInfo {
         reply: Sender<Result<RuntimeInfo, RError>>,
     },
+    PackageAvailable {
+        package: String,
+        reply: Sender<Result<bool, RError>>,
+    },
+    PackagePath {
+        package: String,
+        reply: Sender<Result<Option<String>, RError>>,
+    },
+    LoadPackage {
+        package: String,
+        reply: Sender<Result<(), RError>>,
+    },
     Eval {
         code: String,
         reply: Sender<Result<EvalResult, RError>>,
@@ -355,6 +367,18 @@ fn spawn_worker(
                         library_paths: info.library_paths,
                         temp_dir: info.temp_dir,
                     }));
+                }
+                SessionCommand::PackageAvailable { package, reply } => {
+                    let _ = reply.send(Ok(session.package_available(&package)));
+                }
+                SessionCommand::PackagePath { package, reply } => {
+                    let _ = reply.send(Ok(session.package_path(&package)));
+                }
+                SessionCommand::LoadPackage { package, reply } => {
+                    let result = session
+                        .load_package(&package)
+                        .map_err(|err| RError::EvalError(err.to_string()));
+                    let _ = reply.send(result);
                 }
                 SessionCommand::Eval { code, reply } => {
                     let result = session
@@ -487,6 +511,42 @@ impl RSession {
         reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
 
+    pub fn package_available(&self, package: String) -> Result<bool, RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::PackageAvailable {
+            package,
+            reply: reply_tx,
+        })
+        .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
+    pub fn package_path(&self, package: String) -> Result<Option<String>, RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::PackagePath {
+            package,
+            reply: reply_tx,
+        })
+        .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
+    pub fn load_package(&self, package: String) -> Result<(), RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::LoadPackage {
+            package,
+            reply: reply_tx,
+        })
+        .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
     pub fn eval_async(&self, code: String) -> Result<u64, RError> {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
@@ -563,6 +623,25 @@ mod tests {
     use super::*;
     use std::sync::Arc;
     use std::time::Duration;
+
+    fn make_test_package(root_name: &str) -> (std::path::PathBuf, std::path::PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "{root_name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ));
+        let bundled = root.join("bundled-library");
+        let pkg = bundled.join("tiny");
+        let r_dir = pkg.join("R");
+        std::fs::create_dir_all(&r_dir).expect("package R dir");
+        std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
+            .expect("description");
+        std::fs::write(r_dir.join("tiny.R"), "tiny_value <- function() 42L\n").expect("R source");
+        (root, pkg)
+    }
 
     #[test]
     fn cancel_without_active_eval_does_not_poison_next_eval() {
@@ -732,6 +811,49 @@ mod tests {
                 ],
                 temp_dir: cache.join("Rtmp").to_string_lossy().into_owned(),
             }
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn package_helpers_run_on_worker_session() {
+        let (root, pkg) = make_test_package("rport-uniffi-package");
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        let session = RSession::new().expect("session");
+
+        session
+            .configure_android_runtime(android_runtime_paths(
+                files.to_string_lossy().into_owned(),
+                cache.to_string_lossy().into_owned(),
+                Some(bundled.to_string_lossy().into_owned()),
+            ))
+            .expect("configure paths");
+
+        assert!(
+            session
+                .package_available("tiny".to_string())
+                .expect("available")
+        );
+        assert_eq!(
+            session
+                .package_path("tiny".to_string())
+                .expect("package path"),
+            Some(pkg.to_string_lossy().into_owned())
+        );
+        assert!(
+            !session
+                .package_available("../tiny".to_string())
+                .expect("invalid package unavailable")
+        );
+        session
+            .load_package("tiny".to_string())
+            .expect("load package");
+        assert_eq!(
+            session.eval("tiny_value()".to_string()).expect("eval"),
+            "[1] 42"
         );
 
         let _ = std::fs::remove_dir_all(root);

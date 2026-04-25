@@ -4,7 +4,7 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
@@ -2653,35 +2653,53 @@ pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
 
 /// R's `library(package, ...)` — load a package.
 pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let pkg_arg = CAR(args);
-    if pkg_arg.is_null() || pkg_arg == R_NilValue() {
-        eprintln!("library: no package specified");
-        return R_NilValue();
+    unsafe {
+        let pkg_arg = CAR(args);
+        if pkg_arg.is_null() || pkg_arg == R_NilValue() {
+            package_error("no package specified");
+        }
+        let package_name = elt_to_string(pkg_arg, 0);
+        if package_name.is_empty() || package_name == "NA" {
+            package_error("invalid package name");
+        }
+        let lib_path = find_package_path(&package_name);
+        if lib_path.is_empty() {
+            package_error(format!("there is no package called '{}'", package_name));
+        }
+        if package_attached(&package_name) {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+            return R_NilValue();
+        }
+        match load_pure_r_package(&package_name, Path::new(&lib_path)) {
+            Ok(()) => {
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                R_NilValue()
+            }
+            Err(message) => package_error(message),
+        }
     }
-    let package_name = elt_to_string(pkg_arg, 0);
-    // Simplified: check if the package path exists and print a message
-    let lib_path = find_package_path(&package_name);
-    if lib_path.is_empty() {
-        eprintln!("Error: there is no package called '{}'", package_name);
-        return R_NilValue();
-    }
-    eprintln!("(simplified) loaded package: {}", package_name);
-    crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
-    R_NilValue()
 }
 
 /// R's `require(package, ...)` — check if a package can be loaded.
 pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
-    let pkg_arg = CAR(args);
-    if pkg_arg.is_null() || pkg_arg == R_NilValue() {
-        return Rf_ScalarLogical(FALSE);
+    unsafe {
+        let pkg_arg = CAR(args);
+        if pkg_arg.is_null() || pkg_arg == R_NilValue() {
+            return Rf_ScalarLogical(FALSE);
+        }
+        let package_name = elt_to_string(pkg_arg, 0);
+        let lib_path = find_package_path(&package_name);
+        if lib_path.is_empty() {
+            return Rf_ScalarLogical(FALSE);
+        }
+        if package_attached(&package_name) {
+            return Rf_ScalarLogical(TRUE);
+        }
+        match load_pure_r_package(&package_name, Path::new(&lib_path)) {
+            Ok(()) => Rf_ScalarLogical(TRUE),
+            Err(_) => Rf_ScalarLogical(FALSE),
+        }
     }
-    let package_name = elt_to_string(pkg_arg, 0);
-    let lib_path = find_package_path(&package_name);
-    if lib_path.is_empty() {
-        return Rf_ScalarLogical(FALSE);
-    }
-    Rf_ScalarLogical(TRUE)
 }
 
 /// R's `installed.packages(...)` — list installed packages.
@@ -3501,6 +3519,139 @@ fn find_package_path(package: &str) -> String {
             .map(|path| path.to_string_lossy().into_owned())
             .unwrap_or_default()
     })
+}
+
+fn package_error(message: impl Into<String>) -> ! {
+    std::panic::panic_any(crate::sexp::context::RError {
+        message: message.into(),
+    });
+}
+
+unsafe fn package_name_symbol() -> SEXP {
+    unsafe { Rf_install(c".packageName".as_ptr()) }
+}
+
+unsafe fn name_symbol() -> SEXP {
+    unsafe { Rf_install(c"name".as_ptr()) }
+}
+
+unsafe fn package_name_binding(env: SEXP) -> Option<String> {
+    unsafe {
+        let value = crate::sexp::envir::R_findVarInFrame(env, package_name_symbol());
+        if value.is_null()
+            || value == R_NilValue()
+            || value == crate::sexp::globals::R_UnboundValue()
+            || TYPEOF(value) != SEXPTYPE::STRSXP
+            || XLENGTH(value) < 1
+        {
+            return None;
+        }
+        Some(elt_to_string(value, 0))
+    }
+}
+
+unsafe fn package_attached(package: &str) -> bool {
+    unsafe {
+        let mut env = crate::sexp::accessors::ENCLOS(crate::sexp::globals::R_GlobalEnv());
+        let base = crate::sexp::globals::R_BaseEnv();
+        while !env.is_null() && env != base {
+            if package_name_binding(env).as_deref() == Some(package) {
+                return true;
+            }
+            env = crate::sexp::accessors::ENCLOS(env);
+        }
+        false
+    }
+}
+
+unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), String> {
+    unsafe {
+        let description = package_dir.join("DESCRIPTION");
+        if !description.is_file() {
+            return Err(format!("package '{}' has no DESCRIPTION", package));
+        }
+
+        let package_env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        if package_env.is_null() {
+            return Err(format!(
+                "could not create namespace for package '{}'",
+                package
+            ));
+        }
+        let _package_env_guard = crate::sexp::protect::protect(package_env);
+
+        define_package_metadata(package, package_env);
+        let load_result = source_package_r_files(package, package_dir, package_env);
+        if load_result.is_ok() {
+            attach_package_env(package_env);
+        }
+        load_result
+    }
+}
+
+unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
+    unsafe {
+        let package_string = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
+        if !package_string.is_null() {
+            crate::sexp::envir::defineVar(package_name_symbol(), package_string, package_env);
+        }
+
+        let search_name = format!("package:{package}");
+        let search_string = Rf_mkString(CString::new(search_name).unwrap_or_default().as_ptr());
+        if !search_string.is_null() {
+            crate::sexp::attrib_core::setAttrib(package_env, name_symbol(), search_string);
+        }
+    }
+}
+
+unsafe fn source_package_r_files(
+    package: &str,
+    package_dir: &Path,
+    package_env: SEXP,
+) -> Result<(), String> {
+    unsafe {
+        let r_dir = package_dir.join("R");
+        if !r_dir.is_dir() {
+            return Ok(());
+        }
+
+        let mut files = std::fs::read_dir(&r_dir)
+            .map_err(|err| format!("could not read R directory for package '{package}': {err}"))?
+            .filter_map(Result::ok)
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.extension()
+                    .and_then(|ext| ext.to_str())
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+            })
+            .collect::<Vec<_>>();
+        files.sort();
+
+        for file in files {
+            let code = std::fs::read_to_string(&file)
+                .map_err(|err| format!("could not read {}: {err}", file.display()))?;
+            let expr = crate::sexp::memory::with_arena(|arena| {
+                crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
+            })?;
+            let expr = if expr.is_null() { R_NilValue() } else { expr };
+            crate::eval::eval::Rf_eval(expr, package_env);
+        }
+
+        Ok(())
+    }
+}
+
+unsafe fn attach_package_env(package_env: SEXP) {
+    unsafe {
+        let global = crate::sexp::globals::R_GlobalEnv();
+        let old_enclos = crate::sexp::accessors::ENCLOS(global);
+        crate::sexp::accessors::SET_ENCLOS(global, package_env);
+        crate::sexp::accessors::SET_ENCLOS(package_env, old_enclos);
+    }
 }
 
 /// Try to find a demo file for a topic.
