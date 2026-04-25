@@ -129,6 +129,17 @@ impl RSession {
         }
     }
 
+    pub fn arena_stats(&mut self) -> RArenaStats {
+        self.core
+            .with_arena(|arena| RArenaStats {
+                active_nodes: arena.node_count() as u64,
+                free_nodes: arena.free_count() as u64,
+                retained_bytes: arena.total_bytes_allocated() as u64,
+                fragmentation_ratio: arena.fragmentation_ratio(),
+            })
+            .unwrap_or_default()
+    }
+
     pub fn set_resource_limits(&mut self, limits: RResourceLimits) {
         self.core.set_eval_limits(crate::eval::eval::EvalLimits {
             max_eval_depth: saturating_usize(limits.max_eval_depth),
@@ -349,6 +360,26 @@ pub struct RRuntimeInfo {
     pub is_active: bool,
     pub library_paths: Vec<String>,
     pub temp_dir: String,
+}
+
+/// Snapshot of one session's arena allocator.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RArenaStats {
+    pub active_nodes: u64,
+    pub free_nodes: u64,
+    pub retained_bytes: u64,
+    pub fragmentation_ratio: f64,
+}
+
+impl Default for RArenaStats {
+    fn default() -> Self {
+        Self {
+            active_nodes: 0,
+            free_nodes: 0,
+            retained_bytes: 0,
+            fragmentation_ratio: 0.0,
+        }
+    }
 }
 
 /// Host-owned resource limits for Android sessions.

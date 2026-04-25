@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
 pub use rmath::android::{
-    RAttribute, RComplexValue, RMetadata, RResourceLimits, RRuntimeInfo, RValue,
+    RArenaStats, RAttribute, RComplexValue, RMetadata, RResourceLimits, RRuntimeInfo, RValue,
 };
 
 use thiserror::Error;
@@ -215,6 +215,11 @@ impl RSession {
     /// Return this session's Android-facing resource limits.
     pub fn resource_limits(&self) -> RResourceLimits {
         self.inner.resource_limits()
+    }
+
+    /// Return a snapshot of this session's arena allocator.
+    pub fn arena_stats(&mut self) -> RArenaStats {
+        self.inner.arena_stats()
     }
 
     /// Set this session's Android-facing resource limits.

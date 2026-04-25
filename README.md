@@ -136,14 +136,21 @@ scripts/adversarial_safety_checks.sh --check
 scripts/adversarial_safety_checks.sh --long
 ```
 
+Performance and memory snapshots:
+
+```bash
+scripts/performance_report.sh --quick --check
+```
+
 Conformance reports are written to:
 
 - `target/release-gate/conformance/summary.json`
 - `target/release-gate/conformance/summary.md`
 
 See `docs/conformance.md`, `docs/release-gate.md`,
-`docs/adversarial-testing.md`, `docs/upstream-port-map.md`, and
-`docs/rust-r-port-architecture.md` for the detailed policy.
+`docs/adversarial-testing.md`, `docs/performance.md`,
+`docs/upstream-port-map.md`, and `docs/rust-r-port-architecture.md` for the
+detailed policy.
 
 ## Upstream Porting Discipline
 

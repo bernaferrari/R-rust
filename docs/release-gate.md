@@ -54,6 +54,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Desktop host smoke | optional | yes | `scripts/desktop_host_smoke.sh` |
 | UniFFI binding generation | optional | yes | `scripts/generate_uniffi_bindings.sh --check` |
 | Android Gradle package smoke | optional | yes | `scripts/android_package_smoke.sh --check` |
+| Performance report | optional | optional | `scripts/performance_report.sh --quick --check` |
 | Strict clippy | yes | yes | `cargo clippy --all-targets --all-features -- -D warnings` |
 
 ## Prerequisites
@@ -102,4 +103,11 @@ Generate them with:
 
 ```bash
 scripts/android_showcase_artifacts.sh --check
+```
+
+Performance and memory report artifacts are separate from the default release
+gate because wall-clock timings are machine-sensitive:
+
+```bash
+scripts/performance_report.sh --quick --check
 ```
