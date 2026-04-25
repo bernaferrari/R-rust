@@ -228,6 +228,9 @@ pub struct RInstance {
     pub base_env: SEXP,
     /// The empty environment for this instance.
     pub empty_env: SEXP,
+    /// Owned environment sentinel nodes for empty/base/global environments.
+    #[allow(clippy::vec_box)]
+    pub(crate) env_nodes: Vec<Box<SexprecCore>>,
     /// The protection stack for this instance.
     pub protect_stack: Vec<SEXP>,
     /// The permanent preserve stack for this instance.
@@ -335,22 +338,23 @@ impl RInstance {
     /// Create a new, fully independent R instance.
     ///
     /// This allocates three persistent environment sentinels (empty → base →
-    /// global) using leaked `Box`es (same pattern as `init.rs`) and an empty
-    /// arena and protect stack.
+    /// global) owned by the instance, plus an empty arena and protect stack.
     pub fn new() -> Self {
         let nil = unsafe { super::globals::R_NilValue() };
 
-        // Create environment chain: empty -> base -> global, using leaked
-        // Boxes so they outlive the instance (matching the process-wide pattern).
-        let empty_env = Self::make_env(nil, nil, nil);
-        let base_env = Self::make_env(nil, empty_env, nil);
-        let global_env = Self::make_env(nil, base_env, nil);
+        // Box heap addresses remain stable when the Vec reallocates, so raw
+        // SEXP pointers can form the environment chain safely.
+        let mut env_nodes = Vec::with_capacity(3);
+        let empty_env = Self::push_env(&mut env_nodes, nil, nil, nil);
+        let base_env = Self::push_env(&mut env_nodes, nil, empty_env, nil);
+        let global_env = Self::push_env(&mut env_nodes, nil, base_env, nil);
 
         let mut instance = RInstance {
             arena: RArena::new(),
             global_env,
             base_env,
             empty_env,
+            env_nodes,
             protect_stack: Vec::new(),
             preserve_stack: Vec::new(),
             context_stack: Vec::new(),
@@ -415,8 +419,13 @@ impl RInstance {
         }
     }
 
-    /// Allocate a leaked environment node (outside the arena).
-    fn make_env(frame: SEXP, enclos: SEXP, hashtab: SEXP) -> SEXP {
+    /// Allocate an owned environment node outside the arena.
+    fn push_env(
+        env_nodes: &mut Vec<Box<SexprecCore>>,
+        frame: SEXP,
+        enclos: SEXP,
+        hashtab: SEXP,
+    ) -> SEXP {
         let mut boxed = Box::new(SexprecCore::new(SEXPTYPE::ENVSXP));
         let env: SEXP = &mut *boxed as *mut _;
         unsafe {
@@ -424,7 +433,8 @@ impl RInstance {
             (*env).data.envsxp.enclos = enclos;
             (*env).data.envsxp.hashtab = hashtab;
         }
-        Box::leak(boxed)
+        env_nodes.push(boxed);
+        env
     }
 }
 
@@ -592,5 +602,28 @@ pub fn check_cancellation() {
         std::panic::panic_any(crate::sexp::context::RSignal::Error {
             message: "operation cancelled".to_string(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_instance_owns_environment_sentinels() {
+        let instance = RInstance::new();
+
+        assert_eq!(instance.env_nodes.len(), 3);
+        assert!(!instance.empty_env.is_null());
+        assert!(!instance.base_env.is_null());
+        assert!(!instance.global_env.is_null());
+
+        unsafe {
+            assert_eq!((*instance.empty_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
+            assert_eq!((*instance.base_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
+            assert_eq!((*instance.global_env).sxpinfo.type_of(), SEXPTYPE::ENVSXP);
+            assert_eq!((*instance.base_env).data.envsxp.enclos, instance.empty_env);
+            assert_eq!((*instance.global_env).data.envsxp.enclos, instance.base_env);
+        }
     }
 }

@@ -480,6 +480,12 @@ impl RArena {
         self.nodes.iter().map(|b| &**b as *const _ as SEXP)
     }
 
+    /// Iterate over nodes that are currently active, excluding free-list slots.
+    pub fn active_nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
+        self.nodes()
+            .filter(|ptr| !self.free_list.iter().any(|free| free == ptr))
+    }
+
     /// Free a node by adding it to the free list for reuse.
     pub fn free_node(&mut self, ptr: SEXP) {
         if ptr.is_null() {
@@ -834,6 +840,17 @@ mod tests {
         assert_eq!(ptr1, ptr2);
         assert_eq!(arena.node_count(), 1);
         assert_eq!(arena.free_count(), 0);
+    }
+
+    #[test]
+    fn test_arena_active_nodes_excludes_free_list() {
+        let mut arena = RArena::new();
+        let live = arena.alloc_node(SEXPTYPE::INTSXP);
+        let freed = arena.alloc_node(SEXPTYPE::REALSXP);
+        arena.free_node(freed);
+
+        let active: Vec<SEXP> = arena.active_nodes().collect();
+        assert_eq!(active, vec![live]);
     }
 
     #[test]

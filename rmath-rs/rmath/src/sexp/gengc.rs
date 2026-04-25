@@ -12,7 +12,7 @@
 //! - Deterministic behavior — same input always produces same output
 
 use std::alloc::{Layout, alloc, dealloc};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::ptr;
 
 use super::ffi::{SEXP, SEXPTYPE};
@@ -158,6 +158,211 @@ fn verify_gc_invariants() {
         });
         true
     });
+}
+
+// ---------------------------------------------------------------------------
+// Root tracing
+// ---------------------------------------------------------------------------
+
+fn mark_reachable(obj: SEXP, traceable: &HashSet<usize>, visited: &mut HashSet<usize>) {
+    if obj.is_null() {
+        return;
+    }
+
+    let addr = obj as usize;
+    if !traceable.contains(&addr) {
+        return;
+    }
+    if !visited.insert(addr) {
+        return;
+    }
+
+    unsafe {
+        (*obj).sxpinfo.set_mark(true);
+
+        let t = (*obj).sxpinfo.type_of();
+        match t.0 {
+            1 => {
+                mark_reachable((*obj).data.symsxp.pname, traceable, visited);
+                mark_reachable((*obj).data.symsxp.value, traceable, visited);
+                mark_reachable((*obj).data.symsxp.internal, traceable, visited);
+            }
+            2 | 6 => {
+                mark_reachable((*obj).data.listsxp.carval, traceable, visited);
+                mark_reachable((*obj).data.listsxp.cdrval, traceable, visited);
+                mark_reachable((*obj).data.listsxp.tagval, traceable, visited);
+            }
+            3 => {
+                mark_reachable((*obj).data.closxp.formals, traceable, visited);
+                mark_reachable((*obj).data.closxp.body, traceable, visited);
+                mark_reachable((*obj).data.closxp.env, traceable, visited);
+            }
+            4 => {
+                mark_reachable((*obj).data.envsxp.frame, traceable, visited);
+                mark_reachable((*obj).data.envsxp.enclos, traceable, visited);
+                mark_reachable((*obj).data.envsxp.hashtab, traceable, visited);
+            }
+            5 => {
+                mark_reachable((*obj).data.promsxp.value, traceable, visited);
+                mark_reachable((*obj).data.promsxp.expr, traceable, visited);
+                mark_reachable((*obj).data.promsxp.env, traceable, visited);
+            }
+            22 => {
+                let extptr = (*obj).data.extptr;
+                mark_reachable(extptr[1] as SEXP, traceable, visited);
+                mark_reachable(extptr[2] as SEXP, traceable, visited);
+            }
+            _ => {}
+        }
+
+        if vector_payload_has_sexp_refs(t) {
+            let len = (*obj).vecsxp_length();
+            let data = (*obj).gengc_next_node as *mut SEXP;
+            if !data.is_null() && len > 0 {
+                for i in 0..len as usize {
+                    mark_reachable(*data.add(i), traceable, visited);
+                }
+            }
+        }
+
+        mark_reachable((*obj).attrib, traceable, visited);
+    }
+}
+
+fn mark_context_roots(
+    ctxt: &super::context::RCNTXT,
+    traceable: &HashSet<usize>,
+    visited: &mut HashSet<usize>,
+) {
+    mark_reachable(ctxt.call, traceable, visited);
+    mark_reachable(ctxt.cloenv, traceable, visited);
+    mark_reachable(ctxt.sysparent, traceable, visited);
+    mark_reachable(ctxt.callfun, traceable, visited);
+    mark_reachable(ctxt.closure, traceable, visited);
+    mark_reachable(ctxt.promiseargs, traceable, visited);
+    mark_reachable(ctxt.savelist, traceable, visited);
+    mark_reachable(ctxt.handlerstack, traceable, visited);
+    mark_reachable(ctxt.restartstack, traceable, visited);
+    mark_reachable(ctxt.rpvec, traceable, visited);
+    mark_reachable(ctxt.returnValue, traceable, visited);
+    mark_reachable(ctxt.conexit, traceable, visited);
+    mark_reachable(ctxt.srcref, traceable, visited);
+}
+
+fn traceable_instance_objects(instance: &instance::RInstance) -> HashSet<usize> {
+    let mut traceable = HashSet::new();
+    traceable.extend(instance.arena.active_nodes().map(|obj| obj as usize));
+    traceable.extend(
+        instance
+            .env_nodes
+            .iter()
+            .map(|node| &**node as *const _ as usize),
+    );
+    traceable.extend(
+        instance
+            .symbol_nodes
+            .iter()
+            .map(|node| &**node as *const _ as usize),
+    );
+    traceable.extend(instance.raw_cons.iter().map(|&obj| obj as usize));
+    traceable
+}
+
+fn mark_instance_roots(
+    instance: &mut instance::RInstance,
+    traceable: &HashSet<usize>,
+    visited: &mut HashSet<usize>,
+) -> usize {
+    mark_reachable(instance.empty_env, traceable, visited);
+    mark_reachable(instance.base_env, traceable, visited);
+    mark_reachable(instance.global_env, traceable, visited);
+
+    for &obj in &instance.protect_stack {
+        mark_reachable(obj, traceable, visited);
+    }
+    for &obj in &instance.preserve_stack {
+        mark_reachable(obj, traceable, visited);
+    }
+    for ctxt in &instance.context_stack {
+        mark_context_roots(ctxt, traceable, visited);
+    }
+
+    mark_reachable(instance.error_state.warnings, traceable, visited);
+    mark_reachable(instance.error_state.handler_stack, traceable, visited);
+    mark_reachable(instance.error_state.restart_stack, traceable, visited);
+
+    mark_reachable(instance.eval_state.current_expr, traceable, visited);
+    mark_reachable(instance.eval_state.parse_error_file, traceable, visited);
+    mark_reachable(instance.eval_state.exec_token, traceable, visited);
+    mark_reachable(instance.eval_state.profiling.sref, traceable, visited);
+    mark_reachable(
+        instance.eval_state.profiling.srcfiles_buffer,
+        traceable,
+        visited,
+    );
+    mark_reachable(
+        instance.eval_state.printvector.na_string,
+        traceable,
+        visited,
+    );
+    mark_reachable(
+        instance.eval_state.printvector.na_string_noquote,
+        traceable,
+        visited,
+    );
+    mark_reachable(instance.eval_state.print.data.na_string, traceable, visited);
+    mark_reachable(
+        instance.eval_state.print.data.na_string_noquote,
+        traceable,
+        visited,
+    );
+    mark_reachable(instance.eval_state.print.data.env, traceable, visited);
+    mark_reachable(instance.eval_state.print.data.callArgs, traceable, visited);
+
+    for &obj in instance.symbols.values() {
+        mark_reachable(obj, traceable, visited);
+    }
+    for node in &instance.symbol_nodes {
+        mark_reachable(&**node as *const _ as SEXP, traceable, visited);
+    }
+    for node in &instance.env_nodes {
+        mark_reachable(&**node as *const _ as SEXP, traceable, visited);
+    }
+    for &obj in &instance.names_state.ddval_symbols {
+        mark_reachable(obj, traceable, visited);
+    }
+    mark_reachable(instance.bind_state.blank_string, traceable, visited);
+
+    for &obj in instance.options.values() {
+        mark_reachable(obj, traceable, visited);
+    }
+    for (&env, table) in &instance.env_hash_tables {
+        mark_reachable(env as SEXP, traceable, visited);
+        for (&symbol, &value) in table {
+            mark_reachable(symbol as SEXP, traceable, visited);
+            mark_reachable(value, traceable, visited);
+        }
+    }
+
+    for &(obj, _) in &instance.memory_state.pending_finalizers {
+        mark_reachable(obj, traceable, visited);
+    }
+    mark_reachable(instance.dynload_state.dll_info_eptrs, traceable, visited);
+    mark_reachable(instance.dynload_state.symbol_eptrs, traceable, visited);
+    mark_reachable(instance.dynload_state.c_entry_table, traceable, visited);
+
+    mark_reachable(
+        instance.grid_runtime_state.current_grid_state,
+        traceable,
+        visited,
+    );
+    mark_reachable(instance.grid_runtime_state.eval_env, traceable, visited);
+
+    for &obj in &instance.raw_cons {
+        mark_reachable(obj, traceable, visited);
+    }
+
+    visited.len()
 }
 
 // ---------------------------------------------------------------------------
@@ -474,61 +679,193 @@ fn update_remembered_set(old_to_new: &HashMap<usize, SEXP>) {
     });
 }
 
+fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
+    if obj.is_null() {
+        return;
+    }
+    unsafe {
+        let t = (*obj).sxpinfo.type_of();
+        match t.0 {
+            1 => {
+                update_field(&mut (*obj).data.symsxp.pname, old_to_new);
+                update_field(&mut (*obj).data.symsxp.value, old_to_new);
+                update_field(&mut (*obj).data.symsxp.internal, old_to_new);
+            }
+            2 | 6 => {
+                update_field(&mut (*obj).data.listsxp.carval, old_to_new);
+                update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
+                update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
+            }
+            3 => {
+                update_field(&mut (*obj).data.closxp.formals, old_to_new);
+                update_field(&mut (*obj).data.closxp.body, old_to_new);
+                update_field(&mut (*obj).data.closxp.env, old_to_new);
+            }
+            4 => {
+                update_field(&mut (*obj).data.envsxp.frame, old_to_new);
+                update_field(&mut (*obj).data.envsxp.enclos, old_to_new);
+                update_field(&mut (*obj).data.envsxp.hashtab, old_to_new);
+            }
+            5 => {
+                update_field(&mut (*obj).data.promsxp.value, old_to_new);
+                update_field(&mut (*obj).data.promsxp.expr, old_to_new);
+                update_field(&mut (*obj).data.promsxp.env, old_to_new);
+            }
+            22 => {
+                let tag = (*obj).data.extptr[1] as SEXP;
+                let prot = (*obj).data.extptr[2] as SEXP;
+                (*obj).data.extptr[1] = old_to_new.get(&(tag as usize)).copied().unwrap_or(tag)
+                    as *mut std::ffi::c_void;
+                (*obj).data.extptr[2] = old_to_new.get(&(prot as usize)).copied().unwrap_or(prot)
+                    as *mut std::ffi::c_void;
+            }
+            _ => {}
+        }
+
+        if vector_payload_has_sexp_refs(t) {
+            let len = (*obj).vecsxp_length();
+            let data = (*obj).gengc_next_node as *mut SEXP;
+            if !data.is_null() && len > 0 {
+                for i in 0..len as usize {
+                    update_field(&mut *data.add(i), old_to_new);
+                }
+            }
+        }
+
+        update_field(&mut (*obj).attrib, old_to_new);
+    }
+}
+
 fn update_object_references(old_to_new: &HashMap<usize, SEXP>) {
     with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.nodes().collect();
+        let nodes: Vec<SEXP> = arena.active_nodes().collect();
         for &obj in &nodes {
-            if obj.is_null() {
-                continue;
-            }
-            unsafe {
-                let t = (*obj).sxpinfo.type_of();
-                match t.0 {
-                    1 => {
-                        update_field(&mut (*obj).data.symsxp.pname, old_to_new);
-                        update_field(&mut (*obj).data.symsxp.value, old_to_new);
-                        update_field(&mut (*obj).data.symsxp.internal, old_to_new);
-                    }
-                    2 | 6 => {
-                        update_field(&mut (*obj).data.listsxp.carval, old_to_new);
-                        update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
-                        update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
-                    }
-                    3 => {
-                        update_field(&mut (*obj).data.closxp.formals, old_to_new);
-                        update_field(&mut (*obj).data.closxp.body, old_to_new);
-                        update_field(&mut (*obj).data.closxp.env, old_to_new);
-                    }
-                    4 => {
-                        update_field(&mut (*obj).data.envsxp.frame, old_to_new);
-                        update_field(&mut (*obj).data.envsxp.enclos, old_to_new);
-                        update_field(&mut (*obj).data.envsxp.hashtab, old_to_new);
-                    }
-                    5 => {
-                        update_field(&mut (*obj).data.promsxp.value, old_to_new);
-                        update_field(&mut (*obj).data.promsxp.expr, old_to_new);
-                        update_field(&mut (*obj).data.promsxp.env, old_to_new);
-                    }
-                    _ => {} // intentionally unhandled: SEXPTYPE has no pointers to forward in GC
-                }
+            update_references_in_object(obj, old_to_new);
+        }
+    });
+}
 
-                if vector_payload_has_sexp_refs(t) {
-                    let len = (*obj).vecsxp_length();
-                    let data = (*obj).gengc_next_node as *mut SEXP;
-                    if !data.is_null() && len > 0 {
-                        for i in 0..len as usize {
-                            update_field(&mut *data.add(i), old_to_new);
-                        }
-                    }
-                }
+fn remap_addr(addr: usize, old_to_new: &HashMap<usize, SEXP>) -> usize {
+    old_to_new
+        .get(&addr)
+        .copied()
+        .map(|ptr| ptr as usize)
+        .unwrap_or(addr)
+}
 
-                update_field(&mut (*obj).attrib, old_to_new);
-            }
+fn update_context_roots(ctxt: &mut super::context::RCNTXT, old_to_new: &HashMap<usize, SEXP>) {
+    update_field(&mut ctxt.call, old_to_new);
+    update_field(&mut ctxt.cloenv, old_to_new);
+    update_field(&mut ctxt.sysparent, old_to_new);
+    update_field(&mut ctxt.callfun, old_to_new);
+    update_field(&mut ctxt.closure, old_to_new);
+    update_field(&mut ctxt.promiseargs, old_to_new);
+    update_field(&mut ctxt.savelist, old_to_new);
+    update_field(&mut ctxt.handlerstack, old_to_new);
+    update_field(&mut ctxt.restartstack, old_to_new);
+    update_field(&mut ctxt.rpvec, old_to_new);
+    update_field(&mut ctxt.returnValue, old_to_new);
+    update_field(&mut ctxt.conexit, old_to_new);
+    update_field(&mut ctxt.srcref, old_to_new);
+}
+
+fn update_instance_roots(old_to_new: &HashMap<usize, SEXP>) {
+    instance::with_required_current_instance(|instance| {
+        update_field(&mut instance.empty_env, old_to_new);
+        update_field(&mut instance.base_env, old_to_new);
+        update_field(&mut instance.global_env, old_to_new);
+
+        for obj in &mut instance.protect_stack {
+            update_field(obj, old_to_new);
+        }
+        for obj in &mut instance.preserve_stack {
+            update_field(obj, old_to_new);
+        }
+        for ctxt in &mut instance.context_stack {
+            update_context_roots(ctxt, old_to_new);
+        }
+
+        update_field(&mut instance.error_state.warnings, old_to_new);
+        update_field(&mut instance.error_state.handler_stack, old_to_new);
+        update_field(&mut instance.error_state.restart_stack, old_to_new);
+
+        update_field(&mut instance.eval_state.current_expr, old_to_new);
+        update_field(&mut instance.eval_state.parse_error_file, old_to_new);
+        update_field(&mut instance.eval_state.exec_token, old_to_new);
+        update_field(&mut instance.eval_state.profiling.sref, old_to_new);
+        update_field(
+            &mut instance.eval_state.profiling.srcfiles_buffer,
+            old_to_new,
+        );
+        update_field(&mut instance.eval_state.printvector.na_string, old_to_new);
+        update_field(
+            &mut instance.eval_state.printvector.na_string_noquote,
+            old_to_new,
+        );
+        update_field(&mut instance.eval_state.print.data.na_string, old_to_new);
+        update_field(
+            &mut instance.eval_state.print.data.na_string_noquote,
+            old_to_new,
+        );
+        update_field(&mut instance.eval_state.print.data.env, old_to_new);
+        update_field(&mut instance.eval_state.print.data.callArgs, old_to_new);
+
+        for obj in instance.symbols.values_mut() {
+            update_field(obj, old_to_new);
+        }
+        for node in &mut instance.symbol_nodes {
+            update_references_in_object(&mut **node as *mut _, old_to_new);
+        }
+        for node in &mut instance.env_nodes {
+            update_references_in_object(&mut **node as *mut _, old_to_new);
+        }
+        for obj in &mut instance.names_state.ddval_symbols {
+            update_field(obj, old_to_new);
+        }
+        update_field(&mut instance.bind_state.blank_string, old_to_new);
+
+        for obj in instance.options.values_mut() {
+            update_field(obj, old_to_new);
+        }
+        let old_hash_tables = std::mem::take(&mut instance.env_hash_tables);
+        instance.env_hash_tables = old_hash_tables
+            .into_iter()
+            .map(|(env, table)| {
+                let table = table
+                    .into_iter()
+                    .map(|(symbol, mut value)| {
+                        update_field(&mut value, old_to_new);
+                        (remap_addr(symbol, old_to_new), value)
+                    })
+                    .collect();
+                (remap_addr(env, old_to_new), table)
+            })
+            .collect();
+
+        for (obj, _) in &mut instance.memory_state.pending_finalizers {
+            update_field(obj, old_to_new);
+        }
+        update_field(&mut instance.dynload_state.dll_info_eptrs, old_to_new);
+        update_field(&mut instance.dynload_state.symbol_eptrs, old_to_new);
+        update_field(&mut instance.dynload_state.c_entry_table, old_to_new);
+
+        update_field(
+            &mut instance.grid_runtime_state.current_grid_state,
+            old_to_new,
+        );
+        update_field(&mut instance.grid_runtime_state.eval_env, old_to_new);
+
+        for obj in &mut instance.raw_cons {
+            let mut sexp = *obj as SEXP;
+            update_field(&mut sexp, old_to_new);
+            *obj = sexp;
+            update_references_in_object(*obj, old_to_new);
         }
     });
 }
 
 fn update_all_references(old_to_new: &HashMap<usize, SEXP>) {
+    update_instance_roots(old_to_new);
     update_protect_stack(old_to_new);
     update_preserve_stack(old_to_new);
     update_remembered_set(old_to_new);
@@ -570,45 +907,12 @@ pub fn minor_gc() -> (usize, usize) {
 }
 
 fn do_minor_gc() -> (usize, usize) {
-    let mut marked_count = 0;
-
-    with_protected_objects(|objects| {
-        for &obj in objects {
-            if !obj.is_null() {
-                unsafe {
-                    if !(*obj).sxpinfo.mark() {
-                        (*obj).sxpinfo.set_mark(true);
-                        marked_count += 1;
-                    }
-                }
-            }
-        }
-    });
-
-    with_preserved_objects(|objects| {
-        for &obj in objects {
-            if !obj.is_null() {
-                unsafe {
-                    if !(*obj).sxpinfo.mark() {
-                        (*obj).sxpinfo.set_mark(true);
-                        marked_count += 1;
-                    }
-                }
-            }
-        }
-    });
-
-    with_gc_state(|state| {
-        let entries: Vec<SEXP> = state.remembered_set.entries.clone();
-        for obj in entries {
-            if !obj.is_null() {
-                unsafe {
-                    if !(*obj).sxpinfo.mark() {
-                        (*obj).sxpinfo.set_mark(true);
-                        marked_count += 1;
-                    }
-                }
-            }
+    instance::with_required_current_instance(|instance| {
+        let traceable = traceable_instance_objects(instance);
+        let mut visited = HashSet::new();
+        mark_instance_roots(instance, &traceable, &mut visited);
+        for &obj in &instance.gc_state.remembered_set.entries {
+            mark_reachable(obj, &traceable, &mut visited);
         }
     });
 
@@ -616,7 +920,7 @@ fn do_minor_gc() -> (usize, usize) {
     let mut promoted_count = 0;
 
     with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.nodes().collect();
+        let nodes: Vec<SEXP> = arena.active_nodes().collect();
 
         for &obj in &nodes {
             if obj.is_null() {
@@ -718,7 +1022,7 @@ fn snapshot_live_objects() -> CompactionSnapshot {
     let mut live_objects: Vec<LiveObject> = Vec::new();
 
     with_arena_for_gc(|arena| {
-        let nodes: Vec<SEXP> = arena.nodes().collect();
+        let nodes: Vec<SEXP> = arena.active_nodes().collect();
         for &obj in &nodes {
             if obj.is_null() {
                 continue;
@@ -1075,6 +1379,23 @@ mod tests {
 
     use super::*;
 
+    fn reset_gc_test_arena(arena: &mut RArena) {
+        *arena = RArena::new();
+        let nil = unsafe { crate::sexp::globals::R_NilValue() };
+        for env in [
+            unsafe { crate::sexp::globals::R_EmptyEnv() },
+            unsafe { crate::sexp::globals::R_BaseEnv() },
+            unsafe { crate::sexp::globals::R_GlobalEnv() },
+        ] {
+            if !env.is_null() {
+                unsafe {
+                    (*env).data.envsxp.frame = nil;
+                    (*env).data.envsxp.hashtab = nil;
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_write_barrier_detects_old_to_young() {
         let _session = RSession::new();
@@ -1120,7 +1441,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
         });
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 0);
@@ -1132,7 +1453,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
             arena.alloc_node(SEXPTYPE::REALSXP);
         });
@@ -1146,7 +1467,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
             let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
             unsafe {
@@ -1164,7 +1485,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             let old_obj = arena.alloc_node(SEXPTYPE::INTSXP);
             let young_obj = arena.alloc_node(SEXPTYPE::REALSXP);
             unsafe {
@@ -1175,6 +1496,40 @@ mod tests {
         let (promoted, freed) = minor_gc();
         assert_eq!(promoted, 0);
         assert_eq!(freed, 1);
+    }
+
+    #[test]
+    fn test_minor_gc_traces_global_environment_bindings() {
+        let session = RSession::new();
+
+        let value = with_arena(|arena| {
+            let value = arena.alloc_vector(SEXPTYPE::INTSXP, 1);
+            unsafe {
+                *(crate::sexp::accessors::INTEGER(value)) = 123;
+            }
+            value
+        });
+        session.define_var("kept_by_global_env", value);
+
+        with_arena(|arena| {
+            let garbage = arena.alloc_node(SEXPTYPE::REALSXP);
+            assert!(!garbage.is_null());
+        });
+        let (_, freed) = minor_gc();
+        assert!(freed >= 1);
+        with_arena(|arena| {
+            for _ in 0..256 {
+                assert!(!arena.alloc_node(SEXPTYPE::REALSXP).is_null());
+            }
+        });
+
+        let found = session.find_var("kept_by_global_env").unwrap();
+        assert_eq!(found.as_raw(), value);
+        unsafe {
+            assert_eq!((*value).sxpinfo.type_of(), SEXPTYPE::INTSXP);
+            assert_eq!((*value).vecsxp_length(), 1);
+            assert_eq!(*(crate::sexp::accessors::INTEGER(value)), 123);
+        }
     }
 
     #[test]
@@ -1200,7 +1555,7 @@ mod tests {
 
         reset_gc_stats();
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
         });
         minor_gc();
@@ -1221,7 +1576,7 @@ mod tests {
         }));
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
         });
         minor_gc();
@@ -1258,7 +1613,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
         });
         let (promoted, freed, compacted) = full_gc();
         assert_eq!(promoted, 0);
@@ -1272,7 +1627,7 @@ mod tests {
 
         reset_gc_stats();
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
             arena.alloc_node(SEXPTYPE::REALSXP);
         });
@@ -1293,7 +1648,7 @@ mod tests {
 
         left.with_arena(|arena| {
             reset_gc_stats();
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             arena.alloc_node(SEXPTYPE::INTSXP);
             let (_, freed) = minor_gc();
             assert_eq!(freed, 1);
@@ -1305,7 +1660,7 @@ mod tests {
             .with_arena(|arena| {
                 assert_eq!(get_gc_stats().collections, 0);
                 reset_gc_stats();
-                *arena = RArena::new();
+                reset_gc_test_arena(arena);
                 arena.alloc_node(SEXPTYPE::INTSXP);
                 arena.alloc_node(SEXPTYPE::REALSXP);
                 let (_, freed) = minor_gc();
@@ -1328,7 +1683,7 @@ mod tests {
         let mut right = RSession::new();
 
         left.with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
             let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
             unsafe {
@@ -1342,7 +1697,7 @@ mod tests {
 
         right
             .with_arena(|arena| {
-                *arena = RArena::new();
+                reset_gc_test_arena(arena);
                 assert_eq!(with_gc_state(|state| state.remembered_set.len()), 0);
                 let old_obj = arena.alloc_node(SEXPTYPE::LISTSXP);
                 let young_obj = arena.alloc_node(SEXPTYPE::INTSXP);
@@ -1394,7 +1749,7 @@ mod tests {
 
         for _ in 0..5 {
             with_arena(|arena| {
-                *arena = RArena::new();
+                reset_gc_test_arena(arena);
                 let obj1 = arena.alloc_node(SEXPTYPE::INTSXP);
                 let obj2 = arena.alloc_node(SEXPTYPE::REALSXP);
                 unsafe {
@@ -1415,7 +1770,7 @@ mod tests {
         use super::super::protect::Rf_protect;
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             let obj = arena.alloc_node(SEXPTYPE::INTSXP);
             unsafe {
                 (*obj).sxpinfo.set_gcgen(Generation::Young as u8);
@@ -1437,7 +1792,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
         });
         let result = compact_if_needed(0.0);
         assert!(!result);
@@ -1448,7 +1803,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
         });
         let ratio = get_fragmentation_ratio();
         assert_eq!(ratio, 0.0);
@@ -1459,7 +1814,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
         });
         force_compact();
     }
@@ -1469,7 +1824,7 @@ mod tests {
         let _session = RSession::new();
 
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             arena.alloc_vector(SEXPTYPE::REALSXP, 2);
         });
 
@@ -1490,7 +1845,7 @@ mod tests {
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             marker = arena.alloc_node(SEXPTYPE::LISTSXP);
             vec = arena.alloc_vector(SEXPTYPE::REALSXP, 1);
         });
@@ -1516,7 +1871,7 @@ mod tests {
         let mut marker: SEXP = ptr::null_mut();
         let mut vec: SEXP = ptr::null_mut();
         with_arena(|arena| {
-            *arena = RArena::new();
+            reset_gc_test_arena(arena);
             marker = arena.alloc_node(SEXPTYPE::LISTSXP);
             vec = arena.alloc_vector(SEXPTYPE::VECSXP, 1);
         });
