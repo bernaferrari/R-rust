@@ -3589,12 +3589,12 @@ unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), S
         let _package_env_guard = crate::sexp::protect::protect(package_env);
 
         define_package_metadata(package, package_env);
-        let load_result = source_package_r_files(package, package_dir, package_env);
-        if load_result.is_ok() {
-            let attach_env = make_package_attach_env(package, package_dir, package_env)?;
-            attach_package_env(attach_env);
-        }
-        load_result
+        let mut loading = vec![package.to_string()];
+        let namespace =
+            populate_package_namespace(package, package_dir, package_env, &mut loading)?;
+        let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
+        attach_package_env(attach_env);
+        Ok(())
     }
 }
 
@@ -3643,20 +3643,159 @@ unsafe fn source_package_r_files(
                 crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
             })?;
             let expr = if expr.is_null() { R_NilValue() } else { expr };
-            crate::eval::eval::Rf_eval(expr, package_env);
+            let _ = crate::eval::eval::Rf_eval(expr, package_env);
         }
 
         Ok(())
     }
 }
 
-unsafe fn make_package_attach_env(
+#[derive(Clone, Debug, Default)]
+struct NamespaceDirectives {
+    exports: Vec<String>,
+    export_patterns: Vec<String>,
+    imports: Vec<NamespaceImport>,
+}
+
+#[derive(Clone, Debug)]
+enum NamespaceImport {
+    All { package: String },
+    From { package: String, names: Vec<String> },
+}
+
+unsafe fn populate_package_namespace(
     package: &str,
     package_dir: &Path,
     package_env: SEXP,
+    loading: &mut Vec<String>,
+) -> Result<Option<NamespaceDirectives>, String> {
+    unsafe {
+        let namespace = read_namespace_directives(package_dir)?;
+        if let Some(directives) = namespace.as_ref() {
+            apply_namespace_imports(package, package_env, directives, loading)?;
+        }
+        source_package_r_files(package, package_dir, package_env)?;
+        Ok(namespace)
+    }
+}
+
+unsafe fn apply_namespace_imports(
+    package: &str,
+    package_env: SEXP,
+    directives: &NamespaceDirectives,
+    loading: &mut Vec<String>,
+) -> Result<(), String> {
+    unsafe {
+        for import in &directives.imports {
+            let import_package = match import {
+                NamespaceImport::All { package } | NamespaceImport::From { package, .. } => {
+                    package.as_str()
+                }
+            };
+
+            if loading.iter().any(|entry| entry == import_package) {
+                return Err(format!(
+                    "package '{}' has cyclic namespace import involving '{}'",
+                    package, import_package
+                ));
+            }
+
+            let import_dir = find_package_path(import_package);
+            if import_dir.is_empty() {
+                return Err(format!(
+                    "package '{}' imports missing package '{}'",
+                    package, import_package
+                ));
+            }
+
+            loading.push(import_package.to_string());
+            let result = import_namespace_bindings(
+                package,
+                package_env,
+                Path::new(&import_dir),
+                import,
+                loading,
+            );
+            loading.pop();
+            result?;
+        }
+        Ok(())
+    }
+}
+
+unsafe fn import_namespace_bindings(
+    package: &str,
+    package_env: SEXP,
+    import_dir: &Path,
+    import: &NamespaceImport,
+    loading: &mut Vec<String>,
+) -> Result<(), String> {
+    unsafe {
+        let import_package = match import {
+            NamespaceImport::All { package } | NamespaceImport::From { package, .. } => {
+                package.as_str()
+            }
+        };
+
+        let import_env = crate::sexp::memory_ext::NewEnvironment(
+            R_NilValue(),
+            crate::sexp::globals::R_BaseEnv(),
+            R_NilValue(),
+        );
+        if import_env.is_null() {
+            return Err(format!(
+                "could not create namespace for imported package '{}'",
+                import_package
+            ));
+        }
+        let _import_guard = crate::sexp::protect::protect(import_env);
+        define_package_metadata(import_package, import_env);
+        let namespace =
+            populate_package_namespace(import_package, import_dir, import_env, loading)?;
+
+        let imported_names = match import {
+            NamespaceImport::All { .. } => namespace_exports(namespace.as_ref(), import_env),
+            NamespaceImport::From { names, .. } => names.clone(),
+        };
+
+        let mut missing = Vec::new();
+        for name in imported_names {
+            let Ok(symbol_name) = CString::new(name.as_str()) else {
+                missing.push(name);
+                continue;
+            };
+            let symbol = Rf_install(symbol_name.as_ptr());
+            let value = crate::sexp::envir::R_findVarInFrame(import_env, symbol);
+            if value.is_null()
+                || value == R_NilValue()
+                || value == crate::sexp::globals::R_UnboundValue()
+            {
+                missing.push(name);
+            } else {
+                crate::sexp::envir::defineVar(symbol, value, package_env);
+            }
+        }
+
+        if missing.is_empty() {
+            Ok(())
+        } else {
+            Err(format!(
+                "package '{}' imports undefined objects from '{}': {}",
+                package,
+                import_package,
+                missing.join(", ")
+            ))
+        }
+    }
+}
+
+unsafe fn make_package_attach_env(
+    package: &str,
+    namespace: Option<&NamespaceDirectives>,
+    package_env: SEXP,
 ) -> Result<SEXP, String> {
     unsafe {
-        let Some(exports) = read_namespace_exports(package_dir)? else {
+        let Some(directives) = namespace else {
             return Ok(package_env);
         };
 
@@ -3676,6 +3815,7 @@ unsafe fn make_package_attach_env(
         define_package_metadata(package, attach_env);
         crate::sexp::envir::defineVar(namespace_env_symbol(), package_env, attach_env);
 
+        let exports = namespace_exports(Some(directives), package_env);
         let mut missing = Vec::new();
         for export in exports {
             let Ok(symbol_name) = CString::new(export.as_str()) else {
@@ -3706,45 +3846,331 @@ unsafe fn make_package_attach_env(
     }
 }
 
-fn read_namespace_exports(package_dir: &Path) -> Result<Option<Vec<String>>, String> {
+fn read_namespace_directives(package_dir: &Path) -> Result<Option<NamespaceDirectives>, String> {
     let namespace = package_dir.join("NAMESPACE");
     if !namespace.is_file() {
         return Ok(None);
     }
     let content = std::fs::read_to_string(&namespace)
         .map_err(|err| format!("could not read {}: {err}", namespace.display()))?;
-    Ok(Some(parse_namespace_exports(&content)))
+    Ok(Some(parse_namespace_directives(&content)))
 }
 
-fn parse_namespace_exports(content: &str) -> Vec<String> {
-    let mut exports = Vec::new();
-    let uncommented = content
-        .lines()
-        .map(|line| line.split('#').next().unwrap_or_default())
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mut rest = uncommented.as_str();
-    while let Some(idx) = rest.find("export(") {
-        rest = &rest[idx + "export(".len()..];
-        let Some(end) = rest.find(')') else {
-            break;
-        };
-        let args = &rest[..end];
-        for name in args.split(',').filter_map(clean_namespace_name) {
-            if !exports.contains(&name) {
-                exports.push(name);
+fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
+    let mut directives = NamespaceDirectives::default();
+    let uncommented = strip_namespace_comments(content);
+    for (directive, args) in parse_namespace_calls(&uncommented) {
+        match directive.as_str() {
+            "export" => {
+                for name in split_namespace_args(&args)
+                    .into_iter()
+                    .filter_map(clean_namespace_name)
+                {
+                    push_unique(&mut directives.exports, name);
+                }
+            }
+            "exportPattern" => {
+                if let Some(pattern) = split_namespace_args(&args)
+                    .first()
+                    .and_then(|arg| clean_namespace_name(arg))
+                {
+                    push_unique(&mut directives.export_patterns, pattern);
+                }
+            }
+            "import" => {
+                if let Some(package) = split_namespace_args(&args)
+                    .first()
+                    .and_then(|arg| clean_namespace_name(arg))
+                {
+                    directives.imports.push(NamespaceImport::All { package });
+                }
+            }
+            "importFrom" => {
+                let parts = split_namespace_args(&args);
+                let Some(package) = parts.first().and_then(|arg| clean_namespace_name(arg)) else {
+                    continue;
+                };
+                let names = parts
+                    .iter()
+                    .skip(1)
+                    .filter_map(|arg| clean_namespace_name(arg))
+                    .collect::<Vec<_>>();
+                if !names.is_empty() {
+                    directives
+                        .imports
+                        .push(NamespaceImport::From { package, names });
+                }
+            }
+            _ => {}
+        }
+    }
+    directives
+}
+
+fn strip_namespace_comments(content: &str) -> String {
+    let mut stripped = String::with_capacity(content.len());
+    let mut in_string = false;
+    let mut quote = '\0';
+    let mut escaped = false;
+    let mut in_comment = false;
+
+    for ch in content.chars() {
+        if in_comment {
+            if ch == '\n' {
+                in_comment = false;
+                stripped.push('\n');
+            }
+            continue;
+        }
+
+        if in_string {
+            stripped.push(ch);
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' && quote != '`' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' | '`' => {
+                in_string = true;
+                quote = ch;
+                stripped.push(ch);
+            }
+            '#' => {
+                in_comment = true;
+            }
+            _ => stripped.push(ch),
+        }
+    }
+
+    stripped
+}
+
+fn parse_namespace_calls(content: &str) -> Vec<(String, String)> {
+    let mut calls = Vec::new();
+    let mut chars = content.char_indices().peekable();
+
+    while let Some((start, ch)) = chars.next() {
+        if !(ch.is_ascii_alphabetic() || ch == '.') {
+            continue;
+        }
+
+        let mut end = start + ch.len_utf8();
+        while let Some(&(idx, next)) = chars.peek() {
+            if next.is_ascii_alphanumeric() || next == '.' {
+                chars.next();
+                end = idx + next.len_utf8();
+            } else {
+                break;
             }
         }
-        rest = &rest[end + 1..];
+
+        let directive = content[start..end].trim();
+        let mut scan = chars.clone();
+        while let Some(&(_, whitespace)) = scan.peek() {
+            if whitespace.is_whitespace() {
+                scan.next();
+            } else {
+                break;
+            }
+        }
+        let Some((open_idx, '(')) = scan.next() else {
+            continue;
+        };
+
+        let Some((close_idx, args)) = find_namespace_call_args(content, open_idx) else {
+            continue;
+        };
+        calls.push((directive.to_string(), args.to_string()));
+
+        while let Some(&(idx, _)) = chars.peek() {
+            if idx <= close_idx {
+                chars.next();
+            } else {
+                break;
+            }
+        }
     }
-    exports
+
+    calls
+}
+
+fn find_namespace_call_args(content: &str, open_idx: usize) -> Option<(usize, &str)> {
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut quote = '\0';
+    let mut escaped = false;
+
+    for (idx, ch) in content[open_idx..].char_indices() {
+        let absolute_idx = open_idx + idx;
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' && quote != '`' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' | '`' => {
+                in_string = true;
+                quote = ch;
+            }
+            '(' => depth += 1,
+            ')' => {
+                depth = depth.saturating_sub(1);
+                if depth == 0 {
+                    return Some((absolute_idx, &content[open_idx + 1..absolute_idx]));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    None
+}
+
+fn split_namespace_args(args: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0usize;
+    let mut in_string = false;
+    let mut quote = '\0';
+    let mut escaped = false;
+
+    for (idx, ch) in args.char_indices() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' && quote != '`' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = false;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' | '`' => {
+                in_string = true;
+                quote = ch;
+            }
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(args[start..idx].trim());
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+
+    parts.push(args[start..].trim());
+    parts
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
+}
+
+unsafe fn namespace_exports(
+    namespace: Option<&NamespaceDirectives>,
+    package_env: SEXP,
+) -> Vec<String> {
+    unsafe {
+        let Some(directives) = namespace else {
+            return frame_binding_names(package_env, false);
+        };
+
+        let mut exports = directives.exports.clone();
+        for name in frame_binding_names(package_env, false) {
+            if directives
+                .export_patterns
+                .iter()
+                .any(|pattern| simple_namespace_pattern_matches(pattern, &name))
+            {
+                push_unique(&mut exports, name);
+            }
+        }
+        exports
+    }
+}
+
+unsafe fn frame_binding_names(env: SEXP, include_hidden: bool) -> Vec<String> {
+    unsafe {
+        let mut names = Vec::new();
+        let mut frame = FRAME(env);
+        while !frame.is_null() && frame != R_NilValue() {
+            let value = CAR(frame);
+            if value != crate::sexp::globals::R_UnboundValue()
+                && let Some(name) = symbol_name(TAG(frame))
+                && (include_hidden || !name.starts_with('.'))
+                && name != ".packageName"
+                && name != ".namespaceEnv"
+            {
+                names.push(name);
+            }
+            frame = CDR(frame);
+        }
+        names.sort();
+        names.dedup();
+        names
+    }
+}
+
+fn simple_namespace_pattern_matches(pattern: &str, name: &str) -> bool {
+    if pattern.is_empty() {
+        return false;
+    }
+
+    let anchored_start = pattern.starts_with('^');
+    let anchored_end = pattern.ends_with('$');
+    let mut body = pattern;
+    if anchored_start {
+        body = &body[1..];
+    }
+    if anchored_end && !body.is_empty() {
+        body = &body[..body.len() - 1];
+    }
+
+    let mut literal = String::with_capacity(body.len());
+    let mut chars = body.chars();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' {
+            let Some(escaped) = chars.next() else {
+                return false;
+            };
+            literal.push(escaped);
+        } else if ".^$|?*+()[]{}".contains(ch) {
+            return false;
+        } else {
+            literal.push(ch);
+        }
+    }
+
+    if anchored_start && anchored_end {
+        name == literal
+    } else if anchored_start {
+        name.starts_with(&literal)
+    } else if anchored_end {
+        name.ends_with(&literal)
+    } else {
+        name.contains(&literal)
+    }
 }
 
 fn clean_namespace_name(raw: &str) -> Option<String> {
     let name = raw
-        .split('#')
-        .next()
-        .unwrap_or_default()
         .trim()
         .trim_matches('"')
         .trim_matches('\'')

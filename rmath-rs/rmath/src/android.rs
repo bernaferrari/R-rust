@@ -519,6 +519,7 @@ pub fn qnorm_free(p: f64, mean: f64, sd: f64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     fn string_vector(values: Vec<String>) -> RValue {
         RValue::StringVector(values.into_iter().map(Some).collect())
@@ -526,6 +527,36 @@ mod tests {
 
     fn literal_string_vector(values: &[&str]) -> RValue {
         string_vector(values.iter().map(|value| (*value).to_string()).collect())
+    }
+
+    fn unique_test_root(label: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "rport-{label}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ))
+    }
+
+    fn write_package(
+        root: &Path,
+        name: &str,
+        namespace: &str,
+        r_source: &str,
+    ) -> std::path::PathBuf {
+        let pkg = root.join(name);
+        let r_dir = pkg.join("R");
+        std::fs::create_dir_all(&r_dir).expect("package R dir");
+        std::fs::write(
+            pkg.join("DESCRIPTION"),
+            format!("Package: {name}\nVersion: 0.0.1\n"),
+        )
+        .expect("description");
+        std::fs::write(pkg.join("NAMESPACE"), namespace).expect("namespace");
+        std::fs::write(r_dir.join(format!("{name}.R")), r_source).expect("R source");
+        pkg
     }
 
     #[test]
@@ -612,29 +643,16 @@ mod tests {
 
     #[test]
     fn test_library_loads_pure_r_package_from_android_paths() {
-        let root = std::env::temp_dir().join(format!(
-            "rport-android-package-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .expect("clock should be after epoch")
-                .as_nanos()
-        ));
+        let root = unique_test_root("android-package");
         let files = root.join("files");
         let cache = root.join("cache");
         let bundled = root.join("bundled-library");
-        let pkg = bundled.join("tiny");
-        let r_dir = pkg.join("R");
-        std::fs::create_dir_all(&r_dir).expect("package R dir");
-        std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
-            .expect("description");
-        std::fs::write(pkg.join("NAMESPACE"), "export(tiny_value, tiny_label)\n")
-            .expect("namespace");
-        std::fs::write(
-            r_dir.join("tiny.R"),
+        let pkg = write_package(
+            &bundled,
+            "tiny",
+            "export(tiny_value, tiny_label)\n",
             "tiny_secret <- function() 42L\ntiny_value <- function() tiny_secret()\ntiny_label <- \"loaded\"\n",
-        )
-        .expect("R source");
+        );
 
         let mut session = RSession::new();
         session
@@ -657,6 +675,67 @@ mod tests {
         assert_eq!(
             session.eval("find.package(\"tiny\")").typed,
             string_vector(vec![pkg.to_string_lossy().into_owned()])
+        );
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_library_supports_simple_namespace_imports_and_export_patterns() {
+        let root = unique_test_root("android-namespace");
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+
+        write_package(
+            &bundled,
+            "depall",
+            "export(dep_value, dep_helper)\n",
+            "dep_value <- function() 7L\ndep_helper <- function(x) x + 1L\ndep_hidden <- function() 99L\n",
+        );
+        write_package(
+            &bundled,
+            "depfrom",
+            "export(dep_pick, dep_extra)\n",
+            "dep_pick <- function() 11L\ndep_extra <- function() 100L\n",
+        );
+        let tiny = write_package(
+            &bundled,
+            "tiny",
+            "import(depall)\nimportFrom(depfrom, dep_pick)\nexport(tiny_value)\nexportPattern(\"^tiny_\")\n",
+            "tiny_value <- function() dep_helper(dep_value()) + dep_pick()\ntiny_label <- \"namespace\"\ntiny_hidden <- function() dep_hidden()\ntiny_imported <- function() dep_pick()\n",
+        );
+
+        let mut session = RSession::new();
+        session
+            .configure_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("configure paths");
+
+        assert_eq!(session.eval("library(\"tiny\")").output, "");
+        assert_eq!(session.eval("tiny_value()").output, "[1] 19");
+        assert_eq!(
+            session.eval("tiny_label").typed,
+            string_vector(vec!["namespace".to_string()])
+        );
+        assert_eq!(session.eval("tiny_imported()").output, "[1] 11");
+
+        let dep_value = session.eval("dep_value");
+        assert!(matches!(dep_value.typed, RValue::Error(_)), "{dep_value:?}");
+        let dep_pick = session.eval("dep_pick");
+        assert!(matches!(dep_pick.typed, RValue::Error(_)), "{dep_pick:?}");
+        let dep_hidden = session.eval("dep_hidden");
+        assert!(
+            matches!(dep_hidden.typed, RValue::Error(_)),
+            "{dep_hidden:?}"
+        );
+
+        assert_eq!(
+            session.eval("find.package(\"tiny\")").typed,
+            string_vector(vec![tiny.to_string_lossy().into_owned()])
         );
 
         let _ = std::fs::remove_dir_all(root);
