@@ -11,9 +11,10 @@
 //! The [`set_current_instance`] / [`clear_current_instance`] functions set a
 //! thread-local pointer to the "active" instance. When an instance is active,
 //! the global accessor functions (`R_GlobalEnv`, `Rf_protect`, `with_arena`,
-//! etc.) dispatch to the instance's fields instead of the process-wide
-//! fallbacks. This preserves backward compatibility: code that does not use
-//! `RSession` continues to work with the original global state.
+//! etc.) dispatch to that instance's fields. Code that touches mutable runtime
+//! state must enter through `RSession` or explicitly install an active
+//! `RInstance`; unscoped mutable process-global fallback state is intentionally
+//! not supported.
 
 use std::alloc::{Layout, dealloc};
 use std::cell::RefCell;
@@ -210,7 +211,7 @@ impl Default for EvalControlState {
 /// All per-instance state for one independent R session.
 ///
 /// Each `RInstance` has its own arena, environments, and protection stack,
-/// completely isolated from other instances and from the process-wide globals.
+/// completely isolated from other instances.
 ///
 /// `RInstance` is deliberately thread-confined. The compatibility dispatch
 /// layer stores a raw current-instance pointer in thread-local state, so moving
