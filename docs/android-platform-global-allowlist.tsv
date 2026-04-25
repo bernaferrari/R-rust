@@ -1,4 +1,6 @@
 # path	class	android_policy	owner	notes
+# Scanner scope: declaration sites only (thread_local!, static mut, lazy_static!/static ref, and static OnceLock/LazyLock/Mutex/RwLock/Atomic* definitions).
+# Scanner intentionally skips OnceLock<usize> singleton sentinels so immutable leaked-box sentinels do not create extra Android audit noise.
 rmath-rs/rmath/src/appl/lbfgsb.rs	numeric-workspace	sessionize	rport-pm0	L-BFGS-B translated scratch state; move into session before exposing optim on Android.
 rmath-rs/rmath/src/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp desktop clipboard state; Android uses platform clipboard bridge.
 rmath-rs/rmath/src/graphapp/context.rs	desktop-ui	disabled-android	rport-dg0.2	GraphApp drawing/context state; Android headless device owns rendering state.
@@ -54,10 +56,9 @@ rmath-rs/rmath/src/modules/internet/rsock.rs	network-runtime	platform-replace	rp
 rmath-rs/rmath/src/modules/x11/dev_x11.rs	desktop-ui	disabled-android	rport-dg0.2	X11 device globals; Android uses headless/device bridge.
 rmath-rs/rmath/src/modules/x11/rotated.rs	desktop-ui	disabled-android	rport-dg0.2	X11 text style state; Android text metrics belong in device backend.
 rmath-rs/rmath/src/sexp/context.rs	process-panic-hook	allow-process	rport-t57	Only the Rust panic hook installation guard remains process-global; context and in-error stacks are session-owned.
-rmath-rs/rmath/src/sexp/globals.rs	process-sentinels	allow-immutable	rport-dg0.2	R_NilValue and global fallback sentinels; do not use fallback env pointers in Android sessions.
+rmath-rs/rmath/src/sexp/globals.rs	process-sentinels	allow-immutable	rport-dg0.2	Scanner skips OnceLock<usize> sentinels here; remaining hits are fallback env atomics, and Android sessions must not rely on those process-global pointers.
 rmath-rs/rmath/src/sexp/init.rs	process-startup	sessionize	rport-dg0.2	Init atomic/lock protects process fallback init; Android should initialize per-session explicitly.
 rmath-rs/rmath/src/sexp/instance.rs	active-session	allow-session-dispatch	rport-dg0.2	Thread-local active instance pointer is the current C-shape compatibility dispatch.
-rmath-rs/rmath/src/sexp/session.rs	documentation	allow-session-dispatch	rport-dg0.2	Module documents thread-local fallback risks; not itself runtime state.
 rmath-rs/rmath/src/support/cport/localecharset.rs	platform-locale	platform-replace	rport-dg0.2	Charset constants/scratch buffer; Android locale bridge should own lookup.
 rmath-rs/rmath/src/support/graphapp/clipboard.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp clipboard; disabled for Android.
 rmath-rs/rmath/src/support/graphapp/context.rs	desktop-ui	disabled-android	rport-dg0.2	Support GraphApp context; disabled for Android.
