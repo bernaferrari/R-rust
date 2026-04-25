@@ -100,7 +100,6 @@ pub struct RValue {
     pub complex_values: Vec<Option<RComplexValue>>,
     pub list_values: Vec<RValue>,
     pub type_name: String,
-    pub display: String,
     pub error: String,
 }
 
@@ -124,7 +123,6 @@ fn empty_value(kind: RValueKind) -> RValue {
         complex_values: Vec::new(),
         list_values: Vec::new(),
         type_name: String::new(),
-        display: String::new(),
         error: String::new(),
     }
 }
@@ -176,9 +174,8 @@ impl From<r_embed::RValue> for RValue {
                 list_values: values.into_iter().map(RValue::from).collect(),
                 ..empty_value(RValueKind::List)
             },
-            r_embed::RValue::Unsupported { type_name, display } => RValue {
+            r_embed::RValue::Unsupported { type_name } => RValue {
                 type_name,
-                display,
                 ..empty_value(RValueKind::Unsupported)
             },
             r_embed::RValue::Error(message) => RValue {
@@ -518,6 +515,16 @@ mod tests {
                 None,
             ]
         );
+    }
+
+    #[test]
+    fn unsupported_values_carry_type_name_only() {
+        let value = RValue::from(r_embed::RValue::Unsupported {
+            type_name: "closure".to_string(),
+        });
+
+        assert_eq!(value.kind, RValueKind::Unsupported);
+        assert_eq!(value.type_name, "closure");
     }
 
     #[test]

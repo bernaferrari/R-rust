@@ -304,7 +304,7 @@ pub enum RValue {
     RawVector(Vec<u8>),
     ComplexVector(Vec<Option<RComplexValue>>),
     List(Vec<RValue>),
-    Unsupported { type_name: String, display: String },
+    Unsupported { type_name: String },
     Error(String),
 }
 
@@ -327,15 +327,14 @@ impl From<SexpComplex> for RComplexValue {
 impl RValue {
     pub fn from_sexp(sexp: Sexp<'_>) -> Self {
         match sexp.to_owned_value() {
-            Ok(value) => RValue::from_owned_value(value, Some(sexp)),
-            Err(error) => RValue::Unsupported {
+            Ok(value) => RValue::from_owned_value(value),
+            Err(_error) => RValue::Unsupported {
                 type_name: format!("invalid {}", sexp.typeof_().0),
-                display: error.to_string(),
             },
         }
     }
 
-    fn from_owned_value(value: SexpValue, original: Option<Sexp<'_>>) -> Self {
+    fn from_owned_value(value: SexpValue) -> Self {
         match value {
             SexpValue::Null => RValue::Null,
             SexpValue::Logical(value) => RValue::Logical(value),
@@ -352,16 +351,10 @@ impl RValue {
                     .map(|value| value.map(RComplexValue::from))
                     .collect(),
             ),
-            SexpValue::List(values) => RValue::List(
-                values
-                    .into_iter()
-                    .map(|value| RValue::from_owned_value(value, None))
-                    .collect(),
-            ),
-            SexpValue::Unsupported { type_name } => RValue::Unsupported {
-                type_name,
-                display: original.map(output::format_sexp_direct).unwrap_or_default(),
-            },
+            SexpValue::List(values) => {
+                RValue::List(values.into_iter().map(RValue::from_owned_value).collect())
+            }
+            SexpValue::Unsupported { type_name } => RValue::Unsupported { type_name },
         }
     }
 }
@@ -575,6 +568,19 @@ mod tests {
                 }),
                 None,
             ])
+        );
+    }
+
+    #[test]
+    fn test_unsupported_typed_values_only_carry_type_name() {
+        let mut arena = crate::sexp::memory::RArena::new();
+        let closure = Sexp::from_raw(arena.alloc_node(SEXPTYPE::CLOSXP)).unwrap();
+
+        assert_eq!(
+            RValue::from_sexp(closure),
+            RValue::Unsupported {
+                type_name: "closure".to_string(),
+            }
         );
     }
 
