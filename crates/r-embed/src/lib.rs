@@ -87,6 +87,15 @@ impl AndroidRuntimePaths {
     }
 }
 
+/// Metadata for an installed R package visible to an embedded session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RPackageInfo {
+    pub name: String,
+    pub version: String,
+    pub path: String,
+    pub library_path: String,
+}
+
 /// Cooperative cancellation handle for an embedded evaluation.
 ///
 /// The token is cheap to clone and can be cancelled from another thread. It is
@@ -203,6 +212,48 @@ impl RSession {
         self.inner.package_path(package)
     }
 
+    /// Return metadata for a package if it is visible in this session's
+    /// configured library paths.
+    pub fn package_info(&self, package: &str) -> Option<RPackageInfo> {
+        let package_path = self.package_path(package)?;
+        let library_paths = self.runtime_info().library_paths;
+        package_info_from_path(package, &PathBuf::from(&package_path), &library_paths)
+    }
+
+    /// Return metadata for installed packages visible in this session.
+    pub fn installed_packages(&self) -> Vec<RPackageInfo> {
+        let library_paths = self.runtime_info().library_paths;
+        let mut packages: Vec<RPackageInfo> = Vec::new();
+        for library_path in &library_paths {
+            let Ok(entries) = std::fs::read_dir(library_path) else {
+                continue;
+            };
+            for entry in entries.filter_map(Result::ok) {
+                let package_dir = entry.path();
+                if !package_dir.is_dir() || !package_dir.join("DESCRIPTION").is_file() {
+                    continue;
+                }
+                let Some(package_name) = package_dir
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .map(str::to_string)
+                else {
+                    continue;
+                };
+                if packages.iter().any(|pkg| pkg.name == package_name) {
+                    continue;
+                }
+                if let Some(info) =
+                    package_info_from_path(&package_name, &package_dir, &library_paths)
+                {
+                    packages.push(info);
+                }
+            }
+        }
+        packages.sort_by(|left, right| left.name.cmp(&right.name));
+        packages
+    }
+
     /// Load a pure-R package into this session.
     pub fn load_package(&mut self, package: &str) -> Result<(), RSessionError> {
         self.inner
@@ -285,6 +336,47 @@ impl RSession {
             self.active = false;
         }
     }
+}
+
+fn package_info_from_path(
+    fallback_name: &str,
+    package_path: &std::path::Path,
+    library_paths: &[String],
+) -> Option<RPackageInfo> {
+    let description = std::fs::read_to_string(package_path.join("DESCRIPTION")).ok()?;
+    let name = description_field(&description, "Package").unwrap_or_else(|| fallback_name.into());
+    let version = description_field(&description, "Version").unwrap_or_default();
+    let package_path_string = package_path.to_string_lossy().into_owned();
+    let library_path = library_paths
+        .iter()
+        .find(|library| {
+            package_path
+                .parent()
+                .is_some_and(|parent| parent == std::path::Path::new(library.as_str()))
+        })
+        .cloned()
+        .unwrap_or_else(|| {
+            package_path
+                .parent()
+                .map(|path| path.to_string_lossy().into_owned())
+                .unwrap_or_default()
+        });
+    Some(RPackageInfo {
+        name,
+        version,
+        path: package_path_string,
+        library_path,
+    })
+}
+
+fn description_field(description: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}:");
+    description.lines().find_map(|line| {
+        line.strip_prefix(&prefix)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    })
 }
 
 struct PlotSeries {
@@ -662,6 +754,17 @@ mod tests {
             session.package_path("tiny"),
             Some(pkg.to_string_lossy().into_owned())
         );
+        assert_eq!(
+            session.package_info("tiny"),
+            Some(RPackageInfo {
+                name: "tiny".to_string(),
+                version: "0.0.1".to_string(),
+                path: pkg.to_string_lossy().into_owned(),
+                library_path: bundled.to_string_lossy().into_owned(),
+            })
+        );
+        assert_eq!(session.installed_packages().len(), 1);
+        assert_eq!(session.installed_packages()[0].name, "tiny");
         assert!(!session.package_available("../tiny"));
         session.load_package("tiny").expect("load package");
         assert_eq!(session.eval("tiny_value()").expect("eval"), "[1] 42");

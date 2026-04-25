@@ -155,6 +155,25 @@ impl From<r_embed::AndroidRuntimePaths> for AndroidRuntimePaths {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct PackageInfo {
+    pub name: String,
+    pub version: String,
+    pub path: String,
+    pub library_path: String,
+}
+
+impl From<r_embed::RPackageInfo> for PackageInfo {
+    fn from(info: r_embed::RPackageInfo) -> Self {
+        PackageInfo {
+            name: info.name,
+            version: info.version,
+            path: info.path,
+            library_path: info.library_path,
+        }
+    }
+}
+
 fn empty_value(kind: RValueKind) -> RValue {
     RValue {
         kind,
@@ -296,6 +315,13 @@ enum SessionCommand {
         package: String,
         reply: Sender<Result<Option<String>, RError>>,
     },
+    PackageInfo {
+        package: String,
+        reply: Sender<Result<Option<PackageInfo>, RError>>,
+    },
+    InstalledPackages {
+        reply: Sender<Result<Vec<PackageInfo>, RError>>,
+    },
     LoadPackage {
         package: String,
         reply: Sender<Result<(), RError>>,
@@ -373,6 +399,17 @@ fn spawn_worker(
                 }
                 SessionCommand::PackagePath { package, reply } => {
                     let _ = reply.send(Ok(session.package_path(&package)));
+                }
+                SessionCommand::PackageInfo { package, reply } => {
+                    let _ = reply.send(Ok(session.package_info(&package).map(PackageInfo::from)));
+                }
+                SessionCommand::InstalledPackages { reply } => {
+                    let packages = session
+                        .installed_packages()
+                        .into_iter()
+                        .map(PackageInfo::from)
+                        .collect();
+                    let _ = reply.send(Ok(packages));
                 }
                 SessionCommand::LoadPackage { package, reply } => {
                     let result = session
@@ -532,6 +569,27 @@ impl RSession {
             reply: reply_tx,
         })
         .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
+    pub fn package_info(&self, package: String) -> Result<Option<PackageInfo>, RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::PackageInfo {
+            package,
+            reply: reply_tx,
+        })
+        .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
+    pub fn installed_packages(&self) -> Result<Vec<PackageInfo>, RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::InstalledPackages { reply: reply_tx })
+            .map_err(|_| RError::SessionClosed)?;
         reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
 
@@ -842,6 +900,26 @@ mod tests {
                 .package_path("tiny".to_string())
                 .expect("package path"),
             Some(pkg.to_string_lossy().into_owned())
+        );
+        assert_eq!(
+            session
+                .package_info("tiny".to_string())
+                .expect("package info"),
+            Some(PackageInfo {
+                name: "tiny".to_string(),
+                version: "0.0.1".to_string(),
+                path: pkg.to_string_lossy().into_owned(),
+                library_path: bundled.to_string_lossy().into_owned(),
+            })
+        );
+        assert_eq!(
+            session
+                .installed_packages()
+                .expect("installed packages")
+                .into_iter()
+                .map(|package| package.name)
+                .collect::<Vec<_>>(),
+            vec!["tiny".to_string()]
         );
         assert!(
             !session
