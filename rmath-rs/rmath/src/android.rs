@@ -793,6 +793,40 @@ mod tests {
     }
 
     #[test]
+    fn test_library_rejects_native_code_packages_explicitly() {
+        let root = unique_test_root("android-native-policy");
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        write_package(
+            &bundled,
+            "tiny",
+            "useDynLib(tiny)\nexport(tiny_value)\n",
+            "tiny_value <- function() 42L\n",
+        );
+
+        let mut session = RSession::new();
+        session
+            .configure_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("configure paths");
+
+        let result = session.eval("library(\"tiny\")");
+        match result.typed {
+            RValue::Error(message) => {
+                assert!(message.contains("useDynLib(tiny)"), "{message}");
+                assert!(message.contains("pure-R Android runtime"), "{message}");
+            }
+            other => panic!("expected native package load error, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn test_session_eval_integer() {
         let mut session = RSession::new();
         let result = session.eval_integer(42);

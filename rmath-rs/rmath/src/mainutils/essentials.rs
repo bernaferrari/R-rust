@@ -3657,6 +3657,7 @@ struct NamespaceDirectives {
     export_patterns: Vec<String>,
     imports: Vec<NamespaceImport>,
     s3_methods: Vec<S3MethodDirective>,
+    native_libraries: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -3681,6 +3682,7 @@ unsafe fn populate_package_namespace(
     unsafe {
         let namespace = read_namespace_directives(package_dir)?;
         if let Some(directives) = namespace.as_ref() {
+            reject_native_namespace_directives(package, directives)?;
             apply_namespace_imports(package, package_env, directives, loading)?;
         }
         source_package_r_files(package, package_dir, package_env)?;
@@ -3935,10 +3937,33 @@ fn parse_namespace_directives(content: &str) -> NamespaceDirectives {
                     method,
                 });
             }
+            "useDynLib" => {
+                for name in split_namespace_args(&args)
+                    .into_iter()
+                    .filter_map(clean_namespace_name)
+                {
+                    push_unique(&mut directives.native_libraries, name);
+                }
+            }
             _ => {}
         }
     }
     directives
+}
+
+fn reject_native_namespace_directives(
+    package: &str,
+    directives: &NamespaceDirectives,
+) -> Result<(), String> {
+    if directives.native_libraries.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "package '{}' requires native libraries via useDynLib({}); this pure-R Android runtime does not load native package code",
+            package,
+            directives.native_libraries.join(", ")
+        ))
+    }
 }
 
 unsafe fn register_namespace_s3_methods(
