@@ -311,6 +311,8 @@ pub struct RInstance {
     pub(crate) dynload_state: crate::mainutils::rdynload::DynloadState,
     /// Per-instance connection table and sink state.
     pub(crate) connections_state: crate::mainutils::connections::ConnectionsState,
+    /// Per-instance library, cache, and temporary-directory policy.
+    pub(crate) path_policy: crate::mainutils::paths::RuntimePathPolicy,
     /// Per-instance headless graphics device registry.
     pub(crate) graphics_device_registry: crate::library::grdevices::device_registry::DeviceRegistry,
     /// Per-instance graphics engine registration state.
@@ -393,6 +395,7 @@ impl RInstance {
             nmath_beta_state: crate::nmath::dist::beta::BetaState::default(),
             dynload_state: crate::mainutils::rdynload::DynloadState::default(),
             connections_state: crate::mainutils::connections::ConnectionsState::default(),
+            path_policy: crate::mainutils::paths::RuntimePathPolicy::default(),
             graphics_device_registry:
                 crate::library::grdevices::device_registry::DeviceRegistry::default(),
             graphics_engine_state: crate::mainutils::engine::GraphicsEngineState::default(),

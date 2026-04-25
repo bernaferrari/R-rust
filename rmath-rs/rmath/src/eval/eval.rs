@@ -3891,6 +3891,14 @@ fn apply_builtin_safe<'a>(
             )
         },
         // Complete package system
+        ".libPaths" => unsafe {
+            crate::mainutils::essentials::do_lib_paths(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         "library" => unsafe {
             crate::mainutils::essentials::do_library(
                 call.as_raw(),

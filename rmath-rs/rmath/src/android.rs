@@ -111,6 +111,22 @@ impl RSession {
         self.core.set_cancellation_flag(flag);
     }
 
+    /// Configure app-private runtime paths for Android embedding.
+    ///
+    /// `app_files_dir` owns the writable user library, `cache_dir` owns
+    /// `tempdir()`, and `bundled_library_dir` points at the read-only package
+    /// library shipped with the app.
+    pub fn configure_paths(
+        &mut self,
+        app_files_dir: &str,
+        cache_dir: &str,
+        bundled_library_dir: Option<&str>,
+    ) -> Result<(), String> {
+        self.core
+            .configure_android_paths(app_files_dir, cache_dir, bundled_library_dir)
+            .map_err(|err| err.to_string())
+    }
+
     pub fn eval_integer(&mut self, value: i32) -> RResult {
         self.core
             .with_arena(|arena| builder::scalar_integer_in(arena, value).map(result_from_sexp))
@@ -487,6 +503,61 @@ mod tests {
                 .unwrap_or(false)
         );
         assert_eq!(session.eval("1 + 1").output, "[1] 2");
+    }
+
+    #[test]
+    fn test_android_path_policy_drives_libpaths_find_package_and_tempdir() {
+        let root = std::env::temp_dir().join(format!(
+            "rport-android-paths-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ));
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        let base_pkg = bundled.join("base");
+        std::fs::create_dir_all(&base_pkg).expect("package dir");
+        std::fs::write(base_pkg.join("DESCRIPTION"), "Package: base\n").expect("description");
+
+        let mut session = RSession::new();
+        session
+            .configure_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("configure paths");
+
+        let lib_paths = session.eval(".libPaths()");
+        assert_eq!(
+            lib_paths.typed,
+            RValue::StringVector(vec![
+                files
+                    .join("R")
+                    .join("library")
+                    .to_string_lossy()
+                    .into_owned(),
+                bundled.to_string_lossy().into_owned()
+            ])
+        );
+
+        let base_path = session.eval("find.package(\"base\")");
+        assert_eq!(
+            base_path.typed,
+            RValue::StringVector(vec![base_pkg.to_string_lossy().into_owned()])
+        );
+
+        let tempdir = session.eval("tempdir()");
+        assert_eq!(
+            tempdir.typed,
+            RValue::StringVector(vec![cache.join("Rtmp").to_string_lossy().into_owned()])
+        );
+        assert_eq!(session.eval("file.exists(tempdir())").output, "[1] TRUE");
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

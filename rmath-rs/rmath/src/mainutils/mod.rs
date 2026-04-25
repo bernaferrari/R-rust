@@ -58,6 +58,7 @@ pub mod objects;
 pub mod options;
 pub mod paste;
 pub mod paste_impl;
+pub mod paths;
 pub mod patterns;
 pub mod platform;
 pub mod polyroot;

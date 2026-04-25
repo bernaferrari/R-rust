@@ -117,6 +117,18 @@ impl RSession {
         self.eval_result_with_cancel(code, Some(cancellation.flag()))
     }
 
+    /// Configure Android app-private R runtime paths.
+    pub fn configure_android_paths(
+        &mut self,
+        app_files_dir: &str,
+        cache_dir: &str,
+        bundled_library_dir: Option<&str>,
+    ) -> Result<(), RSessionError> {
+        self.inner
+            .configure_paths(app_files_dir, cache_dir, bundled_library_dir)
+            .map_err(RSessionError::InitFailed)
+    }
+
     fn eval_result_with_cancel(
         &mut self,
         code: &str,
@@ -207,6 +219,45 @@ mod tests {
             result.value,
             RValue::RealVector(vec![Some(1.0), Some(2.0), Some(3.0)])
         );
+    }
+
+    #[test]
+    fn configure_android_paths_reaches_embedded_runtime() {
+        let root = std::env::temp_dir().join(format!(
+            "rport-embed-paths-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ));
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+
+        let mut session = RSession::new().expect("session");
+        session
+            .configure_android_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("path config");
+
+        let result = session.eval_result(".libPaths()").expect("lib paths");
+        assert_eq!(
+            result.value,
+            RValue::StringVector(vec![
+                files
+                    .join("R")
+                    .join("library")
+                    .to_string_lossy()
+                    .into_owned(),
+                bundled.to_string_lossy().into_owned()
+            ])
+        );
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

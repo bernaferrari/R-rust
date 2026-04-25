@@ -8,6 +8,10 @@ The Android-facing API is intentionally an owned-value boundary.
 - `r_embed::RSession::eval_result()` returns display output plus an owned `RValue`.
 - UniFFI `RSession::eval_result()` returns the same boundary shape as an
   `EvalResult { output, value }` record for Kotlin/Java callers.
+- Android hosts should call `configure_android_paths(appFilesDir, cacheDir,
+  bundledLibraryDir)` before evaluation when app-private library and temp paths
+  are known. The configured paths drive `.libPaths()`, `find.package()`,
+  `library()`, `require()`, `tempdir()`, and `tempfile()` for that session.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
 - Long-running evaluations can opt into cooperative cancellation with
   `r_embed::CancellationToken`; the token is explicit and per evaluation.

@@ -175,6 +175,12 @@ pub trait SessionCallback: Send + Sync + 'static {
 // ---------------------------------------------------------------------------
 
 enum SessionCommand {
+    ConfigurePaths {
+        app_files_dir: String,
+        cache_dir: String,
+        bundled_library_dir: Option<String>,
+        reply: Sender<Result<(), RError>>,
+    },
     Eval {
         code: String,
         reply: Sender<Result<EvalResult, RError>>,
@@ -223,6 +229,21 @@ fn spawn_worker(
 
         while let Ok(cmd) = cmd_rx.recv() {
             match cmd {
+                SessionCommand::ConfigurePaths {
+                    app_files_dir,
+                    cache_dir,
+                    bundled_library_dir,
+                    reply,
+                } => {
+                    let result = session
+                        .configure_android_paths(
+                            &app_files_dir,
+                            &cache_dir,
+                            bundled_library_dir.as_deref(),
+                        )
+                        .map_err(|e| RError::InitFailed);
+                    let _ = reply.send(result);
+                }
                 SessionCommand::Eval { code, reply } => {
                     let result = session
                         .eval_result_cancellable(&code, &cancelled)
@@ -319,6 +340,25 @@ impl RSession {
         reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
 
+    pub fn configure_android_paths(
+        &self,
+        app_files_dir: String,
+        cache_dir: String,
+        bundled_library_dir: Option<String>,
+    ) -> Result<(), RError> {
+        let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
+        let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
+        let (reply_tx, reply_rx) = channel();
+        tx.send(SessionCommand::ConfigurePaths {
+            app_files_dir,
+            cache_dir,
+            bundled_library_dir,
+            reply: reply_tx,
+        })
+        .map_err(|_| RError::SessionClosed)?;
+        reply_rx.recv().map_err(|_| RError::SessionClosed)?
+    }
+
     pub fn eval_async(&self, code: String) -> Result<u64, RError> {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
@@ -403,6 +443,48 @@ mod tests {
         assert_eq!(result.output, "[1] 1 2 3");
         assert_eq!(result.value.kind, RValueKind::IntegerVector);
         assert_eq!(result.value.integer_values, vec![Some(1), Some(2), Some(3)]);
+    }
+
+    #[test]
+    fn configure_android_paths_runs_on_worker_session() {
+        let root = std::env::temp_dir().join(format!(
+            "rport-uniffi-paths-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("clock should be after epoch")
+                .as_nanos()
+        ));
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        let session = RSession::new().expect("session");
+
+        session
+            .configure_android_paths(
+                files.to_string_lossy().into_owned(),
+                cache.to_string_lossy().into_owned(),
+                Some(bundled.to_string_lossy().into_owned()),
+            )
+            .expect("configure paths");
+
+        let result = session
+            .eval_result(".libPaths()".to_string())
+            .expect("lib paths");
+        assert_eq!(result.value.kind, RValueKind::StringVector);
+        assert_eq!(
+            result.value.string_values,
+            vec![
+                files
+                    .join("R")
+                    .join("library")
+                    .to_string_lossy()
+                    .into_owned(),
+                bundled.to_string_lossy().into_owned()
+            ]
+        );
+
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

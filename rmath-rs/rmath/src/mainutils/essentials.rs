@@ -4,6 +4,7 @@
 
 use std::ffi::{CStr, CString};
 use std::os::raw::c_int;
+use std::path::PathBuf;
 
 #[allow(unused_imports)]
 use crate::sexp::accessors::{
@@ -2620,6 +2621,36 @@ pub unsafe fn do_restarts(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
 // Complete package system — library, require, installed.packages, find.package
 // ---------------------------------------------------------------------------
 
+/// R's `.libPaths()` — inspect or replace the session's library search path.
+pub unsafe fn do_lib_paths(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
+    unsafe {
+        if !args.is_null() && args != R_NilValue() {
+            let value = CAR(args);
+            if !value.is_null() && value != R_NilValue() && TYPEOF(value) == SEXPTYPE::STRSXP {
+                let mut paths = Vec::with_capacity(LENGTH(value).max(0) as usize);
+                for i in 0..LENGTH(value) {
+                    let path = CStr::from_ptr(CHAR(STRING_ELT(value, i as R_xlen_t)))
+                        .to_string_lossy()
+                        .into_owned();
+                    paths.push(PathBuf::from(path));
+                }
+                crate::sexp::instance::with_required_current_instance(|inst| {
+                    inst.path_policy.set_library_paths(paths);
+                });
+            }
+        }
+
+        let paths = crate::sexp::instance::with_required_current_instance(|inst| {
+            inst.path_policy
+                .library_paths()
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect::<Vec<_>>()
+        });
+        string_vector(&paths)
+    }
+}
+
 /// R's `library(package, ...)` — load a package.
 pub unsafe fn do_library(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let pkg_arg = CAR(args);
@@ -3353,6 +3384,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "findRestart",
         "restarts",
         // Complete package system
+        ".libPaths",
         "library",
         "require",
         "installed.packages",
@@ -3442,25 +3474,33 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
 // Helpers
 // ---------------------------------------------------------------------------
 
-/// Try to find a package by name in common R library paths.
-fn find_package_path(package: &str) -> String {
-    let r_home = std::env::var("R_HOME").unwrap_or_else(|_| "/usr/lib/R".to_string());
-    let paths = [
-        format!("{}/library/{}/DESCRIPTION", r_home, package),
-        format!("/usr/local/lib/R/site-library/{}/DESCRIPTION", package),
-        format!("/usr/lib/R/site-library/{}/DESCRIPTION", package),
-        format!(
-            "{}/.R/library/{}/DESCRIPTION",
-            std::env::var("HOME").unwrap_or_default(),
-            package
-        ),
-    ];
-    for p in &paths {
-        if std::path::Path::new(p).exists() {
-            return p.replace("/DESCRIPTION", "");
+unsafe fn string_vector(values: &[String]) -> SEXP {
+    unsafe {
+        let result = Rf_allocVector3(SEXPTYPE::STRSXP, values.len() as R_xlen_t);
+        if result.is_null() {
+            return R_NilValue();
         }
+        let _protect = Rf_protect(result);
+        for (i, value) in values.iter().enumerate() {
+            SET_STRING_ELT(
+                result,
+                i as R_xlen_t,
+                Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
+            );
+        }
+        crate::sexp::protect::Rf_unprotect(1);
+        result
     }
-    String::new()
+}
+
+/// Try to find a package by name in this session's configured library paths.
+fn find_package_path(package: &str) -> String {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.path_policy
+            .find_package_path(package)
+            .map(|path| path.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    })
 }
 
 /// Try to find a demo file for a topic.
@@ -13417,7 +13457,7 @@ pub unsafe fn do_normalizePath(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 /// R tempfile()
 pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        let tmp = std::env::temp_dir();
+        let tmp = session_temp_dir();
         let path = tmp.join(format!("RtmpXXXXXX{}", std::process::id()));
         Rf_mkString(
             CString::new(path.to_string_lossy().as_ref())
@@ -13430,12 +13470,20 @@ pub unsafe fn do_tempfile(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SE
 /// R tempdir()
 pub unsafe fn do_tempdir(_call: SEXP, _op: SEXP, _args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
+        let temp_dir = session_temp_dir();
+        let _ = std::fs::create_dir_all(&temp_dir);
         Rf_mkString(
-            CString::new(std::env::temp_dir().to_string_lossy().as_ref())
+            CString::new(temp_dir.to_string_lossy().as_ref())
                 .unwrap_or_default()
                 .as_ptr(),
         )
     }
+}
+
+fn session_temp_dir() -> PathBuf {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.path_policy.temp_dir().to_path_buf()
+    })
 }
 
 /// R proc.time()

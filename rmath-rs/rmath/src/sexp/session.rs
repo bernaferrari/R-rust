@@ -400,6 +400,44 @@ impl RSession {
         self.instance.arena.set_budget(budget);
     }
 
+    /// Return this session's configured R library search paths.
+    pub fn library_paths(&self) -> Vec<std::path::PathBuf> {
+        self.instance.path_policy.library_paths().to_vec()
+    }
+
+    /// Replace this session's R library search paths.
+    pub fn set_library_paths<I, P>(&mut self, paths: I)
+    where
+        I: IntoIterator<Item = P>,
+        P: Into<std::path::PathBuf>,
+    {
+        self.instance.path_policy.set_library_paths(paths);
+    }
+
+    /// Configure Android app-private runtime paths for this session.
+    ///
+    /// `app_files_dir` owns the user library, `cache_dir` owns `tempdir()`,
+    /// and `bundled_library_dir` points at the read-only package library
+    /// shipped with the app, when present.
+    pub fn configure_android_paths(
+        &mut self,
+        app_files_dir: impl Into<std::path::PathBuf>,
+        cache_dir: impl Into<std::path::PathBuf>,
+        bundled_library_dir: Option<impl Into<std::path::PathBuf>>,
+    ) -> std::io::Result<()> {
+        self.instance.path_policy = crate::mainutils::paths::RuntimePathPolicy::for_android_app(
+            app_files_dir,
+            cache_dir,
+            bundled_library_dir,
+        )?;
+        Ok(())
+    }
+
+    /// Return the session-specific temporary directory used by `tempdir()`.
+    pub fn temp_dir(&self) -> &std::path::Path {
+        self.instance.path_policy.temp_dir()
+    }
+
     /// Run a function in a protected scope.
     ///
     /// The protection count is saved before calling `f` and any
