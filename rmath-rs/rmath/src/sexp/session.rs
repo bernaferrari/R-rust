@@ -182,12 +182,12 @@ impl RSession {
         self.sexp(self.instance.base_env)
     }
 
-    /// Wrap a raw pointer known to belong to this session.
+    /// Wrap a raw pointer if it belongs to this session.
     ///
     /// This is the safe public boundary for turning C-shaped `SEXP` values into
-    /// Rust `Sexp` handles. The pointer must be owned by this session's arena or
-    /// persistent instance storage, or be one of R's process-wide immutable
-    /// sentinels such as `R_NilValue`.
+    /// Rust `Sexp` handles. Unknown pointers are rejected; accepted pointers are
+    /// owned by this session's arena or persistent instance storage, or are one
+    /// of R's process-wide immutable sentinels such as `R_NilValue`.
     pub fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
         if ptr.is_null() {
             return None;
@@ -206,9 +206,9 @@ impl RSession {
     /// Returns an error if the session is closed or if evaluation
     /// triggers an R error (e.g., undefined variable, type error).
     ///
-    /// # Safety
-    ///
-    /// The `expr` pointer must be a valid SEXP or null.
+    /// Raw pointers that do not belong to this session are rejected before
+    /// evaluation. Prefer [`RSession::eval_sexp`] when the caller already has a
+    /// lifetime-bound [`Sexp`] handle.
     pub fn eval(&self, expr: SEXP) -> RResult<SEXP> {
         self.eval_sexp_raw(expr).map(Sexp::as_raw)
     }
@@ -348,9 +348,9 @@ impl RSession {
     /// Returns an error if the session is closed or if evaluation
     /// triggers an R error.
     ///
-    /// # Safety
-    ///
-    /// Both `expr` and `env` pointers must be valid SEXPs or null.
+    /// Raw pointers that do not belong to this session are rejected before
+    /// evaluation. Prefer [`RSession::eval_sexp_in`] when the caller already has
+    /// lifetime-bound [`Sexp`] handles.
     pub fn eval_in(&self, expr: SEXP, env: SEXP) -> RResult<SEXP> {
         let expr = self.sexp(expr_or_nil(expr)).ok_or_else(|| REvalError {
             message: "expression does not belong to this session".to_string(),

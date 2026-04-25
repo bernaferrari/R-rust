@@ -169,6 +169,9 @@ run scripts/conformance_parity.sh --check --report "$REPORT_DIR"
 section "Artifact sanity"
 check_conformance_artifacts
 
+section "Public safe API audit"
+run scripts/audit_safe_api.sh
+
 if [[ "$RUN_DESKTOP_SMOKE" -eq 1 ]]; then
     section "Desktop host smoke"
     run scripts/desktop_host_smoke.sh

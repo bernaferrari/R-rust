@@ -15,8 +15,8 @@ scripts/release_gate.sh
 
 The gate covers formatting, focused Rust tests, Android aarch64 checking,
 mutable-global scanning, stock C R conformance parity, artifact sanity checks,
-and whitespace validation. Use the full gate for slower packaging and binding
-checks:
+the public safe API audit, and whitespace validation. Use the full gate for
+slower packaging and binding checks:
 
 ```bash
 scripts/release_gate.sh --full

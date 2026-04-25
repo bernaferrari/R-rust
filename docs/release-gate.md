@@ -41,6 +41,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Android aarch64 cargo check | yes | yes | `scripts/android_toolchain_check.sh` |
 | Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
 | Artifact sanity | yes | yes | JSON/Markdown conformance report validation |
+| Public safe API audit | yes | yes | `scripts/audit_safe_api.sh` |
 | Git whitespace | yes | yes | `git diff --check` |
 | Desktop host smoke | optional | yes | `scripts/desktop_host_smoke.sh` |
 | UniFFI binding generation | optional | yes | `scripts/generate_uniffi_bindings.sh --check` |
