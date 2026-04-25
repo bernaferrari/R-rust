@@ -7,6 +7,7 @@
 
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
+use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
 pub use rmath::android::{RAttribute, RComplexValue, RMetadata, RRuntimeInfo, RValue};
@@ -39,6 +40,51 @@ pub struct RSession {
 pub struct EvalOutput {
     pub output: String,
     pub value: RValue,
+}
+
+/// Derived Android runtime paths for app-private embedding.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AndroidRuntimePaths {
+    pub app_files_dir: String,
+    pub cache_dir: String,
+    pub bundled_library_dir: Option<String>,
+}
+
+impl AndroidRuntimePaths {
+    pub fn new(
+        app_files_dir: impl Into<String>,
+        cache_dir: impl Into<String>,
+        bundled_library_dir: Option<impl Into<String>>,
+    ) -> Self {
+        Self {
+            app_files_dir: app_files_dir.into(),
+            cache_dir: cache_dir.into(),
+            bundled_library_dir: bundled_library_dir.map(Into::into),
+        }
+    }
+
+    pub fn user_library_dir(&self) -> String {
+        PathBuf::from(&self.app_files_dir)
+            .join("R")
+            .join("library")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub fn temp_dir(&self) -> String {
+        PathBuf::from(&self.cache_dir)
+            .join("Rtmp")
+            .to_string_lossy()
+            .into_owned()
+    }
+
+    pub fn library_paths(&self) -> Vec<String> {
+        let mut paths = vec![self.user_library_dir()];
+        if let Some(path) = &self.bundled_library_dir {
+            paths.push(path.clone());
+        }
+        paths
+    }
 }
 
 /// Cooperative cancellation handle for an embedded evaluation.
@@ -127,6 +173,19 @@ impl RSession {
         self.inner
             .configure_paths(app_files_dir, cache_dir, bundled_library_dir)
             .map_err(RSessionError::InitFailed)
+    }
+
+    /// Configure Android paths from a single helper value with derived runtime
+    /// locations for package libraries and temp files.
+    pub fn configure_android_runtime(
+        &mut self,
+        paths: &AndroidRuntimePaths,
+    ) -> Result<(), RSessionError> {
+        self.configure_android_paths(
+            &paths.app_files_dir,
+            &paths.cache_dir,
+            paths.bundled_library_dir.as_deref(),
+        )
     }
 
     /// Return host-visible runtime path/session state.
@@ -477,14 +536,39 @@ mod tests {
         let files = root.join("files");
         let cache = root.join("cache");
         let bundled = root.join("bundled-library");
+        let paths = AndroidRuntimePaths::new(
+            files.to_str().expect("utf8 files path"),
+            cache.to_str().expect("utf8 cache path"),
+            Some(bundled.to_str().expect("utf8 bundled path")),
+        );
+
+        assert_eq!(
+            paths.user_library_dir(),
+            files
+                .join("R")
+                .join("library")
+                .to_string_lossy()
+                .into_owned()
+        );
+        assert_eq!(
+            paths.temp_dir(),
+            cache.join("Rtmp").to_string_lossy().into_owned()
+        );
+        assert_eq!(
+            paths.library_paths(),
+            vec![
+                files
+                    .join("R")
+                    .join("library")
+                    .to_string_lossy()
+                    .into_owned(),
+                bundled.to_string_lossy().into_owned()
+            ]
+        );
 
         let mut session = RSession::new().expect("session");
         session
-            .configure_android_paths(
-                files.to_str().expect("utf8 files path"),
-                cache.to_str().expect("utf8 cache path"),
-                Some(bundled.to_str().expect("utf8 bundled path")),
-            )
+            .configure_android_runtime(&paths)
             .expect("path config");
 
         let result = session.eval_result(".libPaths()").expect("lib paths");
@@ -518,6 +602,15 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn android_runtime_paths_without_bundled_library_only_returns_user_library() {
+        let paths = AndroidRuntimePaths::new("/tmp/app-files", "/tmp/app-cache", None::<&str>);
+
+        assert_eq!(paths.user_library_dir(), "/tmp/app-files/R/library");
+        assert_eq!(paths.temp_dir(), "/tmp/app-cache/Rtmp");
+        assert_eq!(paths.library_paths(), vec!["/tmp/app-files/R/library"]);
     }
 
     #[test]

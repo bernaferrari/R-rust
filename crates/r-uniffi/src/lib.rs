@@ -132,6 +132,29 @@ pub struct RuntimeInfo {
     pub temp_dir: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
+pub struct AndroidRuntimePaths {
+    pub app_files_dir: String,
+    pub cache_dir: String,
+    pub bundled_library_dir: Option<String>,
+    pub user_library_dir: String,
+    pub temp_dir: String,
+    pub library_paths: Vec<String>,
+}
+
+impl From<r_embed::AndroidRuntimePaths> for AndroidRuntimePaths {
+    fn from(paths: r_embed::AndroidRuntimePaths) -> Self {
+        AndroidRuntimePaths {
+            app_files_dir: paths.app_files_dir.clone(),
+            cache_dir: paths.cache_dir.clone(),
+            bundled_library_dir: paths.bundled_library_dir.clone(),
+            user_library_dir: paths.user_library_dir(),
+            temp_dir: paths.temp_dir(),
+            library_paths: paths.library_paths(),
+        }
+    }
+}
+
 fn empty_value(kind: RValueKind) -> RValue {
     RValue {
         kind,
@@ -259,9 +282,7 @@ pub trait SessionCallback: Send + Sync + 'static {
 
 enum SessionCommand {
     ConfigurePaths {
-        app_files_dir: String,
-        cache_dir: String,
-        bundled_library_dir: Option<String>,
+        paths: AndroidRuntimePaths,
         reply: Sender<Result<(), RError>>,
     },
     RuntimeInfo {
@@ -316,19 +337,15 @@ fn spawn_worker(
 
         while let Ok(cmd) = cmd_rx.recv() {
             match cmd {
-                SessionCommand::ConfigurePaths {
-                    app_files_dir,
-                    cache_dir,
-                    bundled_library_dir,
-                    reply,
-                } => {
+                SessionCommand::ConfigurePaths { paths, reply } => {
+                    let embed_paths = r_embed::AndroidRuntimePaths::new(
+                        paths.app_files_dir,
+                        paths.cache_dir,
+                        paths.bundled_library_dir,
+                    );
                     let result = session
-                        .configure_android_paths(
-                            &app_files_dir,
-                            &cache_dir,
-                            bundled_library_dir.as_deref(),
-                        )
-                        .map_err(|e| RError::InitFailed);
+                        .configure_android_runtime(&embed_paths)
+                        .map_err(|_| RError::InitFailed);
                     let _ = reply.send(result);
                 }
                 SessionCommand::RuntimeInfo { reply } => {
@@ -442,13 +459,19 @@ impl RSession {
         cache_dir: String,
         bundled_library_dir: Option<String>,
     ) -> Result<(), RError> {
+        self.configure_android_runtime(android_runtime_paths(
+            app_files_dir,
+            cache_dir,
+            bundled_library_dir,
+        ))
+    }
+
+    pub fn configure_android_runtime(&self, paths: AndroidRuntimePaths) -> Result<(), RError> {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, reply_rx) = channel();
         tx.send(SessionCommand::ConfigurePaths {
-            app_files_dir,
-            cache_dir,
-            bundled_library_dir,
+            paths,
             reply: reply_tx,
         })
         .map_err(|_| RError::SessionClosed)?;
@@ -524,6 +547,15 @@ impl Drop for RSession {
     fn drop(&mut self) {
         self.destroy();
     }
+}
+
+#[uniffi::export]
+pub fn android_runtime_paths(
+    app_files_dir: String,
+    cache_dir: String,
+    bundled_library_dir: Option<String>,
+) -> AndroidRuntimePaths {
+    r_embed::AndroidRuntimePaths::new(app_files_dir, cache_dir, bundled_library_dir).into()
 }
 
 #[cfg(test)]
@@ -635,13 +667,38 @@ mod tests {
         let cache = root.join("cache");
         let bundled = root.join("bundled-library");
         let session = RSession::new().expect("session");
+        let paths = android_runtime_paths(
+            files.to_string_lossy().into_owned(),
+            cache.to_string_lossy().into_owned(),
+            Some(bundled.to_string_lossy().into_owned()),
+        );
+
+        assert_eq!(
+            paths.user_library_dir,
+            files
+                .join("R")
+                .join("library")
+                .to_string_lossy()
+                .into_owned()
+        );
+        assert_eq!(
+            paths.temp_dir,
+            cache.join("Rtmp").to_string_lossy().into_owned()
+        );
+        assert_eq!(
+            paths.library_paths,
+            vec![
+                files
+                    .join("R")
+                    .join("library")
+                    .to_string_lossy()
+                    .into_owned(),
+                bundled.to_string_lossy().into_owned(),
+            ]
+        );
 
         session
-            .configure_android_paths(
-                files.to_string_lossy().into_owned(),
-                cache.to_string_lossy().into_owned(),
-                Some(bundled.to_string_lossy().into_owned()),
-            )
+            .configure_android_runtime(paths)
             .expect("configure paths");
 
         let result = session
@@ -678,6 +735,19 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn android_runtime_paths_omits_missing_bundled_library() {
+        let paths = android_runtime_paths(
+            "/tmp/app-files".to_string(),
+            "/tmp/app-cache".to_string(),
+            None,
+        );
+
+        assert_eq!(paths.user_library_dir, "/tmp/app-files/R/library");
+        assert_eq!(paths.temp_dir, "/tmp/app-cache/Rtmp");
+        assert_eq!(paths.library_paths, vec!["/tmp/app-files/R/library"]);
     }
 
     #[test]
