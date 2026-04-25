@@ -16,54 +16,64 @@
 use std::ffi::{CStr, CString};
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
-use std::sync::atomic::{AtomicPtr, Ordering};
 
 use libc::FILE;
 
 use crate::mainutils::sysutils::R_HomeDir;
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-// Safe helper: convert a C string pointer to a Rust String, without panicking.
-fn cstr_to_string(ptr: *const c_char) -> Option<String> {
-    if ptr.is_null() {
-        return None;
-    }
-    unsafe { CStr::from_ptr(ptr).to_str().ok().map(|s| s.to_owned()) }
-}
+use crate::sexp::instance::with_current_instance;
 
 // ---------------------------------------------------------------------------
 // Workspace management (minimal subset, kept deliberately simple)
 // ---------------------------------------------------------------------------
 
-static WORKSPACE_NAME: AtomicPtr<c_char> = AtomicPtr::new(ptr::null_mut());
-static DEFAULT_WORKSPACE_BYTES: &[u8] = b".RData\0";
+/// Per-session startup/runtime workspace state.
+#[derive(Debug, Clone)]
+pub struct StartupRuntimeState {
+    workspace_name: CString,
+}
 
-// Get current workspace name (as C string pointer).
-pub unsafe fn get_workspace_name() -> *const c_char {
-    let ptr = WORKSPACE_NAME.load(Ordering::Relaxed);
-    if ptr.is_null() {
-        DEFAULT_WORKSPACE_BYTES.as_ptr() as *const c_char
-    } else {
-        ptr as *const c_char
+impl StartupRuntimeState {
+    fn workspace_name_ptr(&self) -> *const c_char {
+        self.workspace_name.as_ptr()
+    }
+
+    fn set_workspace_name(&mut self, name: &CStr) -> bool {
+        let Ok(name) = name.to_str() else {
+            return false;
+        };
+        let Ok(name) = CString::new(name) else {
+            return false;
+        };
+        self.workspace_name = name;
+        true
     }
 }
 
-// Set workspace name. The previous name, if any, is discarded.
+impl Default for StartupRuntimeState {
+    fn default() -> Self {
+        Self {
+            workspace_name: c".RData".to_owned(),
+        }
+    }
+}
+
+// Get current workspace name (as C string pointer).
+pub unsafe fn get_workspace_name() -> *const c_char {
+    with_current_instance(|inst| inst.startup_state.workspace_name_ptr())
+        .unwrap_or_else(|| c".RData".as_ptr())
+}
+
+// Set this session's workspace name.
 pub unsafe fn set_workspace_name(fn_ptr: *const c_char) -> bool {
     unsafe {
         if fn_ptr.is_null() {
             return false;
         }
-        if let Ok(new_name) = CStr::from_ptr(fn_ptr).to_str() {
-            let cs = CString::new(new_name).unwrap_or_default();
-            WORKSPACE_NAME.store(cs.into_raw(), Ordering::Relaxed);
-            true
-        } else {
-            false
-        }
+        with_current_instance(|inst| {
+            inst.startup_state
+                .set_workspace_name(CStr::from_ptr(fn_ptr))
+        })
+        .unwrap_or(false)
     }
 }
 
@@ -153,6 +163,45 @@ pub unsafe fn R_OpenSysInitFile() -> *mut FILE {
             }
         }
         ptr::null_mut()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::ffi::CStr;
+
+    use crate::sexp::instance::{RInstance, clear_current_instance, set_current_instance};
+
+    use super::*;
+
+    unsafe fn current_workspace_name() -> String {
+        unsafe {
+            CStr::from_ptr(get_workspace_name())
+                .to_str()
+                .expect("workspace name is UTF-8")
+                .to_owned()
+        }
+    }
+
+    #[test]
+    fn workspace_name_is_session_local() {
+        unsafe {
+            let mut first = RInstance::new();
+            set_current_instance(&mut first);
+            assert_eq!(current_workspace_name(), ".RData");
+            assert!(set_workspace_name(c"first.RData".as_ptr()));
+            assert_eq!(current_workspace_name(), "first.RData");
+
+            let mut second = RInstance::new();
+            set_current_instance(&mut second);
+            assert_eq!(current_workspace_name(), ".RData");
+            assert!(set_workspace_name(c"second.RData".as_ptr()));
+            assert_eq!(current_workspace_name(), "second.RData");
+
+            set_current_instance(&mut first);
+            assert_eq!(current_workspace_name(), "first.RData");
+            clear_current_instance();
+        }
     }
 }
 

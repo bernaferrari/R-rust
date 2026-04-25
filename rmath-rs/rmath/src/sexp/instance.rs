@@ -256,6 +256,8 @@ pub struct RInstance {
     pub(crate) bind_state: crate::mainutils::bind::BindRuntimeState,
     /// Per-instance dotcode/native-call runtime policy cache.
     pub(crate) dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState,
+    /// Per-instance startup/workspace metadata.
+    pub(crate) startup_state: crate::mainutils::startup::StartupRuntimeState,
     /// Per-instance symbol table for session-local interning.
     pub(crate) symbols: HashMap<String, SEXP>,
     /// Owned SYMSXP nodes for the per-instance symbol table.
@@ -370,6 +372,7 @@ impl RInstance {
             names_state: crate::mainutils::names::NamesRuntimeState::default(),
             bind_state: crate::mainutils::bind::BindRuntimeState::default(),
             dotcode_state: crate::mainutils::dotcode::DotcodeRuntimeState::default(),
+            startup_state: crate::mainutils::startup::StartupRuntimeState::default(),
             symbols: HashMap::new(),
             symbol_nodes: Vec::new(),
             rng_state: (1234, 5678),

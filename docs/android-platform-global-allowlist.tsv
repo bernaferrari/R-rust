@@ -48,7 +48,6 @@ rmath-rs/rmath/src/mainutils/localecharset.rs	platform-locale	platform-replace	r
 rmath-rs/rmath/src/mainutils/objects.rs	method-cache	sessionize	rport-97s	Primitive method cache state; sessionize with methods support.
 rmath-rs/rmath/src/mainutils/platform.rs	platform-locale	platform-replace	rport-dg0.2	Native encoding buffers; Android locale bridge should own them.
 rmath-rs/rmath/src/mainutils/serialize.rs	serialization-runtime	sessionize	rport-97s	Serialization name/depth caches; move into session serialization state.
-rmath-rs/rmath/src/mainutils/startup.rs	process-startup	disabled-android	rport-dg0.2	Workspace startup pointer; Android host should configure explicitly.
 rmath-rs/rmath/src/modules/internet/internet.rs	network-runtime	platform-replace	rport-dg0.2	Internet quiet flag; Android network integration must be host controlled.
 rmath-rs/rmath/src/modules/internet/libcurl.rs	network-runtime	platform-replace	rport-dg0.2	libcurl/progress/header scratch state; Android networking policy pending.
 rmath-rs/rmath/src/modules/internet/rhttpd.rs	network-runtime	disabled-android	rport-dg0.2	In-process HTTP server state; disabled for Android embedding.
