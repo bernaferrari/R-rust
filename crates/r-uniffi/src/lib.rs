@@ -186,6 +186,7 @@ enum SessionCommand {
         reply: Sender<Result<EvalResult, RError>>,
     },
     Render {
+        code: String,
         width: u32,
         height: u32,
         reply: Sender<Result<PlotResult, RError>>,
@@ -270,12 +271,13 @@ fn spawn_worker(
                     let _ = reply.send(result);
                 }
                 SessionCommand::Render {
+                    code,
                     width,
                     height,
                     reply,
                 } => {
                     let result = session
-                        .render_with_dimensions("", width, height)
+                        .render_with_dimensions(&code, width, height)
                         .map(|pixels| PlotResult {
                             width,
                             height,
@@ -373,11 +375,12 @@ impl RSession {
         Ok(op_id)
     }
 
-    pub fn render(&self, _code: String, width: u32, height: u32) -> Result<PlotResult, RError> {
+    pub fn render(&self, code: String, width: u32, height: u32) -> Result<PlotResult, RError> {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, reply_rx) = channel();
         tx.send(SessionCommand::Render {
+            code,
             width,
             height,
             reply: reply_tx,
@@ -386,12 +389,13 @@ impl RSession {
         reply_rx.recv().map_err(|_| RError::SessionClosed)?
     }
 
-    pub fn render_async(&self, _code: String, width: u32, height: u32) -> Result<u64, RError> {
+    pub fn render_async(&self, code: String, width: u32, height: u32) -> Result<u64, RError> {
         let tx = self.cmd_tx.lock().unwrap_or_else(|e| e.into_inner());
         let tx = tx.as_ref().ok_or(RError::SessionClosed)?;
         let (reply_tx, _) = channel();
         let op_id = self.operation_id.fetch_add(1, Ordering::Relaxed);
         tx.send(SessionCommand::Render {
+            code,
             width,
             height,
             reply: reply_tx,
@@ -485,6 +489,20 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn render_passes_plot_code_to_worker_session() {
+        let session = RSession::new().expect("session");
+
+        let plot = session
+            .render("plot(c(1, 2, 3), c(3, 2, 5))".to_string(), 320, 240)
+            .expect("render");
+
+        assert_eq!(plot.width, 320);
+        assert_eq!(plot.height, 240);
+        assert!(plot.pixels.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
+        assert!(plot.pixels.len() > 256);
     }
 
     #[test]

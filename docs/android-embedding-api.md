@@ -12,6 +12,8 @@ The Android-facing API is intentionally an owned-value boundary.
   bundledLibraryDir)` before evaluation when app-private library and temp paths
   are known. The configured paths drive `.libPaths()`, `find.package()`,
   `library()`, `require()`, `tempdir()`, and `tempfile()` for that session.
+- `render(code, width, height)` evaluates simple numeric plot expressions such
+  as `plot(c(1, 2, 3), c(1, 4, 9))` on the worker session and returns PNG bytes.
 - Legacy `r_embed::RSession::eval()` remains as a string-output convenience wrapper.
 - Long-running evaluations can opt into cooperative cancellation with
   `r_embed::CancellationToken`; the token is explicit and per evaluation.

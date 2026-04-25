@@ -6,7 +6,7 @@
 //! rmath's per-session interpreter, never to process-global `SEXP` state.
 
 use r_device_android_headless::AndroidHeadlessRenderer;
-use r_graphics_engine::{Color, RenderPlot};
+use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
 use std::sync::{Arc, atomic::AtomicBool};
 
 pub use rmath::android::RValue;
@@ -157,12 +157,9 @@ impl RSession {
     }
 
     /// Render an R expression as a plot, returning pixel data.
-    ///
-    /// Currently returns empty pixel data as the graphics engine
-    /// has not yet been implemented.
     pub fn render_with_dimensions(
         &mut self,
-        _code: &str,
+        code: &str,
         width: u32,
         height: u32,
     ) -> Result<Vec<u8>, RSessionError> {
@@ -171,7 +168,33 @@ impl RSession {
         }
         let mut renderer = AndroidHeadlessRenderer::new(width, height);
         renderer.clear(Color::WHITE);
+        if !code.trim().is_empty() {
+            let series = self.plot_series(code)?;
+            draw_series(&mut renderer, width, height, &series);
+        }
         Ok(renderer.finish())
+    }
+
+    fn plot_series(&mut self, code: &str) -> Result<PlotSeries, RSessionError> {
+        let call = parse_plot_call(code);
+        let values = match call {
+            PlotCall::One(expr) => {
+                let y = numeric_series(self.eval_result(expr)?.value)?;
+                let x = (1..=y.len()).map(|value| value as f64).collect();
+                PlotSeries { x, y }
+            }
+            PlotCall::Two(x_expr, y_expr) => PlotSeries {
+                x: numeric_series(self.eval_result(x_expr)?.value)?,
+                y: numeric_series(self.eval_result(y_expr)?.value)?,
+            },
+        };
+
+        if values.x.is_empty() || values.y.is_empty() {
+            return Err(RSessionError::RenderError(
+                "plot data must not be empty".to_string(),
+            ));
+        }
+        Ok(values)
     }
 
     /// Close the session.
@@ -181,6 +204,212 @@ impl RSession {
             self.active = false;
         }
     }
+}
+
+struct PlotSeries {
+    x: Vec<f64>,
+    y: Vec<f64>,
+}
+
+enum PlotCall<'a> {
+    One(&'a str),
+    Two(&'a str, &'a str),
+}
+
+fn parse_plot_call(code: &str) -> PlotCall<'_> {
+    let trimmed = code.trim();
+    let Some(inner) = trimmed
+        .strip_prefix("plot(")
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return PlotCall::One(trimmed);
+    };
+    match split_top_level_comma(inner) {
+        Some((x, y)) => PlotCall::Two(x.trim(), y.trim()),
+        None => PlotCall::One(inner.trim()),
+    }
+}
+
+fn split_top_level_comma(input: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    let mut in_string = None;
+    let mut escaped = false;
+    for (idx, ch) in input.char_indices() {
+        if let Some(quote) = in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == quote {
+                in_string = None;
+            }
+            continue;
+        }
+
+        match ch {
+            '"' | '\'' => in_string = Some(ch),
+            '(' | '[' | '{' => depth += 1,
+            ')' | ']' | '}' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => return Some((&input[..idx], &input[idx + ch.len_utf8()..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn numeric_series(value: RValue) -> Result<Vec<f64>, RSessionError> {
+    let values = match value {
+        RValue::Integer(Some(value)) => vec![value as f64],
+        RValue::Integer(None) => Vec::new(),
+        RValue::Real(Some(value)) => vec![value],
+        RValue::Real(None) => Vec::new(),
+        RValue::IntegerVector(values) => values
+            .into_iter()
+            .filter_map(|value| value.map(|value| value as f64))
+            .collect(),
+        RValue::RealVector(values) => values.into_iter().flatten().collect(),
+        other => {
+            return Err(RSessionError::RenderError(format!(
+                "plot data must be numeric, got {other:?}"
+            )));
+        }
+    };
+
+    if values.iter().all(|value| value.is_finite()) {
+        Ok(values)
+    } else {
+        Err(RSessionError::RenderError(
+            "plot data must contain only finite values".to_string(),
+        ))
+    }
+}
+
+fn draw_series(
+    renderer: &mut AndroidHeadlessRenderer,
+    width: u32,
+    height: u32,
+    series: &PlotSeries,
+) {
+    let n = series.x.len().min(series.y.len());
+    if n == 0 {
+        return;
+    }
+
+    let left = 54.0f32;
+    let right = (width as f32 - 18.0).max(left + 1.0);
+    let top = 24.0f32;
+    let bottom = (height as f32 - 42.0).max(top + 1.0);
+    let xmin = min_max(&series.x[..n]).0;
+    let xmax = min_max(&series.x[..n]).1;
+    let ymin = min_max(&series.y[..n]).0;
+    let ymax = min_max(&series.y[..n]).1;
+
+    draw_line(renderer, left, bottom, right, bottom, Color::BLACK, 1.5);
+    draw_line(renderer, left, top, left, bottom, Color::BLACK, 1.5);
+
+    for i in 0..5 {
+        let t = i as f32 / 4.0;
+        let x = left + (right - left) * t;
+        let y = top + (bottom - top) * t;
+        draw_line(
+            renderer,
+            x,
+            top,
+            x,
+            bottom,
+            Color {
+                r: 224,
+                g: 224,
+                b: 224,
+                a: 255,
+            },
+            0.75,
+        );
+        draw_line(
+            renderer,
+            left,
+            y,
+            right,
+            y,
+            Color {
+                r: 224,
+                g: 224,
+                b: 224,
+                a: 255,
+            },
+            0.75,
+        );
+    }
+
+    let mut prev = None;
+    for i in 0..n {
+        let x = map_value(series.x[i], xmin, xmax, left, right);
+        let y = map_value(series.y[i], ymin, ymax, bottom, top);
+        if let Some((px, py)) = prev {
+            draw_line(renderer, px, py, x, y, Color::BLUE, 1.25);
+        }
+        draw_point(renderer, x, y);
+        prev = Some((x, y));
+    }
+
+    let text = format!("n = {n}");
+    renderer.draw_text(
+        &text,
+        Point {
+            x: left,
+            y: height as f32 - 18.0,
+        },
+        &PlotParameters {
+            font_size: 12.0,
+            text_color: Color::BLACK,
+            dpi: 96.0,
+        },
+    );
+}
+
+fn min_max(values: &[f64]) -> (f64, f64) {
+    let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    if min == max {
+        (min - 1.0, max + 1.0)
+    } else {
+        (min, max)
+    }
+}
+
+fn map_value(value: f64, min: f64, max: f64, out_min: f32, out_max: f32) -> f32 {
+    let t = if min == max {
+        0.5
+    } else {
+        ((value - min) / (max - min)).clamp(0.0, 1.0)
+    };
+    out_min + (out_max - out_min) * t as f32
+}
+
+fn draw_line(
+    renderer: &mut AndroidHeadlessRenderer,
+    x0: f32,
+    y0: f32,
+    x1: f32,
+    y1: f32,
+    color: Color,
+    width: f32,
+) {
+    renderer.draw_path(&Path {
+        commands: vec![PathCommand::MoveTo(x0, y0), PathCommand::LineTo(x1, y1)],
+        fill: Color {
+            r: 0,
+            g: 0,
+            b: 0,
+            a: 0,
+        },
+        stroke: Stroke::new(width, color),
+        anti_alias: true,
+    });
+}
+
+fn draw_point(renderer: &mut AndroidHeadlessRenderer, x: f32, y: f32) {
+    renderer.draw_path(&Path::rect(x - 2.5, y - 2.5, 5.0, 5.0).with_fill(Color::BLUE));
 }
 
 impl Default for RSession {
@@ -258,6 +487,17 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn render_evaluates_basic_plot_expression() {
+        let mut session = RSession::new().expect("session");
+        let png = session
+            .render_with_dimensions("plot(c(1, 2, 3), c(1, 4, 9))", 320, 240)
+            .expect("render");
+
+        assert!(png.starts_with(&[0x89, 0x50, 0x4E, 0x47]));
+        assert!(png.len() > 256);
     }
 
     #[test]
