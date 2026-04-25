@@ -74,6 +74,10 @@ Android embedding is app-owned and session-owned:
   `tempfile()` resolve through `RInstance::path_policy`.
 - `render(code, width, height)` returns PNG bytes from a headless renderer and
   evaluates plot data on the worker session.
+- `system()` is disabled on Android. Host builds keep it enabled for stock-R
+  parity and conformance checks.
+- Native package loading through `useDynLib()` is rejected until an Android
+  host-owned native-library policy exists.
 - Mutable-global additions must pass `scripts/check_android_globals.sh`.
 
 ## Upstream Sync Workflow

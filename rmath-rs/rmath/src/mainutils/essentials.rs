@@ -7306,6 +7306,12 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         false
     };
 
+    if system_commands_disabled_by_runtime_policy() {
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: "system() is disabled by the Android runtime policy".to_string(),
+        });
+    }
+
     let output = std::process::Command::new("sh")
         .arg("-c")
         .arg(&cmd_str)
@@ -7338,6 +7344,10 @@ pub unsafe fn do_system(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             Rf_ScalarInteger(127)
         }
     }
+}
+
+fn system_commands_disabled_by_runtime_policy() -> bool {
+    cfg!(target_os = "android")
 }
 
 /// R's `stopifnot(...)` — stop if any condition is FALSE.
@@ -17984,5 +17994,13 @@ mod tests {
             assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
             assert!(((*REAL(result)).to_owned() - 1.0).abs() < 1e-10);
         }
+    }
+
+    #[test]
+    fn test_system_command_policy_is_target_gated() {
+        assert_eq!(
+            system_commands_disabled_by_runtime_policy(),
+            cfg!(target_os = "android")
+        );
     }
 }

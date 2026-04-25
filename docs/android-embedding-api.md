@@ -35,6 +35,9 @@ Mutable runtime state should be reached through an active `RSession`. Shared
 process state is limited to immutable sentinels/caches and documented platform
 fallbacks.
 
+The Android sandbox and package/process policy is documented in
+[`android-security-policy.md`](android-security-policy.md).
+
 ## Kotlin Shape
 
 ```kotlin
