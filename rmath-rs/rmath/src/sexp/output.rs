@@ -4,7 +4,8 @@
 //! so they can be returned to the caller instead of printing
 //! to stdout/stderr.
 
-use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, SEXP, SEXPTYPE};
+use super::ffi::{NA_INTEGER, R_IsNA, R_IsNaN, R_xlen_t, SEXP, SEXPTYPE};
+use super::globals::R_NaString;
 use super::safe::Sexp;
 
 /// Captured R output.
@@ -299,14 +300,36 @@ fn string_vector_values(x: SEXP) -> Option<Vec<String>> {
     }
     let mut values = Vec::with_capacity(sexp.len() as usize);
     for i in 0..sexp.len() {
-        let value = sexp
-            .string_elt(i)
-            .and_then(|charsxp| charsxp.as_str())
-            .unwrap_or("")
-            .to_string();
-        values.push(value);
+        values.push(string_element_text(sexp, i).flatten()?.to_string());
     }
     Some(values)
+}
+
+fn string_element_text<'a>(x: Sexp<'a>, i: R_xlen_t) -> Option<Option<&'a str>> {
+    let charsxp = x.try_string_elt(i).ok()?;
+    if charsxp.as_raw() == unsafe { R_NaString() } {
+        Some(None)
+    } else {
+        charsxp.try_as_str().ok().map(Some)
+    }
+}
+
+fn format_string_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    match string_element_text(x, i) {
+        Some(Some(value)) => format!("\"{}\"", value),
+        Some(None) | None => "NA".to_string(),
+    }
+}
+
+fn format_string_vector(x: Sexp<'_>) -> String {
+    if x.len() == 0 {
+        return "character(0)".to_string();
+    }
+    let vals: Vec<String> = (0..x.len().min(10))
+        .map(|i| format_string_element(x, i))
+        .collect();
+    let suffix = if x.len() > 10 { " ..." } else { "" };
+    format!("[1] {}{}", vals.join(" "), suffix)
 }
 
 fn format_factor(x: Sexp<'_>) -> Option<String> {
@@ -432,38 +455,7 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
         }
         SEXPTYPE::STRSXP => {
-            if x.len() == 1 {
-                if let Some(charsxp) = x.string_elt(0) {
-                    let raw = unsafe { super::accessors::CHAR(charsxp.as_raw()) };
-                    let s = if raw.is_null() {
-                        ""
-                    } else {
-                        unsafe { std::ffi::CStr::from_ptr(raw).to_str().unwrap_or("") }
-                    };
-                    emit(&format!("[1] \"{}\"\n", s));
-                } else {
-                    emit("[1] \"\"\n");
-                }
-            } else {
-                let vals: Vec<String> = (0..x.len().min(10))
-                    .map(|i| {
-                        if let Some(charsxp) = x.string_elt(i) {
-                            let raw = unsafe { super::accessors::CHAR(charsxp.as_raw()) };
-                            if raw.is_null() {
-                                "\"\"".to_string()
-                            } else {
-                                format!("\"{}\"", unsafe {
-                                    std::ffi::CStr::from_ptr(raw).to_str().unwrap_or("")
-                                })
-                            }
-                        } else {
-                            "\"\"".to_string()
-                        }
-                    })
-                    .collect();
-                let suffix = if x.len() > 10 { " ..." } else { "" };
-                emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
-            }
+            emit(&format!("{}\n", format_string_vector(x)));
         }
         SEXPTYPE::RAWSXP => {
             let vals: Vec<String> = x.iter_raw().take(10).map(format_raw_value).collect();
@@ -566,31 +558,7 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             let suffix = if x.len() > 10 { " ..." } else { "" };
             format!("[1] {}{}", format_aligned_values(vals), suffix)
         }
-        SEXPTYPE::STRSXP => {
-            if x.len() == 0 {
-                return "character(0)".to_string();
-            }
-            if x.len() == 1 {
-                if let Some(charsxp) = x.string_elt(0) {
-                    let s = charsxp.as_str().unwrap_or("");
-                    format!("[1] \"{}\"", s)
-                } else {
-                    "[1] \"\"".to_string()
-                }
-            } else {
-                let vals: Vec<String> = (0..x.len().min(10))
-                    .map(|i| {
-                        if let Some(charsxp) = x.string_elt(i) {
-                            format!("\"{}\"", charsxp.as_str().unwrap_or(""))
-                        } else {
-                            "\"\"".to_string()
-                        }
-                    })
-                    .collect();
-                let suffix = if x.len() > 10 { " ..." } else { "" };
-                format!("[1] {}{}", vals.join(" "), suffix)
-            }
-        }
+        SEXPTYPE::STRSXP => format_string_vector(x),
         SEXPTYPE::RAWSXP => {
             if x.len() == 0 {
                 return "raw(0)".to_string();
@@ -757,6 +725,28 @@ mod tests {
                 print_value(sexp);
                 let output = stop_capture();
                 assert_eq!(output.stdout, "[1] FALSE  TRUE    NA\n");
+            })
+            .unwrap();
+    }
+
+    #[test]
+    fn test_string_output_uses_safe_charsxp_access_and_preserves_na() {
+        let mut session = RSession::new();
+        session
+            .with_arena(|arena| {
+                let ptr = arena.alloc_vector(SEXPTYPE::STRSXP, 2);
+                let sexp = Sexp::from_raw(ptr).expect("string vector allocation failed");
+                let value = Sexp::from_raw(arena.alloc_charsxp(b"a")).expect("CHARSXP");
+                let missing = Sexp::from_raw(unsafe { R_NaString() }).expect("NA_STRING");
+                sexp.try_set_string_elt(0, value).expect("set string");
+                sexp.try_set_string_elt(1, missing).expect("set string");
+
+                assert_eq!(format_sexp_direct(sexp), "[1] \"a\" NA");
+
+                start_capture();
+                print_value(sexp);
+                let output = stop_capture();
+                assert_eq!(output.stdout, "[1] \"a\" NA\n");
             })
             .unwrap();
     }
