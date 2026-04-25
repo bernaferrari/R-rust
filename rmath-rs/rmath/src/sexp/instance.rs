@@ -414,6 +414,7 @@ impl RInstance {
         };
 
         instance.initialize_base_bindings();
+        instance.initialized = true;
         instance
     }
 

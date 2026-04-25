@@ -1,72 +1,27 @@
 //! R interpreter initialization.
 //!
-//! Sets up the global environment chain (empty -> base -> global),
-//! pre-interns common symbols, and configures the interpreter for use.
-//!
-//! # Example
-//!
-//! ```rust,ignore
-//! use rmath::sexp::init::initialize_r;
-//!
-//! unsafe { initialize_r(); }
-//! // Now R_GlobalEnv, R_BaseEnv, R_EmptyEnv are all set up.
-//! ```
+//! Initializes the active session's base bindings and common symbols. The
+//! environment chain itself is owned by `RInstance`; there is intentionally no
+//! process-global fallback interpreter.
 
-use std::ffi::CString;
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
-
-use super::globals::{set_R_BaseEnv, set_R_EmptyEnv, set_R_GlobalEnv};
-use super::instance::with_current_instance;
-use super::memory_ext::NewPersistentEnvironment;
+use super::instance::with_required_current_instance;
 use super::symbol::Rf_install;
-
-static R_INITIALIZED: AtomicBool = AtomicBool::new(false);
-
-static INIT_LOCK: Mutex<()> = Mutex::new(());
+use std::ffi::CString;
 
 pub fn is_initialized() -> bool {
-    with_current_instance(|inst| inst.initialized)
-        .unwrap_or_else(|| R_INITIALIZED.load(Ordering::Acquire))
+    with_required_current_instance(|inst| inst.initialized)
 }
 
 pub unsafe fn initialize_r() {
     unsafe {
         super::context::install_r_panic_hook();
 
-        if let Some(()) = with_current_instance(|inst| {
+        with_required_current_instance(|inst| {
             if !inst.initialized {
                 initialize_base_bindings(inst.base_env);
                 inst.initialized = true;
             }
-        }) {
-            return;
-        }
-
-        if R_INITIALIZED.load(Ordering::Acquire) {
-            return;
-        }
-
-        let _guard = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-        // Double-check: another thread may have initialized while we waited for the lock.
-        if R_INITIALIZED.load(Ordering::Acquire) {
-            return;
-        }
-
-        let nil = super::globals::R_NilValue();
-
-        let empty_env = NewPersistentEnvironment(nil, nil, nil);
-        set_R_EmptyEnv(empty_env);
-
-        let base_env = NewPersistentEnvironment(nil, empty_env, nil);
-        set_R_BaseEnv(base_env);
-
-        let global_env = NewPersistentEnvironment(nil, base_env, nil);
-        set_R_GlobalEnv(global_env);
-
-        initialize_base_bindings(base_env);
-
-        R_INITIALIZED.store(true, Ordering::Release);
+        });
     }
 }
 
@@ -208,25 +163,7 @@ unsafe fn pre_intern_symbols() {
 }
 
 pub unsafe fn shutdown_r() {
-    unsafe {
-        if let Some(()) = with_current_instance(|inst| {
-            inst.initialized = false;
-        }) {
-            return;
-        }
-
-        if !R_INITIALIZED.load(Ordering::Acquire) {
-            return;
-        }
-
-        let _guard = INIT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
-
-        set_R_GlobalEnv(std::ptr::null_mut());
-        set_R_BaseEnv(std::ptr::null_mut());
-        set_R_EmptyEnv(std::ptr::null_mut());
-
-        R_INITIALIZED.store(false, Ordering::Release);
-    }
+    with_required_current_instance(|inst| inst.initialized = false);
 }
 
 #[cfg(test)]

@@ -2,14 +2,12 @@
 
 //! Global singleton R objects.
 //!
-//! These are the special sentinel values and global environments that
-//! R's interpreter uses everywhere. Implemented as leaked Boxes behind
-//! raw pointer OnceLocks for thread-safe initialization without requiring
-//! Send/Sync on SexprecCore.
+//! These are the immutable sentinel values that R's interpreter uses
+//! everywhere. Mutable runtime environments are session-owned and reached
+//! through the active `RInstance`, not through process-global fallback slots.
 
 use std::ptr;
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use super::ffi::{SEXP, SEXPTYPE, SexprecCore, SexprecData, SxpInfo};
 
@@ -112,46 +110,34 @@ pub unsafe fn R_RestartToken() -> SEXP {
 }
 
 // ---------------------------------------------------------------------------
-// Global environment pointers (using AtomicUsize to avoid Send requirement)
-// ---------------------------------------------------------------------------
-
-static R_GLOBAL_ENV_PTR: AtomicUsize = AtomicUsize::new(0);
-static R_BASE_ENV_PTR: AtomicUsize = AtomicUsize::new(0);
-static R_EMPTY_ENV_PTR: AtomicUsize = AtomicUsize::new(0);
-static R_BASE_NAMESPACE_PTR: AtomicUsize = AtomicUsize::new(0);
-
-// ---------------------------------------------------------------------------
 // Global environment accessor functions
 // ---------------------------------------------------------------------------
 
 pub unsafe fn R_GlobalEnv() -> SEXP {
-    super::instance::with_current_instance(|inst| inst.global_env)
-        .unwrap_or_else(|| R_GLOBAL_ENV_PTR.load(Ordering::Acquire) as SEXP)
+    super::instance::with_required_current_instance(|inst| inst.global_env)
 }
 
 pub unsafe fn R_BaseEnv() -> SEXP {
-    super::instance::with_current_instance(|inst| inst.base_env)
-        .unwrap_or_else(|| R_BASE_ENV_PTR.load(Ordering::Acquire) as SEXP)
+    super::instance::with_required_current_instance(|inst| inst.base_env)
 }
 
 pub unsafe fn R_EmptyEnv() -> SEXP {
-    super::instance::with_current_instance(|inst| inst.empty_env)
-        .unwrap_or_else(|| R_EMPTY_ENV_PTR.load(Ordering::Acquire) as SEXP)
+    super::instance::with_required_current_instance(|inst| inst.empty_env)
 }
 
 /// Set the global environment.
 pub unsafe fn set_R_GlobalEnv(env: SEXP) {
-    R_GLOBAL_ENV_PTR.store(env as usize, Ordering::Release);
+    super::instance::with_required_current_instance(|inst| inst.global_env = env);
 }
 
 /// Set the base environment.
 pub unsafe fn set_R_BaseEnv(env: SEXP) {
-    R_BASE_ENV_PTR.store(env as usize, Ordering::Release);
+    super::instance::with_required_current_instance(|inst| inst.base_env = env);
 }
 
 /// Set the empty environment.
 pub unsafe fn set_R_EmptyEnv(env: SEXP) {
-    R_EMPTY_ENV_PTR.store(env as usize, Ordering::Release);
+    super::instance::with_required_current_instance(|inst| inst.empty_env = env);
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +336,7 @@ mod tests {
 
     #[test]
     fn test_set_global_env() {
+        let _session = crate::sexp::session::RSession::new();
         unsafe {
             let saved = R_GlobalEnv();
             let fake = 0x1 as SEXP;

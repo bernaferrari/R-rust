@@ -2036,6 +2036,7 @@ mod tests {
 
     #[test]
     fn test_print_value_null() {
+        let _session = RSession::new();
         unsafe {
             PrintValue(ptr::null_mut());
         }
@@ -2054,6 +2055,7 @@ mod tests {
 
     #[test]
     fn test_print_value_env_null() {
+        let _session = RSession::new();
         unsafe {
             PrintValueEnv(ptr::null_mut(), R_GlobalEnv());
         }
