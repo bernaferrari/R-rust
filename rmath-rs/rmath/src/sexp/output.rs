@@ -416,6 +416,73 @@ fn list_names(x: Sexp<'_>) -> Vec<String> {
     }
 }
 
+fn has_class(x: Sexp<'_>, class_name: &str) -> bool {
+    unsafe {
+        let class = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::attrib_core::R_ClassSymbol(),
+        );
+        string_vector_contains(class, class_name)
+    }
+}
+
+fn data_frame_nrows(x: Sexp<'_>) -> R_xlen_t {
+    unsafe {
+        let row_names = crate::sexp::attrib_core::getAttrib(
+            x.as_raw(),
+            crate::sexp::symbol::Rf_install(c"row.names".as_ptr()),
+        );
+        if let Some(row_names) = Sexp::from_raw(row_names)
+            && row_names.typeof_() == SEXPTYPE::INTSXP
+            && row_names.len() == 2
+            && let Some(values) = row_names.as_integer_slice()
+            && values[0] == NA_INTEGER
+            && values[1] < 0
+        {
+            return (-values[1]) as R_xlen_t;
+        }
+    }
+    x.iter_vector().map(|col| col.len()).max().unwrap_or(0)
+}
+
+fn format_data_frame_cell(x: Sexp<'_>, row: R_xlen_t) -> String {
+    if x.len() == 0 {
+        return "NA".to_string();
+    }
+    let i = row % x.len();
+    match x.typeof_() {
+        SEXPTYPE::INTSXP => format_integer_element(x, i),
+        SEXPTYPE::REALSXP => format_real_element(x, i),
+        SEXPTYPE::LGLSXP => format_logical_element(x, i),
+        SEXPTYPE::STRSXP => match string_element_text(x, i) {
+            Some(Some(value)) => value.to_string(),
+            Some(None) | None => "NA".to_string(),
+        },
+        _ => format_sexp_direct(x),
+    }
+}
+
+fn format_data_frame(x: Sexp<'_>) -> Option<String> {
+    if !has_class(x, "data.frame") {
+        return None;
+    }
+    let names = list_names(x);
+    let nrow = data_frame_nrows(x);
+    let columns: Vec<Sexp<'_>> = x.iter_vector().collect();
+    let header = format!("  {}", names.join(" "));
+    let mut lines = Vec::with_capacity(nrow as usize + 1);
+    lines.push(header);
+    for row in 0..nrow {
+        let mut parts = Vec::with_capacity(columns.len() + 1);
+        parts.push((row + 1).to_string());
+        for col in &columns {
+            parts.push(format_data_frame_cell(*col, row));
+        }
+        lines.push(parts.join(" "));
+    }
+    Some(lines.join("\n"))
+}
+
 fn list_element_header(index: usize, names: &[String]) -> String {
     match names.get(index) {
         Some(name) if !name.is_empty() => format!("${name}"),
@@ -516,6 +583,10 @@ pub fn print_value(x: Sexp<'_>) {
             emit(&format!("[1] {}{}\n", vals.join(" "), suffix));
         }
         SEXPTYPE::VECSXP => {
+            if let Some(output) = format_data_frame(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
             emit(&format!("{}\n", format_list(x)));
         }
         tp => {

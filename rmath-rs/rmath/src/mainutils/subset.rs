@@ -127,6 +127,26 @@ unsafe fn sym_RowNames() -> SEXP {
     }
 }
 
+unsafe fn is_data_frame(x: SEXP) -> bool {
+    unsafe {
+        let class = getAttrib(x, sym_Class());
+        if isNull(class) || TYPEOF(class) != SEXPTYPE::STRSXP {
+            return false;
+        }
+        for i in 0..XLENGTH(class) {
+            let elt = STRING_ELT(class, i);
+            if isNull(elt) {
+                continue;
+            }
+            let ptr = CHAR(elt);
+            if !ptr.is_null() && std::ffi::CStr::from_ptr(ptr).to_str().ok() == Some("data.frame") {
+                return true;
+            }
+        }
+        false
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Local type-checking helpers
 // ---------------------------------------------------------------------------
@@ -1510,6 +1530,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         let subs = CDR(args);
         let nsubs = length_int(subs);
         let xtype = TYPEOF(x);
+        let data_frame_subset = is_data_frame(x) && nsubs < 2 && xtype == SEXPTYPE::VECSXP;
 
         /* Coerce pair-based objects into generic vectors */
         let mut ax = x;
@@ -1601,10 +1622,17 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             Rf_protect(ans);
         }
 
+        if data_frame_subset {
+            setAttrib(ans, sym_Class(), getAttrib(x, sym_Class()));
+            setAttrib(ans, sym_RowNames(), getAttrib(x, sym_RowNames()));
+        }
+
         /* Remove erroneous attributes */
         if !isNull(ATTRIB(ans)) {
             setAttrib(ans, sym_Tsp(), R_NilValue());
-            setAttrib(ans, sym_Class(), R_NilValue());
+            if !data_frame_subset {
+                setAttrib(ans, sym_Class(), R_NilValue());
+            }
         }
 
         Rf_unprotect(4); /* args, ax, ans, (and one more from the conditional) */
