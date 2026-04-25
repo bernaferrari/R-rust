@@ -35,6 +35,7 @@ use std::os::raw::{c_double, c_int, c_void};
 mod error;
 mod owned;
 mod pairlist;
+mod primitive;
 mod value;
 mod view;
 
@@ -941,41 +942,6 @@ impl<'a> Sexp<'a> {
     #[inline]
     pub fn is_object(self) -> bool {
         unsafe { (*self.ptr).sxpinfo.obj() }
-    }
-
-    // --- Primitive/Builtin/Special accessors ---
-
-    #[inline]
-    pub fn is_special(self) -> bool {
-        self.typeof_() == SEXPTYPE::SPECIALSXP
-    }
-
-    #[inline]
-    pub fn is_builtin(self) -> bool {
-        self.typeof_() == SEXPTYPE::BUILTINSXP
-    }
-
-    #[inline]
-    pub fn is_primitive(self) -> bool {
-        let t = self.typeof_();
-        t == SEXPTYPE::SPECIALSXP || t == SEXPTYPE::BUILTINSXP
-    }
-
-    pub fn primoffset(self) -> Option<c_int> {
-        if self.is_primitive() {
-            Some(unsafe { (*self.ptr).data.primsxp.offset })
-        } else {
-            None
-        }
-    }
-
-    /// Get the primitive offset with typed error reporting.
-    pub fn try_primoffset(self) -> SexpResult<c_int> {
-        self.expect_any_type(
-            "special or builtin primitive",
-            &[SEXPTYPE::SPECIALSXP, SEXPTYPE::BUILTINSXP],
-        )?;
-        Ok(unsafe { (*self.ptr).data.primsxp.offset })
     }
 
     // --- CHARSXP accessors ---

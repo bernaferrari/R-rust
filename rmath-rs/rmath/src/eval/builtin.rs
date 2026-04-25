@@ -1,164 +1,86 @@
-#![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
+#![allow(non_snake_case, non_upper_case_globals, dead_code)]
 
-//! Built-in function table and management — ports R's builtin.c.
+//! Builtin/primitive compatibility entrypoints.
 //!
-//! Provides:
-//! - R_FunTab: the master function table for all builtins/specials
-//! - PRIMFUN/PRIMNAME/PRIMPRINT accessors
-//! - R_InitBuiltinSlots: initialize builtin function slots
+//! The real primitive metadata lives in [`super::primitive`]. This module keeps
+//! the historical names used by older translated code while delegating to the
+//! Rust-shaped descriptor layer.
 
 use std::os::raw::c_int;
 
-use crate::sexp::accessors::{PRIMOFFSET, SET_PRIMOFFSET, TYPEOF};
+use crate::mainutils::names::FunTabEntry;
+use crate::sexp::accessors::SET_PRIMOFFSET;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::memory;
 
-// ---------------------------------------------------------------------------
-// Function table entry
-// ---------------------------------------------------------------------------
+use super::primitive;
+pub use super::primitive::{PRIMNAME, PrimFun};
 
-/// Entry in R's function table (R_FunTab).
-#[derive(Clone, Copy, Debug)]
-pub struct FunTabEntry {
-    /// Function name.
-    pub name: &'static str,
-    /// Number of arguments (-1 = variable).
-    pub nargs: c_int,
-    /// Function pointer (for C builtins/specials).
-    pub fun: Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP>,
-    /// Offset in the function table.
-    pub offset: c_int,
-    /// Evaluation type (0 = special, 1 = builtin).
-    pub kind: c_int,
-    /// Print level (0 = visible, 1 = invisible).
-    pub ppkind: c_int,
-    /// Group (for group generics).
-    pub group: &'static str,
+/// Get the canonical R function table.
+pub fn R_FunTab() -> *const FunTabEntry {
+    crate::mainutils::names::R_FunTab.as_ptr()
 }
 
-// ---------------------------------------------------------------------------
-// Function table (stub)
-// ---------------------------------------------------------------------------
-
-/// Get the function table.
-pub unsafe fn R_FunTab() -> *const FunTabEntry {
-    std::ptr::null()
+/// Get the canonical R function table length.
+pub fn R_FunTabSize() -> usize {
+    primitive::fun_tab_len()
 }
-
-/// Get the function table length.
-pub unsafe fn R_FunTabSize() -> usize {
-    0
-}
-
-// ---------------------------------------------------------------------------
-// PRIMFUN — get the function pointer for a builtin/special
-// ---------------------------------------------------------------------------
 
 /// Get the function pointer for a primitive (SPECIAL or BUILTIN).
 ///
 /// This is the equivalent of R's `PRIMFUN()` macro.
 #[inline]
-pub unsafe fn PRIMFUN(op: SEXP) -> Option<unsafe extern "C" fn(SEXP, SEXP, SEXP, SEXP) -> SEXP> {
-    unsafe {
-        if op.is_null() {
-            return None;
-        }
-        let t = TYPEOF(op);
-        if t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
-            return None;
-        }
-        let offset = PRIMOFFSET(op);
-        if offset < 0 {
-            return None;
-        }
-        None
-    }
+pub unsafe fn PRIMFUN(op: SEXP) -> Option<PrimFun> {
+    unsafe { primitive::get_primfun(op) }
 }
 
-/// Get the name of a primitive function.
+/// Initialize builtin slots.
 ///
-/// This is the equivalent of R's `PRIMNAME()` macro.
-pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
-    unsafe {
-        if op.is_null() {
-            return "unknown";
+/// Primitive SEXP nodes are created lazily through `R_Primitive` in this port,
+/// so there is no process-global slot table to initialize here.
+pub fn R_InitBuiltinSlots() {}
+
+/// Create a SPECIALSXP or BUILTINSXP from a function table index.
+pub unsafe fn R_mkPrim(_name: *const std::os::raw::c_char, offset: c_int, kind: c_int) -> SEXP {
+    let sexptype = if kind == SEXPTYPE::SPECIALSXP.as_c_int() || kind == 0 {
+        SEXPTYPE::SPECIALSXP
+    } else {
+        SEXPTYPE::BUILTINSXP
+    };
+
+    memory::with_arena(|arena| {
+        let prim = arena.alloc_node(sexptype);
+        if !prim.is_null() {
+            unsafe { SET_PRIMOFFSET(prim, offset) };
         }
-        let t = TYPEOF(op);
-        if t != SEXPTYPE::SPECIALSXP && t != SEXPTYPE::BUILTINSXP {
-            return "unknown";
-        }
-        let offset = PRIMOFFSET(op);
-        if offset < 0 {
-            return "unknown";
-        }
-        "unknown"
-    }
+        prim
+    })
 }
-
-// ---------------------------------------------------------------------------
-// R_InitBuiltinSlots — initialize builtin function slots
-// ---------------------------------------------------------------------------
-
-/// Initialize the builtin function slots.
-///
-/// This is the equivalent of R's `R_InitBuiltinSlots()`.
-pub fn R_InitBuiltinSlots() {
-    // In the full implementation, this walks R_FunTab and
-    // creates SPECIALSXP/BUILTINSXP nodes for each entry.
-    // For now, this is a stub.
-}
-
-// ---------------------------------------------------------------------------
-// Create a primitive function SEXP
-// ---------------------------------------------------------------------------
-
-/// Create a SPECIALSXP or BUILTINSXP from a function table offset.
-pub unsafe fn R_mkPrim(name: *const std::os::raw::c_char, offset: c_int, kind: c_int) -> SEXP {
-    unsafe {
-        let sexptype = if kind == 0 {
-            SEXPTYPE::SPECIALSXP
-        } else {
-            SEXPTYPE::BUILTINSXP
-        };
-
-        memory::with_arena(|arena| {
-            let prim = arena.alloc_node(sexptype);
-            if !prim.is_null() {
-                SET_PRIMOFFSET(prim, offset);
-            }
-            prim
-        })
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 #[cfg(test)]
 mod tests {
     use std::ptr;
 
     use super::*;
+    use crate::sexp::session::RSession;
 
     #[test]
-    fn test_fun_tab_empty() {
-        unsafe {
-            assert_eq!(R_FunTabSize(), 0);
-        }
+    fn fun_tab_points_to_canonical_table() {
+        assert!(!R_FunTab().is_null());
+        assert!(R_FunTabSize() > 100);
     }
 
     #[test]
-    fn test_primfun_null() {
+    fn primfun_null() {
         unsafe {
             assert!(PRIMFUN(ptr::null_mut()).is_none());
         }
     }
 
     #[test]
-    fn test_primname_null() {
-        unsafe {
-            assert_eq!(PRIMNAME(ptr::null_mut()), "unknown");
-        }
+    fn primname_uses_canonical_table() {
+        let _session = RSession::new();
+        let primitive = unsafe { crate::mainutils::names::R_Primitive(c"+".as_ptr()) };
+        assert_eq!(unsafe { PRIMNAME(primitive) }, "+");
     }
 }

@@ -180,33 +180,33 @@ fn mark_reachable(obj: SEXP, traceable: &HashSet<usize>, visited: &mut HashSet<u
         (*obj).sxpinfo.set_mark(true);
 
         let t = (*obj).sxpinfo.type_of();
-        match t.0 {
-            1 => {
+        match t {
+            SEXPTYPE::SYMSXP => {
                 mark_reachable((*obj).data.symsxp.pname, traceable, visited);
                 mark_reachable((*obj).data.symsxp.value, traceable, visited);
                 mark_reachable((*obj).data.symsxp.internal, traceable, visited);
             }
-            2 | 6 => {
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
                 mark_reachable((*obj).data.listsxp.carval, traceable, visited);
                 mark_reachable((*obj).data.listsxp.cdrval, traceable, visited);
                 mark_reachable((*obj).data.listsxp.tagval, traceable, visited);
             }
-            3 => {
+            SEXPTYPE::CLOSXP => {
                 mark_reachable((*obj).data.closxp.formals, traceable, visited);
                 mark_reachable((*obj).data.closxp.body, traceable, visited);
                 mark_reachable((*obj).data.closxp.env, traceable, visited);
             }
-            4 => {
+            SEXPTYPE::ENVSXP => {
                 mark_reachable((*obj).data.envsxp.frame, traceable, visited);
                 mark_reachable((*obj).data.envsxp.enclos, traceable, visited);
                 mark_reachable((*obj).data.envsxp.hashtab, traceable, visited);
             }
-            5 => {
+            SEXPTYPE::PROMSXP => {
                 mark_reachable((*obj).data.promsxp.value, traceable, visited);
                 mark_reachable((*obj).data.promsxp.expr, traceable, visited);
                 mark_reachable((*obj).data.promsxp.env, traceable, visited);
             }
-            22 => {
+            SEXPTYPE::EXTPTRSXP => {
                 let extptr = (*obj).data.extptr;
                 mark_reachable(extptr[1] as SEXP, traceable, visited);
                 mark_reachable(extptr[2] as SEXP, traceable, visited);
@@ -684,33 +684,33 @@ fn update_references_in_object(obj: SEXP, old_to_new: &HashMap<usize, SEXP>) {
     }
     unsafe {
         let t = (*obj).sxpinfo.type_of();
-        match t.0 {
-            1 => {
+        match t {
+            SEXPTYPE::SYMSXP => {
                 update_field(&mut (*obj).data.symsxp.pname, old_to_new);
                 update_field(&mut (*obj).data.symsxp.value, old_to_new);
                 update_field(&mut (*obj).data.symsxp.internal, old_to_new);
             }
-            2 | 6 => {
+            SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
                 update_field(&mut (*obj).data.listsxp.carval, old_to_new);
                 update_field(&mut (*obj).data.listsxp.cdrval, old_to_new);
                 update_field(&mut (*obj).data.listsxp.tagval, old_to_new);
             }
-            3 => {
+            SEXPTYPE::CLOSXP => {
                 update_field(&mut (*obj).data.closxp.formals, old_to_new);
                 update_field(&mut (*obj).data.closxp.body, old_to_new);
                 update_field(&mut (*obj).data.closxp.env, old_to_new);
             }
-            4 => {
+            SEXPTYPE::ENVSXP => {
                 update_field(&mut (*obj).data.envsxp.frame, old_to_new);
                 update_field(&mut (*obj).data.envsxp.enclos, old_to_new);
                 update_field(&mut (*obj).data.envsxp.hashtab, old_to_new);
             }
-            5 => {
+            SEXPTYPE::PROMSXP => {
                 update_field(&mut (*obj).data.promsxp.value, old_to_new);
                 update_field(&mut (*obj).data.promsxp.expr, old_to_new);
                 update_field(&mut (*obj).data.promsxp.env, old_to_new);
             }
-            22 => {
+            SEXPTYPE::EXTPTRSXP => {
                 let tag = (*obj).data.extptr[1] as SEXP;
                 let prot = (*obj).data.extptr[2] as SEXP;
                 (*obj).data.extptr[1] = old_to_new.get(&(tag as usize)).copied().unwrap_or(tag)
@@ -1040,36 +1040,36 @@ fn snapshot_live_objects() -> CompactionSnapshot {
                 let mut envsxp_fields = None;
                 let mut promsxp_fields = None;
 
-                match t.0 {
-                    1 => {
+                match t {
+                    SEXPTYPE::SYMSXP => {
                         symsxp_fields = Some((
                             (*obj).data.symsxp.pname,
                             (*obj).data.symsxp.value,
                             (*obj).data.symsxp.internal,
                         ));
                     }
-                    2 | 6 => {
+                    SEXPTYPE::LISTSXP | SEXPTYPE::LANGSXP => {
                         listsxp_fields = Some((
                             (*obj).data.listsxp.carval,
                             (*obj).data.listsxp.cdrval,
                             (*obj).data.listsxp.tagval,
                         ));
                     }
-                    3 => {
+                    SEXPTYPE::CLOSXP => {
                         closxp_fields = Some((
                             (*obj).data.closxp.formals,
                             (*obj).data.closxp.body,
                             (*obj).data.closxp.env,
                         ));
                     }
-                    4 => {
+                    SEXPTYPE::ENVSXP => {
                         envsxp_fields = Some((
                             (*obj).data.envsxp.frame,
                             (*obj).data.envsxp.enclos,
                             (*obj).data.envsxp.hashtab,
                         ));
                     }
-                    5 => {
+                    SEXPTYPE::PROMSXP => {
                         promsxp_fields = Some((
                             (*obj).data.promsxp.value,
                             (*obj).data.promsxp.expr,

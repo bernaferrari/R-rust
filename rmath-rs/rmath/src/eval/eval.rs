@@ -19,15 +19,11 @@
 //! ported code that still passes raw `SEXP` pointers.
 
 use std::os::raw::c_int;
-use std::time::{Duration, Instant};
 
-use crate::sexp::accessors::{CAR, CDR, CLOENV, PRIMOFFSET, PRINTNAME, TYPEOF};
+use crate::sexp::accessors::{CAR, CDR, CLOENV, PRINTNAME, TYPEOF};
 use crate::sexp::envir::forcePromise;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::globals::{
-    R_EvalDepth, R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible,
-};
-use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue, set_R_Visible};
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
 use crate::sexp::object::{PairlistIter, Sexp, SexpError};
@@ -35,6 +31,15 @@ use crate::sexp::symbol::R_DotsSymbol;
 use crate::sexp::symbol::symbol_name_from_ptr;
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
+pub use super::error::EvalError;
+pub use super::limits::{
+    EvalLimits, EvalTimerGuard, check_eval_depth, eval_with_limits, get_eval_limits,
+    reset_eval_limits, set_eval_limits,
+};
+use super::primitive::primitive_controls_visibility;
+pub use super::primitive::{
+    PRIMNAME, PRIMPRINT, PrimFun as PRIMFUN, PrimitiveDescriptor, get_fun_tab_entry, get_primfun,
+};
 
 fn sexp_err(context: &str, err: SexpError) -> String {
     format!("{context}: {err}")
@@ -68,185 +73,6 @@ const EXTPTRSXP: c_int = SEXPTYPE::EXTPTRSXP.as_c_int();
 const WEAKREFSXP: c_int = SEXPTYPE::WEAKREFSXP.as_c_int();
 const RAWSXP: c_int = SEXPTYPE::RAWSXP.as_c_int();
 const OBJSXP: c_int = SEXPTYPE::OBJSXP.as_c_int();
-
-// ---------------------------------------------------------------------------
-// Primitive function dispatch
-// ---------------------------------------------------------------------------
-
-/// Function pointer type for primitive functions (SPECIAL and BUILTIN).
-pub type PRIMFUN = unsafe extern "C" fn(
-    SEXP, // call
-    SEXP, // op (the function)
-    SEXP, // args
-    SEXP, // rho (environment)
-) -> SEXP;
-
-/// Rust-shaped view over an R primitive descriptor.
-#[derive(Clone, Copy)]
-pub struct PrimitiveDescriptor {
-    pub op: SEXP,
-    pub offset: c_int,
-    pub kind: c_int,
-    pub name: &'static str,
-    pub print_flag: c_int,
-    pub fun: Option<PRIMFUN>,
-}
-
-impl PrimitiveDescriptor {
-    pub unsafe fn from_op(op: SEXP) -> Option<Self> {
-        if op.is_null() {
-            return None;
-        }
-        let kind = unsafe { TYPEOF(op) };
-        if kind != SEXPTYPE::SPECIALSXP && kind != SEXPTYPE::BUILTINSXP {
-            return None;
-        }
-        let offset = unsafe { PRIMOFFSET(op) };
-        let entry = fun_tab_descriptor(offset)?;
-        Some(Self {
-            op,
-            offset,
-            kind,
-            name: fun_tab_name(entry.name),
-            // Preserve the previous evaluator behavior. This field now has a
-            // single home, so matching R's PRIMPRINT macro later is localized.
-            print_flag: 0,
-            fun: entry.cfun,
-        })
-    }
-}
-
-/// Get the primitive function pointer for a SPECIAL or BUILTIN.
-pub unsafe fn get_primfun(op: SEXP) -> Option<PRIMFUN> {
-    unsafe { PrimitiveDescriptor::from_op(op) }.and_then(|primitive| primitive.fun)
-}
-
-/// Get a function table entry by offset.
-///
-/// Looks up the canonical R_FunTab and returns the C function pointer at the given offset.
-pub unsafe fn get_fun_tab_entry(offset: c_int) -> Option<PRIMFUN> {
-    fun_tab_descriptor(offset).and_then(|entry| entry.cfun)
-}
-
-fn fun_tab_descriptor(offset: c_int) -> Option<&'static crate::mainutils::names::FunTabEntry> {
-    if offset < 0 {
-        return None;
-    }
-    let tab = crate::mainutils::names::R_FunTab;
-    let idx = offset as usize;
-    if idx < tab.len() && !tab[idx].is_sentinel() {
-        Some(&tab[idx])
-    } else {
-        None
-    }
-}
-
-fn fun_tab_name(name: &'static [u8]) -> &'static str {
-    let bytes = name.strip_suffix(&[0]).unwrap_or(name);
-    std::str::from_utf8(bytes).unwrap_or("unknown")
-}
-
-/// Check the PRIMPRINT flag (visibility hint for primitives).
-pub unsafe fn PRIMPRINT(op: SEXP) -> c_int {
-    unsafe { PrimitiveDescriptor::from_op(op) }
-        .map(|primitive| primitive.print_flag)
-        .unwrap_or(0)
-}
-
-/// Get the PRIMNAME for a primitive.
-pub unsafe fn PRIMNAME(op: SEXP) -> &'static str {
-    unsafe { PrimitiveDescriptor::from_op(op) }
-        .map(|primitive| primitive.name)
-        .unwrap_or("unknown")
-}
-
-// ---------------------------------------------------------------------------
-// Eval error type
-// ---------------------------------------------------------------------------
-
-/// Errors that can occur during evaluation.
-#[derive(Debug)]
-pub enum EvalError {
-    TooDeeplyNested,
-    TimeLimitExceeded,
-    IncorrectDotsContext,
-    ObjectNotFound(String),
-    MissingArgument,
-    FunctionNotFound(String),
-    NonFunction,
-    UnimplementedType(c_int),
-    BytecodeNotImplemented,
-}
-
-impl std::fmt::Display for EvalError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            EvalError::TooDeeplyNested => write!(f, "evaluation nested too deeply"),
-            EvalError::TimeLimitExceeded => write!(f, "evaluation time limit exceeded"),
-            EvalError::IncorrectDotsContext => write!(f, "'...' used in an incorrect context"),
-            EvalError::ObjectNotFound(name) => write!(f, "object '{}' not found", name),
-            EvalError::MissingArgument => write!(f, "missing argument"),
-            EvalError::FunctionNotFound(name) => write!(f, "could not find function \"{}\"", name),
-            EvalError::NonFunction => write!(f, "attempt to apply non-function"),
-            EvalError::UnimplementedType(t) => write!(f, "unimplemented type in eval: {}", t),
-            EvalError::BytecodeNotImplemented => {
-                write!(f, "bytecode evaluation not yet implemented")
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Evaluation limits
-// ---------------------------------------------------------------------------
-
-/// Limits for expression evaluation to prevent runaway computation.
-///
-/// A limit of `0` means unlimited for that dimension.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct EvalLimits {
-    /// Maximum evaluation recursion depth (0 = default of 500).
-    pub max_eval_depth: usize,
-    /// Maximum execution time in milliseconds (0 = unlimited).
-    pub max_execution_time_ms: u64,
-    /// Maximum total allocations in bytes during evaluation (0 = unlimited).
-    pub max_alloc_bytes: usize,
-}
-
-impl EvalLimits {
-    /// Default limits matching historic R behavior.
-    pub const fn default() -> Self {
-        EvalLimits {
-            max_eval_depth: 500,
-            max_execution_time_ms: 0,
-            max_alloc_bytes: 0,
-        }
-    }
-
-    /// No limits at all.
-    pub const fn none() -> Self {
-        EvalLimits {
-            max_eval_depth: 0,
-            max_execution_time_ms: 0,
-            max_alloc_bytes: 0,
-        }
-    }
-}
-
-/// Set evaluation limits for the current thread.
-pub fn set_eval_limits(limits: EvalLimits) {
-    with_required_current_instance(|inst| inst.eval_state.limits = limits);
-}
-
-/// Get the current evaluation limits for this thread.
-pub fn get_eval_limits() -> EvalLimits {
-    with_required_current_instance(|inst| inst.eval_state.limits)
-}
-
-/// Reset evaluation limits to the default (500 depth, unlimited time/alloc).
-pub fn reset_eval_limits() {
-    set_eval_limits(EvalLimits::default());
-}
 
 // ---------------------------------------------------------------------------
 // Safe eval API — the primary internal implementation
@@ -296,69 +122,6 @@ pub fn eval_expr<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> 
         }
         Err(message) => Err(message),
     }
-}
-
-struct EvalTimerGuard {
-    started: bool,
-}
-
-impl EvalTimerGuard {
-    fn start_if_needed() -> Self {
-        let started = with_required_current_instance(|inst| {
-            if inst.eval_state.start_time.is_some() {
-                false
-            } else {
-                inst.eval_state.start_time = Some(Instant::now());
-                true
-            }
-        });
-        EvalTimerGuard { started }
-    }
-}
-
-impl Drop for EvalTimerGuard {
-    fn drop(&mut self) {
-        if self.started {
-            with_required_current_instance(|inst| inst.eval_state.start_time = None);
-        }
-    }
-}
-
-/// Depth guard that decrements R_EvalDepth when dropped.
-struct DepthGuard(c_int);
-impl Drop for DepthGuard {
-    fn drop(&mut self) {
-        unsafe { crate::sexp::globals::set_R_EvalDepth(self.0 - 1) };
-    }
-}
-
-/// Check evaluation depth and time limits, returning a guard that decrements on drop.
-fn check_eval_depth() -> Result<DepthGuard, String> {
-    let limits = get_eval_limits();
-    let depth = unsafe { R_EvalDepth() } + 1;
-    let max_depth = if limits.max_eval_depth > 0 {
-        limits.max_eval_depth
-    } else {
-        500
-    };
-    if depth as usize > max_depth {
-        return Err(EvalError::TooDeeplyNested.to_string());
-    }
-
-    // Check execution time limit
-    if limits.max_execution_time_ms > 0 {
-        let elapsed = with_required_current_instance(|inst| {
-            inst.eval_state.start_time.map(|start| start.elapsed())
-        });
-        if let Some(elapsed) = elapsed {
-            if elapsed > Duration::from_millis(limits.max_execution_time_ms) {
-                return Err(EvalError::TimeLimitExceeded.to_string());
-            }
-        }
-    }
-
-    unsafe { crate::sexp::globals::set_R_EvalDepth(depth) };
-    Ok(DepthGuard(depth))
 }
 
 /// Safe evaluation of an R expression.
@@ -577,32 +340,6 @@ fn call_head_name(call: Sexp<'_>) -> String {
     }
 }
 
-fn primitive_controls_visibility(name: &str) -> bool {
-    matches!(
-        name,
-        "<-" | "<<-"
-            | "="
-            | "{"
-            | "("
-            | "if"
-            | "for"
-            | "while"
-            | "repeat"
-            | "return"
-            | "invisible"
-            | "withVisible"
-            | "cat"
-            | "print"
-            | "warning"
-            | "message"
-            | "stopifnot"
-            | "library"
-            | "system"
-            | "suppressWarnings"
-            | "suppressMessages"
-    )
-}
-
 /// Safe special form application.
 fn apply_special_safe<'a>(
     fun: Sexp<'a>,
@@ -611,7 +348,7 @@ fn apply_special_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
-    let primitive = unsafe { PrimitiveDescriptor::from_op(fun.as_raw()) };
+    let primitive = PrimitiveDescriptor::from_sexp(fun);
     let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
     let op_name = call_head_name(call);
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
@@ -644,7 +381,7 @@ fn apply_builtin_safe<'a>(
     rho: Sexp<'a>,
 ) -> Result<Sexp<'a>, String> {
     let _vmax = unsafe { vmaxget() };
-    let primitive = unsafe { PrimitiveDescriptor::from_op(fun.as_raw()) };
+    let primitive = PrimitiveDescriptor::from_sexp(fun);
     let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
     unsafe { set_R_Visible(if flag != 1 { TRUE } else { FALSE }) };
 
@@ -5614,24 +5351,6 @@ pub fn eval<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     eval_safe(e, rho)
 }
 
-/// Evaluate an R expression with custom limits.
-///
-/// Sets the thread-local evaluation limits for the duration of this call,
-/// then restores the previous limits afterward.
-pub fn eval_with_limits<'a>(
-    e: Sexp<'a>,
-    rho: Sexp<'a>,
-    limits: EvalLimits,
-) -> Result<Sexp<'a>, String> {
-    let previous = get_eval_limits();
-    set_eval_limits(limits);
-    with_required_current_instance(|inst| inst.eval_state.start_time = Some(Instant::now()));
-    let result = eval_safe(e, rho);
-    with_required_current_instance(|inst| inst.eval_state.start_time = None);
-    set_eval_limits(previous);
-    result
-}
-
 /// Internal safe eval implementation (legacy, delegates to eval_safe).
 unsafe fn eval_inner_safe<'a>(e: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     if e.is_null() {
@@ -5957,11 +5676,11 @@ mod tests {
         let _session = RSession::new();
         let primitive = unsafe { crate::mainutils::names::R_Primitive(c"+".as_ptr()) };
         let descriptor =
-            unsafe { PrimitiveDescriptor::from_op(primitive) }.expect("primitive descriptor");
+            unsafe { PrimitiveDescriptor::from_raw(primitive) }.expect("primitive descriptor");
 
         assert_eq!(descriptor.name, "+");
         assert_eq!(descriptor.kind, BUILTINSXP);
-        assert!(descriptor.offset >= 0);
+        assert!(descriptor.table_index >= 0);
         assert_eq!(unsafe { PRIMNAME(primitive) }, "+");
         assert_eq!(unsafe { PRIMPRINT(primitive) }, descriptor.print_flag);
     }

@@ -13,7 +13,9 @@ that still matter most for runtime behavior:
 `SEXP` ownership is on the right Rust path. `Sexp<'a>` is a typed, lifetime-bound
 view; `RArena` owns allocation; and `RSession` rejects foreign arena pointers at
 the safe session boundary. Raw `SEXP` still exists inside `rmath::sexp`, but it
-is no longer the shape exposed to Android or embedding callers.
+is no longer the shape exposed to Android or embedding callers. Primitive SEXP
+accessors now live in a focused object submodule, and allocator/GC type handling
+matches on `SEXPTYPE` variants rather than raw tag numbers.
 
 `arithmetic.rs` is the cleanest core file. It denies `unsafe_op_in_unsafe_fn`,
 uses the typed `NumericVector` boundary, and now delegates divide, modulo, and
@@ -21,10 +23,12 @@ floor-division edge behavior to normal IEEE division and the R-shaped
 `myfmod`/`myfloor` helpers. The new zero-division conformance fixture checks
 stock R parity for `Inf`, `-Inf`, `NaN`, and integer `NA` behavior.
 
-`eval.rs` is functional for the covered runtime slice, but it is not yet the
-final Rust shape. It is still a large C-port compatibility module with a broad
-`unsafe_op_in_unsafe_fn` allow, a large primitive dispatch match, and separate
-bytecode work still to finish. This is the main remaining architecture target.
+`eval.rs` is functional for the covered runtime slice and is moving toward the
+final Rust shape. Primitive metadata and evaluator limits are now separated into
+focused modules; `PRIMPRINT` follows upstream's `((eval / 100) % 10)` rule; and
+the old `eval::builtin` placeholder delegates to the canonical function table.
+The remaining weak spot is the large builtin dispatch match and the broad
+`unsafe_op_in_unsafe_fn` allow still needed by that compatibility shell.
 
 ## Test Strategy
 

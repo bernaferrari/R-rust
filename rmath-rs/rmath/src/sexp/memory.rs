@@ -10,7 +10,7 @@
 use std::alloc::{Layout, alloc, dealloc};
 use std::ptr::{self};
 
-use super::ffi::{R_xlen_t, SEXP, SEXPTYPE, SexprecCore, SexprecData};
+use super::ffi::{R_xlen_t, Rbyte, Rcomplex, SEXP, SEXPTYPE, SexprecCore, SexprecData};
 use super::object::Sexp;
 
 // ---------------------------------------------------------------------------
@@ -20,15 +20,12 @@ use super::object::Sexp;
 /// Get the element size in bytes for a vector SEXPTYPE.
 /// Returns 0 for non-vector types.
 pub fn sexp_elem_size(t: SEXPTYPE) -> usize {
-    match t.0 {
-        10 => 4,
-        13 => 4,
-        14 => 8,
-        15 => 16,
-        16 => std::mem::size_of::<*mut SexprecCore>(),
-        19 => std::mem::size_of::<*mut SexprecCore>(),
-        20 => std::mem::size_of::<*mut SexprecCore>(),
-        24 => 1,
+    match t {
+        SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP => std::mem::size_of::<i32>(),
+        SEXPTYPE::REALSXP => std::mem::size_of::<f64>(),
+        SEXPTYPE::CPLXSXP => std::mem::size_of::<Rcomplex>(),
+        SEXPTYPE::STRSXP | SEXPTYPE::VECSXP | SEXPTYPE::EXPRSXP => std::mem::size_of::<SEXP>(),
+        SEXPTYPE::RAWSXP => std::mem::size_of::<Rbyte>(),
         _ => 0,
     }
 }

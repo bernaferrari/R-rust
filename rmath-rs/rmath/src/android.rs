@@ -778,7 +778,9 @@ mod tests {
             )
             .expect("configure paths");
 
-        assert_eq!(session.eval("require(\"tiny\")").output, "[1] TRUE");
+        let require = session.eval("require(\"tiny\")");
+        assert_eq!(require.output, "");
+        assert_eq!(require.typed, RValue::Logical(Some(true)));
         assert_eq!(session.eval("tiny_value()").output, "[1] 42");
         assert_eq!(
             session.eval("data(package = \"tiny\")").typed,
