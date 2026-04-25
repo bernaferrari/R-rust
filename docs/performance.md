@@ -39,6 +39,25 @@ not as a calibrated benchmark claim.
 `cargo bench -p rmath --bench bench_eval` remains available for lower-level
 allocator, ALTREP, distribution, and raw evaluator timing.
 
+## Stock R Comparison
+
+Use the stock-R comparison harness when you need a C R vs Rust runtime view:
+
+```bash
+scripts/compare_stock_r_performance.sh --iterations 5 --check
+```
+
+This is separate from the Rust-only regression report. It runs `Rscript` and
+the Rust conformance runner on the same small R programs, requires matching
+output before reporting a case as comparable, and writes:
+
+- `target/stock-r-performance/stock-r-performance-summary.md`
+- `target/stock-r-performance/stock-r-performance-summary.json`
+
+Treat the ratios as local directional measurements. They include process
+startup, parsing, evaluation, and printing, so they are useful for Android-style
+embedding work but not a replacement for lower-level profiler runs.
+
 ## Current Local Snapshot
 
 This snapshot was produced with:

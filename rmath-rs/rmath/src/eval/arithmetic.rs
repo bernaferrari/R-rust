@@ -71,34 +71,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                 continue;
             }
 
-            let val = match op {
-                "+" => x + y,
-                "-" => x - y,
-                "*" => x * y,
-                "/" => {
-                    if y == 0.0 {
-                        NA_REAL
-                    } else {
-                        x / y
-                    }
-                }
-                "^" => libm::pow(x, y),
-                "%%" => {
-                    if y == 0.0 {
-                        NA_REAL
-                    } else {
-                        crate::mainutils::arithmetic::myfmod(x, y)
-                    }
-                }
-                "%/%" => {
-                    if y == 0.0 {
-                        NA_REAL
-                    } else {
-                        crate::mainutils::arithmetic::myfloor(x, y)
-                    }
-                }
-                _ => NA_REAL,
-            };
+            let val = binary_arithmetic_value(op, x, y);
 
             if use_real {
                 result.set_real_elt(i, val);
@@ -119,6 +92,20 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 
         crate::sexp::protect::Rf_unprotect(1);
         result_raw
+    }
+}
+
+#[inline]
+fn binary_arithmetic_value(op: &str, x: f64, y: f64) -> f64 {
+    match op {
+        "+" => x + y,
+        "-" => x - y,
+        "*" => x * y,
+        "/" => x / y,
+        "^" => libm::pow(x, y),
+        "%%" => crate::mainutils::arithmetic::myfmod(x, y),
+        "%/%" => crate::mainutils::arithmetic::myfloor(x, y),
+        _ => NA_REAL,
     }
 }
 
@@ -875,6 +862,29 @@ mod tests {
     }
 
     #[test]
+    fn test_division_by_zero_matches_r_real_semantics() {
+        let _session = RSession::new();
+        unsafe {
+            let zero = Rf_ScalarInteger(0);
+
+            let pos = real_binary("/", Rf_ScalarInteger(1), zero);
+            assert_eq!(TYPEOF(pos), SEXPTYPE::REALSXP);
+            assert!((*REAL(pos)).is_infinite());
+            assert!((*REAL(pos)).is_sign_positive());
+
+            let neg = real_binary("/", Rf_ScalarInteger(-1), zero);
+            assert_eq!(TYPEOF(neg), SEXPTYPE::REALSXP);
+            assert!((*REAL(neg)).is_infinite());
+            assert!((*REAL(neg)).is_sign_negative());
+
+            let nan = real_binary("/", Rf_ScalarInteger(0), zero);
+            assert_eq!(TYPEOF(nan), SEXPTYPE::REALSXP);
+            assert!((*REAL(nan)).is_nan());
+            assert_ne!((*REAL(nan)).to_bits(), NA_REAL.to_bits());
+        }
+    }
+
+    #[test]
     fn test_scalar_power() {
         let _session = RSession::new();
         unsafe {
@@ -937,6 +947,34 @@ mod tests {
             let b = Rf_ScalarInteger(3);
             let result = real_binary("%/%", a, b);
             assert_eq!(*INTEGER(result), 3);
+        }
+    }
+
+    #[test]
+    fn test_modulo_and_floor_division_by_zero_match_r_shape() {
+        let _session = RSession::new();
+        unsafe {
+            let int_zero = Rf_ScalarInteger(0);
+
+            let int_mod = real_binary("%%", Rf_ScalarInteger(1), int_zero);
+            assert_eq!(TYPEOF(int_mod), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(int_mod), NA_INTEGER);
+
+            let int_floor_div = real_binary("%/%", Rf_ScalarInteger(1), int_zero);
+            assert_eq!(TYPEOF(int_floor_div), SEXPTYPE::INTSXP);
+            assert_eq!(*INTEGER(int_floor_div), NA_INTEGER);
+
+            let real_zero = Rf_ScalarReal(0.0);
+
+            let real_mod = real_binary("%%", Rf_ScalarReal(1.0), real_zero);
+            assert_eq!(TYPEOF(real_mod), SEXPTYPE::REALSXP);
+            assert!((*REAL(real_mod)).is_nan());
+            assert_ne!((*REAL(real_mod)).to_bits(), NA_REAL.to_bits());
+
+            let real_floor_div = real_binary("%/%", Rf_ScalarReal(-1.0), real_zero);
+            assert_eq!(TYPEOF(real_floor_div), SEXPTYPE::REALSXP);
+            assert!((*REAL(real_floor_div)).is_infinite());
+            assert!((*REAL(real_floor_div)).is_sign_negative());
         }
     }
 
