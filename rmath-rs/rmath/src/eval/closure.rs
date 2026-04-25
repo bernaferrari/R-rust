@@ -15,10 +15,14 @@ use crate::sexp::envir::{addMissingVarsToNewEnv, defineVar};
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{NewEnvironment, mkPROMISE};
-use crate::sexp::safe::{PairlistIter, Sexp};
+use crate::sexp::safe::{PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::eval::Rf_eval;
+
+fn sexp_err(context: &str, err: SexpError) -> String {
+    format!("{context}: {err}")
+}
 
 // ---------------------------------------------------------------------------
 // Safe closure application — the primary internal implementation
@@ -39,9 +43,15 @@ pub fn apply_closure_safe<'a>(
         return Err("not a closure".to_string());
     }
 
-    let formals = closure.formals().ok_or("closure has no formals")?;
-    let body = closure.body().ok_or("closure has no body")?;
-    let cloenv = closure.cloenv().ok_or("closure has no environment")?;
+    let formals = closure
+        .try_formals()
+        .map_err(|err| sexp_err("closure formals lookup", err))?;
+    let body = closure
+        .try_body()
+        .map_err(|err| sexp_err("closure body lookup", err))?;
+    let cloenv = closure
+        .try_cloenv()
+        .map_err(|err| sexp_err("closure environment lookup", err))?;
 
     // Match arguments to formals
     let matched = match_args_safe(formals, args)?;
@@ -50,14 +60,19 @@ pub fn apply_closure_safe<'a>(
     let new_env = create_env_safe(matched, cloenv)?;
 
     // Bind the matched arguments into the new environment
-    if let Some(frame) = new_env.frame() {
-        for cell in PairlistIter::new(frame) {
-            if let Some(sym) = cell.tag()
-                && let Some(val) = cell.car()
-            {
-                unsafe {
-                    defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
-                }
+    let frame = new_env
+        .try_frame()
+        .map_err(|err| sexp_err("new closure environment frame lookup", err))?;
+    for cell in PairlistIter::new(frame) {
+        let sym = cell
+            .try_tag()
+            .map_err(|err| sexp_err("matched argument tag lookup", err))?;
+        if !sym.is_nil() {
+            let val = cell
+                .try_car()
+                .map_err(|err| sexp_err("matched argument value lookup", err))?;
+            unsafe {
+                defineVar(sym.as_raw(), val.as_raw(), new_env.as_raw());
             }
         }
     }
@@ -89,11 +104,13 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
 
         for formal in &mut formal_iter {
             let arg = arg_iter.next();
-            let tag = formal.tag();
+            let tag = formal
+                .try_tag()
+                .map_err(|err| sexp_err("formal argument tag lookup", err))?;
 
             let val = if let Some(ref a) = arg {
-                a.car()
-                    .unwrap_or_else(|| unsafe { Sexp::from_raw_unchecked(R_NilValue()) })
+                a.try_car()
+                    .map_err(|err| sexp_err("actual argument value lookup", err))?
             } else {
                 unsafe { Sexp::from_raw_unchecked(R_MissingArg()) }
             };
@@ -101,7 +118,11 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
             let cell = arena.cons(
                 val.as_raw(),
                 ptr::null_mut(),
-                tag.map(|t| t.as_raw()).unwrap_or(ptr::null_mut()),
+                if tag.is_nil() {
+                    ptr::null_mut()
+                } else {
+                    tag.as_raw()
+                },
             );
 
             if result.is_null() {
@@ -125,7 +146,7 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Result<Sexp<'a>
 /// and the given parent as its enclosing environment.
 pub fn create_env_safe<'a>(bindings: Sexp<'a>, parent: Sexp<'a>) -> Result<Sexp<'a>, String> {
     let env = unsafe { NewEnvironment(bindings.as_raw(), parent.as_raw(), ptr::null_mut()) };
-    Sexp::from_raw(env).ok_or("failed to create environment".to_string())
+    Sexp::try_from_raw(env).map_err(|err| sexp_err("failed to create environment", err))
 }
 
 // ---------------------------------------------------------------------------
@@ -214,13 +235,13 @@ pub unsafe fn make_applyClosure_env(op: SEXP, arglist: SEXP, rho: SEXP) -> SEXP 
                     return R_NilValue();
                 }
 
-                let formals = match closure.formals() {
-                    Some(f) => f,
-                    None => return R_NilValue(),
+                let formals = match closure.try_formals() {
+                    Ok(f) => f,
+                    Err(_) => return R_NilValue(),
                 };
-                let cloenv = match closure.cloenv() {
-                    Some(e) => e,
-                    None => return R_NilValue(),
+                let cloenv = match closure.try_cloenv() {
+                    Ok(e) => e,
+                    Err(_) => return R_NilValue(),
                 };
 
                 let promised_args = crate::eval::dispatch::promiseArgs(arglist, rho);

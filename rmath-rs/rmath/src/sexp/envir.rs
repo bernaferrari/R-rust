@@ -24,7 +24,7 @@ use super::constructors::Rf_cons;
 use super::ffi::{SEXP, SEXPTYPE};
 use super::globals::{R_GlobalEnv, R_MissingArg, R_NilValue, R_UnboundValue};
 use super::memory_ext::NewEnvironment;
-use super::safe::{PairlistIter, Sexp};
+use super::safe::{PairlistIter, Sexp, SexpError};
 use super::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -37,6 +37,10 @@ pub type LookupResult<'a> = Option<Sexp<'a>>;
 /// Result of an operation that may fail with an error message.
 pub type EnvResult<T> = Result<T, String>;
 
+fn sexp_err(context: &str, err: SexpError) -> String {
+    format!("{context}: {err}")
+}
+
 // ---------------------------------------------------------------------------
 // findVarInFrame — safe version
 // ---------------------------------------------------------------------------
@@ -46,26 +50,47 @@ pub type EnvResult<T> = Result<T, String>;
 /// Returns `None` if the symbol is not found or if inputs are invalid.
 #[must_use]
 pub fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> LookupResult<'a> {
+    find_var_in_frame_result(rho, symbol).ok().flatten()
+}
+
+/// Checked frame-local variable lookup.
+///
+/// `Ok(None)` means no binding was found. `Err` means the supplied value was
+/// not an environment or a binding cell was malformed.
+pub fn find_var_in_frame_result<'a>(
+    rho: Sexp<'a>,
+    symbol: Sexp<'a>,
+) -> EnvResult<LookupResult<'a>> {
     if !rho.is_environment() {
-        return None;
+        return Ok(None);
     }
 
     // Fast path: check hash table if one exists
     if super::env_hash::env_has_hash_table(rho.as_raw())
         && let Some(val) = super::env_hash::hash_get(rho.as_raw(), symbol.as_raw())
     {
-        return Some(unsafe { Sexp::from_raw_unchecked(val) });
+        return Sexp::try_from_raw(val)
+            .map(Some)
+            .map_err(|err| sexp_err("hash binding value", err));
     }
 
-    let frame = rho.frame()?;
+    let frame = rho
+        .try_frame()
+        .map_err(|err| sexp_err("environment frame lookup", err))?;
 
     for cell in PairlistIter::new(frame) {
-        if cell.tag() == Some(symbol) {
-            return cell.car();
+        let tag = cell
+            .try_tag()
+            .map_err(|err| sexp_err("binding tag lookup", err))?;
+        if tag == symbol {
+            return cell
+                .try_car()
+                .map(Some)
+                .map_err(|err| sexp_err("binding value lookup", err));
         }
     }
 
-    None
+    Ok(None)
 }
 
 // ---------------------------------------------------------------------------
@@ -78,6 +103,11 @@ pub fn find_var_in_frame_safe<'a>(rho: Sexp<'a>, symbol: Sexp<'a>) -> LookupResu
 /// Forces promises if encountered.
 #[must_use]
 pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
+    find_var_result(symbol, rho).ok().flatten()
+}
+
+/// Checked variable lookup through an environment chain.
+pub fn find_var_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     let mut current = rho;
 
     loop {
@@ -85,23 +115,26 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
             break;
         }
 
-        if let Some(val) = find_var_in_frame_safe(current, symbol) {
+        if let Some(val) = find_var_in_frame_result(current, symbol)? {
             if val.typeof_() == SEXPTYPE::PROMSXP {
-                return force_promise_safe(val);
+                return force_promise_result(val);
             }
-            return Some(val);
+            return Ok(Some(val));
         }
 
-        if let Some(sym_val) = symbol.symvalue()
+        if symbol.is_symbol()
+            && let Ok(sym_val) = symbol.try_symvalue()
             && sym_val.typeof_() == SEXPTYPE::SPECIALSXP
         {
-            return Some(sym_val);
+            return Ok(Some(sym_val));
         }
 
-        current = current.enclos()?;
+        current = current
+            .try_enclos()
+            .map_err(|err| sexp_err("enclosing environment lookup", err))?;
     }
 
-    None
+    Ok(None)
 }
 
 // ---------------------------------------------------------------------------
@@ -113,20 +146,31 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
 /// If the input is not a promise, returns it as-is.
 #[must_use]
 pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
+    force_promise_result(prom).ok().flatten()
+}
+
+/// Checked promise forcing.
+pub fn force_promise_result(prom: Sexp<'_>) -> EnvResult<LookupResult<'_>> {
     if prom.typeof_() != SEXPTYPE::PROMSXP {
-        return Some(prom);
+        return Ok(Some(prom));
     }
 
-    let val = prom.prvalue()?;
+    let val = prom
+        .try_prvalue()
+        .map_err(|err| sexp_err("promise value lookup", err))?;
     if val.as_raw() != unsafe { R_UnboundValue() } {
-        return Some(val);
+        return Ok(Some(val));
     }
 
-    let expr = prom.prcode()?;
+    let expr = prom
+        .try_prcode()
+        .map_err(|err| sexp_err("promise code lookup", err))?;
     if expr.as_raw() == unsafe { R_MissingArg() } {
-        return Some(expr);
+        return Ok(Some(expr));
     }
-    let env = prom.prenv()?;
+    let env = prom
+        .try_prenv()
+        .map_err(|err| sexp_err("promise environment lookup", err))?;
 
     unsafe {
         SET_PRVALUE(prom.as_raw(), R_UnboundValue());
@@ -142,7 +186,7 @@ pub fn force_promise_safe(prom: Sexp<'_>) -> LookupResult<'_> {
         SET_PRVALUE(prom.as_raw(), value.as_raw());
         SET_PRENV(prom.as_raw(), R_NilValue());
     }
-    Some(value)
+    Ok(Some(value))
 }
 
 // ---------------------------------------------------------------------------
@@ -158,13 +202,13 @@ pub fn define_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) -> bool
         return false;
     }
 
-    let frame = match rho.frame() {
-        Some(f) => f,
-        None => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
+    let frame = match rho.try_frame() {
+        Ok(f) => f,
+        Err(_) => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
     };
 
     for cell in PairlistIter::new(frame) {
-        if cell.tag() == Some(symbol) {
+        if cell.try_tag().ok() == Some(symbol) {
             unsafe {
                 SETCAR(cell.as_raw(), value.as_raw());
             }
@@ -230,13 +274,13 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
             break;
         }
 
-        let frame = match current.frame() {
-            Some(f) => f,
-            None => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
+        let frame = match current.try_frame() {
+            Ok(f) => f,
+            Err(_) => unsafe { Sexp::from_raw_unchecked(R_NilValue()) },
         };
 
         for cell in PairlistIter::new(frame) {
-            if cell.tag() == Some(symbol) {
+            if cell.try_tag().ok() == Some(symbol) {
                 unsafe {
                     SETCAR(cell.as_raw(), value.as_raw());
                 }
@@ -244,9 +288,9 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
             }
         }
 
-        current = match current.enclos() {
-            Some(e) => e,
-            None => break,
+        current = match current.try_enclos() {
+            Ok(e) => e,
+            Err(_) => break,
         };
     }
 
@@ -265,6 +309,11 @@ pub fn set_var_safe(symbol: Sexp<'_>, value: Sexp<'_>, rho: Sexp<'_>) {
 /// Searches through environments, looking for closures, builtins, or specials.
 #[must_use]
 pub fn find_fun_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
+    find_fun_result(symbol, rho).ok().flatten()
+}
+
+/// Checked function lookup through an environment chain.
+pub fn find_fun_result<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     let mut current = rho;
 
     loop {
@@ -272,20 +321,19 @@ pub fn find_fun_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
             break;
         }
 
-        if let Some(val) = find_var_in_frame_safe(current, symbol) {
+        if let Some(val) = find_var_in_frame_result(current, symbol)? {
             let t = val.typeof_();
             if t == SEXPTYPE::CLOSXP || t == SEXPTYPE::BUILTINSXP || t == SEXPTYPE::SPECIALSXP {
-                return Some(val);
+                return Ok(Some(val));
             }
         }
 
-        current = match current.enclos() {
-            Some(e) => e,
-            None => break,
-        };
+        current = current
+            .try_enclos()
+            .map_err(|err| sexp_err("enclosing environment lookup", err))?;
     }
 
-    None
+    Ok(None)
 }
 
 // ---------------------------------------------------------------------------
@@ -295,8 +343,13 @@ pub fn find_fun_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a> {
 /// Match actual arguments to formal parameters.
 #[must_use]
 pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>> {
+    match_args_result(formals, args).ok().flatten()
+}
+
+/// Checked argument matching.
+pub fn match_args_result<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> EnvResult<LookupResult<'a>> {
     if !formals.is_pairlist() {
-        return Some(args);
+        return Ok(Some(args));
     }
 
     let mut result: Option<Sexp<'a>> = None;
@@ -305,21 +358,29 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>
     let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
 
     for f in PairlistIter::new(formals) {
-        let ftag = match f.tag() {
-            Some(t) => t,
-            None => continue,
+        let ftag = match f
+            .try_tag()
+            .map_err(|err| sexp_err("formal argument tag lookup", err))?
+        {
+            tag if tag.is_nil() => continue,
+            tag => tag,
         };
 
-        let matched = PairlistIter::new(args).find(|a| a.tag() == Some(ftag));
+        let matched = PairlistIter::new(args).find(|a| a.try_tag().ok() == Some(ftag));
 
-        let car_val = matched.and_then(|m| m.car()).unwrap_or(missing_arg);
+        let car_val = match matched {
+            Some(m) => m
+                .try_car()
+                .map_err(|err| sexp_err("matched argument value lookup", err))?,
+            None => missing_arg,
+        };
 
         let cell = unsafe { Rf_cons(car_val.as_raw(), R_NilValue()) };
         if cell.is_null() {
-            return None;
+            return Ok(None);
         }
         unsafe { SETTAG(cell, ftag.as_raw()) };
-        let cell = Sexp::from_raw(cell)?;
+        let cell = Sexp::try_from_raw(cell).map_err(|err| sexp_err("matched cell", err))?;
 
         if result.is_none() {
             result = Some(cell);
@@ -337,7 +398,7 @@ pub fn match_args_safe<'a>(formals: Sexp<'a>, args: Sexp<'a>) -> Option<Sexp<'a>
         }
     }
 
-    result.or_else(|| unsafe { Sexp::from_raw(R_NilValue()) })
+    Ok(result.or_else(|| unsafe { Sexp::from_raw(R_NilValue()) }))
 }
 
 // ---------------------------------------------------------------------------
@@ -358,7 +419,7 @@ pub fn is_missing_safe(symbol: Sexp<'_>, rho: Sexp<'_>) -> bool {
     }
 
     if val.typeof_() == SEXPTYPE::PROMSXP
-        && let Some(expr) = val.prcode()
+        && let Ok(expr) = val.try_prcode()
         && expr == missing_arg
     {
         return true;
@@ -384,8 +445,8 @@ pub fn dd_find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> LookupResult<'a>
     }
 
     for cell in PairlistIter::new(dots_val) {
-        if cell.tag() == Some(symbol) {
-            let val = cell.car()?;
+        if cell.try_tag().ok() == Some(symbol) {
+            let val = cell.try_car().ok()?;
             if val.typeof_() == SEXPTYPE::PROMSXP {
                 return force_promise_safe(val);
             }
@@ -406,8 +467,11 @@ pub fn check_formals_safe(formals: Sexp<'_>) -> EnvResult<()> {
 
     for f in PairlistIter::new(formals) {
         let sym = f
-            .tag()
-            .ok_or_else(|| "invalid formal argument list".to_string())?;
+            .try_tag()
+            .map_err(|err| sexp_err("formal argument tag lookup", err))?;
+        if sym.is_nil() {
+            return Err("invalid formal argument list".to_string());
+        }
         if !sym.is_symbol() {
             return Err("invalid formal argument list".to_string());
         }
@@ -430,8 +494,10 @@ pub fn add_missing_vars_to_new_env_safe(formals: Sexp<'_>, args: Sexp<'_>, newrh
     let missing_arg = unsafe { Sexp::from_raw_unchecked(R_MissingArg()) };
 
     for f in PairlistIter::new(formals) {
-        if let Some(sym) = f.tag() {
-            let found = PairlistIter::new(args).any(|a| a.tag() == Some(sym));
+        if let Ok(sym) = f.try_tag()
+            && !sym.is_nil()
+        {
+            let found = PairlistIter::new(args).any(|a| a.try_tag().ok() == Some(sym));
             if !found {
                 define_var_safe(sym, missing_arg, newrho);
             }
@@ -884,6 +950,35 @@ mod tests {
 
         let result = find_var_in_frame_safe(sexp_env, sexp_env);
         assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_checked_find_var_reports_malformed_frame() {
+        let _session = crate::sexp::session::RSession::new();
+        let env = memory::with_arena(|arena| arena.alloc_node(SEXPTYPE::ENVSXP));
+        let malformed_frame = memory::with_arena(|arena| arena.alloc_vector(SEXPTYPE::INTSXP, 1));
+        let symbol = unsafe {
+            SET_FRAME(env, malformed_frame);
+            Rf_install(b"x\0".as_ptr() as *const _)
+        };
+        let sexp_env = Sexp::from_raw(env).expect("environment");
+        let sexp_symbol = Sexp::from_raw(symbol).expect("symbol");
+
+        assert!(find_var_in_frame_result(sexp_env, sexp_symbol).is_err());
+    }
+
+    #[test]
+    fn test_checked_match_args_reports_malformed_formals() {
+        let _session = crate::sexp::session::RSession::new();
+        let formals = memory::with_arena(|arena| arena.alloc_list_chain(1));
+        let args = unsafe { R_NilValue() };
+        let sexp_formals = Sexp::from_raw(formals).expect("formals");
+        let sexp_args = Sexp::from_raw(args).expect("args");
+
+        let matched = match_args_result(sexp_formals, sexp_args).expect("malformed tag is skipped");
+        assert_eq!(matched.expect("empty match result").as_raw(), unsafe {
+            R_NilValue()
+        });
     }
 
     #[test]

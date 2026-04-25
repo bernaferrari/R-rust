@@ -30,11 +30,15 @@ use crate::sexp::globals::{
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory::RArena;
 use crate::sexp::memory_ext::vmaxget;
-use crate::sexp::safe::{PairlistIter, Sexp};
+use crate::sexp::safe::{PairlistIter, Sexp, SexpError};
 use crate::sexp::symbol::R_DotsSymbol;
 use crate::sexp::symbol::symbol_name_from_ptr;
 
 use super::attrib_core::{R_ClassSymbol, getAttrib, isObject};
+
+fn sexp_err(context: &str, err: SexpError) -> String {
+    format!("{context}: {err}")
+}
 
 // ---------------------------------------------------------------------------
 // SEXPTYPE constants for pattern matching
@@ -347,7 +351,7 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
     }
 
     if expr.is_symbol() {
-        return find_var_safe(expr, env).ok_or_else(|| format!("object '{}' not found", expr));
+        return find_var_result(expr, env)?.ok_or_else(|| format!("object '{}' not found", expr));
     }
 
     if expr.is_pairlist() || expr.typeof_() == SEXPTYPE::LANGSXP {
@@ -375,8 +379,8 @@ fn eval_safe_inner<'a>(expr: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String
 
 /// Safe evaluation of a language object (function call).
 pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let fun = e.car().ok_or("empty call")?;
-    let args = e.cdr().ok_or("missing args")?;
+    let fun = e.try_car().map_err(|err| sexp_err("empty call", err))?;
+    let args = e.try_cdr().map_err(|err| sexp_err("missing args", err))?;
 
     // Evaluate the function
     let fun_val = eval_safe(fun, rho)?;
@@ -394,22 +398,38 @@ pub(crate) fn eval_lang_safe<'a>(e: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>,
 ///
 /// Walks the environment chain looking for a symbol binding.
 pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
+    find_var_result(symbol, rho).ok().flatten()
+}
+
+/// Checked variable lookup using typed SEXP field access.
+///
+/// `Ok(None)` means the binding was not found. `Err` means the environment
+/// chain or binding cells were structurally invalid for the operation.
+pub(crate) fn find_var_result<'a>(
+    symbol: Sexp<'a>,
+    rho: Sexp<'a>,
+) -> Result<Option<Sexp<'a>>, String> {
     if symbol == unsafe { Sexp::from_raw_unchecked(R_DotsSymbol()) } {
-        return None;
+        return Ok(None);
     }
 
     // Walk environment chain
     let mut current = rho;
     loop {
         if !current.is_environment() {
-            return None;
+            return Ok(None);
         }
-        let frame = current.frame()?;
+        let frame = current
+            .try_frame()
+            .map_err(|err| sexp_err("environment frame lookup", err))?;
         for cell in PairlistIter::new(frame) {
-            if let Some(tag) = cell.tag()
-                && tag == symbol
-            {
-                let val = cell.car()?;
+            let tag = cell
+                .try_tag()
+                .map_err(|err| sexp_err("binding tag lookup", err))?;
+            if tag == symbol {
+                let val = cell
+                    .try_car()
+                    .map_err(|err| sexp_err("binding value lookup", err))?;
                 if val.as_raw() == unsafe { R_MissingArg() } {
                     let name = unsafe { get_symbol_name(symbol.as_raw()) };
                     std::panic::panic_any(crate::sexp::context::RSignal::Error {
@@ -418,27 +438,32 @@ pub fn find_var_safe<'a>(symbol: Sexp<'a>, rho: Sexp<'a>) -> Option<Sexp<'a>> {
                 }
                 if val.typeof_() == SEXPTYPE::PROMSXP {
                     let forced = unsafe { forcePromise(val.as_raw()) };
-                    return Sexp::from_raw(forced);
+                    return Sexp::try_from_raw(forced)
+                        .map(Some)
+                        .map_err(|err| sexp_err("forced promise value", err));
                 }
-                return Some(val);
+                return Ok(Some(val));
             }
         }
-        current = current.enclos()?;
+        current = current
+            .try_enclos()
+            .map_err(|err| sexp_err("enclosing environment lookup", err))?;
     }
 }
 
 /// Safe promise evaluation.
 fn eval_promise_safe<'a>(prom: Sexp<'a>, rho: Sexp<'a>) -> Result<Sexp<'a>, String> {
     // If already evaluated, return the value
-    if let Some(val) = prom.prvalue()
-        && val.as_raw() != unsafe { R_UnboundValue() }
-    {
+    let val = prom
+        .try_prvalue()
+        .map_err(|err| sexp_err("promise value lookup", err))?;
+    if val.as_raw() != unsafe { R_UnboundValue() } {
         return Ok(val);
     }
 
     // Force the promise
     let raw_result = unsafe { forcePromise(prom.as_raw()) };
-    Ok(unsafe { Sexp::from_raw_unchecked(raw_result) })
+    Sexp::try_from_raw(raw_result).map_err(|err| sexp_err("forced promise result", err))
 }
 
 /// Safe dots evaluation.
@@ -5311,9 +5336,9 @@ fn do_parent_frame_impl(n: c_int, rho: SEXP) -> SEXP {
         let env = Sexp::from_raw_unchecked(rho);
         let mut current = env;
         for _ in 0..n {
-            match current.enclos() {
-                Some(enclos) => current = enclos,
-                None => return R_GlobalEnv(),
+            match current.try_enclos() {
+                Ok(enclos) if enclos.is_environment() => current = enclos,
+                _ => return R_GlobalEnv(),
             }
         }
         current.as_raw()
@@ -5507,7 +5532,7 @@ pub unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
 }
 
 fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
-    let Some(fun) = expr.car() else {
+    let Ok(fun) = expr.try_car() else {
         return false;
     };
     if !fun.is_symbol() {
@@ -5556,11 +5581,9 @@ unsafe fn eval_builtin<'a>(e: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> Result<S
 /// Evaluate a CLOSXP (user-defined function) — legacy wrapper.
 unsafe fn eval_closure<'a>(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'a>, String> {
     let fun = Sexp::from_raw_unchecked(op);
-    let args = if let Some(cdr) = Sexp::from_raw_unchecked(e).cdr() {
-        cdr
-    } else {
-        return Err("missing args".to_string());
-    };
+    let args = Sexp::from_raw_unchecked(e)
+        .try_cdr()
+        .map_err(|err| sexp_err("missing args", err))?;
     let env = Sexp::from_raw_unchecked(rho);
     apply_closure_safe(fun, args, env)
 }

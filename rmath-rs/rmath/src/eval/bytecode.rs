@@ -8,7 +8,11 @@ use std::os::raw::{c_double, c_int};
 
 use crate::sexp::ffi::SEXPTYPE;
 use crate::sexp::memory::with_arena;
-use crate::sexp::safe::Sexp;
+use crate::sexp::safe::{Sexp, SexpError};
+
+fn sexp_err(context: &str, err: SexpError) -> String {
+    format!("{context}: {err}")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ControlFlow {
@@ -67,15 +71,13 @@ fn make_lgl<'a>(val: c_int) -> Result<Sexp<'a>, String> {
     if lgl.is_null() {
         return Err("failed to allocate logical scalar".to_string());
     }
+    let sexp = Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())?;
+    sexp.try_set_logical_elt(0, val)
+        .map_err(|err| sexp_err("failed to initialize logical scalar", err))?;
     unsafe {
-        let data = (*lgl).gengc_next_node as *mut c_int;
-        if data.is_null() {
-            return Err("logical scalar has no data buffer".to_string());
-        }
-        *data = val;
         (*lgl).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(lgl).ok_or_else(|| "invalid logical scalar pointer".to_string())
+    Ok(sexp)
 }
 
 fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
@@ -83,15 +85,13 @@ fn make_real<'a>(val: c_double) -> Result<Sexp<'a>, String> {
     if real.is_null() {
         return Err("failed to allocate real scalar".to_string());
     }
+    let sexp = Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())?;
+    sexp.try_set_real_elt(0, val)
+        .map_err(|err| sexp_err("failed to initialize real scalar", err))?;
     unsafe {
-        let data = (*real).gengc_next_node as *mut c_double;
-        if data.is_null() {
-            return Err("real scalar has no data buffer".to_string());
-        }
-        *data = val;
         (*real).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(real).ok_or_else(|| "invalid real scalar pointer".to_string())
+    Ok(sexp)
 }
 
 fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
@@ -99,15 +99,47 @@ fn make_int<'a>(val: c_int) -> Result<Sexp<'a>, String> {
     if int.is_null() {
         return Err("failed to allocate integer scalar".to_string());
     }
+    let sexp = Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())?;
+    sexp.try_set_integer_elt(0, val)
+        .map_err(|err| sexp_err("failed to initialize integer scalar", err))?;
     unsafe {
-        let data = (*int).gengc_next_node as *mut c_int;
-        if data.is_null() {
-            return Err("integer scalar has no data buffer".to_string());
-        }
-        *data = val;
         (*int).sxpinfo.set_scalar(true);
     }
-    Sexp::from_raw(int).ok_or_else(|| "invalid integer scalar pointer".to_string())
+    Ok(sexp)
+}
+
+fn scalar_int(value: Sexp<'_>, context: &str) -> Result<c_int, String> {
+    value
+        .try_integer_elt(0)
+        .map_err(|err| sexp_err(context, err))
+}
+
+fn scalar_real(value: Sexp<'_>, context: &str) -> Result<c_double, String> {
+    value.try_real_elt(0).map_err(|err| sexp_err(context, err))
+}
+
+fn scalar_f64_or_zero(value: Sexp<'_>, context: &str) -> Result<c_double, String> {
+    match value.typeof_() {
+        SEXPTYPE::REALSXP => scalar_real(value, context),
+        SEXPTYPE::INTSXP => scalar_int(value, context).map(c_double::from),
+        SEXPTYPE::LGLSXP => value
+            .try_logical_elt(0)
+            .map(c_double::from)
+            .map_err(|err| sexp_err(context, err)),
+        _ => Ok(0.0),
+    }
+}
+
+fn scalar_bool_or_false(value: Sexp<'_>, context: &str) -> Result<bool, String> {
+    match value.typeof_() {
+        SEXPTYPE::LGLSXP => value
+            .try_logical_elt(0)
+            .map(|value| value != 0)
+            .map_err(|err| sexp_err(context, err)),
+        SEXPTYPE::INTSXP => scalar_int(value, context).map(|value| value != 0),
+        SEXPTYPE::REALSXP => scalar_real(value, context).map(|value| value != 0.0),
+        _ => Ok(false),
+    }
 }
 
 fn apply_binary_op<'a, FR, FI>(
@@ -121,28 +153,16 @@ where
     FI: Fn(c_int, c_int) -> c_int,
 {
     if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
-        let av = a.real_elt(0).unwrap_or(0.0);
-        let bv = b.real_elt(0).unwrap_or(0.0);
+        let av = scalar_real(a, "left real operand")?;
+        let bv = scalar_real(b, "right real operand")?;
         make_real(real_op(av, bv))
     } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
-        let av = a.integer_elt(0).unwrap_or(0);
-        let bv = b.integer_elt(0).unwrap_or(0);
+        let av = scalar_int(a, "left integer operand")?;
+        let bv = scalar_int(b, "right integer operand")?;
         make_int(int_op(av, bv))
     } else {
-        let av = if a.typeof_() == SEXPTYPE::REALSXP {
-            a.real_elt(0).unwrap_or(0.0)
-        } else if a.typeof_() == SEXPTYPE::INTSXP {
-            a.integer_elt(0).unwrap_or(0) as c_double
-        } else {
-            0.0
-        };
-        let bv = if b.typeof_() == SEXPTYPE::REALSXP {
-            b.real_elt(0).unwrap_or(0.0)
-        } else if b.typeof_() == SEXPTYPE::INTSXP {
-            b.integer_elt(0).unwrap_or(0) as c_double
-        } else {
-            0.0
-        };
+        let av = scalar_f64_or_zero(a, "left numeric operand")?;
+        let bv = scalar_f64_or_zero(b, "right numeric operand")?;
         make_real(real_op(av, bv))
     }
 }
@@ -152,35 +172,25 @@ where
     F: Fn(c_double, c_double) -> bool,
 {
     let result = if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
-        let av = a.real_elt(0).unwrap_or(0.0);
-        let bv = b.real_elt(0).unwrap_or(0.0);
+        let av = scalar_real(a, "left real comparison operand")?;
+        let bv = scalar_real(b, "right real comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
     } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
-        let av = a.integer_elt(0).unwrap_or(0) as c_double;
-        let bv = b.integer_elt(0).unwrap_or(0) as c_double;
+        let av = scalar_int(a, "left integer comparison operand")? as c_double;
+        let bv = scalar_int(b, "right integer comparison operand")? as c_double;
         if cmp(av, bv) { 1 } else { 0 }
     } else {
-        let av = if a.typeof_() == SEXPTYPE::REALSXP {
-            a.real_elt(0).unwrap_or(0.0)
-        } else if a.typeof_() == SEXPTYPE::INTSXP {
-            a.integer_elt(0).unwrap_or(0) as c_double
-        } else {
-            0.0
-        };
-        let bv = if b.typeof_() == SEXPTYPE::REALSXP {
-            b.real_elt(0).unwrap_or(0.0)
-        } else if b.typeof_() == SEXPTYPE::INTSXP {
-            b.integer_elt(0).unwrap_or(0) as c_double
-        } else {
-            0.0
-        };
+        let av = scalar_f64_or_zero(a, "left comparison operand")?;
+        let bv = scalar_f64_or_zero(b, "right comparison operand")?;
         if cmp(av, bv) { 1 } else { 0 }
     };
     make_lgl(result)
 }
 
 pub fn eval_bytecode<'a>(code: Sexp<'a>, env: Sexp<'a>) -> Result<Sexp<'a>, String> {
-    let bytecode = code.as_integer_slice().ok_or("bytecode has no data")?;
+    let bytecode = code
+        .try_as_integer_slice()
+        .map_err(|err| sexp_err("invalid bytecode vector", err))?;
     let mut pc: usize = 0;
     let mut stack: Vec<Sexp<'a>> = Vec::new();
     let constants = code.attrib();
@@ -209,7 +219,7 @@ fn eval_bytecode_loop<'a>(
                 let idx = bytecode[*pc] as usize;
                 *pc += 1;
                 let sym = get_constant(constants, idx)?;
-                let val = crate::eval::eval::find_var_safe(sym, env)
+                let val = crate::eval::eval::find_var_result(sym, env)?
                     .ok_or_else(|| "variable not found".to_string())?;
                 stack.push(val);
             }
@@ -235,14 +245,8 @@ fn eval_bytecode_loop<'a>(
                 let val = stack
                     .pop()
                     .ok_or_else(|| "empty stack on not".to_string())?;
-                let v = if val.typeof_() == SEXPTYPE::LGLSXP {
-                    val.logical_elt(0).unwrap_or(0)
-                } else if val.typeof_() == SEXPTYPE::INTSXP {
-                    if val.integer_elt(0).unwrap_or(0) != 0 {
-                        1
-                    } else {
-                        0
-                    }
+                let v = if scalar_bool_or_false(val, "bytecode not operand")? {
+                    1
                 } else {
                     0
                 };
@@ -308,17 +312,23 @@ fn eval_bytecode_loop<'a>(
                     .ok_or_else(|| "empty stack on mod".to_string())?;
                 if a.typeof_() == SEXPTYPE::REALSXP && b.typeof_() == SEXPTYPE::REALSXP {
                     stack.push(make_real(
-                        a.real_elt(0).unwrap_or(0.0) % b.real_elt(0).unwrap_or(0.0),
+                        scalar_real(a, "left real modulo operand")?
+                            % scalar_real(b, "right real modulo operand")?,
                     )?);
                 } else if a.typeof_() == SEXPTYPE::INTSXP && b.typeof_() == SEXPTYPE::INTSXP {
-                    let bv = b.integer_elt(0).unwrap_or(0);
+                    let bv = scalar_int(b, "right integer modulo operand")?;
                     if bv != 0 {
-                        stack.push(make_int(a.integer_elt(0).unwrap_or(0) % bv)?);
+                        stack.push(make_int(
+                            scalar_int(a, "left integer modulo operand")? % bv,
+                        )?);
                     } else {
                         stack.push(make_real(f64::NAN)?);
                     }
                 } else {
-                    stack.push(make_real(a.as_f64() % b.as_f64())?);
+                    stack.push(make_real(
+                        scalar_f64_or_zero(a, "left modulo operand")?
+                            % scalar_f64_or_zero(b, "right modulo operand")?,
+                    )?);
                 }
             }
             BCpow => {
@@ -328,7 +338,10 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on pow".to_string())?;
-                stack.push(make_real(a.as_f64().powf(b.as_f64()))?);
+                stack.push(make_real(
+                    scalar_f64_or_zero(a, "left power operand")?
+                        .powf(scalar_f64_or_zero(b, "right power operand")?),
+                )?);
             }
             BCeq => {
                 let b = stack.pop().ok_or_else(|| "empty stack on eq".to_string())?;
@@ -367,12 +380,28 @@ fn eval_bytecode_loop<'a>(
                 let a = stack
                     .pop()
                     .ok_or_else(|| "empty stack on and".to_string())?;
-                stack.push(make_lgl(if a.to_bool() && b.to_bool() { 1 } else { 0 })?);
+                stack.push(make_lgl(
+                    if scalar_bool_or_false(a, "left and operand")?
+                        && scalar_bool_or_false(b, "right and operand")?
+                    {
+                        1
+                    } else {
+                        0
+                    },
+                )?);
             }
             BCor => {
                 let b = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
                 let a = stack.pop().ok_or_else(|| "empty stack on or".to_string())?;
-                stack.push(make_lgl(if a.to_bool() || b.to_bool() { 1 } else { 0 })?);
+                stack.push(make_lgl(
+                    if scalar_bool_or_false(a, "left or operand")?
+                        || scalar_bool_or_false(b, "right or operand")?
+                    {
+                        1
+                    } else {
+                        0
+                    },
+                )?);
             }
             BCcall => {
                 let idx = bytecode[*pc] as usize;
@@ -461,7 +490,7 @@ fn eval_bytecode_loop<'a>(
                 *pc += 1;
                 let false_offset = bytecode[*pc] as usize;
                 *pc += 1;
-                if cond.to_bool() {
+                if scalar_bool_or_false(cond, "if condition")? {
                     *pc = true_offset;
                 } else {
                     *pc = false_offset;
@@ -477,7 +506,7 @@ fn eval_bytecode_loop<'a>(
                     .ok_or_else(|| "empty stack on fjmp".to_string())?;
                 let offset = bytecode[*pc] as usize;
                 *pc += 1;
-                if !cond.to_bool() {
+                if !scalar_bool_or_false(cond, "false jump condition")? {
                     *pc = offset;
                 }
             }
@@ -487,7 +516,7 @@ fn eval_bytecode_loop<'a>(
                     .ok_or_else(|| "empty stack on tjmp".to_string())?;
                 let offset = bytecode[*pc] as usize;
                 *pc += 1;
-                if cond.to_bool() {
+                if scalar_bool_or_false(cond, "true jump condition")? {
                     *pc = offset;
                 }
             }
@@ -507,9 +536,17 @@ fn eval_bytecode_loop<'a>(
 
                 for i in 0..len as usize {
                     let idx_val = if seq_val.typeof_() == SEXPTYPE::INTSXP {
-                        make_int(seq_val.integer_elt(i as i64).unwrap_or(0))?
+                        make_int(
+                            seq_val
+                                .try_integer_elt(i as i64)
+                                .map_err(|err| sexp_err("for-loop integer sequence", err))?,
+                        )?
                     } else if seq_val.typeof_() == SEXPTYPE::REALSXP {
-                        make_real(seq_val.real_elt(i as i64).unwrap_or(0.0))?
+                        make_real(
+                            seq_val
+                                .try_real_elt(i as i64)
+                                .map_err(|err| sexp_err("for-loop real sequence", err))?,
+                        )?
                     } else {
                         make_int(i as c_int)?
                     };
@@ -550,7 +587,7 @@ fn eval_bytecode_loop<'a>(
                         return Ok((cond_result, cond_control));
                     }
 
-                    if !cond_result.to_bool() {
+                    if !scalar_bool_or_false(cond_result, "while condition")? {
                         *pc = end_offset;
                         return Ok((make_lgl(0)?, ControlFlow::Normal));
                     }
@@ -667,9 +704,9 @@ fn eval_bytecode_loop<'a>(
                     .pop()
                     .ok_or_else(|| "empty stack on neg".to_string())?;
                 if val.typeof_() == SEXPTYPE::REALSXP {
-                    stack.push(make_real(-val.real_elt(0).unwrap_or(0.0))?);
+                    stack.push(make_real(-scalar_real(val, "real negation operand")?)?);
                 } else if val.typeof_() == SEXPTYPE::INTSXP {
-                    stack.push(make_int(-val.integer_elt(0).unwrap_or(0))?);
+                    stack.push(make_int(-scalar_int(val, "integer negation operand")?)?);
                 } else {
                     stack.push(val);
                 }
@@ -694,8 +731,8 @@ fn eval_bytecode_loop<'a>(
 fn get_constant(constants: Option<Sexp<'_>>, idx: usize) -> Result<Sexp<'_>, String> {
     match constants {
         Some(c) => c
-            .vector_elt(idx as i64)
-            .ok_or_else(|| format!("constant index {idx} out of bounds")),
+            .try_vector_elt(idx as i64)
+            .map_err(|err| sexp_err(&format!("constant index {idx}"), err)),
         None => Err("no constants available".to_string()),
     }
 }
