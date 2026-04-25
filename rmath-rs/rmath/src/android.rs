@@ -734,6 +734,9 @@ mod tests {
             "export(tiny_value, tiny_label)\n",
             "tiny_secret <- function() 42L\ntiny_value <- function() tiny_secret()\ntiny_label <- \"loaded\"\n",
         );
+        let data_dir = pkg.join("data");
+        std::fs::create_dir_all(&data_dir).expect("data dir");
+        std::fs::write(data_dir.join("tiny_data.R"), "tiny_data <- 314L\n").expect("data file");
 
         let mut session = RSession::new();
         session
@@ -747,6 +750,16 @@ mod tests {
         assert_eq!(session.eval("require(\"tiny\")").output, "[1] TRUE");
         assert_eq!(session.eval("tiny_value()").output, "[1] 42");
         assert_eq!(
+            session.eval("data(package = \"tiny\")").typed,
+            string_vector(vec!["tiny_data".to_string()])
+        );
+        assert_eq!(
+            session
+                .eval("data(\"tiny_data\", package = \"tiny\")\ntiny_data")
+                .output,
+            "[1] 314"
+        );
+        assert_eq!(
             session.eval("tiny_label").typed,
             string_vector(vec!["loaded".to_string()])
         );
@@ -757,6 +770,33 @@ mod tests {
             session.eval("find.package(\"tiny\")").typed,
             string_vector(vec![pkg.to_string_lossy().into_owned()])
         );
+        let search = session.eval("search()");
+        match search.typed {
+            RValue::StringVector(values) => {
+                assert!(
+                    values.contains(&Some("package:tiny".to_string())),
+                    "{values:?}"
+                );
+            }
+            other => panic!("expected search path string vector, got {other:?}"),
+        }
+        assert_eq!(session.eval("detach(\"package:tiny\")").typed, RValue::Null);
+        let search = session.eval("search()");
+        match search.typed {
+            RValue::StringVector(values) => {
+                assert!(
+                    !values.contains(&Some("package:tiny".to_string())),
+                    "{values:?}"
+                );
+            }
+            other => panic!("expected search path string vector, got {other:?}"),
+        }
+        let after_detach = session.eval("tiny_value");
+        assert!(
+            matches!(after_detach.typed, RValue::Error(_)),
+            "{after_detach:?}"
+        );
+        assert_eq!(session.eval("require(\"tiny\")").output, "[1] TRUE");
 
         let _ = std::fs::remove_dir_all(root);
     }
@@ -902,6 +942,46 @@ mod tests {
                 assert!(message.contains("pure-R Android runtime"), "{message}");
             }
             other => panic!("expected native package load error, got {other:?}"),
+        }
+
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn test_data_rejects_serialized_package_data_explicitly() {
+        let root = unique_test_root("android-data-policy");
+        let files = root.join("files");
+        let cache = root.join("cache");
+        let bundled = root.join("bundled-library");
+        let pkg = write_package(
+            &bundled,
+            "tiny",
+            "export(tiny_value)\n",
+            "tiny_value <- function() 42L\n",
+        );
+        let data_dir = pkg.join("data");
+        std::fs::create_dir_all(&data_dir).expect("data dir");
+        std::fs::write(data_dir.join("tiny_data.rda"), b"unsupported").expect("rda file");
+
+        let mut session = RSession::new();
+        session
+            .configure_paths(
+                files.to_str().expect("utf8 files path"),
+                cache.to_str().expect("utf8 cache path"),
+                Some(bundled.to_str().expect("utf8 bundled path")),
+            )
+            .expect("configure paths");
+
+        let result = session.eval("data(\"tiny_data\", package = \"tiny\")");
+        match result.typed {
+            RValue::Error(message) => {
+                assert!(
+                    message.contains("unsupported serialized/lazy data"),
+                    "{message}"
+                );
+                assert!(message.contains("data/*.R only"), "{message}");
+            }
+            other => panic!("expected data policy error, got {other:?}"),
         }
 
         let _ = std::fs::remove_dir_all(root);

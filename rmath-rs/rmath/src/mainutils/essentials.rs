@@ -2927,6 +2927,44 @@ pub unsafe fn do_find_package(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
     Rf_mkString(CString::new(path).unwrap_or_default().as_ptr())
 }
 
+/// R's `data(..., package, envir)` — load package data.
+///
+/// The Android runtime intentionally supports source-form package data
+/// (`data/*.R`) and rejects serialized/lazy databases with an explicit error.
+pub unsafe fn do_data(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+    unsafe {
+        let topic_arg = arg_by_name_or_position(args, &["list"], 0);
+        let package_arg = arg_by_name_or_position(args, &["package"], 1);
+        let envir_arg = arg_by_name_or_position(args, &["envir"], 2);
+        let target_env = if !envir_arg.is_null() && TYPEOF(envir_arg) == SEXPTYPE::ENVSXP {
+            envir_arg
+        } else {
+            rho
+        };
+
+        let packages = package_arg_values(package_arg);
+        if topic_arg.is_null() || topic_arg == R_NilValue() || XLENGTH(topic_arg) == 0 {
+            let names = list_package_data_sets(&packages);
+            return string_vector(&names);
+        }
+
+        let mut loaded = Vec::<String>::new();
+        for i in 0..XLENGTH(topic_arg) {
+            let topic = elt_to_string(topic_arg, i);
+            if topic.is_empty() || topic == "NA" {
+                continue;
+            }
+            match load_package_data_set(&topic, &packages, target_env) {
+                Ok(true) => push_unique(&mut loaded, topic),
+                Ok(false) => package_error(format!("data set '{}' not found", topic)),
+                Err(message) => package_error(message),
+            }
+        }
+        crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+        string_vector(&loaded)
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Complete R runtime — source, sys.source, demo, example
 // ---------------------------------------------------------------------------
@@ -3618,6 +3656,9 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
         "require",
         "installed.packages",
         "find.package",
+        "data",
+        "detach",
+        "search",
         // Complete R runtime — source, demo, example
         "source",
         "sys.source",
@@ -4026,6 +4067,7 @@ unsafe fn load_package_namespace(
         let _package_env_guard = crate::sexp::protect::protect(package_env);
 
         define_package_metadata(package, package_env);
+        reject_unsupported_internal_data(package, package_dir)?;
         let namespace = populate_package_namespace(package, package_dir, package_env, loading)?;
         cache_package_namespace(package, package_dir, package_env);
         Ok((package_env, namespace))
@@ -4053,6 +4095,110 @@ fn cache_package_namespace(package: &str, package_dir: &Path, package_env: SEXP)
     });
 }
 
+fn package_arg_values(package_arg: SEXP) -> Vec<String> {
+    unsafe {
+        if package_arg.is_null() || package_arg == R_NilValue() || XLENGTH(package_arg) == 0 {
+            return Vec::new();
+        }
+        (0..XLENGTH(package_arg))
+            .map(|i| elt_to_string(package_arg, i))
+            .filter(|package| !package.is_empty() && package != "NA")
+            .collect()
+    }
+}
+
+fn list_package_data_sets(packages: &[String]) -> Vec<String> {
+    let mut names = Vec::<String>::new();
+    for package_dir in data_package_dirs(packages) {
+        let data_dir = package_dir.join("data");
+        let Ok(entries) = std::fs::read_dir(data_dir) else {
+            continue;
+        };
+        for entry in entries.filter_map(Result::ok) {
+            let path = entry.path();
+            if path
+                .extension()
+                .and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("r"))
+                && let Some(name) = path.file_stem().and_then(|stem| stem.to_str())
+            {
+                push_unique(&mut names, name.to_string());
+            }
+        }
+    }
+    names.sort();
+    names
+}
+
+fn data_package_dirs(packages: &[String]) -> Vec<PathBuf> {
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        if packages.is_empty() {
+            return inst
+                .path_policy
+                .library_paths()
+                .iter()
+                .filter_map(|library| std::fs::read_dir(library).ok())
+                .flat_map(|entries| entries.filter_map(Result::ok).map(|entry| entry.path()))
+                .filter(|path| path.join("DESCRIPTION").is_file())
+                .collect();
+        }
+
+        packages
+            .iter()
+            .filter_map(|package| inst.path_policy.find_package_path(package))
+            .collect()
+    })
+}
+
+unsafe fn load_package_data_set(
+    topic: &str,
+    packages: &[String],
+    target_env: SEXP,
+) -> Result<bool, String> {
+    unsafe {
+        let mut unsupported_data = None::<PathBuf>;
+        for package_dir in data_package_dirs(packages) {
+            let data_dir = package_dir.join("data");
+            let source_file = data_dir.join(format!("{topic}.R"));
+            if source_file.is_file() {
+                source_r_file_into_env(&source_file, target_env)?;
+                return Ok(true);
+            }
+
+            let unsupported = [
+                data_dir.join(format!("{topic}.rda")),
+                data_dir.join(format!("{topic}.RData")),
+                data_dir.join("Rdata.rdb"),
+                data_dir.join("Rdata.rdx"),
+            ];
+            if let Some(path) = unsupported.iter().find(|path| path.is_file()) {
+                unsupported_data = Some(path.clone());
+            }
+        }
+        if let Some(path) = unsupported_data {
+            return Err(format!(
+                "data set '{}' uses unsupported serialized/lazy data file {}; this pure-R Android runtime supports data/*.R only",
+                topic,
+                path.display()
+            ));
+        }
+        Ok(false)
+    }
+}
+
+unsafe fn source_r_file_into_env(file: &Path, env: SEXP) -> Result<(), String> {
+    unsafe {
+        let code = std::fs::read_to_string(file)
+            .map_err(|err| format!("could not read {}: {err}", file.display()))?;
+        let expr = crate::sexp::memory::with_arena(|arena| {
+            crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
+        })?;
+        let expr = if expr.is_null() { R_NilValue() } else { expr };
+        let _ = crate::eval::eval::Rf_eval(expr, env);
+        Ok(())
+    }
+}
+
 unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
     unsafe {
         let package_string = Rf_mkString(CString::new(package).unwrap_or_default().as_ptr());
@@ -4066,6 +4212,24 @@ unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
             crate::sexp::attrib_core::setAttrib(package_env, name_symbol(), search_string);
         }
     }
+}
+
+fn reject_unsupported_internal_data(package: &str, package_dir: &Path) -> Result<(), String> {
+    for path in [
+        package_dir.join("R").join("sysdata.rda"),
+        package_dir.join("R").join("sysdata.RData"),
+        package_dir.join("R").join("sysdata.rdb"),
+        package_dir.join("R").join("sysdata.rdx"),
+    ] {
+        if path.is_file() {
+            return Err(format!(
+                "package '{}' uses unsupported internal serialized data {}; this pure-R Android runtime supports R source files and data/*.R only",
+                package,
+                path.display()
+            ));
+        }
+    }
+    Ok(())
 }
 
 unsafe fn source_package_r_files(
@@ -4092,13 +4256,7 @@ unsafe fn source_package_r_files(
         files.sort();
 
         for file in files {
-            let code = std::fs::read_to_string(&file)
-                .map_err(|err| format!("could not read {}: {err}", file.display()))?;
-            let expr = crate::sexp::memory::with_arena(|arena| {
-                crate::eval::parser::parse(&code, arena).map_err(|err| err.to_string())
-            })?;
-            let expr = if expr.is_null() { R_NilValue() } else { expr };
-            let _ = crate::eval::eval::Rf_eval(expr, package_env);
+            source_r_file_into_env(&file, package_env)?;
         }
 
         Ok(())

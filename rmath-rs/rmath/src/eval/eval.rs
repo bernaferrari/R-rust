@@ -4146,6 +4146,30 @@ fn apply_builtin_safe<'a>(
                 rho.as_raw(),
             )
         },
+        "data" => unsafe {
+            crate::mainutils::essentials::do_data(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "detach" => unsafe {
+            crate::mainutils::envir::do_detach(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
+        "search" => unsafe {
+            crate::mainutils::envir::do_search(
+                call.as_raw(),
+                fun.as_raw(),
+                evaled_args,
+                rho.as_raw(),
+            )
+        },
         // Complete R runtime — source, demo, example
         "source" => unsafe {
             crate::mainutils::essentials::do_source(

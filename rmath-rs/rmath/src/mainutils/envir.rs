@@ -698,18 +698,6 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         }
 
         let pos_arg = CAR(args);
-        let pos = if !pos_arg.is_null()
-            && TYPEOF(pos_arg) == SEXPTYPE::INTSXP
-            && LENGTH(pos_arg) >= 1
-        {
-            *INTEGER(pos_arg)
-        } else if !pos_arg.is_null() && TYPEOF(pos_arg) == SEXPTYPE::REALSXP && LENGTH(pos_arg) >= 1
-        {
-            let r = *crate::sexp::accessors::REAL(pos_arg);
-            r as c_int
-        } else {
-            2 // default
-        };
 
         let global_env = R_GlobalEnv();
         let base_env = R_BaseEnv();
@@ -717,6 +705,8 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         if global_env.is_null() || base_env.is_null() {
             error("invalid 'pos' argument");
         }
+
+        let pos = detach_position(pos_arg, global_env, base_env);
 
         // Count the total number of environments in the search path
         let mut n: c_int = 2; // GlobalEnv(1) + BaseEnv(last)
@@ -755,7 +745,62 @@ pub unsafe fn do_detach(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
         SET_ENCLOS(s, base_env);
 
         Rf_unprotect(1);
-        s
+        crate::sexp::globals::set_R_Visible(FALSE);
+        R_NilValue()
+    }
+}
+
+unsafe fn detach_position(pos_arg: SEXP, global_env: SEXP, base_env: SEXP) -> c_int {
+    unsafe {
+        if !pos_arg.is_null() && TYPEOF(pos_arg) == SEXPTYPE::INTSXP && LENGTH(pos_arg) >= 1 {
+            return *INTEGER(pos_arg);
+        }
+        if !pos_arg.is_null() && TYPEOF(pos_arg) == SEXPTYPE::REALSXP && LENGTH(pos_arg) >= 1 {
+            return *crate::sexp::accessors::REAL(pos_arg) as c_int;
+        }
+        if !pos_arg.is_null() && TYPEOF(pos_arg) == SEXPTYPE::STRSXP && LENGTH(pos_arg) >= 1 {
+            let target = string_elt(pos_arg, 0);
+            if target.is_empty() {
+                error("invalid 'name' argument");
+            }
+            let mut pos = 2;
+            let mut env = ENCLOS(global_env);
+            while !env.is_null() && env != base_env {
+                let name = search_env_name(env);
+                if name == target || name.strip_prefix("package:") == Some(target.as_str()) {
+                    return pos;
+                }
+                pos += 1;
+                env = ENCLOS(env);
+            }
+            error("invalid 'name' argument");
+        }
+        2
+    }
+}
+
+unsafe fn search_env_name(env: SEXP) -> String {
+    unsafe {
+        let name = crate::eval::attrib_core::getAttrib(env, R_NameSymbol());
+        if !isString(name) || LENGTH(name) < 1 {
+            return String::new();
+        }
+        string_elt(name, 0)
+    }
+}
+
+unsafe fn string_elt(x: SEXP, i: R_xlen_t) -> String {
+    unsafe {
+        let charsxp = STRING_ELT(x, i);
+        if charsxp.is_null() || charsxp == R_NilValue() {
+            return String::new();
+        }
+        let ptr = CHAR(charsxp);
+        if ptr.is_null() {
+            String::new()
+        } else {
+            std::ffi::CStr::from_ptr(ptr).to_string_lossy().into_owned()
+        }
     }
 }
 
