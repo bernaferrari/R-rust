@@ -189,6 +189,13 @@ impl From<r_embed::AndroidRuntimePaths> for AndroidRuntimePaths {
 pub struct PackageInfo {
     pub name: String,
     pub version: String,
+    pub title: String,
+    pub description: String,
+    pub license: String,
+    pub depends: String,
+    pub imports: String,
+    pub suggests: String,
+    pub needs_compilation: bool,
     pub path: String,
     pub library_path: String,
 }
@@ -198,6 +205,13 @@ impl From<r_embed::RPackageInfo> for PackageInfo {
         PackageInfo {
             name: info.name,
             version: info.version,
+            title: info.title,
+            description: info.description,
+            license: info.license,
+            depends: info.depends,
+            imports: info.imports,
+            suggests: info.suggests,
+            needs_compilation: info.needs_compilation,
             path: info.path,
             library_path: info.library_path,
         }
@@ -737,8 +751,21 @@ mod tests {
         let pkg = bundled.join("tiny");
         let r_dir = pkg.join("R");
         std::fs::create_dir_all(&r_dir).expect("package R dir");
-        std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
-            .expect("description");
+        std::fs::write(
+            pkg.join("DESCRIPTION"),
+            concat!(
+                "Package: tiny\n",
+                "Version: 0.0.1\n",
+                "Title: Tiny Test Package\n",
+                "Description: Tiny package for Android runtime tests\n",
+                "License: MIT\n",
+                "Depends: R (>= 4.0.0)\n",
+                "Imports: base\n",
+                "Suggests: testthat\n",
+                "NeedsCompilation: no\n",
+            ),
+        )
+        .expect("description");
         std::fs::write(r_dir.join("tiny.R"), "tiny_value <- function() 42L\n").expect("R source");
         (root, pkg)
     }
@@ -996,6 +1023,13 @@ mod tests {
             Some(PackageInfo {
                 name: "tiny".to_string(),
                 version: "0.0.1".to_string(),
+                title: "Tiny Test Package".to_string(),
+                description: "Tiny package for Android runtime tests".to_string(),
+                license: "MIT".to_string(),
+                depends: "R (>= 4.0.0)".to_string(),
+                imports: "base".to_string(),
+                suggests: "testthat".to_string(),
+                needs_compilation: false,
                 path: pkg.to_string_lossy().into_owned(),
                 library_path: bundled.to_string_lossy().into_owned(),
             })

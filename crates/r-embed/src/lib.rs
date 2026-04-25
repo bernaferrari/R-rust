@@ -7,6 +7,7 @@
 
 use r_device_android_headless::AndroidHeadlessRenderer;
 use r_graphics_engine::{Color, Path, PathCommand, PlotParameters, Point, RenderPlot, Stroke};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::{Arc, atomic::AtomicBool};
 
@@ -94,6 +95,13 @@ impl AndroidRuntimePaths {
 pub struct RPackageInfo {
     pub name: String,
     pub version: String,
+    pub title: String,
+    pub description: String,
+    pub license: String,
+    pub depends: String,
+    pub imports: String,
+    pub suggests: String,
+    pub needs_compilation: bool,
     pub path: String,
     pub library_path: String,
 }
@@ -368,8 +376,21 @@ fn package_info_from_path(
     library_paths: &[String],
 ) -> Option<RPackageInfo> {
     let description = std::fs::read_to_string(package_path.join("DESCRIPTION")).ok()?;
-    let name = description_field(&description, "Package").unwrap_or_else(|| fallback_name.into());
-    let version = description_field(&description, "Version").unwrap_or_default();
+    let fields = description_fields(&description);
+    let name = fields
+        .get("Package")
+        .cloned()
+        .unwrap_or_else(|| fallback_name.into());
+    let version = fields.get("Version").cloned().unwrap_or_default();
+    let title = fields.get("Title").cloned().unwrap_or_default();
+    let description = fields.get("Description").cloned().unwrap_or_default();
+    let license = fields.get("License").cloned().unwrap_or_default();
+    let depends = fields.get("Depends").cloned().unwrap_or_default();
+    let imports = fields.get("Imports").cloned().unwrap_or_default();
+    let suggests = fields.get("Suggests").cloned().unwrap_or_default();
+    let needs_compilation = fields.get("NeedsCompilation").is_some_and(|value| {
+        value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
+    });
     let package_path_string = package_path.to_string_lossy().into_owned();
     let library_path = library_paths
         .iter()
@@ -388,19 +409,54 @@ fn package_info_from_path(
     Some(RPackageInfo {
         name,
         version,
+        title,
+        description,
+        license,
+        depends,
+        imports,
+        suggests,
+        needs_compilation,
         path: package_path_string,
         library_path,
     })
 }
 
-fn description_field(description: &str, key: &str) -> Option<String> {
-    let prefix = format!("{key}:");
-    description.lines().find_map(|line| {
-        line.strip_prefix(&prefix)
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_string)
-    })
+fn description_fields(description: &str) -> BTreeMap<String, String> {
+    let mut fields = BTreeMap::<String, String>::new();
+    let mut current_key: Option<String> = None;
+
+    for line in description.lines() {
+        if line.trim().is_empty() {
+            break;
+        }
+
+        if line.starts_with(' ') || line.starts_with('\t') {
+            if let Some(key) = current_key.as_ref()
+                && let Some(value) = fields.get_mut(key)
+            {
+                if !value.is_empty() {
+                    value.push('\n');
+                }
+                value.push_str(line.trim());
+            }
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once(':') else {
+            current_key = None;
+            continue;
+        };
+        let key = key.trim();
+        if key.is_empty() || key.chars().any(char::is_whitespace) {
+            current_key = None;
+            continue;
+        }
+        let key = key.to_string();
+        fields.insert(key.clone(), value.trim().to_string());
+        current_key = Some(key);
+    }
+
+    fields
 }
 
 struct PlotSeries {
@@ -970,8 +1026,21 @@ mod tests {
         let pkg = bundled.join("tiny");
         let r_dir = pkg.join("R");
         std::fs::create_dir_all(&r_dir).expect("package R dir");
-        std::fs::write(pkg.join("DESCRIPTION"), "Package: tiny\nVersion: 0.0.1\n")
-            .expect("description");
+        std::fs::write(
+            pkg.join("DESCRIPTION"),
+            concat!(
+                "Package: tiny\n",
+                "Version: 0.0.1\n",
+                "Title: Tiny Test Package\n",
+                "Description: Tiny package for Android runtime tests\n",
+                "License: MIT\n",
+                "Depends: R (>= 4.0.0)\n",
+                "Imports: depall, depfrom\n",
+                "Suggests: testthat\n",
+                "NeedsCompilation: no\n",
+            ),
+        )
+        .expect("description");
         std::fs::write(pkg.join("NAMESPACE"), namespace).expect("namespace");
         std::fs::write(r_dir.join("tiny.R"), source).expect("R source");
         (root, pkg)
@@ -1140,6 +1209,13 @@ mod tests {
             Some(RPackageInfo {
                 name: "tiny".to_string(),
                 version: "0.0.1".to_string(),
+                title: "Tiny Test Package".to_string(),
+                description: "Tiny package for Android runtime tests".to_string(),
+                license: "MIT".to_string(),
+                depends: "R (>= 4.0.0)".to_string(),
+                imports: "depall, depfrom".to_string(),
+                suggests: "testthat".to_string(),
+                needs_compilation: false,
                 path: pkg.to_string_lossy().into_owned(),
                 library_path: bundled.to_string_lossy().into_owned(),
             })

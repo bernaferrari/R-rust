@@ -3786,6 +3786,83 @@ unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), S
         if !description.is_file() {
             return Err(format!("package '{}' has no DESCRIPTION", package));
         }
+        if package_needs_compilation(&description)? {
+            return Err(format!(
+                "package '{}' declares NeedsCompilation: yes; this pure-R Android runtime does not load compiled package code",
+                package
+            ));
+        }
+
+        let mut loading = vec![package.to_string()];
+        let (package_env, namespace) = load_package_namespace(package, package_dir, &mut loading)?;
+        let _package_env_guard = crate::sexp::protect::protect(package_env);
+
+        let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
+        attach_package_env(attach_env);
+        Ok(())
+    }
+}
+
+fn package_needs_compilation(description: &Path) -> Result<bool, String> {
+    let content = std::fs::read_to_string(description)
+        .map_err(|err| format!("could not read {}: {err}", description.display()))?;
+    Ok(
+        description_field(&content, "NeedsCompilation").is_some_and(|value| {
+            value.eq_ignore_ascii_case("yes") || value.eq_ignore_ascii_case("true")
+        }),
+    )
+}
+
+fn description_field(description: &str, key: &str) -> Option<String> {
+    let mut current_key: Option<&str> = None;
+    let mut current_value = String::new();
+
+    for line in description.lines() {
+        if line.trim().is_empty() {
+            break;
+        }
+
+        if line.starts_with(' ') || line.starts_with('\t') {
+            if current_key == Some(key) {
+                if !current_value.is_empty() {
+                    current_value.push('\n');
+                }
+                current_value.push_str(line.trim());
+            }
+            continue;
+        }
+
+        if current_key == Some(key) {
+            return (!current_value.is_empty()).then_some(current_value);
+        }
+
+        let Some((field, value)) = line.split_once(':') else {
+            current_key = None;
+            current_value.clear();
+            continue;
+        };
+        let field = field.trim();
+        if field.is_empty() || field.chars().any(char::is_whitespace) {
+            current_key = None;
+            current_value.clear();
+            continue;
+        }
+        current_key = Some(field);
+        current_value = value.trim().to_string();
+    }
+
+    (current_key == Some(key) && !current_value.is_empty()).then_some(current_value)
+}
+
+unsafe fn load_package_namespace(
+    package: &str,
+    package_dir: &Path,
+    loading: &mut Vec<String>,
+) -> Result<(SEXP, Option<NamespaceDirectives>), String> {
+    unsafe {
+        if let Some(env) = cached_package_namespace(package, package_dir) {
+            return Ok((env, read_namespace_directives(package_dir)?));
+        }
 
         let package_env = crate::sexp::memory_ext::NewEnvironment(
             R_NilValue(),
@@ -3801,13 +3878,31 @@ unsafe fn load_pure_r_package(package: &str, package_dir: &Path) -> Result<(), S
         let _package_env_guard = crate::sexp::protect::protect(package_env);
 
         define_package_metadata(package, package_env);
-        let mut loading = vec![package.to_string()];
-        let namespace =
-            populate_package_namespace(package, package_dir, package_env, &mut loading)?;
-        let attach_env = make_package_attach_env(package, namespace.as_ref(), package_env)?;
-        attach_package_env(attach_env);
-        Ok(())
+        let namespace = populate_package_namespace(package, package_dir, package_env, loading)?;
+        cache_package_namespace(package, package_dir, package_env);
+        Ok((package_env, namespace))
     }
+}
+
+fn normalized_package_dir(package_dir: &Path) -> PathBuf {
+    std::fs::canonicalize(package_dir).unwrap_or_else(|_| package_dir.to_path_buf())
+}
+
+fn cached_package_namespace(package: &str, package_dir: &Path) -> Option<SEXP> {
+    let package_dir = normalized_package_dir(package_dir);
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.package_namespace_cache
+            .get(package)
+            .and_then(|(cached_dir, env)| (*cached_dir == package_dir).then_some(*env))
+    })
+}
+
+fn cache_package_namespace(package: &str, package_dir: &Path, package_env: SEXP) {
+    let package_dir = normalized_package_dir(package_dir);
+    crate::sexp::instance::with_required_current_instance(|inst| {
+        inst.package_namespace_cache
+            .insert(package.to_string(), (package_dir, package_env));
+    });
 }
 
 unsafe fn define_package_metadata(package: &str, package_env: SEXP) {
@@ -3962,21 +4057,8 @@ unsafe fn import_namespace_bindings(
             }
         };
 
-        let import_env = crate::sexp::memory_ext::NewEnvironment(
-            R_NilValue(),
-            crate::sexp::globals::R_BaseEnv(),
-            R_NilValue(),
-        );
-        if import_env.is_null() {
-            return Err(format!(
-                "could not create namespace for imported package '{}'",
-                import_package
-            ));
-        }
+        let (import_env, namespace) = load_package_namespace(import_package, import_dir, loading)?;
         let _import_guard = crate::sexp::protect::protect(import_env);
-        define_package_metadata(import_package, import_env);
-        let namespace =
-            populate_package_namespace(import_package, import_dir, import_env, loading)?;
 
         let imported_names = match import {
             NamespaceImport::All { .. } => namespace_exports(namespace.as_ref(), import_env),
