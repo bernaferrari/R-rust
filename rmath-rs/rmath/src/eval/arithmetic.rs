@@ -11,9 +11,7 @@
 
 use std::ffi::CString;
 
-use crate::sexp::accessors::{
-    CAR, CDR, CHAR, INTEGER, LENGTH, LOGICAL, PRINTNAME, REAL, TAG, TYPEOF, XLENGTH,
-};
+use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, PRINTNAME, TAG, TYPEOF};
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
@@ -21,119 +19,79 @@ use crate::sexp::ffi::{
     FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
 };
 use crate::sexp::globals::R_NilValue;
+use crate::sexp::object::Sexp;
 use crate::sexp::protect::Rf_protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
-// Scalar helpers (kept for single-element fast path)
+// Numeric vector view
 // ---------------------------------------------------------------------------
 
-/// Read a scalar real value from a numeric SEXP (element 0 only).
-fn real_val(x: SEXP) -> Option<f64> {
-    unsafe {
-        if x.is_null() {
-            return None;
-        }
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP => {
-                let data = REAL(x);
-                if data.is_null() { None } else { Some(*data) }
-            }
-            t if t == SEXPTYPE::INTSXP => {
-                let data = INTEGER(x);
-                if data.is_null() {
-                    None
-                } else {
-                    Some(*data as f64)
-                }
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                let data = LOGICAL(x);
-                if data.is_null() {
-                    None
-                } else {
-                    Some(*data as f64)
-                }
-            }
+/// Safe Rust-shaped view over the numeric/logical vectors accepted by R's
+/// arithmetic group. It centralizes type checks, recycling, and NA coercion so
+/// arithmetic code does not open-code raw SEXP buffer reads.
+#[derive(Clone, Copy)]
+struct NumericVector<'a> {
+    sexp: Sexp<'a>,
+}
+
+impl<'a> NumericVector<'a> {
+    fn from_raw(raw: SEXP) -> Option<Self> {
+        let sexp = Sexp::from_raw(raw)?;
+        Self::new(sexp)
+    }
+
+    fn new(sexp: Sexp<'a>) -> Option<Self> {
+        match sexp.typeof_() {
+            SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP => Some(Self { sexp }),
             _ => None,
         }
     }
-}
 
-/// Read a scalar integer value from an integer or logical SEXP (element 0 only).
-fn int_val(x: SEXP) -> Option<i32> {
-    unsafe {
-        if x.is_null() {
-            return None;
-        }
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP => {
-                let data = INTEGER(x);
-                if data.is_null() { None } else { Some(*data) }
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                let data = LOGICAL(x);
-                if data.is_null() { None } else { Some(*data) }
-            }
-            _ => None,
-        }
+    fn len(self) -> R_xlen_t {
+        self.sexp.len()
     }
-}
 
-/// Check if both operands are integer/logical (result should prefer integer).
-fn is_int_op(a: SEXP, b: SEXP) -> bool {
-    unsafe {
-        (TYPEOF(a) == SEXPTYPE::INTSXP || TYPEOF(a) == SEXPTYPE::LGLSXP)
-            && (TYPEOF(b) == SEXPTYPE::INTSXP || TYPEOF(b) == SEXPTYPE::LGLSXP)
+    fn typeof_(self) -> SEXPTYPE {
+        self.sexp.typeof_()
     }
-}
 
-// ---------------------------------------------------------------------------
-// Element access with recycling
-// ---------------------------------------------------------------------------
+    fn needs_real_with(self, other: Self) -> bool {
+        self.typeof_() == SEXPTYPE::REALSXP || other.typeof_() == SEXPTYPE::REALSXP
+    }
 
-/// Get the f64 value at position `i` (with recycling) from a numeric SEXP.
-#[inline]
-unsafe fn elt_real(x: SEXP, i: R_xlen_t) -> f64 {
-    unsafe {
-        let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP => *REAL(x).add(idx as usize),
-            t if t == SEXPTYPE::INTSXP => {
-                let v = *INTEGER(x).add(idx as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                let v = *LOGICAL(x).add(idx as usize);
-                if v == NA_INTEGER { NA_REAL } else { v as f64 }
-            }
+    fn recycled_index(self, i: R_xlen_t) -> Option<R_xlen_t> {
+        let n = self.len();
+        if n == 0 { None } else { Some(i % n) }
+    }
+
+    fn real_at(self, i: R_xlen_t) -> f64 {
+        let Some(idx) = self.recycled_index(i) else {
+            return NA_REAL;
+        };
+        match self.typeof_() {
+            SEXPTYPE::REALSXP => self.sexp.real_elt(idx).unwrap_or(NA_REAL),
+            SEXPTYPE::INTSXP => match self.sexp.integer_elt(idx) {
+                Some(NA_INTEGER) | None => NA_REAL,
+                Some(v) => v as f64,
+            },
+            SEXPTYPE::LGLSXP => match self.sexp.logical_elt(idx) {
+                Some(NA_LOGICAL) | None => NA_REAL,
+                Some(v) => v as f64,
+            },
             _ => NA_REAL,
         }
     }
-}
 
-/// Get the i32 value at position `i` (with recycling) from an int/logical SEXP.
-#[inline]
-unsafe fn elt_int(x: SEXP, i: R_xlen_t) -> i32 {
-    unsafe {
-        let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::INTSXP => *INTEGER(x).add(idx as usize),
-            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x).add(idx as usize),
+    fn int_at(self, i: R_xlen_t) -> i32 {
+        let Some(idx) = self.recycled_index(i) else {
+            return NA_INTEGER;
+        };
+        match self.typeof_() {
+            SEXPTYPE::INTSXP => self.sexp.integer_elt(idx).unwrap_or(NA_INTEGER),
+            SEXPTYPE::LGLSXP => self.sexp.logical_elt(idx).unwrap_or(NA_INTEGER),
             _ => NA_INTEGER,
         }
-    }
-}
-
-/// Get the logical value at position `i` (with recycling) from a logical SEXP.
-#[inline]
-unsafe fn elt_logical(x: SEXP, i: R_xlen_t) -> i32 {
-    unsafe {
-        let n = XLENGTH(x);
-        let idx = if n == 0 { 0 } else { i % n };
-        *LOGICAL(x).add(idx as usize)
     }
 }
 
@@ -144,17 +102,15 @@ unsafe fn elt_logical(x: SEXP, i: R_xlen_t) -> i32 {
 /// Determine the result length for a binary operation (R's recycling rule).
 /// Returns max(len(a), len(b)), or 0 if either is length 0.
 #[inline]
-fn result_length(a: SEXP, b: SEXP) -> R_xlen_t {
-    unsafe {
-        let na = XLENGTH(a);
-        let nb = XLENGTH(b);
-        if na == 0 || nb == 0 {
-            0
-        } else if na >= nb {
-            na
-        } else {
-            nb
-        }
+fn result_length(a: NumericVector<'_>, b: NumericVector<'_>) -> R_xlen_t {
+    let na = a.len();
+    let nb = b.len();
+    if na == 0 || nb == 0 {
+        0
+    } else if na >= nb {
+        na
+    } else {
+        nb
     }
 }
 
@@ -164,34 +120,38 @@ fn result_length(a: SEXP, b: SEXP) -> R_xlen_t {
 /// Integer overflow produces NA_INTEGER.
 pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
-        let n = result_length(sa, sb);
+        let Some(a) = NumericVector::from_raw(sa) else {
+            return R_NilValue();
+        };
+        let Some(b) = NumericVector::from_raw(sb) else {
+            return R_NilValue();
+        };
+        let n = result_length(a, b);
         if n == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
-        let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP || TYPEOF(sb) == SEXPTYPE::REALSXP;
-        let result = if use_real {
+        let use_real = op == "/" || a.needs_real_with(b);
+        let result_raw = if use_real {
             Rf_allocVector3(SEXPTYPE::REALSXP, n)
         } else {
             Rf_allocVector3(SEXPTYPE::INTSXP, n)
         };
-        if result.is_null() {
+        let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
-        }
-        let _p = Rf_protect(result);
-
-        let all_int = is_int_op(sa, sb);
+        };
+        let _p = Rf_protect(result_raw);
 
         for i in 0..n {
-            let x = elt_real(sa, i);
-            let y = elt_real(sb, i);
+            let x = a.real_at(i);
+            let y = b.real_at(i);
             let x_na = x.to_bits() == R_NA_BIT_PATTERN;
             let y_na = y.to_bits() == R_NA_BIT_PATTERN;
 
             if x_na || y_na {
                 if use_real {
-                    *REAL(result).add(i as usize) = NA_REAL;
+                    result.set_real_elt(i, NA_REAL);
                 } else {
-                    *INTEGER(result).add(i as usize) = NA_INTEGER;
+                    result.set_integer_elt(i, NA_INTEGER);
                 }
                 continue;
             }
@@ -226,7 +186,7 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             };
 
             if use_real {
-                *REAL(result).add(i as usize) = val;
+                result.set_real_elt(i, val);
             } else {
                 // Integer path: check for overflow
                 if val.is_finite()
@@ -235,36 +195,15 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     && val <= i32::MAX as f64
                 {
                     let ival = val as i32;
-                    *INTEGER(result).add(i as usize) = ival;
+                    result.set_integer_elt(i, ival);
                 } else {
-                    *INTEGER(result).add(i as usize) = NA_INTEGER;
+                    result.set_integer_elt(i, NA_INTEGER);
                 }
-            }
-        }
-
-        // For division, always return REALSXP (R semantics)
-        if op == "/" {
-            let reals = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            if !reals.is_null() {
-                let _p2 = Rf_protect(reals);
-                for i in 0..n {
-                    let x = elt_real(sa, i);
-                    let y = elt_real(sb, i);
-                    let x_na = x.to_bits() == R_NA_BIT_PATTERN;
-                    let y_na = y.to_bits() == R_NA_BIT_PATTERN;
-                    if x_na || y_na || y == 0.0 {
-                        *REAL(reals).add(i as usize) = NA_REAL;
-                    } else {
-                        *REAL(reals).add(i as usize) = x / y;
-                    }
-                }
-                crate::sexp::protect::Rf_unprotect(2); // result + reals
-                return reals;
             }
         }
 
         crate::sexp::protect::Rf_unprotect(1);
-        result
+        result_raw
     }
 }
 
@@ -273,23 +212,28 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 /// Always returns LGLSXP of the result length.
 unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
     unsafe {
-        let n = result_length(sa, sb);
+        let Some(a) = NumericVector::from_raw(sa) else {
+            return R_NilValue();
+        };
+        let Some(b) = NumericVector::from_raw(sb) else {
+            return R_NilValue();
+        };
+        let n = result_length(a, b);
         if n == 0 {
             return Rf_allocVector3(SEXPTYPE::LGLSXP, 0);
         }
-        let result = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
-        if result.is_null() {
+        let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
-        }
-        let _p = Rf_protect(result);
+        };
+        let _p = Rf_protect(result_raw);
 
-        let use_real = TYPEOF(sa) == SEXPTYPE::REALSXP || TYPEOF(sb) == SEXPTYPE::REALSXP;
-        let dst = LOGICAL(result);
+        let use_real = a.needs_real_with(b);
 
         for i in 0..n {
             let (x_na, y_na, cmp): (bool, bool, bool) = if use_real {
-                let x = elt_real(sa, i);
-                let y = elt_real(sb, i);
+                let x = a.real_at(i);
+                let y = b.real_at(i);
                 let xn = x.to_bits() == R_NA_BIT_PATTERN;
                 let yn = y.to_bits() == R_NA_BIT_PATTERN;
                 let c = match op {
@@ -303,8 +247,8 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                 };
                 (xn, yn, c)
             } else {
-                let x = elt_int(sa, i);
-                let y = elt_int(sb, i);
+                let x = a.int_at(i);
+                let y = b.int_at(i);
                 let xn = x == NA_INTEGER;
                 let yn = y == NA_INTEGER;
                 let c = match op {
@@ -319,17 +263,18 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                 (xn, yn, c)
             };
 
-            *dst.add(i as usize) = if x_na || y_na {
+            let value = if x_na || y_na {
                 NA_LOGICAL
             } else if cmp {
                 TRUE
             } else {
                 FALSE
             };
+            result.set_logical_elt(i, value);
         }
 
         crate::sexp::protect::Rf_unprotect(1);
-        result
+        result_raw
     }
 }
 
@@ -340,37 +285,32 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
 /// Apply a unary real function element-wise to a numeric vector.
 unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
     unsafe {
-        if sa.is_null() || sa == R_NilValue() {
+        let Some(x) = NumericVector::from_raw(sa) else {
             return R_NilValue();
-        }
-        let t = TYPEOF(sa);
-        if t != SEXPTYPE::REALSXP && t != SEXPTYPE::INTSXP && t != SEXPTYPE::LGLSXP {
+        };
+        let n = x.len();
+        let result_raw = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
             return R_NilValue();
-        }
-        let n = XLENGTH(sa);
-        let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        if result.is_null() {
-            return R_NilValue();
-        }
-        let _p = Rf_protect(result);
-        let dst = REAL(result);
+        };
+        let _p = Rf_protect(result_raw);
 
         for i in 0..n {
-            let x = elt_real(sa, i);
-            if x.to_bits() == R_NA_BIT_PATTERN {
-                *dst.add(i as usize) = NA_REAL;
+            let value = x.real_at(i);
+            if value.to_bits() == R_NA_BIT_PATTERN {
+                result.set_real_elt(i, NA_REAL);
             } else {
-                let r = f(x);
+                let r = f(value);
                 // Preserve incoming NaN (don't replace with NA_REAL)
-                if r.is_nan() && !x.is_nan() {
+                if r.is_nan() && !value.is_nan() {
                     // Newly produced NaN from valid input → leave as NaN
                 }
-                *dst.add(i as usize) = r;
+                result.set_real_elt(i, r);
             }
         }
 
         crate::sexp::protect::Rf_unprotect(1);
-        result
+        result_raw
     }
 }
 
@@ -428,42 +368,39 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
 /// Unary minus — negate each element of a numeric vector.
 unsafe fn unary_minus(x: SEXP) -> SEXP {
     unsafe {
-        if x.is_null() || x == R_NilValue() {
+        let Some(input) = NumericVector::from_raw(x) else {
             return R_NilValue();
-        }
-        let t = TYPEOF(x);
-        let n = XLENGTH(x);
-
-        if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-            let result = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = Rf_protect(result);
-            let src = INTEGER(x);
-            let dst = INTEGER(result);
-            for i in 0..n {
-                let v = *src.add(i as usize);
-                *dst.add(i as usize) = if v == NA_INTEGER { NA_INTEGER } else { -v };
-            }
-            crate::sexp::protect::Rf_unprotect(1);
-            result
-        } else if t == SEXPTYPE::REALSXP {
-            let result = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            if result.is_null() {
-                return R_NilValue();
-            }
-            let _p = Rf_protect(result);
-            let src = REAL(x);
-            let dst = REAL(result);
-            for i in 0..n {
-                *dst.add(i as usize) = -*src.add(i as usize);
-            }
-            crate::sexp::protect::Rf_unprotect(1);
-            result
+        };
+        let n = input.len();
+        let result_type = if input.typeof_() == SEXPTYPE::REALSXP {
+            SEXPTYPE::REALSXP
         } else {
-            R_NilValue()
+            SEXPTYPE::INTSXP
+        };
+        let result_raw = Rf_allocVector3(result_type, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        let _p = Rf_protect(result_raw);
+
+        if result_type == SEXPTYPE::REALSXP {
+            for i in 0..n {
+                result.set_real_elt(i, -input.real_at(i));
+            }
+        } else {
+            for i in 0..n {
+                let value = input.int_at(i);
+                let negated = if value == NA_INTEGER {
+                    NA_INTEGER
+                } else {
+                    -value
+                };
+                result.set_integer_elt(i, negated);
+            }
         }
+
+        crate::sexp::protect::Rf_unprotect(1);
+        result_raw
     }
 }
 
@@ -508,14 +445,17 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         // For integer-friendly operations, try to return INTSXP
         let prefer_int =
             op_name == "ceiling" || op_name == "floor" || op_name == "trunc" || op_name == "round";
-        let input_is_int = TYPEOF(x) == SEXPTYPE::INTSXP || TYPEOF(x) == SEXPTYPE::LGLSXP;
+        let input_is_int = Sexp::from_raw(x)
+            .is_some_and(|input| matches!(input.typeof_(), SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP));
 
         if prefer_int || input_is_int {
-            let n = XLENGTH(result);
-            let src = REAL(result);
+            let Some(result_vec) = NumericVector::from_raw(result) else {
+                return result;
+            };
+            let n = result_vec.len();
             let mut all_int = true;
             for i in 0..n {
-                let v = *src.add(i as usize);
+                let v = result_vec.real_at(i);
                 if v.to_bits() == R_NA_BIT_PATTERN {
                     continue;
                 }
@@ -525,21 +465,22 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
             }
             if all_int {
-                let iresult = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-                if !iresult.is_null() {
-                    let _p = Rf_protect(iresult);
-                    let dst = INTEGER(iresult);
-                    for i in 0..n {
-                        let v = *src.add(i as usize);
-                        if v.to_bits() == R_NA_BIT_PATTERN {
-                            *dst.add(i as usize) = NA_INTEGER;
-                        } else {
-                            *dst.add(i as usize) = v as i32;
-                        }
-                    }
-                    crate::sexp::protect::Rf_unprotect(1);
-                    return iresult;
+                let iresult_raw = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+                let Some(iresult) = Sexp::from_raw(iresult_raw) else {
+                    return result;
+                };
+                let _p = Rf_protect(iresult_raw);
+                for i in 0..n {
+                    let v = result_vec.real_at(i);
+                    let value = if v.to_bits() == R_NA_BIT_PATTERN {
+                        NA_INTEGER
+                    } else {
+                        v as i32
+                    };
+                    iresult.set_integer_elt(i, value);
                 }
+                crate::sexp::protect::Rf_unprotect(1);
+                return iresult_raw;
             }
         }
 
@@ -587,18 +528,17 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
 
             let arg = CAR(current);
             if !arg.is_null() && arg != R_NilValue() {
-                let t = TYPEOF(arg);
-                if t == SEXPTYPE::REALSXP || t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
-                    let n = XLENGTH(arg);
-                    for i in 0..n {
-                        let v = elt_real(arg, i);
-                        if v.to_bits() == R_NA_BIT_PATTERN {
-                            if na_rm {
-                                continue;
+                if let Some(vector) = NumericVector::from_raw(arg) {
+                    for i in 0..vector.len() {
+                        let value = vector.real_at(i);
+                        if value.to_bits() == R_NA_BIT_PATTERN {
+                            if !na_rm {
+                                has_na = true;
+                                vals.push(value);
                             }
-                            has_na = true;
+                            continue;
                         }
-                        vals.push(v);
+                        vals.push(value);
                     }
                 }
             }
@@ -641,20 +581,18 @@ pub unsafe fn do_summary(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             "range" => {
                 if has_na {
                     let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-                    if !v.is_null() {
-                        let data = REAL(v);
-                        *data.add(0) = NA_REAL;
-                        *data.add(1) = NA_REAL;
+                    if let Some(result) = Sexp::from_raw(v) {
+                        result.set_real_elt(0, NA_REAL);
+                        result.set_real_elt(1, NA_REAL);
                     }
                     return v;
                 }
                 let lo = vals.iter().copied().fold(f64::INFINITY, f64::min);
                 let hi = vals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
                 let v = Rf_allocVector3(SEXPTYPE::REALSXP, 2);
-                if !v.is_null() {
-                    let data = REAL(v);
-                    *data.add(0) = lo;
-                    *data.add(1) = hi;
+                if let Some(result) = Sexp::from_raw(v) {
+                    result.set_real_elt(0, lo);
+                    result.set_real_elt(1, hi);
                 }
                 v
             }
@@ -684,14 +622,20 @@ fn tag_name_is(tag: SEXP, expected: &str) -> bool {
 
 unsafe fn logical_arg_is_true(x: SEXP) -> bool {
     unsafe {
-        if x.is_null() || x == R_NilValue() || LENGTH(x) == 0 {
+        let Some(arg) = NumericVector::from_raw(x) else {
+            return false;
+        };
+        if arg.len() == 0 {
             return false;
         }
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::LGLSXP => *LOGICAL(x) == TRUE,
-            t if t == SEXPTYPE::INTSXP => *INTEGER(x) != 0 && *INTEGER(x) != NA_INTEGER,
-            t if t == SEXPTYPE::REALSXP => {
-                let value = *REAL(x);
+        match arg.typeof_() {
+            SEXPTYPE::LGLSXP => arg.int_at(0) == TRUE,
+            SEXPTYPE::INTSXP => {
+                let value = arg.int_at(0);
+                value != 0 && value != NA_INTEGER
+            }
+            SEXPTYPE::REALSXP => {
+                let value = arg.real_at(0);
                 value != 0.0 && value.to_bits() != R_NA_BIT_PATTERN && !value.is_nan()
             }
             _ => false,
@@ -723,53 +667,24 @@ pub unsafe fn do_mean(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return Rf_ScalarReal(f64::NAN);
         }
 
+        let Some(vector) = NumericVector::from_raw(x) else {
+            return Rf_ScalarReal(f64::NAN);
+        };
+
         let mut total = 0.0;
         let mut count = 0usize;
-        let n = XLENGTH(x);
-
-        match TYPEOF(x) {
-            t if t == SEXPTYPE::REALSXP => {
-                for i in 0..n {
-                    let value = *REAL(x).add(i as usize);
-                    let is_na = value.to_bits() == R_NA_BIT_PATTERN;
-                    let is_nan = value.is_nan() && !is_na;
-                    if is_na || is_nan {
-                        if na_rm {
-                            continue;
-                        }
-                        return Rf_ScalarReal(if is_na { NA_REAL } else { f64::NAN });
-                    }
-                    total += value;
-                    count += 1;
+        for i in 0..vector.len() {
+            let value = vector.real_at(i);
+            let is_na = value.to_bits() == R_NA_BIT_PATTERN;
+            let is_nan = value.is_nan() && !is_na;
+            if is_na || is_nan {
+                if na_rm {
+                    continue;
                 }
+                return Rf_ScalarReal(if is_na { NA_REAL } else { f64::NAN });
             }
-            t if t == SEXPTYPE::INTSXP => {
-                for i in 0..n {
-                    let value = *INTEGER(x).add(i as usize);
-                    if value == NA_INTEGER {
-                        if na_rm {
-                            continue;
-                        }
-                        return Rf_ScalarReal(NA_REAL);
-                    }
-                    total += value as f64;
-                    count += 1;
-                }
-            }
-            t if t == SEXPTYPE::LGLSXP => {
-                for i in 0..n {
-                    let value = *LOGICAL(x).add(i as usize);
-                    if value == NA_LOGICAL {
-                        if na_rm {
-                            continue;
-                        }
-                        return Rf_ScalarReal(NA_REAL);
-                    }
-                    total += value as f64;
-                    count += 1;
-                }
-            }
-            _ => return Rf_ScalarReal(f64::NAN),
+            total += value;
+            count += 1;
         }
 
         if count == 0 {
@@ -792,7 +707,10 @@ pub unsafe fn do_is_type(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             }
             return Rf_ScalarLogical(FALSE);
         }
-        let t = TYPEOF(x);
+        let Some(x) = Sexp::from_raw(x) else {
+            return Rf_ScalarLogical(FALSE);
+        };
+        let t = x.typeof_();
         let result = match op_name {
             "is.numeric" => t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP,
             "is.integer" => t == SEXPTYPE::INTSXP,
@@ -989,7 +907,7 @@ pub unsafe fn register_special_forms(env: SEXP) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sexp::accessors::TYPEOF;
+    use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, REAL, TYPEOF};
     use crate::sexp::session::RSession;
 
     #[test]
