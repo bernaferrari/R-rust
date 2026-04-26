@@ -20,11 +20,14 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use super::matrix::{identity, location, multiply, rotation, trans, translation};
 use super::types::*;
 
-/* ==================== GE function stubs ==================== */
+/* ==================== GE expression metric stubs ==================== */
 
-unsafe extern "C" {
-    fn GEExpressionWidth(expr: SEXP, gc: pGEcontext, dd: pGEDevDesc) -> c_double;
-    fn GEExpressionHeight(expr: SEXP, gc: pGEcontext, dd: pGEDevDesc) -> c_double;
+unsafe fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
+    0.0
+}
+
+unsafe fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
+    0.0
 }
 
 const CE_SYMBOL: c_int = 5;

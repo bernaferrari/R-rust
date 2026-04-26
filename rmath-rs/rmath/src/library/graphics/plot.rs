@@ -26,7 +26,8 @@
  *  implementations that call into these GE stubs.
  */
 
-use std::ffi::c_void;
+use std::cmp::Ordering;
+use std::ffi::{CStr, c_void};
 use std::os::raw::{c_char, c_double, c_int, c_uint};
 
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
@@ -35,17 +36,30 @@ use crate::main::duplicate::duplicate;
 use crate::main::errors::Rf_error;
 use crate::mainutils::bind::isList;
 use crate::mainutils::colors::RGBpar3;
+use crate::mainutils::engine::GErecordGraphicOperation;
 use crate::mainutils::format::{formatComplex, formatReal};
 use crate::mainutils::objects::inherits2 as inherits;
 use crate::mainutils::printutils::{EncodeComplex, EncodeInteger, EncodeLogical, EncodeReal0};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::constructors::{Rf_ScalarInteger as ScalarInteger, Rf_length as length};
+use crate::sexp::constructors::{
+    Rf_ScalarInteger as ScalarInteger, Rf_ScalarReal as ScalarReal, Rf_length as length,
+    Rf_mkChar as mkChar,
+};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::with_required_current_instance;
-use crate::sexp::memory_ext::R_alloc;
+use crate::sexp::memory_ext::{R_alloc, vmaxget, vmaxset};
 use crate::sexp::protect::*;
+
+use super::graphics::{
+    GArrow, GBox, GCheckState, GClip, GConvert, GConvertX, GConvertXUnits, GConvertY,
+    GConvertYUnits, GExpressionHeight, GExpressionWidth, GLine, GMMathText, GMapUnits, GMapWin2Fig,
+    GMathText, GMode, GMtext, GNewPlot, GPath, GPolygon, GPolyline, GRaster, GRecording, GRect,
+    GRestorePars, GSavePars, GScale, GSetState, GStrHeight, GStrWidth, GSymbol, GText, xNPCtoUsr,
+    yNPCtoUsr,
+};
+use super::par::{ProcessInlinePars, dpptr, gpptr};
 
 /* ========================================================================
  * Local type and constant definitions
@@ -103,244 +117,72 @@ const R_PosInf: c_double = f64::INFINITY;
 const R_NegInf: c_double = f64::NEG_INFINITY;
 const DBL_MAX_EXP: c_int = 1024;
 
-/* ========================================================================
- * Extern declarations for GE (Graphics Engine) functions
- * ======================================================================== */
+unsafe fn GEcurrentDevice() -> pGEDevDesc {
+    crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc
+}
 
-unsafe extern "C" {
-    /* Device management */
-    #[link_name = "rmath_GEcurrentDevice"]
-    fn GEcurrentDevice() -> pGEDevDesc;
-    fn GErecordGraphicOperation(op: SEXP, args: SEXP, dd: pGEDevDesc);
-    fn NoDevices() -> c_int;
-    fn NewFrameConfirm(dd: *const c_void);
-    fn GRecording(call: SEXP, dd: pGEDevDesc) -> c_int;
-    fn GNewPlot(recording: c_int) -> pGEDevDesc;
+#[inline]
+fn bool_to_rflag(value: bool) -> c_int {
+    value as c_int
+}
 
-    /* Graphics state */
-    fn GCheckState(dd: pGEDevDesc);
-    fn GSavePars(dd: pGEDevDesc);
-    fn GRestorePars(dd: pGEDevDesc);
-    fn GMode(mode: c_int, dd: pGEDevDesc);
-    fn GSetState(state: c_int, dd: pGEDevDesc);
-    fn GClip(dd: pGEDevDesc);
-    fn GESetClip(x1: c_double, y1: c_double, x2: c_double, y2: c_double, dd: pGEDevDesc);
+#[inline]
+unsafe fn isNumeric(x: SEXP) -> c_int {
+    let sxp_type = TYPEOF(x);
+    bool_to_rflag(
+        sxp_type == SEXPTYPE::INTSXP
+            || sxp_type == SEXPTYPE::REALSXP
+            || sxp_type == SEXPTYPE::CPLXSXP
+            || sxp_type == SEXPTYPE::LGLSXP,
+    )
+}
 
-    /* Scaling and mapping */
-    fn GScale(min: c_double, max: c_double, axis: c_int, dd: pGEDevDesc);
-    fn GMapWin2Fig(dd: pGEDevDesc);
-    fn GConvert(x: *mut c_double, y: *mut c_double, from: c_int, to: c_int, dd: pGEDevDesc);
-    fn GConvertX(x: c_double, from: c_int, to: c_int, dd: pGEDevDesc) -> c_double;
-    fn GConvertY(y: c_double, from: c_int, to: c_int, dd: pGEDevDesc) -> c_double;
-    fn GConvertXUnits(x: c_double, from: c_int, to: c_int, dd: pGEDevDesc) -> c_double;
-    fn GConvertYUnits(y: c_double, from: c_int, to: c_int, dd: pGEDevDesc) -> c_double;
-    fn GMapUnits(units: c_int) -> c_int;
-    fn xNPCtoUsr(x: c_double, dd: pGEDevDesc) -> c_double;
-    fn yNPCtoUsr(y: c_double, dd: pGEDevDesc) -> c_double;
+#[inline]
+unsafe fn isReal(x: SEXP) -> c_int {
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::REALSXP)
+}
 
-    /* Drawing primitives */
-    fn GLine(x1: c_double, y1: c_double, x2: c_double, y2: c_double, which: c_int, dd: pGEDevDesc);
-    fn GPolyline(n: c_int, x: *mut c_double, y: *mut c_double, which: c_int, dd: pGEDevDesc);
-    fn GPolygon(
-        n: c_int,
-        x: *mut c_double,
-        y: *mut c_double,
-        which: c_int,
-        fill: c_int,
-        border: c_int,
-        dd: pGEDevDesc,
-    );
-    fn GRect(
-        x0: c_double,
-        y0: c_double,
-        x1: c_double,
-        y1: c_double,
-        which: c_int,
-        fill: c_int,
-        border: c_int,
-        dd: pGEDevDesc,
-    );
-    fn GCircle(
-        x: c_double,
-        y: c_double,
-        which: c_int,
-        r: c_double,
-        r_unit: c_int,
-        col: c_int,
-        border: c_int,
-        dd: pGEDevDesc,
-    );
-    fn GSymbol(x: c_double, y: c_double, which: c_int, pch: c_int, dd: pGEDevDesc);
-    fn GPath(
-        x: *mut c_double,
-        y: *mut c_double,
-        npoly: c_int,
-        nper: *mut c_int,
-        winding: Rboolean,
-        col: c_int,
-        border: c_int,
-        dd: pGEDevDesc,
-    );
-    fn GRaster(
-        image: *mut c_uint,
-        w: c_int,
-        h: c_int,
-        x: c_double,
-        y: c_double,
-        w_dim: c_double,
-        h_dim: c_double,
-        angle: c_double,
-        interpolate: Rboolean,
-        dd: pGEDevDesc,
-    );
-    fn GArrow(
-        x1: c_double,
-        y1: c_double,
-        x2: c_double,
-        y2: c_double,
-        which: c_int,
-        length: c_double,
-        angle: c_double,
-        code: c_int,
-        dd: pGEDevDesc,
-    );
-    fn GBox(which: c_int, dd: pGEDevDesc);
+#[inline]
+unsafe fn isInteger(x: SEXP) -> c_int {
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::INTSXP)
+}
 
-    /* Text */
-    fn GText(
-        x: c_double,
-        y: c_double,
-        which: c_int,
-        str: *const c_char,
-        enc: cetype_t,
-        adjx: c_double,
-        adjy: c_double,
-        rot: c_double,
-        dd: pGEDevDesc,
-    );
-    fn GMtext(
-        str: *const c_char,
-        enc: cetype_t,
-        side: c_int,
-        line: c_double,
-        outer: c_int,
-        at: c_double,
-        las: c_int,
-        padj: c_double,
-        dd: pGEDevDesc,
-    );
-    fn GMathText(
-        x: c_double,
-        y: c_double,
-        which: c_int,
-        expr: SEXP,
-        adjx: c_double,
-        adjy: c_double,
-        rot: c_double,
-        dd: pGEDevDesc,
-    );
-    fn GMMathText(
-        expr: SEXP,
-        side: c_int,
-        line: c_double,
-        outer: c_int,
-        at: c_double,
-        las: c_int,
-        padj: c_double,
-        dd: pGEDevDesc,
-    );
-    fn GStrWidth(str: *const c_char, enc: cetype_t, which: c_int, dd: pGEDevDesc) -> c_double;
-    fn GStrHeight(str: *const c_char, enc: cetype_t, which: c_int, dd: pGEDevDesc) -> c_double;
-    fn GExpressionWidth(expr: SEXP, which: c_int, dd: pGEDevDesc) -> c_double;
-    fn GExpressionHeight(expr: SEXP, which: c_int, dd: pGEDevDesc) -> c_double;
+#[inline]
+unsafe fn isLogical(x: SEXP) -> c_int {
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::LGLSXP)
+}
 
-    /* Interactive */
-    fn GLocator(x: *mut c_double, y: *mut c_double, which: c_int, dd: pGEDevDesc) -> c_int;
+#[inline]
+unsafe fn isString(x: SEXP) -> c_int {
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::STRSXP)
+}
 
-    /* Parameter access (via dpptr/gpptr) */
-    fn dpptr(dd: pGEDevDesc) -> *mut c_void;
-    fn gpptr(dd: pGEDevDesc) -> *mut c_void;
+#[inline]
+unsafe fn isExpression(x: SEXP) -> c_int {
+    bool_to_rflag(TYPEOF(x) == SEXPTYPE::EXPRSXP)
+}
 
-    /* Xspline */
-    fn GEXspline(
-        n: c_int,
-        x: *mut c_double,
-        y: *mut c_double,
-        s: *mut c_double,
-        open: c_int,
-        repEnds: c_int,
-        draw: c_int,
-        gc: *const c_void,
-        dd: pGEDevDesc,
-    ) -> SEXP;
+#[inline]
+fn R_FINITE(x: c_double) -> c_int {
+    bool_to_rflag(x.is_finite())
+}
 
-    /* Axis creation */
-    fn CreateAtVector(
-        axp: *const c_double,
-        usr: *const c_double,
-        nint: c_int,
-        logflag: c_int,
-    ) -> SEXP;
+unsafe fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {
+    match (s1.is_null(), s2.is_null()) {
+        (true, true) => return 0,
+        (true, false) => return -1,
+        (false, true) => return 1,
+        (false, false) => {}
+    }
 
-    /* Process inline pars */
-    fn ProcessInlinePars(args: SEXP, dd: pGEDevDesc);
-
-    /* Misc */
-    fn gcontextFromGP(gc: *mut GECtx, dd: pGEDevDesc);
-    fn PrintDefaults();
-
-    /* vmax */
-    fn vmaxget() -> *mut c_void;
-    fn vmaxset(vmax: *mut c_void);
-
-    /* Sorting */
-    fn rsort_with_index(x: *mut c_double, ind: *mut c_int, n: c_int);
-
-    /* R options */
-    fn GetOption1(name: SEXP) -> SEXP;
-
-    /* Console */
-    fn REprintf(format: *const c_char);
-    fn R_FlushConsole();
-
-    /* Symbol functions */
-    fn install(name: *const c_char) -> SEXP;
-    fn mkChar(str: *const c_char) -> SEXP;
-    fn getCharCE(x: SEXP) -> cetype_t;
-    fn asRboolean(x: SEXP) -> c_int;
-
-    /* Vector construction */
-    fn ScalarReal(x: c_double) -> SEXP;
-    fn ScalarLogical(x: c_int) -> SEXP;
-    fn allocList(n: c_int) -> SEXP;
-    fn allocVector(type_: c_int, length: c_int) -> SEXP;
-    /* List manipulation */
-    fn SETCADR(x: SEXP, y: SEXP);
-    fn SETCADDR(x: SEXP, y: SEXP);
-    fn SETCADDDR(x: SEXP, y: SEXP);
-    fn SETCAD4R(x: SEXP, y: SEXP);
-    fn nthcdr(x: SEXP, n: c_int) -> SEXP;
-
-    /* Type checks */
-    fn isNewList(x: SEXP) -> c_int;
-    fn isNumeric(x: SEXP) -> c_int;
-    fn isReal(x: SEXP) -> c_int;
-    fn isInteger(x: SEXP) -> c_int;
-    fn isLogical(x: SEXP) -> c_int;
-    fn isString(x: SEXP) -> c_int;
-    fn isExpression(x: SEXP) -> c_int;
-    fn isSymbol(x: SEXP) -> c_int;
-    fn isLanguage(x: SEXP) -> c_int;
-
-    /* Misc R internals */
-    fn Rexp10(x: c_double) -> c_double;
-    fn fmin2(x: c_double, y: c_double) -> c_double;
-    fn fmax2(x: c_double, y: c_double) -> c_double;
-    fn imax2(x: c_int, y: c_int) -> c_int;
-    fn R_FINITE(x: c_double) -> c_int;
-    fn ISNAN(x: c_double) -> c_int;
-    fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int;
-    fn strncpy(dest: *mut c_char, src: *const c_char, n: usize) -> *mut c_char;
+    match CStr::from_ptr(s1)
+        .to_bytes()
+        .cmp(CStr::from_ptr(s2).to_bytes())
+    {
+        Ordering::Less => -1,
+        Ordering::Equal => 0,
+        Ordering::Greater => 1,
+    }
 }
 
 /* OutDec global */
