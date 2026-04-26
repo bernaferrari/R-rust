@@ -316,28 +316,25 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
 
         if t == SEXPTYPE::CPLXSXP {
             // Complex path: allocate, copy names, compute ccumsum
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP, n));
+            let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
             if n == 0 {
-                Rf_unprotect(1);
                 return ans;
             }
             let src = std::slice::from_raw_parts(COMPLEX(s), n as usize);
             let dst = std::slice::from_raw_parts_mut(COMPLEX(ans), n as usize);
             ccumsum_complex(src, dst);
-            Rf_unprotect(1);
             ans
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, try integer cumsum
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::INTSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::INTSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             if n2 == 0 {
-                Rf_unprotect(2);
                 return ans;
             }
             // Initialize all result elements to NA_INTEGER (R does this)
@@ -364,18 +361,15 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 }
                 *dst.add(i) = sum as c_int;
             }
-            Rf_unprotect(2);
             ans
         } else {
             // Real / other types: coerce to double
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::REALSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            Rf_unprotect(2);
             if n2 == 0 {
                 return ans;
             }
@@ -408,28 +402,25 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP
 
         if t == SEXPTYPE::CPLXSXP {
             // Complex path
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP, n));
+            let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(s, R_NamesSymbol()));
             if n == 0 {
-                Rf_unprotect(1);
                 return ans;
             }
             let src = std::slice::from_raw_parts(COMPLEX(s), n as usize);
             let dst = std::slice::from_raw_parts_mut(COMPLEX(ans), n as usize);
             ccumprod_complex(src, dst);
-            Rf_unprotect(1);
             ans
         } else {
             // All non-complex types (including integer/logical) coerce to double
             // R's do_cum excludes cumprod (PRIMVAL == 2) from the integer path
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::REALSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            Rf_unprotect(2);
             if n2 == 0 {
                 return ans;
             }
@@ -466,15 +457,13 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             unreachable!()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, use icummax logic
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::INTSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::INTSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             if n2 == 0 {
-                Rf_unprotect(2);
                 return ans;
             }
             // Initialize all result elements to NA_INTEGER
@@ -496,18 +485,15 @@ pub unsafe fn do_cummax(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                     *dst.add(i) = max;
                 }
             }
-            Rf_unprotect(2);
             ans
         } else {
             // Real / other types: coerce to double
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::REALSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            Rf_unprotect(2);
             if n2 == 0 {
                 return ans;
             }
@@ -544,15 +530,13 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
             unreachable!()
         } else if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
             // Integer/logical path: coerce to integer, use icummin logic
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::INTSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::INTSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
             if n2 == 0 {
-                Rf_unprotect(2);
                 return ans;
             }
             // Initialize all result elements to NA_INTEGER
@@ -572,18 +556,15 @@ pub unsafe fn do_cummin(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP 
                 min = if min < v { min } else { v };
                 *dst.add(i) = min;
             }
-            Rf_unprotect(2);
             ans
         } else {
             // Real / other types: coerce to double
-            let t = Rf_protect(crate::mainutils::coerce::coerceVector(
-                s,
-                SEXPTYPE::REALSXP.as_c_int(),
-            ));
+            let t = crate::mainutils::coerce::coerceVector(s, SEXPTYPE::REALSXP.as_c_int());
+            let _coerced_guard = protect(t);
             let n2 = XLENGTH(t);
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n2));
+            let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n2);
+            let _ans_guard = protect(ans);
             setAttrib(ans, R_NamesSymbol(), getAttrib(t, R_NamesSymbol()));
-            Rf_unprotect(2);
             if n2 == 0 {
                 return ans;
             }
