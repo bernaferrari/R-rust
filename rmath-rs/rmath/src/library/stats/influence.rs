@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-// legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2012--2019 The R Core Team
@@ -40,68 +38,80 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 unsafe fn error(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    Rf_error(c_msg.as_ptr());
+    unsafe {
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+        Rf_error(c_msg.as_ptr());
+    }
 }
 
 unsafe fn mkChar(s: &str) -> SEXP {
-    let c_str = CString::new(s).unwrap_or_default();
-    Rf_mkChar(c_str.as_ptr())
+    unsafe {
+        let c_str = CString::new(s).unwrap_or_default();
+        Rf_mkChar(c_str.as_ptr())
+    }
 }
 
 unsafe fn getListElement(list: SEXP, str: &str) -> SEXP {
-    if TYPEOF(list) != SEXPTYPE::VECSXP {
-        return R_NilValue();
-    }
-    let names = getAttrib(list, R_NamesSymbol());
-    if Rf_isNull(names) != 0 {
-        return R_NilValue();
-    }
-    let len = LENGTH(list);
-    let target = str.as_bytes();
-    for i in 0..len {
-        let name_sexp = STRING_ELT(names, i as crate::sexp::ffi::R_xlen_t);
-        if name_sexp.is_null() {
-            continue;
+    unsafe {
+        if TYPEOF(list) != SEXPTYPE::VECSXP {
+            return R_NilValue();
         }
-        let name_ptr = CHAR(name_sexp);
-        if name_ptr.is_null() {
-            continue;
+        let names = getAttrib(list, R_NamesSymbol());
+        if Rf_isNull(names) != 0 {
+            return R_NilValue();
         }
-        let name_bytes = std::ffi::CStr::from_ptr(name_ptr).to_bytes();
-        if name_bytes == target {
-            return VECTOR_ELT(list, i as crate::sexp::ffi::R_xlen_t);
+        let len = LENGTH(list);
+        let target = str.as_bytes();
+        for i in 0..len {
+            let name_sexp = STRING_ELT(names, i as crate::sexp::ffi::R_xlen_t);
+            if name_sexp.is_null() {
+                continue;
+            }
+            let name_ptr = CHAR(name_sexp);
+            if name_ptr.is_null() {
+                continue;
+            }
+            let name_bytes = std::ffi::CStr::from_ptr(name_ptr).to_bytes();
+            if name_bytes == target {
+                return VECTOR_ELT(list, i as crate::sexp::ffi::R_xlen_t);
+            }
         }
+        R_NilValue()
     }
-    R_NilValue()
 }
 
 unsafe fn nrows(x: SEXP) -> c_int {
-    let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
-    if Rf_isNull(dn) != 0 || LENGTH(dn) < 1 {
-        return LENGTH(x);
+    unsafe {
+        let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
+        if Rf_isNull(dn) != 0 || LENGTH(dn) < 1 {
+            return LENGTH(x);
+        }
+        *INTEGER(dn)
     }
-    *INTEGER(dn)
 }
 
 unsafe fn ncols(x: SEXP) -> c_int {
-    let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
-    if Rf_isNull(dn) != 0 || LENGTH(dn) < 2 {
-        return 1;
+    unsafe {
+        let dn = getAttrib(x, crate::attrib_core::R_DimSymbol());
+        if Rf_isNull(dn) != 0 || LENGTH(dn) < 2 {
+            return 1;
+        }
+        *INTEGER(dn.add(1))
     }
-    *INTEGER(dn.add(1))
 }
 
 unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
-    let ans = Rf_allocVector(sexptype, nrow * ncol);
-    Rf_protect(ans);
-    let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-    Rf_protect(dim);
-    *INTEGER(dim) = nrow;
-    *INTEGER(dim.add(1)) = ncol;
-    setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
-    Rf_unprotect(2);
-    ans
+    unsafe {
+        let ans = Rf_allocVector(sexptype, nrow * ncol);
+        Rf_protect(ans);
+        let dim = Rf_allocVector(SEXPTYPE::INTSXP, 2);
+        Rf_protect(dim);
+        *INTEGER(dim) = nrow;
+        *INTEGER(dim.add(1)) = ncol;
+        setAttrib(ans, crate::attrib_core::R_DimSymbol(), dim);
+        Rf_unprotect(2);
+        ans
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -137,6 +147,7 @@ unsafe fn lminfl_(
     _sigma: *mut c_double,
     _tol: *const c_double,
 ) {
+    unsafe {}
 }
 
 // ---------------------------------------------------------------------------
@@ -144,49 +155,51 @@ unsafe fn lminfl_(
 // ---------------------------------------------------------------------------
 
 pub unsafe fn influence(mqr: SEXP, e: SEXP, stol: SEXP) -> SEXP {
-    let qr = getListElement(mqr, "qr");
-    let qraux = getListElement(mqr, "qraux");
-    let rank_val = getListElement(mqr, "rank");
+    unsafe {
+        let qr = getListElement(mqr, "qr");
+        let qraux = getListElement(mqr, "qraux");
+        let rank_val = getListElement(mqr, "rank");
 
-    let n = nrows(qr);
-    let k = asInteger(rank_val);
-    let q = ncols(e);
-    let tol = asReal(stol);
+        let n = nrows(qr);
+        let k = asInteger(rank_val);
+        let q = ncols(e);
+        let tol = asReal(stol);
 
-    let hat = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-    let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), n, q));
+        let hat = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let sigma = Rf_protect(allocMatrix(SEXPTYPE::REALSXP.into(), n, q));
 
-    lminfl_(
-        REAL(qr),
-        &n,
-        &n,
-        &k,
-        &q,
-        REAL(qraux),
-        REAL(e),
-        REAL(hat),
-        REAL(sigma),
-        &tol,
-    );
+        lminfl_(
+            REAL(qr),
+            &n,
+            &n,
+            &k,
+            &q,
+            REAL(qraux),
+            REAL(e),
+            REAL(hat),
+            REAL(sigma),
+            &tol,
+        );
 
-    // Clamp hat values slightly above 1 to exactly 1
-    for i in 0..n as usize {
-        if *REAL(hat).add(i) > 1.0 - tol {
-            *REAL(hat).add(i) = 1.0;
+        // Clamp hat values slightly above 1 to exactly 1
+        for i in 0..n as usize {
+            if *REAL(hat).add(i) > 1.0 - tol {
+                *REAL(hat).add(i) = 1.0;
+            }
         }
+
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+        setAttrib(ans, R_NamesSymbol(), nm);
+
+        let mut m: c_int = 0;
+        SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, hat);
+        SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("hat"));
+        m += 1;
+        SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, sigma);
+        SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("sigma"));
+
+        Rf_unprotect(3);
+        ans
     }
-
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-    setAttrib(ans, R_NamesSymbol(), nm);
-
-    let mut m: c_int = 0;
-    SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, hat);
-    SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("hat"));
-    m += 1;
-    SET_VECTOR_ELT(ans, m as crate::sexp::ffi::R_xlen_t, sigma);
-    SET_STRING_ELT(nm, m as crate::sexp::ffi::R_xlen_t, mkChar("sigma"));
-
-    Rf_unprotect(3);
-    ans
 }
