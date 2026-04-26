@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1997-2017   The R Core Team.
@@ -29,16 +28,18 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::protect::*;
 
-unsafe fn il(n: c_int, x: c_double) -> c_int {
+fn il(n: c_int, x: c_double) -> c_int {
     ((n as c_double - 1.0) * x).floor() as c_int
 }
 
-unsafe fn iu(n: c_int, x: c_double) -> c_int {
+fn iu(n: c_int, x: c_double) -> c_int {
     ((n as c_double - 1.0) * x).ceil() as c_int
 }
 
 unsafe fn R_rsort(x: *mut c_double, n: c_int) {
-    crate::main::sort::R_rsort(x, n);
+    unsafe {
+        crate::main::sort::R_rsort(x, n);
+    }
 }
 
 unsafe fn line(
@@ -50,86 +51,88 @@ unsafe fn line(
     iter: c_int,
     coef: *mut c_double,
 ) {
-    // Copy x -> z (for sorting) and y -> w
-    for i in 0..(n as usize) {
-        *z.add(i) = *x.add(i);
-        *w.add(i) = *y.add(i);
-    }
-    R_rsort(z, n); /* z = ordered abscissae */
-
-    // x1 := quantile(x, 1/3)
-    let tmp1 = *z.add(il(n, 1.0 / 3.0) as usize);
-    let tmp2 = *z.add(iu(n, 1.0 / 3.0) as usize);
-    let x1 = 0.5 * (tmp1 + tmp2);
-
-    // x2 := quantile(x, 2/3)
-    let tmp1 = *z.add(il(n, 2.0 / 3.0) as usize);
-    let tmp2 = *z.add(iu(n, 2.0 / 3.0) as usize);
-    let x2 = 0.5 * (tmp1 + tmp2);
-
-    // xb := x_L := Median(x[i]; x[i] <= quantile(x, 1/3))
-    let mut k: c_int = 0;
-    for i in 0..(n as usize) {
-        if *x.add(i) <= x1 {
-            *z.add(k as usize) = *x.add(i);
-            k += 1;
+    unsafe {
+        // Copy x -> z (for sorting) and y -> w
+        for i in 0..(n as usize) {
+            *z.add(i) = *x.add(i);
+            *w.add(i) = *y.add(i);
         }
-    }
-    R_rsort(z, k);
-    let xb = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
+        R_rsort(z, n); /* z = ordered abscissae */
 
-    // xt := x_R := Median(x[i]; x[i] >= quantile(x, 2/3))
-    k = 0;
-    for i in 0..(n as usize) {
-        if *x.add(i) >= x2 {
-            *z.add(k as usize) = *x.add(i);
-            k += 1;
-        }
-    }
-    R_rsort(z, k);
-    let xt = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
+        // x1 := quantile(x, 1/3)
+        let tmp1 = *z.add(il(n, 1.0 / 3.0) as usize);
+        let tmp2 = *z.add(iu(n, 1.0 / 3.0) as usize);
+        let x1 = 0.5 * (tmp1 + tmp2);
 
-    let mut slope: c_double = 0.0;
-    // "Polishing" iterations
-    for _j in 1..=(iter as usize) {
-        // yb := Median(y[i]; x[i] <= quantile(x, 1/3))
-        k = 0;
+        // x2 := quantile(x, 2/3)
+        let tmp1 = *z.add(il(n, 2.0 / 3.0) as usize);
+        let tmp2 = *z.add(iu(n, 2.0 / 3.0) as usize);
+        let x2 = 0.5 * (tmp1 + tmp2);
+
+        // xb := x_L := Median(x[i]; x[i] <= quantile(x, 1/3))
+        let mut k: c_int = 0;
         for i in 0..(n as usize) {
             if *x.add(i) <= x1 {
-                *z.add(k as usize) = *w.add(i);
+                *z.add(k as usize) = *x.add(i);
                 k += 1;
             }
         }
         R_rsort(z, k);
-        let yb = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
+        let xb = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
 
-        // yt := Median(y[i]; x[i] >= quantile(x, 2/3))
+        // xt := x_R := Median(x[i]; x[i] >= quantile(x, 2/3))
         k = 0;
         for i in 0..(n as usize) {
             if *x.add(i) >= x2 {
-                *z.add(k as usize) = *w.add(i);
+                *z.add(k as usize) = *x.add(i);
                 k += 1;
             }
         }
         R_rsort(z, k);
-        let yt = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
+        let xt = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
 
-        slope += (yt - yb) / (xt - xb);
-        for i in 0..(n as usize) {
-            *w.add(i) = *y.add(i) - slope * *x.add(i);
+        let mut slope: c_double = 0.0;
+        // "Polishing" iterations
+        for _j in 1..=(iter as usize) {
+            // yb := Median(y[i]; x[i] <= quantile(x, 1/3))
+            k = 0;
+            for i in 0..(n as usize) {
+                if *x.add(i) <= x1 {
+                    *z.add(k as usize) = *w.add(i);
+                    k += 1;
+                }
+            }
+            R_rsort(z, k);
+            let yb = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
+
+            // yt := Median(y[i]; x[i] >= quantile(x, 2/3))
+            k = 0;
+            for i in 0..(n as usize) {
+                if *x.add(i) >= x2 {
+                    *z.add(k as usize) = *w.add(i);
+                    k += 1;
+                }
+            }
+            R_rsort(z, k);
+            let yt = 0.5 * (*z.add(il(k, 0.5) as usize) + *z.add(iu(k, 0.5) as usize));
+
+            slope += (yt - yb) / (xt - xb);
+            for i in 0..(n as usize) {
+                *w.add(i) = *y.add(i) - slope * *x.add(i);
+            }
         }
-    }
 
-    // intercept := median of residuals
-    R_rsort(w, n);
-    let yint = 0.5 * (*w.add(il(n, 0.5) as usize) + *w.add(iu(n, 0.5) as usize));
+        // intercept := median of residuals
+        R_rsort(w, n);
+        let yint = 0.5 * (*w.add(il(n, 0.5) as usize) + *w.add(iu(n, 0.5) as usize));
 
-    for i in 0..(n as usize) {
-        *w.add(i) = yint + slope * *x.add(i);
-        *z.add(i) = *y.add(i) - *w.add(i);
+        for i in 0..(n as usize) {
+            *w.add(i) = yint + slope * *x.add(i);
+            *z.add(i) = *y.add(i) - *w.add(i);
+        }
+        *coef.add(0) = yint;
+        *coef.add(1) = slope;
     }
-    *coef.add(0) = yint;
-    *coef.add(1) = slope;
 }
 
 pub unsafe fn tukeyline0(
@@ -140,59 +143,63 @@ pub unsafe fn tukeyline0(
     n: *mut c_int,
     coef: *mut c_double,
 ) {
-    line(x, y, z, w, *n, 1, coef);
+    unsafe {
+        line(x, y, z, w, *n, 1, coef);
+    }
 }
 
 unsafe fn asInteger(x: SEXP) -> c_int {
-    crate::main::coerce::asInteger(x)
+    unsafe { crate::main::coerce::asInteger(x) }
 }
 
 pub unsafe fn tukeyline(x: SEXP, y: SEXP, iter: SEXP, call: SEXP) -> SEXP {
-    use crate::main::errors::Rf_error;
+    unsafe {
+        use crate::main::errors::Rf_error;
 
-    let n = LENGTH(x);
-    if n < 2 {
-        Rf_error(b"insufficient observations\0".as_ptr() as *const libc::c_char);
+        let n = LENGTH(x);
+        if n < 2 {
+            Rf_error(b"insufficient observations\0".as_ptr() as *const libc::c_char);
+        }
+
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
+        let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
+        setAttrib(ans, R_NamesSymbol(), nm);
+        SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const libc::c_char));
+        SET_STRING_ELT(
+            nm,
+            1,
+            Rf_mkChar(b"coefficients\0".as_ptr() as *const libc::c_char),
+        );
+        SET_STRING_ELT(
+            nm,
+            2,
+            Rf_mkChar(b"residuals\0".as_ptr() as *const libc::c_char),
+        );
+        SET_STRING_ELT(
+            nm,
+            3,
+            Rf_mkChar(b"fitted.values\0".as_ptr() as *const libc::c_char),
+        );
+        SET_VECTOR_ELT(ans, 0, call);
+
+        let coef = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+        SET_VECTOR_ELT(ans, 1, coef);
+        let res = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        SET_VECTOR_ELT(ans, 2, res);
+        let fit = Rf_allocVector(SEXPTYPE::REALSXP, n);
+        SET_VECTOR_ELT(ans, 3, fit);
+
+        line(
+            REAL(x),
+            REAL(y),
+            REAL(res),
+            REAL(fit),
+            n as c_int,
+            asInteger(iter),
+            REAL(coef),
+        );
+
+        Rf_unprotect(1);
+        ans
     }
-
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 4));
-    let nm = Rf_allocVector(SEXPTYPE::STRSXP, 4);
-    setAttrib(ans, R_NamesSymbol(), nm);
-    SET_STRING_ELT(nm, 0, Rf_mkChar(b"call\0".as_ptr() as *const libc::c_char));
-    SET_STRING_ELT(
-        nm,
-        1,
-        Rf_mkChar(b"coefficients\0".as_ptr() as *const libc::c_char),
-    );
-    SET_STRING_ELT(
-        nm,
-        2,
-        Rf_mkChar(b"residuals\0".as_ptr() as *const libc::c_char),
-    );
-    SET_STRING_ELT(
-        nm,
-        3,
-        Rf_mkChar(b"fitted.values\0".as_ptr() as *const libc::c_char),
-    );
-    SET_VECTOR_ELT(ans, 0, call);
-
-    let coef = Rf_allocVector(SEXPTYPE::REALSXP, 2);
-    SET_VECTOR_ELT(ans, 1, coef);
-    let res = Rf_allocVector(SEXPTYPE::REALSXP, n);
-    SET_VECTOR_ELT(ans, 2, res);
-    let fit = Rf_allocVector(SEXPTYPE::REALSXP, n);
-    SET_VECTOR_ELT(ans, 3, fit);
-
-    line(
-        REAL(x),
-        REAL(y),
-        REAL(res),
-        REAL(fit),
-        n as c_int,
-        asInteger(iter),
-        REAL(coef),
-    );
-
-    Rf_unprotect(1);
-    ans
 }
