@@ -13,7 +13,7 @@ use crate::sexp::envir::Environment;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE};
 use crate::sexp::globals::{R_NilValue, set_R_Visible};
 use crate::sexp::object::Sexp;
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 
 use super::eval::Rf_eval;
 
@@ -44,14 +44,13 @@ pub unsafe fn do_set(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             t if t == SEXPTYPE::STRSXP => {
                 let sym = crate::mainutils::subset::installTrChar(STRING_ELT(lhs, 0));
                 let rhs = Rf_eval(CADR(args), rho);
-                Rf_protect(rhs);
+                let _rhs_guard = protect(rhs);
                 assign_to_symbol(sym, rhs, primval, rho);
-                Rf_protect(rhs);
                 rhs
             }
             t if t == SEXPTYPE::SYMSXP => {
                 let rhs = Rf_eval(CADR(args), rho);
-                Rf_protect(rhs);
+                let _rhs_guard = protect(rhs);
                 assign_to_symbol(lhs, rhs, primval, rho);
                 rhs
             }
@@ -139,7 +138,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         let rhs = Rf_eval(CADR(args), rho);
-        Rf_protect(rhs);
+        let _rhs_guard = protect(rhs);
 
         let primval = crate::mainutils::relop::PRIMVAL(op);
         let forcelocal = if primval == 1 || primval == 3 { 1 } else { 0 };
@@ -148,7 +147,8 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if TYPEOF(CADR(expr)) == SEXPTYPE::LANGSXP {
             // Nested assignment: use evalseq to evaluate LHS chain
             let lhs = crate::eval::missing::evalseq(CADR(expr), rho, forcelocal);
-            Rf_protect(lhs);
+            let _lhs_guard = protect(lhs);
+            let mut nested_guards = Vec::new();
 
             // Walk the chain applying replacement functions
             let mut current_lhs = lhs;
@@ -169,17 +169,16 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let rest_args = CDDR(current_expr);
 
                 let arg_list = build_replacement_args(target_val, rest_args, current_rhs);
-                Rf_protect(arg_list);
+                nested_guards.push(protect(arg_list));
                 let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
                 if !repl_call.is_null() {
                     (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
-                Rf_protect(repl_call);
+                nested_guards.push(protect(repl_call));
 
                 current_rhs = Rf_eval(repl_call, rho);
-                Rf_protect(current_rhs);
+                nested_guards.push(protect(current_rhs));
 
-                crate::sexp::protect::Rf_unprotect(2);
                 current_lhs = CDR(current_lhs);
                 current_expr = CADR(current_expr);
             }
@@ -192,15 +191,15 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let rest_args = CDDR(expr);
 
                 let arg_list = build_replacement_args(target_val, rest_args, current_rhs);
-                Rf_protect(arg_list);
+                let _arg_list_guard = protect(arg_list);
                 let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
                 if !repl_call.is_null() {
                     (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
-                Rf_protect(repl_call);
+                let _repl_call_guard = protect(repl_call);
 
                 let result = Rf_eval(repl_call, rho);
-                Rf_protect(result);
+                let _result_guard = protect(result);
 
                 // Assign back to the outermost variable
                 let var_sym = CADR(expr);
@@ -214,11 +213,8 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                         };
                     bind_assignment(deep_sym, result, primval, rho);
                 }
-
-                crate::sexp::protect::Rf_unprotect(3);
             }
 
-            crate::sexp::protect::Rf_unprotect(2);
             set_R_Visible(FALSE);
             rhs
         } else {
@@ -233,37 +229,32 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             };
 
             if assign_fn == R_NilValue() || TYPEOF(assign_fn) != SEXPTYPE::SYMSXP {
-                crate::sexp::protect::Rf_unprotect(1);
                 return rhs;
             }
 
             let target_expr = Rf_eval(CADR(lhs), rho);
-            Rf_protect(target_expr);
+            let _target_guard = protect(target_expr);
 
             let call_args = CDDR(lhs);
             let evaluated_subs = super::dispatch::evalList(call_args, rho, lhs, -1);
-            Rf_protect(evaluated_subs);
+            let _subs_guard = protect(evaluated_subs);
 
-            let mut protected = 3;
             let result = if let Some(result) =
                 try_simple_vector_subassign(target_expr, evaluated_subs, rhs)
             {
                 result
             } else {
                 let arg_list = build_replacement_args(target_expr, evaluated_subs, rhs);
-                Rf_protect(arg_list);
-                protected += 1;
+                let _arg_list_guard = protect(arg_list);
                 let repl_call = crate::sexp::constructors::Rf_cons(assign_fn, arg_list);
                 if !repl_call.is_null() {
                     (*repl_call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
-                Rf_protect(repl_call);
-                protected += 1;
+                let _repl_call_guard = protect(repl_call);
 
                 apply_replacement_call(assign_fn, repl_call, arg_list, rho)
             };
-            Rf_protect(result);
-            protected += 1;
+            let _result_guard = protect(result);
 
             let var_sym = CADR(lhs);
             if TYPEOF(var_sym) == SEXPTYPE::SYMSXP {
@@ -271,7 +262,6 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
 
             set_R_Visible(FALSE);
-            crate::sexp::protect::Rf_unprotect(protected);
             rhs
         }
     }
@@ -280,6 +270,7 @@ pub unsafe fn applydefine(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP {
     unsafe {
         let mut tail = crate::sexp::constructors::Rf_cons(value, R_NilValue());
+        let mut guards = vec![protect(tail)];
         let mut sub_args = Vec::new();
         let mut current = subs;
         while current != R_NilValue() && !current.is_null() {
@@ -292,6 +283,7 @@ unsafe fn build_replacement_args(target: SEXP, subs: SEXP, value: SEXP) -> SEXP 
                 SETTAG(cell, tag);
             }
             tail = cell;
+            guards.push(protect(tail));
         }
         crate::sexp::constructors::Rf_cons(target, tail)
     }
