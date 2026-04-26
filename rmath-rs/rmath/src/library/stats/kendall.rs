@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-// legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1999-2024   The R Core Team.
@@ -23,107 +21,71 @@
 //! Port of r-source/src/library/stats/src/kendall.c
 
 use std::os::raw::{c_double, c_int};
-use std::ptr;
+use std::slice;
 
 use crate::main::coerce::{asInteger, coerceVector};
 use crate::nmath::special::gamma::gammafn;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect as protect_sexp;
 
 // ---------------------------------------------------------------------------
 // ckendall: recursive computation of exact Kendall distribution
 // ---------------------------------------------------------------------------
 
-unsafe fn ckendall(k: c_int, n: c_int, w: *mut *mut c_double) -> c_double {
+type MemoTable = Vec<Option<Vec<c_double>>>;
+
+fn ckendall(k: c_int, n: c_int, w: &mut MemoTable) -> c_double {
     let u = n * (n - 1) / 2;
 
     if k < 0 || k > u {
         return 0.0;
     }
 
-    if (*w.add(n as usize)).is_null() {
-        let layout = std::alloc::Layout::array::<c_double>((u + 1) as usize).unwrap_or_else(|_| {
-            std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>())
-        });
-        let ptr = std::alloc::alloc(layout) as *mut c_double;
-        if ptr.is_null() {
-            std::alloc::handle_alloc_error(layout);
-        }
-        *w.add(n as usize) = ptr;
-        for i in 0..=(u as usize) {
-            *ptr.add(i) = -1.0;
-        }
+    let n_idx = n as usize;
+    if w[n_idx].is_none() {
+        w[n_idx] = Some(vec![-1.0; (u + 1) as usize]);
     }
 
-    let wn = *w.add(n as usize);
-    if *wn.add(k as usize) < 0.0 {
+    if w[n_idx].as_ref().expect("memo table slot must exist")[k as usize] < 0.0 {
         if n == 1 {
-            *wn.add(k as usize) = if k == 0 { 1.0 } else { 0.0 };
+            w[n_idx].as_mut().expect("memo table slot must exist")[k as usize] =
+                if k == 0 { 1.0 } else { 0.0 };
         } else {
             let mut s: c_double = 0.0;
-            let mut i: c_int = 0;
-            while i < n {
+            for i in 0..n {
                 s += ckendall(k - i, n - 1, w);
-                i += 1;
             }
-            *wn.add(k as usize) = s;
+            w[n_idx].as_mut().expect("memo table slot must exist")[k as usize] = s;
         }
     }
 
-    *wn.add(k as usize)
+    w[n_idx].as_ref().expect("memo table slot must exist")[k as usize]
 }
 
 // ---------------------------------------------------------------------------
 // pkendall: cumulative distribution function for Kendall's tau
 // ---------------------------------------------------------------------------
 
-unsafe fn pkendall(len: c_int, q: *const c_double, p: *mut c_double, n: c_int) {
-    let layout =
-        std::alloc::Layout::array::<*mut c_double>((n + 1) as usize).unwrap_or_else(|_| {
-            std::alloc::handle_alloc_error(std::alloc::Layout::new::<*mut c_double>())
-        });
-    let w = std::alloc::alloc(layout) as *mut *mut c_double;
-    if w.is_null() {
-        std::alloc::handle_alloc_error(layout);
-    }
-    for i in 0..=(n as usize) {
-        *w.add(i) = ptr::null_mut();
-    }
+fn pkendall(len: c_int, q: &[c_double], p: &mut [c_double], n: c_int) {
+    let mut w: MemoTable = vec![None; (n + 1) as usize];
 
-    for i in 0..len as usize {
-        let qi = *q.add(i);
+    for (i, qi) in q.iter().copied().enumerate().take(len as usize) {
         let qv = (qi + 1e-7).floor() as c_int;
 
         if qv < 0 {
-            *p.add(i) = 0.0;
+            p[i] = 0.0;
         } else if qv > n * (n - 1) / 2 {
-            *p.add(i) = 1.0;
+            p[i] = 1.0;
         } else {
             let mut pv: c_double = 0.0;
-            let mut j: c_int = 0;
-            while j <= qv {
-                pv += ckendall(j, n, w);
-                j += 1;
+            for j in 0..=qv {
+                pv += ckendall(j, n, &mut w);
             }
-            *p.add(i) = pv / gammafn((n + 1) as f64);
+            p[i] = pv / gammafn((n + 1) as f64);
         }
     }
-
-    // Free allocated arrays
-    for i in 0..=(n as usize) {
-        let wn = *w.add(i);
-        if !wn.is_null() {
-            let u = i * (i - 1) / 2;
-            let dealloc_layout = std::alloc::Layout::array::<c_double>((u + 1) as usize)
-                .unwrap_or_else(|_| {
-                    std::alloc::handle_alloc_error(std::alloc::Layout::new::<c_double>())
-                });
-            std::alloc::dealloc(wn as *mut u8, dealloc_layout);
-        }
-    }
-    std::alloc::dealloc(w as *mut u8, layout);
 }
 
 // ---------------------------------------------------------------------------
@@ -131,13 +93,16 @@ unsafe fn pkendall(len: c_int, q: *const c_double, p: *mut c_double, n: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn pKendall(q: SEXP, sn: SEXP) -> SEXP {
-    let q = Rf_protect(coerceVector(q, SEXPTYPE::REALSXP.as_c_int()));
-    let len = LENGTH(q);
-    let n = asInteger(sn);
-    let p = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, len));
+    let q = unsafe { coerceVector(q, SEXPTYPE::REALSXP.as_c_int()) };
+    let _q_guard = protect_sexp(q);
+    let len = unsafe { LENGTH(q) };
+    let n = unsafe { asInteger(sn) };
+    let p = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, len) };
+    let _p_guard = protect_sexp(p);
+    let q_slice = unsafe { slice::from_raw_parts(REAL(q), len as usize) };
+    let p_slice = unsafe { slice::from_raw_parts_mut(REAL(p), len as usize) };
 
-    pkendall(len, REAL(q), REAL(p), n);
+    pkendall(len, q_slice, p_slice, n);
 
-    Rf_unprotect(2);
     p
 }

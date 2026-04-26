@@ -1,34 +1,37 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Hierarchical clustering utilities: cutree
 //! Port of r-source/src/library/stats/src/hclust-utils.c
 
 use std::os::raw::c_int;
-use std::ptr;
+use std::slice;
 
 use crate::main::array::allocMatrix;
 use crate::main::coerce::coerceVector;
 use crate::main::util_main::nrows;
 use crate::sexp::accessors::{INTEGER, LENGTH};
-use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect as protect_sexp;
 
 pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
-    let merge = Rf_protect(coerceVector(merge, SEXPTYPE::INTSXP.as_c_int()));
-    let i_merge = INTEGER(merge);
+    let merge = unsafe { coerceVector(merge, SEXPTYPE::INTSXP.as_c_int()) };
+    let _merge_guard = protect_sexp(merge);
+    let i_merge_len = unsafe { LENGTH(merge) };
+    let i_merge = unsafe { slice::from_raw_parts(INTEGER(merge), i_merge_len as usize) };
 
-    let which = Rf_protect(coerceVector(which, SEXPTYPE::INTSXP.as_c_int()));
-    let i_which = INTEGER(which);
+    let which = unsafe { coerceVector(which, SEXPTYPE::INTSXP.as_c_int()) };
+    let _which_guard = protect_sexp(which);
+    let which_len = unsafe { LENGTH(which) };
+    let i_which = unsafe { slice::from_raw_parts(INTEGER(which), which_len as usize) };
 
-    let n = nrows(merge as *const std::ffi::c_void) + 1;
+    let n = unsafe { nrows(merge as *const std::ffi::c_void) + 1 };
 
     // Using 1-based indices
     let mut sing = vec![true; (n + 1) as usize];
     let mut m_nr = vec![0i32; (n + 1) as usize];
     let mut z = vec![0i32; (n + 1) as usize];
 
-    let ans = Rf_protect(allocMatrix(SEXPTYPE::INTSXP.into(), n, LENGTH(which)));
-    let i_ans = INTEGER(ans);
+    let ans = unsafe { allocMatrix(SEXPTYPE::INTSXP.into(), n, which_len) };
+    let _ans_guard = protect_sexp(ans);
+    let i_ans = unsafe { slice::from_raw_parts_mut(INTEGER(ans), (n * which_len) as usize) };
 
     let mut k: c_int = 1;
     while k <= n {
@@ -39,8 +42,8 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
 
     let mut k: c_int = 1;
     while k < n {
-        let mut m1 = *i_merge.add((k - 1) as usize);
-        let mut m2 = *i_merge.add((n - 1 + k - 1) as usize);
+        let mut m1 = i_merge[(k - 1) as usize];
+        let mut m2 = i_merge[(n - 1 + k - 1) as usize];
 
         if m1 < 0 && m2 < 0 {
             m_nr[(-m1) as usize] = k;
@@ -77,8 +80,8 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
         let mut found_j = false;
         let mut mm: c_int = 0;
         let mut j: c_int = 0;
-        while j < LENGTH(which) {
-            if *i_which.add(j as usize) == n - k {
+        while j < which_len {
+            if i_which[j as usize] == n - k {
                 if !found_j {
                     found_j = true;
                     let mut l: c_int = 1;
@@ -93,13 +96,13 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
                     while l <= n {
                         if sing[l as usize] {
                             nclust += 1;
-                            *i_ans.add(m1_idx as usize) = nclust;
+                            i_ans[m1_idx as usize] = nclust;
                         } else {
                             if z[m_nr[l as usize] as usize] == 0 {
                                 nclust += 1;
                                 z[m_nr[l as usize] as usize] = nclust;
                             }
-                            *i_ans.add(m1_idx as usize) = z[m_nr[l as usize] as usize];
+                            i_ans[m1_idx as usize] = z[m_nr[l as usize] as usize];
                         }
                         l += 1;
                         m1_idx += 1;
@@ -109,7 +112,7 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
                     let mut m1_idx = j * n;
                     let mut m2_idx = mm;
                     while l <= n {
-                        *i_ans.add(m1_idx as usize) = *i_ans.add(m2_idx as usize);
+                        i_ans[m1_idx as usize] = i_ans[m2_idx as usize];
                         l += 1;
                         m1_idx += 1;
                         m2_idx += 1;
@@ -123,12 +126,12 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
 
     // Trivial case which[] = n:
     let mut j: c_int = 0;
-    while j < LENGTH(which) {
-        if *i_which.add(j as usize) == n {
+    while j < which_len {
+        if i_which[j as usize] == n {
             let mut l: c_int = 1;
             let mut m1 = j * n;
             while l <= n {
-                *i_ans.add(m1 as usize) = l;
+                i_ans[m1 as usize] = l;
                 l += 1;
                 m1 += 1;
             }
@@ -136,6 +139,5 @@ pub unsafe fn cutree(merge: SEXP, which: SEXP) -> SEXP {
         j += 1;
     }
 
-    Rf_unprotect(3);
     ans
 }

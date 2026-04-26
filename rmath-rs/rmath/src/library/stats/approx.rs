@@ -1,8 +1,8 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Linear and Step Function Interpolation
 //! Port of r-source/src/library/stats/src/approx.c
 
 use std::os::raw::{c_double, c_int};
+use std::slice;
 
 use crate::main::coerce::R_FINITE;
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
@@ -10,7 +10,7 @@ use crate::sexp::accessors::{REAL, TYPEOF, XLENGTH};
 use crate::sexp::constructors::Rf_allocVector;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect as protect_sexp;
 
 struct appr_meth {
     ylow: c_double,
@@ -21,68 +21,46 @@ struct appr_meth {
     _na_rm: c_int,
 }
 
-unsafe fn approx1(
-    v: c_double,
-    x: *const c_double,
-    y: *const c_double,
-    n: R_xlen_t,
-    meth: &appr_meth,
-) -> c_double {
-    if n == 0 {
+fn approx1(v: c_double, x: &[c_double], y: &[c_double], meth: &appr_meth) -> c_double {
+    if x.is_empty() {
         return f64::NAN;
     }
 
-    let mut i: R_xlen_t = 0;
-    let mut j: R_xlen_t = n - 1;
+    let mut i = 0usize;
+    let mut j = x.len() - 1;
 
-    if v < *x.add(i as usize) {
+    if v < x[i] {
         return meth.ylow;
     }
-    if v > *x.add(j as usize) {
+    if v > x[j] {
         return meth.yhigh;
     }
 
     while i < j - 1 {
         let ij = (i + j) / 2;
-        if v < *x.add(ij as usize) {
+        if v < x[ij] {
             j = ij;
         } else {
             i = ij;
         }
     }
 
-    if v == *x.add(j as usize) {
-        return *y.add(j as usize);
+    if v == x[j] {
+        return y[j];
     }
-    if v == *x.add(i as usize) {
-        return *y.add(i as usize);
+    if v == x[i] {
+        return y[i];
     }
 
     if meth.kind == 1 {
-        *y.add(i as usize)
-            + (*y.add(j as usize) - *y.add(i as usize))
-                * ((v - *x.add(i as usize)) / (*x.add(j as usize) - *x.add(i as usize)))
+        y[i] + (y[j] - y[i]) * ((v - x[i]) / (x[j] - x[i]))
     } else {
-        (if meth.f1 != 0.0 {
-            *y.add(i as usize) * meth.f1
-        } else {
-            0.0
-        }) + (if meth.f2 != 0.0 {
-            *y.add(j as usize) * meth.f2
-        } else {
-            0.0
-        })
+        (if meth.f1 != 0.0 { y[i] * meth.f1 } else { 0.0 })
+            + (if meth.f2 != 0.0 { y[j] * meth.f2 } else { 0.0 })
     }
 }
 
-unsafe fn R_approxtest(
-    x: *const c_double,
-    y: *const c_double,
-    nxy: R_xlen_t,
-    method: c_int,
-    f: c_double,
-    na_rm: c_int,
-) {
+fn R_approxtest(x: &[c_double], y: &[c_double], method: c_int, f: c_double, na_rm: c_int) {
     match method {
         1 => {}
         2 => {
@@ -95,31 +73,25 @@ unsafe fn R_approxtest(
         }
     }
     if na_rm != 0 {
-        let mut i: R_xlen_t = 0;
-        while i < nxy {
-            if x.add(i as usize).read().is_nan() || y.add(i as usize).read().is_nan() {
+        for (xv, yv) in x.iter().zip(y.iter()) {
+            if xv.is_nan() || yv.is_nan() {
                 eprintln!("approx(): attempted to interpolate NA values");
             }
-            i += 1;
         }
     } else {
-        let mut i: R_xlen_t = 0;
-        while i < nxy {
-            if x.add(i as usize).read().is_nan() {
+        for xv in x {
+            if xv.is_nan() {
                 eprintln!("approx(x,y, .., na.rm=FALSE): NA values in x are not allowed");
             }
-            i += 1;
         }
     }
 }
 
-unsafe fn R_approxfun(
-    x: *const c_double,
-    y: *const c_double,
-    nxy: R_xlen_t,
-    xout: *const c_double,
-    yout: *mut c_double,
-    nout: R_xlen_t,
+fn R_approxfun(
+    x: &[c_double],
+    y: &[c_double],
+    xout: &[c_double],
+    yout: &mut [c_double],
     method: c_int,
     yleft: c_double,
     yright: c_double,
@@ -134,29 +106,27 @@ unsafe fn R_approxfun(
         kind: method,
         _na_rm: na_rm,
     };
-    let mut i: R_xlen_t = 0;
-    while i < nout {
-        let v = *xout.add(i as usize);
-        *yout.add(i as usize) = if v.is_nan() {
+    for (i, &v) in xout.iter().enumerate() {
+        yout[i] = if v.is_nan() {
             v
         } else {
-            approx1(v, x, y, nxy, &meth)
+            approx1(v, x, y, &meth)
         };
-        i += 1;
     }
 }
 
 pub unsafe fn ApproxTest(x: SEXP, y: SEXP, method: SEXP, f: SEXP, na_rm: SEXP) -> SEXP {
-    let nx = XLENGTH(x);
+    let nx = unsafe { XLENGTH(x) };
+    let x_slice = unsafe { slice::from_raw_parts(REAL(x), nx as usize) };
+    let y_slice = unsafe { slice::from_raw_parts(REAL(y), nx as usize) };
     R_approxtest(
-        REAL(x),
-        REAL(y),
-        nx,
-        asInteger(method),
-        asReal(f),
-        asLogical(na_rm),
+        x_slice,
+        y_slice,
+        unsafe { asInteger(method) },
+        unsafe { asReal(f) },
+        unsafe { asLogical(na_rm) },
     );
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 pub unsafe fn Approx(
@@ -169,23 +139,26 @@ pub unsafe fn Approx(
     f: SEXP,
     na_rm: SEXP,
 ) -> SEXP {
-    let xout = Rf_protect(coerceVector(v, SEXPTYPE::REALSXP.as_c_int()));
-    let nx = XLENGTH(x);
-    let nout = XLENGTH(xout);
-    let yout = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nout as c_int));
+    let xout = unsafe { coerceVector(v, SEXPTYPE::REALSXP.as_c_int()) };
+    let _xout_guard = protect_sexp(xout);
+    let nx = unsafe { XLENGTH(x) };
+    let nout = unsafe { XLENGTH(xout) };
+    let yout = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, nout as c_int) };
+    let _yout_guard = protect_sexp(yout);
+    let x_slice = unsafe { slice::from_raw_parts(REAL(x), nx as usize) };
+    let y_slice = unsafe { slice::from_raw_parts(REAL(y), nx as usize) };
+    let xout_slice = unsafe { slice::from_raw_parts(REAL(xout), nout as usize) };
+    let yout_slice = unsafe { slice::from_raw_parts_mut(REAL(yout), nout as usize) };
     R_approxfun(
-        REAL(x),
-        REAL(y),
-        nx,
-        REAL(xout),
-        REAL(yout),
-        nout,
-        asInteger(method),
-        asReal(yleft),
-        asReal(yright),
-        asReal(f),
-        asLogical(na_rm),
+        x_slice,
+        y_slice,
+        xout_slice,
+        yout_slice,
+        unsafe { asInteger(method) },
+        unsafe { asReal(yleft) },
+        unsafe { asReal(yright) },
+        unsafe { asReal(f) },
+        unsafe { asLogical(na_rm) },
     );
-    Rf_unprotect(2);
     yout
 }

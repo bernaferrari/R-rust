@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1998-2017  The R Core Team
@@ -23,12 +22,13 @@
  */
 
 use std::os::raw::{c_double, c_int};
+use std::slice;
 
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
-use crate::sexp::protect::*;
+use crate::sexp::protect::protect as protect_sexp;
 
 const EUCLIDEAN: c_int = 1;
 const MAXIMUM: c_int = 2;
@@ -37,24 +37,26 @@ const CANBERRA: c_int = 4;
 const BINARY: c_int = 5;
 const MINKOWSKI: c_int = 6;
 
-unsafe fn both_non_NA(a: c_double, b: c_double) -> bool {
-    !ISNAN(a) && !ISNAN(b)
+fn both_non_na(a: c_double, b: c_double) -> bool {
+    !a.is_nan() && !b.is_nan()
 }
 
-unsafe fn both_FINITE(a: c_double, b: c_double) -> bool {
-    R_FINITE(a) && R_FINITE(b)
+fn both_finite(a: c_double, b: c_double) -> bool {
+    a.is_finite() && b.is_finite()
 }
 
-unsafe fn R_euclidean(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
+fn R_euclidean(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
     let mut count: c_int = 0;
     let mut dist: c_double = 0.0;
     let mut idx1 = i1 as usize;
     let mut idx2 = i2 as usize;
 
-    for _ in 0..nc {
-        if both_non_NA(*x.add(idx1), *x.add(idx2)) {
-            let dev = *x.add(idx1) - *x.add(idx2);
-            if !ISNAN(dev) {
+    for _ in 0..(nc as usize) {
+        let a = x[idx1];
+        let b = x[idx2];
+        if both_non_na(a, b) {
+            let dev = a - b;
+            if !dev.is_nan() {
                 dist += dev * dev;
                 count += 1;
             }
@@ -71,16 +73,18 @@ unsafe fn R_euclidean(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_i
     dist.sqrt()
 }
 
-unsafe fn R_maximum(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
+fn R_maximum(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
     let mut count: c_int = 0;
     let mut dist: c_double = f64::NEG_INFINITY; // -DBL_MAX
     let mut idx1 = i1 as usize;
     let mut idx2 = i2 as usize;
 
-    for _ in 0..nc {
-        if both_non_NA(*x.add(idx1), *x.add(idx2)) {
-            let dev = (*x.add(idx1) - *x.add(idx2)).abs();
-            if !ISNAN(dev) {
+    for _ in 0..(nc as usize) {
+        let a = x[idx1];
+        let b = x[idx2];
+        if both_non_na(a, b) {
+            let dev = (a - b).abs();
+            if !dev.is_nan() {
                 if dev > dist {
                     dist = dev;
                 }
@@ -96,16 +100,18 @@ unsafe fn R_maximum(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_int
     dist
 }
 
-unsafe fn R_manhattan(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
+fn R_manhattan(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
     let mut count: c_int = 0;
     let mut dist: c_double = 0.0;
     let mut idx1 = i1 as usize;
     let mut idx2 = i2 as usize;
 
-    for _ in 0..nc {
-        if both_non_NA(*x.add(idx1), *x.add(idx2)) {
-            let dev = (*x.add(idx1) - *x.add(idx2)).abs();
-            if !ISNAN(dev) {
+    for _ in 0..(nc as usize) {
+        let a = x[idx1];
+        let b = x[idx2];
+        if both_non_na(a, b) {
+            let dev = (a - b).abs();
+            if !dev.is_nan() {
                 dist += dev;
                 count += 1;
             }
@@ -122,7 +128,7 @@ unsafe fn R_manhattan(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_i
     dist
 }
 
-unsafe fn R_canberra(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
+fn R_canberra(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
     use crate::main::errors::Rf_warning;
 
     let mut count: c_int = 0;
@@ -130,14 +136,16 @@ unsafe fn R_canberra(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_in
     let mut idx1 = i1 as usize;
     let mut idx2 = i2 as usize;
 
-    for _ in 0..nc {
-        if both_non_NA(*x.add(idx1), *x.add(idx2)) {
-            let sum_val = (*x.add(idx1)).abs() + (*x.add(idx2)).abs();
-            let diff = (*x.add(idx1) - *x.add(idx2)).abs();
+    for _ in 0..(nc as usize) {
+        let a = x[idx1];
+        let b = x[idx2];
+        if both_non_na(a, b) {
+            let sum_val = a.abs() + b.abs();
+            let diff = (a - b).abs();
             if sum_val > f64::MIN_POSITIVE || diff > f64::MIN_POSITIVE {
                 let mut dev = diff / sum_val;
-                if !ISNAN(dev) || (!R_FINITE(diff) && diff == sum_val) {
-                    if !R_FINITE(diff) && diff == sum_val {
+                if !dev.is_nan() || (!diff.is_finite() && diff == sum_val) {
+                    if !diff.is_finite() && diff == sum_val {
                         dev = 1.0;
                     }
                     dist += dev;
@@ -157,7 +165,7 @@ unsafe fn R_canberra(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_in
     dist
 }
 
-unsafe fn R_dist_binary(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
+fn R_dist_binary(x: &[c_double], nr: c_int, nc: c_int, i1: c_int, i2: c_int) -> c_double {
     use crate::main::errors::Rf_warning;
 
     let mut total: c_int = 0;
@@ -166,14 +174,20 @@ unsafe fn R_dist_binary(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c
     let mut idx1 = i1 as usize;
     let mut idx2 = i2 as usize;
 
-    for _ in 0..nc {
-        if both_non_NA(*x.add(idx1), *x.add(idx2)) {
-            if !both_FINITE(*x.add(idx1), *x.add(idx2)) {
-                Rf_warning(b"treating non-finite values as NA\0".as_ptr() as *const libc::c_char);
+    for _ in 0..(nc as usize) {
+        let a = x[idx1];
+        let b = x[idx2];
+        if both_non_na(a, b) {
+            if !both_finite(a, b) {
+                unsafe {
+                    Rf_warning(
+                        b"treating non-finite values as NA\0".as_ptr() as *const libc::c_char
+                    );
+                }
             } else {
-                if *x.add(idx1) != 0.0 || *x.add(idx2) != 0.0 {
+                if a != 0.0 || b != 0.0 {
                     count += 1;
-                    if !(*x.add(idx1) != 0.0 && *x.add(idx2) != 0.0) {
+                    if !(a != 0.0 && b != 0.0) {
                         dist += 1;
                     }
                 }
@@ -193,8 +207,8 @@ unsafe fn R_dist_binary(x: *mut c_double, nr: c_int, nc: c_int, i1: c_int, i2: c
     dist as c_double / count as c_double
 }
 
-unsafe fn R_minkowski(
-    x: *mut c_double,
+fn R_minkowski(
+    x: &[c_double],
     nr: c_int,
     nc: c_int,
     i1: c_int,
@@ -206,10 +220,12 @@ unsafe fn R_minkowski(
     let mut idx1 = i1 as usize;
     let mut idx2 = i2 as usize;
 
-    for _ in 0..nc {
-        if both_non_NA(*x.add(idx1), *x.add(idx2)) {
-            let dev = *x.add(idx1) - *x.add(idx2);
-            if !ISNAN(dev) {
+    for _ in 0..(nc as usize) {
+        let a = x[idx1];
+        let b = x[idx2];
+        if both_non_na(a, b) {
+            let dev = a - b;
+            if !dev.is_nan() {
                 dist += dev.abs().powf(p);
                 count += 1;
             }
@@ -226,104 +242,104 @@ unsafe fn R_minkowski(
     dist.powf(1.0 / p)
 }
 
-pub unsafe fn R_distance(
-    x: *mut c_double,
-    nr: *mut c_int,
-    nc: *mut c_int,
-    d: *mut c_double,
-    diag: *mut c_int,
-    method: *mut c_int,
-    p: *mut c_double,
+fn R_distance(
+    x: &[c_double],
+    nr: c_int,
+    nc: c_int,
+    d: &mut [c_double],
+    diag: c_int,
+    method: c_int,
+    p: c_double,
 ) {
-    let dc = if *diag != 0 { 0 } else { 1 };
+    let dc = if diag != 0 { 0 } else { 1 };
     let mut ij: usize = 0;
-    let nr_val = *nr;
-    let nc_val = *nc;
-    let method_val = *method;
-    let p_val = *p;
 
-    for j in 0..=(nr_val as usize) {
+    for j in 0..=(nr as usize) {
         let mut i = j + dc as usize;
         loop {
-            if i >= nr_val as usize {
+            if i >= nr as usize {
                 break;
             }
-            let val = match method_val {
-                EUCLIDEAN => R_euclidean(x, nr_val, nc_val, i as c_int, j as c_int),
-                MAXIMUM => R_maximum(x, nr_val, nc_val, i as c_int, j as c_int),
-                MANHATTAN => R_manhattan(x, nr_val, nc_val, i as c_int, j as c_int),
-                CANBERRA => R_canberra(x, nr_val, nc_val, i as c_int, j as c_int),
-                BINARY => R_dist_binary(x, nr_val, nc_val, i as c_int, j as c_int),
-                MINKOWSKI => R_minkowski(x, nr_val, nc_val, i as c_int, j as c_int, p_val),
+            let val = match method {
+                EUCLIDEAN => R_euclidean(x, nr, nc, i as c_int, j as c_int),
+                MAXIMUM => R_maximum(x, nr, nc, i as c_int, j as c_int),
+                MANHATTAN => R_manhattan(x, nr, nc, i as c_int, j as c_int),
+                CANBERRA => R_canberra(x, nr, nc, i as c_int, j as c_int),
+                BINARY => R_dist_binary(x, nr, nc, i as c_int, j as c_int),
+                MINKOWSKI => R_minkowski(x, nr, nc, i as c_int, j as c_int, p),
                 _ => NA_REAL,
             };
-            *d.add(ij) = val;
+            d[ij] = val;
             ij += 1;
             i += 1;
         }
     }
 }
 
-unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
-    crate::main::coerce::coerceVector(x, type_)
-}
-
-unsafe fn as_integer(x: SEXP) -> c_int {
-    if x.is_null() {
-        return NA_INTEGER;
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP {
-        return *INTEGER(x);
-    }
-    if t == SEXPTYPE::REALSXP {
-        let v = *REAL(x);
-        if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
+fn as_integer(x: SEXP) -> c_int {
+    unsafe {
+        if x.is_null() {
             return NA_INTEGER;
         }
-        return v as c_int;
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::INTSXP {
+            return *INTEGER(x);
+        }
+        if t == SEXPTYPE::REALSXP {
+            let v = *REAL(x);
+            if v.is_nan() || v < c_int::MIN as f64 || v > c_int::MAX as f64 {
+                return NA_INTEGER;
+            }
+            return v as c_int;
+        }
+        if t == SEXPTYPE::LGLSXP {
+            return *INTEGER(x);
+        }
+        NA_INTEGER
     }
-    if t == SEXPTYPE::LGLSXP {
-        return *INTEGER(x);
-    }
-    NA_INTEGER
 }
 
-unsafe fn as_real(x: SEXP) -> c_double {
-    if x.is_null() {
-        return NA_REAL;
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::REALSXP {
-        return *REAL(x);
-    }
-    if t == SEXPTYPE::INTSXP {
-        let v = *INTEGER(x);
-        if v == NA_INTEGER {
+fn as_real(x: SEXP) -> c_double {
+    unsafe {
+        if x.is_null() {
             return NA_REAL;
         }
-        return v as c_double;
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::REALSXP {
+            return *REAL(x);
+        }
+        if t == SEXPTYPE::INTSXP {
+            let v = *INTEGER(x);
+            if v == NA_INTEGER {
+                return NA_REAL;
+            }
+            return v as c_double;
+        }
+        NA_REAL
     }
-    NA_REAL
 }
 
-unsafe fn nrows(x: SEXP) -> c_int {
-    let d = getAttrib(x, R_DimSymbol());
-    if d.is_null() {
-        return LENGTH(x);
+fn nrows(x: SEXP) -> c_int {
+    unsafe {
+        let d = getAttrib(x, R_DimSymbol());
+        if d.is_null() {
+            return LENGTH(x);
+        }
+        *INTEGER(d)
     }
-    *INTEGER(d)
 }
 
-unsafe fn ncols(x: SEXP) -> c_int {
-    let d = getAttrib(x, R_DimSymbol());
-    if d.is_null() {
-        return 1;
+fn ncols(x: SEXP) -> c_int {
+    unsafe {
+        let d = getAttrib(x, R_DimSymbol());
+        if d.is_null() {
+            return 1;
+        }
+        if LENGTH(d) >= 2 {
+            return *INTEGER(d.add(1));
+        }
+        1
     }
-    if LENGTH(d) >= 2 {
-        return *INTEGER(d.add(1));
-    }
-    1
 }
 
 pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
@@ -334,33 +350,30 @@ pub unsafe fn Cdist(x: SEXP, smethod: SEXP, attrs: SEXP, p: SEXP) -> SEXP {
     let rp = as_real(p);
     let n_val = (nr as i64 * (nr as i64 - 1) / 2) as c_int;
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n_val));
-    let x = if TYPEOF(x) != SEXPTYPE::REALSXP {
-        coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
-    } else {
-        x
+    let ans = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, n_val) };
+    let _ans_guard = protect_sexp(ans);
+    let x = unsafe {
+        if TYPEOF(x) != SEXPTYPE::REALSXP {
+            crate::main::coerce::coerceVector(x, SEXPTYPE::REALSXP.as_c_int())
+        } else {
+            x
+        }
     };
-    Rf_protect(x);
+    let _x_guard = protect_sexp(x);
+    let x_len = unsafe { LENGTH(x) };
+    let x_slice = unsafe { slice::from_raw_parts(REAL(x), x_len as usize) };
+    let ans_slice = unsafe { slice::from_raw_parts_mut(REAL(ans), n_val as usize) };
 
-    R_distance(
-        REAL(x),
-        &nr as *const c_int as *mut c_int,
-        &nc as *const c_int as *mut c_int,
-        REAL(ans),
-        &diag as *const c_int as *mut c_int,
-        &method as *const c_int as *mut c_int,
-        &rp as *const c_double as *mut c_double,
-    );
+    R_distance(x_slice, nr, nc, ans_slice, diag, method, rp);
 
     /* tack on attributes */
-    let names = getAttrib(attrs, R_NamesSymbol());
-    for i in 0..(LENGTH(attrs) as usize) {
-        let name_sexp = STRING_ELT(names, i as R_xlen_t);
-        let name_cstr = CHAR(name_sexp);
-        let sym = crate::sexp::symbol::Rf_install(name_cstr);
-        setAttrib(ans, sym, VECTOR_ELT(attrs, i as R_xlen_t));
+    let names = unsafe { getAttrib(attrs, R_NamesSymbol()) };
+    for i in 0..(unsafe { LENGTH(attrs) } as usize) {
+        let name_sexp = unsafe { STRING_ELT(names, i as R_xlen_t) };
+        let name_cstr = unsafe { CHAR(name_sexp) };
+        let sym = unsafe { crate::sexp::symbol::Rf_install(name_cstr) };
+        unsafe { setAttrib(ans, sym, VECTOR_ELT(attrs, i as R_xlen_t)) };
     }
 
-    Rf_unprotect(2);
     ans
 }

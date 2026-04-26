@@ -1,8 +1,8 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! complete.cases() implementation
 //! Port of r-source/src/library/stats/src/complete_cases.c
 
 use std::os::raw::c_int;
+use std::slice;
 
 use crate::attrib_core::{R_RowNamesSymbol, getAttrib};
 use crate::main::errors::Rf_error;
@@ -17,223 +17,257 @@ use crate::sexp::constructors::Rf_isList;
 use crate::sexp::ffi::NA_INTEGER;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect as protect_sexp;
 
-unsafe fn isMatrix(x: SEXP) -> bool {
-    let u = getAttrib(x, R_DimSymbol());
-    !R_NilValue().is_null() && !u.is_null() && LENGTH(u) >= 2
-}
-
-unsafe fn isVector(x: SEXP) -> bool {
-    let t = TYPEOF(x);
-    t == SEXPTYPE::LGLSXP
-        || t == SEXPTYPE::INTSXP
-        || t == SEXPTYPE::REALSXP
-        || t == SEXPTYPE::CPLXSXP
-        || t == SEXPTYPE::STRSXP
-        || t == SEXPTYPE::RAWSXP
-        || t == SEXPTYPE::VECSXP
-        || t == SEXPTYPE::EXPRSXP
-}
-
-unsafe fn isNewList(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::VECSXP
-}
-
-unsafe fn length_sexp(x: SEXP) -> c_int {
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::NILSXP {
-        return 0;
+fn isMatrix(x: SEXP) -> bool {
+    unsafe {
+        let u = getAttrib(x, R_DimSymbol());
+        !u.is_null() && LENGTH(u) >= 2
     }
-    if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
-        let mut count = 0i32;
-        let mut cur = x;
-        while !cur.is_null() {
-            count += 1;
-            cur = CDR(cur);
+}
+
+fn isVector(x: SEXP) -> bool {
+    unsafe {
+        let t = TYPEOF(x);
+        t == SEXPTYPE::LGLSXP
+            || t == SEXPTYPE::INTSXP
+            || t == SEXPTYPE::REALSXP
+            || t == SEXPTYPE::CPLXSXP
+            || t == SEXPTYPE::STRSXP
+            || t == SEXPTYPE::RAWSXP
+            || t == SEXPTYPE::VECSXP
+            || t == SEXPTYPE::EXPRSXP
+    }
+}
+
+fn isNewList(x: SEXP) -> bool {
+    unsafe { TYPEOF(x) == SEXPTYPE::VECSXP }
+}
+
+fn length_sexp(x: SEXP) -> c_int {
+    unsafe {
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::NILSXP {
+            return 0;
         }
-        return count;
+        if t == SEXPTYPE::LISTSXP || t == SEXPTYPE::LANGSXP {
+            let mut count = 0i32;
+            let mut cur = x;
+            while !cur.is_null() {
+                count += 1;
+                cur = CDR(cur);
+            }
+            return count;
+        }
+        LENGTH(x)
     }
-    LENGTH(x)
 }
 
-unsafe fn check_vector_na(u: SEXP, rval: SEXP, len: c_int) {
-    let n = LENGTH(u);
-    let rval_int = INTEGER(rval);
-    let t = TYPEOF(u);
-    let mut i: c_int = 0;
-    while i < n {
+fn check_vector_na(u: SEXP, rval: &mut [c_int], len: c_int) {
+    let len = len as usize;
+    unsafe {
+        let n = LENGTH(u) as usize;
+        let t = TYPEOF(u);
         match t {
             x if x == SEXPTYPE::INTSXP || x == SEXPTYPE::LGLSXP => {
-                if *INTEGER(u).add(i as usize) == NA_INTEGER {
-                    *rval_int.add((i % len) as usize) = 0;
+                let values = slice::from_raw_parts(INTEGER(u), n);
+                for (i, &value) in values.iter().enumerate() {
+                    if value == NA_INTEGER {
+                        rval[i % len] = 0;
+                    }
                 }
             }
             x if x == SEXPTYPE::REALSXP => {
-                if (*REAL(u).add(i as usize)).is_nan() {
-                    *rval_int.add((i % len) as usize) = 0;
+                let values = slice::from_raw_parts(REAL(u), n);
+                for (i, &value) in values.iter().enumerate() {
+                    if value.is_nan() {
+                        rval[i % len] = 0;
+                    }
                 }
             }
             x if x == SEXPTYPE::CPLXSXP => {
-                let c = *COMPLEX(u).add(i as usize);
-                if c.r.is_nan() || c.i.is_nan() {
-                    *rval_int.add((i % len) as usize) = 0;
+                let values = slice::from_raw_parts(COMPLEX(u), n);
+                for (i, value) in values.iter().enumerate() {
+                    if value.r.is_nan() || value.i.is_nan() {
+                        rval[i % len] = 0;
+                    }
                 }
             }
             x if x == SEXPTYPE::STRSXP => {
-                if STRING_ELT(u, i as i64) == NA_STRING() {
-                    *rval_int.add((i % len) as usize) = 0;
+                for i in 0..n {
+                    if STRING_ELT(u, i as i64) == NA_STRING() {
+                        rval[i % len] = 0;
+                    }
                 }
             }
             _ => {
                 Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
             }
         }
-        i += 1;
     }
 }
 
 pub unsafe fn compcases(args: SEXP) -> SEXP {
-    let mut s: SEXP;
-    let mut t: SEXP;
-    let mut u: SEXP;
     let mut len: c_int = -1;
+    let nil = unsafe { R_NilValue() };
 
-    let mut args_iter = CDR(args);
+    let mut args_iter = unsafe { CDR(args) };
 
     // First pass: determine length
-    s = args_iter;
-    while !s.is_null() && s != R_NilValue() {
-        let car = CAR(s);
-        if Rf_isList(car) != 0 {
-            t = car;
-            while !t.is_null() && t != R_NilValue() {
-                u = CAR(t);
+    let mut s = args_iter;
+    while !s.is_null() && s != nil {
+        let car = unsafe { CAR(s) };
+        if unsafe { Rf_isList(car) } != 0 {
+            let mut t = car;
+            while !t.is_null() && t != nil {
+                let u = unsafe { CAR(t) };
                 if isMatrix(u) {
-                    let dim = getAttrib(u, R_DimSymbol());
+                    let dim = unsafe { getAttrib(u, R_DimSymbol()) };
                     if len < 0 {
-                        len = *INTEGER(dim);
-                    } else if len != *INTEGER(dim) {
-                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                        return R_NilValue();
+                        len = unsafe { *INTEGER(dim) };
+                    } else if len != unsafe { *INTEGER(dim) } {
+                        unsafe {
+                            Rf_error(
+                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            );
+                        }
+                        return nil;
                     }
                 } else if isVector(u) {
                     if len < 0 {
-                        len = LENGTH(u);
-                    } else if len != LENGTH(u) {
-                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                        return R_NilValue();
+                        len = unsafe { LENGTH(u) };
+                    } else if len != unsafe { LENGTH(u) } {
+                        unsafe {
+                            Rf_error(
+                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            );
+                        }
+                        return nil;
                     }
                 } else {
-                    Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
-                    return R_NilValue();
+                    unsafe {
+                        Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+                    }
+                    return nil;
                 }
-                t = CDR(t);
+                t = unsafe { CDR(t) };
             }
         } else if isNewList(car) {
-            t = car;
+            let mut t = car;
             let nt = length_sexp(t);
             if nt > 0 {
                 let mut it: c_int = 0;
                 while it < nt {
-                    u = VECTOR_ELT(t, it as i64);
+                    let u = unsafe { VECTOR_ELT(t, it as i64) };
                     if isMatrix(u) {
-                        let dim = getAttrib(u, R_DimSymbol());
+                        let dim = unsafe { getAttrib(u, R_DimSymbol()) };
                         if len < 0 {
-                            len = *INTEGER(dim);
-                        } else if len != *INTEGER(dim) {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
-                            );
-                            return R_NilValue();
+                            len = unsafe { *INTEGER(dim) };
+                        } else if len != unsafe { *INTEGER(dim) } {
+                            unsafe {
+                                Rf_error(b"not all arguments have the same length\0".as_ptr()
+                                    as *const _);
+                            }
+                            return nil;
                         }
                     } else if isVector(u) {
                         if len < 0 {
-                            len = LENGTH(u);
-                        } else if len != LENGTH(u) {
-                            Rf_error(
-                                b"not all arguments have the same length\0".as_ptr() as *const _
-                            );
-                            return R_NilValue();
+                            len = unsafe { LENGTH(u) };
+                        } else if len != unsafe { LENGTH(u) } {
+                            unsafe {
+                                Rf_error(b"not all arguments have the same length\0".as_ptr()
+                                    as *const _);
+                            }
+                            return nil;
                         }
                     } else {
-                        Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
-                        return R_NilValue();
+                        unsafe {
+                            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+                        }
+                        return nil;
                     }
                     it += 1;
                 }
             } else {
-                u = getAttrib(t, R_RowNamesSymbol());
-                if !u.is_null() && u != R_NilValue() {
+                let u = unsafe { getAttrib(t, R_RowNamesSymbol()) };
+                if !u.is_null() && u != nil {
                     if len < 0 {
-                        len = LENGTH(u);
-                    } else if len != *INTEGER(u) {
-                        Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                        return R_NilValue();
+                        len = unsafe { LENGTH(u) };
+                    } else if len != unsafe { *INTEGER(u) } {
+                        unsafe {
+                            Rf_error(
+                                b"not all arguments have the same length\0".as_ptr() as *const _
+                            );
+                        }
+                        return nil;
                     }
                 }
             }
         } else if isMatrix(car) {
-            let dim = getAttrib(car, R_DimSymbol());
+            let dim = unsafe { getAttrib(car, R_DimSymbol()) };
             if len < 0 {
-                len = *INTEGER(dim);
-            } else if len != *INTEGER(dim) {
-                Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                return R_NilValue();
+                len = unsafe { *INTEGER(dim) };
+            } else if len != unsafe { *INTEGER(dim) } {
+                unsafe {
+                    Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                }
+                return nil;
             }
         } else if isVector(car) {
             if len < 0 {
-                len = LENGTH(car);
-            } else if len != LENGTH(car) {
-                Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
-                return R_NilValue();
+                len = unsafe { LENGTH(car) };
+            } else if len != unsafe { LENGTH(car) } {
+                unsafe {
+                    Rf_error(b"not all arguments have the same length\0".as_ptr() as *const _);
+                }
+                return nil;
             }
         } else {
-            Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
-            return R_NilValue();
+            unsafe {
+                Rf_error(b"invalid 'type' of argument\0".as_ptr() as *const _);
+            }
+            return nil;
         }
-        s = CDR(s);
+        s = unsafe { CDR(s) };
     }
 
     if len < 0 {
-        Rf_error(b"no input has determined the number of cases\0".as_ptr() as *const _);
-        return R_NilValue();
+        unsafe {
+            Rf_error(b"no input has determined the number of cases\0".as_ptr() as *const _);
+        }
+        return nil;
     }
 
-    let rval = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, len));
-    let rval_int = INTEGER(rval);
-    let mut i: c_int = 0;
-    while i < len {
-        *rval_int.add(i as usize) = 1;
-        i += 1;
-    }
+    let rval = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, len) };
+    let _rval_guard = protect_sexp(rval);
+    let rval_int = unsafe { slice::from_raw_parts_mut(INTEGER(rval), len as usize) };
+    rval_int.fill(1);
 
     // Second pass: check for NAs
     s = args_iter;
-    while !s.is_null() && s != R_NilValue() {
-        let car = CAR(s);
-        if Rf_isList(car) != 0 {
-            t = car;
-            while !t.is_null() && t != R_NilValue() {
-                u = CAR(t);
-                check_vector_na(u, rval, len);
-                t = CDR(t);
+    while !s.is_null() && s != nil {
+        let car = unsafe { CAR(s) };
+        if unsafe { Rf_isList(car) } != 0 {
+            let mut t = car;
+            while !t.is_null() && t != nil {
+                let u = unsafe { CAR(t) };
+                check_vector_na(u, rval_int, len);
+                t = unsafe { CDR(t) };
             }
         } else if isNewList(car) {
-            t = car;
+            let t = car;
             let nt = length_sexp(t);
             let mut it: c_int = 0;
             while it < nt {
-                u = VECTOR_ELT(t, it as i64);
-                check_vector_na(u, rval, len);
+                let u = unsafe { VECTOR_ELT(t, it as i64) };
+                check_vector_na(u, rval_int, len);
                 it += 1;
             }
         } else {
-            check_vector_na(car, rval, len);
+            check_vector_na(car, rval_int, len);
         }
-        s = CDR(s);
+        s = unsafe { CDR(s) };
     }
 
-    Rf_unprotect(1);
     rval
 }
