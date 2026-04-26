@@ -228,12 +228,12 @@ impl RSession {
     /// Raw pointers that do not belong to this session are rejected before
     /// evaluation. Prefer [`RSession::eval_sexp`] when the caller already has a
     /// lifetime-bound [`Sexp`] handle.
-    pub fn eval(&self, expr: SEXP) -> RResult<SEXP> {
+    pub(crate) fn eval(&self, expr: SEXP) -> RResult<SEXP> {
         self.eval_sexp_raw(expr).map(Sexp::as_raw)
     }
 
     /// Evaluate a raw expression pointer after proving it belongs to this session.
-    pub fn eval_sexp_raw(&self, expr: SEXP) -> RResult<Sexp<'_>> {
+    pub(crate) fn eval_sexp_raw(&self, expr: SEXP) -> RResult<Sexp<'_>> {
         let expr = expr_or_nil(expr);
         let expr = self.owned_sexp(expr, "expression")?;
         self.eval_sexp(expr)
@@ -261,7 +261,7 @@ impl RSession {
     /// This mirrors the top-level embedding contract: explicit output produced by
     /// functions such as `print()` and `cat()` is captured separately from the
     /// implicit printing controlled by `R_Visible`.
-    pub fn eval_with_output_capture(
+    pub(crate) fn eval_with_output_capture(
         &self,
         expr: SEXP,
     ) -> (RResult<SEXP>, super::output::RCapturedOutput, bool) {
@@ -360,7 +360,7 @@ impl RSession {
     /// Raw pointers that do not belong to this session are rejected before
     /// evaluation. Prefer [`RSession::eval_sexp_in`] when the caller already has
     /// lifetime-bound [`Sexp`] handles.
-    pub fn eval_in(&self, expr: SEXP, env: SEXP) -> RResult<SEXP> {
+    pub(crate) fn eval_in(&self, expr: SEXP, env: SEXP) -> RResult<SEXP> {
         let expr = self.owned_sexp(expr_or_nil(expr), "expression")?;
         let env = self.owned_sexp(env, "environment")?;
         self.eval_sexp_in(expr, env).map(Sexp::as_raw)

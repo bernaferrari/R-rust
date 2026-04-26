@@ -411,20 +411,11 @@ impl GenericVector {
     ///
     /// Silently ignores indices that are out of bounds. New Rust code should
     /// prefer [`try_set_value`](Self::try_set_value), which reports mistakes.
-    pub fn set_raw(mut self, index: usize, value: SEXP) -> Self {
+    pub(crate) fn set_raw(mut self, index: usize, value: SEXP) -> Self {
         if index < self.elements.len() {
             self.elements[index] = value;
         }
         self
-    }
-
-    /// Set the raw element at the given index.
-    ///
-    /// Legacy alias for translated code. Prefer [`set_value`](Self::set_value)
-    /// or [`try_set_value`](Self::try_set_value) in Rust code.
-    #[deprecated(note = "use set_value/try_set_value with owner-scoped Sexp handles")]
-    pub fn set(self, index: usize, value: SEXP) -> Self {
-        self.set_raw(index, value)
     }
 
     /// Set the element at the given index from a typed SEXP handle.
@@ -509,18 +500,9 @@ impl PairlistBuilder {
     }
 
     /// Add a raw element with an optional raw tag.
-    pub fn push_raw(mut self, car: SEXP, tag: SEXP) -> Self {
+    pub(crate) fn push_raw(mut self, car: SEXP, tag: SEXP) -> Self {
         self.elements.push((car, tag));
         self
-    }
-
-    /// Add a raw element with an optional raw tag.
-    ///
-    /// Legacy alias for translated code. Prefer [`push_value`](Self::push_value)
-    /// in Rust code.
-    #[deprecated(note = "use push_value with owner-scoped Sexp handles")]
-    pub fn push(self, car: SEXP, tag: SEXP) -> Self {
-        self.push_raw(car, tag)
     }
 
     /// Add an element from typed SEXP handles.
@@ -529,17 +511,8 @@ impl PairlistBuilder {
     }
 
     /// Add an untagged raw element.
-    pub fn push_untagged_raw(self, car: SEXP) -> Self {
+    pub(crate) fn push_untagged_raw(self, car: SEXP) -> Self {
         self.push_raw(car, ptr::null_mut())
-    }
-
-    /// Add an untagged raw element.
-    ///
-    /// Legacy alias for translated code. Prefer
-    /// [`push_untagged_value`](Self::push_untagged_value) in Rust code.
-    #[deprecated(note = "use push_untagged_value with owner-scoped Sexp handles")]
-    pub fn push_untagged(self, car: SEXP) -> Self {
-        self.push_untagged_raw(car)
     }
 
     /// Add an untagged element from a typed SEXP handle.
