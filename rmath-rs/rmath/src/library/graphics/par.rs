@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1997--2022  The R Core Team
@@ -30,7 +29,7 @@ use std::os::raw::{c_char, c_double, c_int, c_uchar, c_ushort};
 /// Local helper: get R_BlankString (empty string CHARSXP).
 #[inline]
 unsafe fn R_BlankString() -> SEXP {
-    Rf_mkChar(b"\0".as_ptr() as *const c_char)
+    unsafe { Rf_mkChar(b"\0".as_ptr() as *const c_char) }
 }
 
 use crate::sexp::accessors::*;
@@ -406,31 +405,35 @@ type pGEDevDesc = *mut c_void;
 ///
 /// This is the Rust equivalent of `static int ParCode(const char *what)`.
 pub unsafe fn ParCode(what: *const c_char) -> c_int {
-    if what.is_null() {
-        return -1;
-    }
-    let what_str = std::ffi::CStr::from_ptr(what);
-    let what_bytes = what_str.to_bytes();
-    for entry in PAR_TABLE.iter() {
-        if entry.name.is_null() {
-            break;
+    unsafe {
+        if what.is_null() {
+            return -1;
         }
-        let name_str = std::ffi::CStr::from_ptr(entry.name);
-        if name_str.to_bytes() == what_bytes {
-            return entry.code;
+        let what_str = std::ffi::CStr::from_ptr(what);
+        let what_bytes = what_str.to_bytes();
+        for entry in PAR_TABLE.iter() {
+            if entry.name.is_null() {
+                break;
+            }
+            let name_str = std::ffi::CStr::from_ptr(entry.name);
+            if name_str.to_bytes() == what_bytes {
+                return entry.code;
+            }
         }
+        -1
     }
-    -1
 }
 
 /* ---- Stub helper functions ---- */
 
 /// Helper: compare two C strings for equality.
 unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
-    if a.is_null() || b.is_null() {
-        return false;
+    unsafe {
+        if a.is_null() || b.is_null() {
+            return false;
+        }
+        libc::strcmp(a, b) == 0
     }
-    libc::strcmp(a, b) == 0
 }
 
 /* ---- Stub: Specify (par(what = value)) ---- */
@@ -454,7 +457,7 @@ unsafe fn Specify2(_what: *const c_char, _value: SEXP, _dd: pGEDevDesc) {
 /// Query -- return the current value of a graphical parameter.
 /// Stub implementation: returns R_NilValue for all parameters.
 unsafe fn Query(_what: *const c_char, _dd: pGEDevDesc) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ---- Stub: C_par (the main par() .Internal) ---- */
@@ -469,45 +472,47 @@ unsafe fn Query(_what: *const c_char, _dd: pGEDevDesc) -> SEXP {
 pub unsafe fn C_par(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 
-    /* Stub: the full implementation requires GEcurrentDevice(),
-     * Query(), Specify(), GRecording(), GErecordGraphicOperation().
-     * We parse args minimally and return an empty list. */
-    let _ = call;
-    let _ = op;
-    let _ = rho;
+    unsafe {
+        /* Stub: the full implementation requires GEcurrentDevice(),
+         * Query(), Specify(), GRecording(), GErecordGraphicOperation().
+         * We parse args minimally and return an empty list. */
+        let _ = call;
+        let _ = op;
+        let _ = rho;
 
-    let args_cdr = CDR(args);
-    if args_cdr == R_NilValue() {
-        return R_NilValue();
-    }
-
-    let arg1 = CAR(args_cdr);
-    let nargs = LENGTH(arg1);
-
-    if nargs <= 0 {
-        return R_NilValue();
-    }
-
-    /* Build a named list with all R_NilValue entries */
-    let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nargs));
-    let newnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nargs));
-
-    /* Try to get names from the argument */
-    let oldnames = getAttrib(arg1, R_NamesSymbol());
-
-    for i in 0..(nargs as usize) {
-        SET_VECTOR_ELT(value, i as R_xlen_t, R_NilValue());
-        if oldnames != R_NilValue() {
-            let tag = STRING_ELT(oldnames, i as R_xlen_t);
-            SET_STRING_ELT(newnames, i as R_xlen_t, tag);
-        } else {
-            SET_STRING_ELT(newnames, i as R_xlen_t, R_BlankString());
+        let args_cdr = CDR(args);
+        if args_cdr == R_NilValue() {
+            return R_NilValue();
         }
-    }
 
-    setAttrib(value, R_NamesSymbol(), newnames);
-    Rf_unprotect(2);
-    value
+        let arg1 = CAR(args_cdr);
+        let nargs = LENGTH(arg1);
+
+        if nargs <= 0 {
+            return R_NilValue();
+        }
+
+        /* Build a named list with all R_NilValue entries */
+        let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nargs));
+        let newnames = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nargs));
+
+        /* Try to get names from the argument */
+        let oldnames = getAttrib(arg1, R_NamesSymbol());
+
+        for i in 0..(nargs as usize) {
+            SET_VECTOR_ELT(value, i as R_xlen_t, R_NilValue());
+            if oldnames != R_NilValue() {
+                let tag = STRING_ELT(oldnames, i as R_xlen_t);
+                SET_STRING_ELT(newnames, i as R_xlen_t, tag);
+            } else {
+                SET_STRING_ELT(newnames, i as R_xlen_t, R_BlankString());
+            }
+        }
+
+        setAttrib(value, R_NamesSymbol(), newnames);
+        Rf_unprotect(2);
+        value
+    }
 }
 
 /* ---- Stub: C_layout (the layout() .Internal) ---- */
@@ -523,7 +528,7 @@ pub unsafe fn C_layout(args: SEXP) -> SEXP {
     let _ = args;
     /* Stub: the full implementation requires GEcurrentDevice(),
      * dpptr, gpptr, GReset, and all the layout parameter processing. */
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ---- Stub: ProcessInlinePars ---- */
@@ -540,7 +545,7 @@ pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
 /// with the Graphics Engine via GEregisterSystem.
 /// Stub: returns R_NilValue for all events.
 pub unsafe fn baseCallback(_task: c_int, _dd: pGEDevDesc, _data: SEXP) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ---- Stub: registerBase / unregisterBase / RunregisterBase ---- */
@@ -561,7 +566,7 @@ pub fn unregisterBase() {
 /// Returns R_NilValue.
 pub unsafe fn RunregisterBase() -> SEXP {
     unregisterBase();
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ---- Stub: gpptr / dpptr / dpSavedptr / Rf_setBaseDevice ---- */
@@ -595,11 +600,13 @@ pub unsafe fn Rf_setBaseDevice(_val: c_int, _dd: pGEDevDesc) {
 /// currentFigureLocation -- get the current figure's row and column.
 /// Stub: sets both to 0.
 pub unsafe fn currentFigureLocation(row: *mut c_int, col: *mut c_int, _dd: pGEDevDesc) {
-    if !row.is_null() {
-        *row = 0;
-    }
-    if !col.is_null() {
-        *col = 0;
+    unsafe {
+        if !row.is_null() {
+            *row = 0;
+        }
+        if !col.is_null() {
+            *col = 0;
+        }
     }
 }
 

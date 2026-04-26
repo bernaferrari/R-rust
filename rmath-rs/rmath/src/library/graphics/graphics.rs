@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1997--2025  The R Core Team
@@ -217,11 +216,13 @@ pub unsafe fn GConvert(
     _to: GUnit,
     _dd: pGEDevDesc,
 ) {
-    if !x.is_null() {
-        *x = 0.0;
-    }
-    if !y.is_null() {
-        *y = 0.0;
+    unsafe {
+        if !x.is_null() {
+            *x = 0.0;
+        }
+        if !y.is_null() {
+            *y = 0.0;
+        }
     }
 }
 
@@ -361,17 +362,19 @@ pub unsafe fn setClipRect(
     _coords: GUnit,
     _dd: pGEDevDesc,
 ) {
-    if !x1.is_null() {
-        *x1 = 0.0;
-    }
-    if !y1.is_null() {
-        *y1 = 0.0;
-    }
-    if !x2.is_null() {
-        *x2 = 0.0;
-    }
-    if !y2.is_null() {
-        *y2 = 0.0;
+    unsafe {
+        if !x1.is_null() {
+            *x1 = 0.0;
+        }
+        if !y1.is_null() {
+            *y1 = 0.0;
+        }
+        if !x2.is_null() {
+            *x2 = 0.0;
+        }
+        if !y2.is_null() {
+            *y2 = 0.0;
+        }
     }
 }
 
@@ -407,11 +410,13 @@ pub unsafe fn GLocator(
     _coords: c_int,
     _dd: pGEDevDesc,
 ) -> Rboolean {
-    if !x.is_null() {
-        *x = 0.0;
-    }
-    if !y.is_null() {
-        *y = 0.0;
+    unsafe {
+        if !x.is_null() {
+            *x = 0.0;
+        }
+        if !y.is_null() {
+            *y = 0.0;
+        }
     }
     0
 }
@@ -426,14 +431,16 @@ pub unsafe fn GMetricInfo(
     _units: GUnit,
     _dd: pGEDevDesc,
 ) {
-    if !ascent.is_null() {
-        *ascent = 0.0;
-    }
-    if !descent.is_null() {
-        *descent = 0.0;
-    }
-    if !width.is_null() {
-        *width = 0.0;
+    unsafe {
+        if !ascent.is_null() {
+            *ascent = 0.0;
+        }
+        if !descent.is_null() {
+            *descent = 0.0;
+        }
+        if !width.is_null() {
+            *width = 0.0;
+        }
     }
 }
 

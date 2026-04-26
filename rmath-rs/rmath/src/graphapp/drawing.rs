@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 #![allow(non_snake_case, non_upper_case_globals, dead_code)]
 #![allow(clippy::missing_safety_doc)]
 
@@ -175,44 +174,54 @@ pub fn fillroundrect(r: rect) {
 
 /// Draw a polygon.
 pub unsafe fn drawpolygon(p: *mut point, n: c_int) {
-    let ds = get_current_drawstate();
-    gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
+    unsafe {
+        let ds = get_current_drawstate();
+        gdraw::gdrawpolygon(ds.dest, ds.linewidth, lSolid, ds.hue, p, n, 0, 0, 0, 0.0);
+    }
 }
 
 /// Fill a polygon.
 pub unsafe fn fillpolygon(p: *mut point, n: c_int) {
-    let ds = get_current_drawstate();
-    gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
+    unsafe {
+        let ds = get_current_drawstate();
+        gdraw::gfillpolygon(ds.dest, ds.hue, p, n);
+    }
 }
 
 /// Draw a string at the given position.
 #[allow(clippy::if_same_then_else)]
 pub unsafe fn drawstr(p: point, s: *const std::os::raw::c_char) -> c_int {
-    if s.is_null() {
-        return 0;
+    unsafe {
+        if s.is_null() {
+            return 0;
+        }
+        let ds = get_current_drawstate();
+        gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s)
     }
-    let ds = get_current_drawstate();
-    gdraw::gdrawstr(ds.dest, ds.fnt, ds.hue, p, s)
 }
 
 /// Get the bounding rectangle of a string with the given font.
 pub unsafe fn strrect(f: font, s: *const std::os::raw::c_char) -> rect {
-    let ds = get_current_drawstate();
-    gdraw::gstrrect(ds.dest, f, s)
+    unsafe {
+        let ds = get_current_drawstate();
+        gdraw::gstrrect(ds.dest, f, s)
+    }
 }
 
 /// Get the size of a string with the given font.
 pub unsafe fn strsize(f: font, s: *const std::os::raw::c_char) -> point {
-    let r = strrect(f, s);
-    point {
-        x: r.width,
-        y: r.height,
+    unsafe {
+        let r = strrect(f, s);
+        point {
+            x: r.width,
+            y: r.height,
+        }
     }
 }
 
 /// Get the width of a string with the given font.
 pub unsafe fn strwidth(f: font, s: *const std::os::raw::c_char) -> c_int {
-    strrect(f, s).width
+    unsafe { strrect(f, s).width }
 }
 
 /// Get a pixel colour.
@@ -306,7 +315,9 @@ pub unsafe fn copydrawstate() -> drawstate {
 /// Set the draw state.
 pub extern "C" fn setdrawstate(saved: drawstate) {
     if !saved.is_null() {
-        CURRENT_DRAWSTATE.with(|v| *v.borrow_mut() = unsafe { (*saved).clone() });
+        unsafe {
+            CURRENT_DRAWSTATE.with(|v| *v.borrow_mut() = (*saved).clone());
+        }
     }
 }
 

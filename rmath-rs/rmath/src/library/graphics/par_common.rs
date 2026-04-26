@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1997-2012  The R Core Team
@@ -73,13 +72,15 @@ pub(crate) unsafe fn specify_common(
 ) -> bool {
     use std::ffi::CStr;
 
-    if what.is_null() {
-        return false;
-    }
+    let what_str = unsafe {
+        if what.is_null() {
+            return false;
+        }
 
-    let what_str = match CStr::from_ptr(what).to_str() {
-        Ok(s) => s,
-        Err(_) => return false,
+        match CStr::from_ptr(what).to_str() {
+            Ok(s) => s,
+            Err(_) => return false,
+        }
     };
 
     /* Graphical parameters which are treated identically by
