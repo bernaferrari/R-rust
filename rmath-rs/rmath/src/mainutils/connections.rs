@@ -761,9 +761,8 @@ pub unsafe fn do_file(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "file");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -858,9 +857,8 @@ pub unsafe fn do_pipe(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "pipe");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -942,9 +940,8 @@ pub unsafe fn do_url(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEXP
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, &conn_class);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -978,9 +975,8 @@ pub unsafe fn do_fifo(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> SEX
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "fifo");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1033,9 +1029,8 @@ pub unsafe fn do_gzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "gzfile");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1086,9 +1081,8 @@ pub unsafe fn do_bzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "bzfile");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1139,9 +1133,8 @@ pub unsafe fn do_xzfile(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEXP) -> S
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "xzfile");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1837,9 +1830,8 @@ pub unsafe fn do_rawConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SEX
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "rawConnection");
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1903,9 +1895,8 @@ pub unsafe fn do_textConnection(_call: SEXP, _op: SEXP, mut args: SEXP, _env: SE
         drop(table);
 
         let ans = Rf_ScalarInteger(ncon as c_int);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         set_connection_class(ans, "textConnection");
-        Rf_unprotect(1);
         ans
     }
 }
