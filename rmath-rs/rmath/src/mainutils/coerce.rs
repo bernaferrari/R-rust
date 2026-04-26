@@ -45,7 +45,7 @@ use crate::sexp::ffi::{
 use crate::sexp::globals::{R_GlobalEnv, R_NaString as R_GlobalNaString, R_NilValue};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::object::Sexp;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -1681,7 +1681,7 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
             return v;
         }
 
-        let _v = Rf_protect(v);
+        let _v_guard = protect(v);
 
         let ans = match TYPEOF(v) {
             t if t == SEXPTYPE::SYMSXP => coerceSymbol(v, target),
@@ -1747,7 +1747,6 @@ pub unsafe fn coerceVector(v: SEXP, type_: c_int) -> SEXP {
             }
         };
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1989,7 +1988,8 @@ pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
         }
         let nl = LENGTH(labels);
 
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _ans_guard = protect(ans);
         for i in 0..n {
             let ii = INTEGER_ELT(x, i as c_int);
             if ii == NA_INTEGER {
@@ -2001,7 +2001,6 @@ pub unsafe fn asCharacterFactor(x: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -2068,7 +2067,8 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
                     if isNull(attr) {
                         return Ok(x_raw);
                     }
-                    let ans = Rf_protect(Rf_allocVector3(type_, xlength(x_raw)));
+                    let ans = Rf_allocVector3(type_, xlength(x_raw));
+                    let _ans_guard = protect(ans);
                     let src = DATAPTR(x_raw);
                     let dst = DATAPTR(ans);
                     let elem_size = match SEXPTYPE(type_) {
@@ -2085,7 +2085,6 @@ pub fn coerce_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, S
                             xlength(x_raw) as usize * elem_size,
                         );
                     }
-                    Rf_unprotect(1);
                     return Ok(ans);
                 }
                 _ => return Ok(x_raw),
@@ -2130,7 +2129,8 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
             if isNull(ATTRIB(x_raw)) {
                 return Ok(x_raw);
             }
-            let ans = Rf_protect(Rf_allocVector3(type_, xlength(x_raw)));
+            let ans = Rf_allocVector3(type_, xlength(x_raw));
+            let _ans_guard = protect(ans);
             let src = DATAPTR(x_raw);
             let dst = DATAPTR(ans);
             let byte_len = xlength(x_raw) as usize
@@ -2145,7 +2145,6 @@ pub fn as_atomic_safe(x: Sexp<'_>, op: i32) -> Result<SEXP, String> {
                 ptr::copy_nonoverlapping(src as *const u8, dst as *mut u8, byte_len);
             }
             CLEAR_ATTRIB(ans);
-            Rf_unprotect(1);
             return Ok(ans);
         }
 
@@ -2201,7 +2200,8 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
                     if isNull(ATTRIB(x_raw)) {
                         return Ok(x_raw);
                     }
-                    let ans = Rf_protect(Rf_allocVector3(type_, xlength(x_raw)));
+                    let ans = Rf_allocVector3(type_, xlength(x_raw));
+                    let _ans_guard = protect(ans);
                     let src = DATAPTR(x_raw);
                     let dst = DATAPTR(ans);
                     let elem_size = match SEXPTYPE(type_) {
@@ -2219,7 +2219,6 @@ pub fn as_vector_safe<'a>(x: Sexp<'a>, mode_str: Sexp<'a>) -> Result<SEXP, Strin
                         );
                     }
                     CLEAR_ATTRIB(ans);
-                    Rf_unprotect(1);
                     return Ok(ans);
                 }
                 _ => return Ok(x_raw),
@@ -2615,7 +2614,8 @@ pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
@@ -2692,7 +2692,6 @@ pub unsafe fn do_isna(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -2704,7 +2703,8 @@ pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
@@ -2745,7 +2745,6 @@ pub unsafe fn do_isnan(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -2773,8 +2772,10 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if n < 1 {
             error("argument must have length at least 1");
         }
-        let names = Rf_protect(getAttrib(arglist, R_NamesSymbol()));
-        let pargs = Rf_protect(crate::sexp::constructors::Rf_allocList(n - 1));
+        let names = getAttrib(arglist, R_NamesSymbol());
+        let _names_guard = protect(names);
+        let pargs = crate::sexp::constructors::Rf_allocList(n - 1);
+        let _pargs_guard = protect(pargs);
         let mut current = pargs;
         for i in 0..n - 1 {
             SETCAR(current, VECTOR_ELT(arglist, i as R_xlen_t));
@@ -2789,7 +2790,8 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
             current = CDR(current);
         }
-        let body = Rf_protect(VECTOR_ELT(arglist, (n - 1) as R_xlen_t));
+        let body = VECTOR_ELT(arglist, (n - 1) as R_xlen_t);
+        let _body_guard = protect(body);
         let bt = TYPEOF(body);
         if bt == SEXPTYPE::LISTSXP
             || bt == SEXPTYPE::LANGSXP
@@ -2802,11 +2804,8 @@ pub unsafe fn do_asfunction(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             || bt == SEXPTYPE::STRSXP
             || bt == SEXPTYPE::LGLSXP
         {
-            let result = crate::mainutils::dstruct::mkCLOSXP(pargs, body, envir);
-            Rf_unprotect(3);
-            result
+            crate::mainutils::dstruct::mkCLOSXP(pargs, body, envir)
         } else {
-            Rf_unprotect(3);
             error("invalid body for function");
         }
     }
@@ -2824,23 +2823,17 @@ pub unsafe fn do_str2lang(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
             error("argument must be a single character string");
         }
         let mut status: c_int = 0;
-        let srcfile = Rf_protect(Rf_mkString(b"<text>\0".as_ptr() as *const c_char));
-        let parsed = Rf_protect(crate::mainutils::gram_main::R_ParseVector(
-            s,
-            -1,
-            &mut status,
-            srcfile,
-        ));
+        let srcfile = Rf_mkString(b"<text>\0".as_ptr() as *const c_char);
+        let _srcfile_guard = protect(srcfile);
+        let parsed = crate::mainutils::gram_main::R_ParseVector(s, -1, &mut status, srcfile);
+        let _parsed_guard = protect(parsed);
         if status != 1 {
-            Rf_unprotect(2);
             error("parse error in str2lang");
         }
         if LENGTH(parsed) != 1 {
-            Rf_unprotect(2);
             error("parsing result not of length one");
         }
         let result = VECTOR_ELT(parsed, 0);
-        Rf_unprotect(2);
         result
     }
 }
@@ -2857,8 +2850,10 @@ pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 if n == 0 {
                     error("invalid length 0 argument");
                 }
-                let names = Rf_protect(getAttrib(x, R_NamesSymbol()));
-                let ans = Rf_protect(crate::sexp::constructors::Rf_allocList(n));
+                let names = getAttrib(x, R_NamesSymbol());
+                let _names_guard = protect(names);
+                let ans = crate::sexp::constructors::Rf_allocList(n);
+                let _ans_guard = protect(ans);
                 let mut ap = ans;
                 for i in 0..n {
                     SETCAR(ap, VECTOR_ELT(x, i as R_xlen_t));
@@ -2875,7 +2870,6 @@ pub unsafe fn do_ascall(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 }
                 SET_TYPEOF(ans, SEXPTYPE::LANGSXP.into());
                 SETTAG(ans, R_NilValue());
-                Rf_unprotect(2);
                 ans
             }
             t if t == SEXPTYPE::LISTSXP => {
@@ -2897,7 +2891,8 @@ pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
@@ -2946,7 +2941,6 @@ pub unsafe fn do_isfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEX
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -2958,7 +2952,8 @@ pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
     unsafe {
         let x = CAR(args);
         let n = xlength(x);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
         let pa = LOGICAL(ans);
 
         match TYPEOF(x) {
@@ -3013,7 +3008,6 @@ pub unsafe fn do_isinfinite(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> S
             }
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -3145,9 +3139,8 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                     let elt = VECTOR_ELT(x, i as R_xlen_t);
                     // Recursively check each element
                     let inner_args = Rf_cons(elt, R_NilValue());
-                    Rf_protect(inner_args);
+                    let _inner_args_guard = protect(inner_args);
                     let found = any_na_impl(_call, _op, inner_args, _env);
-                    Rf_unprotect(1);
                     if found {
                         return true;
                     }
@@ -3159,9 +3152,8 @@ fn any_na_impl(_call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> bool {
                 while !node.is_null() && node != R_NilValue() {
                     let elt = CAR(node);
                     let inner_args = Rf_cons(elt, R_NilValue());
-                    Rf_protect(inner_args);
+                    let _inner_args_guard = protect(inner_args);
                     let found = any_na_impl(_call, _op, inner_args, _env);
-                    Rf_unprotect(1);
                     if found {
                         return true;
                     }
@@ -3204,13 +3196,12 @@ pub unsafe fn do_anyNA(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if recursive_val.is_null() || recursive_val == crate::sexp::globals::R_MissingArg() {
                 // Append ScalarLogical(FALSE) as second arg
                 let with_rec = Rf_cons(CAR(args), Rf_cons(Rf_ScalarLogical(FALSE), R_NilValue()));
-                Rf_protect(with_rec);
+                let _with_rec_guard = protect(with_rec);
                 let result = Rf_ScalarLogical(if any_na_impl(call, op, with_rec, rho) {
                     1
                 } else {
                     FALSE
                 });
-                Rf_unprotect(1);
                 result
             } else {
                 Rf_ScalarLogical(if any_na_impl(call, op, args, rho) {
@@ -3242,10 +3233,9 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         let rfun = Rf_eval(CAR(args), rho);
-        Rf_protect(rfun);
+        let _rfun_guard = protect(rfun);
 
         if !isString(rfun) || LENGTH(rfun) != 1 {
-            Rf_unprotect(1);
             Rf_error(b"first argument must be a character string\0".as_ptr() as *const c_char);
         }
 
@@ -3253,13 +3243,12 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if !str.is_null() {
             let s = std::ffi::CStr::from_ptr(str);
             if s.to_bytes() == b".Internal" {
-                Rf_unprotect(1);
                 Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
             }
         }
 
         let sym = Rf_install(str);
-        Rf_protect(sym);
+        let _sym_guard = protect(sym);
 
         // Evaluate remaining arguments
         let evargs = CDR(args);
@@ -3273,7 +3262,6 @@ pub unsafe fn do_call(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 
         // Build LANGSXP: (sym arg1 arg2 ...)
         let result = Rf_cons(sym, evargs);
-        Rf_unprotect(2);
         result
     }
 }
@@ -3295,7 +3283,7 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::constructors::Rf_allocVector;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
-    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::protect::protect;
     use crate::sexp::symbol::Rf_install;
 
     unsafe {
@@ -3326,19 +3314,18 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         } else {
             R_NilValue()
         };
-        Rf_protect(names);
+        let _names_guard = protect(names);
 
         // Build LANGSXP call: (fun arg1 arg2 ...)
         // LANGSXP has n+1 slots: function + n args
         let newcall = Rf_allocVector(SEXPTYPE::LANGSXP, n + 1);
-        Rf_protect(newcall);
+        let _newcall_guard = protect(newcall);
 
         if isString(fun) {
             let str = CHAR(STRING_ELT(fun, 0));
             if !str.is_null() {
                 let s = std::ffi::CStr::from_ptr(str);
                 if s.to_bytes() == b".Internal" {
-                    Rf_unprotect(2);
                     Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
                 }
             }
@@ -3347,7 +3334,6 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             // Check for .Internal primitive
             let prim_name = crate::eval::builtin::PRIMNAME(fun);
             if prim_name == ".Internal" {
-                Rf_unprotect(2);
                 Rf_error(b"illegal usage\0".as_ptr() as *const c_char);
             }
             SETCAR(newcall, fun);
@@ -3372,7 +3358,6 @@ pub unsafe fn do_docall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         }
 
         let result = crate::eval::eval::Rf_eval(newcall, envir);
-        Rf_unprotect(2);
         result
     }
 }
@@ -3438,7 +3423,6 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
     use crate::sexp::envir::R_findVarInFrame;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::{R_MissingArg, R_NilValue, R_UnboundValue};
-    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
     use crate::sexp::symbol::R_DotsSymbol;
 
     unsafe {
@@ -3449,6 +3433,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
         let mut res: SEXP = R_NilValue();
         let mut p: SEXP = ptr::null_mut();
         let mut remaining = el;
+        let mut guards = Vec::new();
 
         while !remaining.is_null() && remaining != R_NilValue() {
             let mut h: SEXP;
@@ -3461,11 +3446,11 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
                 }
                 if h == R_UnboundValue() {
                     h = Rf_cons(R_DotsSymbol(), R_NilValue());
-                    Rf_protect(h);
+                    guards.push(protect(h));
                 } else if h == R_NilValue() || h == R_MissingArg() {
                     h = R_NilValue();
                 } else if TYPEOF(h) == SEXPTYPE::DOTSXP {
-                    Rf_protect(h);
+                    guards.push(protect(h));
                     h = substitute_list(h, R_NilValue());
                     // h is now a substituted pairlist — don't unprotect the protected one yet
                 } else {
@@ -3476,7 +3461,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
                 }
 
                 if TYPEOF(h) == SEXPTYPE::DOTSXP || (h != R_NilValue() && !h.is_null()) {
-                    Rf_protect(h);
+                    guards.push(protect(h));
                 }
             } else {
                 h = substitute(CAR(remaining), rho);
@@ -3490,7 +3475,7 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
 
             if !h.is_null() && h != R_NilValue() {
                 if res == R_NilValue() {
-                    Rf_protect(h);
+                    guards.push(protect(h));
                     res = h;
                 } else {
                     SETCDR(p, h);
@@ -3506,9 +3491,6 @@ unsafe fn substitute_list(el: SEXP, rho: SEXP) -> SEXP {
             remaining = CDR(remaining);
         }
 
-        if res != R_NilValue() {
-            Rf_unprotect(1);
-        }
         res
     }
 }
@@ -3527,7 +3509,7 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::{R_BaseEnv, R_GlobalEnv, R_MissingArg, R_NilValue};
     use crate::sexp::memory_ext::NewEnvironment;
-    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::protect::protect;
 
     unsafe {
         // Manual argument matching: first arg is expr, second is env
@@ -3550,9 +3532,8 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
         } else if TYPEOF(env) == SEXPTYPE::VECSXP {
             // Convert VECSXP to environment
             let plist = crate::mainutils::subassign::VectorToPairList(env);
-            Rf_protect(plist);
+            let _plist_guard = protect(plist);
             env = NewEnvironment(R_NilValue(), plist, R_BaseEnv());
-            Rf_unprotect(1);
         } else if TYPEOF(env) == SEXPTYPE::LISTSXP {
             // Convert pairlist to environment
             env = NewEnvironment(R_NilValue(), env, R_BaseEnv());
@@ -3564,17 +3545,16 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
             );
         }
 
-        Rf_protect(env);
+        let _env_guard = protect(env);
         // Duplicate the expression and wrap in a list for substituteList
         let t = Rf_cons(expr, R_NilValue());
-        Rf_protect(t);
+        let _t_guard = protect(t);
         let s = substitute_list(t, env);
         let result = if !s.is_null() && s != R_NilValue() {
             crate::sexp::accessors::CAR(s)
         } else {
             R_NilValue()
         };
-        Rf_unprotect(2);
         result
     }
 }
@@ -3589,7 +3569,7 @@ pub unsafe fn do_substitute(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEX
 pub unsafe fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CADR, CAR, CHAR, SET_ATTRIB, STRING_ELT, TYPEOF};
-    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::protect::protect;
 
     unsafe {
         let obj = CAR(args);
@@ -3631,12 +3611,11 @@ pub unsafe fn do_storage_mode(call: SEXP, _op: SEXP, args: SEXP, _env: SEXP) -> 
         }
 
         let ans = coerceVector(obj, target_type);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         // Copy attributes preserving OBJECT and S4 bits
         SET_ATTRIB(ans, crate::sexp::accessors::ATTRIB(obj));
 
-        Rf_unprotect(1);
         ans
     }
 }
