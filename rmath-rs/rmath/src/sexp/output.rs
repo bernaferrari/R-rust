@@ -159,6 +159,19 @@ fn format_logical_value(v: i32) -> String {
     }
 }
 
+fn format_complex_value(v: super::ffi::Rcomplex) -> String {
+    if R_IsNA(v.r) || R_IsNA(v.i) {
+        return "NA".to_string();
+    }
+    let real = format_real_value(v.r);
+    let imaginary = format_real_value(v.i.abs());
+    if v.i.is_sign_negative() {
+        format!("{real}-{imaginary}i")
+    } else {
+        format!("{real}+{imaginary}i")
+    }
+}
+
 fn format_access_error(err: impl std::fmt::Display) -> String {
     format!("<{err}>")
 }
@@ -178,6 +191,12 @@ fn format_real_element(x: Sexp<'_>, i: R_xlen_t) -> String {
 fn format_logical_element(x: Sexp<'_>, i: R_xlen_t) -> String {
     x.try_logical_elt(i)
         .map(format_logical_value)
+        .unwrap_or_else(format_access_error)
+}
+
+fn format_complex_element(x: Sexp<'_>, i: R_xlen_t) -> String {
+    x.try_complex_elt(i)
+        .map(format_complex_value)
         .unwrap_or_else(format_access_error)
 }
 
@@ -330,6 +349,9 @@ fn format_matrix(x: Sexp<'_>) -> Option<String> {
         })),
         SEXPTYPE::LGLSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
             format_logical_element(x, (r + c * nrow) as i64)
+        })),
+        SEXPTYPE::CPLXSXP => Some(format_matrix_with(x, nrow, ncol, |r, c| {
+            format_complex_element(x, (r + c * nrow) as i64)
         })),
         _ => None,
     }
@@ -618,6 +640,17 @@ pub fn print_value(x: Sexp<'_>) {
             let suffix = if x.len() > 10 { " ..." } else { "" };
             emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
         }
+        SEXPTYPE::CPLXSXP => {
+            if let Some(output) = format_matrix(x) {
+                emit(&format!("{output}\n"));
+                return;
+            }
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_complex_element(x, i))
+                .collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            emit(&format!("[1] {}{}\n", format_aligned_values(vals), suffix));
+        }
         SEXPTYPE::STRSXP => {
             emit(&format!("{}\n", format_string_vector(x)));
         }
@@ -718,6 +751,19 @@ pub fn format_sexp_direct(x: Sexp<'_>) -> String {
             }
             let vals: Vec<String> = (0..x.len().min(10))
                 .map(|i| format_logical_element(x, i))
+                .collect();
+            let suffix = if x.len() > 10 { " ..." } else { "" };
+            format!("[1] {}{}", format_aligned_values(vals), suffix)
+        }
+        SEXPTYPE::CPLXSXP => {
+            if x.len() == 0 {
+                return "complex(0)".to_string();
+            }
+            if let Some(output) = format_matrix(x) {
+                return output;
+            }
+            let vals: Vec<String> = (0..x.len().min(10))
+                .map(|i| format_complex_element(x, i))
                 .collect();
             let suffix = if x.len() > 10 { " ..." } else { "" };
             format!("[1] {}{}", format_aligned_values(vals), suffix)

@@ -12,14 +12,17 @@
 
 use std::ffi::CString;
 
-use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, PRINTNAME, TAG, TYPEOF};
+use crate::sexp::accessors::{CAR, CDR, CHAR, LENGTH, PRINTNAME, STRING_ELT, TAG, TYPEOF};
+use crate::sexp::attrib_core::{
+    R_DimNamesSymbol, R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib,
+};
 use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector3,
 };
 use crate::sexp::ffi::{
-    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, SEXP, SEXPTYPE, TRUE,
+    FALSE, NA_INTEGER, NA_LOGICAL, NA_REAL, R_NA_BIT_PATTERN, R_xlen_t, SEXP, SEXPTYPE, TRUE,
 };
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_NaString, R_NilValue};
 use crate::sexp::numeric::NumericVector;
 use crate::sexp::object::Sexp;
 use crate::sexp::protect::Rf_protect;
@@ -45,7 +48,8 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         if n == 0 {
             return Rf_allocVector3(SEXPTYPE::REALSXP, 0);
         }
-        let use_real = op == "/" || a.needs_real_with(b);
+        let use_real = op == "/" || op == "^" || a.needs_real_with(b);
+        let integer_overflow_can_warn = matches!(op, "+" | "-" | "*");
         let result_raw = if use_real {
             Rf_allocVector3(SEXPTYPE::REALSXP, n)
         } else {
@@ -55,6 +59,8 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _p = Rf_protect(result_raw);
+        warn_if_non_multiple_recycling(a.len(), b.len());
+        let mut integer_overflow = false;
 
         for i in 0..n {
             let x = a.real_at(i);
@@ -85,11 +91,16 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
                     let ival = val as i32;
                     result.set_integer_elt(i, ival);
                 } else {
+                    integer_overflow |= integer_overflow_can_warn;
                     result.set_integer_elt(i, NA_INTEGER);
                 }
             }
         }
 
+        if integer_overflow {
+            warn_simple("NAs produced by integer overflow");
+        }
+        propagate_binary_vector_attributes(result_raw, sa, sb, n);
         crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
@@ -129,6 +140,7 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             return R_NilValue();
         };
         let _p = Rf_protect(result_raw);
+        warn_if_non_multiple_recycling(a.len(), b.len());
 
         let use_real = a.needs_real_with(b);
 
@@ -175,8 +187,91 @@ unsafe fn binary_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             result.set_logical_elt(i, value);
         }
 
+        propagate_binary_vector_attributes(result_raw, sa, sb, n);
         crate::sexp::protect::Rf_unprotect(1);
         result_raw
+    }
+}
+
+pub(super) fn warn_if_non_multiple_recycling(a_len: R_xlen_t, b_len: R_xlen_t) {
+    let shorter = a_len.min(b_len);
+    let longer = a_len.max(b_len);
+    if shorter > 0 && longer % shorter != 0 {
+        warn_simple("longer object length is not a multiple of shorter object length");
+    }
+}
+
+fn warn_simple(message: &str) {
+    let formatted = format!("Warning message:\n{message} \n");
+    if crate::sexp::output::is_capturing() {
+        crate::sexp::output::capture_stderr(&formatted);
+    } else {
+        eprint!("{formatted}");
+    }
+}
+
+unsafe fn copy_attr_if_present(result: SEXP, source: SEXP, symbol: SEXP) -> bool {
+    unsafe {
+        let attr = getAttrib(source, symbol);
+        if attr.is_null() || attr == R_NilValue() {
+            return false;
+        }
+        let attr = crate::mainutils::duplicate::duplicate(attr);
+        setAttrib(result, symbol, attr);
+        true
+    }
+}
+
+unsafe fn copy_dims_if_present(result: SEXP, source: SEXP, result_len: R_xlen_t) -> bool {
+    unsafe {
+        if source.is_null() || LENGTH(source) as R_xlen_t != result_len {
+            return false;
+        }
+        let dim = getAttrib(source, R_DimSymbol());
+        if dim.is_null() || dim == R_NilValue() {
+            return false;
+        }
+
+        let dim = crate::mainutils::duplicate::duplicate(dim);
+        setAttrib(result, R_DimSymbol(), dim);
+        let dimnames = getAttrib(source, R_DimNamesSymbol());
+        if !dimnames.is_null() && dimnames != R_NilValue() {
+            let dimnames = crate::mainutils::duplicate::duplicate(dimnames);
+            setAttrib(result, R_DimNamesSymbol(), dimnames);
+        }
+        true
+    }
+}
+
+pub(super) unsafe fn propagate_binary_vector_attributes(
+    result: SEXP,
+    a: SEXP,
+    b: SEXP,
+    result_len: R_xlen_t,
+) {
+    unsafe {
+        if copy_dims_if_present(result, a, result_len)
+            || copy_dims_if_present(result, b, result_len)
+        {
+            return;
+        }
+        if LENGTH(a) as R_xlen_t == result_len && copy_attr_if_present(result, a, R_NamesSymbol()) {
+            return;
+        }
+        if LENGTH(b) as R_xlen_t == result_len {
+            copy_attr_if_present(result, b, R_NamesSymbol());
+        }
+    }
+}
+
+unsafe fn propagate_unary_vector_attributes(result: SEXP, source: SEXP, result_len: R_xlen_t) {
+    unsafe {
+        if copy_dims_if_present(result, source, result_len) {
+            return;
+        }
+        if LENGTH(source) as R_xlen_t == result_len {
+            copy_attr_if_present(result, source, R_NamesSymbol());
+        }
     }
 }
 
@@ -211,6 +306,7 @@ unsafe fn math1_vec(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             }
         }
 
+        propagate_unary_vector_attributes(result_raw, sa, n);
         crate::sexp::protect::Rf_unprotect(1);
         result_raw
     }
@@ -242,6 +338,9 @@ pub unsafe fn do_arith(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     return R_NilValue();
                 }
                 let b = CAR(b_cdr);
+                if TYPEOF(a) == SEXPTYPE::CPLXSXP || TYPEOF(b) == SEXPTYPE::CPLXSXP {
+                    return super::complex_arith::complex_binary(op_name, a, b);
+                }
                 real_binary(op_name, a, b)
             }
             _ => R_NilValue(),
@@ -259,6 +358,9 @@ pub unsafe fn do_relop(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 let b = CAR(CDR(args));
                 if a.is_null() || b.is_null() {
                     return R_NilValue();
+                }
+                if TYPEOF(a) == SEXPTYPE::STRSXP && TYPEOF(b) == SEXPTYPE::STRSXP {
+                    return character_compare(op_name, a, b);
                 }
                 binary_compare(op_name, a, b)
             }
@@ -301,8 +403,68 @@ unsafe fn unary_minus(x: SEXP) -> SEXP {
             }
         }
 
+        propagate_unary_vector_attributes(result_raw, x, n);
         crate::sexp::protect::Rf_unprotect(1);
         result_raw
+    }
+}
+
+unsafe fn character_compare(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
+    unsafe {
+        let Some(a) = Sexp::from_raw(sa) else {
+            return R_NilValue();
+        };
+        let Some(b) = Sexp::from_raw(sb) else {
+            return R_NilValue();
+        };
+        let a_len = a.len();
+        let b_len = b.len();
+        let n = match (a_len, b_len) {
+            (0, _) | (_, 0) => 0,
+            _ => a_len.max(b_len),
+        };
+        let result_raw = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let Some(result) = Sexp::from_raw(result_raw) else {
+            return R_NilValue();
+        };
+        let _p = Rf_protect(result_raw);
+        warn_if_non_multiple_recycling(a_len, b_len);
+
+        for i in 0..n {
+            let ai = i % a_len;
+            let bi = i % b_len;
+            let ac = STRING_ELT(sa, ai);
+            let bc = STRING_ELT(sb, bi);
+            let value = if ac.is_null() || bc.is_null() || ac == R_NaString() || bc == R_NaString()
+            {
+                NA_LOGICAL
+            } else {
+                let av = Sexp::from_raw(ac).and_then(|s| s.try_as_str().ok());
+                let bv = Sexp::from_raw(bc).and_then(|s| s.try_as_str().ok());
+                match (av, bv) {
+                    (Some(av), Some(bv)) if compare_strings(op, av, bv) => TRUE,
+                    (Some(_), Some(_)) => FALSE,
+                    _ => NA_LOGICAL,
+                }
+            };
+            result.set_logical_elt(i, value);
+        }
+
+        propagate_binary_vector_attributes(result_raw, sa, sb, n);
+        crate::sexp::protect::Rf_unprotect(1);
+        result_raw
+    }
+}
+
+fn compare_strings(op: &str, a: &str, b: &str) -> bool {
+    match op {
+        "<" => a < b,
+        ">" => a > b,
+        "<=" => a <= b,
+        ">=" => a >= b,
+        "==" => a == b,
+        "!=" => a != b,
+        _ => false,
     }
 }
 
@@ -381,6 +543,7 @@ pub unsafe fn do_math1(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     };
                     iresult.set_integer_elt(i, value);
                 }
+                propagate_unary_vector_attributes(iresult_raw, x, n);
                 crate::sexp::protect::Rf_unprotect(1);
                 return iresult_raw;
             }
@@ -887,7 +1050,8 @@ mod tests {
             let a = Rf_ScalarInteger(2);
             let b = Rf_ScalarInteger(10);
             let result = real_binary("^", a, b);
-            assert_eq!(*INTEGER(result), 1024);
+            assert_eq!(TYPEOF(result), SEXPTYPE::REALSXP);
+            assert_eq!(*REAL(result), 1024.0);
         }
     }
 

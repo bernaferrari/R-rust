@@ -1585,6 +1585,153 @@ mod tests {
     }
 
     #[test]
+    fn test_eval_arithmetic_recycling_and_integer_overflow_warnings() {
+        let mut session = RSession::new();
+
+        let recycled = session.eval("c(1, 2, 3) + c(10, 20)");
+        assert!(
+            recycled
+                .output
+                .contains("longer object length is not a multiple of shorter object length"),
+            "output: {}",
+            recycled.output
+        );
+        assert_eq!(
+            recycled.typed,
+            RValue::RealVector(vec![Some(11.0), Some(22.0), Some(13.0)])
+        );
+
+        let overflow = session.eval("c(1L, 2147483647L) + c(1L, 1L)");
+        assert!(
+            overflow.output.contains("NAs produced by integer overflow"),
+            "output: {}",
+            overflow.output
+        );
+        assert_eq!(overflow.typed, RValue::IntegerVector(vec![Some(2), None]));
+    }
+
+    #[test]
+    fn test_eval_arithmetic_preserves_vector_and_matrix_attributes() {
+        let mut session = RSession::new();
+
+        let named = session.eval("x <- c(a = 1, b = 2, c = 3)\nx + 1");
+        assert_eq!(
+            named.typed,
+            RValue::Attributed {
+                value: Box::new(RValue::RealVector(vec![Some(2.0), Some(3.0), Some(4.0)])),
+                metadata: RMetadata {
+                    names: Some(vec![
+                        Some("a".to_string()),
+                        Some("b".to_string()),
+                        Some("c".to_string()),
+                    ]),
+                    attributes: vec![RAttribute {
+                        name: "names".to_string(),
+                        value: RValue::StringVector(vec![
+                            Some("a".to_string()),
+                            Some("b".to_string()),
+                            Some("c".to_string()),
+                        ]),
+                    }],
+                    ..RMetadata::default()
+                },
+            }
+        );
+
+        let matrix = session.eval(
+            "m <- matrix(1:4, nrow = 2)\n\
+             dimnames(m) <- list(c(\"r1\", \"r2\"), c(\"c1\", \"c2\"))\n\
+             m + 1",
+        );
+        assert_eq!(
+            matrix.typed,
+            RValue::Attributed {
+                value: Box::new(RValue::RealVector(vec![
+                    Some(2.0),
+                    Some(3.0),
+                    Some(4.0),
+                    Some(5.0),
+                ])),
+                metadata: RMetadata {
+                    dim: Some(vec![2, 2]),
+                    attributes: vec![
+                        RAttribute {
+                            name: "dimnames".to_string(),
+                            value: RValue::List(vec![
+                                RValue::StringVector(vec![
+                                    Some("r1".to_string()),
+                                    Some("r2".to_string()),
+                                ]),
+                                RValue::StringVector(vec![
+                                    Some("c1".to_string()),
+                                    Some("c2".to_string()),
+                                ]),
+                            ]),
+                        },
+                        RAttribute {
+                            name: "dim".to_string(),
+                            value: RValue::IntegerVector(vec![Some(2), Some(2)]),
+                        },
+                    ],
+                    ..RMetadata::default()
+                },
+            }
+        );
+    }
+
+    #[test]
+    fn test_eval_character_and_logical_comparisons_follow_r_recycling() {
+        let mut session = RSession::new();
+
+        let character = session.eval("c(\"a\", \"b\", NA_character_) < c(\"b\", \"a\", \"c\")");
+        assert_eq!(
+            character.typed,
+            RValue::LogicalVector(vec![Some(true), Some(false), None])
+        );
+
+        let logical = session.eval("c(TRUE, FALSE, NA) == c(1L, 0L, 1L)");
+        assert_eq!(
+            logical.typed,
+            RValue::LogicalVector(vec![Some(true), Some(true), None])
+        );
+    }
+
+    #[test]
+    fn test_eval_complex_arithmetic_returns_typed_complex_vectors() {
+        let mut session = RSession::new();
+
+        let sum = session.eval("as.complex(c(1, 2)) + as.complex(c(3, 4))");
+        assert_eq!(
+            sum.typed,
+            RValue::ComplexVector(vec![
+                Some(RComplexValue {
+                    real: 4.0,
+                    imaginary: 0.0,
+                }),
+                Some(RComplexValue {
+                    real: 6.0,
+                    imaginary: 0.0,
+                }),
+            ])
+        );
+
+        let product = session.eval("as.complex(c(1, 2)) * as.complex(c(3, 4))");
+        assert_eq!(
+            product.typed,
+            RValue::ComplexVector(vec![
+                Some(RComplexValue {
+                    real: 3.0,
+                    imaginary: 0.0,
+                }),
+                Some(RComplexValue {
+                    real: 8.0,
+                    imaginary: 0.0,
+                }),
+            ])
+        );
+    }
+
+    #[test]
     fn test_eval_assignment() {
         let mut session = RSession::new();
         let assign_result = session.eval("x <- 42");

@@ -13503,26 +13503,13 @@ fn elt_to_sexp(x: SEXP, i: R_xlen_t) -> SEXP {
 // Complete S3 coercion — as.complex, as.raw, as
 // ---------------------------------------------------------------------------
 
-/// R's `as.complex(x)` — coerce to CPLXSXP (simplified: stores real part only).
+/// R's `as.complex(x)` — coerce to CPLXSXP through the shared vector coercer.
 pub unsafe fn do_as_complex(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     let x = CAR(args);
     if x.is_null() || x == R_NilValue() {
         return R_NilValue();
     }
-    let src_t = TYPEOF(x);
-    if src_t == SEXPTYPE::CPLXSXP {
-        return x;
-    }
-    let n = XLENGTH(x);
-    let result = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-    if result.is_null() {
-        return R_NilValue();
-    }
-    // Simplified: just return as-is; full CPLXSXP support needs complex accessor
-    // For now, return the original vector since we don't have a COMPLEX accessor
-    crate::sexp::protect::Rf_protect(result);
-    crate::sexp::protect::Rf_unprotect(1);
-    x // simplified fallback
+    crate::mainutils::coerce::coerceVector(x, SEXPTYPE::CPLXSXP.as_c_int())
 }
 
 /// R's `as.raw(x)` — coerce to RAWSXP.

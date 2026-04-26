@@ -127,6 +127,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
         }
         let _p = Rf_protect(result);
         let dst = COMPLEX(result);
+        super::arithmetic::warn_if_non_multiple_recycling(na, nb);
 
         for i in 0..n {
             let x = elt_complex_coerce(sa, i);
@@ -168,6 +169,7 @@ pub unsafe fn complex_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             *dst.add(i as usize) = val;
         }
 
+        super::arithmetic::propagate_binary_vector_attributes(result, sa, sb, n);
         crate::sexp::protect::Rf_unprotect(1);
         result
     }
