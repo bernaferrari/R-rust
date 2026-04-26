@@ -47,6 +47,7 @@ Android mutable-global scanner and an `aarch64-linux-android` cargo check.
 | Android global-state scan | yes | yes | `scripts/check_android_globals.sh` through `scripts/android_toolchain_check.sh` |
 | Android aarch64 cargo check | yes | yes | `scripts/android_toolchain_check.sh` |
 | Conformance parity | yes | yes | `scripts/conformance_parity.sh --check --report target/release-gate/conformance` |
+| Upstream core slices | yes | yes | `scripts/upstream_core_slices.sh --report target/release-gate/upstream-core-slices` |
 | Artifact sanity | yes | yes | JSON/Markdown conformance report validation |
 | Public safe API audit | yes | yes | `scripts/audit_safe_api.sh` |
 | Upstream port map | yes | yes | `scripts/check_upstream_port_map.sh` |
@@ -81,6 +82,7 @@ The gate writes conformance reports to:
 
 - `target/release-gate/conformance/summary.json`
 - `target/release-gate/conformance/summary.md`
+- `target/release-gate/upstream-core-slices/summary.md`
 
 The JSON report is checked for nonzero total cases and zero failing or
 unexpected-passing cases. The Markdown report is the human-readable release

@@ -43,6 +43,22 @@ You can also choose explicit output paths:
   --markdown target/conformance-summary.md
 ```
 
+## Upstream Core Slices
+
+`scripts/upstream_core_slices.sh` runs curated excerpts adapted from GNU R's
+`r-source/tests/arith.R`, `arith-true.R`, `eval-etc.R`, and `conditions.R`.
+Unlike the numbered conformance fixtures, these cases compare live stock
+`Rscript --vanilla` output directly against the Rust runtime. They are intended
+for evaluator/arithmetic regression work and the release gate:
+
+```bash
+scripts/upstream_core_slices.sh --report target/upstream-core-slices
+```
+
+Known unsupported upstream expectations belong in
+`tests/upstream-core/xfail.tsv` with an owner bead. Passing slices should remain
+xfail-free.
+
 If `Rscript` is missing, the harness prints a deterministic skip message and
 returns `0`. That keeps local runs from failing unexpectedly on machines without
 stock R installed; release gates should install stock R and require this command.
@@ -53,8 +69,8 @@ As of the latest local run:
 
 | Metric | Count |
 | --- | ---: |
-| Total parity cases | 206 |
-| Passing | 206 |
+| Total parity cases | 211 |
+| Passing | 211 |
 | Failing | 0 |
 | Expected failures | 0 |
 | Unexpected passes | 0 |
@@ -65,9 +81,9 @@ Current domain coverage:
 | --- | ---: | --- |
 | Parser and scalar basics | 34 | Arithmetic, scalar values, comments, infix continuation, early object smoke cases |
 | Evaluator, closures, and control flow | 10 | Closures, lexical scope, lazy/default args, missing args, loops |
-| Vectors, lists, attributes, and objects | 29 | Vectors, lists, names, subsetting, factors, class replacement |
-| Base functions, conditions, and platform helpers | 71 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
-| Stats, math, and RNG | 56 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, `sample`/`sample.int` invariants |
+| Vectors, lists, attributes, and objects | 31 | Vectors, lists, names, subsetting, factors, class replacement, arithmetic attributes |
+| Base functions, conditions, and platform helpers | 72 | Sorting/set helpers, output capture, conditions, `ls`, `system`, `proc.time`, file/temp helpers |
+| Stats, math, and RNG | 58 | Numeric summaries, distributions, tail/log flags, numeric edge predicates, arithmetic edge cases, `sample`/`sample.int` invariants |
 | Packages, namespaces, and S3 | 0 | Covered by unit/package smoke tests today; parity fixtures are tracked by `rport-ifek` and `rport-x3pp` |
 | Graphics and Android embedding | 0 | Covered by renderer/unit tests today; parity fixtures are tracked by `rport-c6ap` and `rport-89pz` |
 | Error semantics | 6 | Missing argument, `stop`, `stopifnot`, sampling errors, and selected expected errors |

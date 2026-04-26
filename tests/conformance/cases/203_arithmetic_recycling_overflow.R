@@ -1,3 +1,5 @@
 print(suppressWarnings(c(1, 2, 3) + c(10, 20)))
 print(suppressWarnings(c(1L, 2147483647L) + c(1L, 1L)))
 print(typeof(2L ^ 3L))
+print(suppressWarnings(c(NA, NaN, -1, 1) ^ 0))
+print(suppressWarnings(1 ^ c(NA, NaN, -Inf, Inf)))

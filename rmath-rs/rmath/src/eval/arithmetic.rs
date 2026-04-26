@@ -68,6 +68,11 @@ pub unsafe fn real_binary(op: &str, sa: SEXP, sb: SEXP) -> SEXP {
             let x_na = x.to_bits() == R_NA_BIT_PATTERN;
             let y_na = y.to_bits() == R_NA_BIT_PATTERN;
 
+            if op == "^" && ((!y_na && y == 0.0) || (!x_na && x == 1.0)) {
+                result.set_real_elt(i, 1.0);
+                continue;
+            }
+
             if x_na || y_na {
                 if use_real {
                     result.set_real_elt(i, NA_REAL);

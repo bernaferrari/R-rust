@@ -15,7 +15,8 @@ This is the first Android-focused Rust R runtime slice.
 - Android Compose sample with two independent sessions, eval, package loading,
   S3 package showcase, plot rendering, and cancellation.
 - Pure-R package discovery/loading from Android app-private library paths.
-- Stock C R conformance harness currently passing 206/206 checked cases.
+- Stock C R conformance harness currently passing 211/211 checked cases, plus
+  5/5 curated upstream GNU R core slices.
 - Release gates for formatting, strict clippy, focused Rust tests, Android
   aarch64 checks, global-state audit, conformance parity, safe API audit,
   upstream source-map validation, Android packaging, and performance snapshots.

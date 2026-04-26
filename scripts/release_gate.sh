@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPORT_DIR="$ROOT_DIR/target/release-gate/conformance"
+UPSTREAM_REPORT_DIR="$ROOT_DIR/target/release-gate/upstream-core-slices"
 FULL=0
 RUN_ANDROID=1
 RUN_ANDROID_PACKAGE=0
@@ -19,6 +20,7 @@ Runs the local release-candidate gate:
   - targeted Rust tests for rmath, r-embed, and r-uniffi
   - Android mutable-global scan and aarch64 cargo check
   - C R vs Rust conformance report
+  - curated upstream GNU R evaluator/arithmetic slices
   - generated artifact sanity checks
   - upstream R source map validation
   - git whitespace check
@@ -173,6 +175,9 @@ fi
 section "Conformance report"
 run scripts/conformance_parity.sh --check --report "$REPORT_DIR"
 
+section "Upstream core slices"
+run scripts/upstream_core_slices.sh --report "$UPSTREAM_REPORT_DIR"
+
 section "Artifact sanity"
 check_conformance_artifacts
 
@@ -202,3 +207,4 @@ run git diff --check
 
 echo
 echo "Release gate passed. Conformance report: $REPORT_DIR/summary.md"
+echo "Upstream slice report: $UPSTREAM_REPORT_DIR/summary.md"
