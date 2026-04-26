@@ -35,7 +35,7 @@ use crate::sexp::envir::findFun;
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_GlobalEnv;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 use super::gpar::gcontextFromgpar;
@@ -502,21 +502,26 @@ pub unsafe fn initVP(dd: *const u8) {
     unsafe {
         let dd = dd as pGEDevDesc;
 
-        let vpfnname = Rf_protect(Rf_install(b"grid.top.level.vp\0".as_ptr() as *const c_char));
+        let vpfnname = Rf_install(b"grid.top.level.vp\0".as_ptr() as *const c_char);
+        let _vpfnname_guard = protect(vpfnname);
         let vpfn_env = grid_eval_env();
-        let vpfn = Rf_protect(lang1(findFun(vpfnname, vpfn_env)));
-        let vp = Rf_protect(Rf_eval(vpfn, R_GlobalEnv()));
+        let vpfn = lang1(findFun(vpfnname, vpfn_env));
+        let _vpfn_guard = protect(vpfn);
+        let vp = Rf_eval(vpfn, R_GlobalEnv());
+        let _vp_guard = protect(vp);
 
         let mut dev_width_cm: c_double = 0.0;
         let mut dev_height_cm: c_double = 0.0;
         getDeviceSize(dd, &mut dev_width_cm, &mut dev_height_cm);
 
-        let xscale = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+        let xscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+        let _xscale_guard = protect(xscale);
         *REAL(xscale).add(0) = 0.0;
         *REAL(xscale).add(1) = dev_width_cm;
         SET_VECTOR_ELT(vp, VP_XSCALE as R_xlen_t, xscale);
 
-        let yscale = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+        let yscale = Rf_allocVector(SEXPTYPE::REALSXP, 2);
+        let _yscale_guard = protect(yscale);
         *REAL(yscale).add(0) = 0.0;
         *REAL(yscale).add(1) = dev_height_cm;
         SET_VECTOR_ELT(vp, VP_YSCALE as R_xlen_t, yscale);
@@ -526,7 +531,5 @@ pub unsafe fn initVP(dd: *const u8) {
 
         let vp = doSetViewport(vp, 1, 1, dd);
         setGridStateElement(dd, GSS_VP, vp);
-
-        Rf_unprotect(5);
     }
 }

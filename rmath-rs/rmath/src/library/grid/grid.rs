@@ -29,7 +29,7 @@ use crate::sexp::envir::{R_findVar as findVar, defineVar, findFun};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::R_alloc;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 use super::clippath::{isClipPath, resolveClipPath};
@@ -211,8 +211,10 @@ pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeight
 unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: SEXP) -> bool {
     unsafe {
         let mut result = false;
-        let pvpDevWidthCM = Rf_protect(VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t));
-        let pvpDevHeightCM = Rf_protect(VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t));
+        let pvpDevWidthCM = VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t);
+        let _width_guard = protect(pvpDevWidthCM);
+        let pvpDevHeightCM = VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t);
+        let _height_guard = protect(pvpDevHeightCM);
         if (*REAL(pvpDevWidthCM) - devWidthCM).abs() > 1e-6 {
             result = true;
             *REAL(pvpDevWidthCM) = devWidthCM;
@@ -223,7 +225,6 @@ unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: 
             *REAL(pvpDevHeightCM) = devHeightCM;
             SET_VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t, pvpDevHeightCM);
         }
-        Rf_unprotect(2);
         result
     }
 }
@@ -485,15 +486,16 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
             resolveMask(R_NilValue(), dd);
         }
 
-        let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+        let widthCM = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+        let _width_guard = protect(widthCM);
         *REAL(widthCM) = devWidthCM;
         SET_VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t, widthCM);
 
-        let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+        let heightCM = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+        let _height_guard = protect(heightCM);
         *REAL(heightCM) = devHeightCM;
         SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
 
-        Rf_unprotect(2);
         vp
     }
 }
@@ -505,13 +507,13 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
 pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
-        let vp = Rf_protect(Rf_duplicate(invp));
+        let vp = Rf_duplicate(invp);
+        let _vp_guard = protect(vp);
 
-        let fcall = Rf_protect(lang2(
-            Rf_install(b"pushedvp\0".as_ptr() as *const c_char),
-            vp,
-        ));
-        let pushedvp = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        let fcall = lang2(Rf_install(b"pushedvp\0".as_ptr() as *const c_char), vp);
+        let _fcall_guard = protect(fcall);
+        let pushedvp = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
+        let _pushedvp_guard = protect(pushedvp);
         let pushedvp = doSetViewport(
             pushedvp,
             if *LOGICAL(hasParent) != 0 { 0 } else { 1 },
@@ -522,7 +524,8 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
         setGridStateElement(dd, GSS_VP, pushedvp);
 
         {
-            let vpgp = Rf_protect(VECTOR_ELT(pushedvp, VP_GP as R_xlen_t));
+            let vpgp = VECTOR_ELT(pushedvp, VP_GP as R_xlen_t);
+            let _vpgp_guard = protect(vpgp);
             let fill = getListElement(vpgp, c"fill".as_ptr() as *mut c_char);
             if fill != R_NilValue() {
                 resolveGPar(vpgp, 1);
@@ -534,11 +537,11 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                 );
                 setGridStateElement(dd, GSS_GPAR, pushed_gp);
             }
-            Rf_unprotect(1);
         }
 
         {
-            let clip = Rf_protect(viewportClipSXP(pushedvp));
+            let clip = viewportClipSXP(pushedvp);
+            let _clip_guard = protect(clip);
             if isClipPath(clip) {
                 let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
                 if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -550,16 +553,16 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     );
                     SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
                 } else {
-                    let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                    let resolvedclip = resolveClipPath(clip, dd);
+                    let _resolvedclip_guard = protect(resolvedclip);
                     SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
-                    Rf_unprotect(1);
                 }
             }
-            Rf_unprotect(1);
         }
 
         {
-            let mask = Rf_protect(viewportMaskSXP(pushedvp));
+            let mask = viewportMaskSXP(pushedvp);
+            let _mask_guard = protect(mask);
             if isMask(mask) {
                 let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
                 if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
@@ -569,15 +572,13 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
                     Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr());
                     SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, R_NilValue());
                 } else {
-                    let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                    let resolvedmask = resolveMask(mask, dd);
+                    let _resolvedmask_guard = protect(resolvedmask);
                     SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, resolvedmask);
-                    Rf_unprotect(1);
                 }
             }
-            Rf_unprotect(1);
         }
 
-        Rf_unprotect(3);
         R_NilValue()
     }
 }
@@ -588,54 +589,58 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
 
 unsafe fn noChildren(children: SEXP) -> bool {
     unsafe {
-        let fcall = Rf_protect(lang2(
+        let fcall = lang2(
             Rf_install(b"no.children\0".as_ptr() as *const c_char),
             children,
-        ));
-        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        );
+        let _fcall_guard = protect(fcall);
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
+        let _result_guard = protect(result);
         let r = asBool(result) != 0;
-        Rf_unprotect(2);
         r
     }
 }
 
 unsafe fn childExists(name: SEXP, children: SEXP) -> bool {
     unsafe {
-        let fcall = Rf_protect(lang3(
+        let fcall = lang3(
             Rf_install(b"child.exists\0".as_ptr() as *const c_char),
             name,
             children,
-        ));
-        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        );
+        let _fcall_guard = protect(fcall);
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
+        let _result_guard = protect(result);
         let r = asBool(result) != 0;
-        Rf_unprotect(2);
         r
     }
 }
 
 unsafe fn childList(children: SEXP) -> SEXP {
     unsafe {
-        let fcall = Rf_protect(lang2(
+        let fcall = lang2(
             Rf_install(b"child.list\0".as_ptr() as *const c_char),
             children,
-        ));
-        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-        Rf_unprotect(2);
+        );
+        let _fcall_guard = protect(fcall);
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
+        let _result_guard = protect(result);
         result
     }
 }
 
 unsafe fn pathMatch(path: SEXP, pathsofar: SEXP, strict: SEXP) -> bool {
     unsafe {
-        let fcall = Rf_protect(lang4(
+        let fcall = lang4(
             Rf_install(b"pathMatch\0".as_ptr() as *const c_char),
             path,
             pathsofar,
             strict,
-        ));
-        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        );
+        let _fcall_guard = protect(fcall);
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
+        let _result_guard = protect(result);
         let r = asBool(result) != 0;
-        Rf_unprotect(2);
         r
     }
 }
@@ -645,23 +650,27 @@ unsafe fn growPath(pathsofar: SEXP, name: SEXP) -> SEXP {
         if isNull(pathsofar) {
             return name;
         }
-        let fcall = Rf_protect(lang3(
+        let fcall = lang3(
             Rf_install(b"growPath\0".as_ptr() as *const c_char),
             pathsofar,
             name,
-        ));
-        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-        Rf_unprotect(2);
+        );
+        let _fcall_guard = protect(fcall);
+        let result = Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut());
+        let _result_guard = protect(result);
         result
     }
 }
 
 unsafe fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> SEXP {
     unsafe {
-        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _result_guard = protect(result);
+        let zeroDepth = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        let _zero_depth_guard = protect(zeroDepth);
         *INTEGER(zeroDepth) = 0;
-        let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        let curDepth = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        let _cur_depth_guard = protect(curDepth);
         *INTEGER(curDepth) = depth;
 
         if noChildren(viewportChildren(vp)) {
@@ -679,51 +688,46 @@ unsafe fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> SEXP
                 SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
                 SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
             } else {
-                let found = Rf_protect(findInChildren(
-                    name,
-                    strict,
-                    viewportChildren(vp),
-                    depth + 1,
-                ));
+                let found = findInChildren(name, strict, viewportChildren(vp), depth + 1);
+                let _found_guard = protect(found);
                 SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
                 SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
-                Rf_unprotect(1);
             }
         }
-        Rf_unprotect(3);
         result
     }
 }
 
 unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int) -> SEXP {
     unsafe {
-        let childnames = Rf_protect(childList(children));
+        let childnames = childList(children);
+        let _childnames_guard = protect(childnames);
         let n = LENGTH(childnames);
         let mut count: c_int = 0;
         let mut found = false;
         let mut result = R_NilValue();
         while count < n && !found {
-            let child = Rf_protect(findVar(
+            let child = findVar(
                 installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
                 children,
-            ));
+            );
+            let _child_guard = protect(child);
             if !isNull(child) {
                 result = findViewport(name, strict, child, depth);
                 found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
             }
-            Rf_unprotect(1);
             count += 1;
         }
         if !found {
-            let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-            let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+            let temp = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            let _temp_guard = protect(temp);
+            let zeroDepth = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            let _zero_depth_guard = protect(zeroDepth);
             *INTEGER(zeroDepth) = 0;
             SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
             SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
-            Rf_unprotect(2);
             result = temp;
         }
-        Rf_unprotect(1);
         result
     }
 }
@@ -737,32 +741,34 @@ unsafe fn findvppathInChildren(
     depth: c_int,
 ) -> SEXP {
     unsafe {
-        let childnames = Rf_protect(childList(children));
+        let childnames = childList(children);
+        let _childnames_guard = protect(childnames);
         let n = LENGTH(childnames);
         let mut count: c_int = 0;
         let mut found = false;
         let mut result = R_NilValue();
         while count < n && !found {
-            let vp = Rf_protect(findVar(
+            let vp = findVar(
                 installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
                 children,
-            ));
-            let newpathsofar = Rf_protect(growPath(pathsofar, VECTOR_ELT(vp, VP_NAME as R_xlen_t)));
+            );
+            let _vp_guard = protect(vp);
+            let newpathsofar = growPath(pathsofar, VECTOR_ELT(vp, VP_NAME as R_xlen_t));
+            let _newpathsofar_guard = protect(newpathsofar);
             result = findvppath(path, name, strict, newpathsofar, vp, depth);
             found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
             count += 1;
-            Rf_unprotect(2);
         }
         if !found {
-            let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-            let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+            let temp = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            let _temp_guard = protect(temp);
+            let zeroDepth = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            let _zero_depth_guard = protect(zeroDepth);
             *INTEGER(zeroDepth) = 0;
             SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
             SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
-            Rf_unprotect(2);
             result = temp;
         }
-        Rf_unprotect(1);
         result
     }
 }
@@ -776,10 +782,13 @@ unsafe fn findvppath(
     depth: c_int,
 ) -> SEXP {
     unsafe {
-        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        let _result_guard = protect(result);
+        let zeroDepth = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        let _zero_depth_guard = protect(zeroDepth);
         *INTEGER(zeroDepth) = 0;
-        let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        let curDepth = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        let _cur_depth_guard = protect(curDepth);
         *INTEGER(curDepth) = depth;
 
         if noChildren(viewportChildren(vp)) {
@@ -793,19 +802,18 @@ unsafe fn findvppath(
                 findVar(installTrChar(STRING_ELT(name, 0)), viewportChildren(vp)),
             );
         } else {
-            let found = Rf_protect(findvppathInChildren(
+            let found = findvppathInChildren(
                 path,
                 name,
                 strict,
                 pathsofar,
                 viewportChildren(vp),
                 depth + 1,
-            ));
+            );
+            let _found_guard = protect(found);
             SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
             SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
-            Rf_unprotect(1);
         }
-        Rf_unprotect(3);
         result
     }
 }
@@ -818,32 +826,31 @@ pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let gvp = gridStateElement(dd, GSS_VP);
-        let found = Rf_protect(findViewport(name, strict, gvp, 1));
+        let found = findViewport(name, strict, gvp, 1);
+        let _found_guard = protect(found);
         if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
             let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
             setGridStateElement(dd, GSS_VP, vp);
             {
-                let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
+                let clip = VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t);
+                let _clip_guard = protect(clip);
                 if isClipPath(clip) {
-                    let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                    let resolvedclip = resolveClipPath(clip, dd);
+                    let _resolvedclip_guard = protect(resolvedclip);
                     SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
-                    Rf_unprotect(1);
                 }
-                Rf_unprotect(1);
             }
             {
-                let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
+                let mask = VECTOR_ELT(vp, PVP_MASK as R_xlen_t);
+                let _mask_guard = protect(mask);
                 if isMask(mask) {
-                    let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                    let resolvedmask = resolveMask(mask, dd);
+                    let _resolvedmask_guard = protect(resolvedmask);
                     SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
-                    Rf_unprotect(1);
                 }
-                Rf_unprotect(1);
             }
-            Rf_unprotect(1);
             VECTOR_ELT(found, 0 as R_xlen_t)
         } else {
-            Rf_unprotect(1);
             Rf_error1(
                 c"Viewport '%s' was not found".as_ptr(),
                 CHAR(STRING_ELT(name, 0)),
@@ -861,32 +868,31 @@ pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
     unsafe {
         let dd = getDevice();
         let gvp = gridStateElement(dd, GSS_VP);
-        let found = Rf_protect(findvppath(path, name, strict, R_NilValue(), gvp, 1));
+        let found = findvppath(path, name, strict, R_NilValue(), gvp, 1);
+        let _found_guard = protect(found);
         if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
             let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
             setGridStateElement(dd, GSS_VP, vp);
             {
-                let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
+                let clip = VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t);
+                let _clip_guard = protect(clip);
                 if isClipPath(clip) {
-                    let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                    let resolvedclip = resolveClipPath(clip, dd);
+                    let _resolvedclip_guard = protect(resolvedclip);
                     SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
-                    Rf_unprotect(1);
                 }
-                Rf_unprotect(1);
             }
             {
-                let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
+                let mask = VECTOR_ELT(vp, PVP_MASK as R_xlen_t);
+                let _mask_guard = protect(mask);
                 if isMask(mask) {
-                    let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                    let resolvedmask = resolveMask(mask, dd);
+                    let _resolvedmask_guard = protect(resolvedmask);
                     SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
-                    Rf_unprotect(1);
                 }
-                Rf_unprotect(1);
             }
-            Rf_unprotect(1);
             VECTOR_ELT(found, 0 as R_xlen_t)
         } else {
-            Rf_unprotect(1);
             Rf_error1(
                 c"Viewport '%s' was not found".as_ptr(),
                 CHAR(STRING_ELT(name, 0)),
@@ -921,24 +927,25 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
             }
         }
 
-        Rf_protect(gvp);
-        Rf_protect(newvp);
+        let _gvp_guard = protect(gvp);
+        let _newvp_guard = protect(newvp);
         {
-            let false0 = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, 1));
+            let false0 = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
+            let _false_guard = protect(false0);
             *LOGICAL(false0) = 0;
-            let fcall = Rf_protect(lang4(
+            let fcall = lang4(
                 Rf_install(c"remove".as_ptr()),
                 VECTOR_ELT(gvp, VP_NAME as R_xlen_t),
                 VECTOR_ELT(newvp, PVP_CHILDREN as R_xlen_t),
                 false0,
-            ));
+            );
+            let _fcall_guard = protect(fcall);
             let mut t = fcall;
             t = CDR(CDR(t));
             SET_TAG(t, Rf_install(c"envir".as_ptr()));
             t = CDR(t);
             SET_TAG(t, Rf_install(c"inherits".as_ptr()));
             Rf_eval_with_gd(fcall, grid_eval_env(), dd);
-            Rf_unprotect(2);
         }
 
         let mut devWidthCM: c_double = 0.0;
@@ -955,8 +962,10 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
             && LENGTH(resolving_path) > 0
             && *LOGICAL(resolving_path) != 0)
         {
-            let parentClip = Rf_protect(viewportClipRect(newvp));
-            let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
+            let parentClip = viewportClipRect(newvp);
+            let _parent_clip_guard = protect(parentClip);
+            let parentClipPath = VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t);
+            let _parent_clip_path_guard = protect(parentClipPath);
             if isClipPath(parentClipPath) {
                 resolveClipPath(parentClipPath, dd);
             } else {
@@ -966,7 +975,6 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
                 let yy2 = *REAL(parentClip).add(3);
                 GESetClip(xx1, yy1, xx2, yy2, dd);
             }
-            Rf_unprotect(2);
         }
         if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
             && LENGTH(resolving_path) > 0
@@ -976,7 +984,6 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
         }
 
         SET_VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t, R_NilValue());
-        Rf_unprotect(2);
         R_NilValue()
     }
 }
@@ -1020,8 +1027,10 @@ pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
             && LENGTH(resolving_path) > 0
             && *LOGICAL(resolving_path) != 0)
         {
-            let parentClip = Rf_protect(viewportClipRect(newvp));
-            let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
+            let parentClip = viewportClipRect(newvp);
+            let _parent_clip_guard = protect(parentClip);
+            let parentClipPath = VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t);
+            let _parent_clip_path_guard = protect(parentClipPath);
             if isClipPath(parentClipPath) {
                 resolveClipPath(parentClipPath, dd);
             } else {
@@ -1031,7 +1040,6 @@ pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
                 let yy2 = *REAL(parentClip).add(3);
                 GESetClip(xx1, yy1, xx2, yy2, dd);
             }
-            Rf_unprotect(2);
         }
         if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
             && LENGTH(resolving_path) > 0
