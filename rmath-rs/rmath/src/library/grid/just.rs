@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001-3 Paul Murrell
@@ -31,30 +30,22 @@ const L_TOP: c_int = 2;
 const L_RIGHT: c_int = 2;
 
 /* These transformations assume that x and width are in the same units */
-pub unsafe fn justifyX(x: f64, width: f64, hjust: f64) -> f64 {
+pub fn justifyX(x: f64, width: f64, hjust: f64) -> f64 {
     x - width * hjust
 }
 
-pub unsafe fn justifyY(y: f64, height: f64, vjust: f64) -> f64 {
+pub fn justifyY(y: f64, height: f64, vjust: f64) -> f64 {
     y - height * vjust
 }
 
 /* Convert enum justification into 0..1 justification */
-pub unsafe fn convertJust(just: c_int) -> f64 {
-    let mut result: f64 = 0.0;
+pub fn convertJust(just: c_int) -> f64 {
     match just {
-        _ if just == L_BOTTOM || just == L_LEFT => {
-            result = 0.0;
-        }
-        _ if just == L_CENTRE || just == L_CENTER => {
-            result = 0.5;
-        }
-        _ if just == L_TOP || just == L_RIGHT => {
-            result = 1.0;
-        }
-        _ => {} // intentionally unhandled: unknown justification value
+        _ if just == L_BOTTOM || just == L_LEFT => 0.0,
+        _ if just == L_CENTRE || just == L_CENTER => 0.5,
+        _ if just == L_TOP || just == L_RIGHT => 1.0,
+        _ => 0.0,
     }
-    result
 }
 
 /* Return the amount of justification required */
@@ -66,6 +57,10 @@ pub unsafe fn justification(
     hadj: *mut f64,
     vadj: *mut f64,
 ) {
-    *hadj = -width * hjust;
-    *vadj = -height * vjust;
+    if let Some(hadj) = unsafe { hadj.as_mut() } {
+        *hadj = -width * hjust;
+    }
+    if let Some(vadj) = unsafe { vadj.as_mut() } {
+        *vadj = -height * vjust;
+    }
 }

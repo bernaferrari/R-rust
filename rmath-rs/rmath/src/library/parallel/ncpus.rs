@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2011-2023   The R Core Team.
@@ -21,15 +20,44 @@
  */
 
 use std::os::raw::c_int;
+use std::slice;
 
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
-use crate::sexp::ffi::*;
-use crate::sexp::globals::*;
-use crate::sexp::protect::*;
+use crate::sexp::accessors::INTEGER;
+use crate::sexp::constructors::Rf_allocVector;
+use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
+use crate::sexp::protect::protect;
 
 #[cfg(unix)]
-use libc::{_SC_NPROCESSORS_CONF, _SC_NPROCESSORS_ONLN, c_long, sysconf};
+use libc::{_SC_NPROCESSORS_CONF, _SC_NPROCESSORS_ONLN, sysconf};
+
+fn detect_cpu_counts() -> [c_int; 2] {
+    let mut counts = [NA_INTEGER as c_int, NA_INTEGER as c_int];
+
+    #[cfg(unix)]
+    {
+        let logical = unsafe { sysconf(_SC_NPROCESSORS_ONLN) };
+        if logical > 0 {
+            counts[1] = logical as c_int;
+        }
+
+        let configured = unsafe { sysconf(_SC_NPROCESSORS_CONF) };
+        if configured > 0 {
+            counts[0] = configured as c_int;
+        } else if let Ok(threads) = std::thread::available_parallelism() {
+            counts[0] = threads.get() as c_int;
+        }
+    }
+
+    #[cfg(not(unix))]
+    {
+        if let Ok(threads) = std::thread::available_parallelism() {
+            let n = threads.get() as c_int;
+            counts = [n, n];
+        }
+    }
+
+    counts
+}
 
 /// Detect the number of physical and logical processors.
 ///
@@ -37,44 +65,9 @@ use libc::{_SC_NPROCESSORS_CONF, _SC_NPROCESSORS_ONLN, c_long, sysconf};
 ///   [0] = number of physical cores
 ///   [1] = number of logical processors (including hyperthreading)
 pub unsafe fn ncpus(_virtual: SEXP) -> SEXP {
-    let res = Rf_allocVector(SEXPTYPE::INTSXP, 2);
-    Rf_protect(res);
-    let ians = INTEGER(res);
-
-    *ians.add(1) = NA_INTEGER as c_int;
-
-    #[cfg(unix)]
-    {
-        // Try sysconf for logical processor count
-        let logical = unsafe { sysconf(_SC_NPROCESSORS_ONLN) };
-        if logical > 0 {
-            *ians.add(1) = logical as c_int;
-        }
-
-        // Try sysconf for physical core count
-        // Note: _SC_NPROCESSORS_CONF is the closest approximation;
-        // on most systems this equals _SC_NPROCESSORS_ONLN when HT is not present,
-        // and on systems with HT it still reports logical cores.
-        // The C version uses Windows-specific APIs for the physical count,
-        // which are not available on Unix. We use available_parallelism as fallback.
-        let conf = unsafe { sysconf(_SC_NPROCESSORS_CONF) };
-        if conf > 0 {
-            *ians.add(0) = conf as c_int;
-        } else if let Ok(threads) = std::thread::available_parallelism() {
-            *ians.add(0) = threads.get() as c_int;
-        }
-    }
-
-    #[cfg(not(unix))]
-    {
-        // Fallback for non-Unix: use std::thread::available_parallelism
-        if let Ok(threads) = std::thread::available_parallelism() {
-            let n = threads.get() as c_int;
-            *ians.add(0) = n;
-            *ians.add(1) = n;
-        }
-    }
-
-    Rf_unprotect(1);
+    let res = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 2) };
+    let _res_guard = protect(res);
+    let output = unsafe { slice::from_raw_parts_mut(INTEGER(res), 2) };
+    output.copy_from_slice(&detect_cpu_counts());
     res
 }
