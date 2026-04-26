@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001-12   The R Core Team.
@@ -25,33 +24,38 @@
  *  etc.
  *
  *  These all depend on the Graphics Engine (GPar, pGEDevDesc, GE
- *  functions) which is not yet fully ported. All functions are stubs
- *  returning R_NilValue().
+ *  functions) which is not yet fully ported. Until they are ported, these
+ *  entry points fail explicitly instead of silently pretending to draw.
  */
 
 use std::ffi::c_void;
 use std::os::raw::{c_double, c_int};
 
-use crate::sexp::ffi::*;
-use crate::sexp::globals::*;
+use crate::main::errors::Rf_error_unimplemented;
+use crate::sexp::ffi::SEXP;
 
 /// pGEDevDesc is an opaque pointer to the graphics device descriptor.
 type pGEDevDesc = *mut c_void;
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned");
+}
 
 /* ========================================================================
  * String dimension functions
  * ======================================================================== */
 
 /// C_strWidth -- compute the width of a string in the current device.
-/// Stub: returns 0.0.
+/// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strWidth(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    0.0
+    unsupported("graphics::C_strWidth")
 }
 
 /// C_strHeight -- compute the height of a string in the current device.
-/// Stub: returns 0.0.
+/// Reports that base graphics string metrics are not implemented yet.
 pub unsafe fn C_strHeight(_str: SEXP, _gc: SEXP, _dd: pGEDevDesc) -> c_double {
-    0.0
+    unsupported("graphics::C_strHeight")
 }
 
 /* ========================================================================
@@ -72,7 +76,7 @@ pub unsafe fn C_text(
     _cex: SEXP,
     _rot: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_text")
 }
 
 /// C_mtext -- draw text in the margins of the current plot.
@@ -89,7 +93,7 @@ pub unsafe fn C_mtext(
     _cex: SEXP,
     _font: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_mtext")
 }
 
 /// C_title -- add a title to the current plot.
@@ -105,7 +109,7 @@ pub unsafe fn C_title(
     _cex: SEXP,
     _font: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_title")
 }
 
 /* ========================================================================
@@ -131,13 +135,13 @@ pub unsafe fn C_axis(
     _padj: SEXP,
     _gap_axis: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_axis")
 }
 
 /// C_box -- draw a box around the current plot.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_box(_which: SEXP, _lty: SEXP, _lwd: SEXP, _col: SEXP, _fill: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_box")
 }
 
 /* ========================================================================
@@ -158,7 +162,7 @@ pub unsafe fn C_arrows(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_arrows")
 }
 
 /// C_segments -- draw line segments between pairs of points.
@@ -172,7 +176,7 @@ pub unsafe fn C_segments(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_segments")
 }
 
 /// C_abline -- add a line (or lines) to the current plot.
@@ -187,7 +191,7 @@ pub unsafe fn C_abline(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_abline")
 }
 
 /* ========================================================================
@@ -208,7 +212,7 @@ pub unsafe fn C_rect(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_rect")
 }
 
 /// C_polygon -- draw a polygon on the current plot.
@@ -223,7 +227,7 @@ pub unsafe fn C_polygon(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_polygon")
 }
 
 /// C_polypath -- draw a path (possibly with holes) on the current plot.
@@ -238,7 +242,7 @@ pub unsafe fn C_polypath(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_polypath")
 }
 
 /// C_xspline -- draw an X-spline (smooth curve) on the current plot.
@@ -254,7 +258,7 @@ pub unsafe fn C_xspline(
     _lty: SEXP,
     _lwd: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_xspline")
 }
 
 /* ========================================================================
@@ -279,7 +283,7 @@ pub unsafe fn C_symbols(
     _xlim: SEXP,
     _ylim: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_symbols")
 }
 
 /* ========================================================================
@@ -297,7 +301,7 @@ pub unsafe fn C_locator(
     _x: SEXP,
     _y: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_locator")
 }
 
 /// C_identify -- identify points on the plot interactively.
@@ -314,7 +318,7 @@ pub unsafe fn C_identify(
     _atpen: SEXP,
     _order: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_identify")
 }
 
 /* ========================================================================
@@ -324,7 +328,7 @@ pub unsafe fn C_identify(
 /// C_clip -- set clipping region on the current plot.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_clip(_x1: SEXP, _y1: SEXP, _x2: SEXP, _y2: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_clip")
 }
 
 /* ========================================================================
@@ -341,7 +345,7 @@ pub unsafe fn C_plot_window(
     _xaxs: SEXP,
     _yaxs: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_plot_window")
 }
 
 /// C_plot_xy -- set up the plot coordinates and draw the axes/frame.
@@ -362,7 +366,7 @@ pub unsafe fn C_plot_xy(
     _xaxs: SEXP,
     _yaxs: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_plot_xy")
 }
 
 /* ========================================================================
@@ -379,7 +383,7 @@ pub unsafe fn C_raster(
     _img: SEXP,
     _interpolate: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_raster")
 }
 
 /* ========================================================================
@@ -389,7 +393,7 @@ pub unsafe fn C_raster(
 /// C_grid -- draw a grid on the current plot.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_grid(_nx: SEXP, _ny: SEXP, _col: SEXP, _lty: SEXP, _lwd: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_grid")
 }
 
 /* ========================================================================
@@ -399,7 +403,7 @@ pub unsafe fn C_grid(_nx: SEXP, _ny: SEXP, _col: SEXP, _lty: SEXP, _lwd: SEXP) -
 /// C_contourLines -- compute contour lines.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_contourLines(_x: SEXP, _y: SEXP, _z: SEXP, _levels: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_contourLines")
 }
 
 /* ========================================================================
@@ -409,23 +413,23 @@ pub unsafe fn C_contourLines(_x: SEXP, _y: SEXP, _z: SEXP, _levels: SEXP) -> SEX
 /// C_HersheyStroke -- get the stroke for a Hershey glyph.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_HersheyStroke(_which: SEXP, _index: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_HersheyStroke")
 }
 
 /// C_HersheyWidth -- get the width of a Hershey glyph.
 /// Stub: returns 0.
 pub unsafe fn C_HersheyWidth(_which: SEXP, _index: SEXP) -> c_double {
-    0.0
+    unsupported("graphics::C_HersheyWidth")
 }
 
 /// C_HersheyList -- list all available Hershey fonts and glyphs.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_HersheyList() -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_HersheyList")
 }
 
 /// C_HersheyGlyph -- get a Hershey glyph as a character string.
 /// Stub: returns R_NilValue.
 pub unsafe fn C_HersheyGlyph(_which: SEXP, _index: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("graphics::C_HersheyGlyph")
 }

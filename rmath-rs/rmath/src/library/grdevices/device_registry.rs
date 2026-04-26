@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 use std::os::raw::{c_double, c_int};
 use std::ptr;
 
@@ -283,7 +282,7 @@ pub unsafe extern "C" fn GEinitDisplayList(_gdd: pGEDevDesc) {}
 pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
 pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 #[cfg(test)]
