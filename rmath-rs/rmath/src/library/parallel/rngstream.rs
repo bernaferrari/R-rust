@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2011   The R Core Team.
@@ -21,6 +20,7 @@
  */
 
 use std::os::raw::c_int;
+use std::slice;
 
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -54,69 +54,71 @@ const A2P127: [[Uint64; 3]; 3] = [
 ];
 
 pub unsafe fn nextStream(x: SEXP) -> SEXP {
-    let mut seed: [Uint64; 6] = [0; 6];
-    let mut nseed: [Uint64; 6] = [0; 6];
+    unsafe {
+        let x_int = INTEGER(x);
+        let x_vals = slice::from_raw_parts(x_int, 7);
+        let seed = &x_vals[1..];
+        let mut nseed: [Uint64; 6] = [0; 6];
 
-    for i in 0..6 {
-        seed[i] = *INTEGER(x).add(i + 1) as Uint64;
-    }
-
-    for i in 0..3 {
-        let mut tmp: Uint64 = 0;
-        for j in 0..3 {
-            tmp += A1P127[i][j] * seed[j];
-            tmp %= 4294967087;
+        for i in 0..3 {
+            let mut tmp: Uint64 = 0;
+            for j in 0..3 {
+                tmp += A1P127[i][j] * seed[j] as Uint64;
+                tmp %= 4294967087;
+            }
+            nseed[i] = tmp;
         }
-        nseed[i] = tmp;
-    }
 
-    for i in 0..3 {
-        let mut tmp: Uint64 = 0;
-        for j in 0..3 {
-            tmp += A2P127[i][j] * seed[j + 3];
-            tmp %= 4294944443;
+        for i in 0..3 {
+            let mut tmp: Uint64 = 0;
+            for j in 0..3 {
+                tmp += A2P127[i][j] * seed[j + 3] as Uint64;
+                tmp %= 4294944443;
+            }
+            nseed[i + 3] = tmp;
         }
-        nseed[i + 3] = tmp;
-    }
 
-    let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
-    *INTEGER(ans).add(0) = *INTEGER(x).add(0);
-    for i in 0..6 {
-        *INTEGER(ans).add(i + 1) = nseed[i] as c_int;
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
+        let ans_int = slice::from_raw_parts_mut(INTEGER(ans), 7);
+        ans_int[0] = x_vals[0];
+        for i in 0..6 {
+            ans_int[i + 1] = nseed[i] as c_int;
+        }
+        ans
     }
-    ans
 }
 
 pub unsafe fn nextSubStream(x: SEXP) -> SEXP {
-    let mut seed: [Uint64; 6] = [0; 6];
-    let mut nseed: [Uint64; 6] = [0; 6];
+    unsafe {
+        let x_int = INTEGER(x);
+        let x_vals = slice::from_raw_parts(x_int, 7);
+        let seed = &x_vals[1..];
+        let mut nseed: [Uint64; 6] = [0; 6];
 
-    for i in 0..6 {
-        seed[i] = *INTEGER(x).add(i + 1) as Uint64;
-    }
-
-    for i in 0..3 {
-        let mut tmp: Uint64 = 0;
-        for j in 0..3 {
-            tmp += A1P76[i][j] * seed[j];
-            tmp %= 4294967087;
+        for i in 0..3 {
+            let mut tmp: Uint64 = 0;
+            for j in 0..3 {
+                tmp += A1P76[i][j] * seed[j] as Uint64;
+                tmp %= 4294967087;
+            }
+            nseed[i] = tmp;
         }
-        nseed[i] = tmp;
-    }
 
-    for i in 0..3 {
-        let mut tmp: Uint64 = 0;
-        for j in 0..3 {
-            tmp += A2P76[i][j] * seed[j + 3];
-            tmp %= 4294944443;
+        for i in 0..3 {
+            let mut tmp: Uint64 = 0;
+            for j in 0..3 {
+                tmp += A2P76[i][j] * seed[j + 3] as Uint64;
+                tmp %= 4294944443;
+            }
+            nseed[i + 3] = tmp;
         }
-        nseed[i + 3] = tmp;
-    }
 
-    let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
-    *INTEGER(ans).add(0) = *INTEGER(x).add(0);
-    for i in 0..6 {
-        *INTEGER(ans).add(i + 1) = nseed[i] as c_int;
+        let ans = Rf_allocVector(SEXPTYPE::INTSXP, 7);
+        let ans_int = slice::from_raw_parts_mut(INTEGER(ans), 7);
+        ans_int[0] = x_vals[0];
+        for i in 0..6 {
+            ans_int[i + 1] = nseed[i] as c_int;
+        }
+        ans
     }
-    ans
 }

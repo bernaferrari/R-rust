@@ -1,12 +1,11 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2000--2023  The R Core Team
  *
  *  Ported from r-source/src/library/tcltk/src/tcltk.c
  *
- *  Tcl/Tk interface stubs -- all functions return R_NilValue or reasonable
- *  defaults since we do not link against an actual Tcl/Tk library.
+ *  Tcl/Tk interface stubs -- these now raise explicit unsupported errors
+ *  because this build does not link against an actual Tcl/Tk library.
  *
  *  The original C code depends on:
  *    - Tcl/Tk library headers (tcl.h, tk.h)
@@ -15,19 +14,19 @@
  *    - Callback mechanisms (R_eval, R_call, R_call_lang)
  *
  *  These stubs provide FFI-compatible symbols so the linker can resolve
- *  all references.  They return safe defaults (empty strings, nil, etc.)
- *  that allow the package to load without a real Tcl/Tk installation.
+ *  all references, but each entry point aborts with an unsupported error.
  */
 
 use std::cell::Cell;
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
-use crate::sexp::ffi::*;
-use crate::sexp::globals::*;
-use crate::sexp::protect::*;
+use crate::sexp::ffi::SEXP;
+
+fn unsupported(name: &str) -> ! {
+    crate::main::errors::Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
+}
 
 // ---------------------------------------------------------------------------
 // RTcl_interp -- global interpreter pointer (module-private)
@@ -51,9 +50,8 @@ thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_mut(
 ///   5. Registers R_eval, R_call, R_call_lang commands
 ///   6. Sets service mode to TCL_SERVICE_ALL
 pub unsafe fn tcltk_init(TkUp: *mut c_int) {
-    if !TkUp.is_null() {
-        *TkUp = 0;
-    }
+    let _ = TkUp;
+    unsupported("tcltk::tcltk_init")
 }
 
 // ---------------------------------------------------------------------------
@@ -67,7 +65,7 @@ pub unsafe fn tcltk_init(TkUp: *mut c_int) {
 ///   2. Calls tk_eval(cmd) which converts to UTF-8 and evaluates
 ///   3. Wraps result in an external pointer via makeRTclObject()
 pub unsafe fn dotTcl(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::dotTcl")
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +80,7 @@ pub unsafe fn dotTcl(_args: SEXP) -> SEXP {
 ///   3. Calls Tcl_EvalObjv() on the interpreter
 ///   4. Wraps result via makeRTclObject()
 pub unsafe fn dotTclObjv(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::dotTclObjv")
 }
 
 // ---------------------------------------------------------------------------
@@ -96,7 +94,7 @@ pub unsafe fn dotTclObjv(_args: SEXP) -> SEXP {
 ///   - For language: builds "R_call_lang <addr> <addr>" string
 ///   - Converts from UTF-8 and returns as R string
 pub unsafe fn dotTclcallback(_args: SEXP) -> SEXP {
-    Rf_mkString(c"".as_ptr())
+    unsupported("tcltk::dotTclcallback")
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +105,7 @@ pub unsafe fn dotTclcallback(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_GetVar2Ex() and wraps via makeRTclObject().
 pub unsafe fn RTcl_ObjFromVar(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjFromVar")
 }
 
 // ---------------------------------------------------------------------------
@@ -118,7 +116,7 @@ pub unsafe fn RTcl_ObjFromVar(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_SetVar2Ex().
 pub unsafe fn RTcl_AssignObjToVar(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_AssignObjToVar")
 }
 
 // ---------------------------------------------------------------------------
@@ -130,7 +128,7 @@ pub unsafe fn RTcl_AssignObjToVar(_args: SEXP) -> SEXP {
 /// The real implementation calls Tcl_GetStringFromObj() then
 /// Tcl_UtfToExternalDString() for encoding conversion.
 pub unsafe fn RTcl_StringFromObj(_args: SEXP) -> SEXP {
-    Rf_mkString(c"".as_ptr())
+    unsupported("tcltk::RTcl_StringFromObj")
 }
 
 // ---------------------------------------------------------------------------
@@ -142,7 +140,7 @@ pub unsafe fn RTcl_StringFromObj(_args: SEXP) -> SEXP {
 /// The real implementation calls Tcl_ListObjGetElements() and
 /// converts each element via Tcl_UtfToExternalDString().
 pub unsafe fn RTcl_ObjAsCharVector(_args: SEXP) -> SEXP {
-    Rf_allocVector(SEXPTYPE::STRSXP, 0) // STRSXP
+    unsupported("tcltk::RTcl_ObjAsCharVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -154,7 +152,7 @@ pub unsafe fn RTcl_ObjAsCharVector(_args: SEXP) -> SEXP {
 /// The real implementation first tries Tcl_GetDoubleFromObj() for a
 /// single value, then Tcl_ListObjGetElements() for a list.
 pub unsafe fn RTcl_ObjAsDoubleVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjAsDoubleVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -166,7 +164,7 @@ pub unsafe fn RTcl_ObjAsDoubleVector(_args: SEXP) -> SEXP {
 /// The real implementation uses NewIntOrDoubleObj() to convert each
 /// element (integers stored as doubles get special handling).
 pub unsafe fn RTcl_ObjFromDoubleVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjFromDoubleVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -178,7 +176,7 @@ pub unsafe fn RTcl_ObjFromDoubleVector(_args: SEXP) -> SEXP {
 /// The real implementation first tries Tcl_GetIntFromObj() for a
 /// single value, then Tcl_ListObjGetElements() for a list.
 pub unsafe fn RTcl_ObjAsIntVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjAsIntVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +188,7 @@ pub unsafe fn RTcl_ObjAsIntVector(_args: SEXP) -> SEXP {
 /// The real implementation calls Tcl_NewIntObj() for each element
 /// and builds a Tcl list via Tcl_ListObjAppendElement().
 pub unsafe fn RTcl_ObjFromIntVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjFromIntVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -202,7 +200,7 @@ pub unsafe fn RTcl_ObjFromIntVector(_args: SEXP) -> SEXP {
 /// The real implementation first tries Tcl_GetByteArrayFromObj() for
 /// a byte array, then Tcl_ListObjGetElements() for a list of arrays.
 pub unsafe fn RTcl_ObjAsRawVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjAsRawVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -213,7 +211,7 @@ pub unsafe fn RTcl_ObjAsRawVector(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_NewByteArrayObj().
 pub unsafe fn RTcl_ObjFromRawVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjFromRawVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -227,7 +225,7 @@ pub unsafe fn RTcl_ObjFromRawVector(_args: SEXP) -> SEXP {
 /// a Tcl list.  Single-element vectors with drop=TRUE return a
 /// scalar Tcl object.
 pub unsafe fn RTcl_ObjFromCharVector(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_ObjFromCharVector")
 }
 
 // ---------------------------------------------------------------------------
@@ -239,7 +237,7 @@ pub unsafe fn RTcl_ObjFromCharVector(_args: SEXP) -> SEXP {
 /// The real implementation calls Tcl_GetVar2Ex() with the array
 /// name and index.
 pub unsafe fn RTcl_GetArrayElem(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_GetArrayElem")
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +248,7 @@ pub unsafe fn RTcl_GetArrayElem(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_SetVar2Ex().
 pub unsafe fn RTcl_SetArrayElem(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_SetArrayElem")
 }
 
 // ---------------------------------------------------------------------------
@@ -261,7 +259,7 @@ pub unsafe fn RTcl_SetArrayElem(_args: SEXP) -> SEXP {
 ///
 /// The real implementation calls Tcl_UnsetVar2().
 pub unsafe fn RTcl_RemoveArrayElem(_args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tcltk::RTcl_RemoveArrayElem")
 }
 
 // ---------------------------------------------------------------------------
@@ -274,5 +272,5 @@ pub unsafe fn RTcl_RemoveArrayElem(_args: SEXP) -> SEXP {
 /// Tcl_GetServiceMode() depending on whether a logical argument
 /// is provided.  Returns whether the mode is TCL_SERVICE_ALL.
 pub unsafe fn RTcl_ServiceMode(_args: SEXP) -> SEXP {
-    Rf_ScalarLogical(1) // TCL_SERVICE_ALL
+    unsupported("tcltk::RTcl_ServiceMode")
 }
