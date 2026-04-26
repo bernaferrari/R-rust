@@ -45,7 +45,7 @@ use crate::sexp::ffi::{
 use crate::sexp::globals::{R_GlobalEnv, R_NaString as R_GlobalNaString, R_NilValue};
 use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::object::Sexp;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -967,7 +967,8 @@ unsafe fn coerceToLogical(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::LGLSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::LGLSXP, n);
+        let _ans_guard = protect(ans);
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
         let pa = LOGICAL(ans);
 
@@ -989,7 +990,6 @@ unsafe fn coerceToLogical(v: SEXP) -> SEXP {
         if warn != 0 {
             CoercionWarning(warn);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -999,7 +999,8 @@ unsafe fn coerceToInteger(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::INTSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n);
+        let _ans_guard = protect(ans);
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
         let pa = INTEGER(ans);
 
@@ -1019,7 +1020,6 @@ unsafe fn coerceToInteger(v: SEXP) -> SEXP {
         if warn != 0 {
             CoercionWarning(warn);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1029,7 +1029,8 @@ unsafe fn coerceToReal(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::REALSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
+        let _ans_guard = protect(ans);
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
         let pa = REAL(ans);
 
@@ -1049,7 +1050,6 @@ unsafe fn coerceToReal(v: SEXP) -> SEXP {
         if warn != 0 {
             CoercionWarning(warn);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1059,7 +1059,8 @@ unsafe fn coerceToComplex(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::CPLXSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
+        let _ans_guard = protect(ans);
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
         let pa = COMPLEX(ans);
 
@@ -1084,7 +1085,6 @@ unsafe fn coerceToComplex(v: SEXP) -> SEXP {
         if warn != 0 {
             CoercionWarning(warn);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1094,7 +1094,8 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::RAWSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::RAWSXP, n);
+        let _ans_guard = protect(ans);
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
         let pa = RAW(ans);
 
@@ -1155,7 +1156,6 @@ unsafe fn coerceToRaw(v: SEXP) -> SEXP {
         if warn != 0 {
             CoercionWarning(warn);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1165,7 +1165,8 @@ unsafe fn coerceToString(v: SEXP) -> SEXP {
     unsafe {
         let mut warn: c_int = 0;
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+        let _ans_guard = protect(ans);
         SHALLOW_DUPLICATE_ATTRIB(ans, v);
 
         let vtype = TYPEOF(v);
@@ -1185,7 +1186,6 @@ unsafe fn coerceToString(v: SEXP) -> SEXP {
         if warn != 0 {
             CoercionWarning(warn);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1194,14 +1194,15 @@ unsafe fn coerceToString(v: SEXP) -> SEXP {
 unsafe fn coerceToExpression(v: SEXP) -> SEXP {
     unsafe {
         if !isVectorAtomic(v) {
-            let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::EXPRSXP, 1));
+            let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+            let _ans_guard = protect(ans);
             SET_VECTOR_ELT(ans, 0, v);
-            Rf_unprotect(1);
             return ans;
         }
 
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::EXPRSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::EXPRSXP, n);
+        let _ans_guard = protect(ans);
 
         let vtype = TYPEOF(v);
         for i in 0..n {
@@ -1218,7 +1219,6 @@ unsafe fn coerceToExpression(v: SEXP) -> SEXP {
             SET_VECTOR_ELT(ans, i, elt);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1227,7 +1227,8 @@ unsafe fn coerceToExpression(v: SEXP) -> SEXP {
 unsafe fn coerceToVectorList(v: SEXP) -> SEXP {
     unsafe {
         let n = xlength(v);
-        let ans = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, n));
+        let ans = Rf_allocVector3(SEXPTYPE::VECSXP, n);
+        let _ans_guard = protect(ans);
 
         let vtype = TYPEOF(v);
         for i in 0..n {
@@ -1251,7 +1252,6 @@ unsafe fn coerceToVectorList(v: SEXP) -> SEXP {
             setAttrib(ans, R_NamesSymbol(), names);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1260,7 +1260,8 @@ unsafe fn coerceToVectorList(v: SEXP) -> SEXP {
 unsafe fn coerceToPairList(v: SEXP) -> SEXP {
     unsafe {
         let n = LENGTH(v);
-        let ans = Rf_protect(Rf_allocList(n));
+        let ans = Rf_allocList(n);
+        let _ans_guard = protect(ans);
         let mut ansp = ans;
 
         let vtype = TYPEOF(v);
@@ -1309,7 +1310,6 @@ unsafe fn coerceToPairList(v: SEXP) -> SEXP {
             setAttrib(ans, R_NamesSymbol(), names);
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -1318,15 +1318,16 @@ unsafe fn coerceToPairList(v: SEXP) -> SEXP {
 unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
         if type_ == SEXPTYPE::EXPRSXP {
-            let rval = Rf_protect(Rf_allocVector3(SEXPTYPE::EXPRSXP, 1));
+            let rval = Rf_allocVector3(SEXPTYPE::EXPRSXP, 1);
+            let _rval_guard = protect(rval);
             SET_VECTOR_ELT(rval, 0, v);
-            Rf_unprotect(1);
             return rval;
         }
 
         if type_ == SEXPTYPE::STRSXP {
             let n = LENGTH(v);
-            let rval = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t));
+            let rval = Rf_allocVector3(SEXPTYPE::STRSXP, n as R_xlen_t);
+            let _rval_guard = protect(rval);
             let mut vp = v;
             for i in 0..n {
                 let car = CAR(vp);
@@ -1338,7 +1339,6 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 }
                 vp = CDR(vp);
             }
-            Rf_unprotect(1);
             return rval;
         }
 
@@ -1350,19 +1350,20 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 len += 1;
                 xptr = CDR(xptr);
             }
-            let xnew = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t));
+            let xnew = Rf_allocVector3(SEXPTYPE::VECSXP, len as R_xlen_t);
+            let _xnew_guard = protect(xnew);
             let mut xptr = v;
             for i in 0..len {
                 SET_VECTOR_ELT(xnew, i as R_xlen_t, CAR(xptr));
                 xptr = CDR(xptr);
             }
-            Rf_unprotect(1);
             return xnew;
         }
 
         if isVectorizable(v) {
             let n = LENGTH(v);
-            let rval = Rf_protect(Rf_allocVector3(type_.0, n as R_xlen_t));
+            let rval = Rf_allocVector3(type_.0, n as R_xlen_t);
+            let _rval_guard = protect(rval);
             let mut vp = v;
             for i in 0..n {
                 match type_.0 {
@@ -1385,7 +1386,6 @@ unsafe fn coercePairList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                 }
                 vp = CDR(vp);
             }
-            Rf_unprotect(1);
             return rval;
         }
 
@@ -1425,8 +1425,10 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
         if type_ == SEXPTYPE::LISTSXP {
             // VectorToPairList
             let n = LENGTH(v);
-            let x = Rf_protect(Rf_allocList(n));
-            let names = Rf_protect(getAttrib(v, R_NamesSymbol()));
+            let x = Rf_allocList(n);
+            let _x_guard = protect(x);
+            let names = getAttrib(v, R_NamesSymbol());
+            let _names_guard = protect(names);
             let mut xptr = x;
             for i in 0..n {
                 SETCAR(xptr, VECTOR_ELT(v, i as R_xlen_t));
@@ -1445,14 +1447,14 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                     xptr2 = CDR(xptr2);
                 }
             }
-            Rf_unprotect(2);
             return x;
         }
 
         // list -> string
         if type_ == SEXPTYPE::STRSXP {
             let n = xlength(v);
-            let rval = Rf_protect(Rf_allocVector3(SEXPTYPE::STRSXP, n));
+            let rval = Rf_allocVector3(SEXPTYPE::STRSXP, n);
+            let _rval_guard = protect(rval);
             for i in 0..n {
                 let elt = VECTOR_ELT(v, i);
                 if isString(elt) && LENGTH(elt) == 1 {
@@ -1462,13 +1464,13 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
                     SET_STRING_ELT(rval, i, StringFromLogical(0));
                 }
             }
-            Rf_unprotect(1);
             return rval;
         }
 
         if isVectorizable(v) {
             let n = xlength(v);
-            let rval = Rf_protect(Rf_allocVector3(type_.0, n));
+            let rval = Rf_allocVector3(type_.0, n);
+            let _rval_guard = protect(rval);
             match type_.0 {
                 t if t == SEXPTYPE::LGLSXP => {
                     for i in 0..n {
@@ -1512,7 +1514,6 @@ unsafe fn coerceVectorList(v: SEXP, type_: SEXPTYPE) -> SEXP {
             if !isNull(names) {
                 setAttrib(rval, R_NamesSymbol(), names);
             }
-            Rf_unprotect(1);
             return rval;
         }
 
@@ -1528,7 +1529,7 @@ unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
             error("invalid data of mode (too short)");
         }
 
-        let ans = Rf_protect(match TYPEOF(v) {
+        let ans = match TYPEOF(v) {
             t if t == SEXPTYPE::LGLSXP => StringFromLogical(LOGICAL_ELT(v, 0)),
             t if t == SEXPTYPE::INTSXP => StringFromInteger(INTEGER_ELT(v, 0), &mut warn),
             t if t == SEXPTYPE::REALSXP => StringFromReal_impl(REAL_ELT(v, 0), &mut warn),
@@ -1536,14 +1537,14 @@ unsafe fn coerceToSymbol(v: SEXP) -> SEXP {
             t if t == SEXPTYPE::STRSXP => STRING_ELT(v, 0),
             t if t == SEXPTYPE::RAWSXP => StringFromRaw(RAW_ELT(v, 0), &mut warn),
             _ => R_NilValue(),
-        });
+        };
+        let _ans_guard = protect(ans);
 
         if warn != 0 {
             CoercionWarning(warn);
         }
 
         let sym = Rf_install(CHAR(ans));
-        Rf_unprotect(1);
         sym
     }
 }
@@ -1554,9 +1555,9 @@ unsafe fn coerceSymbol(v: SEXP, type_: SEXPTYPE) -> SEXP {
     unsafe {
         let mut rval = R_NilValue();
         if type_ == SEXPTYPE::EXPRSXP {
-            rval = Rf_protect(Rf_allocVector3(type_.0, 1));
+            rval = Rf_allocVector3(type_.0, 1);
+            let _rval_guard = protect(rval);
             SET_VECTOR_ELT(rval, 0, v);
-            Rf_unprotect(1);
         } else if type_ == SEXPTYPE::CHARSXP {
             rval = PRINTNAME(v);
         } else if type_ == SEXPTYPE::STRSXP {
@@ -1596,12 +1597,12 @@ unsafe fn asFunction(x: SEXP) -> SEXP {
         if isFunction(x) {
             return x;
         }
-        let f = Rf_protect(allocSExp(SEXPTYPE::CLOSXP));
+        let f = allocSExp(SEXPTYPE::CLOSXP);
+        let _f_guard = protect(f);
         SET_CLOENV(f, R_GlobalEnv());
         // For simplicity, create a closure with empty formals and body = x
         SET_FORMALS(f, R_NilValue());
         SET_BODY(f, x);
-        Rf_unprotect(1);
         f
     }
 }
