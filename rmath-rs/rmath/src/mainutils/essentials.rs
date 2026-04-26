@@ -2888,19 +2888,28 @@ pub unsafe fn do_require(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
     unsafe {
         let pkg_arg = CAR(args);
         if pkg_arg.is_null() || pkg_arg == R_NilValue() {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return Rf_ScalarLogical(FALSE);
         }
         let package_name = elt_to_string(pkg_arg, 0);
         let lib_path = find_package_path(&package_name);
         if lib_path.is_empty() {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return Rf_ScalarLogical(FALSE);
         }
         if package_attached(&package_name) {
+            crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
             return Rf_ScalarLogical(TRUE);
         }
         match load_pure_r_package(&package_name, Path::new(&lib_path)) {
-            Ok(()) => Rf_ScalarLogical(TRUE),
-            Err(_) => Rf_ScalarLogical(FALSE),
+            Ok(()) => {
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                Rf_ScalarLogical(TRUE)
+            }
+            Err(_) => {
+                crate::sexp::globals::set_R_Visible(crate::sexp::ffi::FALSE);
+                Rf_ScalarLogical(FALSE)
+            }
         }
     }
 }
@@ -3101,7 +3110,6 @@ pub unsafe fn do_example(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
 /// Register essential builtins in the base environment.
 pub unsafe fn register_essentials_builtins(env: SEXP) {
     use crate::sexp::accessors::SET_FRAME;
-    use crate::sexp::memory_ext::allocSExp;
 
     let all_fns = [
         "c",
@@ -3730,8 +3738,7 @@ pub unsafe fn register_essentials_builtins(env: SEXP) {
     let frame = (*env).data.envsxp.frame;
     let mut chain = frame;
     for name in all_fns {
-        let prim = allocSExp(SEXPTYPE::BUILTINSXP);
-        (*prim).sxpinfo.set_gp(1);
+        let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
         let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
         let cell = Rf_cons(prim, chain);
         (*cell).data.listsxp.tagval = sym;

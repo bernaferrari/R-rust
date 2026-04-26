@@ -663,7 +663,6 @@ pub unsafe fn register_rng_builtins(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
         use crate::sexp::constructors::Rf_cons;
-        use crate::sexp::memory_ext::allocSExp;
 
         let rng_fns = [
             "set.seed", "RNGkind", "runif", "rnorm", "rpois", "rexp", "sample",
@@ -672,8 +671,7 @@ pub unsafe fn register_rng_builtins(env: SEXP) {
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
         for name in rng_fns {
-            let prim = allocSExp(SEXPTYPE::BUILTINSXP);
-            (*prim).sxpinfo.set_gp(1);
+            let prim = crate::eval::primitive::make_primitive_binding(name, SEXPTYPE::BUILTINSXP);
             let sym = Rf_install(CString::new(name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;

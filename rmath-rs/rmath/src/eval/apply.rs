@@ -52,6 +52,12 @@ fn call_head_name(call: Sexp<'_>) -> String {
     }
 }
 
+fn primitive_call_name(primitive: Option<PrimitiveDescriptor<'_>>, call: Sexp<'_>) -> String {
+    primitive
+        .map(|primitive| primitive.name.to_string())
+        .unwrap_or_else(|| call_head_name(call))
+}
+
 /// Safe special form application.
 pub(crate) fn apply_special_safe<'a>(
     fun: Sexp<'a>,
@@ -62,7 +68,7 @@ pub(crate) fn apply_special_safe<'a>(
     let _vmax = unsafe { vmaxget() };
     let primitive = PrimitiveDescriptor::from_sexp(fun);
     let flag = primitive.map(|primitive| primitive.print_flag).unwrap_or(0);
-    let op_name = call_head_name(call);
+    let op_name = primitive_call_name(primitive, call);
     set_visibility_for_print_flag(flag);
 
     let tmp = if let Some(primfun) = primitive.and_then(|primitive| primitive.fun) {
@@ -153,7 +159,7 @@ pub(crate) fn apply_builtin_safe<'a>(
         args,
         rho,
     };
-    let op_name = call_head_name(call);
+    let op_name = primitive_call_name(primitive, call);
 
     if let Some((result, restore)) = apply_unevaluated_builtin(frame, &op_name) {
         return finish_application(result, flag, &op_name, restore);

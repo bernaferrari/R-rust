@@ -4,7 +4,9 @@
 use std::os::raw::c_int;
 
 use crate::mainutils::names::{FunTabEntry, R_FunTab};
+use crate::sexp::accessors::SET_PRIMOFFSET;
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
+use crate::sexp::memory_ext::allocSExp;
 use crate::sexp::object::Sexp;
 
 /// Function pointer type for primitive functions (SPECIAL and BUILTIN).
@@ -79,9 +81,48 @@ pub fn fun_tab_len() -> usize {
     R_FunTab.len()
 }
 
-fn fun_tab_name(name: &'static [u8]) -> &'static str {
+pub fn fun_tab_name(name: &'static [u8]) -> &'static str {
     let bytes = name.strip_suffix(&[0]).unwrap_or(name);
     std::str::from_utf8(bytes).unwrap_or("unknown")
+}
+
+pub fn fun_tab_index_by_name(name: &str) -> Option<c_int> {
+    R_FunTab
+        .iter()
+        .take_while(|entry| !entry.is_sentinel())
+        .position(|entry| fun_tab_name(entry.name) == name)
+        .map(|idx| idx as c_int)
+}
+
+/// Create a primitive binding with canonical `R_FunTab` identity when possible.
+///
+/// Primitive names present in `R_FunTab` are allocated with their real table
+/// offset when the table's argument-evaluation kind matches the binding being
+/// installed. `.Internal` entries, kind mismatches, and Rust-only helper names
+/// are still exposed as primitives for the current evaluator surface, but
+/// receive `PRIMOFFSET = -1` so descriptor-driven dispatch can recognize them
+/// as noncanonical.
+pub unsafe fn make_primitive_binding(name: &str, fallback_kind: SEXPTYPE) -> SEXP {
+    unsafe {
+        if let Some(index) = fun_tab_index_by_name(name) {
+            let entry = &R_FunTab[index as usize];
+            if (entry.eval % 100) / 10 == 0 && primitive_kind_for_eval(entry.eval) == fallback_kind
+            {
+                let prim = crate::mainutils::dstruct::mkPRIMSXP(index, entry.eval % 10);
+                if !prim.is_null() {
+                    (*prim).sxpinfo.set_gp(1);
+                }
+                return prim;
+            }
+        }
+
+        let prim = allocSExp(fallback_kind);
+        if !prim.is_null() {
+            (*prim).sxpinfo.set_gp(1);
+            SET_PRIMOFFSET(prim, -1);
+        }
+        prim
+    }
 }
 
 fn primitive_print_flag(entry: &FunTabEntry) -> c_int {
@@ -122,6 +163,7 @@ pub fn primitive_controls_visibility(name: &str) -> bool {
             | "message"
             | "stopifnot"
             | "library"
+            | "require"
             | "system"
             | "suppressWarnings"
             | "suppressMessages"
@@ -168,5 +210,50 @@ mod tests {
             .find(|entry| fun_tab_name(entry.name) == "+")
             .expect("+ primitive exists");
         assert_eq!(primitive_print_flag(plus_entry), 0);
+    }
+
+    #[test]
+    fn primitive_binding_uses_canonical_funtab_identity() {
+        let _session = RSession::new();
+        let primitive = unsafe { make_primitive_binding("+", SEXPTYPE::BUILTINSXP) };
+        let descriptor =
+            unsafe { PrimitiveDescriptor::from_raw(primitive) }.expect("canonical descriptor");
+
+        assert_eq!(descriptor.name, "+");
+        assert_eq!(descriptor.table_index, fun_tab_index_by_name("+").unwrap());
+        assert_eq!(descriptor.kind, SEXPTYPE::BUILTINSXP.as_c_int());
+    }
+
+    #[test]
+    fn primitive_binding_preserves_funtab_kind() {
+        let _session = RSession::new();
+        let primitive = unsafe { make_primitive_binding("if", SEXPTYPE::SPECIALSXP) };
+        let descriptor =
+            unsafe { PrimitiveDescriptor::from_raw(primitive) }.expect("canonical descriptor");
+
+        assert_eq!(descriptor.name, "if");
+        assert_eq!(descriptor.kind, SEXPTYPE::SPECIALSXP.as_c_int());
+    }
+
+    #[test]
+    fn rust_only_primitive_binding_is_explicitly_noncanonical() {
+        let _session = RSession::new();
+        let primitive = unsafe { make_primitive_binding("__rport_helper__", SEXPTYPE::BUILTINSXP) };
+
+        assert!(unsafe { PrimitiveDescriptor::from_raw(primitive) }.is_none());
+        assert_eq!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) }, -1);
+    }
+
+    #[test]
+    fn mismatched_funtab_binding_is_explicitly_noncanonical() {
+        let _session = RSession::new();
+        let primitive = unsafe { make_primitive_binding("log", SEXPTYPE::BUILTINSXP) };
+
+        assert!(unsafe { PrimitiveDescriptor::from_raw(primitive) }.is_none());
+        assert_eq!(
+            Sexp::try_from_raw(primitive).unwrap().typeof_(),
+            SEXPTYPE::BUILTINSXP
+        );
+        assert_eq!(unsafe { crate::sexp::accessors::PRIMOFFSET(primitive) }, -1);
     }
 }

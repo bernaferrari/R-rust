@@ -200,6 +200,43 @@ mod tests {
     }
 
     #[test]
+    fn test_initialize_base_bindings_use_canonical_primitive_identity() {
+        let _session = crate::sexp::session::RSession::new();
+        unsafe {
+            initialize_r();
+
+            let base = R_BaseEnv();
+            let plus = Rf_install(c"+".as_ptr());
+            let if_sym = Rf_install(c"if".as_ptr());
+            let log = Rf_install(c"log".as_ptr());
+
+            let plus_val = crate::sexp::envir::R_findVarInFrame(base, plus);
+            let if_val = crate::sexp::envir::R_findVarInFrame(base, if_sym);
+            let log_val = crate::sexp::envir::R_findVarInFrame(base, log);
+
+            assert_eq!(
+                crate::eval::primitive::PrimitiveDescriptor::from_raw(plus_val)
+                    .expect("+ primitive descriptor")
+                    .name,
+                "+"
+            );
+            assert_eq!(
+                crate::eval::primitive::PrimitiveDescriptor::from_raw(if_val)
+                    .expect("if primitive descriptor")
+                    .name,
+                "if"
+            );
+            assert!(
+                crate::eval::primitive::PrimitiveDescriptor::from_raw(log_val).is_none(),
+                "direct log binding is an evaluator helper, not a canonical R primitive"
+            );
+            assert_eq!(crate::sexp::accessors::PRIMOFFSET(log_val), -1);
+
+            shutdown_r();
+        }
+    }
+
+    #[test]
     fn test_idempotent() {
         let _session = crate::sexp::session::RSession::new();
         unsafe {

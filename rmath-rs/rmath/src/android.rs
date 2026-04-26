@@ -829,7 +829,7 @@ mod tests {
             matches!(after_detach.typed, RValue::Error(_)),
             "{after_detach:?}"
         );
-        assert_eq!(session.eval("require(\"tiny\")").output, "[1] TRUE");
+        assert_eq!(session.eval("require(\"tiny\")").output, "");
 
         let _ = std::fs::remove_dir_all(root);
     }

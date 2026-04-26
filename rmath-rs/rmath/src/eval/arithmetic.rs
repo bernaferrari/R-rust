@@ -707,7 +707,6 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
         use crate::sexp::constructors::Rf_cons;
-        use crate::sexp::memory_ext::allocSExp;
 
         let all_ops = [
             "+",
@@ -753,8 +752,7 @@ pub unsafe fn register_arithmetic_builtins(env: SEXP) {
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
         for op_name in all_ops {
-            let prim = allocSExp(SEXPTYPE::BUILTINSXP);
-            (*prim).sxpinfo.set_gp(1);
+            let prim = super::primitive::make_primitive_binding(op_name, SEXPTYPE::BUILTINSXP);
             let sym = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
@@ -768,7 +766,6 @@ pub unsafe fn register_special_forms(env: SEXP) {
     unsafe {
         use crate::sexp::accessors::SET_FRAME;
         use crate::sexp::constructors::Rf_cons;
-        use crate::sexp::memory_ext::allocSExp;
 
         let special_forms = [
             "<-",
@@ -791,8 +788,7 @@ pub unsafe fn register_special_forms(env: SEXP) {
         let frame = (*env).data.envsxp.frame;
         let mut chain = frame;
         for op_name in special_forms {
-            let prim = allocSExp(SEXPTYPE::SPECIALSXP);
-            (*prim).sxpinfo.set_gp(1);
+            let prim = super::primitive::make_primitive_binding(op_name, SEXPTYPE::SPECIALSXP);
             let sym = Rf_install(CString::new(op_name).unwrap_or_default().as_ptr());
             let cell = Rf_cons(prim, chain);
             (*cell).data.listsxp.tagval = sym;
