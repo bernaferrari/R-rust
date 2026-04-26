@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2003-2023   The R Core Team.
@@ -20,18 +19,17 @@
  *  Ported from r-source/src/library/tools/src/init.c
  */
 
-use std::os::raw::c_int;
-
 use crate::mainutils::printutils::Rprintf;
-use crate::sexp::ffi::*;
 
 /* Test function used in tests/encodings.R */
 pub unsafe fn Renctest(x: *mut *mut libc::c_char) {
-    let s = std::ffi::CStr::from_ptr(*x);
-    let len = s.to_bytes().len();
-    let msg = format!("'{}', nbytes = {}\n", s.to_string_lossy(), len);
-    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    Rprintf(c_msg.as_ptr(), std::ptr::null_mut());
+    unsafe {
+        let s = std::ffi::CStr::from_ptr(*x);
+        let len = s.to_bytes().len();
+        let msg = format!("'{}', nbytes = {}\n", s.to_string_lossy(), len);
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+        Rprintf(c_msg.as_ptr(), std::ptr::null_mut());
+    }
 }
 
 /* Stub: DllInfo registration */

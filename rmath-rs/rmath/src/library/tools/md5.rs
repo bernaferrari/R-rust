@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /* md5.c - Functions to compute MD5 message digest of files or memory blocks
    according to the definition of MD5 in RFC 1321 from April 1992.
    Copyright (C) 1995, 1996, 2001 Free Software Foundation, Inc.
@@ -12,7 +11,6 @@
    later version.
 */
 
-use core::ptr;
 use libc::{FILE, c_int, c_void, size_t};
 use libc::{ferror, fread};
 
@@ -24,12 +22,6 @@ const BLOCKSIZE: usize = 4096;
 #[inline(always)]
 fn rol(x: md5_uint32, n: u32) -> md5_uint32 {
     x.rotate_left(n)
-}
-
-/// On little-endian (which is what we target), SWAP is identity.
-#[inline(always)]
-const fn swap(n: md5_uint32) -> md5_uint32 {
-    n
 }
 
 /// MD5 context structure mirroring C's `struct md5_ctx`.
@@ -73,31 +65,20 @@ fn fi(b: md5_uint32, c: md5_uint32, d: md5_uint32) -> md5_uint32 {
 }
 
 /// Initialize the MD5 computation context. (RFC 1321, 3.3: Step 3)
-unsafe fn md5_init_ctx(ctx: *mut Md5Ctx) {
-    (*ctx).A = 0x67452301;
-    (*ctx).B = 0xefcdab89;
-    (*ctx).C = 0x98badcfe;
-    (*ctx).D = 0x10325476;
-    (*ctx).total[0] = 0;
-    (*ctx).total[1] = 0;
-    (*ctx).buflen = 0;
-}
-
-/// Put result from CTX in first 16 bytes following RESBUF.
-/// The result is in little endian byte order.
-unsafe fn md5_read_ctx(ctx: *const Md5Ctx, resbuf: *mut c_void) -> *mut c_void {
-    let resbuf32 = resbuf as *mut md5_uint32;
-    *resbuf32.add(0) = swap((*ctx).A);
-    *resbuf32.add(1) = swap((*ctx).B);
-    *resbuf32.add(2) = swap((*ctx).C);
-    *resbuf32.add(3) = swap((*ctx).D);
-    resbuf
+fn md5_init_ctx(ctx: &mut Md5Ctx) {
+    ctx.A = 0x67452301;
+    ctx.B = 0xefcdab89;
+    ctx.C = 0x98badcfe;
+    ctx.D = 0x10325476;
+    ctx.total[0] = 0;
+    ctx.total[1] = 0;
+    ctx.buflen = 0;
 }
 
 /// Process the remaining bytes in the internal buffer and the usual
 /// prolog according to the standard and write the result to RESBUF.
-unsafe fn md5_finish_ctx(ctx: *mut Md5Ctx, resbuf: *mut c_void) -> *mut c_void {
-    let bytes = (*ctx).buflen;
+fn md5_finish_ctx(ctx: &mut Md5Ctx, resbuf: &mut [u8; 16]) {
+    let bytes = ctx.buflen;
     let pad: usize = if bytes >= 56 {
         (64 + 56 - bytes) as usize
     } else {
@@ -105,92 +86,88 @@ unsafe fn md5_finish_ctx(ctx: *mut Md5Ctx, resbuf: *mut c_void) -> *mut c_void {
     };
 
     // Count remaining bytes
-    (*ctx).total[0] += bytes;
-    if (*ctx).total[0] < bytes {
-        (*ctx).total[1] += 1;
+    ctx.total[0] += bytes;
+    if ctx.total[0] < bytes {
+        ctx.total[1] += 1;
     }
 
-    ptr::copy_nonoverlapping(
-        FILLBUF.as_ptr(),
-        (*ctx).buffer.as_mut_ptr().add(bytes as usize),
-        pad,
-    );
+    ctx.buffer[bytes as usize..bytes as usize + pad].copy_from_slice(&FILLBUF[..pad]);
 
     // Put the 64-bit file length in *bits* at the end of the buffer
-    let buf_ptr = (*ctx).buffer.as_mut_ptr() as *mut md5_uint32;
-    *buf_ptr.add((bytes as usize + pad) / 4) = swap((*ctx).total[0] << 3);
-    *buf_ptr.add((bytes as usize + pad + 4) / 4) =
-        swap(((*ctx).total[1] << 3) | ((*ctx).total[0] >> 29));
+    let len_off = bytes as usize + pad;
+    let bit_len_low = ctx.total[0] << 3;
+    let bit_len_high = (ctx.total[1] << 3) | (ctx.total[0] >> 29);
+    ctx.buffer[len_off..len_off + 4].copy_from_slice(&bit_len_low.to_le_bytes());
+    ctx.buffer[len_off + 4..len_off + 8].copy_from_slice(&bit_len_high.to_le_bytes());
 
     // Process last bytes
-    md5_process_block(
-        (*ctx).buffer.as_ptr() as *const c_void,
-        (bytes as usize) + pad + 8,
-        ctx,
-    );
+    let block = ctx.buffer;
+    md5_process_block(&block[..len_off + 8], ctx);
 
-    md5_read_ctx(ctx, resbuf)
+    resbuf[0..4].copy_from_slice(&ctx.A.to_le_bytes());
+    resbuf[4..8].copy_from_slice(&ctx.B.to_le_bytes());
+    resbuf[8..12].copy_from_slice(&ctx.C.to_le_bytes());
+    resbuf[12..16].copy_from_slice(&ctx.D.to_le_bytes());
 }
 
 /// Process LEN bytes of BUFFER, accumulating context into CTX.
 /// It is assumed that LEN % 64 == 0.
-unsafe fn md5_process_block(buffer: *const c_void, len: usize, ctx: *mut Md5Ctx) {
-    let words = buffer as *const md5_uint32;
-    let nwords = len / core::mem::size_of::<md5_uint32>();
-    let endp = words.add(nwords);
-    let mut a = (*ctx).A;
-    let mut b = (*ctx).B;
-    let mut c = (*ctx).C;
-    let mut d = (*ctx).D;
+fn md5_process_block(buffer: &[u8], ctx: &mut Md5Ctx) {
+    debug_assert_eq!(buffer.len() % 64, 0);
+    let mut a = ctx.A;
+    let mut b = ctx.B;
+    let mut c = ctx.C;
+    let mut d = ctx.D;
 
     // First increment the byte count
-    (*ctx).total[0] += len as md5_uint32;
-    if (*ctx).total[0] < len as md5_uint32 {
-        (*ctx).total[1] += 1;
+    let len = buffer.len() as md5_uint32;
+    ctx.total[0] += len;
+    if ctx.total[0] < len {
+        ctx.total[1] += 1;
     }
 
-    let mut wp = words;
-
-    while wp < endp {
+    for block in buffer.chunks_exact(64) {
         let mut correct_words: [md5_uint32; 16] = [0; 16];
-        let mut cwp: usize = 0;
         let a_save = a;
         let b_save = b;
         let c_save = c;
         let d_save = d;
 
+        for (idx, word) in correct_words.iter_mut().enumerate() {
+            let off = idx * 4;
+            *word =
+                u32::from_le_bytes([block[off], block[off + 1], block[off + 2], block[off + 3]]);
+        }
+
         // Round 1: FF function
         // OP(a, b, c, d, s, T): a += FF(b,c,d) + SWAP(*words) + T; a = rol(a,s); a += b
         macro_rules! op1 {
-            ($va:expr, $vb:expr, $vc:expr, $vd:expr, $s:expr, $t:expr) => {
-                correct_words[cwp] = swap(*wp);
-                cwp += 1;
-                wp = wp.add(1);
+            ($va:expr, $vb:expr, $vc:expr, $vd:expr, $k:expr, $s:expr, $t:expr) => {
                 $va = $va
                     .wrapping_add(ff($vb, $vc, $vd))
-                    .wrapping_add(correct_words[cwp - 1])
+                    .wrapping_add(correct_words[$k])
                     .wrapping_add($t);
                 $va = rol($va, $s);
                 $va = $va.wrapping_add($vb);
             };
         }
 
-        op1!(a, b, c, d, 7, 0xd76aa478);
-        op1!(d, a, b, c, 12, 0xe8c7b756);
-        op1!(c, d, a, b, 17, 0x242070db);
-        op1!(b, c, d, a, 22, 0xc1bdceee);
-        op1!(a, b, c, d, 7, 0xf57c0faf);
-        op1!(d, a, b, c, 12, 0x4787c62a);
-        op1!(c, d, a, b, 17, 0xa8304613);
-        op1!(b, c, d, a, 22, 0xfd469501);
-        op1!(a, b, c, d, 7, 0x698098d8);
-        op1!(d, a, b, c, 12, 0x8b44f7af);
-        op1!(c, d, a, b, 17, 0xffff5bb1);
-        op1!(b, c, d, a, 22, 0x895cd7be);
-        op1!(a, b, c, d, 7, 0x6b901122);
-        op1!(d, a, b, c, 12, 0xfd987193);
-        op1!(c, d, a, b, 17, 0xa679438e);
-        op1!(b, c, d, a, 22, 0x49b40821);
+        op1!(a, b, c, d, 0, 7, 0xd76aa478);
+        op1!(d, a, b, c, 1, 12, 0xe8c7b756);
+        op1!(c, d, a, b, 2, 17, 0x242070db);
+        op1!(b, c, d, a, 3, 22, 0xc1bdceee);
+        op1!(a, b, c, d, 4, 7, 0xf57c0faf);
+        op1!(d, a, b, c, 5, 12, 0x4787c62a);
+        op1!(c, d, a, b, 6, 17, 0xa8304613);
+        op1!(b, c, d, a, 7, 22, 0xfd469501);
+        op1!(a, b, c, d, 8, 7, 0x698098d8);
+        op1!(d, a, b, c, 9, 12, 0x8b44f7af);
+        op1!(c, d, a, b, 10, 17, 0xffff5bb1);
+        op1!(b, c, d, a, 11, 22, 0x895cd7be);
+        op1!(a, b, c, d, 12, 7, 0x6b901122);
+        op1!(d, a, b, c, 13, 12, 0xfd987193);
+        op1!(c, d, a, b, 14, 17, 0xa679438e);
+        op1!(b, c, d, a, 15, 22, 0x49b40821);
 
         // Rounds 2-4: OP(f, a, b, c, d, k, s, T)
         macro_rules! op {
@@ -266,58 +243,49 @@ unsafe fn md5_process_block(buffer: *const c_void, len: usize, ctx: *mut Md5Ctx)
     }
 
     // Put checksum in context
-    (*ctx).A = a;
-    (*ctx).B = b;
-    (*ctx).C = c;
-    (*ctx).D = d;
+    ctx.A = a;
+    ctx.B = b;
+    ctx.C = c;
+    ctx.D = d;
 }
 
 /// Feed arbitrary bytes into the MD5 computation.
-unsafe fn md5_process_bytes(buffer: *const c_void, mut len: size_t, ctx: *mut Md5Ctx) {
-    let mut buf = buffer as *const u8;
+fn md5_process_bytes(mut buffer: &[u8], ctx: &mut Md5Ctx) {
+    let mut len = buffer.len();
 
     // When we already have some bits in our internal buffer, concatenate both inputs first
-    if (*ctx).buflen != 0 {
-        let left_over = (*ctx).buflen as usize;
-        let add = if 128 - left_over > len {
-            len
-        } else {
-            128 - left_over
-        };
+    if ctx.buflen != 0 {
+        let left_over = ctx.buflen as usize;
+        let add = core::cmp::min(128 - left_over, len);
 
-        ptr::copy_nonoverlapping(buf, (*ctx).buffer.as_mut_ptr().add(left_over), add);
-        (*ctx).buflen += add as md5_uint32;
+        ctx.buffer[left_over..left_over + add].copy_from_slice(&buffer[..add]);
+        ctx.buflen += add as md5_uint32;
 
         if left_over + add > 64 {
-            md5_process_block(
-                (*ctx).buffer.as_ptr() as *const c_void,
-                (left_over + add) & !63,
-                ctx,
-            );
-            // The regions in the following copy cannot overlap
-            ptr::copy_nonoverlapping(
-                (*ctx).buffer.as_ptr().add((left_over + add) & !63),
-                (*ctx).buffer.as_mut_ptr(),
-                (left_over + add) & 63,
-            );
-            (*ctx).buflen = ((left_over + add) & 63) as md5_uint32;
+            let used = (left_over + add) & !63;
+            let block = ctx.buffer;
+            md5_process_block(&block[..used], ctx);
+            let remaining = (left_over + add) & 63;
+            ctx.buffer.copy_within(used..used + remaining, 0);
+            ctx.buflen = remaining as md5_uint32;
         }
 
-        buf = buf.add(add);
+        buffer = &buffer[add..];
         len -= add;
     }
 
     // Process available complete blocks
-    if len > 64 {
-        md5_process_block(buf as *const c_void, len & !63, ctx);
-        buf = buf.add(len & !63);
+    if len >= 64 {
+        let used = len & !63;
+        md5_process_block(&buffer[..used], ctx);
+        buffer = &buffer[used..];
         len &= 63;
     }
 
     // Move remaining bytes into internal buffer
     if len > 0 {
-        ptr::copy_nonoverlapping(buf, (*ctx).buffer.as_mut_ptr(), len);
-        (*ctx).buflen = len as md5_uint32;
+        ctx.buffer[..len].copy_from_slice(buffer);
+        ctx.buflen = len as md5_uint32;
     }
 }
 
@@ -346,19 +314,21 @@ pub unsafe fn md5_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
 
         // Read block. Take care for partial reads.
         loop {
-            n = fread(
-                buffer.as_mut_ptr().add(sum) as *mut c_void,
-                1,
-                BLOCKSIZE - sum,
-                stream,
-            );
+            n = unsafe {
+                fread(
+                    buffer[sum..].as_mut_ptr() as *mut c_void,
+                    1,
+                    BLOCKSIZE - sum,
+                    stream,
+                )
+            };
             sum += n;
             if !(sum < BLOCKSIZE && n != 0) {
                 break;
             }
         }
 
-        if n == 0 && ferror(stream) != 0 {
+        if n == 0 && unsafe { ferror(stream) } != 0 {
             return 1;
         }
 
@@ -368,16 +338,17 @@ pub unsafe fn md5_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int {
         }
 
         // Process buffer with BLOCKSIZE bytes
-        md5_process_block(buffer.as_ptr() as *const c_void, BLOCKSIZE, &mut ctx);
+        md5_process_block(&buffer[..BLOCKSIZE], &mut ctx);
     }
 
     // Add the last bytes if necessary
     if sum > 0 {
-        md5_process_bytes(buffer.as_ptr() as *const c_void, sum, &mut ctx);
+        md5_process_bytes(&buffer[..sum], &mut ctx);
     }
 
     // Construct result in desired memory
-    md5_finish_ctx(&mut ctx, resblock);
+    let resbuf = unsafe { &mut *(resblock as *mut [u8; 16]) };
+    md5_finish_ctx(&mut ctx, resbuf);
     0
 }
 
@@ -398,8 +369,15 @@ pub unsafe fn md5_buffer(buffer: *const u8, len: size_t, resblock: *mut c_void) 
     md5_init_ctx(&mut ctx);
 
     // Process whole buffer
-    md5_process_bytes(buffer as *const c_void, len, &mut ctx);
+    let input = if len == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(buffer, len) }
+    };
+    md5_process_bytes(input, &mut ctx);
 
     // Put result in desired memory area
-    md5_finish_ctx(&mut ctx, resblock)
+    let resbuf = unsafe { &mut *(resblock as *mut [u8; 16]) };
+    md5_finish_ctx(&mut ctx, resbuf);
+    resblock
 }

@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /* SHA256 implementation.
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2003-2024   The R Core Team.
@@ -14,17 +13,10 @@
  *  (at your option) any later version.
  */
 
-use core::ptr;
 use libc::{FILE, c_int, c_void, size_t};
 use libc::{ferror, fread};
 
 const BUF_SIZE: usize = 4096;
-
-/// On little-endian (which is what we target), SWAP is identity.
-#[inline(always)]
-const fn swap(n: u32) -> u32 {
-    n
-}
 
 /// SHA256 context structure mirroring C's `struct sha256_ctx`.
 #[repr(C)]
@@ -93,26 +85,26 @@ fn cyclic(w: u32, s: u32) -> u32 {
 
 /// Process LEN bytes of BUFFER, accumulating context into CTX.
 /// It is assumed that LEN % 64 == 0.
-unsafe fn sha256_process_block(buffer: *const c_void, len: usize, ctx: *mut Sha256Ctx) {
-    let mut words = buffer as *const u32;
-    let mut nwords = len / core::mem::size_of::<u32>();
-    let mut a = (*ctx).H[0];
-    let mut b = (*ctx).H[1];
-    let mut c = (*ctx).H[2];
-    let mut d = (*ctx).H[3];
-    let mut e = (*ctx).H[4];
-    let mut f = (*ctx).H[5];
-    let mut g = (*ctx).H[6];
-    let mut h = (*ctx).H[7];
+fn sha256_process_block(buffer: &[u8], ctx: &mut Sha256Ctx) {
+    debug_assert_eq!(buffer.len() % 64, 0);
+    let mut a = ctx.H[0];
+    let mut b = ctx.H[1];
+    let mut c = ctx.H[2];
+    let mut d = ctx.H[3];
+    let mut e = ctx.H[4];
+    let mut f = ctx.H[5];
+    let mut g = ctx.H[6];
+    let mut h = ctx.H[7];
 
     // First increment the byte count
-    (*ctx).total[0] += len as u32;
-    if (*ctx).total[0] < len as u32 {
-        (*ctx).total[1] += 1;
+    let len = buffer.len() as u32;
+    ctx.total[0] += len;
+    if ctx.total[0] < len {
+        ctx.total[1] += 1;
     }
 
     // Process all bytes in the buffer with 64 bytes in each round
-    while nwords > 0 {
+    for block in buffer.chunks_exact(64) {
         let mut w: [u32; 64] = [0; 64];
         let a_save = a;
         let b_save = b;
@@ -126,8 +118,8 @@ unsafe fn sha256_process_block(buffer: *const c_void, len: usize, ctx: *mut Sha2
         // Compute the message schedule (FIPS 180-2:6.2.2 step 2)
         let mut t: usize = 0;
         while t < 16 {
-            w[t] = swap(*words);
-            words = words.add(1);
+            let off = t * 4;
+            w[t] = u32::from_le_bytes([block[off], block[off + 1], block[off + 2], block[off + 3]]);
             t += 1;
         }
         t = 16;
@@ -168,40 +160,38 @@ unsafe fn sha256_process_block(buffer: *const c_void, len: usize, ctx: *mut Sha2
         f = f.wrapping_add(f_save);
         g = g.wrapping_add(g_save);
         h = h.wrapping_add(h_save);
-
-        nwords -= 16;
     }
 
     // Put checksum in context
-    (*ctx).H[0] = a;
-    (*ctx).H[1] = b;
-    (*ctx).H[2] = c;
-    (*ctx).H[3] = d;
-    (*ctx).H[4] = e;
-    (*ctx).H[5] = f;
-    (*ctx).H[6] = g;
-    (*ctx).H[7] = h;
+    ctx.H[0] = a;
+    ctx.H[1] = b;
+    ctx.H[2] = c;
+    ctx.H[3] = d;
+    ctx.H[4] = e;
+    ctx.H[5] = f;
+    ctx.H[6] = g;
+    ctx.H[7] = h;
 }
 
 /// Initialize the SHA256 computation context. (FIPS 180-2:5.3.2)
-pub unsafe fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
-    (*ctx).H[0] = 0x6a09e667;
-    (*ctx).H[1] = 0xbb67ae85;
-    (*ctx).H[2] = 0x3c6ef372;
-    (*ctx).H[3] = 0xa54ff53a;
-    (*ctx).H[4] = 0x510e527f;
-    (*ctx).H[5] = 0x9b05688c;
-    (*ctx).H[6] = 0x1f83d9ab;
-    (*ctx).H[7] = 0x5be0cd19;
-    (*ctx).total[0] = 0;
-    (*ctx).total[1] = 0;
-    (*ctx).buflen = 0;
+fn sha256_init_ctx(ctx: &mut Sha256Ctx) {
+    ctx.H[0] = 0x6a09e667;
+    ctx.H[1] = 0xbb67ae85;
+    ctx.H[2] = 0x3c6ef372;
+    ctx.H[3] = 0xa54ff53a;
+    ctx.H[4] = 0x510e527f;
+    ctx.H[5] = 0x9b05688c;
+    ctx.H[6] = 0x1f83d9ab;
+    ctx.H[7] = 0x5be0cd19;
+    ctx.total[0] = 0;
+    ctx.total[1] = 0;
+    ctx.buflen = 0;
 }
 
 /// Process the remaining bytes in the internal buffer and the usual
 /// prolog according to the standard and write the result to RESBUF.
-pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *mut c_void {
-    let bytes = (*ctx).buflen;
+fn sha256_finish_ctx(ctx: &mut Sha256Ctx, resbuf: &mut [u8; 32]) {
+    let bytes = ctx.buflen;
     let pad: usize = if bytes >= 56 {
         (64 + 56 - bytes) as usize
     } else {
@@ -209,112 +199,103 @@ pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *m
     };
 
     // Now count remaining bytes
-    (*ctx).total[0] += bytes;
-    if (*ctx).total[0] < bytes {
-        (*ctx).total[1] += 1;
+    ctx.total[0] += bytes;
+    if ctx.total[0] < bytes {
+        ctx.total[1] += 1;
     }
 
-    ptr::copy_nonoverlapping(
-        FILLBUF.as_ptr(),
-        (*ctx).buffer.as_mut_ptr().add(bytes as usize),
-        pad,
-    );
+    ctx.buffer[bytes as usize..bytes as usize + pad].copy_from_slice(&FILLBUF[..pad]);
 
     // Put the 64-bit file length in *bits* at the end of the buffer
-    let buf_ptr = (*ctx).buffer.as_mut_ptr() as *mut u32;
-    *buf_ptr.add((bytes as usize + pad + 4) / 4) = swap((*ctx).total[0] << 3);
-    *buf_ptr.add((bytes as usize + pad) / 4) =
-        swap(((*ctx).total[1] << 3) | ((*ctx).total[0] >> 29));
+    let len_off = bytes as usize + pad;
+    let bit_len_low = ctx.total[0] << 3;
+    let bit_len_high = (ctx.total[1] << 3) | (ctx.total[0] >> 29);
+    ctx.buffer[len_off..len_off + 4].copy_from_slice(&bit_len_high.to_le_bytes());
+    ctx.buffer[len_off + 4..len_off + 8].copy_from_slice(&bit_len_low.to_le_bytes());
 
     // Process last bytes
-    sha256_process_block(
-        (*ctx).buffer.as_ptr() as *const c_void,
-        (bytes as usize) + pad + 8,
-        ctx,
-    );
+    let block = ctx.buffer;
+    sha256_process_block(&block[..len_off + 8], ctx);
 
     // Put result from CTX in first 32 bytes following RESBUF
-    let resbuf32 = resbuf as *mut u32;
-    let mut i: usize = 0;
-    while i < 8 {
-        *resbuf32.add(i) = swap((*ctx).H[i]);
-        i += 1;
+    for (i, word) in ctx.H.iter().enumerate() {
+        resbuf[i * 4..i * 4 + 4].copy_from_slice(&word.to_le_bytes());
     }
-
-    resbuf
 }
 
 /// Feed arbitrary bytes into the SHA256 computation.
-pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, mut len: size_t, ctx: *mut Sha256Ctx) {
-    let mut buf = buffer as *const u8;
+fn sha256_process_bytes(mut buffer: &[u8], ctx: &mut Sha256Ctx) {
+    let mut len = buffer.len();
 
     // When we already have some bits in our internal buffer, concatenate both inputs first
-    if (*ctx).buflen != 0 {
-        let left_over = (*ctx).buflen as usize;
-        let add = if 128 - left_over > len {
-            len
-        } else {
-            128 - left_over
-        };
+    if ctx.buflen != 0 {
+        let left_over = ctx.buflen as usize;
+        let add = core::cmp::min(128 - left_over, len);
 
-        ptr::copy_nonoverlapping(buf, (*ctx).buffer.as_mut_ptr().add(left_over), add);
-        (*ctx).buflen += add as u32;
+        ctx.buffer[left_over..left_over + add].copy_from_slice(&buffer[..add]);
+        ctx.buflen += add as u32;
 
-        if (*ctx).buflen > 64 {
-            sha256_process_block(
-                (*ctx).buffer.as_ptr() as *const c_void,
-                (*ctx).buflen as usize & !63,
-                ctx,
-            );
+        if ctx.buflen > 64 {
+            let used = (ctx.buflen as usize) & !63;
+            let block = ctx.buffer;
+            sha256_process_block(&block[..used], ctx);
 
-            (*ctx).buflen &= 63;
-            // The regions in the following copy operation cannot overlap
-            ptr::copy_nonoverlapping(
-                (*ctx).buffer.as_ptr().add((left_over + add) & !63),
-                (*ctx).buffer.as_mut_ptr(),
-                (*ctx).buflen as usize,
-            );
+            ctx.buflen &= 63;
+            let remaining = ctx.buflen as usize;
+            ctx.buffer.copy_within(used..used + remaining, 0);
         }
 
-        buf = buf.add(add);
+        buffer = &buffer[add..];
         len -= add;
     }
 
     // Process available complete blocks
     if len >= 64 {
-        // Check alignment
-        let aligned = ((buf as usize) % core::mem::size_of::<u32>()) == 0;
-        if !aligned {
-            while len > 64 {
-                ptr::copy_nonoverlapping(buf, (*ctx).buffer.as_mut_ptr(), 64);
-                sha256_process_block((*ctx).buffer.as_ptr() as *const c_void, 64, ctx);
-                buf = buf.add(64);
-                len -= 64;
-            }
-        } else {
-            sha256_process_block(buf as *const c_void, len & !63, ctx);
-            buf = buf.add(len & !63);
-            len &= 63;
-        }
+        let used = len & !63;
+        sha256_process_block(&buffer[..used], ctx);
+        buffer = &buffer[used..];
+        len &= 63;
     }
 
     // Move remaining bytes into internal buffer
     if len > 0 {
-        let left_over = (*ctx).buflen as usize;
-
-        ptr::copy_nonoverlapping(buf, (*ctx).buffer.as_mut_ptr().add(left_over), len);
+        let left_over = ctx.buflen as usize;
+        ctx.buffer[left_over..left_over + len].copy_from_slice(buffer);
         let mut new_left_over = left_over + len;
         if new_left_over >= 64 {
-            sha256_process_block((*ctx).buffer.as_ptr() as *const c_void, 64, ctx);
+            let block = ctx.buffer;
+            sha256_process_block(&block[..64], ctx);
             new_left_over -= 64;
-            ptr::copy_nonoverlapping(
-                (*ctx).buffer.as_ptr().add(64),
-                (*ctx).buffer.as_mut_ptr(),
-                new_left_over,
-            );
+            ctx.buffer.copy_within(64..64 + new_left_over, 0);
         }
-        (*ctx).buflen = new_left_over as u32;
+        ctx.buflen = new_left_over as u32;
     }
+}
+
+/// Initialize the SHA256 computation context. (FIPS 180-2:5.3.2)
+pub unsafe fn Rsha256_init_ctx(ctx: *mut Sha256Ctx) {
+    let ctx = unsafe { &mut *ctx };
+    sha256_init_ctx(ctx);
+}
+
+/// Feed arbitrary bytes into the SHA256 computation.
+pub unsafe fn Rsha256_process_bytes(buffer: *const c_void, len: size_t, ctx: *mut Sha256Ctx) {
+    let input = if len == 0 {
+        &[]
+    } else {
+        unsafe { core::slice::from_raw_parts(buffer as *const u8, len) }
+    };
+    let ctx = unsafe { &mut *ctx };
+    sha256_process_bytes(input, ctx);
+}
+
+/// Process the remaining bytes in the internal buffer and the usual
+/// prolog according to the standard and write the result to RESBUF.
+pub unsafe fn Rsha256_finish_ctx(ctx: *mut Sha256Ctx, resbuf: *mut c_void) -> *mut c_void {
+    let ctx = unsafe { &mut *ctx };
+    let resbuf = unsafe { &mut *(resbuf as *mut [u8; 32]) };
+    sha256_finish_ctx(ctx, resbuf);
+    resbuf as *mut [u8; 32] as *mut c_void
 }
 
 /// Compute SHA256 message digest for bytes read from STREAM.
@@ -329,18 +310,20 @@ pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int 
     let mut buffer: [u8; BUF_SIZE] = [0; BUF_SIZE];
     let mut sum: usize = 0;
 
-    Rsha256_init_ctx(&mut ctx);
+    sha256_init_ctx(&mut ctx);
 
     loop {
         let mut n: size_t = 0;
         // Read next block
         while sum < BUF_SIZE {
-            n = fread(
-                buffer.as_mut_ptr().add(sum) as *mut c_void,
-                1,
-                BUF_SIZE - sum,
-                stream,
-            );
+            n = unsafe {
+                fread(
+                    buffer[sum..].as_mut_ptr() as *mut c_void,
+                    1,
+                    BUF_SIZE - sum,
+                    stream,
+                )
+            };
             if n == 0 {
                 break;
             }
@@ -348,7 +331,7 @@ pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int 
         }
 
         if n == 0 {
-            if ferror(stream) != 0 {
+            if unsafe { ferror(stream) } != 0 {
                 return 1;
             }
             if sum < BUF_SIZE {
@@ -357,15 +340,16 @@ pub unsafe fn Rsha256_stream(stream: *mut FILE, resblock: *mut c_void) -> c_int 
         }
 
         // Full block
-        sha256_process_block(buffer.as_ptr() as *const c_void, BUF_SIZE, &mut ctx);
+        sha256_process_block(&buffer[..BUF_SIZE], &mut ctx);
         sum = 0;
     }
 
     // Add any remaining bytes
     if sum > 0 {
-        Rsha256_process_bytes(buffer.as_ptr() as *const c_void, sum, &mut ctx);
+        sha256_process_bytes(&buffer[..sum], &mut ctx);
     }
 
-    Rsha256_finish_ctx(&mut ctx, resblock);
+    let resbuf = unsafe { &mut *(resblock as *mut [u8; 32]) };
+    sha256_finish_ctx(&mut ctx, resbuf);
     0
 }

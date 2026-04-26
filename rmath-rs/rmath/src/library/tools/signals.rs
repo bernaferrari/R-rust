@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported to Rust for the rmath-rs project.
@@ -15,28 +14,25 @@
 use std::os::raw::c_int;
 
 use crate::sexp::accessors::{INTEGER, LENGTH, LOGICAL, TYPEOF};
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_isString};
+use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector};
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 /// ps_kill: send a signal to a process.
 pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
-    let signal: c_int;
     unsafe {
-        signal = coerce_to_int(ssignal);
-    }
-    let sspid = unsafe { Rf_coerceVector(spid, SEXPTYPE::INTSXP.as_c_int()) };
-    Rf_protect(sspid);
-    let ns = unsafe { LENGTH(sspid) as u32 };
-    let sres = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, ns as c_int) };
-    Rf_protect(sres);
-    let pid = unsafe { INTEGER(sspid) };
-    let res = unsafe { LOGICAL(sres) };
+        let signal = coerce_to_int(ssignal);
+        let sspid = Rf_coerceVector(spid, SEXPTYPE::INTSXP.as_c_int());
+        let _sspid_guard = protect(sspid);
+        let ns = LENGTH(sspid) as u32;
+        let sres = Rf_allocVector(SEXPTYPE::LGLSXP, ns as c_int);
+        let _sres_guard = protect(sres);
+        let pid = INTEGER(sspid);
+        let res = LOGICAL(sres);
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        for i in 0..ns {
-            unsafe {
+        #[cfg(not(target_os = "windows"))]
+        {
+            for i in 0..ns {
                 *res.add(i as usize) = FALSE;
                 if signal != NA_INTEGER {
                     let p = *pid.add(i as usize);
@@ -48,44 +44,34 @@ pub unsafe fn ps_kill(spid: SEXP, ssignal: SEXP) -> SEXP {
                 }
             }
         }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        for i in 0..ns {
-            unsafe {
-                *res.add(i as usize) = FALSE;
-                if signal != NA_INTEGER {
-                    let p = *pid.add(i as usize);
-                    // Windows: use TerminateProcess via OpenProcess
-                    // This is a simplified port; full Windows support would need winapi
-                    let _ = p; // suppress unused warning
-                }
-            }
+        #[cfg(target_os = "windows")]
+        {
+            let _ = (signal, spid);
+            crate::mainutils::errors::Rf_error(
+                b"ps_kill is not supported on Windows\0".as_ptr() as *const _
+            );
+            return crate::sexp::globals::R_NilValue();
         }
-    }
 
-    Rf_unprotect(2);
-    sres
+        sres
+    }
 }
 
 /// ps_priority: get/set process priority.
 pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
-    let val: c_int;
     unsafe {
-        val = coerce_to_int(svalue);
-    }
-    let sspid = unsafe { Rf_coerceVector(spid, SEXPTYPE::INTSXP.as_c_int()) };
-    Rf_protect(sspid);
-    let ns = unsafe { LENGTH(sspid) as u32 };
-    let sres = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, ns as c_int) };
-    Rf_protect(sres);
-    let pid = unsafe { INTEGER(sspid) };
-    let res = unsafe { INTEGER(sres) };
+        let val = coerce_to_int(svalue);
+        let sspid = Rf_coerceVector(spid, SEXPTYPE::INTSXP.as_c_int());
+        let _sspid_guard = protect(sspid);
+        let ns = LENGTH(sspid) as u32;
+        let sres = Rf_allocVector(SEXPTYPE::INTSXP, ns as c_int);
+        let _sres_guard = protect(sres);
+        let pid = INTEGER(sspid);
+        let res = INTEGER(sres);
 
-    #[cfg(all(unix, not(target_os = "windows")))]
-    {
-        for i in 0..ns {
-            unsafe {
+        #[cfg(all(unix, not(target_os = "windows")))]
+        {
+            for i in 0..ns {
                 let p = *pid.add(i as usize);
                 if p <= 0 {
                     *res.add(i as usize) = NA_INTEGER;
@@ -105,23 +91,19 @@ pub unsafe fn ps_priority(spid: SEXP, svalue: SEXP) -> SEXP {
                     if val != NA_INTEGER {
                         libc::setpriority(libc::PRIO_PROCESS, p as libc::id_t, val);
                     }
-                } else {
-                    *res.add(i as usize) = NA_INTEGER;
                 }
             }
         }
-    }
-    #[cfg(target_os = "windows")]
-    {
-        for i in 0..ns {
-            unsafe {
-                *res.add(i as usize) = NA_INTEGER;
-            }
+        #[cfg(target_os = "windows")]
+        {
+            crate::mainutils::errors::Rf_error(
+                b"ps_priority is not supported on Windows\0".as_ptr() as *const _,
+            );
+            return crate::sexp::globals::R_NilValue();
         }
-    }
 
-    Rf_unprotect(2);
-    sres
+        sres
+    }
 }
 
 /// ps_sigs: map signal number to platform signal value.
@@ -252,77 +234,82 @@ pub unsafe fn ps_sigs(signo: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Coerce an SEXP to an integer (simplified asLogical/asInteger equivalent).
-unsafe fn coerce_to_int(x: SEXP) -> c_int {
-    if x.is_null() {
-        return NA_INTEGER;
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP {
-        let p = INTEGER(x);
-        if !p.is_null() {
-            return *p;
+fn coerce_to_int(x: SEXP) -> c_int {
+    unsafe {
+        if x.is_null() {
+            return NA_INTEGER;
         }
-    } else if t == SEXPTYPE::LGLSXP {
-        let p = LOGICAL(x);
-        if !p.is_null() {
-            return *p;
-        }
-    } else if t == SEXPTYPE::REALSXP {
-        let p = crate::sexp::accessors::REAL(x);
-        if !p.is_null() {
-            let v = *p;
-            if v.is_nan() {
-                return NA_INTEGER;
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::INTSXP {
+            let p = INTEGER(x);
+            if !p.is_null() {
+                return *p;
             }
-            return v as c_int;
+        } else if t == SEXPTYPE::LGLSXP {
+            let p = LOGICAL(x);
+            if !p.is_null() {
+                return *p;
+            }
+        } else if t == SEXPTYPE::REALSXP {
+            let p = crate::sexp::accessors::REAL(x);
+            if !p.is_null() {
+                let v = *p;
+                if v.is_nan() {
+                    return NA_INTEGER;
+                }
+                return v as c_int;
+            }
         }
+        NA_INTEGER
     }
-    NA_INTEGER
 }
 
 /// Coerce an SEXP to integer vector (simplified coerceVector equivalent).
-unsafe fn Rf_coerceVector(x: SEXP, _type: c_int) -> SEXP {
-    if x.is_null() {
-        return std::ptr::null_mut();
-    }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP && _type == SEXPTYPE::INTSXP {
-        return x;
-    }
-    let n = LENGTH(x);
-    let ans = Rf_allocVector(_type, n);
-    if ans.is_null() {
-        return std::ptr::null_mut();
-    }
-    if t == SEXPTYPE::INTSXP {
-        let src = INTEGER(x);
-        let dst = INTEGER(ans);
-        for i in 0..n as usize {
-            if !src.is_null() && !dst.is_null() {
-                *dst.add(i) = *src.add(i);
-            }
+fn Rf_coerceVector(x: SEXP, _type: c_int) -> SEXP {
+    unsafe {
+        if x.is_null() {
+            return std::ptr::null_mut();
         }
-    } else if t == SEXPTYPE::REALSXP {
-        let src = crate::sexp::accessors::REAL(x);
-        let dst = INTEGER(ans);
-        for i in 0..n as usize {
-            if !src.is_null() && !dst.is_null() {
-                let v = *src.add(i);
-                if v.is_nan() {
-                    *dst.add(i) = NA_INTEGER;
-                } else {
-                    *dst.add(i) = v as c_int;
+        let t = TYPEOF(x);
+        if t == SEXPTYPE::INTSXP && _type == SEXPTYPE::INTSXP {
+            return x;
+        }
+        let n = LENGTH(x);
+        let ans = Rf_allocVector(_type, n);
+        if ans.is_null() {
+            return std::ptr::null_mut();
+        }
+        let _ans_guard = protect(ans);
+        if t == SEXPTYPE::INTSXP {
+            let src = INTEGER(x);
+            let dst = INTEGER(ans);
+            for i in 0..n as usize {
+                if !src.is_null() && !dst.is_null() {
+                    *dst.add(i) = *src.add(i);
+                }
+            }
+        } else if t == SEXPTYPE::REALSXP {
+            let src = crate::sexp::accessors::REAL(x);
+            let dst = INTEGER(ans);
+            for i in 0..n as usize {
+                if !src.is_null() && !dst.is_null() {
+                    let v = *src.add(i);
+                    if v.is_nan() {
+                        *dst.add(i) = NA_INTEGER;
+                    } else {
+                        *dst.add(i) = v as c_int;
+                    }
+                }
+            }
+        } else if t == SEXPTYPE::LGLSXP {
+            let src = LOGICAL(x);
+            let dst = INTEGER(ans);
+            for i in 0..n as usize {
+                if !src.is_null() && !dst.is_null() {
+                    *dst.add(i) = *src.add(i);
                 }
             }
         }
-    } else if t == SEXPTYPE::LGLSXP {
-        let src = LOGICAL(x);
-        let dst = INTEGER(ans);
-        for i in 0..n as usize {
-            if !src.is_null() && !dst.is_null() {
-                *dst.add(i) = *src.add(i);
-            }
-        }
+        ans
     }
-    ans
 }

@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2003-2024   The R Core Team.
@@ -13,7 +12,7 @@
  */
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
+use std::os::raw::c_char;
 use std::ptr;
 
 use crate::main::errors::Rf_error;
@@ -21,7 +20,7 @@ use crate::sexp::accessors::{CHAR, LENGTH, RAW, STRING_ELT, TYPEOF, XLENGTH};
 use crate::sexp::constructors::{Rf_allocVector, Rf_isString, Rf_mkChar, Rf_mkString};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 use super::sha256::Sha256Ctx;
 
@@ -52,107 +51,90 @@ fn rsha256_buffer(buffer: *const std::ffi::c_void, len: usize, resblock: &mut [u
 /// If `files` is RAWSXP, computes the SHA256 hash of the raw bytes.
 /// If `files` is STRSXP, computes SHA256 hashes for each file path.
 pub unsafe fn Rsha256(files: SEXP) -> SEXP {
-    if files.is_null() {
-        return R_NilValue();
-    }
-
-    // RAW mode: hash of one buffer instead of files
-    if TYPEOF(files) == SEXPTYPE::RAWSXP {
-        let raw_len = XLENGTH(files) as usize;
-        let raw_ptr = RAW(files);
-        if raw_ptr.is_null() || raw_len == 0 {
-            return Rf_mkString(ptr::null());
-        }
-        let raw_bytes = std::slice::from_raw_parts(raw_ptr, raw_len);
-
-        let mut resblock = [0u8; SHA256_HASH_SIZE];
-        let result = rsha256_buffer(
-            raw_bytes.as_ptr() as *const std::ffi::c_void,
-            raw_len,
-            &mut resblock,
-        );
-        if !result {
-            // Return NA string on failure
-            return Rf_mkString(ptr::null());
+    unsafe {
+        if files.is_null() {
+            return R_NilValue();
         }
 
-        let mut out = [0u8; SHA256_HEX_SIZE + 1];
-        for j in 0..SHA256_HASH_SIZE {
-            let hex = format!("{:02x}", resblock[j]);
-            let hex_bytes = hex.as_bytes();
-            out[2 * j] = hex_bytes[0];
-            out[2 * j + 1] = hex_bytes[1];
+        // RAW mode: hash of one buffer instead of files
+        if TYPEOF(files) == SEXPTYPE::RAWSXP {
+            let raw_len = XLENGTH(files) as usize;
+            let raw_ptr = RAW(files);
+            if raw_ptr.is_null() || raw_len == 0 {
+                return Rf_mkString(ptr::null());
+            }
+            let raw_bytes = std::slice::from_raw_parts(raw_ptr, raw_len);
+
+            let mut resblock = [0u8; SHA256_HASH_SIZE];
+            let result = rsha256_buffer(
+                raw_bytes.as_ptr() as *const std::ffi::c_void,
+                raw_len,
+                &mut resblock,
+            );
+            if !result {
+                return Rf_mkString(ptr::null());
+            }
+
+            let out = hex_encode_lower(&resblock);
+            return Rf_mkString(out.as_ptr() as *const c_char);
         }
-        out[SHA256_HEX_SIZE] = 0;
 
-        return Rf_mkString(out.as_ptr() as *const c_char);
-    }
-
-    // Otherwise: list of files
-    if Rf_isString(files) == 0 {
-        Rf_error(b"argument 'files' must be character\0".as_ptr() as *const _);
-        return R_NilValue();
-    }
-
-    let nfiles = LENGTH(files);
-    let ans = Rf_allocVector(SEXPTYPE::STRSXP, nfiles);
-    Rf_protect(ans);
-
-    for i in 0..nfiles as usize {
-        let file_elt = STRING_ELT(files, i as R_xlen_t);
-        if file_elt.is_null() {
-            SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
-            continue;
+        if Rf_isString(files) == 0 {
+            Rf_error(b"argument 'files' must be character\0".as_ptr() as *const _);
+            return R_NilValue();
         }
-        let path_ptr = CHAR(file_elt);
-        if path_ptr.is_null() {
-            SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
-            continue;
-        }
-        let path = match CStr::from_ptr(path_ptr).to_str() {
-            Ok(s) => s.to_owned(),
-            Err(_) => {
+
+        let nfiles = LENGTH(files);
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, nfiles);
+        let _ans_guard = protect(ans);
+
+        for i in 0..nfiles as usize {
+            let file_elt = STRING_ELT(files, i as R_xlen_t);
+            if file_elt.is_null() {
                 SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
                 continue;
             }
-        };
-
-        // Read file and compute SHA256
-        match std::fs::read(&path) {
-            Ok(data) => {
-                let mut resblock = [0u8; SHA256_HASH_SIZE];
-                let result = rsha256_buffer(
-                    data.as_ptr() as *const std::ffi::c_void,
-                    data.len(),
-                    &mut resblock,
-                );
-                if !result {
-                    let msg = std::ffi::CString::new(format!("sha256 failed on file '{}'", path))
-                        .unwrap_or_default();
-                    Rf_error(msg.as_ptr());
+            let path_ptr = CHAR(file_elt);
+            if path_ptr.is_null() {
+                SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
+                continue;
+            }
+            let path = match CStr::from_ptr(path_ptr).to_str() {
+                Ok(s) => s.to_owned(),
+                Err(_) => {
                     SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
-                } else {
-                    let mut out = [0u8; SHA256_HEX_SIZE + 1];
-                    for j in 0..SHA256_HASH_SIZE {
-                        let hex = format!("{:02x}", resblock[j]);
-                        let hex_bytes = hex.as_bytes();
-                        out[2 * j] = hex_bytes[0];
-                        out[2 * j + 1] = hex_bytes[1];
+                    continue;
+                }
+            };
+
+            match std::fs::read(&path) {
+                Ok(data) => {
+                    let mut resblock = [0u8; SHA256_HASH_SIZE];
+                    let result = rsha256_buffer(
+                        data.as_ptr() as *const std::ffi::c_void,
+                        data.len(),
+                        &mut resblock,
+                    );
+                    if !result {
+                        let msg =
+                            std::ffi::CString::new(format!("sha256 failed on file '{}'", path))
+                                .unwrap_or_default();
+                        Rf_error(msg.as_ptr());
+                        SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
+                    } else {
+                        let out = hex_encode_lower(&resblock);
+                        let char_sxp = Rf_mkChar(out.as_ptr() as *const c_char);
+                        SET_STRING_ELT(ans, i as R_xlen_t, char_sxp);
                     }
-                    out[SHA256_HEX_SIZE] = 0;
-                    let char_sxp = Rf_mkChar(out.as_ptr() as *const c_char);
-                    SET_STRING_ELT(ans, i as R_xlen_t, char_sxp);
+                }
+                Err(_) => {
+                    SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
                 }
             }
-            Err(_) => {
-                // File not found
-                SET_STRING_ELT(ans, i as R_xlen_t, ptr::null_mut());
-            }
         }
-    }
 
-    Rf_unprotect(1);
-    ans
+        ans
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -160,6 +142,19 @@ pub unsafe fn Rsha256(files: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 #[inline]
-unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    crate::sexp::accessors::SET_STRING_ELT(x, i, val);
+fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
+    unsafe {
+        crate::sexp::accessors::SET_STRING_ELT(x, i, val);
+    }
+}
+
+fn hex_encode_lower(bytes: &[u8; SHA256_HASH_SIZE]) -> [u8; SHA256_HEX_SIZE + 1] {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut out = [0u8; SHA256_HEX_SIZE + 1];
+    for (i, &byte) in bytes.iter().enumerate() {
+        out[2 * i] = HEX[(byte >> 4) as usize];
+        out[2 * i + 1] = HEX[(byte & 0x0f) as usize];
+    }
+    out[SHA256_HEX_SIZE] = 0;
+    out
 }
