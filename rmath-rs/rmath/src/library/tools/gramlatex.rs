@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/tools/src/gramLatex.c
@@ -10,16 +9,8 @@
  *  for converting parsed Rd objects to LaTeX format.
  */
 
-use std::os::raw::{c_char, c_int};
-use std::ptr;
-
-use crate::main::coerce::asInteger;
-use crate::main::errors::Rf_error;
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
+use crate::mainutils::errors::Rf_error_unimplemented;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::*;
 
 /* ==================== Token types ==================== */
 
@@ -59,5 +50,10 @@ mod yytokentype {
 /// The real implementation walks the Rd parse tree and emits
 /// LaTeX markup for each section type.
 pub unsafe fn Rd2LaTeX(_item: SEXP, _args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tools::Rd2LaTeX")
+}
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
 }

@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/tools/src/gramRd.c
@@ -10,31 +9,10 @@
  *  for parsing .Rd (R documentation) files.
  */
 
-use std::os::raw::{c_char, c_double, c_int};
-use std::ptr;
-
-use crate::attrib_core::R_ClassSymbol;
-use crate::attrib_core::R_NamesSymbol;
-use crate::attrib_core::setAttrib;
-use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
-use crate::main::errors::Rf_error;
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
+use crate::mainutils::errors::Rf_error_unimplemented;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::*;
 
 /* ==================== Parser state ==================== */
-
-/// Rd parse state structure (simplified).
-struct RdParseState {
-    /// Stack for parser values.
-    s_stack: Vec<SEXP>,
-    /// Current item being constructed.
-    item: SEXP,
-    /// Warnings flag.
-    had_warning: bool,
-}
 
 /* ==================== Token types ==================== */
 
@@ -80,31 +58,35 @@ mod yytokentype {
 /// In the real implementation, this calls the Bison-generated yyparse()
 /// to produce a parsed Rd object (a list of Rd sections).
 pub unsafe fn R_ParseRd(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    // Stub: return an empty list
-    R_NilValue()
+    unsupported("tools::R_ParseRd")
 }
 
 /// Rd2HTML - convert parsed Rd to HTML (stub).
 pub unsafe fn Rd2HTML(_item: SEXP, _args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tools::Rd2HTML")
 }
 
 /// Rd2TXT - convert parsed Rd to plain text (stub).
 pub unsafe fn Rd2TXT(_item: SEXP, _args: SEXP) -> SEXP {
-    R_NilValue()
+    unsupported("tools::Rd2TXT")
 }
 
 /// install_Rd2HTML - register Rd2HTML converter (stub).
 pub unsafe fn install_Rd2HTML() {
-    // no-op
+    unsupported("tools::install_Rd2HTML")
 }
 
 /// install_Rd2TXT - register Rd2TXT converter (stub).
 pub unsafe fn install_Rd2TXT() {
-    // no-op
+    unsupported("tools::install_Rd2TXT")
 }
 
 /// install_Rd2LaTeX - register Rd2LaTeX converter (stub).
 pub unsafe fn install_Rd2LaTeX() {
-    // no-op
+    unsupported("tools::install_Rd2LaTeX")
+}
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
 }

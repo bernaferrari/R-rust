@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2092--2025   The R Core Team.
@@ -13,15 +12,15 @@
  */
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::main::errors::Rf_error;
-use crate::sexp::accessors::{CHAR, INTEGER, LENGTH, STRING_ELT, TYPEOF, XLENGTH};
-use crate::sexp::constructors::{Rf_ScalarInteger, Rf_allocVector, Rf_isString, Rf_mkChar};
-use crate::sexp::ffi::{NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE};
+use crate::mainutils::errors::Rf_error_unimplemented;
+use crate::sexp::accessors::{CHAR, STRING_ELT, TYPEOF, XLENGTH};
+use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 // ---------------------------------------------------------------------------
 // startHTTPD / stopHTTPD
@@ -29,36 +28,13 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 
 /// Start an HTTP daemon on the given IP and port.
 pub unsafe fn startHTTPD(sIP: SEXP, sPort: SEXP) -> SEXP {
-    let ip: *const c_char = ptr::null();
-    if !sIP.is_null() && sIP != R_NilValue() {
-        if Rf_isString(sIP) == 0 || LENGTH(sIP) != 1 {
-            Rf_error(b"invalid bind address specification\0".as_ptr() as *const _);
-        }
-        let elt = STRING_ELT(sIP, 0);
-        if !elt.is_null() {
-            let _ = ip; // suppress unused warning - IP is extracted but not used in stub
-        }
-    }
-
-    let port = coerce_to_int(sPort);
-    if port < 0 || port > 65535 {
-        let msg = std::ffi::CString::new(format!(
-            "Invalid port number {}: should be in 0:65535, typically above 1024",
-            port
-        ))
-        .unwrap_or_default();
-        Rf_error(msg.as_ptr());
-    }
-
-    // extR_HTTPDCreate is an external function not available in this port
-    // Return -1 (failure) since the HTTP daemon is not implemented
-    Rf_ScalarInteger(-1)
+    let _ = (sIP, sPort);
+    unsupported("tools::startHTTPD")
 }
 
 /// Stop the HTTP daemon.
 pub unsafe fn stopHTTPD() -> SEXP {
-    // extR_HTTPDStop is an external function not available in this port
-    R_NilValue()
+    unsupported("tools::stopHTTPD")
 }
 
 // ---------------------------------------------------------------------------
@@ -67,145 +43,98 @@ pub unsafe fn stopHTTPD() -> SEXP {
 
 /// Remove . and (most) .. from a path following RFC 3986, 5.2.4.
 fn remove_dot_segments(p: &str) -> String {
-    let mut inbuf: Vec<char> = p.chars().collect();
-    let mut outbuf: Vec<char> = Vec::with_capacity(inbuf.len() + 1);
+    let input = p.as_bytes();
+    let mut output: Vec<u8> = Vec::with_capacity(input.len());
     let mut idx: usize = 0;
 
-    while idx < inbuf.len() {
-        // A. If the input buffer begins with "../" or "./", remove that prefix
-        if idx + 2 < inbuf.len()
-            && inbuf[idx] == '.'
-            && inbuf[idx + 1] == '.'
-            && inbuf[idx + 2] == '/'
-        {
+    while idx < input.len() {
+        let rest = &input[idx..];
+
+        if rest.starts_with(b"../") {
             idx += 3;
             continue;
         }
-        if idx + 1 < inbuf.len() && inbuf[idx] == '.' && inbuf[idx + 1] == '/' {
+        if rest.starts_with(b"./") {
             idx += 2;
             continue;
         }
-
-        // B. If the input buffer begins with "/./" or "/.", replace with "/"
-        if idx + 2 < inbuf.len()
-            && inbuf[idx] == '/'
-            && inbuf[idx + 1] == '.'
-            && inbuf[idx + 2] == '/'
-        {
+        if rest.starts_with(b"/./") {
             idx += 2;
             continue;
         }
-        if idx + 1 < inbuf.len()
-            && inbuf[idx] == '/'
-            && inbuf[idx + 1] == '.'
-            && idx + 2 >= inbuf.len()
-        {
-            // trailing "/." -> "/"
-            inbuf.truncate(idx + 1);
-            continue;
+        if rest == b"/." {
+            output.push(b'/');
+            break;
         }
-
-        // C. If the input buffer begins with "/../" or "/..", replace with "/"
-        //    and remove the last segment from output
-        if idx + 3 < inbuf.len()
-            && inbuf[idx] == '/'
-            && inbuf[idx + 1] == '.'
-            && inbuf[idx + 2] == '.'
-            && inbuf[idx + 3] == '/'
-        {
+        if rest.starts_with(b"/../") {
             idx += 3;
-            // remove trailing "/segment" from output
-            while !outbuf.is_empty() && outbuf.last().copied().unwrap_or('\0') != '/' {
-                outbuf.pop();
-            }
-            if !outbuf.is_empty() {
-                outbuf.pop(); // remove the '/'
-            }
+            pop_last_segment(&mut output);
             continue;
         }
-        if idx + 2 < inbuf.len()
-            && inbuf[idx] == '/'
-            && inbuf[idx + 1] == '.'
-            && inbuf[idx + 2] == '.'
-            && idx + 3 >= inbuf.len()
-        {
-            // trailing "/.." -> "/"
-            inbuf.truncate(idx + 1);
-            // remove trailing "/segment" from output
-            while !outbuf.is_empty() && outbuf.last().copied().unwrap_or('\0') != '/' {
-                outbuf.pop();
-            }
-            if !outbuf.is_empty() {
-                outbuf.pop(); // remove the '/'
-            }
-            continue;
+        if rest == b"/.." {
+            pop_last_segment(&mut output);
+            output.push(b'/');
+            break;
+        }
+        if rest == b"." || rest == b".." {
+            break;
         }
 
-        // D. If the input buffer consists only of "." or "..", remove that
-        if idx + 1 >= inbuf.len() && inbuf[idx] == '.' {
-            idx += 1;
-            continue;
-        }
-        if idx + 2 >= inbuf.len() && inbuf[idx] == '.' && inbuf[idx + 1] == '.' {
-            idx += 2;
-            continue;
-        }
-
-        // E. Move the first path segment to the end of the output buffer
-        if inbuf[idx] == '/' {
-            outbuf.push('/');
+        if rest[0] == b'/' {
+            output.push(b'/');
             idx += 1;
         }
-        while idx < inbuf.len() && inbuf[idx] != '/' {
-            outbuf.push(inbuf[idx]);
+        while idx < input.len() && input[idx] != b'/' {
+            output.push(input[idx]);
             idx += 1;
         }
     }
 
-    outbuf.into_iter().collect()
+    String::from_utf8(output).unwrap_or_default()
 }
 
 /// Wrapper for remove_dot_segments that operates on a character vector.
 pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
-    if x.is_null() {
-        return R_NilValue();
-    }
-    if TYPEOF(x) != SEXPTYPE::STRSXP {
-        Rf_error(b"non-character argument\0".as_ptr() as *const _);
-    }
-    let n = XLENGTH(x);
-    let y = Rf_allocVector(SEXPTYPE::STRSXP, n as c_int);
-    Rf_protect(y);
+    unsafe {
+        if x.is_null() {
+            return R_NilValue();
+        }
+        if TYPEOF(x) != SEXPTYPE::STRSXP {
+            Rf_error(b"non-character argument\0".as_ptr() as *const _);
+        }
+        let n = XLENGTH(x);
+        let y = Rf_allocVector(SEXPTYPE::STRSXP, n as i32);
+        let _y_guard = protect(y);
 
-    for i in 0..n as usize {
-        let s = STRING_ELT(x, i as R_xlen_t);
-        if s.is_null() {
-            // NA case - set null CHARSXP
-            let na_char = Rf_mkChar(ptr::null());
-            SET_STRING_ELT(y, i as R_xlen_t, na_char);
-            continue;
-        }
-        let p = CHAR(s);
-        if p.is_null() {
-            let empty_char = Rf_mkChar(c"".as_ptr());
-            SET_STRING_ELT(y, i as R_xlen_t, empty_char);
-            continue;
-        }
-        let path = match CStr::from_ptr(p).to_str() {
-            Ok(s) => s,
-            Err(_) => {
+        for i in 0..n as usize {
+            let s = STRING_ELT(x, i as R_xlen_t);
+            if s.is_null() {
+                let na_char = Rf_mkChar(ptr::null());
+                SET_STRING_ELT(y, i as R_xlen_t, na_char);
+                continue;
+            }
+            let p = CHAR(s);
+            if p.is_null() {
                 let empty_char = Rf_mkChar(c"".as_ptr());
                 SET_STRING_ELT(y, i as R_xlen_t, empty_char);
                 continue;
             }
-        };
-        let cleaned = remove_dot_segments(path);
-        let char_sxp = Rf_mkChar(std::ffi::CString::new(cleaned).unwrap_or_default().as_ptr());
-        SET_STRING_ELT(y, i as R_xlen_t, char_sxp);
-    }
+            let path = match CStr::from_ptr(p).to_str() {
+                Ok(s) => s,
+                Err(_) => {
+                    let empty_char = Rf_mkChar(c"".as_ptr());
+                    SET_STRING_ELT(y, i as R_xlen_t, empty_char);
+                    continue;
+                }
+            };
+            let cleaned = remove_dot_segments(path);
+            let c_string = std::ffi::CString::new(cleaned).unwrap_or_default();
+            let char_sxp = Rf_mkChar(c_string.as_ptr());
+            SET_STRING_ELT(y, i as R_xlen_t, char_sxp);
+        }
 
-    Rf_unprotect(1);
-    y
+        y
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -214,33 +143,21 @@ pub unsafe fn remove_dot_segments_wrapper(x: SEXP) -> SEXP {
 
 #[inline]
 unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
-    crate::sexp::accessors::SET_STRING_ELT(x, i, val);
+    unsafe {
+        crate::sexp::accessors::SET_STRING_ELT(x, i, val);
+    }
 }
 
-unsafe fn coerce_to_int(x: SEXP) -> c_int {
-    if x.is_null() {
-        return NA_INTEGER;
+fn pop_last_segment(output: &mut Vec<u8>) {
+    while output.last().copied().is_some_and(|b| b != b'/') {
+        output.pop();
     }
-    let t = TYPEOF(x);
-    if t == SEXPTYPE::INTSXP {
-        let p = INTEGER(x);
-        if !p.is_null() {
-            return *p;
-        }
-    } else if t == SEXPTYPE::LGLSXP {
-        let p = crate::sexp::accessors::LOGICAL(x);
-        if !p.is_null() {
-            return *p;
-        }
-    } else if t == SEXPTYPE::REALSXP {
-        let p = crate::sexp::accessors::REAL(x);
-        if !p.is_null() {
-            let v = *p;
-            if v.is_nan() {
-                return NA_INTEGER;
-            }
-            return v as c_int;
-        }
+    if !output.is_empty() {
+        output.pop();
     }
-    NA_INTEGER
+}
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned")
 }
