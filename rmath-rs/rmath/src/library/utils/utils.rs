@@ -27,5 +27,5 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
 pub unsafe fn download(args: SEXP) -> SEXP {
-    in_do_download(CDR(args))
+    unsafe { in_do_download(CDR(args)) }
 }

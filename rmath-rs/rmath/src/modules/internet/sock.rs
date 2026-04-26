@@ -67,19 +67,21 @@ pub(crate) struct Sock_error_t {
 
 #[inline]
 unsafe fn get_errno() -> c_int {
-    #[cfg(target_os = "macos")]
-    {
-        unsafe extern "C" {
-            fn __error() -> *mut c_int;
+    unsafe {
+        #[cfg(target_os = "macos")]
+        {
+            unsafe extern "C" {
+                fn __error() -> *mut c_int;
+            }
+            *__error()
         }
-        *__error()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        unsafe extern "C" {
-            fn __errno_location() -> *mut c_int;
+        #[cfg(not(target_os = "macos"))]
+        {
+            unsafe extern "C" {
+                fn __errno_location() -> *mut c_int;
+            }
+            *__errno_location()
         }
-        *__errno_location()
     }
 }
 
@@ -89,10 +91,12 @@ unsafe fn get_errno() -> c_int {
 
 #[cfg(target_os = "macos")]
 unsafe fn get_h_errno() -> c_int {
-    unsafe extern "C" {
-        fn __h_errno() -> *mut c_int;
+    unsafe {
+        unsafe extern "C" {
+            fn __h_errno() -> *mut c_int;
+        }
+        *__h_errno()
     }
-    *__h_errno()
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -132,20 +136,24 @@ pub(crate) unsafe fn R_socket_error(s: c_int) -> c_int {
 /// R_invalid_socket_eintr - check if socket is invalid due to EINTR
 /// Signature: int R_invalid_socket_eintr(SOCKET s)
 pub(crate) unsafe fn R_invalid_socket_eintr(s: c_int) -> c_int {
-    if s == -1 && get_errno() == EINTR {
-        1
-    } else {
-        0
+    unsafe {
+        if s == -1 && get_errno() == EINTR {
+            1
+        } else {
+            0
+        }
     }
 }
 
 /// R_socket_error_eintr - check if socket error is EINTR
 /// Signature: int R_socket_error_eintr(int s)
 pub(crate) unsafe fn R_socket_error_eintr(s: c_int) -> c_int {
-    if s == -1 && get_errno() == EINTR {
-        1
-    } else {
-        0
+    unsafe {
+        if s == -1 && get_errno() == EINTR {
+            1
+        } else {
+            0
+        }
     }
 }
 
@@ -192,11 +200,13 @@ pub(crate) unsafe fn R_set_nodelay(s: c_int) -> c_int {
 
 /// Sock_error - set error fields in a Sock_error_t and return -1
 unsafe fn Sock_error(perr: *mut Sock_error_t, e: c_int, he: c_int) -> c_int {
-    if !perr.is_null() {
-        (*perr).error = e;
-        (*perr).h_error = he;
+    unsafe {
+        if !perr.is_null() {
+            (*perr).error = e;
+            (*perr).h_error = he;
+        }
+        -1
     }
-    -1
 }
 
 // --- Core socket operation implementations ---

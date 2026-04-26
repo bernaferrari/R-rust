@@ -280,10 +280,12 @@ fn ftp_errstr(status: c_long) -> *const c_char {
 
 /// streql - compare two C strings for equality
 unsafe fn streql(a: *const c_char, b: *const c_char) -> bool {
-    if a.is_null() || b.is_null() {
-        return false;
+    unsafe {
+        if a.is_null() || b.is_null() {
+            return false;
+        }
+        libc::strcmp(a, b) == 0
     }
-    libc::strcmp(a, b) == 0
 }
 
 /// R_MIN macro
@@ -308,27 +310,29 @@ unsafe fn rcvHeaders(
     nmemb: size_t,
     _userp: *mut c_void,
 ) -> size_t {
-    let d = buffer as *mut c_char;
-    let result = size * nmemb;
-    let res = if result > 2048 { 2048 } else { result };
-    if (headers_used.with(|v| v.get()) as usize) >= MAX_HEADERS {
-        return result;
+    unsafe {
+        let d = buffer as *mut c_char;
+        let result = size * nmemb;
+        let res = if result > 2048 { 2048 } else { result };
+        if (headers_used.with(|v| v.get()) as usize) >= MAX_HEADERS {
+            return result;
+        }
+        HEADERS.with(|headers| {
+            libc::strncpy(
+                headers.borrow_mut()[headers_used.with(|v| v.get()) as usize].as_mut_ptr(),
+                d,
+                res,
+            )
+        });
+        // Header line is NOT zero terminated
+        HEADERS.with(|headers| {
+            *headers.borrow_mut()[headers_used.with(|v| v.get()) as usize]
+                .as_mut_ptr()
+                .add(res) = 0
+        });
+        headers_used.with(|v| v.set(v.get() + 1));
+        result
     }
-    HEADERS.with(|headers| {
-        libc::strncpy(
-            headers.borrow_mut()[headers_used.with(|v| v.get()) as usize].as_mut_ptr(),
-            d,
-            res,
-        )
-    });
-    // Header line is NOT zero terminated
-    HEADERS.with(|headers| {
-        *headers.borrow_mut()[headers_used.with(|v| v.get()) as usize]
-            .as_mut_ptr()
-            .add(res) = 0
-    });
-    headers_used.with(|v| v.set(v.get() + 1));
-    result
 }
 
 /// rcvBody - callback for receiving response body (discard spurious FTP body)
@@ -341,9 +345,11 @@ unsafe fn rcvBody(buffer: *mut c_void, size: size_t, nmemb: size_t, _userp: *mut
 // ============================================================
 
 unsafe fn handle_cleanup(data: *mut c_void) {
-    let hnd = data as *mut CURL;
-    if !hnd.is_null() {
-        curl_easy_cleanup(hnd);
+    unsafe {
+        let hnd = data as *mut CURL;
+        if !hnd.is_null() {
+            curl_easy_cleanup(hnd);
+        }
     }
 }
 
@@ -365,141 +371,151 @@ struct download_cleanup_info {
 
 /// download_cleanup_url - clean up a single URL at given index
 unsafe fn download_cleanup_url(i: c_int, c: *mut download_cleanup_info) {
-    let c_ref = &mut *c;
-    if !c_ref.out.is_null() && !(*c_ref.out.add(i as usize)).is_null() {
-        libc::fclose(*c_ref.out.add(i as usize));
-        *c_ref.out.add(i as usize) = std::ptr::null_mut();
+    unsafe {
+        let c_ref = &mut *c;
+        if !c_ref.out.is_null() && !(*c_ref.out.add(i as usize)).is_null() {
+            libc::fclose(*c_ref.out.add(i as usize));
+            *c_ref.out.add(i as usize) = std::ptr::null_mut();
 
-        let mut dl: c_double = 0.0;
-        if !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null() {
-            curl_easy_getinfo(
-                *c_ref.hnd.add(i as usize),
-                CURLINFO_SIZE_DOWNLOAD,
-                &mut dl as *mut c_double as *mut c_void,
-            );
-        }
-
-        if !Rf_isNull(c_ref.sfile) != 0 {
-            let mut status: c_long = 0;
+            let mut dl: c_double = 0.0;
             if !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null() {
                 curl_easy_getinfo(
                     *c_ref.hnd.add(i as usize),
-                    CURLINFO_RESPONSE_CODE,
-                    &mut status as *mut c_long as *mut c_void,
+                    CURLINFO_SIZE_DOWNLOAD,
+                    &mut dl as *mut c_double as *mut c_void,
                 );
             }
-            // Delete file if status != 200 and no data downloaded
-            if status != 200 && dl == 0.0 {
-                let fname = translateChar(STRING_ELT(c_ref.sfile, i as R_xlen_t));
-                libc::unlink(fname);
+
+            if !Rf_isNull(c_ref.sfile) != 0 {
+                let mut status: c_long = 0;
+                if !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null() {
+                    curl_easy_getinfo(
+                        *c_ref.hnd.add(i as usize),
+                        CURLINFO_RESPONSE_CODE,
+                        &mut status as *mut c_long as *mut c_void,
+                    );
+                }
+                // Delete file if status != 200 and no data downloaded
+                if status != 200 && dl == 0.0 {
+                    let fname = translateChar(STRING_ELT(c_ref.sfile, i as R_xlen_t));
+                    libc::unlink(fname);
+                }
+            }
+
+            if !c_ref.mhnd.is_null()
+                && !c_ref.hnd.is_null()
+                && !(*c_ref.hnd.add(i as usize)).is_null()
+            {
+                curl_multi_remove_handle(c_ref.mhnd, *c_ref.hnd.add(i as usize));
             }
         }
 
-        if !c_ref.mhnd.is_null() && !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null()
-        {
-            curl_multi_remove_handle(c_ref.mhnd, *c_ref.hnd.add(i as usize));
+        if !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null() {
+            curl_easy_cleanup(*c_ref.hnd.add(i as usize));
+            *c_ref.hnd.add(i as usize) = std::ptr::null_mut();
         }
-    }
-
-    if !c_ref.hnd.is_null() && !(*c_ref.hnd.add(i as usize)).is_null() {
-        curl_easy_cleanup(*c_ref.hnd.add(i as usize));
-        *c_ref.hnd.add(i as usize) = std::ptr::null_mut();
     }
 }
 
 /// download_cleanup - cleanup all resources for a batch download
 unsafe fn download_cleanup(data: *mut c_void) {
-    let c = data as *mut download_cleanup_info;
-    if c.is_null() {
-        return;
-    }
-    let c_ref = &mut *c;
-    for i in 0..c_ref.nurls {
-        download_cleanup_url(i, c);
-    }
-    if !c_ref.mhnd.is_null() {
-        curl_multi_cleanup(c_ref.mhnd);
-        c_ref.mhnd = std::ptr::null_mut();
-    }
-    if !c_ref.headers.is_null() {
-        curl_slist_free_all(c_ref.headers);
-        c_ref.headers = std::ptr::null_mut();
+    unsafe {
+        let c = data as *mut download_cleanup_info;
+        if c.is_null() {
+            return;
+        }
+        let c_ref = &mut *c;
+        for i in 0..c_ref.nurls {
+            download_cleanup_url(i, c);
+        }
+        if !c_ref.mhnd.is_null() {
+            curl_multi_cleanup(c_ref.mhnd);
+            c_ref.mhnd = std::ptr::null_mut();
+        }
+        if !c_ref.headers.is_null() {
+            curl_slist_free_all(c_ref.headers);
+            c_ref.headers = std::ptr::null_mut();
+        }
     }
 }
 
 /// download_report_url_error - report a download error based on libcurl message
 unsafe fn download_report_url_error(msg: *mut CURLMsg) {
-    let mut url: *const c_char = std::ptr::null();
-    let mut status: c_long = 0;
-    let mut url_errs: *mut c_int = std::ptr::null_mut();
+    unsafe {
+        let mut url: *const c_char = std::ptr::null();
+        let mut status: c_long = 0;
+        let mut url_errs: *mut c_int = std::ptr::null_mut();
 
-    if msg.is_null() {
-        return;
-    }
-    curl_easy_getinfo(
-        (*msg).easy_handle,
-        CURLINFO_EFFECTIVE_URL,
-        &mut url as *mut *const c_char as *mut c_void,
-    );
-    curl_easy_getinfo(
-        (*msg).easy_handle,
-        CURLINFO_RESPONSE_CODE,
-        &mut status as *mut c_long as *mut c_void,
-    );
-    if curl_easy_getinfo(
-        (*msg).easy_handle,
-        CURLINFO_PRIVATE,
-        &mut url_errs as *mut *mut c_int as *mut c_void,
-    ) == CURLE_OK
-        && !url_errs.is_null()
-    {
-        *url_errs += 1;
-    }
-
-    if status >= 400 {
-        if !url.is_null() && *url == 'h' as c_char {
-            let strerr = http_errstr(status);
-            Rf_warning1(
-                b"cannot open URL '%s': HTTP status was '%ld %s'\0".as_ptr() as *const c_char
-            );
-            let _ = strerr;
-        } else {
-            let strerr = ftp_errstr(status);
-            Rf_warning1(
-                b"cannot open URL '%s': FTP status was '%ld %s'\0".as_ptr() as *const c_char
-            );
-            let _ = strerr;
+        if msg.is_null() {
+            return;
         }
-    } else {
-        let result_code = (*msg).data.result;
-        let strerr = curl_easy_strerror(result_code);
-        let timedout = result_code == CURLE_OPERATION_TIMEDOUT
-            || result_code == CURLE_ABORTED_BY_CALLBACK
-            || (!strerr.is_null()
-                && streql(strerr, b"Timeout was reached\0".as_ptr() as *const c_char));
+        curl_easy_getinfo(
+            (*msg).easy_handle,
+            CURLINFO_EFFECTIVE_URL,
+            &mut url as *mut *const c_char as *mut c_void,
+        );
+        curl_easy_getinfo(
+            (*msg).easy_handle,
+            CURLINFO_RESPONSE_CODE,
+            &mut status as *mut c_long as *mut c_void,
+        );
+        if curl_easy_getinfo(
+            (*msg).easy_handle,
+            CURLINFO_PRIVATE,
+            &mut url_errs as *mut *mut c_int as *mut c_void,
+        ) == CURLE_OK
+            && !url_errs.is_null()
+        {
+            *url_errs += 1;
+        }
 
-        if timedout {
-            Rf_warning1(b"URL '%s': Timeout was reached\0".as_ptr() as *const c_char);
-            let _ = current_timeout.with(|v| v.get());
+        if status >= 400 {
+            if !url.is_null() && *url == 'h' as c_char {
+                let strerr = http_errstr(status);
+                Rf_warning1(
+                    b"cannot open URL '%s': HTTP status was '%ld %s'\0".as_ptr() as *const c_char
+                );
+                let _ = strerr;
+            } else {
+                let strerr = ftp_errstr(status);
+                Rf_warning1(
+                    b"cannot open URL '%s': FTP status was '%ld %s'\0".as_ptr() as *const c_char
+                );
+                let _ = strerr;
+            }
         } else {
-            Rf_warning1(b"URL '%s': status was unknown\0".as_ptr() as *const c_char);
-            let _ = strerr;
+            let result_code = (*msg).data.result;
+            let strerr = curl_easy_strerror(result_code);
+            let timedout = result_code == CURLE_OPERATION_TIMEDOUT
+                || result_code == CURLE_ABORTED_BY_CALLBACK
+                || (!strerr.is_null()
+                    && streql(strerr, b"Timeout was reached\0".as_ptr() as *const c_char));
+
+            if timedout {
+                Rf_warning1(b"URL '%s': Timeout was reached\0".as_ptr() as *const c_char);
+                let _ = current_timeout.with(|v| v.get());
+            } else {
+                Rf_warning1(b"URL '%s': status was unknown\0".as_ptr() as *const c_char);
+                let _ = strerr;
+            }
         }
     }
 }
 
 /// curlMultiCheckerrs - check curl_multi_info_read for errors, return count
 unsafe fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
-    let mut retval: c_int = 0;
-    let mut n: c_int = 1;
-    while n > 0 {
-        let msg = curl_multi_info_read(mhnd, &mut n);
-        if !msg.is_null() && (*msg).data.result != CURLE_OK {
-            download_report_url_error(msg);
-            retval += 1;
+    unsafe {
+        let mut retval: c_int = 0;
+        let mut n: c_int = 1;
+        while n > 0 {
+            let msg = curl_multi_info_read(mhnd, &mut n);
+            if !msg.is_null() && (*msg).data.result != CURLE_OK {
+                download_report_url_error(msg);
+                retval += 1;
+            }
         }
+        retval
     }
-    retval
 }
 
 // ============================================================
@@ -507,81 +523,83 @@ unsafe fn curlMultiCheckerrs(mhnd: *mut CURLM) -> c_int {
 // ============================================================
 
 unsafe fn curlCommon(hnd: *mut CURL, redirect: c_int, verify: c_int) {
-    if verify != 0 {
-        let capath = libc::getenv(b"CURL_CA_BUNDLE\0".as_ptr() as *const c_char);
-        if !capath.is_null() && *capath != 0 {
-            curl_easy_setopt(hnd, CURLOPT_CAINFO, capath);
-        }
-    } else {
-        curl_easy_setopt(hnd, CURLOPT_SSL_VERIFYHOST, 0);
-        curl_easy_setopt(hnd, CURLOPT_SSL_VERIFYPEER, 0);
-    }
-
-    // User agent: use HTTPUserAgent option or default to libcurl version
-    let mut default_agent: c_int = 1;
-    let sua = GetOption1(install(b"HTTPUserAgent\0".as_ptr() as *const c_char));
-    if TYPEOF(sua) == SEXPTYPE::STRSXP && LENGTH(sua) == 1 {
-        let p = translateChar(STRING_ELT(sua, 0));
-        if !p.is_null()
-            && *p != 0
-            && *p.add(1) != 0
-            && *p.add(2) != 0
-            && *p == 'R' as c_char
-            && *p.add(1) == ' ' as c_char
-            && *p.add(2) == '(' as c_char
-        {
-            // Default R user agent, don't override
+    unsafe {
+        if verify != 0 {
+            let capath = libc::getenv(b"CURL_CA_BUNDLE\0".as_ptr() as *const c_char);
+            if !capath.is_null() && *capath != 0 {
+                curl_easy_setopt(hnd, CURLOPT_CAINFO, capath);
+            }
         } else {
-            default_agent = 0;
-            curl_easy_setopt(hnd, CURLOPT_USERAGENT, p);
+            curl_easy_setopt(hnd, CURLOPT_SSL_VERIFYHOST, 0);
+            curl_easy_setopt(hnd, CURLOPT_SSL_VERIFYPEER, 0);
         }
-    }
-    if default_agent != 0 {
-        let mut buf: [c_char; 20] = [0; 20];
-        let d = curl_version_info(CURLVERSION_NOW);
-        if !d.is_null() && !(*d).version.is_null() {
-            libc::snprintf(
-                buf.as_mut_ptr(),
-                20,
-                b"libcurl/%s\0".as_ptr() as *const c_char,
-                (*d).version,
-            );
-            curl_easy_setopt(hnd, CURLOPT_USERAGENT, buf.as_ptr());
+
+        // User agent: use HTTPUserAgent option or default to libcurl version
+        let mut default_agent: c_int = 1;
+        let sua = GetOption1(install(b"HTTPUserAgent\0".as_ptr() as *const c_char));
+        if TYPEOF(sua) == SEXPTYPE::STRSXP && LENGTH(sua) == 1 {
+            let p = translateChar(STRING_ELT(sua, 0));
+            if !p.is_null()
+                && *p != 0
+                && *p.add(1) != 0
+                && *p.add(2) != 0
+                && *p == 'R' as c_char
+                && *p.add(1) == ' ' as c_char
+                && *p.add(2) == '(' as c_char
+            {
+                // Default R user agent, don't override
+            } else {
+                default_agent = 0;
+                curl_easy_setopt(hnd, CURLOPT_USERAGENT, p);
+            }
         }
-    }
+        if default_agent != 0 {
+            let mut buf: [c_char; 20] = [0; 20];
+            let d = curl_version_info(CURLVERSION_NOW);
+            if !d.is_null() && !(*d).version.is_null() {
+                libc::snprintf(
+                    buf.as_mut_ptr(),
+                    20,
+                    b"libcurl/%s\0".as_ptr() as *const c_char,
+                    (*d).version,
+                );
+                curl_easy_setopt(hnd, CURLOPT_USERAGENT, buf.as_ptr());
+            }
+        }
 
-    // Timeout from option
-    let timeout0 = asInteger(GetOption1(install(b"timeout\0".as_ptr() as *const c_char)));
-    let timeout: c_long = if timeout0 == NA_INTEGER {
-        0
-    } else {
-        1000 * timeout0 as c_long
-    };
-    current_timeout.with(|v| v.set(if timeout0 == NA_INTEGER { 0 } else { timeout0 }));
-    curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, timeout);
-    curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, timeout);
+        // Timeout from option
+        let timeout0 = asInteger(GetOption1(install(b"timeout\0".as_ptr() as *const c_char)));
+        let timeout: c_long = if timeout0 == NA_INTEGER {
+            0
+        } else {
+            1000 * timeout0 as c_long
+        };
+        current_timeout.with(|v| v.set(if timeout0 == NA_INTEGER { 0 } else { timeout0 }));
+        curl_easy_setopt(hnd, CURLOPT_CONNECTTIMEOUT_MS, timeout);
+        curl_easy_setopt(hnd, CURLOPT_TIMEOUT_MS, timeout);
 
-    if redirect != 0 {
-        curl_easy_setopt(hnd, CURLOPT_FOLLOWLOCATION, 1);
-        curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 20);
-    }
+        if redirect != 0 {
+            curl_easy_setopt(hnd, CURLOPT_FOLLOWLOCATION, 1);
+            curl_easy_setopt(hnd, CURLOPT_MAXREDIRS, 20);
+        }
 
-    let verbosity = asInteger(GetOption1(install(
-        b"internet.info\0".as_ptr() as *const c_char
-    )));
-    if verbosity < 2 {
-        curl_easy_setopt(hnd, CURLOPT_VERBOSE, 1);
-    }
+        let verbosity = asInteger(GetOption1(install(
+            b"internet.info\0".as_ptr() as *const c_char
+        )));
+        if verbosity < 2 {
+            curl_easy_setopt(hnd, CURLOPT_VERBOSE, 1);
+        }
 
-    // Enable cookie engine (cookies in memory)
-    curl_easy_setopt(hnd, CURLOPT_COOKIEFILE, b"\0".as_ptr());
+        // Enable cookie engine (cookies in memory)
+        curl_easy_setopt(hnd, CURLOPT_COOKIEFILE, b"\0".as_ptr());
 
-    // netrc file
-    let snetrc = GetOption1(install(b"netrc\0".as_ptr() as *const c_char));
-    if TYPEOF(snetrc) == SEXPTYPE::STRSXP && LENGTH(snetrc) == 1 {
-        let p = translateCharFP(STRING_ELT(snetrc, 0));
-        curl_easy_setopt(hnd, CURLOPT_NETRC, CURL_NETRC_OPTIONAL);
-        curl_easy_setopt(hnd, CURLOPT_NETRC_FILE, p);
+        // netrc file
+        let snetrc = GetOption1(install(b"netrc\0".as_ptr() as *const c_char));
+        if TYPEOF(snetrc) == SEXPTYPE::STRSXP && LENGTH(snetrc) == 1 {
+            let p = translateCharFP(STRING_ELT(snetrc, 0));
+            curl_easy_setopt(hnd, CURLOPT_NETRC, CURL_NETRC_OPTIONAL);
+            curl_easy_setopt(hnd, CURLOPT_NETRC_FILE, p);
+        }
     }
 }
 
@@ -595,13 +613,15 @@ thread_local! { static ndashes: Cell<c_int> = Cell::new(0); }
 /// putdashes - print download progress dashes (Unix)
 #[cfg(unix)]
 unsafe fn putdashes(pold: *mut c_int, new: c_int) {
-    let old_val = *pold;
-    for _i in old_val..new {
-        eprint!("=");
+    unsafe {
+        let old_val = *pold;
+        for _i in old_val..new {
+            eprint!("=");
+        }
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+        *pold = new;
     }
-    use std::io::Write;
-    let _ = std::io::stderr().flush();
-    *pold = new;
 }
 
 #[cfg(not(unix))]
@@ -615,57 +635,59 @@ unsafe fn progress(
     _ultotal: c_double,
     _ulnow: c_double,
 ) -> c_int {
-    let hnd = clientp as *mut CURL;
-    let mut status: c_long = 0;
-    curl_easy_getinfo(
-        hnd,
-        CURLINFO_RESPONSE_CODE,
-        &mut status as *mut c_long as *mut c_void,
-    );
-
-    // We only use downloads. dltotal may be zero.
-    if status < 300 && dltotal > 0.0 {
-        if total.with(|v| v.get()) == 0.0 {
-            total.with(|v| v.set(dltotal));
-            let mut content_type: *mut c_char = std::ptr::null_mut();
-            curl_easy_getinfo(
-                hnd,
-                CURLINFO_CONTENT_TYPE,
-                &mut content_type as *mut *mut c_char as *mut c_void,
-            );
-            if content_type.is_null() {
-                eprintln!("Content type 'unknown'");
-            } else {
-                eprintln!(
-                    "Content type '{}'",
-                    std::ffi::CStr::from_ptr(content_type).to_string_lossy()
-                );
-            }
-            let total_val = total.with(|v| v.get());
-            if total_val > 1024.0 * 1024.0 {
-                eprintln!(
-                    " length {:.0} bytes ({:.1} MB)",
-                    total_val,
-                    total_val / 1024.0 / 1024.0
-                );
-            } else if total_val > 10240.0 {
-                eprintln!(
-                    " length {} bytes ({} KB)",
-                    total_val as c_int,
-                    (total_val / 1024.0) as c_int
-                );
-            } else {
-                eprintln!(" length {} bytes", total_val as c_int);
-            }
-        }
-        let mut ndashes_ref = ndashes.with(|v| v.get());
-        putdashes(
-            &mut ndashes_ref,
-            (50.0 * dlnow / total.with(|v| v.get())) as c_int,
+    unsafe {
+        let hnd = clientp as *mut CURL;
+        let mut status: c_long = 0;
+        curl_easy_getinfo(
+            hnd,
+            CURLINFO_RESPONSE_CODE,
+            &mut status as *mut c_long as *mut c_void,
         );
-        ndashes.with(|v| v.set(ndashes_ref));
+
+        // We only use downloads. dltotal may be zero.
+        if status < 300 && dltotal > 0.0 {
+            if total.with(|v| v.get()) == 0.0 {
+                total.with(|v| v.set(dltotal));
+                let mut content_type: *mut c_char = std::ptr::null_mut();
+                curl_easy_getinfo(
+                    hnd,
+                    CURLINFO_CONTENT_TYPE,
+                    &mut content_type as *mut *mut c_char as *mut c_void,
+                );
+                if content_type.is_null() {
+                    eprintln!("Content type 'unknown'");
+                } else {
+                    eprintln!(
+                        "Content type '{}'",
+                        std::ffi::CStr::from_ptr(content_type).to_string_lossy()
+                    );
+                }
+                let total_val = total.with(|v| v.get());
+                if total_val > 1024.0 * 1024.0 {
+                    eprintln!(
+                        " length {:.0} bytes ({:.1} MB)",
+                        total_val,
+                        total_val / 1024.0 / 1024.0
+                    );
+                } else if total_val > 10240.0 {
+                    eprintln!(
+                        " length {} bytes ({} KB)",
+                        total_val as c_int,
+                        (total_val / 1024.0) as c_int
+                    );
+                } else {
+                    eprintln!(" length {} bytes", total_val as c_int);
+                }
+            }
+            let mut ndashes_ref = ndashes.with(|v| v.get());
+            putdashes(
+                &mut ndashes_ref,
+                (50.0 * dlnow / total.with(|v| v.get())) as c_int,
+            );
+            ndashes.with(|v| v.set(ndashes_ref));
+        }
+        0
     }
-    0
 }
 
 /// progress_multi - download progress callback (multi URL) - implements absolute-time timeout
@@ -676,18 +698,20 @@ unsafe fn progress_multi(
     _ultotal: c_double,
     _ulnow: c_double,
 ) -> c_int {
-    let tstart = clientp as *mut c_double;
-    if !tstart.is_null() {
-        if *tstart == 0.0 && (dlnow > 0.0 || dltotal > 0.0) {
-            *tstart = current_time.with(|v| v.get());
-        } else if *tstart > 0.0
-            && (current_time.with(|v| v.get()) - *tstart)
-                > (current_timeout.with(|v| v.get()) as c_double)
-        {
-            return 1; // abort transfer
+    unsafe {
+        let tstart = clientp as *mut c_double;
+        if !tstart.is_null() {
+            if *tstart == 0.0 && (dlnow > 0.0 || dltotal > 0.0) {
+                *tstart = current_time.with(|v| v.get());
+            } else if *tstart > 0.0
+                && (current_time.with(|v| v.get()) - *tstart)
+                    > (current_timeout.with(|v| v.get()) as c_double)
+            {
+                return 1; // abort transfer
+            }
         }
+        0
     }
-    0
 }
 
 /// prereq_multi - pre-request callback for multi downloads
@@ -698,11 +722,13 @@ unsafe fn prereq_multi(
     _conn_primary_port: c_int,
     _conn_local_port: c_int,
 ) -> c_int {
-    let tstart = clientp as *mut c_double;
-    if !tstart.is_null() {
-        *tstart = current_time.with(|v| v.get());
+    unsafe {
+        let tstart = clientp as *mut c_double;
+        if !tstart.is_null() {
+            *tstart = current_time.with(|v| v.get());
+        }
+        CURL_PREREQFUNC_OK
     }
-    CURL_PREREQFUNC_OK
 }
 
 // ============================================================
@@ -720,87 +746,89 @@ unsafe fn download_add_url(
     mustwork: c_int,
     c: *mut download_cleanup_info,
 ) -> c_int {
-    let c_ref = &mut *c;
-    let url = translateChar(STRING_ELT(scmd, i as R_xlen_t));
+    unsafe {
+        let c_ref = &mut *c;
+        let url = translateChar(STRING_ELT(scmd, i as R_xlen_t));
 
-    c_ref.hnd = c_ref.hnd; // already set
-    let hnd_ptr = c_ref.hnd.add(i as usize);
-    *hnd_ptr = curl_easy_init();
-    if hnd_ptr.is_null() || (*hnd_ptr).is_null() {
-        if mustwork != 0 {
-            *c_ref.errs.add(i as usize) += 1;
-            Rf_warning1(b"could not create curl handle\0".as_ptr() as *const c_char);
+        c_ref.hnd = c_ref.hnd; // already set
+        let hnd_ptr = c_ref.hnd.add(i as usize);
+        *hnd_ptr = curl_easy_init();
+        if hnd_ptr.is_null() || (*hnd_ptr).is_null() {
+            if mustwork != 0 {
+                *c_ref.errs.add(i as usize) += 1;
+                Rf_warning1(b"could not create curl handle\0".as_ptr() as *const c_char);
+            }
+            return 1;
         }
-        return 1;
-    }
 
-    let hnd = *hnd_ptr;
-    curl_easy_setopt(hnd, CURLOPT_URL, url);
-    curl_easy_setopt(hnd, CURLOPT_FAILONERROR, 1);
-    curl_easy_setopt(hnd, CURLOPT_PIPEWAIT, 1);
-    curlCommon(hnd, 1, 1);
-    curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1);
-    curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, c_ref.headers);
+        let hnd = *hnd_ptr;
+        curl_easy_setopt(hnd, CURLOPT_URL, url);
+        curl_easy_setopt(hnd, CURLOPT_FAILONERROR, 1);
+        curl_easy_setopt(hnd, CURLOPT_PIPEWAIT, 1);
+        curlCommon(hnd, 1, 1);
+        curl_easy_setopt(hnd, CURLOPT_TCP_KEEPALIVE, 1);
+        curl_easy_setopt(hnd, CURLOPT_HTTPHEADER, c_ref.headers);
 
-    // Check that destfile can be written
-    let file = translateChar(STRING_ELT(c_ref.sfile, i as R_xlen_t));
-    let expanded = R_ExpandFileName(file);
-    let out_ptr = c_ref.out.add(i as usize);
-    *out_ptr = libc::fopen(expanded, mode);
-    if out_ptr.is_null() || (*out_ptr).is_null() {
-        if mustwork != 0 {
-            *c_ref.errs.add(i as usize) += 1;
-            Rf_warning1(b"URL: cannot open destfile\0".as_ptr() as *const c_char);
+        // Check that destfile can be written
+        let file = translateChar(STRING_ELT(c_ref.sfile, i as R_xlen_t));
+        let expanded = R_ExpandFileName(file);
+        let out_ptr = c_ref.out.add(i as usize);
+        *out_ptr = libc::fopen(expanded, mode);
+        if out_ptr.is_null() || (*out_ptr).is_null() {
+            if mustwork != 0 {
+                *c_ref.errs.add(i as usize) += 1;
+                Rf_warning1(b"URL: cannot open destfile\0".as_ptr() as *const c_char);
+            }
+            return 1;
         }
-        return 1;
-    }
 
-    // Use internal CURLOPT_WRITEFUNCTION (writes to FILE*)
-    curl_easy_setopt(hnd, CURLOPT_WRITEDATA, *out_ptr);
-    curl_multi_add_handle(c_ref.mhnd, hnd);
-    curl_easy_setopt(
-        hnd,
-        CURLOPT_PRIVATE,
-        c_ref.errs.add(i as usize) as *mut c_void,
-    );
-
-    total.with(|v| v.set(0.0));
-    if quiet == 0 && single != 0 {
-        curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);
-        ndashes.with(|v| v.set(0));
-        curl_easy_setopt(hnd, CURLOPT_XFERINFOFUNCTION, progress as *const c_void);
-        curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, hnd);
-    } else if quiet != 0 && single != 0 {
-        curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1);
-    } else {
-        curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);
-        // Implement absolute-time timeout for simultaneous download
-        curl_easy_setopt(hnd, CURLOPT_TIMEOUT, 0);
-        let tstart_ptr = c_ref.tstart.add(i as usize);
-        *tstart_ptr = 0.0;
+        // Use internal CURLOPT_WRITEFUNCTION (writes to FILE*)
+        curl_easy_setopt(hnd, CURLOPT_WRITEDATA, *out_ptr);
+        curl_multi_add_handle(c_ref.mhnd, hnd);
         curl_easy_setopt(
             hnd,
-            CURLOPT_XFERINFOFUNCTION,
-            progress_multi as *const c_void,
+            CURLOPT_PRIVATE,
+            c_ref.errs.add(i as usize) as *mut c_void,
         );
-        curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, tstart_ptr as *mut c_void);
-        curl_easy_setopt(hnd, CURLOPT_PREREQFUNCTION, prereq_multi as *const c_void);
-        curl_easy_setopt(hnd, CURLOPT_PREREQDATA, tstart_ptr as *mut c_void);
-        curl_easy_setopt(
-            hnd,
-            CURLOPT_LOW_SPEED_TIME,
-            current_timeout.with(|v| v.get()) as c_long,
-        );
-        curl_easy_setopt(hnd, CURLOPT_LOW_SPEED_LIMIT, 1);
-    }
 
-    if quiet == 0 {
-        eprintln!(
-            "trying URL '{}'",
-            std::ffi::CStr::from_ptr(url).to_string_lossy()
-        );
+        total.with(|v| v.set(0.0));
+        if quiet == 0 && single != 0 {
+            curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);
+            ndashes.with(|v| v.set(0));
+            curl_easy_setopt(hnd, CURLOPT_XFERINFOFUNCTION, progress as *const c_void);
+            curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, hnd);
+        } else if quiet != 0 && single != 0 {
+            curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1);
+        } else {
+            curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 0);
+            // Implement absolute-time timeout for simultaneous download
+            curl_easy_setopt(hnd, CURLOPT_TIMEOUT, 0);
+            let tstart_ptr = c_ref.tstart.add(i as usize);
+            *tstart_ptr = 0.0;
+            curl_easy_setopt(
+                hnd,
+                CURLOPT_XFERINFOFUNCTION,
+                progress_multi as *const c_void,
+            );
+            curl_easy_setopt(hnd, CURLOPT_XFERINFODATA, tstart_ptr as *mut c_void);
+            curl_easy_setopt(hnd, CURLOPT_PREREQFUNCTION, prereq_multi as *const c_void);
+            curl_easy_setopt(hnd, CURLOPT_PREREQDATA, tstart_ptr as *mut c_void);
+            curl_easy_setopt(
+                hnd,
+                CURLOPT_LOW_SPEED_TIME,
+                current_timeout.with(|v| v.get()) as c_long,
+            );
+            curl_easy_setopt(hnd, CURLOPT_LOW_SPEED_LIMIT, 1);
+        }
+
+        if quiet == 0 {
+            eprintln!(
+                "trying URL '{}'",
+                std::ffi::CStr::from_ptr(url).to_string_lossy()
+            );
+        }
+        0
     }
-    0
 }
 
 /// download_add_one_url - add one URL to the multi-handle, possibly trying multiple URLs
@@ -812,15 +840,17 @@ unsafe fn download_add_one_url(
     single: c_int,
     c: *mut download_cleanup_info,
 ) -> c_int {
-    let c_ref = &mut *c;
-    while *i_ptr < c_ref.nurls {
-        if download_add_url(*i_ptr, scmd, mode, quiet, single, 1, c) == 0 {
+    unsafe {
+        let c_ref = &mut *c;
+        while *i_ptr < c_ref.nurls {
+            if download_add_url(*i_ptr, scmd, mode, quiet, single, 1, c) == 0 {
+                *i_ptr += 1;
+                return 0; // success
+            }
             *i_ptr += 1;
-            return 0; // success
         }
-        *i_ptr += 1;
+        1 // failure
     }
-    1 // failure
 }
 
 /// download_try_add_urls - try adding up to n URLs to the multi-handle
@@ -833,46 +863,50 @@ unsafe fn download_try_add_urls(
     single: c_int,
     c: *mut download_cleanup_info,
 ) -> c_int {
-    let mut added: c_int = 0;
-    let c_ref = &mut *c;
-    while added < n && *i_ptr < c_ref.nurls {
-        if download_add_url(*i_ptr, scmd, mode, quiet, single, 0, c) == 0 {
-            *i_ptr += 1;
-            added += 1;
-        } else {
-            break;
+    unsafe {
+        let mut added: c_int = 0;
+        let c_ref = &mut *c;
+        while added < n && *i_ptr < c_ref.nurls {
+            if download_add_url(*i_ptr, scmd, mode, quiet, single, 0, c) == 0 {
+                *i_ptr += 1;
+                added += 1;
+            } else {
+                break;
+            }
         }
+        added
     }
-    added
 }
 
 /// download_close_finished - clean up finished downloads from multi handle
 unsafe fn download_close_finished(c: *mut download_cleanup_info) {
-    let c_ref = &mut *c;
-    let mut n: c_int = 1;
-    while n > 0 {
-        let msg = curl_multi_info_read(c_ref.mhnd, &mut n);
-        if msg.is_null() {
-            break;
-        }
+    unsafe {
+        let c_ref = &mut *c;
+        let mut n: c_int = 1;
+        while n > 0 {
+            let msg = curl_multi_info_read(c_ref.mhnd, &mut n);
+            if msg.is_null() {
+                break;
+            }
 
-        // Compute URL index from private data
-        let mut url_errs: *mut c_int = std::ptr::null_mut();
-        curl_easy_getinfo(
-            (*msg).easy_handle,
-            CURLINFO_PRIVATE,
-            &mut url_errs as *mut *mut c_int as *mut c_void,
-        );
-        let idx = if !url_errs.is_null() && !c_ref.errs.is_null() {
-            ((url_errs as usize) - (c_ref.errs as usize)) / std::mem::size_of::<c_int>()
-        } else {
-            0
-        };
+            // Compute URL index from private data
+            let mut url_errs: *mut c_int = std::ptr::null_mut();
+            curl_easy_getinfo(
+                (*msg).easy_handle,
+                CURLINFO_PRIVATE,
+                &mut url_errs as *mut *mut c_int as *mut c_void,
+            );
+            let idx = if !url_errs.is_null() && !c_ref.errs.is_null() {
+                ((url_errs as usize) - (c_ref.errs as usize)) / std::mem::size_of::<c_int>()
+            } else {
+                0
+            };
 
-        if (*msg).data.result != CURLE_OK {
-            download_report_url_error(msg);
+            if (*msg).data.result != CURLE_OK {
+                download_report_url_error(msg);
+            }
+            download_cleanup_url(idx as c_int, c);
         }
-        download_cleanup_url(idx as c_int, c);
     }
 }
 
@@ -883,276 +917,295 @@ unsafe fn download_close_finished(c: *mut download_cleanup_info) {
 /// in_do_curlVersion - .Internal(curlVersion())
 /// Returns a character vector with libcurl version info and attributes.
 pub(crate) unsafe fn in_do_curlVersion(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let _ = (call, op, args, rho);
-    checkArity(op, args);
+    unsafe {
+        let _ = (call, op, args, rho);
+        checkArity(op, args);
 
-    let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-    let d = curl_version_info(CURLVERSION_NOW);
+        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let d = curl_version_info(CURLVERSION_NOW);
 
-    if !d.is_null() && !(*d).version.is_null() {
-        SET_STRING_ELT(ans, 0, Rf_mkChar((*d).version));
-    } else {
-        SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
-    }
-
-    // ssl_version attribute
-    if !d.is_null() && !(*d).ssl_version.is_null() {
-        let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
-        setAttrib(ans, sSSLVersion, Rf_mkString((*d).ssl_version));
-    } else if !d.is_null() {
-        let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
-        setAttrib(
-            ans,
-            sSSLVersion,
-            Rf_mkString(b"none\0".as_ptr() as *const c_char),
-        );
-    }
-
-    // libssh_version attribute
-    if !d.is_null() && (*d).age >= 3 && !(*d).libssh_version.is_null() {
-        let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
-        setAttrib(ans, sLibSSHVersion, Rf_mkString((*d).libssh_version));
-    } else {
-        let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
-        setAttrib(
-            ans,
-            sLibSSHVersion,
-            Rf_mkString(b"\0".as_ptr() as *const c_char),
-        );
-    }
-
-    // protocols attribute
-    if !d.is_null() && !(*d).protocols.is_null() {
-        let mut n: c_int = 0;
-        let mut p = (*d).protocols;
-        while !p.is_null() && !(*p).is_null() {
-            n += 1;
-            p = p.add(1);
+        if !d.is_null() && !(*d).version.is_null() {
+            SET_STRING_ELT(ans, 0, Rf_mkChar((*d).version));
+        } else {
+            SET_STRING_ELT(ans, 0, Rf_mkChar(b"\0".as_ptr() as *const c_char));
         }
-        let protocols = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
-        p = (*d).protocols;
-        for i in 0..n {
-            SET_STRING_ELT(protocols, i as R_xlen_t, Rf_mkChar(*p));
-            p = p.add(1);
+
+        // ssl_version attribute
+        if !d.is_null() && !(*d).ssl_version.is_null() {
+            let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
+            setAttrib(ans, sSSLVersion, Rf_mkString((*d).ssl_version));
+        } else if !d.is_null() {
+            let sSSLVersion = install(b"ssl_version\0".as_ptr() as *const c_char);
+            setAttrib(
+                ans,
+                sSSLVersion,
+                Rf_mkString(b"none\0".as_ptr() as *const c_char),
+            );
         }
-        let sProtocols = install(b"protocols\0".as_ptr() as *const c_char);
-        setAttrib(ans, sProtocols, protocols);
+
+        // libssh_version attribute
+        if !d.is_null() && (*d).age >= 3 && !(*d).libssh_version.is_null() {
+            let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
+            setAttrib(ans, sLibSSHVersion, Rf_mkString((*d).libssh_version));
+        } else {
+            let sLibSSHVersion = install(b"libssh_version\0".as_ptr() as *const c_char);
+            setAttrib(
+                ans,
+                sLibSSHVersion,
+                Rf_mkString(b"\0".as_ptr() as *const c_char),
+            );
+        }
+
+        // protocols attribute
+        if !d.is_null() && !(*d).protocols.is_null() {
+            let mut n: c_int = 0;
+            let mut p = (*d).protocols;
+            while !p.is_null() && !(*p).is_null() {
+                n += 1;
+                p = p.add(1);
+            }
+            let protocols = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+            p = (*d).protocols;
+            for i in 0..n {
+                SET_STRING_ELT(protocols, i as R_xlen_t, Rf_mkChar(*p));
+                p = p.add(1);
+            }
+            let sProtocols = install(b"protocols\0".as_ptr() as *const c_char);
+            setAttrib(ans, sProtocols, protocols);
+            Rf_unprotect(1);
+        }
+
         Rf_unprotect(1);
+        ans
     }
-
-    Rf_unprotect(1);
-    ans
 }
 
 /// in_do_curlGetHeaders - .Internal(curlGetHeaders(url, redirect, verify, timeout, TLS))
 pub(crate) unsafe fn in_do_curlGetHeaders(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let _ = (call, op, rho);
-    checkArity(op, args);
+    unsafe {
+        let _ = (call, op, rho);
+        checkArity(op, args);
 
-    // url
-    let scmd = CAR(args);
-    if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) != 1 {
-        Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
-    }
-    let url = translateChar(STRING_ELT(scmd, 0));
+        // url
+        let scmd = CAR(args);
+        if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) != 1 {
+            Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
+        }
+        let url = translateChar(STRING_ELT(scmd, 0));
 
-    headers_used.with(|v| v.set(0));
+        headers_used.with(|v| v.set(0));
 
-    // redirect
-    let redirect = asLogical(CADR(args));
-    if redirect == NA_LOGICAL {
-        Rf_error(b"invalid 'redirect' argument\0".as_ptr() as *const c_char);
-    }
+        // redirect
+        let redirect = asLogical(CADR(args));
+        if redirect == NA_LOGICAL {
+            Rf_error(b"invalid 'redirect' argument\0".as_ptr() as *const c_char);
+        }
 
-    // verify
-    let verify = asLogical(CADDR(args));
-    if verify == NA_LOGICAL {
-        Rf_error(b"invalid 'verify' argument\0".as_ptr() as *const c_char);
-    }
+        // verify
+        let verify = asLogical(CADDR(args));
+        if verify == NA_LOGICAL {
+            Rf_error(b"invalid 'verify' argument\0".as_ptr() as *const c_char);
+        }
 
-    // timeout
-    let timeout = asInteger(CADDDR(args));
-    if timeout == NA_INTEGER {
-        Rf_error(b"invalid 'timeout' argument\0".as_ptr() as *const c_char);
-    }
+        // timeout
+        let timeout = asInteger(CADDDR(args));
+        if timeout == NA_INTEGER {
+            Rf_error(b"invalid 'timeout' argument\0".as_ptr() as *const c_char);
+        }
 
-    // TLS (CAD4R)
-    let sTLS = unsafe { *(args as *const SEXP).add(4) };
-    let mut tls: *const c_char = b"\0".as_ptr() as *const c_char;
-    if TYPEOF(sTLS) == SEXPTYPE::STRSXP && LENGTH(sTLS) == 1 {
-        tls = translateChar(STRING_ELT(sTLS, 0));
-    } else {
-        Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
-    }
-
-    let hnd = curl_easy_init();
-    if hnd.is_null() {
-        Rf_error(b"could not create curl handle\0".as_ptr() as *const c_char);
-    }
-
-    // Set up cleanup context
-    curl_easy_setopt(hnd, CURLOPT_URL, url);
-    curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1);
-    curl_easy_setopt(hnd, CURLOPT_NOBODY, 1);
-    curl_easy_setopt(hnd, CURLOPT_HEADERFUNCTION, rcvHeaders as *const c_void);
-    curl_easy_setopt(hnd, CURLOPT_WRITEHEADER, std::ptr::null::<c_void>());
-    // Discard spurious FTP body
-    curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, rcvBody as *const c_void);
-    curlCommon(hnd, redirect, verify);
-
-    if timeout > 0 {
-        curl_easy_setopt(hnd, CURLOPT_TIMEOUT, timeout as c_long);
-        current_timeout.with(|v| v.set(timeout));
-    }
-
-    // TLS version
-    if !tls.is_null() && *tls != 0 {
-        let mut tls_ver: c_long = CURL_SSLVERSION_TLSv1_0;
-        if streql(tls, b"1.0\0".as_ptr() as *const c_char) {
-            tls_ver = CURL_SSLVERSION_TLSv1_0;
-        } else if streql(tls, b"1.1\0".as_ptr() as *const c_char) {
-            tls_ver = CURL_SSLVERSION_TLSv1_1;
-        } else if streql(tls, b"1.2\0".as_ptr() as *const c_char) {
-            tls_ver = CURL_SSLVERSION_TLSv1_2;
-        } else if streql(tls, b"1.3\0".as_ptr() as *const c_char) {
-            tls_ver = CURL_SSLVERSION_TLSv1_3;
+        // TLS (CAD4R)
+        let sTLS = unsafe { *(args as *const SEXP).add(4) };
+        let mut tls: *const c_char = b"\0".as_ptr() as *const c_char;
+        if TYPEOF(sTLS) == SEXPTYPE::STRSXP && LENGTH(sTLS) == 1 {
+            tls = translateChar(STRING_ELT(sTLS, 0));
         } else {
-            curl_easy_cleanup(hnd);
             Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
         }
-        curl_easy_setopt(hnd, CURLOPT_SSLVERSION, tls_ver);
-    }
 
-    let mut errbuf: [c_char; CURL_ERROR_SIZE] = [0; CURL_ERROR_SIZE];
-    curl_easy_setopt(hnd, CURLOPT_ERRORBUFFER, errbuf.as_mut_ptr());
-    errbuf[0] = 0;
-
-    let ret = curl_easy_perform(hnd);
-    if ret != CURLE_OK {
-        if errbuf[0] != 0 {
-            curl_easy_cleanup(hnd);
-            Rf_error(b"libcurl error code %d\0".as_ptr() as *const c_char);
-        } else if ret == 77 {
-            curl_easy_cleanup(hnd);
-            Rf_error(
-                b"libcurl error code 77: unable to access SSL/TLS CA certificates\0".as_ptr()
-                    as *const c_char,
-            );
-        } else {
-            curl_easy_cleanup(hnd);
-            Rf_error(b"libcurl error code\0".as_ptr() as *const c_char);
+        let hnd = curl_easy_init();
+        if hnd.is_null() {
+            Rf_error(b"could not create curl handle\0".as_ptr() as *const c_char);
         }
+
+        // Set up cleanup context
+        curl_easy_setopt(hnd, CURLOPT_URL, url);
+        curl_easy_setopt(hnd, CURLOPT_NOPROGRESS, 1);
+        curl_easy_setopt(hnd, CURLOPT_NOBODY, 1);
+        curl_easy_setopt(hnd, CURLOPT_HEADERFUNCTION, rcvHeaders as *const c_void);
+        curl_easy_setopt(hnd, CURLOPT_WRITEHEADER, std::ptr::null::<c_void>());
+        // Discard spurious FTP body
+        curl_easy_setopt(hnd, CURLOPT_WRITEFUNCTION, rcvBody as *const c_void);
+        curlCommon(hnd, redirect, verify);
+
+        if timeout > 0 {
+            curl_easy_setopt(hnd, CURLOPT_TIMEOUT, timeout as c_long);
+            current_timeout.with(|v| v.set(timeout));
+        }
+
+        // TLS version
+        if !tls.is_null() && *tls != 0 {
+            let mut tls_ver: c_long = CURL_SSLVERSION_TLSv1_0;
+            if streql(tls, b"1.0\0".as_ptr() as *const c_char) {
+                tls_ver = CURL_SSLVERSION_TLSv1_0;
+            } else if streql(tls, b"1.1\0".as_ptr() as *const c_char) {
+                tls_ver = CURL_SSLVERSION_TLSv1_1;
+            } else if streql(tls, b"1.2\0".as_ptr() as *const c_char) {
+                tls_ver = CURL_SSLVERSION_TLSv1_2;
+            } else if streql(tls, b"1.3\0".as_ptr() as *const c_char) {
+                tls_ver = CURL_SSLVERSION_TLSv1_3;
+            } else {
+                curl_easy_cleanup(hnd);
+                Rf_error(b"invalid 'TLS' argument\0".as_ptr() as *const c_char);
+            }
+            curl_easy_setopt(hnd, CURLOPT_SSLVERSION, tls_ver);
+        }
+
+        let mut errbuf: [c_char; CURL_ERROR_SIZE] = [0; CURL_ERROR_SIZE];
+        curl_easy_setopt(hnd, CURLOPT_ERRORBUFFER, errbuf.as_mut_ptr());
+        errbuf[0] = 0;
+
+        let ret = curl_easy_perform(hnd);
+        if ret != CURLE_OK {
+            if errbuf[0] != 0 {
+                curl_easy_cleanup(hnd);
+                Rf_error(b"libcurl error code %d\0".as_ptr() as *const c_char);
+            } else if ret == 77 {
+                curl_easy_cleanup(hnd);
+                Rf_error(
+                    b"libcurl error code 77: unable to access SSL/TLS CA certificates\0".as_ptr()
+                        as *const c_char,
+                );
+            } else {
+                curl_easy_cleanup(hnd);
+                Rf_error(b"libcurl error code\0".as_ptr() as *const c_char);
+            }
+        }
+
+        let mut http_code: c_long = 0;
+        curl_easy_getinfo(
+            hnd,
+            CURLINFO_RESPONSE_CODE,
+            &mut http_code as *mut c_long as *mut c_void,
+        );
+        curl_easy_cleanup(hnd);
+
+        let ans = Rf_protect(Rf_allocVector(
+            SEXPTYPE::STRSXP,
+            headers_used.with(|v| v.get()),
+        ));
+        for i in 0..headers_used.with(|v| v.get()) {
+            HEADERS.with(|headers| {
+                SET_STRING_ELT(
+                    ans,
+                    i as R_xlen_t,
+                    Rf_mkChar(headers.borrow()[i as usize].as_ptr()),
+                )
+            });
+        }
+
+        let sStatus = install(b"status\0".as_ptr() as *const c_char);
+        setAttrib(ans, sStatus, Rf_ScalarInteger(http_code as c_int));
+
+        Rf_unprotect(1);
+        ans
     }
-
-    let mut http_code: c_long = 0;
-    curl_easy_getinfo(
-        hnd,
-        CURLINFO_RESPONSE_CODE,
-        &mut http_code as *mut c_long as *mut c_void,
-    );
-    curl_easy_cleanup(hnd);
-
-    let ans = Rf_protect(Rf_allocVector(
-        SEXPTYPE::STRSXP,
-        headers_used.with(|v| v.get()),
-    ));
-    for i in 0..headers_used.with(|v| v.get()) {
-        HEADERS.with(|headers| {
-            SET_STRING_ELT(
-                ans,
-                i as R_xlen_t,
-                Rf_mkChar(headers.borrow()[i as usize].as_ptr()),
-            )
-        });
-    }
-
-    let sStatus = install(b"status\0".as_ptr() as *const c_char);
-    setAttrib(ans, sStatus, Rf_ScalarInteger(http_code as c_int));
-
-    Rf_unprotect(1);
-    ans
 }
 
 /// in_do_curlDownload - .Internal(curlDownload(urls, destfiles, quiet, mode, headers, cacheOK))
 pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
-    let _ = (call, op, rho);
-    checkArity(op, args);
+    unsafe {
+        let _ = (call, op, rho);
+        checkArity(op, args);
 
-    // url
-    let mut args_iter = args;
-    let scmd = CAR(args_iter);
-    args_iter = CDR(args_iter);
-    if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) < 1 {
-        Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
-    }
-    let nurls = LENGTH(scmd);
-    let single = if nurls == 1 { 1 } else { 0 };
-    let max_concurrent_urls: c_int = 15;
-
-    // destfile
-    let sfile = CAR(args_iter);
-    args_iter = CDR(args_iter);
-    if TYPEOF(sfile) != SEXPTYPE::STRSXP || LENGTH(sfile) < 1 {
-        Rf_error(b"invalid 'destfile' argument\0".as_ptr() as *const c_char);
-    }
-    if LENGTH(sfile) != LENGTH(scmd) {
-        Rf_error(b"lengths of 'url' and 'destfile' must match\0".as_ptr() as *const c_char);
-    }
-
-    // quiet
-    let quiet = asLogical(CAR(args_iter));
-    args_iter = CDR(args_iter);
-    if quiet == NA_LOGICAL {
-        Rf_error(b"invalid 'quiet' argument\0".as_ptr() as *const c_char);
-    }
-
-    // mode
-    let smode = CAR(args_iter);
-    args_iter = CDR(args_iter);
-    if TYPEOF(smode) != SEXPTYPE::STRSXP || LENGTH(smode) != 1 {
-        Rf_error(b"invalid 'mode' argument\0".as_ptr() as *const c_char);
-    }
-    let mode = translateChar(STRING_ELT(smode, 0));
-
-    // cacheOK
-    let cacheOK = asLogical(CAR(args_iter));
-    args_iter = CDR(args_iter);
-    if cacheOK == NA_LOGICAL {
-        Rf_error(b"invalid 'cacheOK' argument\0".as_ptr() as *const c_char);
-    }
-
-    // headers
-    let sheaders = CAR(args_iter);
-    if Rf_isNull(sheaders) == 0 && TYPEOF(sheaders) != SEXPTYPE::STRSXP {
-        Rf_error(b"invalid 'headers' argument\0".as_ptr() as *const c_char);
-    }
-
-    // Build cleanup info
-    let mut c_info = download_cleanup_info {
-        headers: std::ptr::null_mut(),
-        mhnd: std::ptr::null_mut(),
-        nurls,
-        hnd: std::ptr::null_mut(),
-        out: std::ptr::null_mut(),
-        tstart: std::ptr::null_mut(),
-        sfile: R_NilValue(),
-        errs: std::ptr::null_mut(),
-    };
-
-    // Set sfile based on mode
-    if !mode.is_null() {
-        let mode_str = std::ffi::CStr::from_ptr(mode).to_bytes();
-        if mode_str.contains(&b'w') {
-            c_info.sfile = sfile;
+        // url
+        let mut args_iter = args;
+        let scmd = CAR(args_iter);
+        args_iter = CDR(args_iter);
+        if TYPEOF(scmd) != SEXPTYPE::STRSXP || LENGTH(scmd) < 1 {
+            Rf_error(b"invalid 'url' argument\0".as_ptr() as *const c_char);
         }
-    }
+        let nurls = LENGTH(scmd);
+        let single = if nurls == 1 { 1 } else { 0 };
+        let max_concurrent_urls: c_int = 15;
 
-    // Build headers slist
-    let mut headers: *mut curl_slist = std::ptr::null_mut();
-    if Rf_isNull(sheaders) == 0 {
-        for i in 0..LENGTH(sheaders) {
-            let h = translateChar(STRING_ELT(sheaders, i as R_xlen_t));
-            let tmp = curl_slist_append(headers, h);
+        // destfile
+        let sfile = CAR(args_iter);
+        args_iter = CDR(args_iter);
+        if TYPEOF(sfile) != SEXPTYPE::STRSXP || LENGTH(sfile) < 1 {
+            Rf_error(b"invalid 'destfile' argument\0".as_ptr() as *const c_char);
+        }
+        if LENGTH(sfile) != LENGTH(scmd) {
+            Rf_error(b"lengths of 'url' and 'destfile' must match\0".as_ptr() as *const c_char);
+        }
+
+        // quiet
+        let quiet = asLogical(CAR(args_iter));
+        args_iter = CDR(args_iter);
+        if quiet == NA_LOGICAL {
+            Rf_error(b"invalid 'quiet' argument\0".as_ptr() as *const c_char);
+        }
+
+        // mode
+        let smode = CAR(args_iter);
+        args_iter = CDR(args_iter);
+        if TYPEOF(smode) != SEXPTYPE::STRSXP || LENGTH(smode) != 1 {
+            Rf_error(b"invalid 'mode' argument\0".as_ptr() as *const c_char);
+        }
+        let mode = translateChar(STRING_ELT(smode, 0));
+
+        // cacheOK
+        let cacheOK = asLogical(CAR(args_iter));
+        args_iter = CDR(args_iter);
+        if cacheOK == NA_LOGICAL {
+            Rf_error(b"invalid 'cacheOK' argument\0".as_ptr() as *const c_char);
+        }
+
+        // headers
+        let sheaders = CAR(args_iter);
+        if Rf_isNull(sheaders) == 0 && TYPEOF(sheaders) != SEXPTYPE::STRSXP {
+            Rf_error(b"invalid 'headers' argument\0".as_ptr() as *const c_char);
+        }
+
+        // Build cleanup info
+        let mut c_info = download_cleanup_info {
+            headers: std::ptr::null_mut(),
+            mhnd: std::ptr::null_mut(),
+            nurls,
+            hnd: std::ptr::null_mut(),
+            out: std::ptr::null_mut(),
+            tstart: std::ptr::null_mut(),
+            sfile: R_NilValue(),
+            errs: std::ptr::null_mut(),
+        };
+
+        // Set sfile based on mode
+        if !mode.is_null() {
+            let mode_str = std::ffi::CStr::from_ptr(mode).to_bytes();
+            if mode_str.contains(&b'w') {
+                c_info.sfile = sfile;
+            }
+        }
+
+        // Build headers slist
+        let mut headers: *mut curl_slist = std::ptr::null_mut();
+        if Rf_isNull(sheaders) == 0 {
+            for i in 0..LENGTH(sheaders) {
+                let h = translateChar(STRING_ELT(sheaders, i as R_xlen_t));
+                let tmp = curl_slist_append(headers, h);
+                if tmp.is_null() {
+                    if !headers.is_null() {
+                        curl_slist_free_all(headers);
+                    }
+                    Rf_error(b"out of memory\0".as_ptr() as *const c_char);
+                }
+                headers = tmp;
+                c_info.headers = headers;
+            }
+        }
+
+        // Pragma: no-cache
+        if cacheOK == 0 {
+            let tmp = curl_slist_append(headers, b"Pragma: no-cache\0".as_ptr() as *const c_char);
             if tmp.is_null() {
                 if !headers.is_null() {
                     curl_slist_free_all(headers);
@@ -1162,114 +1215,47 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
             headers = tmp;
             c_info.headers = headers;
         }
-    }
 
-    // Pragma: no-cache
-    if cacheOK == 0 {
-        let tmp = curl_slist_append(headers, b"Pragma: no-cache\0".as_ptr() as *const c_char);
-        if tmp.is_null() {
+        let mhnd = curl_multi_init();
+        if mhnd.is_null() {
             if !headers.is_null() {
                 curl_slist_free_all(headers);
             }
-            Rf_error(b"out of memory\0".as_ptr() as *const c_char);
+            Rf_error(b"could not create curl handle\0".as_ptr() as *const c_char);
         }
-        headers = tmp;
-        c_info.headers = headers;
-    }
+        c_info.mhnd = mhnd;
 
-    let mhnd = curl_multi_init();
-    if mhnd.is_null() {
-        if !headers.is_null() {
-            curl_slist_free_all(headers);
-        }
-        Rf_error(b"could not create curl handle\0".as_ptr() as *const c_char);
-    }
-    c_info.mhnd = mhnd;
+        // Allocate arrays
+        let mut hnd_arr: Vec<*mut CURL> = vec![std::ptr::null_mut(); nurls as usize];
+        let mut out_arr: Vec<*mut FILE> = vec![std::ptr::null_mut(); nurls as usize];
+        let mut errs_arr: Vec<c_int> = vec![0; nurls as usize];
+        let mut tstart_arr: Vec<c_double> = vec![0.0; nurls as usize];
 
-    // Allocate arrays
-    let mut hnd_arr: Vec<*mut CURL> = vec![std::ptr::null_mut(); nurls as usize];
-    let mut out_arr: Vec<*mut FILE> = vec![std::ptr::null_mut(); nurls as usize];
-    let mut errs_arr: Vec<c_int> = vec![0; nurls as usize];
-    let mut tstart_arr: Vec<c_double> = vec![0.0; nurls as usize];
+        c_info.hnd = hnd_arr.as_mut_ptr();
+        c_info.out = out_arr.as_mut_ptr();
+        c_info.errs = errs_arr.as_mut_ptr();
+        c_info.tstart = tstart_arr.as_mut_ptr();
 
-    c_info.hnd = hnd_arr.as_mut_ptr();
-    c_info.out = out_arr.as_mut_ptr();
-    c_info.errs = errs_arr.as_mut_ptr();
-    c_info.tstart = tstart_arr.as_mut_ptr();
-
-    // Set max host connections
-    curl_multi_setopt(mhnd, CURLMOPT_MAX_HOST_CONNECTIONS, 6);
-
-    if single == 0 {
-        current_time.with(|v| v.set(currentTime()));
-    }
-
-    let mut next_url: c_int = 0;
-
-    // Add first URL (mandatory)
-    if download_add_one_url(&mut next_url, scmd, mode, quiet, single, &mut c_info) != 0 {
-        // No dest files could be opened
-        download_cleanup(&mut c_info as *mut download_cleanup_info as *mut c_void);
-        return Rf_ScalarInteger(1);
-    }
-
-    // Try adding more URLs up to max concurrent
-    download_try_add_urls(
-        &mut next_url,
-        max_concurrent_urls - 1,
-        scmd,
-        mode,
-        quiet,
-        single,
-        &mut c_info,
-    );
-
-    if single == 0 {
-        current_time.with(|v| v.set(currentTime()));
-    }
-
-    let mut still_running: c_int = 0;
-    curl_multi_perform(mhnd, &mut still_running);
-
-    let mut repeats: c_int = 0;
-    loop {
-        if single == 0 {
-            current_time.with(|v| v.set(currentTime()));
-        }
-        let mut numfds: c_int = 0;
-        let mc = curl_multi_wait(mhnd, std::ptr::null_mut(), 0, 100, &mut numfds);
-        if mc != CURLM_OK {
-            break;
-        }
-        if numfds == 0 {
-            if repeats > 0 {
-                // Sleep 100ms
-                libc::usleep(100000);
-            }
-            repeats += 1;
-        } else {
-            repeats = 0;
-        }
+        // Set max host connections
+        curl_multi_setopt(mhnd, CURLMOPT_MAX_HOST_CONNECTIONS, 6);
 
         if single == 0 {
             current_time.with(|v| v.set(currentTime()));
         }
-        curl_multi_perform(mhnd, &mut still_running);
 
-        if single == 0 {
-            // Release resources for finished downloads
-            download_close_finished(&mut c_info);
+        let mut next_url: c_int = 0;
+
+        // Add first URL (mandatory)
+        if download_add_one_url(&mut next_url, scmd, mode, quiet, single, &mut c_info) != 0 {
+            // No dest files could be opened
+            download_cleanup(&mut c_info as *mut download_cleanup_info as *mut c_void);
+            return Rf_ScalarInteger(1);
         }
 
-        if still_running == 0 {
-            if download_add_one_url(&mut next_url, scmd, mode, quiet, single, &mut c_info) == 0 {
-                still_running += 1;
-            }
-        }
-
+        // Try adding more URLs up to max concurrent
         download_try_add_urls(
             &mut next_url,
-            max_concurrent_urls - still_running,
+            max_concurrent_urls - 1,
             scmd,
             mode,
             quiet,
@@ -1280,105 +1266,160 @@ pub(crate) unsafe fn in_do_curlDownload(call: SEXP, op: SEXP, args: SEXP, rho: S
         if single == 0 {
             current_time.with(|v| v.set(currentTime()));
         }
+
+        let mut still_running: c_int = 0;
         curl_multi_perform(mhnd, &mut still_running);
 
-        if still_running == 0 && next_url >= nurls {
-            break;
-        }
-    }
-
-    // Final newline if progress was shown
-    if total.with(|v| v.get()) > 0.0 {
-        eprintln!();
-    }
-
-    // Report single URL download status
-    if single != 0 && !hnd_arr[0].is_null() {
-        let mut status: c_long = 0;
-        curl_easy_getinfo(
-            hnd_arr[0],
-            CURLINFO_RESPONSE_CODE,
-            &mut status as *mut c_long as *mut c_void,
-        );
-
-        let mut dl: c_double = 0.0;
-        curl_easy_getinfo(
-            hnd_arr[0],
-            CURLINFO_SIZE_DOWNLOAD,
-            &mut dl as *mut c_double as *mut c_void,
-        );
-
-        if quiet == 0 && status == 200 {
-            if dl > 1024.0 * 1024.0 {
-                eprintln!("downloaded {:.1} MB", dl / 1024.0 / 1024.0);
-            } else if dl > 10240.0 {
-                eprintln!("downloaded {} KB", (dl / 1024.0) as c_int);
+        let mut repeats: c_int = 0;
+        loop {
+            if single == 0 {
+                current_time.with(|v| v.set(currentTime()));
+            }
+            let mut numfds: c_int = 0;
+            let mc = curl_multi_wait(mhnd, std::ptr::null_mut(), 0, 100, &mut numfds);
+            if mc != CURLM_OK {
+                break;
+            }
+            if numfds == 0 {
+                if repeats > 0 {
+                    // Sleep 100ms
+                    libc::usleep(100000);
+                }
+                repeats += 1;
             } else {
-                eprintln!("downloaded {} bytes", dl as c_int);
+                repeats = 0;
+            }
+
+            if single == 0 {
+                current_time.with(|v| v.set(currentTime()));
+            }
+            curl_multi_perform(mhnd, &mut still_running);
+
+            if single == 0 {
+                // Release resources for finished downloads
+                download_close_finished(&mut c_info);
+            }
+
+            if still_running == 0 {
+                if download_add_one_url(&mut next_url, scmd, mode, quiet, single, &mut c_info) == 0
+                {
+                    still_running += 1;
+                }
+            }
+
+            download_try_add_urls(
+                &mut next_url,
+                max_concurrent_urls - still_running,
+                scmd,
+                mode,
+                quiet,
+                single,
+                &mut c_info,
+            );
+
+            if single == 0 {
+                current_time.with(|v| v.set(currentTime()));
+            }
+            curl_multi_perform(mhnd, &mut still_running);
+
+            if still_running == 0 && next_url >= nurls {
+                break;
             }
         }
 
-        let mut cl: c_double = 0.0;
-        curl_easy_getinfo(
-            hnd_arr[0],
-            CURLINFO_CONTENT_LENGTH_DOWNLOAD,
-            &mut cl as *mut c_double as *mut c_void,
-        );
-        if cl >= 0.0 && (dl - cl).abs() > f64::EPSILON {
-            Rf_warning1(b"downloaded length != reported length\0".as_ptr() as *const c_char);
+        // Final newline if progress was shown
+        if total.with(|v| v.get()) > 0.0 {
+            eprintln!();
         }
-    }
 
-    // Record status before cleanup (easy handle gets cleaned up)
-    let mut status: c_long = 0;
-    if single != 0 && !hnd_arr[0].is_null() {
-        curl_easy_getinfo(
-            hnd_arr[0],
-            CURLINFO_RESPONSE_CODE,
-            &mut status as *mut c_long as *mut c_void,
-        );
-    }
+        // Report single URL download status
+        if single != 0 && !hnd_arr[0].is_null() {
+            let mut status: c_long = 0;
+            curl_easy_getinfo(
+                hnd_arr[0],
+                CURLINFO_RESPONSE_CODE,
+                &mut status as *mut c_long as *mut c_void,
+            );
 
-    download_close_finished(&mut c_info);
+            let mut dl: c_double = 0.0;
+            curl_easy_getinfo(
+                hnd_arr[0],
+                CURLINFO_SIZE_DOWNLOAD,
+                &mut dl as *mut c_double as *mut c_void,
+            );
 
-    // Count errors
-    let mut n_err: c_int = 0;
-    for i in 0..nurls {
-        if errs_arr[i as usize] != 0 {
-            n_err += 1;
+            if quiet == 0 && status == 200 {
+                if dl > 1024.0 * 1024.0 {
+                    eprintln!("downloaded {:.1} MB", dl / 1024.0 / 1024.0);
+                } else if dl > 10240.0 {
+                    eprintln!("downloaded {} KB", (dl / 1024.0) as c_int);
+                } else {
+                    eprintln!("downloaded {} bytes", dl as c_int);
+                }
+            }
+
+            let mut cl: c_double = 0.0;
+            curl_easy_getinfo(
+                hnd_arr[0],
+                CURLINFO_CONTENT_LENGTH_DOWNLOAD,
+                &mut cl as *mut c_double as *mut c_void,
+            );
+            if cl >= 0.0 && (dl - cl).abs() > f64::EPSILON {
+                Rf_warning1(b"downloaded length != reported length\0".as_ptr() as *const c_char);
+            }
         }
-    }
 
-    if single == 0 {
-        if n_err == nurls {
-            Rf_error(b"cannot download any files\0".as_ptr() as *const c_char);
-        } else if n_err != 0 {
-            Rf_warning1(b"some files were not downloaded\0".as_ptr() as *const c_char);
+        // Record status before cleanup (easy handle gets cleaned up)
+        let mut status: c_long = 0;
+        if single != 0 && !hnd_arr[0].is_null() {
+            curl_easy_getinfo(
+                hnd_arr[0],
+                CURLINFO_RESPONSE_CODE,
+                &mut status as *mut c_long as *mut c_void,
+            );
         }
-    } else if n_err != 0 {
-        if status != 200 {
-            let url = translateChar(STRING_ELT(scmd, 0));
-            Rf_error(b"cannot open URL\0".as_ptr() as *const c_char);
-            let _ = url;
-        } else {
-            Rf_error(b"download failed\0".as_ptr() as *const c_char);
-        }
-    }
 
-    download_cleanup(&mut c_info as *mut download_cleanup_info as *mut c_void);
+        download_close_finished(&mut c_info);
 
-    let ans = Rf_ScalarInteger(0);
-    if nurls > 1 {
-        let _ans = Rf_protect(ans);
-        let sretvals = install(b"retvals\0".as_ptr() as *const c_char);
-        let retval = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nurls));
+        // Count errors
+        let mut n_err: c_int = 0;
         for i in 0..nurls {
-            *INTEGER(retval).add(i as usize) = if errs_arr[i as usize] != 0 { 1 } else { 0 };
+            if errs_arr[i as usize] != 0 {
+                n_err += 1;
+            }
         }
-        setAttrib(ans, sretvals, retval);
-        Rf_unprotect(2);
+
+        if single == 0 {
+            if n_err == nurls {
+                Rf_error(b"cannot download any files\0".as_ptr() as *const c_char);
+            } else if n_err != 0 {
+                Rf_warning1(b"some files were not downloaded\0".as_ptr() as *const c_char);
+            }
+        } else if n_err != 0 {
+            if status != 200 {
+                let url = translateChar(STRING_ELT(scmd, 0));
+                Rf_error(b"cannot open URL\0".as_ptr() as *const c_char);
+                let _ = url;
+            } else {
+                Rf_error(b"download failed\0".as_ptr() as *const c_char);
+            }
+        }
+
+        download_cleanup(&mut c_info as *mut download_cleanup_info as *mut c_void);
+
+        let ans = Rf_ScalarInteger(0);
+        if nurls > 1 {
+            let _ans = Rf_protect(ans);
+            let sretvals = install(b"retvals\0".as_ptr() as *const c_char);
+            let retval = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nurls));
+            for i in 0..nurls {
+                *INTEGER(retval).add(i as usize) = if errs_arr[i as usize] != 0 { 1 } else { 0 };
+            }
+            setAttrib(ans, sretvals, retval);
+            Rf_unprotect(2);
+        }
+        ans
     }
-    ans
 }
 
 /// in_newCurlUrl - create a new libcurl URL connection
@@ -1389,9 +1430,11 @@ pub(crate) unsafe fn in_newCurlUrl(
     headers: SEXP,
     r#type: c_int,
 ) -> *mut c_void {
-    let _ = (description, mode, headers, r#type);
-    Rf_error(b"libcurl URL connections are not implemented\0".as_ptr() as *const c_char);
-    std::ptr::null_mut()
+    unsafe {
+        let _ = (description, mode, headers, r#type);
+        Rf_error(b"libcurl URL connections are not implemented\0".as_ptr() as *const c_char);
+        std::ptr::null_mut()
+    }
 }
 
 // ============================================================
@@ -1400,40 +1443,42 @@ pub(crate) unsafe fn in_newCurlUrl(
 
 /// GetOption1 - get a single option value by symbol name
 unsafe fn GetOption1(tag: SEXP) -> SEXP {
-    crate::main::options::GetOption1(tag)
+    unsafe { crate::main::options::GetOption1(tag) }
 }
 
 /// install - intern a symbol name
 unsafe fn install(name: *const c_char) -> SEXP {
-    crate::sexp::symbol::Rf_install(name)
+    unsafe { crate::sexp::symbol::Rf_install(name) }
 }
 
 /// asInteger - coerce SEXP to integer
 unsafe fn asInteger(x: SEXP) -> c_int {
-    crate::main::coerce::asInteger(x)
+    unsafe { crate::main::coerce::asInteger(x) }
 }
 
 /// asLogical - coerce SEXP to logical
 unsafe fn asLogical(x: SEXP) -> c_int {
-    crate::main::coerce::asLogical(x)
+    unsafe { crate::main::coerce::asLogical(x) }
 }
 
 unsafe fn translateChar(x: SEXP) -> *const c_char {
-    crate::sexp::accessors::translateChar(x)
+    unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
 unsafe fn translateCharFP(x: SEXP) -> *const c_char {
-    crate::sexp::accessors::translateChar(x)
+    unsafe { crate::sexp::accessors::translateChar(x) }
 }
 
 /// R_ExpandFileName - expand ~ in file paths
 unsafe fn R_ExpandFileName(path: *const c_char) -> *const c_char {
-    crate::unix::sys_unix::R_ExpandFileName(path)
+    unsafe { crate::unix::sys_unix::R_ExpandFileName(path) }
 }
 
 /// checkArity - check function call arity
 unsafe fn checkArity(op: SEXP, args: SEXP) {
-    crate::mainutils::relop::checkArity(op, args);
+    unsafe {
+        crate::mainutils::relop::checkArity(op, args);
+    }
 }
 
 /// currentTime - get current time in seconds
@@ -1443,15 +1488,17 @@ fn currentTime() -> f64 {
 
 /// Rf_warning1 - issue a warning (single string)
 unsafe fn Rf_warning1(msg: *const c_char) {
-    crate::mainutils::errors::Rf_warning1(msg);
+    unsafe {
+        crate::mainutils::errors::Rf_warning1(msg);
+    }
 }
 
 /// CAD4R - CDR(CDR(CDR(CDR(args))))
 unsafe fn CAD4R(args: SEXP) -> SEXP {
-    CDR(CDR(CDR(CDR(args))))
+    unsafe { CDR(CDR(CDR(CDR(args)))) }
 }
 
 /// isString - check if SEXP is a character vector
 unsafe fn isString(x: SEXP) -> c_int {
-    if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 }
+    unsafe { if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 } }
 }

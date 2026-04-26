@@ -27,127 +27,129 @@ use crate::sexp::globals::*;
 type R_size_t = usize;
 
 unsafe fn objectsize(s: SEXP) -> R_size_t {
-    let mut cnt: R_size_t = 0;
-    let mut vcnt: R_size_t = 0;
-    let mut is_vec = false;
-    let t = TYPEOF(s);
+    unsafe {
+        let mut cnt: R_size_t = 0;
+        let mut vcnt: R_size_t = 0;
+        let mut is_vec = false;
+        let t = TYPEOF(s);
 
-    if t == SEXPTYPE::NILSXP {
-        return 0;
-    }
-    if t == SEXPTYPE::SYMSXP {
-    } else if t == SEXPTYPE::LISTSXP
-        || t == SEXPTYPE::LANGSXP
-        || t == SEXPTYPE::BCODESXP
-        || t == SEXPTYPE::DOTSXP
-    {
-        let mut current = s;
-        loop {
-            cnt += objectsize(TAG(current));
-            cnt += objectsize(CAR(current));
+        if t == SEXPTYPE::NILSXP {
+            return 0;
+        }
+        if t == SEXPTYPE::SYMSXP {
+        } else if t == SEXPTYPE::LISTSXP
+            || t == SEXPTYPE::LANGSXP
+            || t == SEXPTYPE::BCODESXP
+            || t == SEXPTYPE::DOTSXP
+        {
+            let mut current = s;
+            loop {
+                cnt += objectsize(TAG(current));
+                cnt += objectsize(CAR(current));
+                cnt += std::mem::size_of::<*mut std::ffi::c_void>();
+                cnt += objectsize(ATTRIB(current));
+                current = CDR(current);
+                let ct = TYPEOF(current);
+                if ct == SEXPTYPE::LISTSXP
+                    || ct == SEXPTYPE::LANGSXP
+                    || ct == SEXPTYPE::BCODESXP
+                    || ct == SEXPTYPE::DOTSXP
+                {
+                    // continue
+                } else if ct == SEXPTYPE::NILSXP {
+                    return cnt;
+                } else {
+                    break;
+                }
+            }
+            cnt += objectsize(current);
+        } else if t == SEXPTYPE::CLOSXP {
+            /* CLOSXP */
+            cnt += objectsize(FORMALS(s));
+            cnt += objectsize(BODY(s));
+        } else if t == SEXPTYPE::ENVSXP
+            || t == SEXPTYPE::PROMSXP
+            || t == SEXPTYPE::SPECIALSXP
+            || t == SEXPTYPE::BUILTINSXP
+        {
+            // nothing
+        } else if t == SEXPTYPE::CHARSXP {
+            /* CHARSXP */
+            vcnt = (LENGTH(s) as usize + 1).div_ceil(8);
+            is_vec = true;
+        } else if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
+            /* LGLSXP, INTSXP */
+            vcnt = XLENGTH(s) as usize;
+            is_vec = true;
+        } else if t == SEXPTYPE::REALSXP {
+            /* REALSXP */
+            vcnt = XLENGTH(s) as usize;
+            is_vec = true;
+        } else if t == SEXPTYPE::CPLXSXP {
+            /* CPLXSXP */
+            vcnt = XLENGTH(s) as usize * 2;
+            is_vec = true;
+        } else if t == SEXPTYPE::STRSXP {
+            /* STRSXP */
+            vcnt = XLENGTH(s) as usize;
+            for i in 0..(XLENGTH(s) as usize) {
+                let tmp = STRING_ELT(s, i as R_xlen_t);
+                if !tmp.is_null() {
+                    cnt += objectsize(tmp);
+                }
+            }
+            is_vec = true;
+        } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP || t == SEXPTYPE::WEAKREFSXP {
+            /* VECSXP, EXPRSXP, WEAKREFSXP */
+            vcnt = XLENGTH(s) as usize;
+            for i in 0..(XLENGTH(s) as usize) {
+                cnt += objectsize(VECTOR_ELT(s, i as R_xlen_t));
+            }
+            is_vec = true;
+        } else if t == SEXPTYPE::EXTPTRSXP {
+            /* EXTPTRSXP */
             cnt += std::mem::size_of::<*mut std::ffi::c_void>();
-            cnt += objectsize(ATTRIB(current));
-            current = CDR(current);
-            let ct = TYPEOF(current);
-            if ct == SEXPTYPE::LISTSXP
-                || ct == SEXPTYPE::LANGSXP
-                || ct == SEXPTYPE::BCODESXP
-                || ct == SEXPTYPE::DOTSXP
-            {
-                // continue
-            } else if ct == SEXPTYPE::NILSXP {
-                return cnt;
-            } else {
-                break;
-            }
+            cnt += objectsize(crate::main::memory_main::R_ExternalPtrTag(s));
+            cnt += objectsize(crate::main::memory_main::R_ExternalPtrProtected(s));
+        } else if t == SEXPTYPE::RAWSXP {
+            /* RAWSXP */
+            vcnt = (XLENGTH(s) as usize).div_ceil(8);
+            is_vec = true;
+        } else if t == SEXPTYPE::S4SXP.0 {
+            /* OBJSXP */
+            cnt += objectsize(TAG(s));
         }
-        cnt += objectsize(current);
-    } else if t == SEXPTYPE::CLOSXP {
-        /* CLOSXP */
-        cnt += objectsize(FORMALS(s));
-        cnt += objectsize(BODY(s));
-    } else if t == SEXPTYPE::ENVSXP
-        || t == SEXPTYPE::PROMSXP
-        || t == SEXPTYPE::SPECIALSXP
-        || t == SEXPTYPE::BUILTINSXP
-    {
-        // nothing
-    } else if t == SEXPTYPE::CHARSXP {
-        /* CHARSXP */
-        vcnt = (LENGTH(s) as usize + 1).div_ceil(8);
-        is_vec = true;
-    } else if t == SEXPTYPE::LGLSXP || t == SEXPTYPE::INTSXP {
-        /* LGLSXP, INTSXP */
-        vcnt = XLENGTH(s) as usize;
-        is_vec = true;
-    } else if t == SEXPTYPE::REALSXP {
-        /* REALSXP */
-        vcnt = XLENGTH(s) as usize;
-        is_vec = true;
-    } else if t == SEXPTYPE::CPLXSXP {
-        /* CPLXSXP */
-        vcnt = XLENGTH(s) as usize * 2;
-        is_vec = true;
-    } else if t == SEXPTYPE::STRSXP {
-        /* STRSXP */
-        vcnt = XLENGTH(s) as usize;
-        for i in 0..(XLENGTH(s) as usize) {
-            let tmp = STRING_ELT(s, i as R_xlen_t);
-            if !tmp.is_null() {
-                cnt += objectsize(tmp);
-            }
-        }
-        is_vec = true;
-    } else if t == SEXPTYPE::VECSXP || t == SEXPTYPE::EXPRSXP || t == SEXPTYPE::WEAKREFSXP {
-        /* VECSXP, EXPRSXP, WEAKREFSXP */
-        vcnt = XLENGTH(s) as usize;
-        for i in 0..(XLENGTH(s) as usize) {
-            cnt += objectsize(VECTOR_ELT(s, i as R_xlen_t));
-        }
-        is_vec = true;
-    } else if t == SEXPTYPE::EXTPTRSXP {
-        /* EXTPTRSXP */
-        cnt += std::mem::size_of::<*mut std::ffi::c_void>();
-        cnt += objectsize(crate::main::memory_main::R_ExternalPtrTag(s));
-        cnt += objectsize(crate::main::memory_main::R_ExternalPtrProtected(s));
-    } else if t == SEXPTYPE::RAWSXP {
-        /* RAWSXP */
-        vcnt = (XLENGTH(s) as usize).div_ceil(8);
-        is_vec = true;
-    } else if t == SEXPTYPE::S4SXP.0 {
-        /* OBJSXP */
-        cnt += objectsize(TAG(s));
-    }
-    // else ANYSXP etc — nothing
+        // else ANYSXP etc — nothing
 
-    if is_vec {
-        cnt += std::mem::size_of::<*mut std::ffi::c_void>();
-        if vcnt > 16 {
-            cnt += 8 * vcnt;
-        } else if vcnt > 8 {
-            cnt += 128;
-        } else if vcnt > 6 {
-            cnt += 64;
-        } else if vcnt > 4 {
-            cnt += 48;
-        } else if vcnt > 2 {
-            cnt += 32;
-        } else if vcnt > 1 {
-            cnt += 16;
-        } else if vcnt > 0 {
-            cnt += 8;
+        if is_vec {
+            cnt += std::mem::size_of::<*mut std::ffi::c_void>();
+            if vcnt > 16 {
+                cnt += 8 * vcnt;
+            } else if vcnt > 8 {
+                cnt += 128;
+            } else if vcnt > 6 {
+                cnt += 64;
+            } else if vcnt > 4 {
+                cnt += 48;
+            } else if vcnt > 2 {
+                cnt += 32;
+            } else if vcnt > 1 {
+                cnt += 16;
+            } else if vcnt > 0 {
+                cnt += 8;
+            }
+        } else {
+            cnt += std::mem::size_of::<*mut std::ffi::c_void>();
         }
-    } else {
-        cnt += std::mem::size_of::<*mut std::ffi::c_void>();
-    }
 
-    if TYPEOF(s) != SEXPTYPE::CHARSXP {
-        /* not CHARSXP */
-        cnt += objectsize(ATTRIB(s));
+        if TYPEOF(s) != SEXPTYPE::CHARSXP {
+            /* not CHARSXP */
+            cnt += objectsize(ATTRIB(s));
+        }
+        cnt
     }
-    cnt
 }
 
 pub unsafe fn objectSize(x: SEXP) -> SEXP {
-    Rf_ScalarReal(objectsize(x) as f64)
+    unsafe { Rf_ScalarReal(objectsize(x) as f64) }
 }
