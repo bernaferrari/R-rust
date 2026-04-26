@@ -66,7 +66,7 @@ pub(crate) struct Sock_error_t {
 // --- Internal helper: get errno (platform-specific) ---
 
 #[inline]
-unsafe fn get_errno() -> c_int {
+fn get_errno() -> c_int {
     unsafe {
         #[cfg(target_os = "macos")]
         {
@@ -90,7 +90,7 @@ unsafe fn get_errno() -> c_int {
 // On other Unix, it may be a global or macro. We use an extern for portability.
 
 #[cfg(target_os = "macos")]
-unsafe fn get_h_errno() -> c_int {
+fn get_h_errno() -> c_int {
     unsafe {
         unsafe extern "C" {
             fn __h_errno() -> *mut c_int;
@@ -100,60 +100,56 @@ unsafe fn get_h_errno() -> c_int {
 }
 
 #[cfg(not(target_os = "macos"))]
-unsafe fn get_h_errno() -> c_int {
+fn get_h_errno() -> c_int {
     unsafe extern "C" {
         static h_errno: c_int;
     }
-    h_errno
+    unsafe { h_errno }
 }
 
 // --- Platform socket wrapper implementations (Unix path) ---
 
 /// R_close_socket - close a socket descriptor
 /// Signature: int R_close_socket(SOCKET s)
-pub(crate) unsafe fn R_close_socket(s: c_int) -> c_int {
+pub(crate) fn R_close_socket(s: c_int) -> c_int {
     unsafe { close(s) }
 }
 
 /// R_socket_errno - get last socket error number
 /// Signature: int R_socket_errno(void)
-pub(crate) unsafe fn R_socket_errno() -> c_int {
-    unsafe { get_errno() }
+pub(crate) fn R_socket_errno() -> c_int {
+    get_errno()
 }
 
 /// R_invalid_socket - check if a socket descriptor is invalid
 /// Signature: int R_invalid_socket(SOCKET s)
-pub(crate) unsafe fn R_invalid_socket(s: c_int) -> c_int {
+pub(crate) fn R_invalid_socket(s: c_int) -> c_int {
     if s < 0 { 1 } else { 0 }
 }
 
 /// R_socket_error - check if a socket call returned an error
 /// Signature: int R_socket_error(int s)
-pub(crate) unsafe fn R_socket_error(s: c_int) -> c_int {
+pub(crate) fn R_socket_error(s: c_int) -> c_int {
     if s < 0 { 1 } else { 0 }
 }
 
 /// R_invalid_socket_eintr - check if socket is invalid due to EINTR
 /// Signature: int R_invalid_socket_eintr(SOCKET s)
-pub(crate) unsafe fn R_invalid_socket_eintr(s: c_int) -> c_int {
-    unsafe {
-        if s == -1 && get_errno() == EINTR {
-            1
-        } else {
-            0
-        }
+pub(crate) fn R_invalid_socket_eintr(s: c_int) -> c_int {
+    if s == -1 && get_errno() == EINTR {
+        1
+    } else {
+        0
     }
 }
 
 /// R_socket_error_eintr - check if socket error is EINTR
 /// Signature: int R_socket_error_eintr(int s)
-pub(crate) unsafe fn R_socket_error_eintr(s: c_int) -> c_int {
-    unsafe {
-        if s == -1 && get_errno() == EINTR {
-            1
-        } else {
-            0
-        }
+pub(crate) fn R_socket_error_eintr(s: c_int) -> c_int {
+    if s == -1 && get_errno() == EINTR {
+        1
+    } else {
+        0
     }
 }
 
@@ -165,7 +161,7 @@ pub(crate) unsafe fn R_socket_strerror(errnum: c_int) -> *mut c_char {
 
 /// R_set_nonblocking - set a socket to non-blocking mode
 /// Signature: int R_set_nonblocking(SOCKET s)
-pub(crate) unsafe fn R_set_nonblocking(s: c_int) -> c_int {
+pub(crate) fn R_set_nonblocking(s: c_int) -> c_int {
     unsafe {
         let mut status = fcntl(s, F_GETFL, 0);
         if status == -1 {
@@ -183,7 +179,7 @@ pub(crate) unsafe fn R_set_nonblocking(s: c_int) -> c_int {
 
 /// R_set_nodelay - set TCP_NODELAY on a socket
 /// Signature: int R_set_nodelay(SOCKET s)
-pub(crate) unsafe fn R_set_nodelay(s: c_int) -> c_int {
+pub(crate) fn R_set_nodelay(s: c_int) -> c_int {
     unsafe {
         let val: c_int = 1;
         setsockopt(

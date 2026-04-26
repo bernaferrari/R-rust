@@ -34,32 +34,33 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
-unsafe fn do_Rprof(_args: SEXP) -> SEXP {
-    unsafe {
-        Rf_error(
-            b"Rprof is not implemented in the utils package boundary\0".as_ptr() as *const c_char,
-        );
-        R_NilValue()
-    }
+fn nil_value() -> SEXP {
+    unsafe { R_NilValue() }
 }
 
-unsafe fn do_Rprofmem(_args: SEXP) -> SEXP {
-    unsafe {
-        Rf_error(
-            b"Rprofmem is not implemented in the utils package boundary\0".as_ptr()
-                as *const c_char,
-        );
-        R_NilValue()
-    }
+fn warn_message(message: impl AsRef<str>) {
+    let msg = CString::new(message.as_ref()).unwrap_or_default();
+    unsafe { Rf_warning(msg.as_ptr()) };
 }
 
-unsafe fn Runzip(_args: SEXP) -> SEXP {
-    unsafe {
-        Rf_error(
-            b"unzip is not implemented in the utils package boundary\0".as_ptr() as *const c_char,
-        );
-        R_NilValue()
-    }
+fn error_message(message: impl AsRef<str>) {
+    let msg = CString::new(message.as_ref()).unwrap_or_default();
+    unsafe { Rf_error(msg.as_ptr()) };
+}
+
+fn do_Rprof(_args: SEXP) -> SEXP {
+    error_message("Rprof is not implemented in the utils package boundary");
+    nil_value()
+}
+
+fn do_Rprofmem(_args: SEXP) -> SEXP {
+    error_message("Rprofmem is not implemented in the utils package boundary");
+    nil_value()
+}
+
+fn Runzip(_args: SEXP) -> SEXP {
+    error_message("unzip is not implemented in the utils package boundary");
+    nil_value()
 }
 
 fn R_FlushConsole() {}
@@ -103,6 +104,32 @@ fn default_history_file() -> PathBuf {
     }
 }
 
+unsafe fn history_file_path(sfile: SEXP) -> Option<PathBuf> {
+    unsafe {
+        if !isString(sfile) || LENGTH(sfile) < 1 {
+            warn_message("invalid 'file' argument");
+            return None;
+        }
+
+        let elt = STRING_ELT(sfile, 0);
+        if elt.is_null() || elt == R_NilValue() {
+            return Some(default_history_file());
+        }
+
+        let c = CHAR(elt);
+        if c.is_null() {
+            return Some(default_history_file());
+        }
+
+        let r_str = CStr::from_ptr(c).to_string_lossy().into_owned();
+        if r_str.is_empty() {
+            Some(default_history_file())
+        } else {
+            Some(PathBuf::from(r_str))
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // loadhistory -- Load command history from a file
 // ---------------------------------------------------------------------------
@@ -111,27 +138,8 @@ pub unsafe fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _ = (call, op, rho);
         let args = CDR(args);
         let sfile = CAR(args);
-
-        if !isString(sfile) || LENGTH(sfile) < 1 {
-            let msg = CString::new("invalid 'file' argument").unwrap_or_default();
-            Rf_warning(msg.as_ptr());
-            return R_NilValue();
-        }
-
-        let path_str = if !STRING_ELT(sfile, 0).is_null() && STRING_ELT(sfile, 0) != R_NilValue() {
-            let c = CHAR(STRING_ELT(sfile, 0));
-            if c.is_null() {
-                default_history_file()
-            } else {
-                let r_str = CStr::from_ptr(c).to_string_lossy().into_owned();
-                if r_str.is_empty() {
-                    default_history_file()
-                } else {
-                    PathBuf::from(r_str)
-                }
-            }
-        } else {
-            default_history_file()
+        let Some(path_str) = history_file_path(sfile) else {
+            return nil_value();
         };
 
         match File::open(&path_str) {
@@ -153,17 +161,15 @@ pub unsafe fn loadhistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 }
             }
             Err(e) => {
-                let msg = CString::new(format!(
+                warn_message(format!(
                     "unable to open history file '{}': {}",
                     path_str.display(),
                     e
-                ))
-                .unwrap_or_default();
-                Rf_warning(msg.as_ptr());
+                ));
             }
         }
 
-        R_NilValue()
+        nil_value()
     }
 }
 
@@ -175,27 +181,8 @@ pub unsafe fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let _ = (call, op, rho);
         let args = CDR(args);
         let sfile = CAR(args);
-
-        if !isString(sfile) || LENGTH(sfile) < 1 {
-            let msg = CString::new("invalid 'file' argument").unwrap_or_default();
-            Rf_warning(msg.as_ptr());
-            return R_NilValue();
-        }
-
-        let path_str = if !STRING_ELT(sfile, 0).is_null() && STRING_ELT(sfile, 0) != R_NilValue() {
-            let c = CHAR(STRING_ELT(sfile, 0));
-            if c.is_null() {
-                default_history_file()
-            } else {
-                let r_str = CStr::from_ptr(c).to_string_lossy().into_owned();
-                if r_str.is_empty() {
-                    default_history_file()
-                } else {
-                    PathBuf::from(r_str)
-                }
-            }
-        } else {
-            default_history_file()
+        let Some(path_str) = history_file_path(sfile) else {
+            return nil_value();
         };
 
         // Retrieve history from readline and write to file
@@ -235,23 +222,19 @@ pub unsafe fn savehistory(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 #[cfg(not(unix))]
                 {
                     let _ = file;
-                    let msg = CString::new("history saving not supported on this platform")
-                        .unwrap_or_default();
-                    Rf_warning(msg.as_ptr());
+                    warn_message("history saving not supported on this platform");
                 }
             }
             Err(e) => {
-                let msg = CString::new(format!(
+                warn_message(format!(
                     "unable to save history file '{}': {}",
                     path_str.display(),
                     e
-                ))
-                .unwrap_or_default();
-                Rf_warning(msg.as_ptr());
+                ));
             }
         }
 
-        R_NilValue()
+        nil_value()
     }
 }
 

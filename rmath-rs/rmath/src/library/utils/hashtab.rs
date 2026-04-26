@@ -27,7 +27,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::*;
+use crate::sexp::protect::protect;
 
 unsafe fn asInteger(x: SEXP) -> c_int {
     unsafe { crate::main::coerce::asInteger(x) }
@@ -68,45 +68,49 @@ unsafe fn HT_TypeFromString(x: SEXP) -> c_int {
 }
 
 /* Stub: hash table internals not yet ported */
-unsafe fn R_mkhashtab(_type: c_int, _k: c_int) -> SEXP {
+fn nil_value() -> SEXP {
     unsafe { R_NilValue() }
 }
 
-unsafe fn R_HashtabSEXP(h: SEXP) -> SEXP {
+fn R_mkhashtab(_type: c_int, _k: c_int) -> SEXP {
+    nil_value()
+}
+
+fn R_HashtabSEXP(h: SEXP) -> SEXP {
     h
 }
 
-unsafe fn R_asHashtable(x: SEXP) -> R_hashtab_type {
+fn R_asHashtable(x: SEXP) -> R_hashtab_type {
     x
 }
 
-unsafe fn R_gethash(_h: R_hashtab_type, _key: SEXP, nomatch: SEXP) -> SEXP {
+fn R_gethash(_h: R_hashtab_type, _key: SEXP, nomatch: SEXP) -> SEXP {
     nomatch
 }
 
-unsafe fn R_sethash(_h: R_hashtab_type, _key: SEXP, _value: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+fn R_sethash(_h: R_hashtab_type, _key: SEXP, _value: SEXP) -> SEXP {
+    nil_value()
 }
 
-unsafe fn R_remhash(_h: R_hashtab_type, _key: SEXP) -> c_int {
+fn R_remhash(_h: R_hashtab_type, _key: SEXP) -> c_int {
     0
 }
 
-unsafe fn R_numhash(_h: R_hashtab_type) -> c_int {
+fn R_numhash(_h: R_hashtab_type) -> c_int {
     0
 }
 
-unsafe fn R_typhash(_h: R_hashtab_type) -> c_int {
+fn R_typhash(_h: R_hashtab_type) -> c_int {
     HT_TYPE_IDENTICAL
 }
 
-unsafe fn R_maphash(_h: R_hashtab_type, _fun: SEXP) -> SEXP {
-    unsafe { R_NilValue() }
+fn R_maphash(_h: R_hashtab_type, _fun: SEXP) -> SEXP {
+    nil_value()
 }
 
-unsafe fn R_clrhash(_h: R_hashtab_type) {}
+fn R_clrhash(_h: R_hashtab_type) {}
 
-unsafe fn R_isHashtable(_x: SEXP) -> c_int {
+fn R_isHashtable(_x: SEXP) -> c_int {
     0
 }
 
@@ -115,14 +119,14 @@ pub unsafe fn hashtab_Ext(args: SEXP) -> SEXP {
         let args = checkArgCountPop(args, 2);
         let _type = HT_TypeFromString(CAR(args));
         let _k = asInteger(CADR(args));
-        let val = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+        let val = Rf_allocVector(SEXPTYPE::VECSXP, 1);
+        let _val_guard = protect(val);
         SET_VECTOR_ELT(val, 0, R_HashtabSEXP(R_mkhashtab(_type, _k)));
         setAttrib(
             val,
             R_ClassSymbol(),
             Rf_mkString(b"hashtab\0".as_ptr() as *const libc::c_char),
         );
-        Rf_unprotect(1);
         val
     }
 }
@@ -193,7 +197,7 @@ pub unsafe fn clrhash_Ext(args: SEXP) -> SEXP {
         let args = checkArgCountPop(args, 1);
         let h = R_asHashtable(CAR(args));
         R_clrhash(h);
-        R_NilValue()
+        nil_value()
     }
 }
 
