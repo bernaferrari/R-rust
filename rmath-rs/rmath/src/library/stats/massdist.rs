@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Mass distribution for density estimation.
 //! Port of r-source/src/library/stats/src/massdist.c
 //!
@@ -21,13 +20,15 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 /// Extract a scalar integer value from an SEXP.
 /// Returns NA_INTEGER if the SEXP is NULL or not an integer/real vector.
 unsafe fn as_integer(s: SEXP) -> c_int {
-    if s.is_null() {
-        return NA_INTEGER;
+    unsafe {
+        if s.is_null() {
+            return NA_INTEGER;
+        }
+        if INTEGER(s).is_null() {
+            return NA_INTEGER;
+        }
+        *INTEGER(s)
     }
-    if INTEGER(s).is_null() {
-        return NA_INTEGER;
-    }
-    *INTEGER(s)
 }
 
 // ---------------------------------------------------------------------------
@@ -37,13 +38,15 @@ unsafe fn as_integer(s: SEXP) -> c_int {
 /// Extract a scalar double value from an SEXP.
 /// Returns NaN if the SEXP is NULL or has no real data.
 unsafe fn as_real(s: SEXP) -> c_double {
-    if s.is_null() {
-        return f64::NAN; // NaN
+    unsafe {
+        if s.is_null() {
+            return f64::NAN; // NaN
+        }
+        if REAL(s).is_null() {
+            return f64::NAN; // NaN
+        }
+        *REAL(s)
     }
-    if REAL(s).is_null() {
-        return f64::NAN; // NaN
-    }
-    *REAL(s)
 }
 
 // ---------------------------------------------------------------------------
@@ -73,59 +76,61 @@ unsafe fn as_real(s: SEXP) -> c_double {
 /// All SEXP arguments must be valid, non-null pointers to properly
 /// allocated R objects of the expected types.
 pub unsafe fn BinDist(sx: SEXP, sw: SEXP, slo: SEXP, shi: SEXP, sn: SEXP) -> SEXP {
-    let n = as_integer(sn);
-    if n == NA_INTEGER || n <= 0 {
-        // Return a length-0 real vector on error (matches R's error behavior
-        // in this C-level function; the R wrapper calls error() itself).
-        return Rf_allocVector(SEXPTYPE::REALSXP, 0);
-    }
+    unsafe {
+        let n = as_integer(sn);
+        if n == NA_INTEGER || n <= 0 {
+            // Return a length-0 real vector on error (matches R's error behavior
+            // in this C-level function; the R wrapper calls error() itself).
+            return Rf_allocVector(SEXPTYPE::REALSXP, 0);
+        }
 
-    let n_xlen = n as R_xlen_t;
-    let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
-    Rf_protect(ans);
+        let n_xlen = n as R_xlen_t;
+        let ans = Rf_allocVector(SEXPTYPE::REALSXP, 2 * n);
+        Rf_protect(ans);
 
-    let xlo = as_real(slo);
-    let xhi = as_real(shi);
+        let xlo = as_real(slo);
+        let xhi = as_real(shi);
 
-    let x = REAL(sx);
-    let w = REAL(sw);
-    let y = REAL(ans);
+        let x = REAL(sx);
+        let w = REAL(sw);
+        let y = REAL(ans);
 
-    let ixmin: c_int = 0;
-    let ixmax: c_int = n - 2;
-    let xdelta: c_double = (xhi - xlo) / (n - 1) as c_double;
+        let ixmin: c_int = 0;
+        let ixmax: c_int = n - 2;
+        let xdelta: c_double = (xhi - xlo) / (n - 1) as c_double;
 
-    let len = XLENGTH(sx);
+        let len = XLENGTH(sx);
 
-    // Zero-initialize the output (the upper half is always zero-padded).
-    // Rf_allocVector already zeroes memory in our arena, but we do it
-    // explicitly to match the C code's behavior exactly.
-    for i in 0..(2 * n_xlen) {
-        *y.add(i as usize) = 0.0;
-    }
+        // Zero-initialize the output (the upper half is always zero-padded).
+        // Rf_allocVector already zeroes memory in our arena, but we do it
+        // explicitly to match the C code's behavior exactly.
+        for i in 0..(2 * n_xlen) {
+            *y.add(i as usize) = 0.0;
+        }
 
-    for i in 0..len {
-        let xi = *x.add(i as usize);
-        if R_FINITE(xi) {
-            let xpos = (xi - xlo) / xdelta;
-            // Avoid integer overflows for ix.
-            if xpos > c_int::MAX as c_double || xpos < c_int::MIN as c_double {
-                continue;
-            }
-            let ix = xpos.floor() as c_int;
-            let fx = xpos - ix as c_double;
-            let wi = *w.add(i as usize);
-            if ixmin <= ix && ix <= ixmax {
-                *y.add(ix as usize) += (1.0 - fx) * wi;
-                *y.add((ix + 1) as usize) += fx * wi;
-            } else if ix == -1 {
-                *y.add(0) += fx * wi;
-            } else if ix == ixmax + 1 {
-                *y.add(ix as usize) += (1.0 - fx) * wi;
+        for i in 0..len {
+            let xi = *x.add(i as usize);
+            if R_FINITE(xi) {
+                let xpos = (xi - xlo) / xdelta;
+                // Avoid integer overflows for ix.
+                if xpos > c_int::MAX as c_double || xpos < c_int::MIN as c_double {
+                    continue;
+                }
+                let ix = xpos.floor() as c_int;
+                let fx = xpos - ix as c_double;
+                let wi = *w.add(i as usize);
+                if ixmin <= ix && ix <= ixmax {
+                    *y.add(ix as usize) += (1.0 - fx) * wi;
+                    *y.add((ix + 1) as usize) += fx * wi;
+                } else if ix == -1 {
+                    *y.add(0) += fx * wi;
+                } else if ix == ixmax + 1 {
+                    *y.add(ix as usize) += (1.0 - fx) * wi;
+                }
             }
         }
-    }
 
-    Rf_unprotect(1);
-    ans
+        Rf_unprotect(1);
+        ans
+    }
 }

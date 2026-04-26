@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 use core::ffi::{c_char, c_double, c_int};
 use std::ptr;
 use std::slice;
@@ -829,114 +828,116 @@ pub unsafe fn multi_burg(
     useaic: *mut c_int,
     vmethod: *mut c_int,
 ) {
-    let omax = *pomax as usize;
-    let n = *pn as usize;
-    let nser = *pnser as usize;
-    let mut order = *porder as usize;
-    let useaic_flag = *useaic != 0;
-    let vmethod_val = *vmethod;
+    unsafe {
+        let omax = *pomax as usize;
+        let n = *pn as usize;
+        let nser = *pnser as usize;
+        let mut order = *porder as usize;
+        let useaic_flag = *useaic != 0;
+        let vmethod_val = *vmethod;
 
-    let dim1 = [(omax + 1) as i32, nser as i32, nser as i32];
-    let total_3d = (omax + 1) * nser * nser;
+        let dim1 = [(omax + 1) as i32, nser as i32, nser as i32];
+        let total_3d = (omax + 1) * nser * nser;
 
-    // Allocate A and B arrays (omax+1 elements each, 3D)
-    let mut a_vec: Vec<Array> = Vec::with_capacity(omax + 1);
-    let mut b_vec: Vec<Array> = Vec::with_capacity(omax + 1);
-    for _ in 0..=omax {
-        a_vec.push(make_zero_array(&dim1, 3));
-        b_vec.push(make_zero_array(&dim1, 3));
-    }
-
-    // P and V wrap the output arrays (pacf, var) as 3D arrays
-    let x_slice = slice::from_raw_parts(x, n * nser);
-    let pacf_slice = slice::from_raw_parts(pacf, total_3d);
-    let var_slice = slice::from_raw_parts(var, total_3d);
-
-    let mut p = make_array(pacf_slice, &dim1, 3);
-    let mut v = make_array(var_slice, &dim1, 3);
-
-    let xarr = make_matrix(x_slice, nser, n);
-    let mut resid_f = make_zero_matrix(nser, n);
-    let mut resid_b = make_zero_matrix(nser, n);
-
-    copy_array(&xarr, &mut resid_f);
-    copy_array(&xarr, &mut resid_b);
-
-    burg0(
-        omax,
-        &mut resid_f,
-        &mut resid_b,
-        &mut a_vec,
-        &mut b_vec,
-        &mut p,
-        &mut v,
-        vmethod_val,
-    );
-
-    // Model order selection
-    let aic_slice = slice::from_raw_parts_mut(aic, omax + 1);
-    for i in 0..=omax {
-        let v_sub = subarray(&v, i);
-        let ld = ldet(&v_sub);
-        aic_slice[i] = (n as f64) * ld + 2.0 * (i as f64) * (nser as f64) * (nser as f64);
-    }
-
-    if useaic_flag {
-        order = 0;
-        let mut aicmin = aic_slice[0];
-        for i in 1..=omax {
-            if aic_slice[i] < aicmin {
-                aicmin = aic_slice[i];
-                order = i;
-            }
+        // Allocate A and B arrays (omax+1 elements each, 3D)
+        let mut a_vec: Vec<Array> = Vec::with_capacity(omax + 1);
+        let mut b_vec: Vec<Array> = Vec::with_capacity(omax + 1);
+        for _ in 0..=omax {
+            a_vec.push(make_zero_array(&dim1, 3));
+            b_vec.push(make_zero_array(&dim1, 3));
         }
-    } else {
-        order = omax;
-    }
-    *porder = order as c_int;
 
-    // Copy coefficients
-    let coef_slice = slice::from_raw_parts_mut(coef, a_vec[order].vector_length());
-    for i in 0..coef_slice.len() {
-        coef_slice[i] = a_vec[order].vec[i];
-    }
+        // P and V wrap the output arrays (pacf, var) as 3D arrays
+        let x_slice = slice::from_raw_parts(x, n * nser);
+        let pacf_slice = slice::from_raw_parts(pacf, total_3d);
+        let var_slice = slice::from_raw_parts(var, total_3d);
 
-    // Recalculate residuals for chosen model when using AIC
-    if useaic_flag {
-        set_array_to_zero(&mut resid_f);
-        let mut resid_f_tmp = make_zero_matrix(nser, n);
-        set_array_to_zero(&mut resid_f_tmp);
+        let mut p = make_array(pacf_slice, &dim1, 3);
+        let mut v = make_array(var_slice, &dim1, 3);
 
-        for m in 0..=order {
-            for i in 0..nser {
-                for j in 0..(n - order) {
-                    resid_f_tmp.mat_set(i, j + order, xarr.mat_get(i, j + order - m));
+        let xarr = make_matrix(x_slice, nser, n);
+        let mut resid_f = make_zero_matrix(nser, n);
+        let mut resid_b = make_zero_matrix(nser, n);
+
+        copy_array(&xarr, &mut resid_f);
+        copy_array(&xarr, &mut resid_b);
+
+        burg0(
+            omax,
+            &mut resid_f,
+            &mut resid_b,
+            &mut a_vec,
+            &mut b_vec,
+            &mut p,
+            &mut v,
+            vmethod_val,
+        );
+
+        // Model order selection
+        let aic_slice = slice::from_raw_parts_mut(aic, omax + 1);
+        for i in 0..=omax {
+            let v_sub = subarray(&v, i);
+            let ld = ldet(&v_sub);
+            aic_slice[i] = (n as f64) * ld + 2.0 * (i as f64) * (nser as f64) * (nser as f64);
+        }
+
+        if useaic_flag {
+            order = 0;
+            let mut aicmin = aic_slice[0];
+            for i in 1..=omax {
+                if aic_slice[i] < aicmin {
+                    aicmin = aic_slice[i];
+                    order = i;
                 }
             }
-            let a_sub = subarray(&a_vec[order], m);
-            // aliasing: resid_f_tmp is both input and output -- use a temp
-            let mut prod_tmp = make_zero_matrix(nser, n);
-            matrix_prod(&a_sub, &resid_f_tmp, false, false, &mut prod_tmp);
-            copy_array(&prod_tmp, &mut resid_f_tmp);
-            // resid_f is both input and output for array_op -- use in-place
-            array_op_in_place(&mut resid_f, &resid_f_tmp, '+');
+        } else {
+            order = omax;
         }
-    }
+        *porder = order as c_int;
 
-    // Copy residuals back to x (the output buffer)
-    let x_out = slice::from_raw_parts_mut(x, n * nser);
-    for i in 0..resid_f.vector_length().min(x_out.len()) {
-        x_out[i] = resid_f.vec[i];
-    }
+        // Copy coefficients
+        let coef_slice = slice::from_raw_parts_mut(coef, a_vec[order].vector_length());
+        for i in 0..coef_slice.len() {
+            coef_slice[i] = a_vec[order].vec[i];
+        }
 
-    // Write back pacf and var from our local copies
-    let pacf_out = slice::from_raw_parts_mut(pacf, p.vector_length());
-    for i in 0..pacf_out.len() {
-        pacf_out[i] = p.vec[i];
-    }
-    let var_out = slice::from_raw_parts_mut(var, v.vector_length());
-    for i in 0..var_out.len() {
-        var_out[i] = v.vec[i];
+        // Recalculate residuals for chosen model when using AIC
+        if useaic_flag {
+            set_array_to_zero(&mut resid_f);
+            let mut resid_f_tmp = make_zero_matrix(nser, n);
+            set_array_to_zero(&mut resid_f_tmp);
+
+            for m in 0..=order {
+                for i in 0..nser {
+                    for j in 0..(n - order) {
+                        resid_f_tmp.mat_set(i, j + order, xarr.mat_get(i, j + order - m));
+                    }
+                }
+                let a_sub = subarray(&a_vec[order], m);
+                // aliasing: resid_f_tmp is both input and output -- use a temp
+                let mut prod_tmp = make_zero_matrix(nser, n);
+                matrix_prod(&a_sub, &resid_f_tmp, false, false, &mut prod_tmp);
+                copy_array(&prod_tmp, &mut resid_f_tmp);
+                // resid_f is both input and output for array_op -- use in-place
+                array_op_in_place(&mut resid_f, &resid_f_tmp, '+');
+            }
+        }
+
+        // Copy residuals back to x (the output buffer)
+        let x_out = slice::from_raw_parts_mut(x, n * nser);
+        for i in 0..resid_f.vector_length().min(x_out.len()) {
+            x_out[i] = resid_f.vec[i];
+        }
+
+        // Write back pacf and var from our local copies
+        let pacf_out = slice::from_raw_parts_mut(pacf, p.vector_length());
+        for i in 0..pacf_out.len() {
+            pacf_out[i] = p.vec[i];
+        }
+        let var_out = slice::from_raw_parts_mut(var, v.vector_length());
+        for i in 0..var_out.len() {
+            var_out[i] = v.vec[i];
+        }
     }
 }
 
@@ -1119,82 +1120,84 @@ pub unsafe fn multi_yw(
     porder: *mut c_int,
     useaic: *mut c_int,
 ) {
-    let omax = *pomax as usize;
-    let n = *pn as usize;
-    let nser = *pnser as usize;
-    let mut order = *porder as usize;
-    let useaic_flag = *useaic != 0;
+    unsafe {
+        let omax = *pomax as usize;
+        let n = *pn as usize;
+        let nser = *pnser as usize;
+        let mut order = *porder as usize;
+        let useaic_flag = *useaic != 0;
 
-    let dim = [(omax + 1) as i32, nser as i32, nser as i32];
-    let total_len = (omax + 1) * nser * nser;
+        let dim = [(omax + 1) as i32, nser as i32, nser as i32];
+        let total_len = (omax + 1) * nser * nser;
 
-    let acf_slice = slice::from_raw_parts(acf, total_len);
-    let acf_array = make_array(acf_slice, &dim, 3);
+        let acf_slice = slice::from_raw_parts(acf, total_len);
+        let acf_array = make_array(acf_slice, &dim, 3);
 
-    let pacf_slice = slice::from_raw_parts(pacf, total_len);
-    let mut p_forward = make_array(pacf_slice, &dim, 3);
+        let pacf_slice = slice::from_raw_parts(pacf, total_len);
+        let mut p_forward = make_array(pacf_slice, &dim, 3);
 
-    let var_slice = slice::from_raw_parts(var, total_len);
-    let mut v_forward = make_array(var_slice, &dim, 3);
+        let var_slice = slice::from_raw_parts(var, total_len);
+        let mut v_forward = make_array(var_slice, &dim, 3);
 
-    // Backward equations (discarded but needed by algorithm)
-    let mut p_back = make_zero_array(&dim, 3);
-    let mut v_back = make_zero_array(&dim, 3);
+        // Backward equations (discarded but needed by algorithm)
+        let mut p_back = make_zero_array(&dim, 3);
+        let mut v_back = make_zero_array(&dim, 3);
 
-    // Allocate A and B arrays
-    let mut a_vec: Vec<Array> = Vec::with_capacity(omax + 2);
-    let mut b_vec: Vec<Array> = Vec::with_capacity(omax + 2);
-    for _ in 0..=omax {
-        a_vec.push(make_zero_array(&dim, 3));
-        b_vec.push(make_zero_array(&dim, 3));
-    }
-
-    whittle(
-        &acf_array,
-        omax,
-        &mut a_vec,
-        &mut b_vec,
-        &mut p_forward,
-        &mut v_forward,
-        &mut p_back,
-        &mut v_back,
-    );
-
-    // Model order selection
-    let aic_slice = slice::from_raw_parts_mut(aic, omax + 1);
-    for m in 0..=omax {
-        let v_sub = subarray(&v_forward, m);
-        let ld = ldet(&v_sub);
-        aic_slice[m] = (n as f64) * ld + 2.0 * (m as f64) * (nser as f64) * (nser as f64);
-    }
-
-    if useaic_flag {
-        order = 0;
-        let mut aicmin = aic_slice[0];
-        for m in 0..=omax {
-            if aic_slice[m] < aicmin {
-                aicmin = aic_slice[m];
-                order = m;
-            }
+        // Allocate A and B arrays
+        let mut a_vec: Vec<Array> = Vec::with_capacity(omax + 2);
+        let mut b_vec: Vec<Array> = Vec::with_capacity(omax + 2);
+        for _ in 0..=omax {
+            a_vec.push(make_zero_array(&dim, 3));
+            b_vec.push(make_zero_array(&dim, 3));
         }
-    } else {
-        order = omax;
-    }
-    *porder = order as c_int;
 
-    // Copy coefficients
-    let coef_slice = slice::from_raw_parts_mut(coef, a_vec[order].vector_length());
-    for i in 0..coef_slice.len() {
-        coef_slice[i] = a_vec[order].vec[i];
-    }
+        whittle(
+            &acf_array,
+            omax,
+            &mut a_vec,
+            &mut b_vec,
+            &mut p_forward,
+            &mut v_forward,
+            &mut p_back,
+            &mut v_back,
+        );
 
-    // Write back pacf and var
-    let pacf_out = slice::from_raw_parts_mut(pacf, p_forward.vector_length());
-    for i in 0..pacf_out.len() {
-        pacf_out[i] = p_forward.vec[i];
-    }
-    let var_out = slice::from_raw_parts_mut(var, v_forward.vector_length());
-    for i in 0..var_out.len() {
-        var_out[i] = v_forward.vec[i];
+        // Model order selection
+        let aic_slice = slice::from_raw_parts_mut(aic, omax + 1);
+        for m in 0..=omax {
+            let v_sub = subarray(&v_forward, m);
+            let ld = ldet(&v_sub);
+            aic_slice[m] = (n as f64) * ld + 2.0 * (m as f64) * (nser as f64) * (nser as f64);
+        }
+
+        if useaic_flag {
+            order = 0;
+            let mut aicmin = aic_slice[0];
+            for m in 0..=omax {
+                if aic_slice[m] < aicmin {
+                    aicmin = aic_slice[m];
+                    order = m;
+                }
+            }
+        } else {
+            order = omax;
+        }
+        *porder = order as c_int;
+
+        // Copy coefficients
+        let coef_slice = slice::from_raw_parts_mut(coef, a_vec[order].vector_length());
+        for i in 0..coef_slice.len() {
+            coef_slice[i] = a_vec[order].vec[i];
+        }
+
+        // Write back pacf and var
+        let pacf_out = slice::from_raw_parts_mut(pacf, p_forward.vector_length());
+        for i in 0..pacf_out.len() {
+            pacf_out[i] = p_forward.vec[i];
+        }
+        let var_out = slice::from_raw_parts_mut(var, v_forward.vector_length());
+        for i in 0..var_out.len() {
+            var_out[i] = v_forward.vec[i];
+        }
     }
 }

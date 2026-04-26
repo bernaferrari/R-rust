@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
 // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2010	The R Foundation
@@ -37,16 +36,18 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // ---------------------------------------------------------------------------
 
 unsafe fn isInteger(x: SEXP) -> bool {
-    TYPEOF(x) == SEXPTYPE::INTSXP
+    unsafe { TYPEOF(x) == SEXPTYPE::INTSXP }
 }
 
 unsafe fn isReal(x: SEXP) -> bool {
-    crate::main::coerce::isReal(x) != 0
+    unsafe { crate::main::coerce::isReal(x) != 0 }
 }
 
 unsafe fn error(msg: &str) {
-    let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
-    Rf_error(c_msg.as_ptr());
+    unsafe {
+        let c_msg = std::ffi::CString::new(msg).unwrap_or_default();
+        Rf_error(c_msg.as_ptr());
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -61,29 +62,31 @@ unsafe fn error(msg: &str) {
 ///
 /// Note that m[] is modified in place.
 pub unsafe fn monoFC_mod(m: *mut c_double, S: *mut c_double, n: c_int) {
-    if n < 2 {
-        error("n must be at least two");
-        return;
-    }
+    unsafe {
+        if n < 2 {
+            error("n must be at least two");
+            return;
+        }
 
-    for k in 0..(n - 1) as usize {
-        let sk = *S.add(k);
-        let k1 = k + 1;
+        for k in 0..(n - 1) as usize {
+            let sk = *S.add(k);
+            let k1 = k + 1;
 
-        if sk == 0.0 {
-            *m.add(k) = 0.0;
-            *m.add(k1) = 0.0;
-        } else {
-            let alpha = *m.add(k) / sk;
-            let beta = *m.add(k1) / sk;
-            let a2b3 = 2.0 * alpha + beta - 3.0;
-            let ab23 = alpha + 2.0 * beta - 3.0;
+            if sk == 0.0 {
+                *m.add(k) = 0.0;
+                *m.add(k1) = 0.0;
+            } else {
+                let alpha = *m.add(k) / sk;
+                let beta = *m.add(k1) / sk;
+                let a2b3 = 2.0 * alpha + beta - 3.0;
+                let ab23 = alpha + 2.0 * beta - 3.0;
 
-            if a2b3 > 0.0 && ab23 > 0.0 && alpha * (a2b3 + ab23) < a2b3 * a2b3 {
-                // Outside the monotonicity region => fix slopes
-                let tau_s = 3.0 * sk / (alpha * alpha + beta * beta).sqrt();
-                *m.add(k) = tau_s * alpha;
-                *m.add(k1) = tau_s * beta;
+                if a2b3 > 0.0 && ab23 > 0.0 && alpha * (a2b3 + ab23) < a2b3 * a2b3 {
+                    // Outside the monotonicity region => fix slopes
+                    let tau_s = 3.0 * sk / (alpha * alpha + beta * beta).sqrt();
+                    *m.add(k) = tau_s * alpha;
+                    *m.add(k1) = tau_s * beta;
+                }
             }
         }
     }
@@ -94,42 +97,44 @@ pub unsafe fn monoFC_mod(m: *mut c_double, S: *mut c_double, n: c_int) {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn monoFC_m(m: SEXP, sx: SEXP) -> SEXP {
-    let n = LENGTH(m);
+    unsafe {
+        let n = LENGTH(m);
 
-    let val = if isInteger(m) {
-        // Coerce integer to real
-        let coerced = Rf_allocVector(SEXPTYPE::REALSXP, n);
-        Rf_protect(coerced);
-        for i in 0..n as usize {
-            let iv = *INTEGER(m).add(i);
-            *REAL(coerced).add(i) = iv as c_double;
-        }
-        Rf_unprotect(1);
-        coerced
-    } else {
-        if !isReal(m) {
-            error("Argument m must be numeric");
+        let val = if isInteger(m) {
+            // Coerce integer to real
+            let coerced = Rf_allocVector(SEXPTYPE::REALSXP, n);
+            Rf_protect(coerced);
+            for i in 0..n as usize {
+                let iv = *INTEGER(m).add(i);
+                *REAL(coerced).add(i) = iv as c_double;
+            }
+            Rf_unprotect(1);
+            coerced
+        } else {
+            if !isReal(m) {
+                error("Argument m must be numeric");
+                return R_NilValue();
+            }
+            duplicate(m)
+        };
+
+        Rf_protect(val);
+
+        if n < 2 {
+            error("length(m) must be at least two");
+            Rf_unprotect(1);
             return R_NilValue();
         }
-        duplicate(m)
-    };
+        if !isReal(sx) || LENGTH(sx) != n - 1 {
+            error("Argument Sx must be numeric vector one shorter than m[]");
+            Rf_unprotect(1);
+            return R_NilValue();
+        }
 
-    Rf_protect(val);
+        // Fix up the slopes m[] := val[]:
+        monoFC_mod(REAL(val), REAL(sx), n);
 
-    if n < 2 {
-        error("length(m) must be at least two");
         Rf_unprotect(1);
-        return R_NilValue();
+        val
     }
-    if !isReal(sx) || LENGTH(sx) != n - 1 {
-        error("Argument Sx must be numeric vector one shorter than m[]");
-        Rf_unprotect(1);
-        return R_NilValue();
-    }
-
-    // Fix up the slopes m[] := val[]:
-    monoFC_mod(REAL(val), REAL(sx), n);
-
-    Rf_unprotect(1);
-    val
 }
