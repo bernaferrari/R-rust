@@ -5,9 +5,11 @@
 //! graphics parameters, and engine callbacks.
 
 use std::ffi::CStr;
-use std::os::raw::{c_char, c_double, c_int};
+use std::os::raw::{c_char, c_int};
 
 use crate::attrib_core;
+use crate::library::grid::gpar::initGPar;
+use crate::library::grid::grid::getDevice;
 use crate::sexp::accessors::{
     CADR, CAR, INTEGER, LENGTH, LOGICAL, REAL, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT,
 };
@@ -18,31 +20,6 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::types::*;
-
-/* ==================== GE function stubs ==================== */
-
-unsafe extern "C" {
-    /// Stub: get current graphics device
-    #[link_name = "rmath_GEcurrentDevice"]
-    fn GEcurrentDevice() -> pGEDevDesc;
-    /// Stub: mark device as dirty
-    fn GEdirtyDevice(dd: pGEDevDesc);
-    /// Stub: start a new page on the device
-    fn GENewPage(gc: pGEcontext, dd: pGEDevDesc);
-    /// Stub: get device size in cm
-    fn getDeviceSize(dd: pGEDevDesc, width: *mut c_double, height: *mut c_double);
-    /// Stub: get the current device (grid wrapper for GEcurrentDevice)
-    fn getDevice() -> pGEDevDesc;
-
-    /// Stub: initialize viewport stack
-    fn initVP(dd: pGEDevDesc);
-    /// Stub: initialize graphics parameters
-    fn initGPar(dd: pGEDevDesc);
-    /// Stub: resolve graphics parameters
-    fn resolveGPar(gp: SEXP, by_name: c_int) -> SEXP;
-    /// Stub: create gcontext from gpar
-    fn gcontextFromgpar(gp: SEXP, i: c_int, gc: pGEcontext, dd: pGEDevDesc);
-}
 
 /* ==================== GE event constants ==================== */
 

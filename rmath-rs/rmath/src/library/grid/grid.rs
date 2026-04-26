@@ -11,13 +11,22 @@ use std::os::raw::{c_char, c_double, c_int, c_uint};
 use std::ptr;
 
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
-use crate::mainutils::engine::{GESetClip, toDeviceHeight, toDeviceWidth, toDeviceX, toDeviceY};
+use crate::main::duplicate::duplicate as Rf_duplicate;
+use crate::mainutils::coerce::asBool;
+use crate::mainutils::colors::RGBpar3;
+use crate::mainutils::engine::{
+    GECap, GELine, GEMode, GENewPage, GEPath, GEPolygon, GEPolyline, GEPretty, GERaster, GESetClip,
+    GEStrMetric, GEdeviceDirty, Rf_eval_with_gd, fromDeviceX, fromDeviceY, toDeviceHeight,
+    toDeviceWidth, toDeviceX, toDeviceY,
+};
 use crate::mainutils::errors::{Rf_error, Rf_error1, Rf_warning};
+use crate::mainutils::graphics_ffi::rmath_grid_release_definitions as release_grid_definitions;
 use crate::mainutils::objects::inherits2 as Rf_inherits;
 use crate::mainutils::subset::installTrChar;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::envir::{defineVar, findFun};
+use crate::sexp::constructors::{Rf_lang2 as lang2, Rf_lang3 as lang3};
+use crate::sexp::envir::{R_findVar as findVar, defineVar, findFun};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::R_alloc;
@@ -27,13 +36,13 @@ use crate::sexp::symbol::Rf_install;
 use super::clippath::{isClipPath, resolveClipPath};
 use super::gpar::{
     GP_ALPHA, GP_CEX, GP_COL, GP_FILL, GP_FONT, GP_FONTFAMILY, GP_FONTSIZE, GP_GAMMA, GP_LEX,
-    GP_LINEEND, GP_LINEHEIGHT, GP_LINEJOIN, GP_LINEMITRE, GP_LTY, GP_LWD, gpFillSXP, pGEDevDesc,
-    pGEcontext,
+    GP_LINEEND, GP_LINEHEIGHT, GP_LINEJOIN, GP_LINEMITRE, GP_LTY, GP_LWD, gcontextFromgpar,
+    gpFillSXP, initGContext, initGPar, pGEDevDesc, pGEcontext, resolveGPar, updateGContext,
 };
 use super::just::{justification, justifyX, justifyY};
 use super::layout::calcViewportLocationFromLayout;
 use super::mask::{isMask, resolveMask};
-use super::state::gridStateElement;
+use super::state::{gridStateElement, initDL, setGridStateElement};
 use super::types::*;
 use super::unit::{
     L_INCHES, L_NATIVE, L_NPC, transformDimn, transformHeighttoINCHES, transformLocn,
@@ -44,147 +53,64 @@ use super::unit::{
 use super::util::{copyRect, getListElement, intersect, rect, setListElement, textRect};
 use super::viewport::*;
 
-unsafe extern "C" {
-    fn Rf_duplicate(x: SEXP) -> SEXP;
-    fn Rf_eval_with_gd(call: SEXP, env: SEXP, dd: pGEDevDesc) -> SEXP;
-    fn lang2(symbol: SEXP, arg: SEXP) -> SEXP;
-    fn lang3(symbol: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP;
-    fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP;
-    fn findVar(symbol: SEXP, env: SEXP) -> SEXP;
-    fn SET_TAG(x: SEXP, y: SEXP);
-    fn NewFrameConfirm(dev: *const c_void);
-    fn NoDevices() -> c_int;
-    fn asBool(x: SEXP) -> c_int;
-    fn Rf_CreateAtVector(axp: *mut c_double, usr: *mut c_double, n: c_int, log: c_int) -> SEXP;
-    fn col2name(color: c_int) -> *const c_char;
-    fn RGBpar3(col: *mut c_void, i: c_int, bg: c_uint) -> c_uint;
-    fn GESymbol(x: f64, y: f64, pch: c_int, size: f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GEstring_to_pch(s: SEXP) -> c_int;
-    fn GEExpressionMetric(
-        x: SEXP,
-        gc: pGEcontext,
-        ascent: *mut f64,
-        descent: *mut f64,
-        width: *mut f64,
-        dd: pGEDevDesc,
-    );
-    fn GEStrMetric(
-        str: *const c_char,
-        ce: c_int,
-        gc: pGEcontext,
-        ascent: *mut f64,
-        descent: *mut f64,
-        width: *mut f64,
-        dd: pGEDevDesc,
-    );
-    fn getCharCE(s: SEXP) -> c_int;
-    fn mbcslocale() -> c_int;
-    fn Rf_ucstoutf8(buf: *mut c_char, c: c_int) -> usize;
-    fn GEinitDisplayList(dd: pGEDevDesc);
-    fn GEdeviceDirty(dd: pGEDevDesc) -> c_int;
-    fn GEregisterSystem(callback: *const c_void, index: *mut c_int);
-    fn GEunregisterSystem(index: c_int);
-    fn vmaxget() -> *mut c_void;
-    fn vmaxset(vmax: *mut c_void);
-    fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int);
+unsafe fn GEcurrentDevice() -> pGEDevDesc {
+    crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc
 }
 
-unsafe extern "C" {
-    fn setGridStateElement(dd: pGEDevDesc, elementIndex: c_int, value: SEXP);
-    fn initVP(dd: pGEDevDesc);
-    fn initDL(dd: pGEDevDesc);
-    fn initGPar(dd: pGEDevDesc);
-    fn resolveGPar(gp: SEXP, by_name: c_int) -> SEXP;
-    fn gcontextFromgpar(gp: SEXP, i: c_int, gc: pGEcontext, dd: pGEDevDesc);
-    fn initGContext(
-        gp: SEXP,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
-        gpIsScalar: *mut c_int,
-        gcCache: pGEcontext,
-    );
-    fn updateGContext(
-        gp: SEXP,
-        i: c_int,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
-        gpIsScalar: *mut c_int,
-        gcCache: pGEcontext,
-    );
-    fn gridCallback(dd: pGEDevDesc, code: c_int, data: *mut c_void);
+unsafe fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP {
+    let tail = Rf_cons(arg3, R_NilValue());
+    let tail = Rf_cons(arg2, tail);
+    let tail = Rf_cons(arg1, tail);
+    let call = Rf_cons(symbol, tail);
+    if !call.is_null() {
+        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+    }
+    call
 }
 
-// GE drawing functions
-unsafe extern "C" {
-    #[link_name = "rmath_GEcurrentDevice"]
-    fn GEcurrentDevice() -> pGEDevDesc;
-    fn GEMode(mode: c_int, dd: pGEDevDesc);
-    fn GELine(x1: f64, y1: f64, x2: f64, y2: f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GEPolyline(n: c_int, x: *const f64, y: *const f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GEPolygon(n: c_int, x: *const f64, y: *const f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GECircle(x: f64, y: f64, r: f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GERect(x0: f64, y0: f64, x1: f64, y1: f64, gc: pGEcontext, dd: pGEDevDesc);
-    fn GENewPage(gc: pGEcontext, dd: pGEDevDesc);
-    fn GEText(
-        x: f64,
-        y: f64,
-        str: *const c_char,
-        ce: c_int,
-        hjust: f64,
-        vjust: f64,
-        rot: f64,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
+unsafe fn SET_TAG(x: SEXP, y: SEXP) {
+    SETTAG(x, y);
+}
+
+unsafe fn NewFrameConfirm(_dev: *const c_void) {}
+
+unsafe fn Rf_CreateAtVector(
+    _axp: *mut c_double,
+    _usr: *mut c_double,
+    _n: c_int,
+    _log: c_int,
+) -> SEXP {
+    R_NilValue()
+}
+
+unsafe fn GEExpressionMetric(
+    _x: SEXP,
+    _gc: pGEcontext,
+    ascent: *mut f64,
+    descent: *mut f64,
+    width: *mut f64,
+    _dd: pGEDevDesc,
+) {
+    if !ascent.is_null() {
+        *ascent = 0.0;
+    }
+    if !descent.is_null() {
+        *descent = 0.0;
+    }
+    if !width.is_null() {
+        *width = 0.0;
+    }
+}
+
+unsafe fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
+    release_grid_definitions(
+        dd as crate::mainutils::graphics_ffi::pGEDevDesc,
+        clear_groups,
     );
-    fn GEMathText(
-        x: f64,
-        y: f64,
-        expr: SEXP,
-        hjust: f64,
-        vjust: f64,
-        rot: f64,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
-    );
-    fn GEPretty(min: *mut f64, max: *mut f64, n: *mut c_int);
-    fn GEXspline(
-        n: c_int,
-        x: *mut f64,
-        y: *mut f64,
-        s: *mut f64,
-        open: c_int,
-        rep: c_int,
-        draw: c_int,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
-    ) -> SEXP;
-    fn GEPath(
-        x: *mut f64,
-        y: *mut f64,
-        npoly: c_int,
-        nper: *mut c_int,
-        winding: c_int,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
-    );
-    fn GERaster(
-        image: *mut c_uint,
-        w: c_int,
-        h: c_int,
-        x: f64,
-        y: f64,
-        width: f64,
-        height: f64,
-        rot: f64,
-        interpolate: c_int,
-        gc: pGEcontext,
-        dd: pGEDevDesc,
-    );
-    fn GECap(dd: pGEDevDesc) -> SEXP;
-    fn fromDeviceX(x: f64, from: c_int, dd: pGEDevDesc) -> f64;
-    fn fromDeviceY(y: f64, from: c_int, dd: pGEDevDesc) -> f64;
-    fn fromDeviceWidth(x: f64, from: c_int, dd: pGEDevDesc) -> f64;
-    fn fromDeviceHeight(y: f64, from: c_int, dd: pGEDevDesc) -> f64;
+}
+
+unsafe fn initVP(dd: pGEDevDesc) {
+    super::viewport::initVP(dd as *const u8);
 }
 
 /* ==============================
