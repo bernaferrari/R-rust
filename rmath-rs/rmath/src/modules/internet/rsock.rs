@@ -3,8 +3,9 @@
 // and R_SockOpen/Listen/Connect/Close/Read/Write for connection-level use.
 // Unix implementation using libc system calls and lower-level sock.rs functions.
 
-use crate::sexp::*;
 use crate::sexp::memory_ext::R_alloc;
+use crate::sexp::*;
+use crate::special::mlutils::REprintf;
 use core::cell::Cell;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use libc::{
@@ -54,45 +55,11 @@ use libc::{
 // Socket port type (matches C: typedef unsigned short Sock_port_t)
 type Sock_port_t = u16;
 
-// Declare functions from sibling module sock.rs via extern "C"
-// These are #[unsafe(no_mangle)] pub(crate) functions in sock.rs
-unsafe extern "C" {
-    fn Sock_init() -> c_int;
-    fn Sock_open(port: Sock_port_t, blocking: c_int, perr: *mut super::sock::Sock_error_t)
-    -> c_int;
-    fn Sock_listen(
-        fd: c_int,
-        cname: *mut c_char,
-        buflen: c_int,
-        perr: *mut super::sock::Sock_error_t,
-    ) -> c_int;
-    fn Sock_connect(
-        port: Sock_port_t,
-        sname: *mut c_char,
-        perr: *mut super::sock::Sock_error_t,
-    ) -> c_int;
-    fn Sock_close(fd: c_int, perr: *mut super::sock::Sock_error_t) -> c_int;
-    fn Sock_read(
-        fd: c_int,
-        buf: *mut c_void,
-        sz: size_t,
-        perr: *mut super::sock::Sock_error_t,
-    ) -> ssize_t;
-    fn Sock_write(
-        fd: c_int,
-        buf: *const c_void,
-        sz: size_t,
-        perr: *mut super::sock::Sock_error_t,
-    ) -> ssize_t;
-    fn R_close_socket(s: c_int) -> c_int;
-    fn R_invalid_socket(s: c_int) -> c_int;
-    fn R_socket_error(s: c_int) -> c_int;
-    fn R_socket_error_eintr(s: c_int) -> c_int;
-    fn R_socket_errno() -> c_int;
-    fn R_socket_strerror(errnum: c_int) -> *mut c_char;
-    fn R_set_nonblocking(s: c_int) -> c_int;
-    fn REprintf(format: *const i8);
-}
+use super::sock::{
+    R_close_socket, R_invalid_socket, R_set_nonblocking, R_socket_errno, R_socket_error,
+    R_socket_error_eintr, R_socket_strerror, Sock_close, Sock_connect, Sock_init, Sock_listen,
+    Sock_open, Sock_read, Sock_write,
+};
 
 thread_local! { static sock_inited: Cell<c_int> = Cell::new(0); }
 
@@ -225,11 +192,7 @@ pub(crate) unsafe fn in_Rsockopen(port: *mut c_int) {
 
 /// in_Rsocklisten - listen on a socket (R .C interface)
 /// Signature: void in_Rsocklisten(int *sockp, char **buf, int *len)
-pub(crate) unsafe fn in_Rsocklisten(
-    sockp: *mut c_int,
-    buf: *mut *mut c_char,
-    len: *mut c_int,
-) {
+pub(crate) unsafe fn in_Rsocklisten(sockp: *mut c_int, buf: *mut *mut c_char, len: *mut c_int) {
     if sockp.is_null() || buf.is_null() || len.is_null() {
         return;
     }
@@ -281,11 +244,7 @@ pub(crate) unsafe fn in_Rsockclose(sockp: *mut c_int) {
 /// in_Rsockread - read from a socket (R .C interface)
 /// Allocates a buffer via R_alloc, copies read data into it, writes pointer to *buf.
 /// Signature: void in_Rsockread(int *sockp, char **buf, int *maxlen)
-pub(crate) unsafe fn in_Rsockread(
-    sockp: *mut c_int,
-    buf: *mut *mut c_char,
-    maxlen: *mut c_int,
-) {
+pub(crate) unsafe fn in_Rsockread(sockp: *mut c_int, buf: *mut *mut c_char, maxlen: *mut c_int) {
     if sockp.is_null() || buf.is_null() || maxlen.is_null() {
         return;
     }
@@ -485,11 +444,7 @@ pub(crate) unsafe fn R_SocketWaitMultiple(
 
 /// R_SockConnect - connect to a host:port with timeout (non-blocking connect + select)
 /// Signature: int R_SockConnect(int port, char *host, int timeout)
-pub(crate) unsafe fn R_SockConnect(
-    port: c_int,
-    host: *mut c_char,
-    timeout: c_int,
-) -> c_int {
+pub(crate) unsafe fn R_SockConnect(port: c_int, host: *mut c_char, timeout: c_int) -> c_int {
     check_init();
 
     let s = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -542,11 +497,7 @@ pub(crate) unsafe fn R_SockConnect(
     }
 
     let mut server: sockaddr_in = core::mem::zeroed();
-    core::ptr::copy_nonoverlapping(
-        (*ai).ai_addr as *const sockaddr_in,
-        &mut server,
-        1,
-    );
+    core::ptr::copy_nonoverlapping((*ai).ai_addr as *const sockaddr_in, &mut server, 1);
     server.sin_port = htons(port as u16);
     server.sin_family = AF_INET as u8;
     freeaddrinfo(res);

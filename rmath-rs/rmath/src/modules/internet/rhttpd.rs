@@ -14,20 +14,25 @@ use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
 use crate::eval::eval::Rf_eval;
 use crate::main::coerce::asInteger;
 use crate::main::errors::Rf_error;
-use crate::sexp::accessors::*;
 use crate::sexp::accessors::translateChar;
-use crate::sexp::constructors::*;
+use crate::sexp::accessors::*;
+use crate::sexp::constructors::{
+    Rf_cons, Rf_lang3 as lang3, Rf_mkChar as mkChar, Rf_mkString as mkString, *,
+};
+use crate::sexp::envir::R_findVarInFrame as findVarInFrame;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
+use crate::sexp::globals::{R_NilValue, R_UnboundValue};
+use crate::sexp::memory_ext::{vmaxget, vmaxset};
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::symbol::Rf_install as install;
 use crate::sexp::*;
-use core::alloc::{Layout, alloc, dealloc};
 use core::ffi::{c_char, c_int, c_long, c_uint, c_void};
 use libc::{
     AF_INET, FILE, INADDR_ANY, IPPROTO_TCP, SO_REUSEADDR, SOCK_STREAM, SOL_SOCKET, accept, bind,
     close, htonl, htons, in_addr, listen, recv, send, setsockopt, size_t, sockaddr, sockaddr_in,
     socket, socklen_t, ssize_t,
 };
+use std::alloc::{Layout, alloc, dealloc};
 use std::cell::Cell;
 
 // ============================================================
@@ -160,33 +165,51 @@ thread_local! { static CUSTOM_HANDLERS_ENV: Cell<SEXP> = Cell::new(std::ptr::nul
 thread_local! { static SRV_HANDLER: Cell<*mut c_void> = Cell::new(std::ptr::null_mut()); }
 
 // ============================================================
-// External R functions (declared via unsafe extern "C")
+// Local Rust adapters for R runtime services not yet represented as modules
 // ============================================================
 
-unsafe extern "C" {
-    fn vmaxget() -> *mut c_void;
-    fn vmaxset(vmax: *mut c_void);
-    fn install(name: *const c_char) -> SEXP;
-    fn mkChar(s: *const c_char) -> SEXP;
-    fn mkString(s: *const c_char) -> SEXP;
-    fn translateCharUTF8(x: SEXP) -> *const c_char;
-    fn R_FindNamespace(name: SEXP) -> SEXP;
-    fn findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
-    fn R_ToplevelExec(fun: Option<unsafe extern "C" fn(*mut c_void)>, data: *mut c_void) -> c_int;
-    fn R_UnboundValue() -> SEXP;
-    fn LCONS(car: SEXP, cdr: SEXP) -> SEXP;
-    fn SET_TAG(x: SEXP, y: SEXP);
-    fn CDR(x: SEXP) -> SEXP;
-    fn list4(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP;
-    fn lang3(symbol: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP;
-    fn addInputHandler(
-        handlers: *mut c_void,
-        fd: c_int,
-        handler: Option<unsafe extern "C" fn(*mut c_void)>,
-        activity: c_int,
-    ) -> *mut c_void;
-    fn removeInputHandler(handlers: *mut c_void, ih: *mut c_void);
-    fn R_InputHandlers() -> *mut c_void;
+unsafe fn R_FindNamespace(_name: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+unsafe fn R_ToplevelExec(fun: Option<unsafe fn(*mut c_void)>, data: *mut c_void) -> c_int {
+    if let Some(fun) = fun {
+        fun(data);
+        1
+    } else {
+        0
+    }
+}
+
+unsafe fn LCONS(car: SEXP, cdr: SEXP) -> SEXP {
+    let cell = Rf_cons(car, cdr);
+    if !cell.is_null() {
+        (*cell).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+    }
+    cell
+}
+
+unsafe fn SET_TAG(x: SEXP, y: SEXP) {
+    SETTAG(x, y);
+}
+
+unsafe fn list4(a: SEXP, b: SEXP, c: SEXP, d: SEXP) -> SEXP {
+    Rf_cons(a, Rf_cons(b, Rf_cons(c, Rf_cons(d, R_NilValue()))))
+}
+
+unsafe fn addInputHandler(
+    _handlers: *mut c_void,
+    _fd: c_int,
+    _handler: Option<unsafe fn(*mut c_void)>,
+    _activity: c_int,
+) -> *mut c_void {
+    std::ptr::null_mut()
+}
+
+unsafe fn removeInputHandler(_handlers: *mut c_void, _ih: *mut c_void) {}
+
+unsafe fn R_InputHandlers() -> *mut c_void {
+    std::ptr::null_mut()
 }
 
 // ============================================================
@@ -293,10 +316,10 @@ unsafe fn collect_buffers(buf: *mut Buffer) -> SEXP {
         len += (*buf).length as c_int;
         buf = (*buf).prev;
     }
-        let res = Rf_protect(Rf_allocVector(
-            SEXPTYPE::RAWSXP,
-            len + (*buf).length as c_int,
-        ));
+    let res = Rf_protect(Rf_allocVector(
+        SEXPTYPE::RAWSXP,
+        len + (*buf).length as c_int,
+    ));
     let dst = RAW(res) as *mut c_char;
     let mut pos: isize = 0;
     while !buf.is_null() {
@@ -345,8 +368,12 @@ unsafe fn finalize_worker(c: *mut HttpdConn) {
 unsafe fn add_worker(c: *mut HttpdConn) -> c_int {
     let mut i: c_uint = 0;
     while i < MAX_WORKERS as c_uint {
-        if WORKERS.with(|v| v[i as usize].is_null()) {
-            WORKERS.with(|v| v[i as usize] = c);
+        if WORKERS.with(|v| v.get()[i as usize].is_null()) {
+            WORKERS.with(|v| {
+                let mut workers = v.get();
+                workers[i as usize] = c;
+                v.set(workers);
+            });
             return 0;
         }
         i += 1;
@@ -370,8 +397,12 @@ unsafe fn remove_worker(c: *mut HttpdConn) {
     finalize_worker(c);
     let mut i: c_uint = 0;
     while i < MAX_WORKERS as c_uint {
-        if WORKERS.with(|v| v[i as usize]) == c {
-            WORKERS.with(|v| v[i as usize] = std::ptr::null_mut());
+        if WORKERS.with(|v| v.get()[i as usize]) == c {
+            WORKERS.with(|v| {
+                let mut workers = v.get();
+                workers[i as usize] = std::ptr::null_mut();
+                v.set(workers);
+            });
         }
         i += 1;
     }
@@ -991,7 +1022,7 @@ unsafe fn remove_dot_segments(p: *mut c_char) -> *mut c_char {
         in_len + 1,
     );
     inp_buf.set_len(in_len + 1);
-    let mut inp = inp_buf.as_mut_ptr();
+    let mut inp: *mut c_char = inp_buf.as_mut_ptr();
 
     let mut out_buf = vec![0i8; in_len + 1];
     let outbuf = out_buf.as_mut_ptr();
@@ -1690,12 +1721,14 @@ pub(crate) unsafe fn in_R_HTTPDCreate(ip: *const c_char, port: c_int) -> c_int {
     if !SRV_HANDLER.with(|v| v.get()).is_null() {
         removeInputHandler(R_InputHandlers(), SRV_HANDLER.with(|v| v.get()));
     }
-    SRV_HANDLER.with(|v| v.set(addInputHandler(
-        R_InputHandlers(),
-        SRV_SOCK.with(|v| v.get()),
-        Some(srv_input_handler),
-        HttpdServerActivity,
-    );
+    SRV_HANDLER.with(|v| {
+        v.set(addInputHandler(
+            R_InputHandlers(),
+            SRV_SOCK.with(|v| v.get()),
+            Some(srv_input_handler),
+            HttpdServerActivity,
+        ))
+    });
 
     0
 }

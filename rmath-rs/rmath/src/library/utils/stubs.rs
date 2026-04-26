@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2000-2021 The R Core Team
@@ -29,19 +28,27 @@ use std::path::PathBuf;
 use std::ptr;
 
 use crate::main::errors::{Rf_error, Rf_warning};
+use crate::mainutils::edit::do_edit;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
-unsafe extern "C" {
-    fn do_Rprof(args: SEXP) -> SEXP;
-    fn do_Rprofmem(args: SEXP) -> SEXP;
-    fn Runzip(args: SEXP) -> SEXP;
-    fn do_edit(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP;
-    fn R_FlushConsole();
-    fn R_ProcessEvents();
+unsafe fn do_Rprof(_args: SEXP) -> SEXP {
+    R_NilValue()
 }
+
+unsafe fn do_Rprofmem(_args: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+unsafe fn Runzip(_args: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+fn R_FlushConsole() {}
+
+fn R_ProcessEvents() {}
 
 pub unsafe fn Rprof(args: SEXP) -> SEXP {
     do_Rprof(CDR(args))

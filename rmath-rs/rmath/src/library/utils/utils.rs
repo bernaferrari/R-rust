@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2012   The R Core Team.
@@ -22,14 +21,11 @@
 
 use std::os::raw::{c_double, c_int};
 
+use crate::modules::internet::internet::in_do_download;
 use crate::sexp::accessors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
-unsafe extern "C" {
-    fn Rdownload(args: SEXP) -> SEXP;
-}
-
 pub unsafe fn download(args: SEXP) -> SEXP {
-    Rdownload(CDR(args))
+    in_do_download(CDR(args))
 }

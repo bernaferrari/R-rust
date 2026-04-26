@@ -532,19 +532,17 @@ unsafe fn http_download(
     }
 
     // Build headers string from SEXP if provided
-    let headers_cstr: Option<CString> = if headers != R_NilValue()
-        && TYPEOF(headers) == SEXPTYPE::STRSXP
-        && LENGTH(headers) > 0
-    {
-        let h = CHAR(STRING_ELT(headers, 0));
-        if !h.is_null() {
-            Some(CString::from(CStr::from_ptr(h)))
+    let headers_cstr: Option<CString> =
+        if headers != R_NilValue() && TYPEOF(headers) == SEXPTYPE::STRSXP && LENGTH(headers) > 0 {
+            let h = CHAR(STRING_ELT(headers, 0));
+            if !h.is_null() {
+                Some(CString::from(CStr::from_ptr(h)))
+            } else {
+                None
+            }
         } else {
             None
-        }
-    } else {
-        None
-    };
+        };
 
     let headers_ptr = match &headers_cstr {
         Some(s) => s.as_ptr(),
@@ -669,7 +667,7 @@ pub(crate) unsafe fn in_do_download(args: SEXP) -> SEXP {
         Rf_error(msg.as_ptr());
     }
     // Use translateChar for destfile (may have encoded paths)
-    let file = crate::main::sysutils::translateChar(STRING_ELT(sfile, 0));
+    let file = crate::sexp::accessors::translateChar(STRING_ELT(sfile, 0));
 
     // quiet
     let squiet = CAR(args);

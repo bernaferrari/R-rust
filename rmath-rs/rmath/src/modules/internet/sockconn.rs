@@ -7,11 +7,14 @@
 // here to access the fields we need. The private data (sockconn/servsockconn
 // structs) is stored in con->private.
 
-use crate::sexp::*;
+use super::rsock::{R_SockClose, R_SockConnect, R_SockListen, R_SockOpen, R_SockRead, R_SockWrite};
+use super::sock::R_set_nodelay;
 use crate::sexp::memory_ext::R_alloc;
-use core::alloc::{Layout, alloc, dealloc};
+use crate::sexp::*;
+use crate::special::mlutils::REprintf;
 use core::ffi::{c_char, c_int, c_void};
 use libc::{FD_SETSIZE, size_t, snprintf, ssize_t, strcpy, strlen};
+use std::alloc::{Layout, alloc, dealloc};
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -135,27 +138,6 @@ pub struct servsockconn {
 type Rservsockconn = *mut servsockconn;
 
 // ---------------------------------------------------------------------------
-// External function declarations (from rsock.rs and sock.rs)
-// ---------------------------------------------------------------------------
-
-unsafe extern "C" {
-    fn R_SockOpen(port: c_int) -> c_int;
-    fn R_SockListen(sockp: c_int, buf: *mut c_char, len: c_int, timeout: c_int) -> c_int;
-    fn R_SockConnect(port: c_int, host: *mut c_char, timeout: c_int) -> c_int;
-    fn R_SockClose(sockp: c_int) -> c_int;
-    fn R_SockRead(
-        sockp: c_int,
-        buf: *mut c_void,
-        maxlen: size_t,
-        blocking: c_int,
-        timeout: c_int,
-    ) -> ssize_t;
-    fn R_SockWrite(sockp: c_int, buf: *const c_void, len: size_t, timeout: c_int) -> ssize_t;
-    fn R_set_nodelay(s: c_int) -> c_int;
-    fn REprintf(format: *const i8);
-}
-
-// ---------------------------------------------------------------------------
 // Internal allocation helpers (using std::alloc instead of libc::malloc/free)
 // ---------------------------------------------------------------------------
 
@@ -260,7 +242,7 @@ unsafe fn init_con(new: Rconnection, description: *const c_char, enc: c_int, mod
 
 /// dummy_vfprintf - stub vfprintf for connections that don't support it.
 /// Matches C: int dummy_vfprintf(Rconnection con, const char *format, va_list ap)
-unsafe fn dummy_vfprintf(
+unsafe extern "C" fn dummy_vfprintf(
     _con: Rconnection,
     _format: *const c_char,
     _ap: *mut c_void,
@@ -270,7 +252,7 @@ unsafe fn dummy_vfprintf(
 
 /// dummy_fgetc - stub fgetc for connections that use fgetc_internal instead.
 /// Matches C: int dummy_fgetc(Rconnection con)
-unsafe fn dummy_fgetc(_con: Rconnection) -> c_int {
+unsafe extern "C" fn dummy_fgetc(_con: Rconnection) -> c_int {
     R_EOF
 }
 
@@ -332,7 +314,8 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
             // Check FD_SETSIZE
             if sock1 as usize >= FD_SETSIZE as usize {
                 R_SockClose(sock1);
-                REprintf(b"file descriptor is too large for select()\n\0".as_ptr() as *const libc::c_char);
+                REprintf(b"file descriptor is too large for select()\n\0".as_ptr()
+                    as *const libc::c_char);
                 return R_FALSE;
             }
 
@@ -351,7 +334,8 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
             sock = R_SockListen((*this).serverfd, buf.as_mut_ptr(), 256, timeout);
             if sock < 0 {
                 REprintf(
-                    b"problem in accepting connections on this socket\n\0".as_ptr() as *const libc::c_char,
+                    b"problem in accepting connections on this socket\n\0".as_ptr()
+                        as *const libc::c_char,
                 );
                 return R_FALSE;
             }
@@ -360,7 +344,9 @@ unsafe fn sock_open(con: Rconnection) -> c_int {
         // Check FD_SETSIZE for the accepted socket
         if sock as usize >= FD_SETSIZE as usize && ((*con).canwrite != 0 || (*con).blocking != 0) {
             R_SockClose(sock);
-            REprintf(b"file descriptor is too large for select()\n\0".as_ptr() as *const libc::c_char);
+            REprintf(
+                b"file descriptor is too large for select()\n\0".as_ptr() as *const libc::c_char
+            );
             return R_FALSE;
         }
 
@@ -558,7 +544,7 @@ unsafe fn sock_fgetc_internal(con: Rconnection) -> c_int {
 
 /// sock_read - read `nitems` objects of `size` bytes each from socket.
 /// Matches C: static size_t sock_read(void *ptr, size_t size, size_t nitems, Rconnection con)
-unsafe fn sock_read(
+unsafe extern "C" fn sock_read(
     ptr: *mut c_void,
     size: size_t,
     nitems: size_t,
@@ -577,7 +563,7 @@ unsafe fn sock_read(
 
 /// sock_write - write `nitems` objects of `size` bytes each to socket.
 /// Matches C: static size_t sock_write(const void *ptr, size_t size, size_t nitems, Rconnection con)
-unsafe fn sock_write(
+unsafe extern "C" fn sock_write(
     ptr: *const c_void,
     size: size_t,
     nitems: size_t,
@@ -603,22 +589,22 @@ unsafe fn sock_write(
 // ---------------------------------------------------------------------------
 
 /// Trampoline for sock_open to match the Rconn.open function pointer signature.
-unsafe fn sock_open_trampoline(con: *mut Rconn) -> c_int {
+unsafe extern "C" fn sock_open_trampoline(con: *mut Rconn) -> c_int {
     sock_open(con)
 }
 
 /// Trampoline for sock_close to match the Rconn.close function pointer signature.
-unsafe fn sock_close_trampoline(con: *mut Rconn) {
+unsafe extern "C" fn sock_close_trampoline(con: *mut Rconn) {
     sock_close(con);
 }
 
 /// Trampoline for servsock_close to match the Rconn.close function pointer signature.
-unsafe fn servsock_close_trampoline(con: *mut Rconn) {
+unsafe extern "C" fn servsock_close_trampoline(con: *mut Rconn) {
     servsock_close(con);
 }
 
 /// Trampoline for sock_fgetc_internal to match the Rconn.fgetc_internal function pointer signature.
-unsafe fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
+unsafe extern "C" fn sock_fgetc_internal_trampoline(con: *mut Rconn) -> c_int {
     sock_fgetc_internal(con)
 }
 
@@ -717,7 +703,9 @@ pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
     // Allocate the Rconn struct
     let new = alloc_boxed::<Rconn>();
     if new.is_null() {
-        REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char);
+        REprintf(
+            b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char,
+        );
         return core::ptr::null_mut();
     }
 
@@ -725,7 +713,9 @@ pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
     (*new).class = alloc_c_string(14);
     if (*new).class.is_null() {
         free_boxed(new);
-        REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char);
+        REprintf(
+            b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char,
+        );
         return core::ptr::null_mut();
     }
     strcpy((*new).class, b"servsockconn\0".as_ptr() as *const c_char);
@@ -735,7 +725,9 @@ pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
     if (*new).description.is_null() {
         free_c_string((*new).class);
         free_boxed(new);
-        REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char);
+        REprintf(
+            b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char,
+        );
         return core::ptr::null_mut();
     }
     strcpy((*new).description, b"localhost\0".as_ptr() as *const c_char);
@@ -757,7 +749,9 @@ pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
         free_c_string((*new).description);
         free_c_string((*new).class);
         free_boxed(new);
-        REprintf(b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char);
+        REprintf(
+            b"allocation of server socket connection failed\n\0".as_ptr() as *const libc::c_char,
+        );
         return core::ptr::null_mut();
     }
 
@@ -771,7 +765,8 @@ pub(crate) unsafe fn in_R_newservsock(port: c_int) -> Rconnection {
         free_c_string((*new).class);
         free_boxed(new);
         REprintf(
-            b"creation of server socket failed: port cannot be opened\n\0".as_ptr() as *const libc::c_char,
+            b"creation of server socket failed: port cannot be opened\n\0".as_ptr()
+                as *const libc::c_char,
         );
         return core::ptr::null_mut();
     }

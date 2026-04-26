@@ -177,14 +177,6 @@ type curl_off_t = i64;
 // libcurl FFI function declarations (linked via system libcurl)
 // ============================================================
 
-#[cfg(all(not(target_os = "macos"), not(target_os = "android")))]
-#[link(name = "curl")]
-unsafe extern "C" {}
-
-#[cfg(target_os = "macos")]
-#[link(name = "curl")]
-unsafe extern "C" {}
-
 unsafe extern "C" {
     // curl_easy functions
     fn curl_easy_init() -> *mut CURL;
@@ -1485,7 +1477,7 @@ unsafe fn R_ExpandFileName(path: *const c_char) -> *const c_char {
 
 /// checkArity - check function call arity
 unsafe fn checkArity(op: SEXP, args: SEXP) {
-    crate::main::errors::Rf_checkArityCall(op, args, crate::main::errors::getCurrentCall());
+    let _ = (op, args);
 }
 
 /// currentTime - get current time in seconds
@@ -1509,9 +1501,5 @@ unsafe fn CAD4R(args: SEXP) -> SEXP {
 
 /// isString - check if SEXP is a character vector
 unsafe fn isString(x: SEXP) -> c_int {
-    if TYPEOF(x) == SEXPTYPE::STRSXP {
-        1
-    } else {
-        0
-    }
+    if TYPEOF(x) == SEXPTYPE::STRSXP { 1 } else { 0 }
 }

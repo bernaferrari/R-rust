@@ -8,7 +8,7 @@
     unused_assignments,
     non_camel_case_types
 )]
-mod internet;
+pub(crate) mod internet;
 #[allow(
     dead_code,
     unused_imports,
@@ -44,7 +44,7 @@ mod rhttpd;
     unused_assignments,
     non_camel_case_types
 )]
-mod rsock;
+pub(crate) mod rsock;
 #[allow(
     dead_code,
     unused_imports,

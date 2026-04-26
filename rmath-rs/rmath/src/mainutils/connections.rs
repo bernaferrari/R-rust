@@ -321,6 +321,153 @@ fn get_connection_mut(n: usize) {
     // The caller should use the table directly for mutation
 }
 
+fn checked_connection_index(n: c_int) -> usize {
+    if n < 0 {
+        r_error("invalid connection");
+    }
+    let index = n as usize;
+    init_connections_table();
+    let table = connection_table();
+    if index >= table.len() || table[index].is_none() {
+        r_error("invalid connection");
+    }
+    index
+}
+
+/// Read one byte from a connection using the Rust connection table.
+pub(crate) fn connection_fgetc(n: c_int) -> c_int {
+    let index = checked_connection_index(n);
+    let mut table = connection_table();
+    let Some(conn) = table[index].as_mut() else {
+        r_error("invalid connection");
+    };
+
+    if !conn.isopen {
+        r_error("connection is not open");
+    }
+    if !conn.canread {
+        r_error("cannot read from this connection");
+    }
+
+    while let Some(buf) = conn.pushback.last_mut() {
+        if let Some(byte) = buf.pop() {
+            return byte as c_int;
+        }
+        conn.pushback.pop();
+    }
+
+    let mut byte = [0u8; 1];
+    let result = match &mut conn.kind {
+        ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => conn
+            .reader
+            .as_mut()
+            .map(|reader| reader.read(&mut byte))
+            .unwrap_or(Ok(0)),
+        ConnKind::Pipe => conn
+            .child
+            .as_mut()
+            .and_then(|child| child.stdout.as_mut())
+            .map(|stdout| stdout.read(&mut byte))
+            .unwrap_or(Ok(0)),
+        ConnKind::RawConnection => {
+            if conn.raw_pos >= conn.raw_data.len() {
+                Ok(0)
+            } else {
+                byte[0] = conn.raw_data[conn.raw_pos];
+                conn.raw_pos += 1;
+                Ok(1)
+            }
+        }
+        ConnKind::TextConnection => {
+            let data = conn.text_data.as_bytes();
+            if conn.text_pos >= data.len() {
+                Ok(0)
+            } else {
+                byte[0] = data[conn.text_pos];
+                conn.text_pos += 1;
+                Ok(1)
+            }
+        }
+        ConnKind::Terminal(name) if name == "stdin" => io::stdin().lock().read(&mut byte),
+        _ => {
+            r_error("cannot read from this connection type");
+        }
+    };
+
+    match result {
+        Ok(0) => R_EOF,
+        Ok(_) => byte[0] as c_int,
+        Err(e) => r_error(&format!("error reading from connection: {}", e)),
+    }
+}
+
+/// Push bytes back onto a connection so later reads see them first.
+pub(crate) fn connection_pushback(n: c_int, bytes: &[u8]) {
+    let index = checked_connection_index(n);
+    let mut table = connection_table();
+    let Some(conn) = table[index].as_mut() else {
+        r_error("invalid connection");
+    };
+
+    let mut pushed = bytes.to_vec();
+    pushed.reverse();
+    conn.pushback.push(pushed);
+}
+
+/// Write bytes to a connection using the Rust connection table.
+pub(crate) fn connection_write_bytes(n: c_int, bytes: &[u8]) {
+    let index = checked_connection_index(n);
+    let mut table = connection_table();
+    let Some(conn) = table[index].as_mut() else {
+        r_error("invalid connection");
+    };
+
+    if !conn.isopen {
+        r_error("connection is not open");
+    }
+    if !conn.canwrite {
+        r_error("cannot write to this connection");
+    }
+
+    match &mut conn.kind {
+        ConnKind::File | ConnKind::GzFile | ConnKind::BzFile | ConnKind::XzFile => {
+            if let Some(writer) = conn.writer.as_mut()
+                && let Err(e) = writer.write_all(bytes).and_then(|_| writer.flush())
+            {
+                r_error(&format!("error writing to connection: {}", e));
+            }
+        }
+        ConnKind::Pipe => {
+            if let Some(child) = conn.child.as_mut()
+                && let Some(stdin) = child.stdin.as_mut()
+                && let Err(e) = stdin.write_all(bytes).and_then(|_| stdin.flush())
+            {
+                r_error(&format!("error writing to pipe: {}", e));
+            }
+        }
+        ConnKind::RawConnection => conn.raw_data.extend_from_slice(bytes),
+        ConnKind::TextConnection => {
+            let text = String::from_utf8_lossy(bytes);
+            conn.text_lines.borrow_mut().push(text.into_owned());
+        }
+        ConnKind::Terminal(name) if name == "stdout" => {
+            let stdout = io::stdout();
+            let mut writer = stdout.lock();
+            if let Err(e) = writer.write_all(bytes).and_then(|_| writer.flush()) {
+                r_error(&format!("error writing to stdout: {}", e));
+            }
+        }
+        ConnKind::Terminal(name) if name == "stderr" => {
+            let stderr = io::stderr();
+            let mut writer = stderr.lock();
+            if let Err(e) = writer.write_all(bytes).and_then(|_| writer.flush()) {
+                r_error(&format!("error writing to stderr: {}", e));
+            }
+        }
+        _ => r_error("cannot write to this connection type"),
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Helper functions for extracting arguments from pairlist
 // ---------------------------------------------------------------------------

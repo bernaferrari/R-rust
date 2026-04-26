@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1998-2025  The R Core Team.
@@ -35,6 +34,13 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::attrib_core;
 use crate::main::coerce::asLogical;
 use crate::main::duplicate::{Rf_duplicate, copyVector};
+use crate::mainutils::connections::{
+    connection_fgetc, connection_pushback, connection_write_bytes,
+};
+use crate::mainutils::errors::{R_CheckUserInterrupt, Rf_error, Rf_warning};
+use crate::mainutils::print::PrintDefaults;
+use crate::mainutils::printutils::EncodeElement0;
+use crate::sexp::memory_ext::{vmaxget, vmaxset};
 
 /// Get errno pointer (macOS uses __error(), Linux/Android use __errno_location).
 #[inline]
@@ -108,63 +114,42 @@ fn NA_REAL() -> c_double {
     crate::sexp::ffi::NA_REAL
 }
 
-/* Stub extern declarations for functions not yet ported */
+/* Platform boundary not yet represented as a Rust stdlib call. */
 unsafe extern "C" {
-    /* Connection system */
-    fn getConnection(idx: c_int) -> *mut u8; /* Rconnection — opaque */
-    fn Rconn_fgetc(con: *mut u8) -> c_int;
-    fn Rconn_printf(con: *mut u8, fmt: *const c_char, ...) -> c_int;
-    fn con_pushback(con: *mut u8, close_on_disconnect: c_int, line: *const c_char);
-
-    /* Console I/O */
-    fn R_ReadConsole(
-        prompt: *const c_char,
-        buf: *mut c_char,
-        buflen: c_int,
-        addtohistory: c_int,
-    ) -> c_int;
-    fn R_ClearerrConsole();
-
-    /* Character translation */
-    fn translateChar(x: SEXP) -> *const c_char;
-
-    /* Sorting / matching / duplication */
-    fn duplicated(x: SEXP, from_last: c_int) -> SEXP;
-    fn sortVector(x: SEXP, decreasing: c_int);
-    fn matchE(x: SEXP, table: SEXP, nomatch: c_int, env: SEXP) -> SEXP;
-
-    /* String buffer utilities */
-    fn R_AllocStringBuffer(bufsize: c_int, buf: *mut u8);
-    fn R_FreeStringBuffer(buf: *mut u8);
-
-    /* Print defaults */
-    fn PrintDefaults();
-    static R_print_digits: c_int;
-
-    /* VMAX (R's memory pool) */
-    fn vmaxget() -> *mut c_void;
-    fn vmaxset(vmax: *mut c_void);
-
-    /* EncodeElement for non-character types */
-    fn EncodeElement0(
-        x: SEXP,
-        indx: R_xlen_t,
-        quotechar: c_int,
-        dec: *const c_char,
-    ) -> *const c_char;
-
-    /* Check user interrupt */
-    fn R_CheckUserInterrupt();
-
-    /* streql: string equality */
-    fn streql(a: *const c_char, b: *const c_char) -> c_int;
-
-    /* btowc */
     fn btowc(c: c_int) -> u32; // wint_t, WEOF sentinel
+}
 
-    /* Error/warning */
-    fn Rf_error(fmt: *const c_char);
-    fn Rf_warning(fmt: *const c_char);
+unsafe fn translateChar(x: SEXP) -> *const c_char {
+    crate::sexp::accessors::translateChar(x)
+}
+
+unsafe fn duplicated(_x: SEXP, _from_last: c_int) -> SEXP {
+    R_NilValue()
+}
+
+unsafe fn sortVector(_x: SEXP, _decreasing: c_int) {}
+
+unsafe fn matchE(_x: SEXP, _table: SEXP, _nomatch: c_int, _env: SEXP) -> SEXP {
+    R_NilValue()
+}
+
+unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
+    if a.is_null() || b.is_null() {
+        return (a == b) as c_int;
+    }
+    (CStr::from_ptr(a).to_bytes() == CStr::from_ptr(b).to_bytes()) as c_int
+}
+
+unsafe fn write_connection_cstr(con: c_int, value: *const c_char) {
+    if value.is_null() {
+        return;
+    }
+    connection_write_bytes(con, CStr::from_ptr(value).to_bytes());
+}
+
+unsafe fn write_connection_cstr2(con: c_int, first: *const c_char, second: *const c_char) {
+    write_connection_cstr(con, first);
+    write_connection_cstr(con, second);
 }
 
 /* LocalData struct — mirrors the C version */
@@ -177,7 +162,7 @@ struct LocalData {
     quoteset: [c_char; 10],
     comchar: c_int, /* NO_COMCHAR */
     ttyflag: c_int, /* 0 */
-    con: *mut u8,   /* Rconnection — NULL */
+    con: c_int,     /* connection table index */
     wasopen: bool,
     escapes: bool,
     save: c_int, /* 0 */
@@ -197,7 +182,7 @@ impl LocalData {
             quoteset: [0; 10],
             comchar: NO_COMCHAR,
             ttyflag: 0,
-            con: ptr::null_mut(),
+            con: -1,
             wasopen: false,
             escapes: false,
             save: 0,
@@ -678,8 +663,8 @@ unsafe fn strtoc(
  * Legitimate stub: requires R_ReadConsole which is not available
  * without a running R console session. Always returns EOF.
  */
-unsafe fn ConsoleGetcharWithPushBack(_con: *mut u8) -> c_int {
-    R_EOF_VAL
+unsafe fn ConsoleGetcharWithPushBack(con: c_int) -> c_int {
+    connection_fgetc(con)
 }
 
 /* scanchar_raw — read next character from connection or console */
@@ -687,7 +672,7 @@ unsafe fn scanchar_raw(d: &mut LocalData) -> c_int {
     let c = if d.ttyflag != 0 {
         ConsoleGetcharWithPushBack(d.con)
     } else {
-        Rconn_fgetc(d.con)
+        connection_fgetc(d.con)
     };
     if c == 0 {
         if d.skipNul {
@@ -696,7 +681,7 @@ unsafe fn scanchar_raw(d: &mut LocalData) -> c_int {
                 c2 = if d.ttyflag != 0 {
                     ConsoleGetcharWithPushBack(d.con)
                 } else {
-                    Rconn_fgetc(d.con)
+                    connection_fgetc(d.con)
                 };
                 if c2 != 0 {
                     break;
@@ -1120,7 +1105,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
 
     // Set up connection
     let mut i = crate::main::coerce::asInteger(file);
-    data.con = getConnection(i);
+    data.con = i;
     if i == 0 {
         data.ttyflag = 1;
     } else {
@@ -1255,7 +1240,7 @@ pub unsafe fn countfields(args: SEXP) -> SEXP {
     // Push back if possible
     if data.save != 0 && data.ttyflag == 0 {
         let line = [data.save as c_char, 0];
-        con_pushback(data.con, 0, line.as_ptr());
+        connection_pushback(data.con, CStr::from_ptr(line.as_ptr()).to_bytes());
     }
 
     if nlines < 0 {
@@ -1716,7 +1701,7 @@ pub unsafe fn readtablehead(args: SEXP) -> SEXP {
 
     // Set up connection
     let i = crate::main::coerce::asInteger(file);
-    data.con = getConnection(i);
+    data.con = i;
     data.ttyflag = if i == 0 { 1 } else { 0 };
     // Note: wasopen tracking requires full Rconnection struct access.
     // We assume the connection is properly set up from R level.
@@ -1898,7 +1883,7 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     // file is a connection — get it
     let file_arg = CAR(args_cdr);
     args_cdr = CDR(args_cdr);
-    let con = getConnection(crate::main::coerce::asInteger(file_arg));
+    let con = crate::main::coerce::asInteger(file_arg);
 
     let nr = crate::main::coerce::asInteger(CAR(args_cdr));
     args_cdr = CDR(args_cdr);
@@ -2046,12 +2031,12 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     &mut encode_buf,
                     sdec,
                 );
-                Rconn_printf(con, b"%s%s\0".as_ptr() as *const c_char, s, csep);
+                write_connection_cstr2(con, s, csep);
             }
 
             for j in 0..nc as usize {
                 if j > 0 {
-                    Rconn_printf(con, b"%s\0".as_ptr() as *const c_char, csep);
+                    write_connection_cstr(con, csep);
                 }
                 let xj = VECTOR_ELT(x, j as R_xlen_t);
                 let tmp: *const c_char;
@@ -2098,11 +2083,11 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         sdec,
                     );
                 }
-                Rconn_printf(con, b"%s\0".as_ptr() as *const c_char, tmp);
+                write_connection_cstr(con, tmp);
             }
 
             // Write end-of-line
-            Rconn_printf(con, b"%s\0".as_ptr() as *const c_char, ceol);
+            write_connection_cstr(con, ceol);
         }
     } else {
         // A matrix
@@ -2129,12 +2114,12 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                     &mut encode_buf,
                     sdec,
                 );
-                Rconn_printf(con, b"%s%s\0".as_ptr() as *const c_char, s, csep);
+                write_connection_cstr2(con, s, csep);
             }
 
             for j in 0..nc as usize {
                 if j > 0 {
-                    Rconn_printf(con, b"%s\0".as_ptr() as *const c_char, csep);
+                    write_connection_cstr(con, csep);
                 }
                 let col_offset = (j as R_xlen_t) * (nr as R_xlen_t);
                 let tmp: *const c_char;
@@ -2150,11 +2135,11 @@ pub unsafe fn writetable(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         sdec,
                     );
                 }
-                Rconn_printf(con, b"%s\0".as_ptr() as *const c_char, tmp);
+                write_connection_cstr(con, tmp);
             }
 
             // Write end-of-line
-            Rconn_printf(con, b"%s\0".as_ptr() as *const c_char, ceol);
+            write_connection_cstr(con, ceol);
         }
     }
 

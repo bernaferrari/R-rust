@@ -1,5 +1,6 @@
 //! R modules (internet, lapack, X11)
 
+pub(crate) mod internet;
 #[allow(
     dead_code,
     unused_imports,

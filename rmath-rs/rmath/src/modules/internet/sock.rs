@@ -69,12 +69,16 @@ pub(crate) struct Sock_error_t {
 unsafe fn get_errno() -> c_int {
     #[cfg(target_os = "macos")]
     {
-        unsafe extern "C" { fn __error() -> *mut c_int; }
+        unsafe extern "C" {
+            fn __error() -> *mut c_int;
+        }
         *__error()
     }
     #[cfg(not(target_os = "macos"))]
     {
-        unsafe extern "C" { fn __errno_location() -> *mut c_int; }
+        unsafe extern "C" {
+            fn __errno_location() -> *mut c_int;
+        }
         *__errno_location()
     }
 }
@@ -328,11 +332,7 @@ pub(crate) unsafe fn Sock_listen(
                 // Fallback to "unknown" on failure
                 let unknown = b"unknown\0";
                 let copy_len = std::cmp::min(unknown.len() - 1, (buflen - 1) as usize);
-                core::ptr::copy_nonoverlapping(
-                    unknown.as_ptr() as *const c_char,
-                    cname,
-                    copy_len,
-                );
+                core::ptr::copy_nonoverlapping(unknown.as_ptr() as *const c_char, cname, copy_len);
                 *cname.add(copy_len) = 0;
             } else {
                 // getnameinfo null-terminates; copy up to buflen-1
@@ -391,11 +391,7 @@ pub(crate) unsafe fn Sock_connect(
         }
 
         let mut server: sockaddr_in = core::mem::zeroed();
-        core::ptr::copy_nonoverlapping(
-            (*ai).ai_addr as *const sockaddr_in,
-            &mut server,
-            1,
-        );
+        core::ptr::copy_nonoverlapping((*ai).ai_addr as *const sockaddr_in, &mut server, 1);
         server.sin_port = htons(port as u16);
         server.sin_family = AF_INET as u8;
         freeaddrinfo(res);
