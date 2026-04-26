@@ -33,7 +33,7 @@ use crate::sexp::constructors::{
     Rf_ScalarInteger, Rf_ScalarLogical, Rf_allocVector, Rf_mkChar, Rf_mkCharLen,
 };
 use crate::sexp::ffi::{SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 unsafe fn require_scalar(x: SEXP, message: &[u8]) {
@@ -71,14 +71,14 @@ pub unsafe fn sockread(sport: SEXP, smaxlen: SEXP) -> SEXP {
             Rf_error(b"Error reading data in Rsockread\0".as_ptr() as *const c_char);
         }
 
-        let ans = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _ans_guard = protect(ans);
         let charsxp = if maxlen == 0 {
             Rf_mkCharLen(b"\0".as_ptr() as *const c_char, 0)
         } else {
             Rf_mkCharLen(buf, maxlen)
         };
         SET_STRING_ELT(ans, 0, charsxp);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -114,11 +114,12 @@ pub unsafe fn socklisten(sport: SEXP) -> SEXP {
         let mut abuf = &mut bufp as *mut *mut c_char;
         in_Rsocklisten(&mut sock, abuf, &mut len);
 
-        let ans = Rf_protect(Rf_ScalarInteger(sock));
-        let host = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let ans = Rf_ScalarInteger(sock);
+        let _ans_guard = protect(ans);
+        let host = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _host_guard = protect(host);
         SET_STRING_ELT(host, 0, Rf_mkChar(buf.as_ptr()));
         setAttrib(ans, Rf_install(b"host\0".as_ptr() as *const c_char), host);
-        Rf_unprotect(2);
         ans
     }
 }

@@ -86,35 +86,31 @@ unsafe fn cstr_to_str<'a>(s: *const c_char) -> &'a str {
 
 /// putdots - print download progress dots to stderr
 /// One dot per KB downloaded, newline every 50, space every 10
-unsafe fn putdots(pold: *mut DLsize_t, new_val: DLsize_t) {
-    unsafe {
-        let old = *pold;
-        *pold = new_val;
-        let mut i = old;
-        while i < new_val {
-            eprint!(".");
-            let pos = i + 1;
-            if pos % 50 == 0 {
-                eprintln!();
-            } else if pos % 10 == 0 {
-                eprint!(" ");
-            }
-            i += 1;
+fn putdots(old_value: &mut DLsize_t, new_val: DLsize_t) {
+    let old = *old_value;
+    *old_value = new_val;
+    let mut i = old;
+    while i < new_val {
+        eprint!(".");
+        let pos = i + 1;
+        if pos % 50 == 0 {
+            eprintln!();
+        } else if pos % 10 == 0 {
+            eprint!(" ");
         }
+        i += 1;
     }
 }
 
 /// putdashes - print download progress dashes to stderr
 /// Dashes represent progress bar (up to 50 chars)
-unsafe fn putdashes(pold: *mut c_int, new_val: c_int) {
-    unsafe {
-        let old = *pold;
-        *pold = new_val;
-        let mut i = old;
-        while i < new_val {
-            eprint!("=");
-            i += 1;
-        }
+fn putdashes(old_value: &mut c_int, new_val: c_int) {
+    let old = *old_value;
+    *old_value = new_val;
+    let mut i = old;
+    while i < new_val {
+        eprint!("=");
+        i += 1;
     }
 }
 
