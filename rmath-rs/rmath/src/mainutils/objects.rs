@@ -21,7 +21,7 @@ use crate::sexp::context::{R_GlobalContext, RCNTXT};
 use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocList;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -366,12 +366,11 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
         }
         let len = n - pos;
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         for i in 0..len {
             let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
             SET_STRING_ELT(ans, i as R_xlen_t, src);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -2448,11 +2447,10 @@ unsafe fn dispatchNonGeneric(name: SEXP, env: SEXP, _fdef: SEXP) -> SEXP {
         let e = crate::mainutils::duplicate::shallow_duplicate(crate::eval::context::R_syscall(
             0, cptr,
         ));
-        Rf_protect(e);
+        let _e_guard = protect(e);
         SETCAR(e, fun);
 
         let value = crate::eval::eval::Rf_eval(e, (*cptr).sysparent);
-        crate::sexp::protect::Rf_unprotect(1);
         value
     }
 }
@@ -2737,14 +2735,13 @@ pub unsafe fn R_possible_dispatch(
                 R_NilValue(),
             );
             let mlist = get_primitive_methods_stub(op, rho);
-            Rf_protect(mlist);
+            let _mlist_guard = protect(mlist);
             do_set_prim_method(
                 op,
                 b"set\x00".as_ptr() as *const c_char,
                 R_NilValue(),
                 mlist,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
         let prim_mlist_ptr = PRIM_MLIST.with(|v| v.get());
