@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/grDevices/src/patterns.c
@@ -6,22 +5,15 @@
  *  Pattern support (stub - requires GE).
  */
 
-use std::ptr;
-
-use crate::sexp::accessors::{CADR, CAR, CDR};
+use crate::mainutils::errors::Rf_error_unimplemented;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
 
-type pGEDevDesc = *mut std::ffi::c_void;
-
-/// Stub: GEcurrentDevice - returns null.
-unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    ptr::null_mut()
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned");
 }
 
 /// setPattern - set a fill pattern for the current device.
-pub unsafe fn setPattern(args: SEXP) -> SEXP {
-    let _dd = GEcurrentDevice();
-    // Stub: cannot access dd->appending or dd->dev->setPattern on void* dd
-    R_NilValue()
+pub fn setPattern(_args: SEXP) -> SEXP {
+    unsupported("grDevices::setPattern")
 }

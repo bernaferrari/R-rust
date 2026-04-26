@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/grDevices/src/mask.c
@@ -6,22 +5,15 @@
  *  Mask support (stub - requires GE).
  */
 
-use std::ptr;
-
-use crate::sexp::accessors::{CADDR, CADR, CAR, CDR};
+use crate::mainutils::errors::Rf_error_unimplemented;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
 
-type pGEDevDesc = *mut std::ffi::c_void;
-
-/// Stub: GEcurrentDevice - returns null.
-unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    ptr::null_mut()
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned");
 }
 
 /// setMask - set the mask for the current device.
-pub unsafe fn setMask(args: SEXP) -> SEXP {
-    let _dd = GEcurrentDevice();
-    // Stub: cannot access dd->appending or dd->dev->setMask on void* dd
-    R_NilValue()
+pub fn setMask(_args: SEXP) -> SEXP {
+    unsupported("grDevices::setMask")
 }
