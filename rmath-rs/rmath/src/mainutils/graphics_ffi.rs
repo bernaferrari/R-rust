@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 #![allow(non_snake_case, non_camel_case_types, dead_code)]
 
 use std::ffi::{CStr, CString, c_void};
@@ -26,6 +25,8 @@ pub type pGEcontext = *const R_GE_gcontext;
 pub type pDevDesc = *mut DevDesc;
 pub type pGEDevDesc = *mut GEDevDesc;
 
+// These C ABI function pointers are part of R's device descriptor contract.
+// The Rust callers below stay Rust ABI; only device callback slots use extern "C".
 type VoidFn = Option<unsafe extern "C" fn()>;
 type ClipFn = Option<unsafe extern "C" fn(c_double, c_double, c_double, c_double, pDevDesc)>;
 type CircleFn = Option<unsafe extern "C" fn(c_double, c_double, c_double, pGEcontext, pDevDesc)>;
@@ -324,7 +325,7 @@ unsafe fn ge_device_version(dd: pGEDevDesc) -> c_int {
     with_dev(dd).map_or(0, |dev| (*dev).deviceVersion)
 }
 
-pub unsafe extern "C" fn rmath_grid_release_pattern(dd: pGEDevDesc, ref_: SEXP) {
+pub(crate) unsafe fn rmath_grid_release_pattern(dd: pGEDevDesc, ref_: SEXP) {
     if let Some(dev) = with_dev(dd) {
         if let Some(release) = (*dev).releasePattern {
             release(ref_, dev);
@@ -332,7 +333,7 @@ pub unsafe extern "C" fn rmath_grid_release_pattern(dd: pGEDevDesc, ref_: SEXP) 
     }
 }
 
-pub unsafe extern "C" fn rmath_grid_release_clip_path(dd: pGEDevDesc, ref_: SEXP) {
+pub(crate) unsafe fn rmath_grid_release_clip_path(dd: pGEDevDesc, ref_: SEXP) {
     if let Some(dev) = with_dev(dd) {
         if let Some(release) = (*dev).releaseClipPath {
             release(ref_, dev);
@@ -340,7 +341,7 @@ pub unsafe extern "C" fn rmath_grid_release_clip_path(dd: pGEDevDesc, ref_: SEXP
     }
 }
 
-pub unsafe extern "C" fn rmath_grid_release_mask(dd: pGEDevDesc, ref_: SEXP) {
+pub(crate) unsafe fn rmath_grid_release_mask(dd: pGEDevDesc, ref_: SEXP) {
     if let Some(dev) = with_dev(dd) {
         if let Some(release) = (*dev).releaseMask {
             release(ref_, dev);
@@ -348,7 +349,7 @@ pub unsafe extern "C" fn rmath_grid_release_mask(dd: pGEDevDesc, ref_: SEXP) {
     }
 }
 
-pub unsafe extern "C" fn rmath_grid_release_group(dd: pGEDevDesc, ref_: SEXP) {
+pub(crate) unsafe fn rmath_grid_release_group(dd: pGEDevDesc, ref_: SEXP) {
     if let Some(dev) = with_dev(dd) {
         if let Some(release) = (*dev).releaseGroup {
             release(ref_, dev);
@@ -356,7 +357,7 @@ pub unsafe extern "C" fn rmath_grid_release_group(dd: pGEDevDesc, ref_: SEXP) {
     }
 }
 
-pub unsafe extern "C" fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
+pub(crate) unsafe fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
     rmath_grid_release_pattern(dd, R_NilValue());
     rmath_grid_release_clip_path(dd, R_NilValue());
     rmath_grid_release_mask(dd, R_NilValue());
@@ -366,7 +367,7 @@ pub unsafe extern "C" fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_gr
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_set_clip(
+pub(crate) unsafe fn rmath_ge_set_clip(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -380,7 +381,7 @@ pub unsafe extern "C" fn rmath_ge_set_clip(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_line(
+pub(crate) unsafe fn rmath_ge_line(
     x1: c_double,
     y1: c_double,
     x2: c_double,
@@ -395,7 +396,7 @@ pub unsafe extern "C" fn rmath_ge_line(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_polyline(
+pub(crate) unsafe fn rmath_ge_polyline(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -409,7 +410,7 @@ pub unsafe extern "C" fn rmath_ge_polyline(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_polygon(
+pub(crate) unsafe fn rmath_ge_polygon(
     n: c_int,
     x: *mut c_double,
     y: *mut c_double,
@@ -423,7 +424,7 @@ pub unsafe extern "C" fn rmath_ge_polygon(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_circle(
+pub(crate) unsafe fn rmath_ge_circle(
     x: c_double,
     y: c_double,
     radius: c_double,
@@ -437,7 +438,7 @@ pub unsafe extern "C" fn rmath_ge_circle(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_rect(
+pub(crate) unsafe fn rmath_ge_rect(
     x0: c_double,
     y0: c_double,
     x1: c_double,
@@ -452,7 +453,7 @@ pub unsafe extern "C" fn rmath_ge_rect(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_path(
+pub(crate) unsafe fn rmath_ge_path(
     x: *mut c_double,
     y: *mut c_double,
     npoly: c_int,
@@ -476,7 +477,7 @@ pub unsafe extern "C" fn rmath_ge_path(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_raster(
+pub(crate) unsafe fn rmath_ge_raster(
     raster: *mut c_uint,
     w: c_int,
     h: c_int,
@@ -508,7 +509,7 @@ pub unsafe extern "C" fn rmath_ge_raster(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_text(
+pub(crate) unsafe fn rmath_ge_text(
     x: c_double,
     y: c_double,
     str_: *const c_char,
@@ -524,7 +525,7 @@ pub unsafe extern "C" fn rmath_ge_text(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_text_with_encoding(
+pub(crate) unsafe fn rmath_ge_text_with_encoding(
     x: c_double,
     y: c_double,
     str_: *const c_char,
@@ -547,7 +548,7 @@ pub unsafe extern "C" fn rmath_ge_text_with_encoding(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_mode(mode: c_int, dd: pGEDevDesc) {
+pub(crate) unsafe fn rmath_ge_mode(mode: c_int, dd: pGEDevDesc) {
     if let Some(dev) = with_dev(dd) {
         if let Some(mode_fn) = (*dev).mode {
             mode_fn(mode, dev);
@@ -555,7 +556,7 @@ pub unsafe extern "C" fn rmath_ge_mode(mode: c_int, dd: pGEDevDesc) {
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_new_page(gc: pGEcontext, dd: pGEDevDesc) {
+pub(crate) unsafe fn rmath_ge_new_page(gc: pGEcontext, dd: pGEDevDesc) {
     if let Some(dev) = with_dev(dd) {
         if let Some(new_page) = (*dev).newPage {
             new_page(gc, dev);
@@ -563,7 +564,7 @@ pub unsafe extern "C" fn rmath_ge_new_page(gc: pGEcontext, dd: pGEDevDesc) {
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_stroke(path: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
+pub(crate) unsafe fn rmath_ge_stroke(path: SEXP, gc: pGEcontext, dd: pGEDevDesc) {
     if let Some(dev) = with_dev(dd) {
         if let Some(stroke) = (*dev).stroke {
             stroke(path, gc, dev);
@@ -571,7 +572,7 @@ pub unsafe extern "C" fn rmath_ge_stroke(path: SEXP, gc: pGEcontext, dd: pGEDevD
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_fill(path: SEXP, rule: c_int, gc: pGEcontext, dd: pGEDevDesc) {
+pub(crate) unsafe fn rmath_ge_fill(path: SEXP, rule: c_int, gc: pGEcontext, dd: pGEDevDesc) {
     if let Some(dev) = with_dev(dd) {
         if let Some(fill) = (*dev).fill {
             fill(path, rule, gc, dev);
@@ -579,12 +580,7 @@ pub unsafe extern "C" fn rmath_ge_fill(path: SEXP, rule: c_int, gc: pGEcontext, 
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_fill_stroke(
-    path: SEXP,
-    rule: c_int,
-    gc: pGEcontext,
-    dd: pGEDevDesc,
-) {
+pub(crate) unsafe fn rmath_ge_fill_stroke(path: SEXP, rule: c_int, gc: pGEcontext, dd: pGEDevDesc) {
     if let Some(dev) = with_dev(dd) {
         if let Some(fill_stroke) = (*dev).fillStroke {
             fill_stroke(path, rule, gc, dev);
@@ -592,23 +588,23 @@ pub unsafe extern "C" fn rmath_ge_fill_stroke(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_device_dirty(dd: pGEDevDesc) -> c_int {
+pub(crate) unsafe fn rmath_ge_device_dirty(dd: pGEDevDesc) -> c_int {
     if dd.is_null() { FALSE } else { (*dd).dirty }
 }
 
-pub unsafe extern "C" fn rmath_ge_mark_dirty(dd: pGEDevDesc) {
+pub(crate) unsafe fn rmath_ge_mark_dirty(dd: pGEDevDesc) {
     if !dd.is_null() {
         (*dd).dirty = TRUE;
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_mark_clean(dd: pGEDevDesc) {
+pub(crate) unsafe fn rmath_ge_mark_clean(dd: pGEDevDesc) {
     if !dd.is_null() {
         (*dd).dirty = FALSE;
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_recording(dd: pGEDevDesc) -> c_int {
+pub(crate) unsafe fn rmath_ge_recording(dd: pGEDevDesc) -> c_int {
     if dd.is_null() {
         FALSE
     } else {
@@ -616,73 +612,73 @@ pub unsafe extern "C" fn rmath_ge_recording(dd: pGEDevDesc) -> c_int {
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_set_recording(dd: pGEDevDesc, value: c_int) {
+pub(crate) unsafe fn rmath_ge_set_recording(dd: pGEDevDesc, value: c_int) {
     if !dd.is_null() {
         (*dd).recordGraphics = if value != 0 { TRUE } else { FALSE };
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_device_left(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_left(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).left)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_right(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_right(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).right)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_bottom(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_bottom(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).bottom)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_top(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_top(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).top)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_ipr_x(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_ipr_x(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).ipr[0])
 }
 
-pub unsafe extern "C" fn rmath_ge_device_ipr_y(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_ipr_y(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).ipr[1])
 }
 
-pub unsafe extern "C" fn rmath_ge_device_cra_y(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_cra_y(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(0.0, |dev| (*dev).cra[1])
 }
 
-pub unsafe extern "C" fn rmath_ge_device_startps(dd: pGEDevDesc) -> c_double {
+pub(crate) unsafe fn rmath_ge_device_startps(dd: pGEDevDesc) -> c_double {
     with_dev(dd).map_or(1.0, |dev| (*dev).startps)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_has_text_utf8(dd: pGEDevDesc) -> c_int {
+pub(crate) unsafe fn rmath_ge_device_has_text_utf8(dd: pGEDevDesc) -> c_int {
     with_dev(dd).map_or(FALSE, |dev| (*dev).hasTextUTF8)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_want_symbol_utf8(dd: pGEDevDesc) -> c_int {
+pub(crate) unsafe fn rmath_ge_device_want_symbol_utf8(dd: pGEDevDesc) -> c_int {
     with_dev(dd).map_or(FALSE, |dev| (*dev).wantSymbolUTF8)
 }
 
-pub unsafe extern "C" fn rmath_ge_device_version(dd: pGEDevDesc) -> c_int {
+pub(crate) unsafe fn rmath_ge_device_version(dd: pGEDevDesc) -> c_int {
     ge_device_version(dd)
 }
 
-pub unsafe extern "C" fn rmath_ge_gc_fontface(gc: pGEcontext) -> c_int {
+pub(crate) unsafe fn rmath_ge_gc_fontface(gc: pGEcontext) -> c_int {
     if gc.is_null() { 0 } else { (*gc).fontface }
 }
 
-pub unsafe extern "C" fn rmath_ge_gc_cex(gc: pGEcontext) -> c_double {
+pub(crate) unsafe fn rmath_ge_gc_cex(gc: pGEcontext) -> c_double {
     if gc.is_null() { 1.0 } else { (*gc).cex }
 }
 
-pub unsafe extern "C" fn rmath_ge_gc_ps(gc: pGEcontext) -> c_double {
+pub(crate) unsafe fn rmath_ge_gc_ps(gc: pGEcontext) -> c_double {
     if gc.is_null() { 12.0 } else { (*gc).ps }
 }
 
-pub unsafe extern "C" fn rmath_ge_gc_lineheight(gc: pGEcontext) -> c_double {
+pub(crate) unsafe fn rmath_ge_gc_lineheight(gc: pGEcontext) -> c_double {
     if gc.is_null() { 1.0 } else { (*gc).lineheight }
 }
 
-pub unsafe extern "C" fn rmath_ge_gc_fontfamily(gc: pGEcontext) -> *const c_char {
+pub(crate) unsafe fn rmath_ge_gc_fontfamily(gc: pGEcontext) -> *const c_char {
     if gc.is_null() {
         std::ptr::null()
     } else {
@@ -690,7 +686,7 @@ pub unsafe extern "C" fn rmath_ge_gc_fontfamily(gc: pGEcontext) -> *const c_char
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_from_device_x(
+pub(crate) unsafe fn rmath_ge_from_device_x(
     value: c_double,
     to: c_int,
     dd: pGEDevDesc,
@@ -720,7 +716,7 @@ pub unsafe extern "C" fn rmath_ge_from_device_x(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_to_device_x(
+pub(crate) unsafe fn rmath_ge_to_device_x(
     value: c_double,
     from: c_int,
     dd: pGEDevDesc,
@@ -747,7 +743,7 @@ pub unsafe extern "C" fn rmath_ge_to_device_x(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_from_device_y(
+pub(crate) unsafe fn rmath_ge_from_device_y(
     value: c_double,
     to: c_int,
     dd: pGEDevDesc,
@@ -777,7 +773,7 @@ pub unsafe extern "C" fn rmath_ge_from_device_y(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_to_device_y(
+pub(crate) unsafe fn rmath_ge_to_device_y(
     value: c_double,
     from: c_int,
     dd: pGEDevDesc,
@@ -804,7 +800,7 @@ pub unsafe extern "C" fn rmath_ge_to_device_y(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_from_device_width(
+pub(crate) unsafe fn rmath_ge_from_device_width(
     value: c_double,
     to: c_int,
     dd: pGEDevDesc,
@@ -823,7 +819,7 @@ pub unsafe extern "C" fn rmath_ge_from_device_width(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_to_device_width(
+pub(crate) unsafe fn rmath_ge_to_device_width(
     value: c_double,
     from: c_int,
     dd: pGEDevDesc,
@@ -848,7 +844,7 @@ pub unsafe extern "C" fn rmath_ge_to_device_width(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_from_device_height(
+pub(crate) unsafe fn rmath_ge_from_device_height(
     value: c_double,
     to: c_int,
     dd: pGEDevDesc,
@@ -867,7 +863,7 @@ pub unsafe extern "C" fn rmath_ge_from_device_height(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_to_device_height(
+pub(crate) unsafe fn rmath_ge_to_device_height(
     value: c_double,
     from: c_int,
     dd: pGEDevDesc,
@@ -892,7 +888,7 @@ pub unsafe extern "C" fn rmath_ge_to_device_height(
     result
 }
 
-pub unsafe extern "C" fn rmath_ge_metric_info(
+pub(crate) unsafe fn rmath_ge_metric_info(
     c: c_int,
     gc: pGEcontext,
     ascent: *mut c_double,
@@ -917,7 +913,7 @@ pub unsafe extern "C" fn rmath_ge_metric_info(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_str_width(
+pub(crate) unsafe fn rmath_ge_str_width(
     str_: *const c_char,
     _enc: c_int,
     gc: pGEcontext,
@@ -926,7 +922,7 @@ pub unsafe extern "C" fn rmath_ge_str_width(
     ge_max_line_width(str_, gc, dd, false)
 }
 
-pub unsafe extern "C" fn rmath_ge_str_width_utf8(
+pub(crate) unsafe fn rmath_ge_str_width_utf8(
     str_: *const c_char,
     gc: pGEcontext,
     dd: pGEDevDesc,
@@ -934,7 +930,7 @@ pub unsafe extern "C" fn rmath_ge_str_width_utf8(
     ge_max_line_width(str_, gc, dd, true)
 }
 
-pub unsafe extern "C" fn rmath_ge_str_height(
+pub(crate) unsafe fn rmath_ge_str_height(
     str_: *const c_char,
     _enc: c_int,
     gc: pGEcontext,
@@ -966,7 +962,7 @@ pub unsafe extern "C" fn rmath_ge_str_height(
     n as c_double * lineheight + asc
 }
 
-pub unsafe extern "C" fn rmath_ge_str_metric(
+pub(crate) unsafe fn rmath_ge_str_metric(
     str_: *const c_char,
     enc: c_int,
     gc: pGEcontext,
@@ -1005,7 +1001,7 @@ pub unsafe extern "C" fn rmath_ge_str_metric(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_symbol(
+pub(crate) unsafe fn rmath_ge_symbol(
     x: c_double,
     y: c_double,
     pch: c_int,
@@ -1292,7 +1288,7 @@ pub unsafe extern "C" fn rmath_ge_symbol(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_raster_scale(
+pub(crate) unsafe fn rmath_ge_raster_scale(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1313,7 +1309,7 @@ pub unsafe extern "C" fn rmath_ge_raster_scale(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_raster_interpolate(
+pub(crate) unsafe fn rmath_ge_raster_interpolate(
     sraster: *const c_uint,
     sw: c_int,
     sh: c_int,
@@ -1393,39 +1389,50 @@ pub unsafe extern "C" fn rmath_ge_raster_interpolate(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_raster_rotated_size(
-    w: c_int,
-    h: c_int,
-    angle: c_double,
-    wnew: *mut c_int,
-    hnew: *mut c_int,
-) {
+fn raster_rotated_size(w: c_int, h: c_int, angle: c_double) -> (c_int, c_int) {
     let diag = ((w * w + h * h) as c_double).sqrt();
     let theta = (h as c_double).atan2(w as c_double);
     let trx1 = diag * (theta + angle).cos();
     let trx2 = diag * (theta - angle).cos();
     let try1 = diag * (theta + angle).sin();
     let try2 = diag * (angle - theta).sin();
-    *wnew = trx1.abs().max(trx2.abs()).round() as c_int;
-    *hnew = try1.abs().max(try2.abs()).round() as c_int;
-    if *wnew < w {
-        *wnew = w;
+
+    let mut rotated_width = trx1.abs().max(trx2.abs()).round() as c_int;
+    let mut rotated_height = try1.abs().max(try2.abs()).round() as c_int;
+    if rotated_width < w {
+        rotated_width = w;
     }
-    if *hnew < h {
-        *hnew = h;
+    if rotated_height < h {
+        rotated_height = h;
     }
+
+    (rotated_width, rotated_height)
 }
 
-pub unsafe extern "C" fn rmath_ge_raster_rotated_offset(
+pub(crate) unsafe fn rmath_ge_raster_rotated_size(
     w: c_int,
     h: c_int,
     angle: c_double,
-    botleft: c_int,
-    xoff: *mut c_double,
-    yoff: *mut c_double,
+    wnew: *mut c_int,
+    hnew: *mut c_int,
 ) {
+    let (rotated_width, rotated_height) = raster_rotated_size(w, h, angle);
+    if !wnew.is_null() {
+        unsafe { *wnew = rotated_width };
+    }
+    if !hnew.is_null() {
+        unsafe { *hnew = rotated_height };
+    }
+}
+
+fn raster_rotated_offset(
+    w: c_int,
+    h: c_int,
+    angle: c_double,
+    botleft: bool,
+) -> (c_double, c_double) {
     let hypot = 0.5 * ((w * w + h * h) as c_double).sqrt();
-    let (theta, dw, dh) = if botleft != 0 {
+    let (theta, dw, dh) = if botleft {
         let theta = std::f64::consts::PI + (h as c_double).atan2(w as c_double);
         let dw = hypot * (theta + angle).cos();
         let dh = hypot * (theta + angle).sin();
@@ -1437,16 +1444,31 @@ pub unsafe extern "C" fn rmath_ge_raster_rotated_offset(
         (theta, dw, dh)
     };
     let _ = theta;
-    if botleft != 0 {
-        *xoff = dw + w as c_double / 2.0;
-        *yoff = dh + h as c_double / 2.0;
+    if botleft {
+        (dw + w as c_double / 2.0, dh + h as c_double / 2.0)
     } else {
-        *xoff = dw + w as c_double / 2.0;
-        *yoff = dh - h as c_double / 2.0;
+        (dw + w as c_double / 2.0, dh - h as c_double / 2.0)
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_raster_resize_for_rotation(
+pub(crate) unsafe fn rmath_ge_raster_rotated_offset(
+    w: c_int,
+    h: c_int,
+    angle: c_double,
+    botleft: c_int,
+    xoff: *mut c_double,
+    yoff: *mut c_double,
+) {
+    let (x_offset, y_offset) = raster_rotated_offset(w, h, angle, botleft != 0);
+    if !xoff.is_null() {
+        unsafe { *xoff = x_offset };
+    }
+    if !yoff.is_null() {
+        unsafe { *yoff = y_offset };
+    }
+}
+
+pub(crate) unsafe fn rmath_ge_raster_resize_for_rotation(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1476,7 +1498,7 @@ pub unsafe extern "C" fn rmath_ge_raster_resize_for_rotation(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_raster_rotate(
+pub(crate) unsafe fn rmath_ge_raster_rotate(
     sraster: *const c_uint,
     w: c_int,
     h: c_int,
@@ -1555,7 +1577,7 @@ pub unsafe extern "C" fn rmath_ge_raster_rotate(
     }
 }
 
-pub unsafe extern "C" fn rmath_ge_glyph(
+pub(crate) unsafe fn rmath_ge_glyph(
     n: c_int,
     glyphs: *mut c_int,
     x: *mut c_double,
