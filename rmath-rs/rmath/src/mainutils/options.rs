@@ -18,7 +18,7 @@ use crate::sexp::context::RError;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{R_PreserveObject, Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{R_PreserveObject, Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -618,9 +618,8 @@ pub unsafe fn R_SetOptionWidth(w: c_int) -> c_int {
             w = R_MAX_WIDTH_OPT;
         }
         let val = Rf_ScalarInteger(w);
-        let _protected = Rf_protect(val);
+        let _val_guard = protect(val);
         let old = SetOptionByName("width", val);
-        Rf_unprotect(1);
         let old_w = asInteger(old);
         if old_w == NA_INTEGER { 80 } else { old_w }
     }
@@ -675,9 +674,8 @@ pub unsafe fn R_ShowErrorOption() -> c_int {
 pub unsafe fn R_SetOptionWarn(w: c_int) -> c_int {
     unsafe {
         let val = Rf_ScalarInteger(w);
-        let _protected = Rf_protect(val);
+        let _val_guard = protect(val);
         let old = SetOptionByName("warn", val);
-        Rf_unprotect(1);
         let old_w = asInteger(old);
         if old_w == NA_INTEGER { 0 } else { old_w }
     }
@@ -830,8 +828,10 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             return crate::sexp::instance::with_required_current_instance(|inst| {
                 let n = inst.options.len() as c_int;
 
-                let value = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
-                let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, n));
+                let value = Rf_allocVector(SEXPTYPE::VECSXP, n);
+                let _value_guard = protect(value);
+                let names = Rf_allocVector(SEXPTYPE::STRSXP, n);
+                let _names_guard = protect(names);
 
                 let mut keys: Vec<String> = inst.options.keys().cloned().collect();
                 keys.sort();
@@ -846,7 +846,6 @@ pub unsafe fn do_options(call: SEXP, op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 }
 
                 setAttrib(value, R_NamesSymbol(), names);
-                Rf_unprotect(2);
                 set_R_Visible(TRUE);
                 value
             });
