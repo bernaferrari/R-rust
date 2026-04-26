@@ -31,9 +31,10 @@ delegates to the canonical function table. `eval::apply` makes the important R
 semantic boundary explicit: unevaluated builtins are dispatched before ordinary
 argument evaluation, while evaluated builtins go through one call-frame path.
 The remaining weak spot is that the evaluated builtin table itself is still a
-large string match instead of generated/table-driven metadata, and `eval.rs`
-still has a broad `unsafe_op_in_unsafe_fn` allow for the raw compatibility
-shell.
+large string match instead of generated/table-driven metadata. The raw
+compatibility shell in `eval.rs` now denies `unsafe_op_in_unsafe_fn`, so the
+remaining pointer conversions are explicit unsafe blocks rather than ambient
+module-wide unsafety.
 
 ## Test Strategy
 
