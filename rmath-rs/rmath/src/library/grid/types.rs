@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Grid package shared types (equivalent to grid.h).
 //!
 //! Defines all constants, types, and stubs used across grid modules.
@@ -112,21 +111,21 @@ pub const GRID_ARROWTYPE: c_int = 3;
 #[inline]
 pub unsafe fn uValue(x: SEXP) -> c_double {
     use crate::sexp::accessors::{REAL, VECTOR_ELT};
-    *REAL(VECTOR_ELT(x, 0)).add(0)
+    unsafe { *REAL(VECTOR_ELT(x, 0)).add(0) }
 }
 
 /// uData macro equivalent: get the data component of a unit.
 #[inline]
 pub unsafe fn uData(x: SEXP) -> SEXP {
     use crate::sexp::accessors::VECTOR_ELT;
-    VECTOR_ELT(x, 1)
+    unsafe { VECTOR_ELT(x, 1) }
 }
 
 /// uUnit macro equivalent: get the integer unit type of a unit.
 #[inline]
 pub unsafe fn uUnit(x: SEXP) -> c_int {
     use crate::sexp::accessors::{INTEGER, VECTOR_ELT};
-    *INTEGER(VECTOR_ELT(x, 2)).add(0)
+    unsafe { *INTEGER(VECTOR_ELT(x, 2)).add(0) }
 }
 
 /* ==================== Type aliases ==================== */

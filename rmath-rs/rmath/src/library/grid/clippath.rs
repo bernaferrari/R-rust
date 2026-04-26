@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-// legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2001-2025 The R Core Team
@@ -31,11 +29,31 @@ use crate::sexp::constructors::Rf_lang2;
 use crate::sexp::envir::findFun;
 use crate::sexp::ffi::SEXP;
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
 use super::state::setGridStateElement;
 use super::types::{pGEDevDesc, *};
+
+struct ResolvingPathGuard {
+    dd: pGEDevDesc,
+}
+
+impl ResolvingPathGuard {
+    unsafe fn enter(dd: pGEDevDesc) -> Self {
+        unsafe {
+            setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
+        }
+        Self { dd }
+    }
+}
+
+impl Drop for ResolvingPathGuard {
+    fn drop(&mut self) {
+        unsafe {
+            setGridStateElement(self.dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Local helpers
@@ -46,26 +64,26 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     if x.is_null() || what.is_null() {
         return 0;
     }
-    let klass = crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol());
-    if klass.is_null() || klass == R_NilValue() {
+    let klass = unsafe { crate::attrib_core::getAttrib(x, crate::attrib_core::R_ClassSymbol()) };
+    if klass.is_null() || klass == unsafe { R_NilValue() } {
         return 0;
     }
     use crate::sexp::accessors::{CHAR, LENGTH, STRING_ELT, TYPEOF};
     use std::ffi::CStr;
-    if TYPEOF(klass) != crate::sexp::ffi::SEXPTYPE::STRSXP {
+    if unsafe { TYPEOF(klass) } != crate::sexp::ffi::SEXPTYPE::STRSXP {
         return 0;
     }
-    let cn = match CStr::from_ptr(what).to_str() {
+    let cn = match unsafe { CStr::from_ptr(what) }.to_str() {
         Ok(s) => s,
         Err(_) => return 0,
     };
-    let n = LENGTH(klass);
+    let n = unsafe { LENGTH(klass) };
     for i in 0..n {
-        let elt = STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t);
+        let elt = unsafe { STRING_ELT(klass, i as crate::sexp::ffi::R_xlen_t) };
         if !elt.is_null() {
-            let cs = CHAR(elt);
+            let cs = unsafe { CHAR(elt) };
             if !cs.is_null() {
-                if let Ok(s2) = CStr::from_ptr(cs).to_str() {
+                if let Ok(s2) = unsafe { CStr::from_ptr(cs) }.to_str() {
                     if s2 == cn {
                         return 1;
                     }
@@ -81,10 +99,12 @@ unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn isClipPath(clip: SEXP) -> bool {
-    Rf_inherits(
-        clip,
-        b"GridClipPath\0".as_ptr() as *const std::os::raw::c_char,
-    ) != 0
+    unsafe {
+        Rf_inherits(
+            clip,
+            b"GridClipPath\0".as_ptr() as *const std::os::raw::c_char,
+        ) != 0
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -92,17 +112,15 @@ pub unsafe fn isClipPath(clip: SEXP) -> bool {
 // ---------------------------------------------------------------------------
 
 pub unsafe fn resolveClipPath(path: SEXP, dd: pGEDevDesc) -> SEXP {
-    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(1));
+    let _scope = unsafe { ResolvingPathGuard::enter(dd) };
     // Use the shared grid eval env so clip-path callbacks see the same
     // initialization state as the rest of grid.
     let env = grid_eval_env();
-    let resolve_fn = Rf_protect(findFun(
-        Rf_install(b"resolveClipPath\0".as_ptr() as *const std::os::raw::c_char),
-        env,
-    ));
-    let r_fcall = Rf_protect(Rf_lang2(resolve_fn, path));
-    let result = ge::Rf_eval_with_gd(r_fcall, env, dd);
-    setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
-    Rf_unprotect(2);
-    result
+    let resolve_sym =
+        unsafe { Rf_install(b"resolveClipPath\0".as_ptr() as *const std::os::raw::c_char) };
+    let resolve_fn = unsafe { findFun(resolve_sym, env) };
+    let _resolve_fn_guard = crate::sexp::protect::protect(resolve_fn);
+    let r_fcall = unsafe { Rf_lang2(resolve_fn, path) };
+    let _r_fcall_guard = crate::sexp::protect::protect(r_fcall);
+    unsafe { ge::Rf_eval_with_gd(r_fcall, env, dd) }
 }

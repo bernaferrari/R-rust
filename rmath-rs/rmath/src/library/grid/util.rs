@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Port of R's src/library/grid/src/util.c -- grid utility functions.
 //!
 //! Contains list element access, numeric extraction, rectangle geometry,
@@ -9,13 +8,14 @@ use std::os::raw::{c_char, c_double, c_int};
 
 use crate::main::memory_main::{R_ExternalPtrAddr, R_MakeExternalPtr};
 use crate::mainutils::engine::{GEStrHeight, GEStrWidth, fromDeviceHeight, fromDeviceWidth};
+use crate::mainutils::errors::Rf_error;
 use crate::sexp::accessors::{
     CHAR, INTEGER, LENGTH, LOGICAL, REAL, SET_VECTOR_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::constructors::{Rf_allocVector, Rf_mkString};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 
 use super::matrix::{identity, location, multiply, rotation, trans, translation};
 use super::types::*;
@@ -23,11 +23,17 @@ use super::types::*;
 /* ==================== GE expression metric stubs ==================== */
 
 unsafe fn GEExpressionWidth(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
-    0.0
+    unsafe {
+        Rf_error(b"grid expression widths are not supported\0".as_ptr() as *const c_char);
+    }
+    unreachable!()
 }
 
 unsafe fn GEExpressionHeight(_expr: SEXP, _gc: pGEcontext, _dd: pGEDevDesc) -> c_double {
-    0.0
+    unsafe {
+        Rf_error(b"grid expression heights are not supported\0".as_ptr() as *const c_char);
+    }
+    unreachable!()
 }
 
 const CE_SYMBOL: c_int = 5;
@@ -59,15 +65,21 @@ fn fmin2(x: f64, y: f64) -> f64 {
 /// Get the list element named str, or return R_NilValue.
 /// Copied from the Writing R Extensions manual (which copied it from nls).
 pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
-    let mut elmt: SEXP = R_NilValue();
-    let names = crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol());
-    let len = LENGTH(list) as i32;
+    let mut elmt: SEXP = unsafe { R_NilValue() };
+    if str.is_null() {
+        return elmt;
+    }
+    let names = unsafe { crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol()) };
+    if names.is_null() {
+        return elmt;
+    }
+    let len = unsafe { LENGTH(list) } as i32;
+    let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
-        let name_cstr = CHAR(STRING_ELT(names, i as R_xlen_t));
-        let name_str = CStr::from_ptr(name_cstr).to_str().unwrap_or("");
-        let target_str = CStr::from_ptr(str).to_str().unwrap_or("");
+        let name_cstr = unsafe { CHAR(STRING_ELT(names, i as R_xlen_t)) };
+        let name_str = unsafe { CStr::from_ptr(name_cstr) }.to_str().unwrap_or("");
         if name_str == target_str {
-            elmt = VECTOR_ELT(list, i as R_xlen_t);
+            elmt = unsafe { VECTOR_ELT(list, i as R_xlen_t) };
             break;
         }
     }
@@ -76,14 +88,22 @@ pub unsafe fn getListElement(list: SEXP, str: *mut c_char) -> SEXP {
 
 /// Set the list element named str to value.
 pub unsafe fn setListElement(list: SEXP, str: *mut c_char, value: SEXP) {
-    let names = crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol());
-    let len = LENGTH(list) as i32;
+    if str.is_null() {
+        return;
+    }
+    let names = unsafe { crate::attrib_core::getAttrib(list, crate::attrib_core::R_NamesSymbol()) };
+    if names.is_null() {
+        return;
+    }
+    let len = unsafe { LENGTH(list) } as i32;
+    let target_str = unsafe { CStr::from_ptr(str) }.to_str().unwrap_or("");
     for i in 0..len {
-        let name_cstr = CHAR(STRING_ELT(names, i as R_xlen_t));
-        let name_str = CStr::from_ptr(name_cstr).to_str().unwrap_or("");
-        let target_str = CStr::from_ptr(str).to_str().unwrap_or("");
+        let name_cstr = unsafe { CHAR(STRING_ELT(names, i as R_xlen_t)) };
+        let name_str = unsafe { CStr::from_ptr(name_cstr) }.to_str().unwrap_or("");
         if name_str == target_str {
-            SET_VECTOR_ELT(list, i as R_xlen_t, value);
+            unsafe {
+                SET_VECTOR_ELT(list, i as R_xlen_t, value);
+            }
             break;
         }
     }
@@ -100,10 +120,10 @@ pub unsafe fn numeric(x: SEXP, index: c_int) -> c_double {
         return NA_REAL;
     }
     let idx = index as R_xlen_t;
-    if TYPEOF(x) == SEXPTYPE::REALSXP && XLENGTH(x) > idx {
-        return *REAL(x).add(index as usize);
-    } else if TYPEOF(x) == SEXPTYPE::INTSXP && XLENGTH(x) > idx {
-        return *INTEGER(x).add(index as usize) as c_double;
+    if unsafe { TYPEOF(x) } == SEXPTYPE::REALSXP && unsafe { XLENGTH(x) } > idx {
+        return unsafe { *REAL(x).add(index as usize) };
+    } else if unsafe { TYPEOF(x) } == SEXPTYPE::INTSXP && unsafe { XLENGTH(x) } > idx {
+        return unsafe { *INTEGER(x).add(index as usize) as c_double };
     }
     NA_REAL
 }
@@ -122,19 +142,23 @@ pub unsafe fn rect(
     y4: c_double,
     r: *mut LRect,
 ) {
-    (*r).x1 = x1;
-    (*r).x2 = x2;
-    (*r).x3 = x3;
-    (*r).x4 = x4;
-    (*r).y1 = y1;
-    (*r).y2 = y2;
-    (*r).y3 = y3;
-    (*r).y4 = y4;
+    unsafe {
+        (*r).x1 = x1;
+        (*r).x2 = x2;
+        (*r).x3 = x3;
+        (*r).x4 = x4;
+        (*r).y1 = y1;
+        (*r).y2 = y2;
+        (*r).y3 = y3;
+        (*r).y4 = y4;
+    }
 }
 
 /// Copy a rectangle struct.
 pub unsafe fn copyRect(r1: LRect, r: *mut LRect) {
-    *r = r1;
+    unsafe {
+        *r = r1;
+    }
 }
 
 /* ==================== Geometry: line/edge intersection ==================== */
@@ -180,13 +204,7 @@ pub fn linesIntersect(
 }
 
 /// Do a line segment and a rectangle's edges intersect?
-pub unsafe fn edgesIntersect(
-    x1: c_double,
-    x2: c_double,
-    y1: c_double,
-    y2: c_double,
-    r: LRect,
-) -> c_int {
+pub fn edgesIntersect(x1: c_double, x2: c_double, y1: c_double, y2: c_double, r: LRect) -> c_int {
     let mut result: c_int = 0;
     if linesIntersect(x1, x2, r.x1, r.x2, y1, y2, r.y1, r.y2) != 0
         || linesIntersect(x1, x2, r.x2, r.x3, y1, y2, r.y2, r.y3) != 0
@@ -200,7 +218,7 @@ pub unsafe fn edgesIntersect(
 
 /// Do two rectangles intersect?
 /// For each edge in r1, does the edge intersect with any edge in r2?
-pub unsafe fn intersect(r1: LRect, r2: LRect) -> c_int {
+pub fn intersect(r1: LRect, r2: LRect) -> c_int {
     let mut result: c_int = 0;
     if edgesIntersect(r1.x1, r1.x2, r1.y1, r1.y2, r2) != 0
         || edgesIntersect(r1.x2, r1.x3, r1.y2, r1.y3, r2) != 0
@@ -243,60 +261,55 @@ pub unsafe fn textRect(
     let mut thisJustification: LTransform = [[0.0; 3]; 3];
     let mut tempTransform: LTransform = [[0.0; 3]; 3];
     let mut transform: LTransform = [[0.0; 3]; 3];
-    let mut w: f64;
-    let mut h: f64;
+    unsafe {
+        let mut w = 0.0;
+        let mut h = 0.0;
 
-    let text_len = XLENGTH(text) as i32;
-    let idx = ((i % text_len) + text_len) % text_len; // handle negative modulo
-
-    let is_expr = TYPEOF(text) == SEXPTYPE::EXPRSXP;
-
-    if is_expr {
-        let expr = VECTOR_ELT(text, idx as R_xlen_t);
-        w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
-        h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
-    } else {
-        let string = CHAR(STRING_ELT(text, idx as R_xlen_t));
-        let enc = CE_SYMBOL; // simplified: always use CE_SYMBOL as stub
-        w = fromDeviceWidth(
-            GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
-            1,
-            dd as *mut c_void,
-        );
-        h = fromDeviceHeight(
-            GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
-            1,
-            dd as *mut c_void,
-        );
-    }
-
-    // w and h may be non-finite (e.g., if font not found)
-    if !w.is_finite() || !h.is_finite() {
-        if !w.is_finite() {
-            w = 0.0;
-        }
-        if !h.is_finite() {
-            h = 0.0;
-        }
-        let msg = b"Unable to calculate text width/height (using zero)\0";
-        crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
-    }
-
-    // Ensure anti-clockwise direction
-    if w >= 0.0 {
-        if h >= 0.0 {
-            location(0.0, 0.0, bl.as_mut_ptr() as *mut _);
-            location(w, 0.0, br.as_mut_ptr() as *mut _);
-            location(w, h, tr.as_mut_ptr() as *mut _);
-            location(0.0, h, tl.as_mut_ptr() as *mut _);
+        let text_len = XLENGTH(text) as i32;
+        let idx = ((i % text_len) + text_len) % text_len;
+        if TYPEOF(text) == SEXPTYPE::EXPRSXP {
+            let expr = VECTOR_ELT(text, idx as R_xlen_t);
+            w = fromDeviceWidth(GEExpressionWidth(expr, gc, dd), 1, dd as *mut c_void);
+            h = fromDeviceHeight(GEExpressionHeight(expr, gc, dd), 1, dd as *mut c_void);
         } else {
-            location(0.0, h, bl.as_mut_ptr() as *mut _);
-            location(w, h, br.as_mut_ptr() as *mut _);
-            location(w, 0.0, tr.as_mut_ptr() as *mut _);
-            location(0.0, 0.0, tl.as_mut_ptr() as *mut _);
+            let string = CHAR(STRING_ELT(text, idx as R_xlen_t));
+            let enc = CE_SYMBOL;
+            w = fromDeviceWidth(
+                GEStrWidth(string, enc, gc as *const c_void, dd as *mut c_void),
+                1,
+                dd as *mut c_void,
+            );
+            h = fromDeviceHeight(
+                GEStrHeight(string, enc, gc as *const c_void, dd as *mut c_void),
+                1,
+                dd as *mut c_void,
+            );
         }
-    } else {
-        if h >= 0.0 {
+
+        if !w.is_finite() || !h.is_finite() {
+            if !w.is_finite() {
+                w = 0.0;
+            }
+            if !h.is_finite() {
+                h = 0.0;
+            }
+            let msg = b"Unable to calculate text width/height (using zero)\0";
+            crate::main::errors::Rf_warning1(msg.as_ptr() as *const c_char);
+        }
+
+        if w >= 0.0 {
+            if h >= 0.0 {
+                location(0.0, 0.0, bl.as_mut_ptr() as *mut _);
+                location(w, 0.0, br.as_mut_ptr() as *mut _);
+                location(w, h, tr.as_mut_ptr() as *mut _);
+                location(0.0, h, tl.as_mut_ptr() as *mut _);
+            } else {
+                location(0.0, h, bl.as_mut_ptr() as *mut _);
+                location(w, h, br.as_mut_ptr() as *mut _);
+                location(w, 0.0, tr.as_mut_ptr() as *mut _);
+                location(0.0, 0.0, tl.as_mut_ptr() as *mut _);
+            }
+        } else if h >= 0.0 {
             location(w, 0.0, bl.as_mut_ptr() as *mut _);
             location(0.0, 0.0, br.as_mut_ptr() as *mut _);
             location(0.0, h, tr.as_mut_ptr() as *mut _);
@@ -307,58 +320,56 @@ pub unsafe fn textRect(
             location(0.0, 0.0, tr.as_mut_ptr() as *mut _);
             location(w, 0.0, tl.as_mut_ptr() as *mut _);
         }
+
+        translation(
+            -xadj * w,
+            -yadj * h,
+            thisJustification.as_mut_ptr() as *mut _,
+        );
+        translation(x, y, thisLocation.as_mut_ptr() as *mut _);
+
+        if rot != 0.0 {
+            rotation(rot, thisRotation.as_mut_ptr() as *mut _);
+        } else {
+            identity(thisRotation.as_mut_ptr() as *mut _);
+        }
+
+        multiply(
+            thisJustification.as_ptr() as *const _,
+            thisRotation.as_ptr() as *const _,
+            tempTransform.as_mut_ptr() as *mut _,
+        );
+        multiply(
+            tempTransform.as_ptr() as *const _,
+            thisLocation.as_ptr() as *const _,
+            transform.as_mut_ptr() as *mut _,
+        );
+
+        trans(
+            bl.as_ptr() as *const _,
+            transform.as_ptr() as *const _,
+            tbl.as_mut_ptr() as *mut _,
+        );
+        trans(
+            br.as_ptr() as *const _,
+            transform.as_ptr() as *const _,
+            tbr.as_mut_ptr() as *mut _,
+        );
+        trans(
+            tr.as_ptr() as *const _,
+            transform.as_ptr() as *const _,
+            ttr.as_mut_ptr() as *mut _,
+        );
+        trans(
+            tl.as_ptr() as *const _,
+            transform.as_ptr() as *const _,
+            ttl.as_mut_ptr() as *mut _,
+        );
+
+        rect(
+            tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], r,
+        );
     }
-
-    translation(
-        -xadj * w,
-        -yadj * h,
-        thisJustification.as_mut_ptr() as *mut _,
-    );
-    translation(x, y, thisLocation.as_mut_ptr() as *mut _);
-
-    if rot != 0.0 {
-        rotation(rot, thisRotation.as_mut_ptr() as *mut _);
-    } else {
-        identity(thisRotation.as_mut_ptr() as *mut _);
-    }
-
-    // Position relative to origin of rotation THEN rotate.
-    multiply(
-        thisJustification.as_ptr() as *const _,
-        thisRotation.as_ptr() as *const _,
-        tempTransform.as_mut_ptr() as *mut _,
-    );
-    // Translate to (x, y)
-    multiply(
-        tempTransform.as_ptr() as *const _,
-        thisLocation.as_ptr() as *const _,
-        transform.as_mut_ptr() as *mut _,
-    );
-
-    trans(
-        bl.as_ptr() as *const _,
-        transform.as_ptr() as *const _,
-        tbl.as_mut_ptr() as *mut _,
-    );
-    trans(
-        br.as_ptr() as *const _,
-        transform.as_ptr() as *const _,
-        tbr.as_mut_ptr() as *mut _,
-    );
-    trans(
-        tr.as_ptr() as *const _,
-        transform.as_ptr() as *const _,
-        ttr.as_mut_ptr() as *mut _,
-    );
-    trans(
-        tl.as_ptr() as *const _,
-        transform.as_ptr() as *const _,
-        ttl.as_mut_ptr() as *mut _,
-    );
-
-    rect(
-        tbl[0], tbr[0], ttr[0], ttl[0], tbl[1], tbr[1], ttr[1], ttl[1], r,
-    );
 }
 
 /* ==================== External pointer utilities ==================== */
@@ -366,39 +377,45 @@ pub unsafe fn textRect(
 /// Create a persistent external pointer wrapping an SEXP.
 /// The SEXP is stored in a VECSXP of length one, then wrapped in an external pointer.
 pub unsafe fn L_CreateSEXPPtr(s: SEXP) -> SEXP {
-    let data = Rf_allocVector(SEXPTYPE::VECSXP, 1);
-    Rf_protect(data);
-    SET_VECTOR_ELT(data, 0, s);
-    let result = R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data);
-    Rf_unprotect(1);
-    result
+    let data = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 1) };
+    let _guard = protect(data);
+    unsafe {
+        SET_VECTOR_ELT(data, 0, s);
+        R_MakeExternalPtr(data as *mut std::ffi::c_void, R_NilValue(), data)
+    }
 }
 
 /// Get the SEXP stored in an external pointer created by L_CreateSEXPPtr.
 pub unsafe fn L_GetSEXPPtr(sp: SEXP) -> SEXP {
-    let data = R_ExternalPtrAddr(sp) as SEXP;
+    let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
-        crate::main::errors::Rf_error1(
-            b"%s\0".as_ptr() as *const c_char,
-            msg.as_ptr() as *const c_char,
-        );
+        unsafe {
+            crate::main::errors::Rf_error1(
+                b"%s\0".as_ptr() as *const c_char,
+                msg.as_ptr() as *const c_char,
+            );
+        }
         unreachable!()
     }
-    VECTOR_ELT(data, 0)
+    unsafe { VECTOR_ELT(data, 0) }
 }
 
 /// Set the SEXP stored in an external pointer created by L_CreateSEXPPtr.
 pub unsafe fn L_SetSEXPPtr(sp: SEXP, s: SEXP) -> SEXP {
-    let data = R_ExternalPtrAddr(sp) as SEXP;
+    let data = unsafe { R_ExternalPtrAddr(sp) as SEXP };
     if data.is_null() {
         let msg = b"grid grob object is empty\0";
-        crate::main::errors::Rf_error1(
-            b"%s\0".as_ptr() as *const c_char,
-            msg.as_ptr() as *const c_char,
-        );
+        unsafe {
+            crate::main::errors::Rf_error1(
+                b"%s\0".as_ptr() as *const c_char,
+                msg.as_ptr() as *const c_char,
+            );
+        }
         unreachable!()
     }
-    SET_VECTOR_ELT(data, 0, s);
-    R_NilValue()
+    unsafe {
+        SET_VECTOR_ELT(data, 0, s);
+        R_NilValue()
+    }
 }
