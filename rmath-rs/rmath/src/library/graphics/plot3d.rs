@@ -30,7 +30,9 @@
 use std::ffi::c_void;
 use std::os::raw::{c_char, c_double, c_int};
 
+use super::plot::{FixupCol, FixupLty, FixupLwd, FixupVFont};
 use crate::main::coerce::{asInteger, asLogical, asReal, coerceVector};
+use crate::mainutils::sort::rsort_with_index;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -96,130 +98,6 @@ const max_contour_segments: c_int = 25000;
 // NA_STRING sentinel (non-null pointer for NA character).
 // This is a stub; the real value comes from R internals.
 // Not used directly in our stubs; defined only to prevent linker errors.
-
-/* Stub extern declarations for GE functions not yet ported */
-
-unsafe extern "C" {
-    fn GCheckState(_dd: pGEDevDesc);
-    fn GMode(_mode: c_int, _dd: pGEDevDesc);
-    fn GSetState(_state: c_int, _dd: pGEDevDesc);
-    fn GSavePars(_dd: pGEDevDesc);
-    fn GRestorePars(_dd: pGEDevDesc);
-    fn GScale(_min: c_double, _max: c_double, _axis: c_int, _dd: pGEDevDesc);
-    fn GMapWin2Fig(_dd: pGEDevDesc);
-    fn GLine(
-        _x1: c_double,
-        _y1: c_double,
-        _x2: c_double,
-        _y2: c_double,
-        _coord: c_int,
-        _dd: pGEDevDesc,
-    );
-    fn GPolygon(
-        _n: c_int,
-        _x: *mut c_double,
-        _y: *mut c_double,
-        _coord: c_int,
-        _col: c_int,
-        _border: c_int,
-        _dd: pGEDevDesc,
-    );
-    fn GPolyline(_n: c_int, _x: *mut c_double, _y: *mut c_double, _coord: c_int, _dd: pGEDevDesc);
-    fn GRect(
-        _x0: c_double,
-        _y0: c_double,
-        _x1: c_double,
-        _y1: c_double,
-        _coord: c_int,
-        _col: c_int,
-        _border: c_int,
-        _dd: pGEDevDesc,
-    );
-    fn GText(
-        _x: c_double,
-        _y: c_double,
-        _coord: c_int,
-        _str: *const c_char,
-        _enc: cetype_t,
-        _xadj: c_double,
-        _yadj: c_double,
-        _rot: c_double,
-        _dd: pGEDevDesc,
-    );
-    fn GArrow(
-        _x1: c_double,
-        _y1: c_double,
-        _x2: c_double,
-        _y2: c_double,
-        _coord: c_int,
-        _angle: c_double,
-        _length: c_double,
-        _code: c_int,
-        _dd: pGEDevDesc,
-    );
-    fn GConvertXUnits(_x: c_double, _from: c_int, _to: c_int, _dd: pGEDevDesc) -> c_double;
-    fn GConvertYUnits(_y: c_double, _from: c_int, _to: c_int, _dd: pGEDevDesc) -> c_double;
-    fn GConvert(_x: *mut c_double, _y: *mut c_double, _from: c_int, _to: c_int, _dd: pGEDevDesc);
-    fn GStrWidth(_str: *const c_char, _enc: cetype_t, _units: c_int, _dd: pGEDevDesc) -> c_double;
-    fn GStrHeight(_str: *const c_char, _enc: cetype_t, _units: c_int, _dd: pGEDevDesc) -> c_double;
-    fn GPretty(_lo: *mut c_double, _up: *mut c_double, _ndiv: *mut c_int);
-    #[link_name = "rmath_GEcurrentDevice"]
-    fn GEcurrentDevice() -> pGEDevDesc;
-    fn PrintDefaults();
-    fn ProcessInlinePars(_args: SEXP, _dd: pGEDevDesc);
-    fn Rf_isNAcol(_col: SEXP, _i: c_int, _ncol: c_int) -> c_int;
-
-    fn R_RED(_col: u32) -> c_int;
-    fn R_GREEN(_col: u32) -> c_int;
-    fn R_BLUE(_col: u32) -> c_int;
-    fn R_RGB(_r: c_int, _g: c_int, _b: c_int) -> u32;
-    fn R_OPAQUE(_col: u32) -> c_int;
-
-    fn CreateAtVector(
-        _axp: *const c_double,
-        _range: *const c_double,
-        _n: c_int,
-        _log: c_int,
-    ) -> SEXP;
-    fn labelformat(_x: SEXP) -> SEXP;
-
-    fn FixupCol(_col: SEXP, _bg: u32) -> SEXP;
-    fn FixupLty(_lty: SEXP, _def: c_int) -> SEXP;
-    fn FixupLwd(_lwd: SEXP, _def: c_double) -> SEXP;
-    fn FixupVFont(_vfont: SEXP) -> SEXP;
-
-    fn contourLines(
-        _x: *const c_double,
-        _nx: c_int,
-        _y: *const c_double,
-        _ny: c_int,
-        _z: *const c_double,
-        _zc: c_double,
-        _atom: c_double,
-    ) -> *mut c_void;
-    fn ctr_segdir(
-        _xend: c_double,
-        _yend: c_double,
-        _x: *const c_double,
-        _y: *const c_double,
-        _ii: *mut c_int,
-        _jj: *mut c_int,
-        _nx: c_int,
-        _ny: c_int,
-    ) -> c_int;
-    fn ctr_segupdate(
-        _xend: c_double,
-        _yend: c_double,
-        _dir: c_int,
-        _tail: c_int,
-        _seglist: *mut c_void,
-        _seg: *mut *mut c_void,
-    ) -> *mut c_void;
-    fn rsort_with_index(_x: *mut c_double, _indx: *mut c_int, _n: c_int);
-    fn getCharCE(_x: SEXP) -> cetype_t;
-
-    fn gpptr(_dd: pGEDevDesc) -> *mut c_void;
-}
 
 /* ========================================================================
  * 3D Transformation Math (real implementations)
