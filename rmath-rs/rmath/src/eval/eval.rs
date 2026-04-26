@@ -488,18 +488,18 @@ pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_Visible;
-    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::protect::protect;
     use std::os::raw::c_char;
 
     unsafe {
         let x = Rf_eval(CAR(args), rho);
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
         let ret = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-        Rf_protect(ret);
+        let _ret_guard = protect(ret);
 
         let nm = Rf_allocVector(SEXPTYPE::STRSXP, 2);
-        Rf_protect(nm);
+        let _names_guard = protect(nm);
 
         SET_STRING_ELT(nm, 0, Rf_mkChar(b"value\0".as_ptr() as *const c_char));
         SET_STRING_ELT(nm, 1, Rf_mkChar(b"visible\0".as_ptr() as *const c_char));
@@ -509,7 +509,6 @@ pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP)
 
         setAttrib(ret, R_NamesSymbol(), nm);
 
-        Rf_unprotect(3);
         ret
     }
 }
@@ -530,7 +529,7 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
     use crate::sexp::envir::findFun;
     use crate::sexp::ffi::SEXPTYPE;
     use crate::sexp::globals::R_NilValue;
-    use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+    use crate::sexp::protect::protect;
     use std::os::raw::c_char;
 
     unsafe {
@@ -581,10 +580,9 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
             }
         };
 
-        Rf_protect(fun);
+        let _fun_guard = protect(fun);
 
         if TYPEOF(fun) != SEXPTYPE::CLOSXP {
-            Rf_unprotect(1);
             Rf_error(b"'Recall' called from outside a closure\0".as_ptr() as *const c_char);
         }
 
@@ -596,7 +594,6 @@ pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> 
             R_NilValue(),
             1,
         );
-        Rf_unprotect(1);
         ans
     }
 }
