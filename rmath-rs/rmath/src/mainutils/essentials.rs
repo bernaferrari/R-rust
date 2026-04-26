@@ -1154,7 +1154,7 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for (i, &key) in result_keys.iter().enumerate() {
             if t == SEXPTYPE::REALSXP {
                 *REAL(result).add(i) = f64::from_bits(key as u64);
@@ -1162,7 +1162,6 @@ pub unsafe fn do_setdiff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 *INTEGER(result).add(i) = key as c_int;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1202,7 +1201,7 @@ pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for (i, &key) in result_keys.iter().enumerate() {
             if t == SEXPTYPE::REALSXP {
                 *REAL(result).add(i) = f64::from_bits(key as u64);
@@ -1210,7 +1209,6 @@ pub unsafe fn do_union(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *INTEGER(result).add(i) = key as c_int;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1251,7 +1249,7 @@ pub unsafe fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for (i, &key) in result_keys.iter().enumerate() {
             if t == SEXPTYPE::REALSXP {
                 *REAL(result).add(i) = f64::from_bits(key as u64);
@@ -1259,7 +1257,6 @@ pub unsafe fn do_intersect(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 *INTEGER(result).add(i) = key as c_int;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1321,7 +1318,7 @@ pub unsafe fn do_is_finite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
             let is_fin = if t == SEXPTYPE::REALSXP {
@@ -1332,7 +1329,6 @@ pub unsafe fn do_is_finite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             };
             *dst.add(i as usize) = if is_fin { TRUE } else { FALSE };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1353,13 +1349,12 @@ pub unsafe fn do_is_infinite(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
             let v = *REAL(x).add(i as usize);
             *dst.add(i as usize) = if v.is_infinite() { TRUE } else { FALSE };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1380,14 +1375,13 @@ pub unsafe fn do_is_nan(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
             let v = *REAL(x).add(i as usize);
             let is_nan = v.is_nan() && v.to_bits() != crate::sexp::ffi::R_NA_BIT_PATTERN;
             *dst.add(i as usize) = if is_nan { TRUE } else { FALSE };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
