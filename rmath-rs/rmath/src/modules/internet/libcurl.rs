@@ -1389,48 +1389,8 @@ pub(crate) unsafe fn in_newCurlUrl(
     headers: SEXP,
     r#type: c_int,
 ) -> *mut c_void {
-    let _ = (mode, r#type);
-    if description.is_null() {
-        return std::ptr::null_mut();
-    }
-
-    // For now, return a simple connection handle structure
-    // Full connection support would require Rconnection struct from Rconnections.h
-
-    // Allocate a minimal Curlconn-like structure
-    let buf_size: size_t = 16 * CURL_MAX_WRITE_SIZE;
-    let layout = std::alloc::Layout::from_size_align(buf_size, 1)
-        .unwrap_or_else(|_| std::alloc::Layout::new::<u8>());
-    let buf = std::alloc::alloc(layout);
-    if buf.is_null() {
-        Rf_error(b"allocation of url connection failed\0".as_ptr() as *const c_char);
-    }
-
-    // Build headers slist
-    let mut hdr_list: *mut curl_slist = std::ptr::null_mut();
-    for i in 0..LENGTH(headers) {
-        let h = translateChar(STRING_ELT(headers, i as R_xlen_t));
-        let tmp = curl_slist_append(hdr_list, h);
-        if tmp.is_null() {
-            if !hdr_list.is_null() {
-                curl_slist_free_all(hdr_list);
-            }
-            std::alloc::dealloc(buf, layout);
-            Rf_error(b"allocation of url connection failed\0".as_ptr() as *const c_char);
-        }
-        hdr_list = tmp;
-    }
-
-    // Create an opaque connection handle (boxed pointer)
-    // In a full implementation, this would be a Rconnection with Curlconn private data
-    // For now, we return null as the connection system requires Rconn struct
-    if !buf.is_null() {
-        std::alloc::dealloc(buf, layout);
-    }
-    if !hdr_list.is_null() {
-        curl_slist_free_all(hdr_list);
-    }
-
+    let _ = (description, mode, headers, r#type);
+    Rf_error(b"libcurl URL connections are not implemented\0".as_ptr() as *const c_char);
     std::ptr::null_mut()
 }
 
@@ -1468,11 +1428,7 @@ unsafe fn translateCharFP(x: SEXP) -> *const c_char {
 
 /// R_ExpandFileName - expand ~ in file paths
 unsafe fn R_ExpandFileName(path: *const c_char) -> *const c_char {
-    if path.is_null() {
-        return std::ptr::null();
-    }
-    // Simple pass-through; real implementation expands ~
-    path
+    crate::unix::sys_unix::R_ExpandFileName(path)
 }
 
 /// checkArity - check function call arity
@@ -1487,11 +1443,7 @@ fn currentTime() -> f64 {
 
 /// Rf_warning1 - issue a warning (single string)
 unsafe fn Rf_warning1(msg: *const c_char) {
-    if msg.is_null() {
-        return;
-    }
-    let s = std::ffi::CStr::from_ptr(msg).to_string_lossy();
-    eprintln!("Warning: {}", s);
+    crate::mainutils::errors::Rf_warning1(msg);
 }
 
 /// CAD4R - CDR(CDR(CDR(CDR(args))))
