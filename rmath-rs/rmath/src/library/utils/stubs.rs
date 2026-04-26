@@ -33,6 +33,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::protect::protect;
 
 fn nil_value() -> SEXP {
     unsafe { R_NilValue() }
@@ -461,7 +462,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
             Rf_error(msg.as_ptr());
         }
 
-        let mut nprotect: c_int = 0;
+        let mut protect_guards = Vec::new();
         let ans: SEXP;
 
         if isString(x) {
@@ -476,7 +477,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
             let c_ptr = CHAR(sx);
             if c_ptr.is_null() {
                 ans = Rf_allocVector(SEXPTYPE::LGLSXP, 0);
-                nprotect += 1;
+                protect_guards.push(protect(ans));
             } else {
                 let s = CStr::from_ptr(c_ptr).to_bytes();
                 // Convert UTF-8 bytes to wide chars for classification
@@ -484,7 +485,7 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
                 let n = wide.len();
 
                 ans = Rf_allocVector(SEXPTYPE::LGLSXP, n as c_int);
-                nprotect += 1;
+                protect_guards.push(protect(ans));
                 let pans = LOGICAL(ans);
 
                 for (i, &wc) in wide.iter().enumerate() {
@@ -495,13 +496,13 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
         } else {
             // x is an integer vector: classify each code point
             let x_coerced = crate::main::coerce::coerceVector(x, SEXPTYPE::INTSXP.as_c_int());
-            nprotect += 1;
+            protect_guards.push(protect(x_coerced));
 
             let n = XLENGTH(x_coerced) as usize;
             let px = INTEGER(x_coerced);
 
             ans = Rf_allocVector(SEXPTYPE::LGLSXP, n as c_int);
-            nprotect += 1;
+            protect_guards.push(protect(ans));
             let pans = LOGICAL(ans);
 
             for i in 0..n {
@@ -513,10 +514,6 @@ pub unsafe fn charClass(x: SEXP, scl: SEXP) -> SEXP {
                     *pans.add(i) = if result != 0 { 1 } else { 0 };
                 }
             }
-        }
-
-        if nprotect > 0 {
-            crate::sexp::protect::Rf_unprotect(nprotect);
         }
 
         ans
