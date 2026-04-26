@@ -30,7 +30,7 @@ use crate::sexp::envir::defineVar;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::memory_ext::{allocList, allocSExp};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -430,7 +430,8 @@ unsafe fn R_FixupRHS(x: SEXP, y: SEXP) -> SEXP {
 unsafe fn PairToVectorList(x: SEXP) -> SEXP {
     unsafe {
         let len = Rf_length(x);
-        let ans = Rf_protect(Rf_allocVector3(VECSXP, len as R_xlen_t));
+        let ans = Rf_allocVector3(VECSXP, len as R_xlen_t);
+        let _ans_guard = protect(ans);
         let mut src = x;
         let mut i: R_xlen_t = 0;
         while !isNull(src) && i < len as R_xlen_t {
@@ -438,7 +439,6 @@ unsafe fn PairToVectorList(x: SEXP) -> SEXP {
             src = CDR(src);
             i += 1;
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -503,7 +503,8 @@ unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
         if isNull(src_attr) {
             return;
         }
-        let new_attr = Rf_protect(crate::mainutils::duplicate::duplicate(src_attr));
+        let new_attr = crate::mainutils::duplicate::duplicate(src_attr);
+        let _new_attr_guard = protect(new_attr);
         SET_ATTRIB(dest, new_attr);
         SET_OBJECT(dest, OBJECT(src));
         if IS_S4_OBJECT(src) != 0 {
@@ -511,7 +512,6 @@ unsafe fn copyMostAttrib(src: SEXP, dest: SEXP) {
         } else {
             UNSET_S4_OBJECT(dest);
         }
-        Rf_unprotect(1);
     }
 }
 
@@ -588,9 +588,9 @@ unsafe fn ScalarReal(x: c_double) -> SEXP {
 /// ScalarString: create a length-1 character vector from a CHARSXP.
 unsafe fn ScalarString(x: SEXP) -> SEXP {
     unsafe {
-        let s = Rf_protect(Rf_allocVector3(STRSXP, 1));
+        let s = Rf_allocVector3(STRSXP, 1);
+        let _s_guard = protect(s);
         SET_STRING_ELT(s, 0, x);
-        Rf_unprotect(1);
         s
     }
 }
@@ -731,8 +731,9 @@ unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
             newtruelen = newlen;
         }
 
-        Rf_protect(x);
-        let newx = Rf_protect(Rf_allocVector3(TYPEOF(x), newtruelen));
+        let _x_guard = protect(x);
+        let newx = Rf_allocVector3(TYPEOF(x), newtruelen);
+        let _newx_guard = protect(newx);
 
         // Copy the elements into place.
         let xtype = TYPEOF(x);
@@ -802,7 +803,6 @@ unsafe fn EnlargeVector(x: SEXP, newlen: R_xlen_t) -> SEXP {
             setAttrib(newx, R_NamesSym(), enlarged);
         }
         copyMostAttrib(x, newx);
-        Rf_unprotect(2);
         newx
     }
 }
@@ -814,11 +814,11 @@ unsafe fn EnlargeNames(names: SEXP, len: R_xlen_t, newlen: R_xlen_t) -> SEXP {
             // Error case - just return names unchanged
             return names;
         }
-        let newnames = Rf_protect(EnlargeVector(names, newlen));
+        let newnames = EnlargeVector(names, newlen);
+        let _newnames_guard = protect(newnames);
         for i in len..newlen {
             SET_STRING_ELT(newnames, i, R_BlankString());
         }
-        Rf_unprotect(1);
         newnames
     }
 }
@@ -827,9 +827,9 @@ unsafe fn EnlargeNames(names: SEXP, len: R_xlen_t, newlen: R_xlen_t) -> SEXP {
 /// SubassignTypeFix (used for S4 objects).
 unsafe fn embedInVector(v: SEXP, _call: SEXP) -> SEXP {
     unsafe {
-        let ans = Rf_protect(Rf_allocVector3(VECSXP, 1));
+        let ans = Rf_allocVector3(VECSXP, 1);
+        let _ans_guard = protect(ans);
         SET_VECTOR_ELT(ans, 0, v);
-        Rf_unprotect(1);
         ans
     }
 }
@@ -946,9 +946,8 @@ unsafe fn SubassignTypeFix(
         }
 
         if stretch > 0 {
-            Rf_protect(*y);
+            let _y_guard = protect(*y);
             *x = EnlargeVector(*x, stretch);
-            Rf_unprotect(1);
         }
         SET_OBJECT(*x, x_is_object as c_int);
 
@@ -984,7 +983,8 @@ unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
         let len = XLENGTH(x);
         let lenw = XLENGTH(which);
 
-        let include = Rf_protect(Rf_allocVector3(INTSXP, len));
+        let include = Rf_allocVector3(INTSXP, len);
+        let _include_guard = protect(include);
         let pinclude = INTEGER(include);
         for i in 0..len {
             *pinclude.add(i as usize) = 1;
@@ -1001,11 +1001,11 @@ unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
             ii += *pinclude.add(i as usize) as R_xlen_t;
         }
         if ii == len {
-            Rf_unprotect(1);
             return x;
         }
 
-        let xnew = Rf_protect(Rf_allocVector3(TYPEOF(x), ii));
+        let xnew = Rf_allocVector3(TYPEOF(x), ii);
+        let _xnew_guard = protect(xnew);
         let mut k: R_xlen_t = 0;
         for i in 0..len {
             if *pinclude.add(i as usize) == 1 {
@@ -1014,9 +1014,11 @@ unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
             }
         }
 
-        let xnames = Rf_protect(getAttrib(x, R_NamesSym()));
+        let xnames = getAttrib(x, R_NamesSym());
+        let _xnames_guard = protect(xnames);
         if !isNull(xnames) {
-            let xnewnames = Rf_protect(Rf_allocVector3(STRSXP, ii));
+            let xnewnames = Rf_allocVector3(STRSXP, ii);
+            let _xnewnames_guard = protect(xnewnames);
             k = 0;
             for i in 0..len {
                 if *pinclude.add(i as usize) == 1 {
@@ -1025,10 +1027,8 @@ unsafe fn DeleteListElements(x: SEXP, which: SEXP) -> SEXP {
                 }
             }
             setAttrib(xnew, R_NamesSym(), xnewnames);
-            Rf_unprotect(1);
         }
         copyMostAttrib(x, xnew);
-        Rf_unprotect(3);
         xnew
     }
 }
@@ -1793,14 +1793,15 @@ unsafe fn SimpleListAssign(
             return x;
         }
 
-        let sub = Rf_protect(GetOneIndex(sub, ind));
+        let sub = GetOneIndex(sub, ind);
+        let _sub_guard = protect(sub);
         let mut stretch: R_xlen_t = 1;
-        let indx = Rf_protect(makeSubscript(x, sub, &mut stretch, R_NilValue()));
+        let indx = makeSubscript(x, sub, &mut stretch, R_NilValue());
+        let _indx_guard = protect(indx);
 
         let n = Rf_length(indx);
         if n > 1 {
             // Error: invalid subscript
-            Rf_unprotect(2);
             return x;
         }
 
@@ -1809,7 +1810,8 @@ unsafe fn SimpleListAssign(
 
         if stretch > 0 {
             let t = CAR(s);
-            let yi = Rf_protect(allocList((stretch - nx as R_xlen_t) as c_int));
+            let yi = allocList((stretch - nx as R_xlen_t) as c_int);
+            let _yi_guard = protect(yi);
             if isString(t) && Rf_length(t) == (stretch - nx as R_xlen_t) as c_int {
                 let mut z = yi;
                 for i in 0..Rf_length(t) {
@@ -1817,12 +1819,10 @@ unsafe fn SimpleListAssign(
                     z = CDR(z);
                 }
             }
-            Rf_unprotect(1);
-            x = Rf_protect(listAppend(x, yi));
+            x = listAppend(x, yi);
             nx = stretch as c_int;
-        } else {
-            Rf_protect(x);
         }
+        let _x_guard = protect(x);
 
         if n == 1 {
             let ii = asInteger(indx);
@@ -1832,7 +1832,6 @@ unsafe fn SimpleListAssign(
                 SETCAR(xi, y);
             }
         }
-        Rf_unprotect(3);
         x
     }
 }
@@ -1845,9 +1844,11 @@ unsafe fn SimpleListAssign(
 unsafe fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
     unsafe {
         let nx = Rf_length(x);
-        let s = Rf_protect(GetOneIndex(s, ind));
+        let s = GetOneIndex(s, ind);
+        let _s_guard = protect(s);
         let mut stretch: R_xlen_t = 0;
-        let s = Rf_protect(makeSubscript(x, s, &mut stretch, R_NilValue()));
+        let s = makeSubscript(x, s, &mut stretch, R_NilValue());
+        let _subscript_guard = protect(s);
         let ns = Rf_length(s);
 
         let mut indx = vec![1i32; nx as usize];
@@ -1895,7 +1896,6 @@ unsafe fn listRemove(x: SEXP, s: SEXP, ind: c_int) -> SEXP {
             RAISE_NAMED(val, NAMED(x));
         }
 
-        Rf_unprotect(2);
         val
     }
 }
@@ -1911,7 +1911,8 @@ unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
 
         let n = XLENGTH(x);
         if which >= 0 && which < n {
-            let y = Rf_protect(Rf_allocVector3(TYPEOF(x), n - 1));
+            let y = Rf_allocVector3(TYPEOF(x), n - 1);
+            let _y_guard = protect(y);
             let mut k: R_xlen_t = 0;
             for i in 0..n {
                 if i != which {
@@ -1919,9 +1920,11 @@ unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
                     k += 1;
                 }
             }
-            let xnames = Rf_protect(getAttrib(x, R_NamesSym()));
+            let xnames = getAttrib(x, R_NamesSym());
+            let _xnames_guard = protect(xnames);
             if !isNull(xnames) {
-                let ynames = Rf_protect(Rf_allocVector3(STRSXP, n - 1));
+                let ynames = Rf_allocVector3(STRSXP, n - 1);
+                let _ynames_guard = protect(ynames);
                 k = 0;
                 for i in 0..n {
                     if i != which {
@@ -1930,10 +1933,8 @@ unsafe fn DeleteOneVectorListItem(x: SEXP, which: R_xlen_t) -> SEXP {
                     }
                 }
                 setAttrib(y, R_NamesSym(), ynames);
-                Rf_unprotect(1);
             }
             copyMostAttrib(x, y);
-            Rf_unprotect(2);
             y
         } else {
             x
