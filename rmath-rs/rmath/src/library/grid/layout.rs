@@ -28,7 +28,7 @@ use std::os::raw::c_int;
 use crate::sexp::accessors::{INTEGER, LENGTH, REAL, Rf_isNull, SET_VECTOR_ELT, VECTOR_ELT};
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 
 use super::types::*;
 use super::unit::{pureNullUnitValue, transformHeight, transformWidth, unit};
@@ -613,8 +613,10 @@ pub unsafe fn calcViewportLayout(
             );
         }
 
-        let currentWidths = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, ncol));
-        let currentHeights = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nrow));
+        let currentWidths = Rf_allocVector(SEXPTYPE::REALSXP, ncol);
+        let _widths_guard = protect(currentWidths);
+        let currentHeights = Rf_allocVector(SEXPTYPE::REALSXP, nrow);
+        let _heights_guard = protect(currentHeights);
         for i in 0..ncol {
             *REAL(currentWidths).add(i as usize) = npcWidths[i as usize];
         }
@@ -623,7 +625,6 @@ pub unsafe fn calcViewportLayout(
         }
         SET_VECTOR_ELT(viewport, PVP_WIDTHS as R_xlen_t, currentWidths);
         SET_VECTOR_ELT(viewport, PVP_HEIGHTS as R_xlen_t, currentHeights);
-        Rf_unprotect(2);
     }
 }
 
@@ -705,17 +706,20 @@ pub unsafe fn calcViewportLocationFromLayout(
             &mut height,
         );
 
-        let x = Rf_protect(unit(left, super::unit::L_CM));
-        let y = Rf_protect(unit(bottom, super::unit::L_CM));
-        let w = Rf_protect(unit(width, super::unit::L_CM));
-        let h = Rf_protect(unit(height, super::unit::L_CM));
+        let x = unit(left, super::unit::L_CM);
+        let _x_guard = protect(x);
+        let y = unit(bottom, super::unit::L_CM);
+        let _y_guard = protect(y);
+        let w = unit(width, super::unit::L_CM);
+        let _w_guard = protect(w);
+        let h = unit(height, super::unit::L_CM);
+        let _h_guard = protect(h);
         (*vpl).x = x;
         (*vpl).y = y;
         (*vpl).width = w;
         (*vpl).height = h;
         (*vpl).hjust = 0.0;
         (*vpl).vjust = 0.0;
-        Rf_unprotect(4);
     }
 }
 

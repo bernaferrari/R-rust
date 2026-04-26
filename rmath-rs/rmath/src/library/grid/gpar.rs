@@ -14,7 +14,7 @@ use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::{mainutils::colors::RGBpar3, mainutils::engine as ge};
 
 use super::grid::getDevice;
@@ -485,7 +485,8 @@ pub unsafe fn updateGContext(
 
 pub unsafe fn initGPar(dd: pGEDevDesc) {
     unsafe {
-        let gp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1));
+        let gp = Rf_allocVector(SEXPTYPE::VECSXP, GP_FONTFACE + 1);
+        let _gp_guard = protect(gp);
 
         // GP_FILL (0): transparent white
         SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_ScalarInteger(R_TRANWHITE));
@@ -548,7 +549,6 @@ pub unsafe fn initGPar(dd: pGEDevDesc) {
         SET_VECTOR_ELT(gp, GP_FONTFACE as R_xlen_t, Rf_ScalarInteger(1));
 
         setGridStateElement(dd, GSS_GPAR, gp);
-        Rf_unprotect(1);
     }
 }
 

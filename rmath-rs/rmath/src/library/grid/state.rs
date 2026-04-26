@@ -15,7 +15,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_ScalarLogical, Rf_ScalarReal, Rf_allocVector, Rf_mkString};
 use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 use crate::sexp::symbol::Rf_install;
 
 use super::types::*;
@@ -125,11 +125,11 @@ pub unsafe fn createGridSystemState() -> SEXP {
 /// index to 0, and marks the display list as active.
 pub unsafe fn initDL(dd: pGEDevDesc) {
     unsafe {
-        let dl = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 100));
+        let dl = Rf_allocVector(SEXPTYPE::VECSXP, 100);
+        let _dl_guard = protect(dl);
         setGridStateElement(dd, GSS_DL, dl);
         setGridStateElement(dd, GSS_DLINDEX, Rf_allocVector(SEXPTYPE::INTSXP, 1));
         setGridStateElement(dd, GSS_DLON, crate::sexp::constructors::Rf_ScalarLogical(1));
-        Rf_unprotect(1);
     }
 }
 
@@ -148,7 +148,7 @@ pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
     unsafe {
         use crate::sexp::ffi::NA_REAL;
 
-        Rf_protect(state);
+        let _state_guard = protect(state);
 
         // GSS_DEVSIZE: current size of device
         let devsize = Rf_allocVector(SEXPTYPE::REALSXP, 2);
@@ -202,8 +202,6 @@ pub unsafe fn fillGridSystemState(state: SEXP, dd: pGEDevDesc) {
         SET_VECTOR_ELT(state, GSS_GROUPS as R_xlen_t, R_NilValue());
 
         set_current_grid_state(state);
-
-        Rf_unprotect(1);
     }
 }
 
@@ -274,13 +272,12 @@ unsafe fn globaliseState(state: SEXP) {
         let index = findStateSlot();
         let sym = Rf_install(b".GRID.STATE\0".as_ptr() as *const c_char);
         let globalstate = findVar(sym, grid_eval_env());
-        Rf_protect(globalstate);
+        let _globalstate_guard = protect(globalstate);
         let indexsxp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        Rf_protect(indexsxp);
+        let _index_guard = protect(indexsxp);
         *INTEGER(indexsxp).add(0) = index;
         SET_VECTOR_ELT(state, GSS_GLOBALINDEX as R_xlen_t, indexsxp);
         SET_VECTOR_ELT(globalstate, index as R_xlen_t, state);
-        Rf_unprotect(2);
     }
 }
 
@@ -295,7 +292,7 @@ pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
             GE_InitState => {
                 // Create the initial grid state for a device
                 let gridState = createGridSystemState();
-                Rf_protect(gridState);
+                let _grid_state_guard = protect(gridState);
                 // Store that state with the device for easy retrieval
                 // (stub: cannot access dd->gesd)
                 // Initialize the grid state for a device
@@ -304,7 +301,6 @@ pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
                 globaliseState(gridState);
                 // Indicate success
                 result = R_BlankString();
-                Rf_unprotect(1);
             }
             GE_FinaliseState => {
                 // Stub: cannot access dd->gesd with void* pGEDevDesc.
@@ -325,17 +321,16 @@ pub unsafe fn gridCallback(task: GEevent, dd: pGEDevDesc, data: SEXP) -> SEXP {
             }
             GE_SaveSnapshotState => {
                 result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
-                Rf_protect(result);
+                let _result_guard = protect(result);
                 SET_VECTOR_ELT(result, 0, R_NilValue());
                 SET_VECTOR_ELT(result, 1, R_NilValue());
                 let pkgName = Rf_mkString(b"grid\0".as_ptr() as *const c_char);
-                Rf_protect(pkgName);
+                let _pkg_name_guard = protect(pkgName);
                 attrib_core::setAttrib(
                     result,
                     Rf_install(b"pkgName\0".as_ptr() as *const c_char),
                     pkgName,
                 );
-                Rf_unprotect(2);
             }
             GE_RestoreSnapshotState => {
                 // Stub: complex snapshot restoration logic deferred until GE is ported.
