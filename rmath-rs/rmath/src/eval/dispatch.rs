@@ -26,7 +26,7 @@ use crate::sexp::ffi::{FALSE, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_MissingArg, R_NilValue};
 use crate::sexp::memory_ext::{CONS_NR, NewEnvironment, mkPROMISE, vmaxget, vmaxset};
 use crate::sexp::object::{PairlistBuilder, Sexp};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::R_DotsSymbol;
 
 use super::builtin::PRIMNAME;
@@ -271,12 +271,11 @@ unsafe fn stringSuffix(klass: SEXP, pos: c_int) -> SEXP {
         }
         let len = n - pos;
         let ans = Rf_allocVector(SEXPTYPE::STRSXP, len);
-        Rf_protect(ans);
+        let _ans_guard = protect(ans);
         for i in 0..len {
             let src = STRING_ELT(klass, (pos + i) as R_xlen_t);
             SET_STRING_ELT(ans, i as R_xlen_t, src);
         }
-        Rf_unprotect(1);
         ans
     }
 }
@@ -414,7 +413,7 @@ pub unsafe fn DispatchOrEval(
     unsafe {
         let mut x: SEXP = R_NilValue();
         let mut dots: c_int = FALSE;
-        let mut nprotect: c_int = 0;
+        let mut guards = Vec::new();
 
         if generic.is_null() || ans.is_null() {
             return 0;
@@ -425,8 +424,7 @@ pub unsafe fn DispatchOrEval(
             // Args are already evaluated
             x = CAR(args);
             if !x.is_null() {
-                Rf_protect(x);
-                nprotect += 1;
+                guards.push(protect(x));
             }
         } else {
             // Find the object, dropping leading ... with missing/empty values
@@ -451,8 +449,7 @@ pub unsafe fn DispatchOrEval(
                 args_iter = CDR(args_iter);
             }
             if !x.is_null() {
-                Rf_protect(x);
-                nprotect += 1;
+                guards.push(protect(x));
             }
         }
 
@@ -473,12 +470,12 @@ pub unsafe fn DispatchOrEval(
             // Only dispatch if not already the default method
             if pt.is_null() || streql(pt, b".default\x00".as_ptr() as *const c_char) == FALSE {
                 // Create promises for the arguments
-                let pargs = Rf_protect(promiseArgs(args, rho));
-                nprotect += 1;
+                let pargs = promiseArgs(args, rho);
+                guards.push(protect(pargs));
 
                 // Create a new environment for dispatch context
-                let rho1 = Rf_protect(NewEnvironment(R_NilValue(), R_NilValue(), rho));
-                nprotect += 1;
+                let rho1 = NewEnvironment(R_NilValue(), R_NilValue(), rho);
+                guards.push(protect(rho1));
 
                 // Set the evaluated value as the first promise's value
                 // (IF_PROMSXP_SET_PRVALUE)
@@ -503,7 +500,6 @@ pub unsafe fn DispatchOrEval(
                 );
 
                 if dispatched != FALSE {
-                    Rf_unprotect(nprotect);
                     return 1;
                 }
             }
@@ -516,6 +512,7 @@ pub unsafe fn DispatchOrEval(
             } else {
                 // Put evaluated x back with rest of evaluated args
                 let rest = evalArgs(CDR(args), rho, dropmissing, call, 1);
+                let _rest_guard = protect(rest);
                 let arglist = CONS_NR(x, rest);
                 SETTAG(arglist, TAG(args));
                 *ans = arglist;
@@ -524,7 +521,6 @@ pub unsafe fn DispatchOrEval(
             *ans = args;
         }
 
-        Rf_unprotect(nprotect);
         0
     }
 }
@@ -656,13 +652,17 @@ pub unsafe fn DispatchGroup(
         let generic = PRIMNAME(op);
 
         // Get class of first arg
-        let mut lclass = Rf_protect(R_data_class(CAR(args)));
+        let mut guards = Vec::new();
+
+        let mut lclass = R_data_class(CAR(args));
+        guards.push(protect(lclass));
         let rclass = if nargs == 2 {
-            Rf_protect(R_data_class(CADR(args)))
+            let class = R_data_class(CADR(args));
+            guards.push(protect(class));
+            class
         } else {
             R_NilValue()
         };
-        let mut nprotect: c_int = 2;
 
         let mut lmeth: SEXP = R_NilValue();
         let mut lsxp: SEXP = R_NilValue();
@@ -684,8 +684,7 @@ pub unsafe fn DispatchGroup(
             args,
             rho,
         );
-        Rf_protect(lgr);
-        nprotect += 1;
+        guards.push(protect(lgr));
 
         if nargs == 2 {
             findmethod(
@@ -699,13 +698,11 @@ pub unsafe fn DispatchGroup(
                 CDR(args),
                 rho,
             );
-            Rf_protect(rgr);
-            nprotect += 1;
+            guards.push(protect(rgr));
         }
 
         // If no method found for either side, use default
         if isFunction(lsxp) == FALSE && isFunction(rsxp) == FALSE {
-            Rf_unprotect(nprotect);
             return 0;
         }
 
@@ -729,8 +726,8 @@ pub unsafe fn DispatchGroup(
         let dispatch_class_name = translateChar(STRING_ELT(lclass, lwhich as R_xlen_t));
         let _vmax = vmaxget();
 
-        let m = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, nargs));
-        nprotect += 1;
+        let m = Rf_allocVector(SEXPTYPE::STRSXP, nargs);
+        guards.push(protect(m));
 
         let mut s = args;
         for i in 0..nargs {
@@ -749,29 +746,28 @@ pub unsafe fn DispatchGroup(
 
         // Create the S3 dispatch variables
         let generic_str = R_mkString(generic.as_ptr() as *const c_char);
-        Rf_protect(generic_str);
-        nprotect += 1;
+        guards.push(protect(generic_str));
 
-        let dot_class = Rf_protect(stringSuffix(lclass, lwhich));
-        nprotect += 1;
+        let dot_class = stringSuffix(lclass, lwhich);
+        guards.push(protect(dot_class));
 
-        let newvars = Rf_protect(crate::mainutils::objects::createS3Vars(
+        let newvars = crate::mainutils::objects::createS3Vars(
             generic_str,
             lgr,
             dot_class,
             m,
             rho,
             R_BaseEnv(),
-        ));
-        nprotect += 1;
+        );
+        guards.push(protect(newvars));
 
         // Build the new call: (method . rest-of-call)
-        let newcall = Rf_protect(Rf_cons(lmeth, CDR(call)));
-        nprotect += 1;
+        let newcall = Rf_cons(lmeth, CDR(call));
+        guards.push(protect(newcall));
 
         // Create promises for the arguments
-        let pargs = Rf_protect(promiseArgs(CDR(call), rho));
-        nprotect += 1;
+        let pargs = promiseArgs(CDR(call), rho);
+        guards.push(protect(pargs));
 
         // Set promise values to the evaluated args
         let mut pi = pargs;
@@ -790,7 +786,6 @@ pub unsafe fn DispatchGroup(
         // Dispatch via applyClosure
         *ans = applyClosure(newcall, lsxp, pargs, rho, newvars, TRUE);
 
-        Rf_unprotect(nprotect);
         1
     }
 }
@@ -811,6 +806,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let mut head: SEXP = R_NilValue();
         let mut tail: SEXP = ptr::null_mut();
+        let mut head_guard = None;
 
         let mut remaining = el;
         while !remaining.is_null() && remaining != R_NilValue() {
@@ -819,7 +815,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
             if CAR(remaining) == R_DotsSymbol() {
                 // Handle ... expansion
                 let h = R_findVarInFrame(rho, CAR(remaining));
-                Rf_protect(h);
+                let _h_guard = protect(h);
                 if TYPEOF(h) == SEXPTYPE::DOTSXP || h == R_NilValue() {
                     let mut dh = h;
                     while !dh.is_null() && dh != R_NilValue() {
@@ -830,10 +826,8 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                         }
                         let ev = CONS_NR(val, R_NilValue());
                         if head == R_NilValue() {
-                            Rf_unprotect(1); // h
                             head = ev;
-                            Rf_protect(head);
-                            Rf_protect(dh); // re-protect h
+                            head_guard = Some(protect(head));
                         } else {
                             SETCDR(tail, ev);
                         }
@@ -845,12 +839,10 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                         dh = CDR(dh);
                     }
                 } else if h != R_MissingArg() {
-                    Rf_unprotect(1);
                     crate::mainutils::errors::Rf_error(
                         b"'...' used in an incorrect context\0".as_ptr() as *const c_char,
                     );
                 }
-                Rf_unprotect(1); // h
             } else {
                 // Regular argument
                 if CAR(remaining) == R_MissingArg()
@@ -864,7 +856,7 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                 let ev = CONS_NR(val, R_NilValue());
                 if head == R_NilValue() {
                     head = ev;
-                    Rf_protect(head);
+                    head_guard = Some(protect(head));
                 } else {
                     SETCDR(tail, ev);
                 }
@@ -875,10 +867,6 @@ pub unsafe fn evalListKeepMissing(el: SEXP, rho: SEXP) -> SEXP {
                 tail = ev;
             }
             remaining = CDR(remaining);
-        }
-
-        if head != R_NilValue() {
-            Rf_unprotect(1);
         }
 
         head
