@@ -7821,7 +7821,7 @@ pub unsafe fn do_list_files(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for (i, name) in entries.iter().enumerate() {
             let cstr = CString::new(name.as_str()).unwrap_or_default();
@@ -8463,7 +8463,7 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if has_names {
             let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, n);
             if !names_vec.is_null() {
-                let _p2 = Rf_protect(names_vec);
+                let _names_guard = protect(names_vec);
                 for (j, name) in name_parts.iter().enumerate() {
                     let cstr = CString::new(name.as_str()).unwrap_or_default();
                     let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
@@ -8477,10 +8477,8 @@ pub unsafe fn do_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
                     names_vec,
                 );
-                crate::sexp::protect::Rf_unprotect(1);
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -8492,12 +8490,12 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if result.is_null() || result == R_NilValue() {
             return result;
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         // Set class to "data.frame"
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
-            let _p2 = Rf_protect(class_vec);
+            let _class_guard = protect(class_vec);
             let cstr = CString::new("data.frame").unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
@@ -8509,7 +8507,6 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
                 class_vec,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
         // Determine number of rows from the first column
@@ -8520,7 +8517,7 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 let nrow = XLENGTH(first_col);
                 let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
                 if !rn.is_null() {
-                    let _p3 = Rf_protect(rn);
+                    let _row_names_guard = protect(rn);
                     *INTEGER(rn) = NA_INTEGER;
                     *INTEGER(rn).add(1) = -(nrow as i32);
                     crate::sexp::attrib_core::setAttrib(
@@ -8528,12 +8525,10 @@ pub unsafe fn do_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                         Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
                         rn,
                     );
-                    crate::sexp::protect::Rf_unprotect(1);
                 }
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -8718,7 +8713,7 @@ pub unsafe fn do_c_list(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let mut offset: R_xlen_t = 0;
         current = args;
         while !current.is_null() && current != R_NilValue() {
@@ -9424,7 +9419,7 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
 
         let class_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !class_vec.is_null() {
-            let _p2 = Rf_protect(class_vec);
+            let _class_guard = protect(class_vec);
             let cstr = CString::new("data.frame").unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
@@ -9436,14 +9431,13 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 Rf_install(CString::new("class").unwrap_or_default().as_ptr()),
                 class_vec,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
         // Set row.names
         let nrow = XLENGTH(x);
         let rn = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !rn.is_null() {
-            let _p3 = Rf_protect(rn);
+            let _row_names_guard = protect(rn);
             *INTEGER(rn) = NA_INTEGER;
             *INTEGER(rn).add(1) = -(nrow as i32);
             crate::sexp::attrib_core::setAttrib(
@@ -9451,13 +9445,12 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 Rf_install(CString::new("row.names").unwrap_or_default().as_ptr()),
                 rn,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
         // Set column name to "x"
         let names_vec = Rf_allocVector3(SEXPTYPE::STRSXP, 1);
         if !names_vec.is_null() {
-            let _p4 = Rf_protect(names_vec);
+            let _names_guard = protect(names_vec);
             let cstr = CString::new("x").unwrap_or_default();
             let charsxp = crate::sexp::constructors::Rf_mkChar(cstr.as_ptr());
             if !charsxp.is_null() {
@@ -9469,10 +9462,8 @@ pub unsafe fn do_as_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -
                 Rf_install(CString::new("names").unwrap_or_default().as_ptr()),
                 names_vec,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -9833,7 +9824,7 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
             for i in 0..n {
                 let s = elt_to_string(x, i);
                 let cstr = CString::new(s).unwrap_or_default();
@@ -9843,7 +9834,6 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
                     *data.add(i as usize) = charsxp;
                 }
             }
-            crate::sexp::protect::Rf_unprotect(1);
             return result;
         }
 
@@ -9861,7 +9851,7 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for i in 0..nrow {
             for j in 0..ncol {
@@ -9883,7 +9873,7 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
         // Set dim attribute
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
-            let _p2 = Rf_protect(dim);
+            let _dim_guard = protect(dim);
             *INTEGER(dim) = nrow as i32;
             *INTEGER(dim).add(1) = ncol as i32;
             crate::sexp::attrib_core::setAttrib(
@@ -9891,10 +9881,8 @@ pub unsafe fn do_format_data_frame(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEX
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
                 dim,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -9955,7 +9943,7 @@ pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         for i in 0..x_ncol {
@@ -9981,7 +9969,7 @@ pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         // Set dim attribute
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
-            let _p2 = Rf_protect(dim);
+            let _dim_guard = protect(dim);
             *INTEGER(dim) = x_ncol as i32;
             *INTEGER(dim).add(1) = y_ncol as i32;
             crate::sexp::attrib_core::setAttrib(
@@ -9989,10 +9977,8 @@ pub unsafe fn do_crossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
                 dim,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -10048,7 +10034,7 @@ pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         for i in 0..x_nrow {
@@ -10073,7 +10059,7 @@ pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
 
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if !dim.is_null() {
-            let _p2 = Rf_protect(dim);
+            let _dim_guard = protect(dim);
             *INTEGER(dim) = x_nrow as i32;
             *INTEGER(dim).add(1) = y_nrow as i32;
             crate::sexp::attrib_core::setAttrib(
@@ -10081,10 +10067,8 @@ pub unsafe fn do_tcrossprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
                 Rf_install(CString::new("dim").unwrap_or_default().as_ptr()),
                 dim,
             );
-            crate::sexp::protect::Rf_unprotect(1);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
