@@ -30,15 +30,17 @@ upstream's `((eval / 100) % 10)` rule; and the old `eval::builtin` placeholder
 delegates to the canonical function table. `eval::apply` makes the important R
 semantic boundary explicit: unevaluated builtins are dispatched before ordinary
 argument evaluation, while evaluated builtins go through one call-frame path.
+`eval::builtin` now owns explicit unevaluated and evaluated handler tables, so
+`eval::apply` is small again and only coordinates evaluation policy,
+visibility, and S3/S4/primitive fallback behavior.
 Base environment registration now constructs canonical `R_FunTab` primitives
 where the table's argument policy matches the binding, marks noncanonical
 Rust-side helpers with `PRIMOFFSET = -1`, and lets `eval::apply` prefer
 `PrimitiveDescriptor` names with call-head fallback only for those explicit
-noncanonical helpers. The remaining weak spot is that the evaluated builtin
-table itself is still a large string match instead of generated/table-driven
-metadata. The raw compatibility shell in `eval.rs` now denies
-`unsafe_op_in_unsafe_fn`, so the remaining pointer conversions are explicit
-unsafe blocks rather than ambient module-wide unsafety.
+noncanonical helpers. The raw compatibility shell in `eval.rs` now denies
+`unsafe_op_in_unsafe_fn`, and `eval::builtin` has the same boundary, so the
+remaining pointer conversions are explicit unsafe blocks rather than ambient
+module-wide unsafety.
 
 ## Test Strategy
 
