@@ -123,14 +123,107 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
     crate::sexp::accessors::translateChar(x)
 }
 
-unsafe fn duplicated(_x: SEXP, _from_last: c_int) -> SEXP {
-    R_NilValue()
+unsafe fn string_elt_key(x: SEXP, index: R_xlen_t) -> Option<Vec<u8>> {
+    let elt = STRING_ELT(x, index);
+    if elt.is_null() || elt == NA_STRING() {
+        None
+    } else {
+        Some(CStr::from_ptr(CHAR(elt)).to_bytes().to_vec())
+    }
 }
 
-unsafe fn sortVector(_x: SEXP, _decreasing: c_int) {}
+unsafe fn duplicated(x: SEXP, from_last: c_int) -> SEXP {
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        Rf_error(
+            b"duplicated() wrapper only supports character vectors\0".as_ptr() as *const c_char,
+        );
+    }
 
-unsafe fn matchE(_x: SEXP, _table: SEXP, _nomatch: c_int, _env: SEXP) -> SEXP {
-    R_NilValue()
+    let len = LENGTH(x);
+    let ans = Rf_allocVector(SEXPTYPE::LGLSXP, len);
+    if from_last != 0 {
+        for i in (0..len).rev() {
+            let key = string_elt_key(x, i as R_xlen_t);
+            let mut seen = false;
+            for j in (i + 1)..len {
+                if string_elt_key(x, j as R_xlen_t) == key {
+                    seen = true;
+                    break;
+                }
+            }
+            *LOGICAL(ans).add(i as usize) = seen as c_int;
+        }
+    } else {
+        for i in 0..len {
+            let key = string_elt_key(x, i as R_xlen_t);
+            let mut seen = false;
+            for j in 0..i {
+                if string_elt_key(x, j as R_xlen_t) == key {
+                    seen = true;
+                    break;
+                }
+            }
+            *LOGICAL(ans).add(i as usize) = seen as c_int;
+        }
+    }
+    ans
+}
+
+unsafe fn sortVector(x: SEXP, decreasing: c_int) {
+    if TYPEOF(x) != SEXPTYPE::STRSXP {
+        Rf_error(
+            b"sortVector() wrapper only supports character vectors\0".as_ptr() as *const c_char,
+        );
+    }
+
+    let len = LENGTH(x) as R_xlen_t;
+    let mut values = Vec::with_capacity(len as usize);
+    for i in 0..len {
+        values.push(STRING_ELT(x, i));
+    }
+    values.sort_by(|&a, &b| {
+        let ak = if a.is_null() || a == NA_STRING() {
+            None
+        } else {
+            Some(CStr::from_ptr(CHAR(a)).to_bytes().to_vec())
+        };
+        let bk = if b.is_null() || b == NA_STRING() {
+            None
+        } else {
+            Some(CStr::from_ptr(CHAR(b)).to_bytes().to_vec())
+        };
+        ak.cmp(&bk)
+    });
+    if decreasing != 0 {
+        values.reverse();
+    }
+    for (i, value) in values.into_iter().enumerate() {
+        SET_STRING_ELT(x, i as R_xlen_t, value);
+    }
+}
+
+unsafe fn matchE(table: SEXP, x: SEXP, nomatch: c_int, _env: SEXP) -> SEXP {
+    if TYPEOF(table) != SEXPTYPE::STRSXP || TYPEOF(x) != SEXPTYPE::STRSXP {
+        Rf_error(b"matchE() wrapper only supports character vectors\0".as_ptr() as *const c_char);
+    }
+
+    let x_len = LENGTH(x);
+    let table_len = LENGTH(table);
+    let ans = Rf_allocVector(SEXPTYPE::INTSXP, x_len);
+    for i in 0..x_len {
+        let key = string_elt_key(x, i as R_xlen_t);
+        let mut matched = nomatch;
+        if key.is_some() {
+            for j in 0..table_len {
+                if string_elt_key(table, j as R_xlen_t) == key {
+                    matched = j + 1;
+                    break;
+                }
+            }
+        }
+        *INTEGER(ans).add(i as usize) = matched;
+    }
+    ans
 }
 
 unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {

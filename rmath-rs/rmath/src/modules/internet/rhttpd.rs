@@ -169,6 +169,7 @@ thread_local! { static SRV_HANDLER: Cell<*mut c_void> = Cell::new(std::ptr::null
 // ============================================================
 
 unsafe fn R_FindNamespace(_name: SEXP) -> SEXP {
+    Rf_error(b"HTTPD namespace lookup is not implemented\0".as_ptr() as *const c_char);
     R_NilValue()
 }
 
@@ -203,6 +204,7 @@ unsafe fn addInputHandler(
     _handler: Option<unsafe fn(*mut c_void)>,
     _activity: c_int,
 ) -> *mut c_void {
+    Rf_error(b"HTTPD input handlers are not implemented\0".as_ptr() as *const c_char);
     std::ptr::null_mut()
 }
 

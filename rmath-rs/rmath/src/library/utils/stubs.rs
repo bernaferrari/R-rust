@@ -35,14 +35,19 @@ use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 
 unsafe fn do_Rprof(_args: SEXP) -> SEXP {
+    Rf_error(b"Rprof is not implemented in the utils package boundary\0".as_ptr() as *const c_char);
     R_NilValue()
 }
 
 unsafe fn do_Rprofmem(_args: SEXP) -> SEXP {
+    Rf_error(
+        b"Rprofmem is not implemented in the utils package boundary\0".as_ptr() as *const c_char,
+    );
     R_NilValue()
 }
 
 unsafe fn Runzip(_args: SEXP) -> SEXP {
+    Rf_error(b"unzip is not implemented in the utils package boundary\0".as_ptr() as *const c_char);
     R_NilValue()
 }
 
