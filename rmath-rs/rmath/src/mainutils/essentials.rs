@@ -1455,7 +1455,7 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let s = elt_to_string(x_arg, i);
             let translated: String = s
@@ -1475,7 +1475,6 @@ pub unsafe fn do_chartr(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 *data.add(i as usize) = charsxp;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1499,7 +1498,7 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let s = if TYPEOF(x) == SEXPTYPE::REALSXP {
                 let v = *REAL(x).add(i as usize);
@@ -1527,7 +1526,6 @@ pub unsafe fn do_format(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 *data.add(i as usize) = charsxp;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1573,12 +1571,11 @@ pub unsafe fn do_order(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         for (i, &(_, orig_idx)) in indices.iter().enumerate() {
             *dst.add(i) = (orig_idx + 1) as c_int;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1637,12 +1634,11 @@ pub unsafe fn do_rank(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = ranks[i as usize];
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -1735,7 +1731,7 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
 
         // Compute nmax limit
@@ -1800,7 +1796,6 @@ pub unsafe fn do_duplicated(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2015,7 +2010,7 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
             let dst = LOGICAL(result);
 
             // Hash each row as a string
@@ -2067,7 +2062,6 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 }
             }
 
-            crate::sexp::protect::Rf_unprotect(1);
             result
         } else if margin == 2 && dims_len == 2 {
             // Duplicate columns
@@ -2076,7 +2070,7 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
             let dst = LOGICAL(result);
 
             let mut seen: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
@@ -2118,7 +2112,6 @@ pub unsafe fn do_duplicated_array(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP
                 }
             }
 
-            crate::sexp::protect::Rf_unprotect(1);
             result
         } else {
             // Generic: flatten along margin — fallback to duplicated on flattened vector
@@ -2312,7 +2305,7 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         let mut lookup: std::collections::BTreeMap<String, c_int> =
             std::collections::BTreeMap::new();
@@ -2327,7 +2320,6 @@ pub unsafe fn do_match(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             let s = elt_to_string(x, i);
             *dst.add(i as usize) = *lookup.get(&s).unwrap_or(&NA_INTEGER);
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2350,7 +2342,7 @@ pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         let mut vvals: Vec<f64> = Vec::with_capacity(vn as usize);
         for i in 0..vn {
@@ -2374,7 +2366,6 @@ pub unsafe fn do_findInterval(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) ->
             }
             *dst.add(i as usize) = lo;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2440,7 +2431,7 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let v = elt_real_safe(x, i);
             let label = if v.to_bits() == crate::sexp::ffi::R_NA_BIT_PATTERN || v.is_nan() {
@@ -2462,7 +2453,6 @@ pub unsafe fn do_cut(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *data.add(i as usize) = charsxp;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2485,13 +2475,12 @@ pub unsafe fn do_startsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> S
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
             let s = elt_to_string(x, i);
             *dst.add(i as usize) = if s.starts_with(&prefix) { TRUE } else { FALSE };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2510,13 +2499,12 @@ pub unsafe fn do_endsWith(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEX
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
             let s = elt_to_string(x, i);
             *dst.add(i as usize) = if s.ends_with(&suffix) { TRUE } else { FALSE };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2551,7 +2539,7 @@ pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let s = elt_to_string(x, i);
             let slen = s.chars().count();
@@ -2580,7 +2568,6 @@ pub unsafe fn do_str_pad(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 *data.add(i as usize) = charsxp;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2599,7 +2586,7 @@ pub unsafe fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         for i in 0..n {
             let s = elt_to_string(x, i);
@@ -2610,7 +2597,6 @@ pub unsafe fn do_str_count(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             };
             *dst.add(i as usize) = count as c_int;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2802,7 +2788,7 @@ pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for j in 0..ncol {
             for i in 0..nrow {
@@ -2811,7 +2797,6 @@ pub unsafe fn do_lower_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 *dst.add(idx) = if is_lower { TRUE } else { FALSE };
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -2847,7 +2832,7 @@ pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for j in 0..ncol {
             for i in 0..nrow {
@@ -2856,7 +2841,6 @@ pub unsafe fn do_upper_tri(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 *dst.add(idx) = if is_upper { TRUE } else { FALSE };
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -3867,7 +3851,7 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _protect = Rf_protect(result);
+        let _result_guard = protect(result);
         for (i, value) in values.iter().enumerate() {
             SET_STRING_ELT(
                 result,
@@ -3875,7 +3859,6 @@ unsafe fn string_vector(values: &[String]) -> SEXP {
                 Rf_mkChar(CString::new(value.as_str()).unwrap_or_default().as_ptr()),
             );
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -3978,7 +3961,7 @@ unsafe fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _result_guard = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for (col_idx, column) in INSTALLED_PACKAGE_COLUMNS.iter().enumerate() {
             for (row_idx, package) in packages.iter().enumerate() {
@@ -3993,30 +3976,27 @@ unsafe fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
 
         let dim = Rf_allocVector3(SEXPTYPE::INTSXP, 2);
         if dim.is_null() {
-            crate::sexp::protect::Rf_unprotect(1);
             return R_NilValue();
         }
-        let _dim_guard = Rf_protect(dim);
+        let _dim_guard = protect(dim);
         *INTEGER(dim).add(0) = nrow as c_int;
         *INTEGER(dim).add(1) = ncol as c_int;
         crate::sexp::attrib_core::setAttrib(result, crate::sexp::attrib_core::R_DimSymbol(), dim);
 
         let dimnames = Rf_allocVector3(SEXPTYPE::VECSXP, 2);
         if dimnames.is_null() {
-            crate::sexp::protect::Rf_unprotect(2);
             return R_NilValue();
         }
-        let _dimnames_guard = Rf_protect(dimnames);
+        let _dimnames_guard = protect(dimnames);
         let row_name_values = packages
             .iter()
             .map(|package| package.package.clone())
             .collect::<Vec<_>>();
         let row_names = string_vector(&row_name_values);
         if row_names.is_null() {
-            crate::sexp::protect::Rf_unprotect(3);
             return R_NilValue();
         }
-        let _row_names_guard = Rf_protect(row_names);
+        let _row_names_guard = protect(row_names);
 
         let col_name_values = INSTALLED_PACKAGE_COLUMNS
             .iter()
@@ -4024,10 +4004,9 @@ unsafe fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
             .collect::<Vec<_>>();
         let col_names = string_vector(&col_name_values);
         if col_names.is_null() {
-            crate::sexp::protect::Rf_unprotect(4);
             return R_NilValue();
         }
-        let _col_names_guard = Rf_protect(col_names);
+        let _col_names_guard = protect(col_names);
 
         SET_VECTOR_ELT(dimnames, 0, row_names);
         SET_VECTOR_ELT(dimnames, 1, col_names);
@@ -4037,7 +4016,6 @@ unsafe fn installed_packages_matrix(packages: &[InstalledPackageRow]) -> SEXP {
             dimnames,
         );
 
-        crate::sexp::protect::Rf_unprotect(5);
         result
     }
 }
@@ -5218,7 +5196,7 @@ fn map_path_strings(x: SEXP, f: fn(&str) -> String) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             if TYPEOF(x) == SEXPTYPE::STRSXP {
                 let idx = if XLENGTH(x) == 0 { 0 } else { i % XLENGTH(x) };
@@ -5234,7 +5212,6 @@ fn map_path_strings(x: SEXP, f: fn(&str) -> String) -> SEXP {
                 Rf_mkChar(CString::new(value).unwrap_or_default().as_ptr()),
             );
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -5364,7 +5341,7 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let elem = extract_element(x, i);
             let call_args = Rf_cons(elem, R_NilValue());
@@ -5375,7 +5352,6 @@ pub unsafe fn do_lapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let val = crate::eval::eval::Rf_eval(call_sexp, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -5411,7 +5387,7 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let elem = extract_element(x, i);
             let call_args = Rf_cons(elem, R_NilValue());
@@ -5422,7 +5398,6 @@ pub unsafe fn do_map(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             let val = crate::eval::eval::Rf_eval(call_sexp, rho);
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -5453,7 +5428,7 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for (new_i, &old_i) in kept.iter().enumerate() {
             if TYPEOF(x) == SEXPTYPE::REALSXP {
                 *REAL(result).add(new_i) = *REAL(x).add(old_i as usize);
@@ -5461,7 +5436,6 @@ pub unsafe fn do_filter(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 *INTEGER(result).add(new_i) = *INTEGER(x).add(old_i as usize);
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -5595,11 +5569,10 @@ fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
         if result.is_null() {
             return list;
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for i in 0..n {
             let elem = VECTOR_ELT(list, i as i64);
             if elem.is_null() || TYPEOF(elem) != elem_type || XLENGTH(elem) != 1 {
-                crate::sexp::protect::Rf_unprotect(1);
                 return list;
             }
             if elem_type == SEXPTYPE::REALSXP {
@@ -5612,7 +5585,6 @@ fn simplify_scalar_list_as(list: SEXP, elem_type: SEXPTYPE) -> SEXP {
                 SET_STRING_ELT(result, i, STRING_ELT(elem, 0));
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
