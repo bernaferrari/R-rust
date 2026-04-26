@@ -58,10 +58,11 @@ use value::sexptype_name;
 ///
 /// This type provides bounds-checked access to R objects while maintaining
 /// FFI compatibility through [`as_raw`](Sexp::as_raw). Safe construction is
-/// owner-scoped via [`RArena::sexp`](crate::sexp::memory::RArena::sexp) or
-/// [`RSession::sexp`](crate::sexp::session::RSession::sexp). Raw pointer
-/// construction is kept crate-local, and internal FFI boundary code that must
-/// cross the boundary explicitly uses a crate-private unchecked wrapper.
+/// owner-scoped via `RArena` allocation methods such as
+/// [`alloc_vector_sexp`](crate::sexp::memory::RArena::alloc_vector_sexp) or
+/// typed `RSession` APIs. Raw pointer construction is kept crate-local, and
+/// internal FFI boundary code that must cross the boundary explicitly uses a
+/// crate-private unchecked wrapper.
 /// The lifetime parameter `'a` ensures that the `Sexp` cannot outlive the
 /// memory it points to.
 ///
@@ -72,8 +73,9 @@ use value::sexptype_name;
 /// use rmath::sexp::memory::RArena;
 ///
 /// let mut arena = RArena::new();
-/// let ptr = arena.alloc_vector(SEXPTYPE::INTSXP, 3);
-/// let sexp = arena.sexp(ptr).expect("arena allocation returned invalid pointer");
+/// let sexp = arena
+///     .alloc_vector_sexp(SEXPTYPE::INTSXP, 3)
+///     .expect("arena allocation failed");
 /// assert_eq!(sexp.len(), 3);
 /// assert!(sexp.is_vector());
 /// ```

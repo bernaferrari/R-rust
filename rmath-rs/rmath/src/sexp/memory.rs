@@ -199,7 +199,7 @@ impl RArena {
     ///
     /// Returns a raw SEXP pointer to the allocated node.
     /// The pointer is valid for the lifetime of the arena.
-    pub fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
+    pub(crate) fn alloc_node(&mut self, sexptype: SEXPTYPE) -> SEXP {
         if !self.can_activate_node() {
             return ptr::null_mut();
         }
@@ -248,7 +248,7 @@ impl RArena {
     /// For STRSXP/VECSXP with length n: allocates n * sizeof(SEXP) bytes.
     ///
     /// Returns null if allocation fails (OOM safety).
-    pub fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
+    pub(crate) fn alloc_vector(&mut self, sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP {
         if length < 0 {
             return ptr::null_mut();
         }
@@ -315,7 +315,7 @@ impl RArena {
     ///
     /// Checks the arena budget before allocating and returns a descriptive
     /// error if the budget would be exceeded.
-    pub fn alloc_vector_checked(
+    pub(crate) fn alloc_vector_checked(
         &mut self,
         sexptype: SEXPTYPE,
         length: R_xlen_t,
@@ -407,7 +407,7 @@ impl RArena {
     /// Allocate a CHARSXP with inline string data.
     ///
     /// Returns null if allocation fails (OOM safety).
-    pub fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
+    pub(crate) fn alloc_charsxp(&mut self, s: &[u8]) -> SEXP {
         let len = s.len() as R_xlen_t;
 
         let total_bytes = match (len as usize).checked_add(1) {
@@ -456,7 +456,7 @@ impl RArena {
     }
 
     /// Allocate a cons cell (LISTSXP).
-    pub fn cons(&mut self, car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
+    pub(crate) fn cons(&mut self, car: SEXP, cdr: SEXP, tag: SEXP) -> SEXP {
         let ptr = self.alloc_node(SEXPTYPE::LISTSXP);
         if ptr.is_null() {
             return ptr::null_mut();
@@ -486,7 +486,7 @@ impl RArena {
     }
 
     /// Allocate a nil-terminated pairlist chain of n elements.
-    pub fn alloc_list_chain(&mut self, n: i32) -> SEXP {
+    pub(crate) fn alloc_list_chain(&mut self, n: i32) -> SEXP {
         if n <= 0 {
             return ptr::null_mut();
         }
@@ -502,7 +502,7 @@ impl RArena {
 
     /// Add an existing Box to the arena, returning a raw pointer.
     /// The arena takes ownership of the Box.
-    pub fn add_node(&mut self, mut node: Box<SexprecCore>) -> SEXP {
+    pub(crate) fn add_node(&mut self, mut node: Box<SexprecCore>) -> SEXP {
         if !self.can_allocate_new_node_with_payload(0) {
             return ptr::null_mut();
         }
@@ -519,7 +519,7 @@ impl RArena {
     }
 
     /// Return true if this pointer is one of the arena's active nodes.
-    pub fn contains(&self, ptr: SEXP) -> bool {
+    pub(crate) fn contains(&self, ptr: SEXP) -> bool {
         if ptr.is_null() {
             return false;
         }
@@ -532,7 +532,7 @@ impl RArena {
     /// Unlike raw construction, this checks that the pointer belongs to this
     /// arena and is not currently on the free list, tying the wrapper lifetime
     /// to the arena borrow.
-    pub fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
+    pub(crate) fn sexp(&self, ptr: SEXP) -> Option<Sexp<'_>> {
         if self.contains(ptr) {
             Sexp::from_raw(ptr)
         } else {
@@ -541,18 +541,18 @@ impl RArena {
     }
 
     /// Iterate over all arena nodes.
-    pub fn nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
+    pub(crate) fn nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
         self.nodes.iter().map(|b| &**b as *const _ as SEXP)
     }
 
     /// Iterate over nodes that are currently active, excluding free-list slots.
-    pub fn active_nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
+    pub(crate) fn active_nodes(&self) -> impl Iterator<Item = SEXP> + '_ {
         self.nodes()
             .filter(|ptr| !self.free_list.iter().any(|free| free == ptr))
     }
 
     /// Free a node by adding it to the free list for reuse.
-    pub fn free_node(&mut self, ptr: SEXP) {
+    pub(crate) fn free_node(&mut self, ptr: SEXP) {
         if ptr.is_null() {
             return;
         }
@@ -596,7 +596,7 @@ impl RArena {
     }
 
     /// Get mutable access to the free list for compaction operations.
-    pub fn free_list_mut(&mut self) -> &mut Vec<SEXP> {
+    pub(crate) fn free_list_mut(&mut self) -> &mut Vec<SEXP> {
         &mut self.free_list
     }
 

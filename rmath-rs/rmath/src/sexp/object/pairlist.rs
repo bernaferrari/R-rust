@@ -14,14 +14,20 @@ use std::ptr;
 /// # Examples
 ///
 /// ```
-/// use rmath::sexp::{Sexp, PairlistIter, SEXPTYPE};
+/// use rmath::sexp::{Sexp, PairlistIter};
+/// use rmath::sexp::builder::PairlistBuilder;
 /// use rmath::sexp::memory::RArena;
 ///
 /// let mut arena = RArena::new();
-/// let list = arena.alloc_list_chain(3);
-/// let sexp = arena.sexp(list).expect("list belongs to arena");
+/// let first = Sexp::nil();
+/// let second = Sexp::nil();
+/// let sexp = PairlistBuilder::new()
+///     .push_untagged_value(first)
+///     .push_untagged_value(second)
+///     .build_in(&mut arena)
+///     .expect("pairlist allocation failed");
 /// let items: Vec<_> = PairlistIter::new(sexp).collect();
-/// assert_eq!(items.len(), 3);
+/// assert_eq!(items.len(), 2);
 /// ```
 pub struct PairlistIter<'a> {
     current: Option<Sexp<'a>>,
