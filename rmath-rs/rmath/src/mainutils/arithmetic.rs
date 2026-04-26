@@ -25,7 +25,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::Rf_allocVector3;
 use crate::sexp::ffi::Rcomplex;
 use crate::sexp::ffi::{NA_INTEGER, SEXP, SEXPTYPE};
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 use crate::special::cospi::{cospi, sinpi, tanpi};
 use crate::special::gamma::{gammafn, lgammafn};
 use crate::special::mlutils::R_pow;
@@ -369,16 +369,14 @@ unsafe fn math1_impl(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
         let n = XLENGTH(sa);
         // Coerce to REALSXP
         let sa = coerce_to_real(sa);
-        let _p1 = Rf_protect(sa);
+        let _sa_guard = protect(sa);
 
         let sy = if no_references(sa) {
             sa
         } else {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            Rf_protect(v);
-            v
+            Rf_allocVector3(SEXPTYPE::REALSXP, n)
         };
-        let _p2 = Rf_protect(sy);
+        let _sy_guard = protect(sy);
 
         let a = REAL(sa);
         let y = REAL(sy);
@@ -396,7 +394,6 @@ unsafe fn math1_impl(sa: SEXP, f: fn(f64) -> f64) -> SEXP {
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(2);
         sy
     }
 }
@@ -410,16 +407,14 @@ unsafe fn math1_ari_impl(sa: SEXP, f: fn(f64) -> f64, arg: f64, res: f64) -> SEX
         }
         let n = XLENGTH(sa);
         let sa = coerce_to_real(sa);
-        let _p1 = Rf_protect(sa);
+        let _sa_guard = protect(sa);
 
         let sy = if no_references(sa) {
             sa
         } else {
-            let v = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-            Rf_protect(v);
-            v
+            Rf_allocVector3(SEXPTYPE::REALSXP, n)
         };
-        let _p2 = Rf_protect(sy);
+        let _sy_guard = protect(sy);
 
         let a = REAL(sa);
         let y = REAL(sy);
@@ -441,7 +436,6 @@ unsafe fn math1_ari_impl(sa: SEXP, f: fn(f64) -> f64, arg: f64, res: f64) -> SEX
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(2);
         sy
     }
 }
@@ -504,7 +498,7 @@ unsafe fn complex_math1_impl(sa: SEXP, f_real: fn(f64) -> f64, f_imag: fn(f64) -
     unsafe {
         let n = XLENGTH(sa);
         let sy = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        let _p1 = Rf_protect(sy);
+        let _sy_guard = protect(sy);
         let src = COMPLEX(sa);
         let dst = COMPLEX(sy);
         for i in 0..(n as usize) {
@@ -514,7 +508,6 @@ unsafe fn complex_math1_impl(sa: SEXP, f_real: fn(f64) -> f64, f_imag: fn(f64) -
                 i: f_imag(z.i),
             };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         sy
     }
 }
@@ -607,12 +600,12 @@ unsafe fn math2_impl(sa: SEXP, sb: SEXP, f: fn(f64, f64) -> f64) -> SEXP {
 
         // Coerce both to REALSXP
         let sa = coerce_to_real(sa);
-        let _p1 = Rf_protect(sa);
+        let _sa_guard = protect(sa);
         let sb = coerce_to_real(sb);
-        let _p2 = Rf_protect(sb);
+        let _sb_guard = protect(sb);
 
         let sy = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _p3 = Rf_protect(sy);
+        let _sy_guard = protect(sy);
 
         let a = REAL(sa);
         let b = REAL(sb);
@@ -635,7 +628,6 @@ unsafe fn math2_impl(sa: SEXP, sb: SEXP, f: fn(f64, f64) -> f64) -> SEXP {
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(3);
         sy
     }
 }
@@ -699,10 +691,9 @@ unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         } else {
             Rf_allocVector3(SEXPTYPE::INTSXP, n)
         };
-        let _p = Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         if n == 0 {
-            crate::sexp::protect::Rf_unprotect(1);
             return ans;
         }
 
@@ -796,7 +787,6 @@ unsafe fn integer_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             _ => {} // intentionally unhandled: unsupported SEXPTYPE for integer modulo
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         ans
     }
 }
@@ -814,7 +804,7 @@ unsafe fn real_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
 
         let n = if n1 > n2 { n1 } else { n2 };
         let ans = Rf_allocVector3(SEXPTYPE::REALSXP, n);
-        let _p = Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         let da = REAL(ans);
         let is_real1 = TYPEOF(s1) == SEXPTYPE::REALSXP;
@@ -943,7 +933,6 @@ unsafe fn real_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             _ => {} // intentionally unhandled: unsupported SEXPTYPE for real modulo
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         ans
     }
 }
@@ -960,13 +949,13 @@ unsafe fn complex_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
         };
 
         let ans = Rf_allocVector3(SEXPTYPE::CPLXSXP, n);
-        let _p = Rf_protect(ans);
+        let _ans_guard = protect(ans);
 
         // Coerce both to complex
         let s1 = coerce_to_complex(s1);
-        let _p1 = Rf_protect(s1);
+        let _s1_guard = protect(s1);
         let s2 = coerce_to_complex(s2);
-        let _p2 = Rf_protect(s2);
+        let _s2_guard = protect(s2);
 
         let da = COMPLEX(ans);
         let px1 = COMPLEX(s1);
@@ -1030,7 +1019,6 @@ unsafe fn complex_binary_arith(code: c_int, s1: SEXP, s2: SEXP) -> SEXP {
             };
         }
 
-        crate::sexp::protect::Rf_unprotect(3);
         ans
     }
 }
@@ -1080,13 +1068,12 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     } else {
                         Rf_allocVector3(SEXPTYPE::REALSXP, n)
                     };
-                    let _p = Rf_protect(ans);
+                    let _ans_guard = protect(ans);
                     let pa = REAL(ans);
                     let px = REAL(s1);
                     for i in 0..(n as usize) {
                         *pa.add(i) = -*px.add(i);
                     }
-                    crate::sexp::protect::Rf_unprotect(1);
                     ans
                 }
                 _ => std::ptr::null_mut(),
@@ -1099,14 +1086,13 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     } else {
                         Rf_allocVector3(SEXPTYPE::INTSXP, n)
                     };
-                    let _p = Rf_protect(ans);
+                    let _ans_guard = protect(ans);
                     let pa = INTEGER(ans);
                     let px = INTEGER(s1);
                     for i in 0..(n as usize) {
                         let x = *px.add(i);
                         *pa.add(i) = if x == NA_INTEGER { NA_INTEGER } else { -x };
                     }
-                    crate::sexp::protect::Rf_unprotect(1);
                     ans
                 }
                 _ => std::ptr::null_mut(),
@@ -1120,7 +1106,7 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     }
                     OP_MINUS => {
                         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, n);
-                        let _p = Rf_protect(ans);
+                        let _ans_guard = protect(ans);
                         let pa = INTEGER(ans);
                         let px = LOGICAL(s1);
                         for i in 0..(n as usize) {
@@ -1133,7 +1119,6 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                                 -x
                             };
                         }
-                        crate::sexp::protect::Rf_unprotect(1);
                         ans
                     }
                     _ => std::ptr::null_mut(),
@@ -1147,14 +1132,13 @@ unsafe fn unary_arith(code: c_int, s1: SEXP) -> SEXP {
                     } else {
                         Rf_allocVector3(SEXPTYPE::CPLXSXP, n)
                     };
-                    let _p = Rf_protect(ans);
+                    let _ans_guard = protect(ans);
                     let pa = COMPLEX(ans);
                     let px = COMPLEX(s1);
                     for i in 0..(n as usize) {
                         let z = *px.add(i);
                         *pa.add(i) = Rcomplex { r: -z.r, i: -z.i };
                     }
-                    crate::sexp::protect::Rf_unprotect(1);
                     ans
                 }
                 _ => std::ptr::null_mut(),
@@ -1206,7 +1190,7 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 let x1 = *REAL(arg1);
                 let x2 = *REAL(arg2);
                 let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-                let _p = Rf_protect(ans);
+                let _ans_guard = protect(ans);
                 let val = match code {
                     OP_PLUS => x1 + x2,
                     OP_MINUS => x1 - x2,
@@ -1218,7 +1202,6 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                     _ => f64::NAN,
                 };
                 *REAL(ans) = val;
-                crate::sexp::protect::Rf_unprotect(1);
                 return ans;
             }
 
@@ -1232,35 +1215,31 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                         let mut naflag = false;
                         let result = R_integer_plus(i1, i2, &mut naflag);
                         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                        let _p = Rf_protect(ans);
+                        let _ans_guard = protect(ans);
                         *INTEGER(ans) = result;
-                        crate::sexp::protect::Rf_unprotect(1);
                         return ans;
                     }
                     OP_MINUS => {
                         let mut naflag = false;
                         let result = R_integer_minus(i1, i2, &mut naflag);
                         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                        let _p = Rf_protect(ans);
+                        let _ans_guard = protect(ans);
                         *INTEGER(ans) = result;
-                        crate::sexp::protect::Rf_unprotect(1);
                         return ans;
                     }
                     OP_TIMES => {
                         let mut naflag = false;
                         let result = R_integer_times(i1, i2, &mut naflag);
                         let ans = Rf_allocVector3(SEXPTYPE::INTSXP, 1);
-                        let _p = Rf_protect(ans);
+                        let _ans_guard = protect(ans);
                         *INTEGER(ans) = result;
-                        crate::sexp::protect::Rf_unprotect(1);
                         return ans;
                     }
                     OP_DIV => {
                         let result = R_integer_divide(i1, i2);
                         let ans = Rf_allocVector3(SEXPTYPE::REALSXP, 1);
-                        let _p = Rf_protect(ans);
+                        let _ans_guard = protect(ans);
                         *REAL(ans) = result;
-                        crate::sexp::protect::Rf_unprotect(1);
                         return ans;
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for arithmetic result
@@ -1300,10 +1279,9 @@ pub unsafe fn do_arith(_call: SEXP, op: SEXP, args: SEXP, _env: SEXP) -> SEXP {
                 } else {
                     arg2
                 };
-                let _p1 = Rf_protect(s1);
-                let _p2 = Rf_protect(s2);
+                let _s1_guard = protect(s1);
+                let _s2_guard = protect(s2);
                 let result = real_binary_arith(code, s1, s2);
-                crate::sexp::protect::Rf_unprotect(2);
                 result
             } else if t1 == SEXPTYPE::INTSXP && t2 == SEXPTYPE::INTSXP {
                 integer_binary_arith(code, arg1, arg2)
