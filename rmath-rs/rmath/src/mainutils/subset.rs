@@ -38,7 +38,7 @@ use crate::sexp::envir::R_findVarInFrame;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, NA_LOGICAL, R_xlen_t, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_NilValue, R_UnboundValue};
 use crate::sexp::memory_ext::allocLang;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -1686,7 +1686,7 @@ pub unsafe fn do_subset2(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// pair-list indexing, and environment subsetting.
 pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
     unsafe {
-        Rf_protect(args);
+        let _args_guard = protect(args);
 
         let mut drop: c_int = 1;
         ExtractDropArg(args, &mut drop);
@@ -1707,7 +1707,6 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
 
         /* Handle NULL case */
         if isNull(x) {
-            Rf_unprotect(1);
             if !isNull(subs) && !isNull(CAR(subs)) && isSymbol(CAR(subs)) {
                 let pn = PRINTNAME(CAR(subs));
                 if !isNull(pn) {
@@ -1726,7 +1725,7 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             errorcall(call, "incorrect number of subscripts");
         }
 
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
         /* Environment subsetting */
         if isEnvironment(x) {
@@ -1736,14 +1735,12 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let sym = installTrChar(STRING_ELT(CAR(subs), 0));
             let mut ans = R_findVarInFrame(x, sym);
             if isPromise(ans) {
-                Rf_protect(ans);
+                let _promise_guard = protect(ans);
                 /* Force the promise -- in full R this would eval in rho */
                 ans = CAR(ans); /* simplified: just get the value */
-                Rf_unprotect(1);
             } else {
                 ENSURE_NAMEDMAX(ans);
             }
-            Rf_unprotect(2); /* args, x */
             if ans == R_UnboundValue() {
                 return R_NilValue();
             }
@@ -1768,14 +1765,13 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             if len > 1 {
                 /* Multi-element index -- use vectorIndex to recursively subset */
                 /* Simplified: just get the last element */
-                let xnames = Rf_protect(getAttrib(x, sym_Names()));
+                let xnames = getAttrib(x, sym_Names());
+                let _xnames_guard = protect(xnames);
                 let offset = get1index(thesub, xnames, xlength(x), pok, (len - 1) as c_int, call);
-                Rf_unprotect(1); /* xnames */
                 if offset < 0 || offset >= xlength(x) {
                     if offset < 0
                         && (isVectorList(x) || isExpression(x) || isPairList(x) || isLanguage(x))
                     {
-                        Rf_unprotect(2); /* args, x */
                         return R_NilValue();
                     } else {
                         errorcallOutOfBoundsSEXP(x, -1, thesub, call);
@@ -1785,16 +1781,15 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 if isPairList(x) {
                     let ans = CAR(nthcdr(x, offset as c_int));
                     RAISE_NAMED(ans, named_x);
-                    Rf_unprotect(2); /* args, x */
                     return ans;
                 } else if isVectorList(x) {
                     let ans = VECTOR_ELT(x, offset);
                     RAISE_NAMED(ans, named_x);
-                    Rf_unprotect(2); /* args, x */
                     return ans;
                 } else {
                     /* atomic: return single-element vector */
-                    let ans = Rf_protect(Rf_allocVector3(TYPEOF(x), 1));
+                    let ans = Rf_allocVector3(TYPEOF(x), 1);
+                    let _ans_guard = protect(ans);
                     match TYPEOF(x) {
                         t if t == SEXPTYPE::LGLSXP => {
                             *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
@@ -1816,21 +1811,19 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                         }
                         _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                     }
-                    Rf_unprotect(3); /* args, x, ans */
                     return ans;
                 }
             }
 
             /* Single-element index */
-            let xnames = Rf_protect(getAttrib(x, sym_Names()));
+            let xnames = getAttrib(x, sym_Names());
+            let _xnames_guard = protect(xnames);
             let offset = get1index(thesub, xnames, xlength(x), pok, -1, call);
-            Rf_unprotect(1); /* xnames */
 
             if offset < 0 || offset >= xlength(x) {
                 if offset < 0
                     && (isVectorList(x) || isExpression(x) || isPairList(x) || isLanguage(x))
                 {
-                    Rf_unprotect(2); /* args, x */
                     return R_NilValue();
                 } else {
                     errorcallOutOfBoundsSEXP(x, -1, thesub, call);
@@ -1841,16 +1834,15 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             if isPairList(x) {
                 let ans = CAR(nthcdr(x, offset as c_int));
                 RAISE_NAMED(ans, named_x);
-                Rf_unprotect(2); /* args, x */
                 return ans;
             } else if isVectorList(x) {
                 let ans = VECTOR_ELT(x, offset);
                 RAISE_NAMED(ans, named_x);
-                Rf_unprotect(2); /* args, x */
                 return ans;
             } else {
                 /* Atomic vector: return scalar */
-                let ans = Rf_protect(Rf_allocVector3(TYPEOF(x), 1));
+                let ans = Rf_allocVector3(TYPEOF(x), 1);
+                let _ans_guard = protect(ans);
                 match TYPEOF(x) {
                     t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
@@ -1872,7 +1864,6 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                 }
-                Rf_unprotect(3); /* args, x, ans */
                 return ans;
             }
         } else {
@@ -1881,7 +1872,8 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
             let dimnames = getAttrib(x, sym_DimNames());
             let ndn = length_int(dimnames);
 
-            let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, nsubs));
+            let indx = Rf_allocVector(SEXPTYPE::INTSXP, nsubs);
+            let _indx_guard = protect(indx);
             let pindx = INTEGER(indx);
 
             let mut cur_subs = subs;
@@ -1911,7 +1903,6 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 i -= 1;
             }
             offset += *pindx.add(0) as R_xlen_t;
-            Rf_unprotect(1); /* indx */
 
             /* Extract the element */
             let ans: SEXP;
@@ -1922,7 +1913,8 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 ans = VECTOR_ELT(x, offset);
                 RAISE_NAMED(ans, named_x);
             } else {
-                ans = Rf_protect(Rf_allocVector3(TYPEOF(x), 1));
+                ans = Rf_allocVector3(TYPEOF(x), 1);
+                let _ans_guard = protect(ans);
                 match TYPEOF(x) {
                     t if t == SEXPTYPE::LGLSXP => {
                         *LOGICAL(ans).add(0) = LOGICAL_ELT(x, offset as c_int);
@@ -1944,10 +1936,8 @@ pub unsafe fn do_subset2_dflt(call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                     }
                     _ => {} // intentionally unhandled: unsupported SEXPTYPE for scalar subset
                 }
-                Rf_unprotect(1); /* ans */
             }
 
-            Rf_unprotect(2); /* args, x */
             ans
         }
     }
@@ -1964,11 +1954,11 @@ pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> S
         if isObject(x) {
             /* Would call do_subset2 with list2(x, ScalarReal(i+1)) */
             /* Simplified: just extract directly */
-            let args = Rf_protect(list2(x, Rf_ScalarReal(i as c_double + 1.0)));
+            let args = list2(x, Rf_ScalarReal(i as c_double + 1.0));
+            let _args_guard = protect(args);
             let bracket_op = R_NilValue(); /* placeholder for R_Primitive("[[") */
             let _ = rho;
             let x_elt = do_subset2(call, bracket_op, args, rho);
-            Rf_unprotect(1);
             x_elt
         } else {
             VECTOR_ELT(x, i)
@@ -1984,7 +1974,8 @@ pub unsafe fn dispatch_subset2(x: SEXP, i: R_xlen_t, call: SEXP, rho: SEXP) -> S
 /// (a symbol or string) into a single-element character vector.
 pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEXP) -> SEXP {
     unsafe {
-        let input = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+        let input = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        let _input_guard = protect(input);
         let x = Rf_eval(CAR(args), env);
         let mut nlist = CADR(args);
 
@@ -2013,7 +2004,6 @@ pub unsafe fn fixSubset3Args(call: SEXP, args: SEXP, env: SEXP, syminp: *mut SEX
         let new_args = crate::mainutils::duplicate::shallow_duplicate(args);
         SETCAR(new_args, x);
         SETCAR(CDR(new_args), input);
-        Rf_unprotect(1); /* input */
         new_args
     }
 }
@@ -2030,7 +2020,8 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         let _ = op;
 
         checkArity(op, args);
-        let fixed_args = Rf_protect(fixSubset3Args(call, args, env, ptr::null_mut()));
+        let fixed_args = fixSubset3Args(call, args, env, ptr::null_mut());
+        let _fixed_args_guard = protect(fixed_args);
 
         /* DispatchOrEval internal generic: $ */
         if R_DispatchOrEvalSP(
@@ -2042,7 +2033,6 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             &mut ans,
         ) != 0
         {
-            Rf_unprotect(1); /* fixed_args */
             if NAMED(ans) != 0 {
                 ENSURE_NAMEDMAX(ans);
             }
@@ -2050,11 +2040,9 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         ans = R_NilValue();
-        Rf_protect(ans);
         if !isNull(fixed_args) && !isNull(CAR(fixed_args)) && !isNull(CADR(fixed_args)) {
             ans = R_subset3_dflt(CAR(fixed_args), STRING_ELT(CADR(fixed_args), 0), call);
         }
-        Rf_unprotect(2); /* fixed_args, ans */
         ans
     }
 }
@@ -2067,8 +2055,8 @@ pub unsafe fn do_subset3(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// vector-list names, and also handles environment subsetting.
 pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
     unsafe {
-        Rf_protect(input);
-        Rf_protect(x);
+        let _input_guard = protect(input);
+        let _x_guard = protect(x);
 
         /* Get the length of the input string for partial matching */
         let slen = {
@@ -2090,7 +2078,6 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
                     pmatch::EXACT_MATCH => {
                         let result = CAR(y);
                         RAISE_NAMED(result, NAMED(x));
-                        Rf_unprotect(2); /* input, x */
                         return result;
                     }
                     pmatch::PARTIAL_MATCH => {
@@ -2105,10 +2092,8 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
                 /* unique partial match */
                 let result = CAR(xmatch);
                 RAISE_NAMED(result, NAMED(x));
-                Rf_unprotect(2); /* input, x */
                 return result;
             }
-            Rf_unprotect(2); /* input, x */
             return R_NilValue();
         }
 
@@ -2124,7 +2109,6 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
                     pmatch::EXACT_MATCH => {
                         let result = VECTOR_ELT(x, i);
                         RAISE_NAMED(result, NAMED(x));
-                        Rf_unprotect(2); /* input, x */
                         return result;
                     }
                     pmatch::PARTIAL_MATCH => {
@@ -2145,10 +2129,8 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
                 /* unique partial match */
                 let result = VECTOR_ELT(x, imatch);
                 RAISE_NAMED(result, NAMED(x));
-                Rf_unprotect(2); /* input, x */
                 return result;
             }
-            Rf_unprotect(2); /* input, x */
             return R_NilValue();
         }
 
@@ -2157,11 +2139,9 @@ pub unsafe fn R_subset3_dflt(x: SEXP, input: SEXP, call: SEXP) -> SEXP {
             let sym = installTrChar(input);
             let mut y = R_findVarInFrame(x, sym);
             if isPromise(y) {
-                Rf_protect(y);
+                let _promise_guard = protect(y);
                 y = CAR(y); /* simplified promise forcing */
-                Rf_unprotect(1);
             }
-            Rf_unprotect(2); /* input, x */
             if y != R_UnboundValue() {
                 if NAMED(y) != 0 {
                     ENSURE_NAMEDMAX(y);
