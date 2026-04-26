@@ -5694,7 +5694,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
             for i in 0..nrow {
                 let row_vec = extract_matrix_row(x, nrow, ncol, i);
                 let call_args = Rf_cons(row_vec, R_NilValue());
@@ -5705,7 +5705,6 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let val = crate::eval::eval::Rf_eval(call_sexp, rho);
                 crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
             }
-            crate::sexp::protect::Rf_unprotect(1);
             simplify_scalar_list(result)
         } else if margin == 2 {
             // Apply over columns
@@ -5713,7 +5712,7 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
             for j in 0..ncol {
                 let col_vec = extract_matrix_col(x, nrow, ncol, j);
                 let call_args = Rf_cons(col_vec, R_NilValue());
@@ -5724,7 +5723,6 @@ pub unsafe fn do_apply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
                 let val = crate::eval::eval::Rf_eval(call_sexp, rho);
                 crate::sexp::accessors::SET_VECTOR_ELT(result, j as i64, val);
             }
-            crate::sexp::protect::Rf_unprotect(1);
             simplify_scalar_list(result)
         } else {
             R_NilValue()
@@ -5779,7 +5777,7 @@ pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for (g, indices) in groups.iter().enumerate() {
             let group_vec = Rf_allocVector3(TYPEOF(x), indices.len() as R_xlen_t);
@@ -5804,7 +5802,6 @@ pub unsafe fn do_tapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::sexp::accessors::SET_VECTOR_ELT(result, g as i64, val);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -5841,7 +5838,7 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for i in 0..max_len {
             // Build call: FUN(arg1[i], arg2[i], ...) with recycling
@@ -5860,7 +5857,6 @@ pub unsafe fn do_mapply(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             crate::sexp::accessors::SET_VECTOR_ELT(result, i as i64, val);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -5905,7 +5901,7 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         if use_multiply {
@@ -5956,7 +5952,6 @@ pub unsafe fn do_outer(_call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             );
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -6027,7 +6022,7 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         // Fast path for common ops
         let apply_binary = |src_val: f64, stat_val: f64| -> f64 {
@@ -6129,7 +6124,6 @@ pub unsafe fn do_sweep(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             );
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -6225,7 +6219,7 @@ unsafe fn simple_error_condition(message: &str) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let msg = Rf_mkString(CString::new(message).unwrap_or_default().as_ptr());
         SET_VECTOR_ELT(result, 0, msg);
 
@@ -6269,7 +6263,6 @@ unsafe fn simple_error_condition(message: &str) -> SEXP {
             crate::sexp::protect::Rf_unprotect(1);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -6955,12 +6948,11 @@ fn do_dist_tertiary(
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i), p1, p2, p3);
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -6989,12 +6981,11 @@ fn do_dist_unary(
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i), p1, p2);
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7061,12 +7052,11 @@ unsafe fn map_real_distribution(mut x: SEXP, f: impl Fn(f64) -> f64) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         for i in 0..n {
             *dst.add(i as usize) = f(elt_real_safe(x, i));
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7132,7 +7122,7 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         // Copy data
         for i in 0..(nrow * ncol) {
@@ -7165,7 +7155,6 @@ pub unsafe fn do_matrix(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
             );
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7199,7 +7188,7 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         // Transpose: result[j*nrow + i] = x[i*ncol + j]
         for i in 0..nrow {
@@ -7228,7 +7217,6 @@ pub unsafe fn do_transpose(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
             );
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7312,7 +7300,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
             let step = ncol + 1; // diagonal stride
             for i in 0..n {
                 let src = i * step;
@@ -7322,7 +7310,6 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     *INTEGER(result).add(i) = *INTEGER(x).add(src);
                 }
             }
-            crate::sexp::protect::Rf_unprotect(1);
             result
         } else {
             if XLENGTH(x) == 1 {
@@ -7332,7 +7319,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 if result.is_null() {
                     return R_NilValue();
                 }
-                let _p = Rf_protect(result);
+                let _result_guard = protect(result);
 
                 for i in 0..n * n {
                     if t == SEXPTYPE::REALSXP {
@@ -7360,7 +7347,6 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                         dim,
                     );
                 }
-                crate::sexp::protect::Rf_unprotect(1);
                 return result;
             }
 
@@ -7371,7 +7357,7 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             if result.is_null() {
                 return R_NilValue();
             }
-            let _p = Rf_protect(result);
+            let _result_guard = protect(result);
 
             // Zero-initialize, then set diagonal
             for i in 0..n * n {
@@ -7401,7 +7387,6 @@ pub unsafe fn do_diag(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                     dim,
                 );
             }
-            crate::sexp::protect::Rf_unprotect(1);
             result
         }
     }
@@ -7441,7 +7426,7 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         for (new_i, &old_i) in unique_indices.iter().enumerate() {
             if t == SEXPTYPE::REALSXP {
                 *REAL(result).add(new_i) = *REAL(x).add(old_i as usize);
@@ -7449,7 +7434,6 @@ pub unsafe fn do_unique(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 *INTEGER(result).add(new_i) = *INTEGER(x).add(old_i as usize);
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7475,7 +7459,7 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         // Copy and sort
         if t == SEXPTYPE::INTSXP || t == SEXPTYPE::LGLSXP {
@@ -7507,7 +7491,6 @@ pub unsafe fn do_sort(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             }
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7525,7 +7508,7 @@ pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for i in 0..n {
             let src = (n - 1 - i) as usize;
@@ -7536,7 +7519,6 @@ pub unsafe fn do_rev(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
                 *INTEGER(result).add(dst) = *INTEGER(x).add(src);
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7597,12 +7579,11 @@ pub unsafe fn do_seq_len(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         for i in 0..n {
             *dst.add(i as usize) = (i + 1) as c_int;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7623,12 +7604,11 @@ pub unsafe fn do_seq_along(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         for i in 0..n {
             *dst.add(i as usize) = (i + 1) as c_int;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7645,7 +7625,7 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         let mut sum = 0.0f64;
         for i in 0..n {
@@ -7657,7 +7637,6 @@ pub unsafe fn do_cumsum(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP 
                 *dst.add(i as usize) = sum;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7674,7 +7653,7 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         let mut prod = 1.0f64;
         for i in 0..n {
@@ -7686,7 +7665,6 @@ pub unsafe fn do_cumprod(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP
                 *dst.add(i as usize) = prod;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7713,14 +7691,13 @@ pub unsafe fn do_diff(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
         for i in 0..result_len {
             let a = elt_real_safe(x, i);
             let b = elt_real_safe(x, i + lag as R_xlen_t);
             *dst.add(i as usize) = b - a;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7781,7 +7758,7 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         for (i, line) in line_vec.iter().enumerate() {
             let cstr = CString::new(*line).unwrap_or_default();
@@ -7791,7 +7768,6 @@ pub unsafe fn do_readLines(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SE
                 *data.add(i) = charsxp;
             }
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -7808,7 +7784,7 @@ pub unsafe fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = LOGICAL(result);
         for i in 0..n {
             let path = elt_to_string(x, i);
@@ -7818,7 +7794,6 @@ pub unsafe fn do_file_exists(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> 
                 FALSE
             };
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
