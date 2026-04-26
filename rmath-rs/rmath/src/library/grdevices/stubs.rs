@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Ported from r-source/src/library/grDevices/src/stubs.c
@@ -6,97 +5,107 @@
  *  Stub wrappers and devAskNewPage.
  */
 
-use std::ptr;
+use crate::main::errors::Rf_error_unimplemented;
+use crate::sexp::accessors::{CDR, SET_STRING_ELT};
+use crate::sexp::constructors::{Rf_allocVector, Rf_mkChar};
+use crate::sexp::ffi::{R_xlen_t, SEXP, SEXPTYPE};
+use crate::sexp::protect::protect;
 
-use crate::main::coerce::asLogical;
-use crate::sexp::accessors::*;
-use crate::sexp::constructors::*;
-use crate::sexp::ffi::{NA_LOGICAL, SEXP, SEXPTYPE};
-use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::*;
-
-type pGEDevDesc = *mut std::ffi::c_void;
-
-/// Stub: GEcurrentDevice - returns null.
-unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    ptr::null_mut()
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned");
 }
 
-/// Stub: do_contourLines - returns R_NilValue.
-unsafe fn do_contourLines(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    R_NilValue()
+fn tail(args: SEXP) -> SEXP {
+    unsafe { CDR(args) }
 }
 
-/// Stub: do_getSnapshot - returns R_NilValue.
-unsafe fn do_getSnapshot(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    R_NilValue()
+fn do_contourLines(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsupported("grDevices::contourLines")
 }
 
-/// Stub: do_playSnapshot - returns R_NilValue.
-unsafe fn do_playSnapshot(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
-    R_NilValue()
+fn do_getSnapshot(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsupported("grDevices::getSnapshot")
 }
 
-/// do_getGraphicsEvent - delegates to main::gevents::do_getGraphicsEvent.
-unsafe fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    crate::main::essentials::do_getGraphicsEvent(call, op, args, env)
+fn do_playSnapshot(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsupported("grDevices::playSnapshot")
 }
 
-/// do_getGraphicsEventEnv - delegates to main::gevents::do_getGraphicsEventEnv.
-unsafe fn do_getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    R_NilValue()
+fn do_getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
+    unsafe { crate::main::essentials::do_getGraphicsEvent(call, op, args, env) }
 }
 
-/// do_setGraphicsEventEnv - delegates to main::gevents::do_setGraphicsEventEnv.
-unsafe fn do_setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    R_NilValue()
+fn do_getGraphicsEventEnv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsupported("grDevices::getGraphicsEventEnv")
 }
 
-/// Stub: do_bmVersion - returns integer 0.
-unsafe fn do_bmVersion() -> SEXP {
-    Rf_ScalarInteger(0)
+fn do_setGraphicsEventEnv(_call: SEXP, _op: SEXP, _args: SEXP, _env: SEXP) -> SEXP {
+    unsupported("grDevices::setGraphicsEventEnv")
+}
+
+fn do_bmVersion() -> SEXP {
+    unsafe {
+        let ans = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _ans_guard = protect(ans);
+        let nms = Rf_allocVector(SEXPTYPE::STRSXP, 3);
+        let _nms_guard = protect(nms);
+
+        SET_STRING_ELT(nms, 0 as R_xlen_t, Rf_mkChar(c"libpng".as_ptr()));
+        SET_STRING_ELT(nms, 1 as R_xlen_t, Rf_mkChar(c"jpeg".as_ptr()));
+        SET_STRING_ELT(nms, 2 as R_xlen_t, Rf_mkChar(c"libtiff".as_ptr()));
+
+        SET_STRING_ELT(ans, 0 as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+        SET_STRING_ELT(ans, 1 as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+        SET_STRING_ELT(ans, 2 as R_xlen_t, Rf_mkChar(c"".as_ptr()));
+        crate::attrib_core::setAttrib(ans, crate::attrib_core::R_NamesSymbol(), nms);
+
+        ans
+    }
 }
 
 /// contourLines - wrapper for do_contourLines.
 pub unsafe fn contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_contourLines(call, op, CDR(args), env)
+    let _ = (call, op, args, env);
+    do_contourLines(call, op, args, env)
 }
 
 /// getSnapshot - wrapper for do_getSnapshot.
 pub unsafe fn getSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_getSnapshot(call, op, CDR(args), env)
+    let _ = (call, op, args, env);
+    do_getSnapshot(call, op, args, env)
 }
 
 /// playSnapshot - wrapper for do_playSnapshot.
 pub unsafe fn playSnapshot(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_playSnapshot(call, op, CDR(args), env)
+    let _ = (call, op, args, env);
+    do_playSnapshot(call, op, args, env)
 }
 
 /// getGraphicsEvent - wrapper for do_getGraphicsEvent.
 pub unsafe fn getGraphicsEvent(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_getGraphicsEvent(call, op, CDR(args), env)
+    do_getGraphicsEvent(call, op, tail(args), env)
 }
 
 /// getGraphicsEventEnv - wrapper for do_getGraphicsEventEnv.
 pub unsafe fn getGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_getGraphicsEventEnv(call, op, CDR(args), env)
+    let _ = (call, op, args, env);
+    do_getGraphicsEventEnv(call, op, args, env)
 }
 
 /// setGraphicsEventEnv - wrapper for do_setGraphicsEventEnv.
 pub unsafe fn setGraphicsEventEnv(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    do_setGraphicsEventEnv(call, op, CDR(args), env)
+    let _ = (call, op, args, env);
+    do_setGraphicsEventEnv(call, op, args, env)
 }
 
 /// bmVersion - wrapper for do_bmVersion.
-pub(crate) unsafe fn bmVersion() -> SEXP {
+pub(crate) fn bmVersion() -> SEXP {
     do_bmVersion()
 }
 
 /// devAskNewPage - get/set the "ask new page" flag for the current device.
 pub unsafe fn devAskNewPage(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
-    let _dd = GEcurrentDevice();
-    // Stub: cannot access gdd->ask on void* gdd; return FALSE
-    Rf_ScalarLogical(0)
+    let _ = (call, op, args, env);
+    unsupported("grDevices::devAskNewPage")
 }
-
-use std::os::raw::c_int;

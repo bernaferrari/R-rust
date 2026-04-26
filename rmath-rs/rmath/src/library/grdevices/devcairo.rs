@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 //! Cairo graphics device module (devCairo.c, 94 lines)
 //!
 //! Provides Cairo device initialization by dynamically loading the
@@ -16,55 +15,52 @@
 //! Note: On Windows, devCairo/cairoVersion/pangoVersion/cairoFT are
 //! provided by devwindows.rs instead (which loads winCairo.dll).
 
-use std::os::raw::c_char;
-
+use crate::main::errors::Rf_error_unimplemented;
 use crate::sexp::ffi::SEXP;
-use crate::sexp::globals::R_NilValue;
+
+fn unsupported(name: &str) -> ! {
+    Rf_error_unimplemented(name);
+    unreachable!("Rf_error_unimplemented returned");
+}
 
 // ---------------------------------------------------------------------------
 // devCairo — create a Cairo graphics device
 // ---------------------------------------------------------------------------
 
 /// Create a Cairo graphics device by loading the cairo shared library.
-/// Stub: returns R_NilValue (cairo library not available).
+/// Stub: reports that Cairo support is unavailable on this target.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn devCairo(args: SEXP) -> SEXP {
     let _ = args;
-    R_NilValue()
+    unsupported("grDevices::devCairo")
 }
 
 // ---------------------------------------------------------------------------
 // cairoVersion — return the Cairo library version string
 // ---------------------------------------------------------------------------
 
-/// Return the Cairo library version string, or "" if not available.
-/// Stub: returns empty string.
+/// Return the Cairo library version string, or report that it is unavailable.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn cairoVersion() -> SEXP {
-    use crate::sexp::constructors::Rf_mkString;
-    Rf_mkString(b"\0".as_ptr() as *const c_char)
+    unsupported("grDevices::cairoVersion")
 }
 
 // ---------------------------------------------------------------------------
 // pangoVersion — return the Pango library version string
 // ---------------------------------------------------------------------------
 
-/// Return the Pango library version string, or "" if not available.
-/// Stub: returns empty string.
+/// Return the Pango library version string, or report that it is unavailable.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn pangoVersion() -> SEXP {
-    use crate::sexp::constructors::Rf_mkString;
-    Rf_mkString(b"\0".as_ptr() as *const c_char)
+    unsupported("grDevices::pangoVersion")
 }
 
 // ---------------------------------------------------------------------------
 // cairoFT — return Cairo FreeType information
 // ---------------------------------------------------------------------------
 
-/// Return Cairo FreeType information, or "" if not available.
-/// Stub: returns empty string.
+/// Return Cairo FreeType information, or report that it is unavailable.
 #[cfg(not(target_os = "windows"))]
 pub unsafe fn cairoFT() -> SEXP {
-    use crate::sexp::constructors::Rf_mkString;
-    Rf_mkString(b"\0".as_ptr() as *const c_char)
+    unsupported("grDevices::cairoFT")
 }
