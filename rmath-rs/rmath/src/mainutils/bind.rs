@@ -29,8 +29,7 @@ use crate::sexp::ffi::{
 };
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance;
-use crate::sexp::protect::Rf_protect;
-use crate::sexp::protect::Rf_unprotect;
+use crate::sexp::protect::{Rf_protect, Rf_unprotect, protect};
 
 // Local integer constants for SEXPTYPE values, usable in match patterns
 const NILSXP_I: c_int = 0;
@@ -343,7 +342,8 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
         }
         // Simplified coercion: only handle the cases needed by bind.c
         let n = xlength(x);
-        let ans = Rf_protect(Rf_allocVector3(_type.0, n));
+        let ans = Rf_allocVector3(_type.0, n);
+        let _ans_guard = protect(ans);
 
         match _type.0 {
             INTSXP_I => match t {
@@ -514,7 +514,6 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
             _ => {} // intentionally unhandled: incompatible SEXPTYPE for binding
         }
 
-        Rf_unprotect(1);
         ans
     }
 }
@@ -522,17 +521,15 @@ unsafe fn coerceVector(x: SEXP, _type: SEXPTYPE) -> SEXP {
 /// Allocate a matrix (2D array) of the given type and dimensions.
 unsafe fn allocMatrix(mode: SEXPTYPE, nrow: c_int, ncol: c_int) -> SEXP {
     unsafe {
-        let ans = Rf_protect(Rf_allocVector3(
-            mode.0,
-            (nrow as R_xlen_t) * (ncol as R_xlen_t),
-        ));
+        let ans = Rf_allocVector3(mode.0, (nrow as R_xlen_t) * (ncol as R_xlen_t));
+        let _ans_guard = protect(ans);
         // Set the dim attribute
         let dim_sym = crate::eval::attrib_core::R_DimSymbol();
-        let dim = Rf_protect(Rf_allocVector(INTSXP_I, 2));
+        let dim = Rf_allocVector(INTSXP_I, 2);
+        let _dim_guard = protect(dim);
         *INTEGER(dim) = nrow;
         *INTEGER(dim).add(1) = ncol;
         setAttrib(ans, dim_sym, dim);
-        Rf_unprotect(2);
         ans
     }
 }
@@ -844,12 +841,12 @@ unsafe fn StringAnswer(x: SEXP, data: *mut BindData, call: SEXP) {
             }
             _ => {
                 // For other types, coerce to string first
-                let coerced = Rf_protect(coerceVector(x, SEXPTYPE::STRSXP));
+                let coerced = coerceVector(x, SEXPTYPE::STRSXP);
+                let _coerced_guard = protect(coerced);
                 for i in 0..xlength(coerced) {
                     SET_STRING_ELT((*data).ans_ptr, (*data).ans_length, STRING_ELT(coerced, i));
                     (*data).ans_length += 1;
                 }
-                Rf_unprotect(1);
             }
         }
     }
@@ -1370,12 +1367,12 @@ unsafe fn namesCount(v: SEXP, recurse: c_int, nameData: *mut NameData) {
                         if (*nameData).count > 1 {
                             break;
                         }
-                        let namei = Rf_protect(ItemName(names, _i));
+                        let namei = ItemName(names, _i);
+                        let _name_guard = protect(namei);
                         if namei == R_NilValue() {
                             namesCount(CAR(current), recurse, nameData);
                         }
                         current = CDR(current);
-                        Rf_unprotect(1);
                     }
                 } else {
                     // fall through to vector case
@@ -1443,10 +1440,12 @@ unsafe fn NewExtractNames(
         let mut savecount: c_int = 0;
         let mut saveseqno: R_xlen_t = 0;
         let mut base = base;
+        let mut _base_guard = None;
 
         // If we have a new tag, reset the index sequence and create the new basename
         if !tag.is_null() && tag != R_NilValue() {
-            base = Rf_protect(NewBase(base, tag));
+            base = NewBase(base, tag);
+            _base_guard = Some(protect(base));
             saveseqno = (*nameData).seqno;
             savecount = (*nameData).count;
             (*nameData).count = 0;
@@ -1469,7 +1468,8 @@ unsafe fn NewExtractNames(
             LISTSXP_I => {
                 let mut current = v;
                 for _i in 0..n {
-                    let namei = Rf_protect(ItemName(_names, _i));
+                    let namei = ItemName(_names, _i);
+                    let _name_guard = protect(namei);
                     if recurse != 0 {
                         NewExtractNames(CAR(current), base, namei, recurse, data, nameData);
                     } else {
@@ -1480,7 +1480,6 @@ unsafe fn NewExtractNames(
                         (*data).ans_nnames += 1;
                     }
                     current = CDR(current);
-                    Rf_unprotect(1);
                 }
             }
             VECSXP_I | EXPRSXP_I => {
@@ -1517,7 +1516,6 @@ unsafe fn NewExtractNames(
 
         if !tag.is_null() && tag != R_NilValue() {
             (*nameData).count = savecount;
-            Rf_unprotect(1); // base
         }
 
         (*nameData).seqno += saveseqno;
