@@ -6,7 +6,8 @@
  *  Ported to Rust from R's src/modules/lapack/Lapack.c
  *
  *  This file provides:
- *  1. FFI declarations for LAPACK and BLAS Fortran routines
+ *  1. FFI declarations for LAPACK and BLAS Fortran routines when the
+ *     fortran-backend feature is enabled
  *  2. Module-private helper functions for LAPACK wrapper logic
  *
  *  NOTE: The #[unsafe(no_mangle)] exported stubs live in lapack_impl.rs.
@@ -35,6 +36,7 @@ pub struct Rcomplex {
 // Character arguments are passed by pointer to a null-terminated string.
 // Fortran uses column-major order.
 
+#[cfg(feature = "fortran-backend")]
 unsafe extern "C" {
     // --- LAPACK routines ---
 

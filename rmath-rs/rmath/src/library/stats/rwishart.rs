@@ -1,5 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)]
-// legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 2012-2024  The R Core Team
@@ -73,18 +71,13 @@ unsafe fn error(msg: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// LAPACK / BLAS external declarations
+// Fortran BLAS declarations used only by the fortran-backend Wishart path.
+// Cholesky factorization goes through modules::lapack::backend so the default
+// Rust backend never reaches a fake self-extern.
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "fortran-backend")]
 unsafe extern "C" {
-    fn dpotrf_(
-        uplo: *const u8,
-        n: *const c_int,
-        a: *mut c_double,
-        lda: *const c_int,
-        info: *mut c_int,
-    );
     fn dtrmm_(
         side: *const u8,
         uplo: *const u8,

@@ -1230,7 +1230,7 @@ fn rdqagse(
 /// * `last` - number of subintervals produced (output)
 /// * `iwork` - integer work array of dimension limit
 /// * `work` - double work array of dimension lenw
-pub extern "C" fn Rdqagi(
+pub fn Rdqagi(
     f: IntegrFn,
     ex: *mut std::ffi::c_void,
     bound: *mut f64,
@@ -1352,7 +1352,7 @@ pub extern "C" fn Rdqagi(
 /// * `last` - number of subintervals produced (output)
 /// * `iwork` - integer work array of dimension limit
 /// * `work` - double work array of dimension lenw
-pub extern "C" fn Rdqags(
+pub fn Rdqags(
     f: IntegrFn,
     ex: *mut std::ffi::c_void,
     a: *mut f64,
