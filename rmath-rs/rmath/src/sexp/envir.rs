@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 #![allow(non_snake_case, non_upper_case_globals, dead_code, unused_variables)]
 
 //! Environment operations — ports R's src/main/envir.c.
@@ -576,15 +575,17 @@ pub fn exists_var_in_frame_safe(rho: Sexp<'_>, symbol: Sexp<'_>) -> bool {
 ///
 /// FFI wrapper around [`find_var_in_frame_safe`].
 pub(crate) unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
-    if rho.is_null() || symbol.is_null() {
-        return R_UnboundValue();
-    }
+    unsafe {
+        if rho.is_null() || symbol.is_null() {
+            return R_UnboundValue();
+        }
 
-    match (Sexp::from_raw(rho), Sexp::from_raw(symbol)) {
-        (Some(rho), Some(symbol)) => find_var_in_frame_safe(rho, symbol)
-            .map(|s: Sexp<'_>| s.as_raw())
-            .unwrap_or_else(|| R_UnboundValue()),
-        _ => R_UnboundValue(),
+        match (Sexp::from_raw(rho), Sexp::from_raw(symbol)) {
+            (Some(rho), Some(symbol)) => find_var_in_frame_safe(rho, symbol)
+                .map(|s: Sexp<'_>| s.as_raw())
+                .unwrap_or_else(|| R_UnboundValue()),
+            _ => R_UnboundValue(),
+        }
     }
 }
 
@@ -592,15 +593,17 @@ pub(crate) unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
 ///
 /// FFI wrapper around [`find_var_safe`].
 pub unsafe fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
-    if symbol.is_null() {
-        return R_UnboundValue();
-    }
+    unsafe {
+        if symbol.is_null() {
+            return R_UnboundValue();
+        }
 
-    match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-        (Some(symbol), Some(rho)) => find_var_safe(symbol, rho)
-            .map(|s: Sexp<'_>| s.as_raw())
-            .unwrap_or_else(|| R_UnboundValue()),
-        _ => R_UnboundValue(),
+        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
+            (Some(symbol), Some(rho)) => find_var_safe(symbol, rho)
+                .map(|s: Sexp<'_>| s.as_raw())
+                .unwrap_or_else(|| R_UnboundValue()),
+            _ => R_UnboundValue(),
+        }
     }
 }
 
@@ -608,15 +611,17 @@ pub unsafe fn R_findVar(symbol: SEXP, rho: SEXP) -> SEXP {
 ///
 /// FFI wrapper around [`force_promise_safe`].
 pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
-    if prom.is_null() {
-        return R_NilValue();
-    }
+    unsafe {
+        if prom.is_null() {
+            return R_NilValue();
+        }
 
-    match Sexp::from_raw(prom) {
-        Some(prom) => force_promise_safe(prom)
-            .map(|s: Sexp<'_>| s.as_raw())
-            .unwrap_or_else(|| R_NilValue()),
-        None => R_NilValue(),
+        match Sexp::from_raw(prom) {
+            Some(prom) => force_promise_safe(prom)
+                .map(|s: Sexp<'_>| s.as_raw())
+                .unwrap_or_else(|| R_NilValue()),
+            None => R_NilValue(),
+        }
     }
 }
 
@@ -624,16 +629,18 @@ pub unsafe fn forcePromise(prom: SEXP) -> SEXP {
 ///
 /// FFI wrapper around [`define_var_safe`].
 pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
-    if rho.is_null() || symbol.is_null() {
-        return;
-    }
+    unsafe {
+        if rho.is_null() || symbol.is_null() {
+            return;
+        }
 
-    if let (Some(symbol), Some(value), Some(rho)) = (
-        Sexp::from_raw(symbol),
-        Sexp::from_raw(value),
-        Sexp::from_raw(rho),
-    ) {
-        define_var_safe(symbol, value, rho);
+        if let (Some(symbol), Some(value), Some(rho)) = (
+            Sexp::from_raw(symbol),
+            Sexp::from_raw(value),
+            Sexp::from_raw(rho),
+        ) {
+            define_var_safe(symbol, value, rho);
+        }
     }
 }
 
@@ -641,16 +648,18 @@ pub unsafe fn defineVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 ///
 /// FFI wrapper around [`set_var_safe`].
 pub unsafe fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
-    if symbol.is_null() {
-        return;
-    }
+    unsafe {
+        if symbol.is_null() {
+            return;
+        }
 
-    if let (Some(symbol), Some(value), Some(rho)) = (
-        Sexp::from_raw(symbol),
-        Sexp::from_raw(value),
-        Sexp::from_raw(rho),
-    ) {
-        set_var_safe(symbol, value, rho);
+        if let (Some(symbol), Some(value), Some(rho)) = (
+            Sexp::from_raw(symbol),
+            Sexp::from_raw(value),
+            Sexp::from_raw(rho),
+        ) {
+            set_var_safe(symbol, value, rho);
+        }
     }
 }
 
@@ -658,40 +667,46 @@ pub unsafe fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 ///
 /// FFI wrapper around [`find_fun_safe`].
 pub(crate) unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
-    if symbol.is_null() {
-        return R_UnboundValue();
-    }
+    unsafe {
+        if symbol.is_null() {
+            return R_UnboundValue();
+        }
 
-    match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-        (Some(symbol), Some(rho)) => find_fun_safe(symbol, rho)
-            .map(|s: Sexp<'_>| s.as_raw())
-            .unwrap_or_else(|| R_UnboundValue()),
-        _ => R_UnboundValue(),
+        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
+            (Some(symbol), Some(rho)) => find_fun_safe(symbol, rho)
+                .map(|s: Sexp<'_>| s.as_raw())
+                .unwrap_or_else(|| R_UnboundValue()),
+            _ => R_UnboundValue(),
+        }
     }
 }
 
 /// Find a function with error reporting.
 pub unsafe fn findFun3(symbol: SEXP, rho: SEXP, call: SEXP) -> SEXP {
-    let fun = findFun(symbol, rho);
-    if fun == R_UnboundValue() {
-        // Could not find function — would error in real implementation
+    unsafe {
+        let fun = findFun(symbol, rho);
+        if fun == R_UnboundValue() {
+            // Could not find function — would error in real implementation
+        }
+        fun
     }
-    fun
 }
 
 /// Match actual arguments to formal parameters.
 ///
 /// FFI wrapper around [`match_args_safe`].
 pub unsafe fn matchArgs(formals: SEXP, args: SEXP, _call: SEXP) -> SEXP {
-    if formals.is_null() || formals == R_NilValue() {
-        return args;
-    }
+    unsafe {
+        if formals.is_null() || formals == R_NilValue() {
+            return args;
+        }
 
-    match (Sexp::from_raw(formals), Sexp::from_raw(args)) {
-        (Some(formals), Some(args)) => match_args_safe(formals, args)
-            .map(|s: Sexp<'_>| s.as_raw())
-            .unwrap_or_else(|| args.as_raw()),
-        _ => args,
+        match (Sexp::from_raw(formals), Sexp::from_raw(args)) {
+            (Some(formals), Some(args)) => match_args_safe(formals, args)
+                .map(|s: Sexp<'_>| s.as_raw())
+                .unwrap_or_else(|| args.as_raw()),
+            _ => args,
+        }
     }
 }
 
@@ -704,108 +719,118 @@ pub unsafe fn matchArgs_NR(formals: SEXP, args: SEXP) -> SEXP {
 ///
 /// FFI wrapper around [`is_missing_safe`].
 pub unsafe fn R_isMissing(symbol: SEXP, rho: SEXP) -> c_int {
-    if symbol.is_null() || rho.is_null() {
-        return 0;
-    }
+    unsafe {
+        if symbol.is_null() || rho.is_null() {
+            return 0;
+        }
 
-    match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-        (Some(symbol), Some(rho)) => is_missing_safe(symbol, rho) as c_int,
-        _ => 0,
+        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
+            (Some(symbol), Some(rho)) => is_missing_safe(symbol, rho) as c_int,
+            _ => 0,
+        }
     }
 }
 
 /// Report an error for a missing argument.
 pub(crate) unsafe fn R_MissingArgError(symbol: SEXP, call: SEXP) {
-    let name = if !symbol.is_null() {
-        let pname = PRINTNAME(symbol);
-        if !pname.is_null() {
-            let s = CHAR(pname);
-            if !s.is_null() {
-                std::ffi::CStr::from_ptr(s).to_str().unwrap_or("???")
+    unsafe {
+        let name = if !symbol.is_null() {
+            let pname = PRINTNAME(symbol);
+            if !pname.is_null() {
+                let s = CHAR(pname);
+                if !s.is_null() {
+                    std::ffi::CStr::from_ptr(s).to_str().unwrap_or("???")
+                } else {
+                    "???"
+                }
             } else {
                 "???"
             }
         } else {
             "???"
-        }
-    } else {
-        "???"
-    };
+        };
 
-    eprintln!("Error in {}: argument \"{}\" is missing", "eval", name);
-    std::panic::panic_any(crate::sexp::context::RError {
-        message: format!("argument \"{}\" is missing, with no default", name),
-    });
+        eprintln!("Error in {}: argument \"{}\" is missing", "eval", name);
+        std::panic::panic_any(crate::sexp::context::RError {
+            message: format!("argument \"{}\" is missing, with no default", name),
+        });
+    }
 }
 
 /// Find a variable in the ... (dots) arguments.
 ///
 /// FFI wrapper around [`dd_find_var_safe`].
 pub unsafe fn ddfindVar(symbol: SEXP, rho: SEXP) -> SEXP {
-    if symbol.is_null() || rho.is_null() {
-        return R_UnboundValue();
-    }
+    unsafe {
+        if symbol.is_null() || rho.is_null() {
+            return R_UnboundValue();
+        }
 
-    match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
-        (Some(symbol), Some(rho)) => dd_find_var_safe(symbol, rho)
-            .map(|s: Sexp<'_>| s.as_raw())
-            .unwrap_or_else(|| R_UnboundValue()),
-        _ => R_UnboundValue(),
+        match (Sexp::from_raw(symbol), Sexp::from_raw(rho)) {
+            (Some(symbol), Some(rho)) => dd_find_var_safe(symbol, rho)
+                .map(|s: Sexp<'_>| s.as_raw())
+                .unwrap_or_else(|| R_UnboundValue()),
+            _ => R_UnboundValue(),
+        }
     }
 }
 
 /// Convert a SEXPTYPE integer to its string representation.
 pub unsafe fn R_typeToChar(stype: c_int) -> SEXP {
-    let _name = match stype {
-        0 => "NULL",
-        1 => "symbol",
-        2 => "pairlist",
-        3 => "closure",
-        4 => "environment",
-        5 => "promise",
-        6 => "language",
-        7 => "special",
-        8 => "builtin",
-        9 => "character",
-        10 => "logical",
-        13 => "integer",
-        14 => "double",
-        15 => "complex",
-        16 => "character",
-        17 => "...",
-        18 => "any",
-        19 => "list",
-        20 => "expression",
-        21 => "bytecode",
-        22 => "externalptr",
-        23 => "weakref",
-        24 => "raw",
-        25 => "S4",
-        _ => "unknown",
-    };
-    let _cs = std::ffi::CString::new(_name).unwrap_or_default();
-    ptr::null_mut()
+    unsafe {
+        let _name = match stype {
+            0 => "NULL",
+            1 => "symbol",
+            2 => "pairlist",
+            3 => "closure",
+            4 => "environment",
+            5 => "promise",
+            6 => "language",
+            7 => "special",
+            8 => "builtin",
+            9 => "character",
+            10 => "logical",
+            13 => "integer",
+            14 => "double",
+            15 => "complex",
+            16 => "character",
+            17 => "...",
+            18 => "any",
+            19 => "list",
+            20 => "expression",
+            21 => "bytecode",
+            22 => "externalptr",
+            23 => "weakref",
+            24 => "raw",
+            25 => "S4",
+            _ => "unknown",
+        };
+        let _cs = std::ffi::CString::new(_name).unwrap_or_default();
+        ptr::null_mut()
+    }
 }
 
 /// Create a new child environment.
 pub unsafe fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
-    NewEnvironment(frame, enclos, ptr::null_mut())
+    unsafe { NewEnvironment(frame, enclos, ptr::null_mut()) }
 }
 
 /// Create a new hashed environment.
 pub(crate) unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
-    NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut())
+    unsafe { NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut()) }
 }
 
 /// Check that formals is a valid pairlist of distinct symbols.
 ///
 /// FFI wrapper around [`check_formals_safe`].
 pub unsafe fn CheckFormals(formals: SEXP) {
-    if let Some(formals) = Sexp::from_raw(formals)
-        && let Err(msg) = check_formals_safe(formals)
-    {
-        eprintln!("Error: {}", msg);
-        std::panic::panic_any(crate::sexp::context::RError { message: msg });
+    unsafe {
+        if let Some(formals) = Sexp::from_raw(formals)
+            && let Err(msg) = check_formals_safe(formals)
+        {
+            eprintln!("Error: {}", msg);
+            std::panic::panic_any(crate::sexp::context::RError { message: msg });
+        }
     }
 }
 
@@ -813,12 +838,14 @@ pub unsafe fn CheckFormals(formals: SEXP) {
 ///
 /// FFI wrapper around [`add_missing_vars_to_new_env_safe`].
 pub unsafe fn addMissingVarsToNewEnv(formals: SEXP, args: SEXP, newrho: SEXP) {
-    if let (Some(formals), Some(args), Some(newrho)) = (
-        Sexp::from_raw(formals),
-        Sexp::from_raw(args),
-        Sexp::from_raw(newrho),
-    ) {
-        add_missing_vars_to_new_env_safe(formals, args, newrho);
+    unsafe {
+        if let (Some(formals), Some(args), Some(newrho)) = (
+            Sexp::from_raw(formals),
+            Sexp::from_raw(args),
+            Sexp::from_raw(newrho),
+        ) {
+            add_missing_vars_to_new_env_safe(formals, args, newrho);
+        }
     }
 }
 
@@ -826,13 +853,15 @@ pub unsafe fn addMissingVarsToNewEnv(formals: SEXP, args: SEXP, newrho: SEXP) {
 ///
 /// FFI wrapper around [`exists_var_in_frame_safe`].
 pub unsafe fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> c_int {
-    if rho.is_null() || symbol.is_null() {
-        return 0;
-    }
+    unsafe {
+        if rho.is_null() || symbol.is_null() {
+            return 0;
+        }
 
-    match (Sexp::from_raw(rho), Sexp::from_raw(symbol)) {
-        (Some(rho), Some(symbol)) => exists_var_in_frame_safe(rho, symbol) as c_int,
-        _ => 0,
+        match (Sexp::from_raw(rho), Sexp::from_raw(symbol)) {
+            (Some(rho), Some(symbol)) => exists_var_in_frame_safe(rho, symbol) as c_int,
+            _ => 0,
+        }
     }
 }
 
