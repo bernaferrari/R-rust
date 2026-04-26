@@ -22,7 +22,7 @@ use crate::sexp::constructors::{
 use crate::sexp::ffi::SEXP;
 use crate::sexp::ffi::{NA_INTEGER, Rcomplex, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 use std::os::raw::{c_char, c_double, c_int};
 
@@ -545,10 +545,9 @@ unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP {
         }
 
         // Append na.rm = na_value to the end
-        na_value = Rf_protect(na_value);
+        let _na_value_guard = protect(na_value);
         let t = crate::sexp::constructors::Rf_cons(na_value, R_NilValue());
-        Rf_unprotect(1);
-        let t = Rf_protect(t);
+        let _t_guard = protect(t);
         SETTAG(t, na_sym);
         if args == R_NilValue() {
             args = t;
@@ -559,7 +558,6 @@ unsafe fn fixup_NaRm(mut args: SEXP) -> SEXP {
             }
             crate::sexp::accessors::SETCDR(r, t);
         }
-        Rf_unprotect(1);
         args
     }
 }
@@ -1019,8 +1017,10 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
         }
 
         // For sum/min/max/prod: fixup na.rm to be the last argument
-        let args = Rf_protect(fixup_NaRm(args));
-        let _call2 = Rf_protect(crate::mainutils::duplicate::shallow_duplicate(call));
+        let args = fixup_NaRm(args);
+        let _args_guard = protect(args);
+        let _call2 = crate::mainutils::duplicate::shallow_duplicate(call);
+        let _call2_guard = protect(_call2);
 
         // Extract na.rm value
         let na_rm_sym = R_NaRmSymbol();
@@ -1043,7 +1043,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 }
                 _ => {
                     let bad = CAR(a);
-                    Rf_unprotect(2);
                     std::panic::panic_any(crate::sexp::context::RError {
                         message: "invalid 'type' of argument".to_string(),
                     });
@@ -1089,7 +1088,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                 zcum.i = 0.0;
             }
             _ => {
-                Rf_unprotect(2);
                 return R_NilValue();
             }
         }
@@ -1178,7 +1176,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 }
                             }
                             _ => {
-                                Rf_unprotect(2);
                                 std::panic::panic_any(crate::sexp::context::RError {
                                     message: "invalid 'type' of argument".to_string(),
                                 });
@@ -1211,7 +1208,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                         }
                                         _ => {} // intentionally unhandled: unexpected ans_type for NA answer
                                     }
-                                    Rf_unprotect(2);
                                     return ans;
                                 } else if use_isum && updated == 42 {
                                     // Impending integer overflow — switch to real
@@ -1265,7 +1261,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 }
                             }
                             _ => {
-                                Rf_unprotect(2);
                                 std::panic::panic_any(crate::sexp::context::RError {
                                     message: "invalid 'type' of argument".to_string(),
                                 });
@@ -1306,7 +1301,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                                 }
                             }
                             _ => {
-                                Rf_unprotect(2);
                                 std::panic::panic_any(crate::sexp::context::RError {
                                     message: "invalid 'type' of argument".to_string(),
                                 });
@@ -1329,14 +1323,12 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
                         || t == SEXPTYPE::NILSXP => {}
                     t if t == SEXPTYPE::CPLXSXP => {
                         if iop == 2 || iop == 3 {
-                            Rf_unprotect(2);
                             std::panic::panic_any(crate::sexp::context::RError {
                                 message: "invalid 'type' of argument".to_string(),
                             });
                         }
                     }
                     _ => {
-                        Rf_unprotect(2);
                         std::panic::panic_any(crate::sexp::context::RError {
                             message: "invalid 'type' of argument".to_string(),
                         });
@@ -1378,7 +1370,6 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
             }
             _ => {} // intentionally unhandled: unexpected ans_type for result storage
         }
-        Rf_unprotect(2);
         ans
     }
 }
@@ -1391,19 +1382,21 @@ pub unsafe fn do_summary(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 /// It delegates to range.default via applyClosure.
 pub unsafe fn do_range(call: SEXP, _op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     unsafe {
-        let args = Rf_protect(fixup_NaRm(args));
+        let args = fixup_NaRm(args);
+        let _args_guard = protect(args);
 
         // Find range.default and apply it
         let range_sym = Rf_install(b"range.default\0".as_ptr() as *const c_char);
-        let range_fun = Rf_protect(crate::sexp::envir::findFun(range_sym, env));
+        let range_fun = crate::sexp::envir::findFun(range_sym, env);
+        let _range_fun_guard = protect(range_fun);
 
         // Build promise args
-        let prargs = Rf_protect(crate::eval::dispatch::promiseArgs(args, R_NilValue()));
+        let prargs = crate::eval::dispatch::promiseArgs(args, R_NilValue());
+        let _prargs_guard = protect(prargs);
 
         // Evaluate range.default via applyClosure
         let ans = crate::eval::closure::applyClosure(call, range_fun, prargs, env, R_NilValue(), 1);
 
-        Rf_unprotect(3);
         ans
     }
 }
