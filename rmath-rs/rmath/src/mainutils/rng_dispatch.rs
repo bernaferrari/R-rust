@@ -16,7 +16,7 @@ use crate::sexp::accessors::{
 use crate::sexp::constructors::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector3};
 use crate::sexp::ffi::{NA_REAL, R_xlen_t, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -157,7 +157,7 @@ pub unsafe fn do_runif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         let range = max - min;
@@ -166,7 +166,6 @@ pub unsafe fn do_runif(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
             *dst.add(i as usize) = min + u * range;
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -196,14 +195,13 @@ pub unsafe fn do_rnorm(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         for i in 0..n {
             *dst.add(i as usize) = crate::dist::normal::rnorm(mu, sigma);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -231,14 +229,13 @@ pub unsafe fn do_rpois(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         for i in 0..n {
             *dst.add(i as usize) = crate::dist::poisson::rpois(lambda);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -267,14 +264,13 @@ pub unsafe fn do_rexp(_call: SEXP, _op: SEXP, args: SEXP, _rho: SEXP) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = REAL(result);
 
         for i in 0..n {
             *dst.add(i as usize) = crate::dist::exponential::rexp_inner(scale);
         }
 
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -385,12 +381,11 @@ unsafe fn sample_int_values(n: i64, size_arg: SEXP, replace_arg: SEXP, prob_arg:
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
         let dst = INTEGER(result);
         for (out_idx, source_idx) in indices.into_iter().enumerate() {
             *dst.add(out_idx) = source_idx as c_int + 1;
         }
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -519,7 +514,7 @@ unsafe fn sample_vector_by_indices(x: SEXP, indices: &[usize]) -> SEXP {
         if result.is_null() {
             return R_NilValue();
         }
-        let _p = Rf_protect(result);
+        let _result_guard = protect(result);
 
         match result_type {
             ty if ty == SEXPTYPE::LGLSXP => {
@@ -562,7 +557,6 @@ unsafe fn sample_vector_by_indices(x: SEXP, indices: &[usize]) -> SEXP {
             }
         }
         set_sampled_names(result, x, indices);
-        crate::sexp::protect::Rf_unprotect(1);
         result
     }
 }
@@ -582,7 +576,7 @@ unsafe fn set_sampled_names(result: SEXP, source: SEXP, indices: &[usize]) {
         if result_names.is_null() {
             return;
         }
-        let _names_guard = Rf_protect(result_names);
+        let _names_guard = protect(result_names);
         for (out_idx, source_idx) in indices.iter().copied().enumerate() {
             SET_STRING_ELT(
                 result_names,
@@ -595,7 +589,6 @@ unsafe fn set_sampled_names(result: SEXP, source: SEXP, indices: &[usize]) {
             crate::sexp::attrib_core::R_NamesSymbol(),
             result_names,
         );
-        crate::sexp::protect::Rf_unprotect(1);
     }
 }
 
