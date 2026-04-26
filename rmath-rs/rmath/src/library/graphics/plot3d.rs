@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Copyright (C) 1998--2026  The R Core Team
@@ -763,7 +762,7 @@ unsafe fn contour(
     _dd: pGEDevDesc,
     _label_list: SEXP,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ========================================================================
@@ -776,134 +775,142 @@ unsafe fn contour(
 
 /// Check if SEXP has a dim attribute with >= 2 elements (i.e., is a matrix).
 unsafe fn isMatrix(x: SEXP) -> bool {
-    let dim = crate::attrib_core::getAttrib(x, crate::attrib_core::R_DimSymbol());
-    !R_NilValue().is_null() && !dim.is_null() && LENGTH(dim) >= 2
+    unsafe {
+        let dim = crate::attrib_core::getAttrib(x, crate::attrib_core::R_DimSymbol());
+        !R_NilValue().is_null() && !dim.is_null() && LENGTH(dim) >= 2
+    }
 }
 
 /// Get the number of rows from a matrix's dim attribute.
 unsafe fn nrows(x: SEXP) -> c_int {
-    if x.is_null() {
-        return 0;
+    unsafe {
+        if x.is_null() {
+            return 0;
+        }
+        let dim = ATTRIB(x);
+        if dim.is_null() || dim == R_NilValue() {
+            return 0;
+        }
+        if TYPEOF(dim) != SEXPTYPE::INTSXP {
+            return 0;
+        }
+        let len = LENGTH(dim);
+        if len < 2 {
+            return if len == 1 { *INTEGER(dim).add(0) } else { 0 };
+        }
+        *INTEGER(dim).add(0)
     }
-    let dim = ATTRIB(x);
-    if dim.is_null() || dim == R_NilValue() {
-        return 0;
-    }
-    if TYPEOF(dim) != SEXPTYPE::INTSXP {
-        return 0;
-    }
-    let len = LENGTH(dim);
-    if len < 2 {
-        return if len == 1 { *INTEGER(dim).add(0) } else { 0 };
-    }
-    *INTEGER(dim).add(0)
 }
 
 /// Get the number of columns from a matrix's dim attribute.
 unsafe fn ncols(x: SEXP) -> c_int {
-    if x.is_null() {
-        return 0;
+    unsafe {
+        if x.is_null() {
+            return 0;
+        }
+        let dim = ATTRIB(x);
+        if dim.is_null() || dim == R_NilValue() {
+            return 0;
+        }
+        if TYPEOF(dim) != SEXPTYPE::INTSXP {
+            return 0;
+        }
+        let len = LENGTH(dim);
+        if len < 2 {
+            return 1;
+        }
+        *INTEGER(dim).add(1)
     }
-    let dim = ATTRIB(x);
-    if dim.is_null() || dim == R_NilValue() {
-        return 0;
-    }
-    if TYPEOF(dim) != SEXPTYPE::INTSXP {
-        return 0;
-    }
-    let len = LENGTH(dim);
-    if len < 2 {
-        return 1;
-    }
-    *INTEGER(dim).add(1)
 }
 
 /// C_filledcontour -- draw a filled contour plot.
 /// Ported from plot3d.c C_filledcontour().
 /// Uses real FindPolygonVertices algorithm; GE drawing calls are stubs.
 pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
-    let mut _args = CDR(args);
-    if LENGTH(_args) < 5 {
-        /* too few arguments - stub: no error reporting available */
-        return R_NilValue();
-    }
+    unsafe {
+        let mut _args = CDR(args);
+        if LENGTH(_args) < 5 {
+            /* too few arguments - stub: no error reporting available */
+            return R_NilValue();
+        }
 
-    let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let _nx = LENGTH(sx);
-    _args = CDR(_args);
+        let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let _nx = LENGTH(sx);
+        _args = CDR(_args);
 
-    let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let _ny = LENGTH(sy);
-    _args = CDR(_args);
+        let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let _ny = LENGTH(sy);
+        _args = CDR(_args);
 
-    if _nx < 2 || _ny < 2 {
-        /* insufficient x or y values */
-        Rf_unprotect(2);
-        return R_NilValue();
-    }
+        if _nx < 2 || _ny < 2 {
+            /* insufficient x or y values */
+            Rf_unprotect(2);
+            return R_NilValue();
+        }
 
-    let sz = CAR(_args);
-    if nrows(sz) != _nx || ncols(sz) != _ny {
-        /* dimension mismatch */
-        Rf_unprotect(2);
-        return R_NilValue();
-    }
-    let _sz = Rf_protect(coerceVector(sz, SEXPTYPE::REALSXP.into()));
-    _args = CDR(_args);
+        let sz = CAR(_args);
+        if nrows(sz) != _nx || ncols(sz) != _ny {
+            /* dimension mismatch */
+            Rf_unprotect(2);
+            return R_NilValue();
+        }
+        let _sz = Rf_protect(coerceVector(sz, SEXPTYPE::REALSXP.into()));
+        _args = CDR(_args);
 
-    let _sc = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let _nc = LENGTH(_sc);
-    _args = CDR(_args);
+        let _sc = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let _nc = LENGTH(_sc);
+        _args = CDR(_args);
 
-    if _nc < 1 {
-        /* no contour values */
-        Rf_unprotect(4);
-        return R_NilValue();
-    }
+        if _nc < 1 {
+            /* no contour values */
+            Rf_unprotect(4);
+            return R_NilValue();
+        }
 
-    let _scol = Rf_protect(FixupCol(CAR(_args), R_TRANWHITE));
-    let _ncol = LENGTH(_scol);
+        let _scol = Rf_protect(FixupCol(CAR(_args), R_TRANWHITE));
+        let _ncol = LENGTH(_scol);
 
-    /* Real algorithm: FindPolygonVertices for each cell/level pair.
-     * GE drawing calls (GPolygon) are stubs so no visible output. */
-    let _x = REAL(sx);
-    let _y = REAL(sy);
-    let _z = REAL(_sz);
-    let _c = REAL(_sc);
-    let _col: *const u32 = INTEGER(_scol) as *const u32;
+        /* Real algorithm: FindPolygonVertices for each cell/level pair.
+         * GE drawing calls (GPolygon) are stubs so no visible output. */
+        let _x = REAL(sx);
+        let _y = REAL(sy);
+        let _z = REAL(_sz);
+        let _c = REAL(_sc);
+        let _col: *const u32 = INTEGER(_scol) as *const u32;
 
-    let mut _px: [c_double; 8] = [0.0; 8];
-    let mut _py: [c_double; 8] = [0.0; 8];
-    let mut _pz: [c_double; 8] = [0.0; 8];
-    let mut _npt: c_int = 0;
+        let mut _px: [c_double; 8] = [0.0; 8];
+        let mut _py: [c_double; 8] = [0.0; 8];
+        let mut _pz: [c_double; 8] = [0.0; 8];
+        let mut _npt: c_int = 0;
 
-    for i in 1.._nx {
-        for j in 1.._ny {
-            for k in 1.._nc {
-                _npt = 0;
-                FindPolygonVertices(
-                    *_c.add((k - 1) as usize),
-                    *_c.add(k as usize),
-                    *_x.add((i - 1) as usize),
-                    *_x.add(i as usize),
-                    *_y.add((j - 1) as usize),
-                    *_y.add(j as usize),
-                    *_z.add((i - 1 + (j - 1) * _nx) as usize),
-                    *_z.add((i + (j - 1) * _nx) as usize),
-                    *_z.add((i - 1 + j * _nx) as usize),
-                    *_z.add((i + j * _nx) as usize),
-                    &mut _px,
-                    &mut _py,
-                    &mut _pz,
-                    &mut _npt,
-                );
-                if _npt > 2 { /* GPolygon call would go here -- stub */ }
+        for i in 1.._nx {
+            for j in 1.._ny {
+                for k in 1.._nc {
+                    _npt = 0;
+                    FindPolygonVertices(
+                        *_c.add((k - 1) as usize),
+                        *_c.add(k as usize),
+                        *_x.add((i - 1) as usize),
+                        *_x.add(i as usize),
+                        *_y.add((j - 1) as usize),
+                        *_y.add(j as usize),
+                        *_z.add((i - 1 + (j - 1) * _nx) as usize),
+                        *_z.add((i + (j - 1) * _nx) as usize),
+                        *_z.add((i - 1 + j * _nx) as usize),
+                        *_z.add((i + j * _nx) as usize),
+                        &mut _px,
+                        &mut _py,
+                        &mut _pz,
+                        &mut _npt,
+                    );
+                    if _npt > 2 { /* GPolygon call would go here -- stub */ }
+                }
             }
         }
-    }
 
-    Rf_unprotect(5);
-    R_NilValue()
+        Rf_unprotect(5);
+        R_NilValue()
+    }
 }
 
 /* ========================================================================
@@ -914,40 +921,42 @@ pub unsafe fn C_filledcontour(args: SEXP) -> SEXP {
 /// Ported from plot3d.c C_image().
 /// GE drawing calls (GRect) are stubs.
 pub unsafe fn C_image(args: SEXP) -> SEXP {
-    use crate::sexp::accessors::*;
+    unsafe {
+        use crate::sexp::accessors::*;
 
-    let mut _args = CDR(args);
+        let mut _args = CDR(args);
 
-    let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let _nx = LENGTH(sx);
-    _args = CDR(_args);
+        let sx = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let _nx = LENGTH(sx);
+        _args = CDR(_args);
 
-    let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let _ny = LENGTH(sy);
-    _args = CDR(_args);
+        let sy = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let _ny = LENGTH(sy);
+        _args = CDR(_args);
 
-    let _sz = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::INTSXP.into()));
-    _args = CDR(_args);
+        let _sz = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::INTSXP.into()));
+        _args = CDR(_args);
 
-    let _sc = Rf_protect(FixupCol(CAR(_args), R_TRANWHITE));
-    let _nc = LENGTH(_sc);
+        let _sc = Rf_protect(FixupCol(CAR(_args), R_TRANWHITE));
+        let _nc = LENGTH(_sc);
 
-    let _x = REAL(sx);
-    let _y = REAL(sy);
-    let _z = INTEGER(_sz);
-    let _c = INTEGER(_sc) as *const u32;
+        let _x = REAL(sx);
+        let _y = REAL(sy);
+        let _z = INTEGER(_sz);
+        let _c = INTEGER(_sc) as *const u32;
 
-    for i in 0..(_nx - 1) {
-        for j in 0..(_ny - 1) {
-            let tmp = *_z.add((i + j * (_nx - 1)) as usize);
-            if tmp >= 0 && tmp < _nc && tmp != crate::sexp::ffi::NA_INTEGER {
-                /* GRect call would go here -- stub */
+        for i in 0..(_nx - 1) {
+            for j in 0..(_ny - 1) {
+                let tmp = *_z.add((i + j * (_nx - 1)) as usize);
+                if tmp >= 0 && tmp < _nc && tmp != crate::sexp::ffi::NA_INTEGER {
+                    /* GRect call would go here -- stub */
+                }
             }
         }
-    }
 
-    Rf_unprotect(4);
-    R_NilValue()
+        Rf_unprotect(4);
+        R_NilValue()
+    }
 }
 
 /* ========================================================================
@@ -958,207 +967,209 @@ pub unsafe fn C_image(args: SEXP) -> SEXP {
 /// Ported from plot3d.c C_persp().
 /// GE drawing calls are stubs; transformation math is real.
 pub unsafe fn C_persp(args: SEXP) -> SEXP {
-    use crate::sexp::accessors::*;
+    unsafe {
+        use crate::sexp::accessors::*;
 
-    let mut _args = CDR(args);
-    if LENGTH(_args) < 24 {
-        /* too few parameters -- stub */
-        return R_NilValue();
-    }
-
-    let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    if LENGTH(x) < 2 {
-        Rf_unprotect(1);
-        return R_NilValue();
-    }
-    _args = CDR(_args);
-
-    let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    if LENGTH(y) < 2 {
-        Rf_unprotect(2);
-        return R_NilValue();
-    }
-    _args = CDR(_args);
-
-    let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    if !isMatrix(z) || nrows(z) != LENGTH(x) || ncols(z) != LENGTH(y) {
-        Rf_unprotect(3);
-        return R_NilValue();
-    }
-    _args = CDR(_args);
-
-    let xlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    if LENGTH(xlim) != 2 {
-        Rf_unprotect(4);
-        return R_NilValue();
-    }
-    _args = CDR(_args);
-
-    let ylim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    if LENGTH(ylim) != 2 {
-        Rf_unprotect(5);
-        return R_NilValue();
-    }
-    _args = CDR(_args);
-
-    let zlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    if LENGTH(zlim) != 2 {
-        Rf_unprotect(6);
-        return R_NilValue();
-    }
-    _args = CDR(_args);
-
-    /* Check limits */
-    let mut _xc = 0.0;
-    let mut _xs = 0.0;
-    let mut _yc = 0.0;
-    let mut _ys = 0.0;
-    let mut _zc = 0.0;
-    let mut _zs = 0.0;
-
-    if !LimitCheck(REAL(xlim), &mut _xc, &mut _xs) {
-        Rf_unprotect(6);
-        return R_NilValue();
-    }
-    if !LimitCheck(REAL(ylim), &mut _yc, &mut _ys) {
-        Rf_unprotect(6);
-        return R_NilValue();
-    }
-    if !LimitCheck(REAL(zlim), &mut _zc, &mut _zs) {
-        Rf_unprotect(6);
-        return R_NilValue();
-    }
-
-    let _theta = asReal(CAR(_args));
-    _args = CDR(_args);
-    let _phi = asReal(CAR(_args));
-    _args = CDR(_args);
-    let _r = asReal(CAR(_args));
-    _args = CDR(_args);
-    let _d = asReal(CAR(_args));
-    _args = CDR(_args);
-    let _scale = asLogical(CAR(_args));
-    _args = CDR(_args);
-    let _expand = asReal(CAR(_args));
-    _args = CDR(_args);
-    let _col = CAR(_args);
-    _args = CDR(_args);
-    let _border = CAR(_args);
-    _args = CDR(_args);
-    let _ltheta = asReal(CAR(_args));
-    _args = CDR(_args);
-    let _lphi = asReal(CAR(_args));
-    _args = CDR(_args);
-    with_plot3d_state(|state| state.shade = asReal(CAR(_args)));
-    _args = CDR(_args);
-    let _dobox = asLogical(CAR(_args));
-    _args = CDR(_args);
-    let _doaxes = asLogical(CAR(_args));
-    _args = CDR(_args);
-    let _nTicks = asInteger(CAR(_args));
-    _args = CDR(_args);
-    let _tickType = asInteger(CAR(_args));
-    _args = CDR(_args);
-    let _xlab = CAR(_args);
-    _args = CDR(_args);
-    let _ylab = CAR(_args);
-    _args = CDR(_args);
-    let _zlab = CAR(_args);
-    _args = CDR(_args);
-
-    let shade_val = with_plot3d_state(|state| state.shade);
-    if shade_val.is_finite() && shade_val <= 0.0 {
-        with_plot3d_state(|state| state.shade = 1.0);
-    }
-    if _ltheta.is_finite()
-        && _lphi.is_finite()
-        && with_plot3d_state(|state| state.shade).is_finite()
-    {
-        with_plot3d_state(|state| state.do_lighting = true);
-    } else {
-        with_plot3d_state(|state| state.do_lighting = false);
-    }
-
-    let mut _xs2 = _xs;
-    let mut _ys2 = _ys;
-    let mut _zs2 = _zs;
-    if _scale == 0 {
-        let mut s = _xs2;
-        if s < _ys2 {
-            s = _ys2;
+        let mut _args = CDR(args);
+        if LENGTH(_args) < 24 {
+            /* too few parameters -- stub */
+            return R_NilValue();
         }
-        if s < _zs2 {
-            s = _zs2;
+
+        let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        if LENGTH(x) < 2 {
+            Rf_unprotect(1);
+            return R_NilValue();
         }
-        _xs2 = s;
-        _ys2 = s;
-        _zs2 = s;
-    }
+        _args = CDR(_args);
 
-    /* Parameter checks */
-    if !_theta.is_finite()
-        || !_phi.is_finite()
-        || !_r.is_finite()
-        || !_d.is_finite()
-        || _d < 0.0
-        || _r < 0.0
-    {
-        Rf_unprotect(6);
-        return R_NilValue();
-    }
-    if !_expand.is_finite() || _expand < 0.0 {
-        Rf_unprotect(6);
-        return R_NilValue();
-    }
-
-    /* Set up the viewing transformation (real math) */
-    set_vt_identity();
-    Translate(-_xc, -_yc, -_zc);
-    Scale(1.0 / _xs2, 1.0 / _ys2, _expand / _zs2);
-    XRotate(-90.0);
-    YRotate(-_theta);
-    XRotate(_phi);
-    Translate(0.0, 0.0, -_r - _d);
-    Perspective(_d);
-
-    /* Set up lighting (real math) */
-    if with_plot3d_state(|state| state.do_lighting) {
-        /* Save VT, set up light direction, then restore VT */
-        let saved_vt = with_plot3d_state(|state| state.vt);
-        SetUpLight(_ltheta, _lphi);
-        with_plot3d_state(|state| state.vt = saved_vt);
-    }
-
-    /* Compute depth order (real algorithm) */
-    let nr = nrows(z);
-    let nc = ncols(z);
-    let depth = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, (nr - 1) * (nc - 1)));
-    let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, (nr - 1) * (nc - 1)));
-
-    DepthOrder(
-        REAL(z),
-        REAL(x),
-        REAL(y),
-        nr,
-        nc,
-        REAL(depth),
-        INTEGER(indx),
-    );
-
-    /* Build the result: 4x4 viewing transformation matrix */
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 16));
-    let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
-    for i in 0..4 {
-        for j in 0..4 {
-            *REAL(result).add(i + j * 4) = with_plot3d_state(|state| state.vt)[i][j];
+        let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        if LENGTH(y) < 2 {
+            Rf_unprotect(2);
+            return R_NilValue();
         }
-    }
-    *INTEGER(dim).add(0) = 4;
-    *INTEGER(dim).add(1) = 4;
-    crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dim);
+        _args = CDR(_args);
 
-    Rf_unprotect(10);
-    result
+        let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        if !isMatrix(z) || nrows(z) != LENGTH(x) || ncols(z) != LENGTH(y) {
+            Rf_unprotect(3);
+            return R_NilValue();
+        }
+        _args = CDR(_args);
+
+        let xlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        if LENGTH(xlim) != 2 {
+            Rf_unprotect(4);
+            return R_NilValue();
+        }
+        _args = CDR(_args);
+
+        let ylim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        if LENGTH(ylim) != 2 {
+            Rf_unprotect(5);
+            return R_NilValue();
+        }
+        _args = CDR(_args);
+
+        let zlim = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        if LENGTH(zlim) != 2 {
+            Rf_unprotect(6);
+            return R_NilValue();
+        }
+        _args = CDR(_args);
+
+        /* Check limits */
+        let mut _xc = 0.0;
+        let mut _xs = 0.0;
+        let mut _yc = 0.0;
+        let mut _ys = 0.0;
+        let mut _zc = 0.0;
+        let mut _zs = 0.0;
+
+        if !LimitCheck(REAL(xlim), &mut _xc, &mut _xs) {
+            Rf_unprotect(6);
+            return R_NilValue();
+        }
+        if !LimitCheck(REAL(ylim), &mut _yc, &mut _ys) {
+            Rf_unprotect(6);
+            return R_NilValue();
+        }
+        if !LimitCheck(REAL(zlim), &mut _zc, &mut _zs) {
+            Rf_unprotect(6);
+            return R_NilValue();
+        }
+
+        let _theta = asReal(CAR(_args));
+        _args = CDR(_args);
+        let _phi = asReal(CAR(_args));
+        _args = CDR(_args);
+        let _r = asReal(CAR(_args));
+        _args = CDR(_args);
+        let _d = asReal(CAR(_args));
+        _args = CDR(_args);
+        let _scale = asLogical(CAR(_args));
+        _args = CDR(_args);
+        let _expand = asReal(CAR(_args));
+        _args = CDR(_args);
+        let _col = CAR(_args);
+        _args = CDR(_args);
+        let _border = CAR(_args);
+        _args = CDR(_args);
+        let _ltheta = asReal(CAR(_args));
+        _args = CDR(_args);
+        let _lphi = asReal(CAR(_args));
+        _args = CDR(_args);
+        with_plot3d_state(|state| state.shade = asReal(CAR(_args)));
+        _args = CDR(_args);
+        let _dobox = asLogical(CAR(_args));
+        _args = CDR(_args);
+        let _doaxes = asLogical(CAR(_args));
+        _args = CDR(_args);
+        let _nTicks = asInteger(CAR(_args));
+        _args = CDR(_args);
+        let _tickType = asInteger(CAR(_args));
+        _args = CDR(_args);
+        let _xlab = CAR(_args);
+        _args = CDR(_args);
+        let _ylab = CAR(_args);
+        _args = CDR(_args);
+        let _zlab = CAR(_args);
+        _args = CDR(_args);
+
+        let shade_val = with_plot3d_state(|state| state.shade);
+        if shade_val.is_finite() && shade_val <= 0.0 {
+            with_plot3d_state(|state| state.shade = 1.0);
+        }
+        if _ltheta.is_finite()
+            && _lphi.is_finite()
+            && with_plot3d_state(|state| state.shade).is_finite()
+        {
+            with_plot3d_state(|state| state.do_lighting = true);
+        } else {
+            with_plot3d_state(|state| state.do_lighting = false);
+        }
+
+        let mut _xs2 = _xs;
+        let mut _ys2 = _ys;
+        let mut _zs2 = _zs;
+        if _scale == 0 {
+            let mut s = _xs2;
+            if s < _ys2 {
+                s = _ys2;
+            }
+            if s < _zs2 {
+                s = _zs2;
+            }
+            _xs2 = s;
+            _ys2 = s;
+            _zs2 = s;
+        }
+
+        /* Parameter checks */
+        if !_theta.is_finite()
+            || !_phi.is_finite()
+            || !_r.is_finite()
+            || !_d.is_finite()
+            || _d < 0.0
+            || _r < 0.0
+        {
+            Rf_unprotect(6);
+            return R_NilValue();
+        }
+        if !_expand.is_finite() || _expand < 0.0 {
+            Rf_unprotect(6);
+            return R_NilValue();
+        }
+
+        /* Set up the viewing transformation (real math) */
+        set_vt_identity();
+        Translate(-_xc, -_yc, -_zc);
+        Scale(1.0 / _xs2, 1.0 / _ys2, _expand / _zs2);
+        XRotate(-90.0);
+        YRotate(-_theta);
+        XRotate(_phi);
+        Translate(0.0, 0.0, -_r - _d);
+        Perspective(_d);
+
+        /* Set up lighting (real math) */
+        if with_plot3d_state(|state| state.do_lighting) {
+            /* Save VT, set up light direction, then restore VT */
+            let saved_vt = with_plot3d_state(|state| state.vt);
+            SetUpLight(_ltheta, _lphi);
+            with_plot3d_state(|state| state.vt = saved_vt);
+        }
+
+        /* Compute depth order (real algorithm) */
+        let nr = nrows(z);
+        let nc = ncols(z);
+        let depth = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, (nr - 1) * (nc - 1)));
+        let indx = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, (nr - 1) * (nc - 1)));
+
+        DepthOrder(
+            REAL(z),
+            REAL(x),
+            REAL(y),
+            nr,
+            nc,
+            REAL(depth),
+            INTEGER(indx),
+        );
+
+        /* Build the result: 4x4 viewing transformation matrix */
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 16));
+        let dim = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 2));
+        for i in 0..4 {
+            for j in 0..4 {
+                *REAL(result).add(i + j * 4) = with_plot3d_state(|state| state.vt)[i][j];
+            }
+        }
+        *INTEGER(dim).add(0) = 4;
+        *INTEGER(dim).add(1) = 4;
+        crate::attrib_core::setAttrib(result, crate::attrib_core::R_DimSymbol(), dim);
+
+        Rf_unprotect(10);
+        result
+    }
 }
 
 /* ========================================================================
@@ -1168,8 +1179,10 @@ pub unsafe fn C_persp(args: SEXP) -> SEXP {
 /// C_contourDef -- return whether the current device supports rotated
 /// contour text. Stub: returns FALSE (NA_LOGICAL).
 pub unsafe fn C_contourDef() -> SEXP {
-    use crate::sexp::constructors::*;
-    Rf_ScalarLogical(0) /* FALSE: no rotated text support */
+    unsafe {
+        use crate::sexp::constructors::*;
+        Rf_ScalarLogical(0) /* FALSE: no rotated text support */
+    }
 }
 
 /* ========================================================================
@@ -1180,155 +1193,157 @@ pub unsafe fn C_contourDef() -> SEXP {
 /// Ported from plot3d.c C_contour().
 /// Validation logic is real; GE drawing calls are stubs.
 pub unsafe fn C_contour(args: SEXP) -> SEXP {
-    use crate::sexp::accessors::*;
+    unsafe {
+        use crate::sexp::accessors::*;
 
-    let mut _args = CDR(args);
-    if LENGTH(_args) < 12 {
-        /* too few arguments */
-        return R_NilValue();
-    }
-
-    let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let nx = LENGTH(x);
-    _args = CDR(_args);
-
-    let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let ny = LENGTH(y);
-    _args = CDR(_args);
-
-    let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    _args = CDR(_args);
-
-    /* levels */
-    let c = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
-    let nc = LENGTH(c);
-    _args = CDR(_args);
-
-    let _labels = CAR(_args);
-    _args = CDR(_args);
-
-    let _labcex = asReal(CAR(_args));
-    _args = CDR(_args);
-
-    let _drawLabels = asLogical(CAR(_args));
-    _args = CDR(_args);
-
-    let _method = asInteger(CAR(_args));
-    _args = CDR(_args);
-
-    if _method < 1 || _method > 3 {
-        Rf_unprotect(4);
-        return R_NilValue();
-    }
-
-    let _vfont = Rf_protect(FixupVFont(CAR(_args)));
-    _args = CDR(_args);
-
-    let _rawcol = CAR(_args);
-    let _col = Rf_protect(FixupCol(_rawcol, R_TRANWHITE));
-    let _ncol = LENGTH(_col);
-    _args = CDR(_args);
-
-    let _lty = Rf_protect(FixupLty(CAR(_args), LTY_SOLID));
-    let _nlty = LENGTH(_lty);
-    _args = CDR(_args);
-
-    let _lwd = Rf_protect(FixupLwd(CAR(_args), 1.0));
-    let _nlwd = LENGTH(_lwd);
-    _args = CDR(_args);
-
-    /* Validation */
-    if nx < 2 || ny < 2 {
-        Rf_unprotect(8);
-        return R_NilValue();
-    }
-
-    if nrows(z) != nx || ncols(z) != ny {
-        Rf_unprotect(8);
-        return R_NilValue();
-    }
-
-    if nc < 1 {
-        Rf_unprotect(8);
-        return R_NilValue();
-    }
-
-    /* Check x values are finite and increasing */
-    let xr = REAL(x);
-    let yr = REAL(y);
-    let cr = REAL(c);
-    let zr = REAL(z);
-
-    let mut valid = true;
-    for i in 0..nx {
-        if !(*xr.add(i as usize)).is_finite() {
-            valid = false;
-            break;
+        let mut _args = CDR(args);
+        if LENGTH(_args) < 12 {
+            /* too few arguments */
+            return R_NilValue();
         }
-        if i > 0 && *xr.add(i as usize) < *xr.add((i - 1) as usize) {
-            valid = false;
-            break;
-        }
-    }
-    if !valid {
-        Rf_unprotect(8);
-        return R_NilValue();
-    }
 
-    for i in 0..ny {
-        if !(*yr.add(i as usize)).is_finite() {
-            valid = false;
-            break;
-        }
-        if i > 0 && *yr.add(i as usize) < *yr.add((i - 1) as usize) {
-            valid = false;
-            break;
-        }
-    }
-    if !valid {
-        Rf_unprotect(8);
-        return R_NilValue();
-    }
+        let x = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let nx = LENGTH(x);
+        _args = CDR(_args);
 
-    for i in 0..nc {
-        if !(*cr.add(i as usize)).is_finite() {
-            valid = false;
-            break;
-        }
-    }
-    if !valid {
-        Rf_unprotect(8);
-        return R_NilValue();
-    }
+        let y = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let ny = LENGTH(y);
+        _args = CDR(_args);
 
-    /* Find z range */
-    let mut zmin = DBL_MAX;
-    let mut zmax = f64::MIN_POSITIVE;
-    for i in 0..(nx * ny) {
-        let zi = *zr.add(i as usize);
-        if zi.is_finite() {
-            if zmax < zi {
-                zmax = zi;
+        let z = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        _args = CDR(_args);
+
+        /* levels */
+        let c = Rf_protect(coerceVector(CAR(_args), SEXPTYPE::REALSXP.into()));
+        let nc = LENGTH(c);
+        _args = CDR(_args);
+
+        let _labels = CAR(_args);
+        _args = CDR(_args);
+
+        let _labcex = asReal(CAR(_args));
+        _args = CDR(_args);
+
+        let _drawLabels = asLogical(CAR(_args));
+        _args = CDR(_args);
+
+        let _method = asInteger(CAR(_args));
+        _args = CDR(_args);
+
+        if _method < 1 || _method > 3 {
+            Rf_unprotect(4);
+            return R_NilValue();
+        }
+
+        let _vfont = Rf_protect(FixupVFont(CAR(_args)));
+        _args = CDR(_args);
+
+        let _rawcol = CAR(_args);
+        let _col = Rf_protect(FixupCol(_rawcol, R_TRANWHITE));
+        let _ncol = LENGTH(_col);
+        _args = CDR(_args);
+
+        let _lty = Rf_protect(FixupLty(CAR(_args), LTY_SOLID));
+        let _nlty = LENGTH(_lty);
+        _args = CDR(_args);
+
+        let _lwd = Rf_protect(FixupLwd(CAR(_args), 1.0));
+        let _nlwd = LENGTH(_lwd);
+        _args = CDR(_args);
+
+        /* Validation */
+        if nx < 2 || ny < 2 {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
+
+        if nrows(z) != nx || ncols(z) != ny {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
+
+        if nc < 1 {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
+
+        /* Check x values are finite and increasing */
+        let xr = REAL(x);
+        let yr = REAL(y);
+        let cr = REAL(c);
+        let zr = REAL(z);
+
+        let mut valid = true;
+        for i in 0..nx {
+            if !(*xr.add(i as usize)).is_finite() {
+                valid = false;
+                break;
             }
-            if zmin > zi {
-                zmin = zi;
+            if i > 0 && *xr.add(i as usize) < *xr.add((i - 1) as usize) {
+                valid = false;
+                break;
             }
         }
-    }
+        if !valid {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
 
-    if zmin >= zmax {
+        for i in 0..ny {
+            if !(*yr.add(i as usize)).is_finite() {
+                valid = false;
+                break;
+            }
+            if i > 0 && *yr.add(i as usize) < *yr.add((i - 1) as usize) {
+                valid = false;
+                break;
+            }
+        }
+        if !valid {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
+
+        for i in 0..nc {
+            if !(*cr.add(i as usize)).is_finite() {
+                valid = false;
+                break;
+            }
+        }
+        if !valid {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
+
+        /* Find z range */
+        let mut zmin = DBL_MAX;
+        let mut zmax = f64::MIN_POSITIVE;
+        for i in 0..(nx * ny) {
+            let zi = *zr.add(i as usize);
+            if zi.is_finite() {
+                if zmax < zi {
+                    zmax = zi;
+                }
+                if zmin > zi {
+                    zmin = zi;
+                }
+            }
+        }
+
+        if zmin >= zmax {
+            Rf_unprotect(8);
+            return R_NilValue();
+        }
+
+        let _atom = 1e-3 * (zmax - zmin);
+
+        /* Contour drawing would happen here -- stubs */
+        /* The real implementation calls contourLines(), then traces segments,
+         * draws polylines, and optionally draws labels */
+
         Rf_unprotect(8);
-        return R_NilValue();
+        R_NilValue()
     }
-
-    let _atom = 1e-3 * (zmax - zmin);
-
-    /* Contour drawing would happen here -- stubs */
-    /* The real implementation calls contourLines(), then traces segments,
-     * draws polylines, and optionally draws labels */
-
-    Rf_unprotect(8);
-    R_NilValue()
 }
 
 #[cfg(test)]

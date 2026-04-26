@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Port of R's src/library/grid/src/grid.c (5470 lines)
@@ -54,22 +53,26 @@ use super::util::{copyRect, getListElement, intersect, rect, setListElement, tex
 use super::viewport::*;
 
 unsafe fn GEcurrentDevice() -> pGEDevDesc {
-    crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc
+    unsafe { crate::library::grdevices::device_registry::GEcurrentDevice() as pGEDevDesc }
 }
 
 unsafe fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP {
-    let tail = Rf_cons(arg3, R_NilValue());
-    let tail = Rf_cons(arg2, tail);
-    let tail = Rf_cons(arg1, tail);
-    let call = Rf_cons(symbol, tail);
-    if !call.is_null() {
-        (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+    unsafe {
+        let tail = Rf_cons(arg3, R_NilValue());
+        let tail = Rf_cons(arg2, tail);
+        let tail = Rf_cons(arg1, tail);
+        let call = Rf_cons(symbol, tail);
+        if !call.is_null() {
+            (*call).sxpinfo.set_type(SEXPTYPE::LANGSXP);
+        }
+        call
     }
-    call
 }
 
 unsafe fn SET_TAG(x: SEXP, y: SEXP) {
-    SETTAG(x, y);
+    unsafe {
+        SETTAG(x, y);
+    }
 }
 
 unsafe fn NewFrameConfirm(_dev: *const c_void) {}
@@ -80,7 +83,7 @@ unsafe fn Rf_CreateAtVector(
     _n: c_int,
     _log: c_int,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 unsafe fn GEExpressionMetric(
@@ -91,26 +94,32 @@ unsafe fn GEExpressionMetric(
     width: *mut f64,
     _dd: pGEDevDesc,
 ) {
-    if !ascent.is_null() {
-        *ascent = 0.0;
-    }
-    if !descent.is_null() {
-        *descent = 0.0;
-    }
-    if !width.is_null() {
-        *width = 0.0;
+    unsafe {
+        if !ascent.is_null() {
+            *ascent = 0.0;
+        }
+        if !descent.is_null() {
+            *descent = 0.0;
+        }
+        if !width.is_null() {
+            *width = 0.0;
+        }
     }
 }
 
 unsafe fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int) {
-    release_grid_definitions(
-        dd as crate::mainutils::graphics_ffi::pGEDevDesc,
-        clear_groups,
-    );
+    unsafe {
+        release_grid_definitions(
+            dd as crate::mainutils::graphics_ffi::pGEDevDesc,
+            clear_groups,
+        );
+    }
 }
 
 unsafe fn initVP(dd: pGEDevDesc) {
-    super::viewport::initVP(dd as *const u8);
+    unsafe {
+        super::viewport::initVP(dd as *const u8);
+    }
 }
 
 /* ==============================
@@ -140,7 +149,7 @@ const TRC2: f64 = 0.77756015077810708036;
 
 #[inline]
 unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
-    *REAL(x).add(index as usize)
+    unsafe { *REAL(x).add(index as usize) }
 }
 
 /* ==============================
@@ -149,7 +158,7 @@ unsafe fn numeric(x: SEXP, index: c_int) -> f64 {
 
 #[inline]
 unsafe fn isNull(x: SEXP) -> bool {
-    x.is_null() || x == R_NilValue()
+    unsafe { x.is_null() || x == R_NilValue() }
 }
 
 /* ==============================
@@ -171,7 +180,7 @@ fn fmax2(a: f64, b: f64) -> f64 {
  * ============================== */
 
 pub unsafe fn getDevice() -> pGEDevDesc {
-    GEcurrentDevice()
+    unsafe { GEcurrentDevice() }
 }
 
 /* ==============================
@@ -179,18 +188,20 @@ pub unsafe fn getDevice() -> pGEDevDesc {
  * ============================== */
 
 pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeightCM: *mut c_double) {
-    // Prefer device-driven conversion helpers when available.
-    // In headless mode these still give deterministic non-zero sizes.
-    let mut width_in = toDeviceWidth(1.0, GE_INCHES, dd).abs();
-    let mut height_in = toDeviceHeight(1.0, GE_INCHES, dd).abs();
-    if !width_in.is_finite() || width_in == 0.0 {
-        width_in = 1.0;
+    unsafe {
+        // Prefer device-driven conversion helpers when available.
+        // In headless mode these still give deterministic non-zero sizes.
+        let mut width_in = toDeviceWidth(1.0, GE_INCHES, dd).abs();
+        let mut height_in = toDeviceHeight(1.0, GE_INCHES, dd).abs();
+        if !width_in.is_finite() || width_in == 0.0 {
+            width_in = 1.0;
+        }
+        if !height_in.is_finite() || height_in == 0.0 {
+            height_in = 1.0;
+        }
+        *devWidthCM = width_in * 2.54;
+        *devHeightCM = height_in * 2.54;
     }
-    if !height_in.is_finite() || height_in == 0.0 {
-        height_in = 1.0;
-    }
-    *devWidthCM = width_in * 2.54;
-    *devHeightCM = height_in * 2.54;
 }
 
 /* ==============================
@@ -198,21 +209,23 @@ pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeight
  * ============================== */
 
 unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: SEXP) -> bool {
-    let mut result = false;
-    let pvpDevWidthCM = Rf_protect(VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t));
-    let pvpDevHeightCM = Rf_protect(VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t));
-    if (*REAL(pvpDevWidthCM) - devWidthCM).abs() > 1e-6 {
-        result = true;
-        *REAL(pvpDevWidthCM) = devWidthCM;
-        SET_VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t, pvpDevWidthCM);
+    unsafe {
+        let mut result = false;
+        let pvpDevWidthCM = Rf_protect(VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t));
+        let pvpDevHeightCM = Rf_protect(VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t));
+        if (*REAL(pvpDevWidthCM) - devWidthCM).abs() > 1e-6 {
+            result = true;
+            *REAL(pvpDevWidthCM) = devWidthCM;
+            SET_VECTOR_ELT(currentvp, PVP_DEVWIDTHCM as R_xlen_t, pvpDevWidthCM);
+        }
+        if (*REAL(pvpDevHeightCM) - devHeightCM).abs() > 1e-6 {
+            result = true;
+            *REAL(pvpDevHeightCM) = devHeightCM;
+            SET_VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t, pvpDevHeightCM);
+        }
+        Rf_unprotect(2);
+        result
     }
-    if (*REAL(pvpDevHeightCM) - devHeightCM).abs() > 1e-6 {
-        result = true;
-        *REAL(pvpDevHeightCM) = devHeightCM;
-        SET_VECTOR_ELT(currentvp, PVP_DEVHEIGHTCM as R_xlen_t, pvpDevHeightCM);
-    }
-    Rf_unprotect(2);
-    result
 }
 
 /* ==============================
@@ -220,9 +233,11 @@ unsafe fn deviceChanged(devWidthCM: c_double, devHeightCM: c_double, currentvp: 
  * ============================== */
 
 pub unsafe fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
-    set_grid_eval_env(GridEvalEnv);
-    // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
-    R_NilValue()
+    unsafe {
+        set_grid_eval_env(GridEvalEnv);
+        // GEregisterSystem(gridCallback, &mut gridRegisterIndex);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -230,8 +245,10 @@ pub unsafe fn L_initGrid(GridEvalEnv: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_killGrid() -> SEXP {
-    // GEunregisterSystem(gridRegisterIndex);
-    R_NilValue()
+    unsafe {
+        // GEunregisterSystem(gridRegisterIndex);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -239,7 +256,9 @@ pub unsafe fn L_killGrid() -> SEXP {
  * ============================== */
 
 pub unsafe fn dirtyGridDevice(dd: pGEDevDesc) {
-    GEdeviceDirty(dd);
+    unsafe {
+        GEdeviceDirty(dd);
+    }
 }
 
 /* ==============================
@@ -247,9 +266,11 @@ pub unsafe fn dirtyGridDevice(dd: pGEDevDesc) {
  * ============================== */
 
 pub unsafe fn L_gridDirty() -> SEXP {
-    let dd = getDevice();
-    dirtyGridDevice(dd);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        dirtyGridDevice(dd);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -257,7 +278,9 @@ pub unsafe fn L_gridDirty() -> SEXP {
  * ============================== */
 
 unsafe fn getViewportContext(vp: SEXP, vpc: *mut LViewportContext) {
-    fillViewportContextFromViewport(vp, vpc);
+    unsafe {
+        fillViewportContextFromViewport(vp, vpc);
+    }
 }
 
 /* ==============================
@@ -265,8 +288,10 @@ unsafe fn getViewportContext(vp: SEXP, vpc: *mut LViewportContext) {
  * ============================== */
 
 pub unsafe fn L_currentViewport() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_VP)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_VP)
+    }
 }
 
 /* ==============================
@@ -274,201 +299,203 @@ pub unsafe fn L_currentViewport() -> SEXP {
  * ============================== */
 
 pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGEDevDesc) -> SEXP {
-    let mut devWidthCM: c_double = 0.0;
-    let mut devHeightCM: c_double = 0.0;
-    let mut xx1: c_double = 0.0;
-    let mut yy1: c_double = 0.0;
-    let mut xx2: c_double = 0.0;
-    let mut yy2: c_double = 0.0;
+    unsafe {
+        let mut devWidthCM: c_double = 0.0;
+        let mut devHeightCM: c_double = 0.0;
+        let mut xx1: c_double = 0.0;
+        let mut yy1: c_double = 0.0;
+        let mut xx2: c_double = 0.0;
+        let mut yy2: c_double = 0.0;
 
-    getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
 
-    if topLevelVP == 0 && pushing != 0 {
-        let parent = gridStateElement(dd, GSS_VP);
-        SET_VECTOR_ELT(vp, PVP_PARENT as R_xlen_t, parent);
-        defineVar(
-            installTrChar(STRING_ELT(VECTOR_ELT(vp, VP_NAME as R_xlen_t), 0)),
-            vp,
-            VECTOR_ELT(parent, PVP_CHILDREN as R_xlen_t),
-        );
-    }
-
-    calcViewportTransform(
-        vp,
-        viewportParent(vp),
-        topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
-        dd,
-    );
-
-    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path) != 0
-    {
-        if !isClipPath(viewportClipSXP(vp))
-            && (viewportClip(vp) == NA_LOGICAL || viewportClip(vp) != 0)
-        {
-            Rf_warning(
-                c"Turning clipping on or off within a (clipping) path is no honoured".as_ptr(),
+        if topLevelVP == 0 && pushing != 0 {
+            let parent = gridStateElement(dd, GSS_VP);
+            SET_VECTOR_ELT(vp, PVP_PARENT as R_xlen_t, parent);
+            defineVar(
+                installTrChar(STRING_ELT(VECTOR_ELT(vp, VP_NAME as R_xlen_t), 0)),
+                vp,
+                VECTOR_ELT(parent, PVP_CHILDREN as R_xlen_t),
             );
         }
-    } else if isClipPath(viewportClipSXP(vp)) {
-        let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
-        let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
-        *REAL(currentClip).add(0) = *REAL(parentClip).add(0);
-        *REAL(currentClip).add(1) = *REAL(parentClip).add(1);
-        *REAL(currentClip).add(2) = *REAL(parentClip).add(2);
-        *REAL(currentClip).add(3) = *REAL(parentClip).add(3);
-        SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
-        Rf_unprotect(2);
-    } else {
-        if viewportClip(vp) == NA_LOGICAL {
-            xx1 = toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd);
-            yy1 = toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd);
-            xx2 = toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd);
-            yy2 = toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd);
-            GESetClip(xx1, yy1, xx2, yy2, dd);
-        } else if viewportClip(vp) != 0 {
-            let rotationAngle = if TYPEOF(viewportRotation(vp)) == SEXPTYPE::REALSXP
-                && LENGTH(viewportRotation(vp)) > 0
+
+        calcViewportTransform(
+            vp,
+            viewportParent(vp),
+            topLevelVP == 0 && !deviceChanged(devWidthCM, devHeightCM, viewportParent(vp)),
+            dd,
+        );
+
+        let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+        if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path) != 0
+        {
+            if !isClipPath(viewportClipSXP(vp))
+                && (viewportClip(vp) == NA_LOGICAL || viewportClip(vp) != 0)
             {
-                *REAL(viewportRotation(vp))
+                Rf_warning(
+                    c"Turning clipping on or off within a (clipping) path is no honoured".as_ptr(),
+                );
+            }
+        } else if isClipPath(viewportClipSXP(vp)) {
+            let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+            let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+            *REAL(currentClip).add(0) = *REAL(parentClip).add(0);
+            *REAL(currentClip).add(1) = *REAL(parentClip).add(1);
+            *REAL(currentClip).add(2) = *REAL(parentClip).add(2);
+            *REAL(currentClip).add(3) = *REAL(parentClip).add(3);
+            SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
+            Rf_unprotect(2);
+        } else {
+            if viewportClip(vp) == NA_LOGICAL {
+                xx1 = toDeviceX(-0.5 * devWidthCM / 2.54, GE_INCHES, dd);
+                yy1 = toDeviceY(-0.5 * devHeightCM / 2.54, GE_INCHES, dd);
+                xx2 = toDeviceX(1.5 * devWidthCM / 2.54, GE_INCHES, dd);
+                yy2 = toDeviceY(1.5 * devHeightCM / 2.54, GE_INCHES, dd);
+                GESetClip(xx1, yy1, xx2, yy2, dd);
+            } else if viewportClip(vp) != 0 {
+                let rotationAngle = if TYPEOF(viewportRotation(vp)) == SEXPTYPE::REALSXP
+                    && LENGTH(viewportRotation(vp)) > 0
+                {
+                    *REAL(viewportRotation(vp))
+                } else {
+                    0.0
+                };
+                if rotationAngle != 0.0
+                    && rotationAngle != 90.0
+                    && rotationAngle != 270.0
+                    && rotationAngle != 360.0
+                {
+                    Rf_warning(c"cannot clip to rotated viewport".as_ptr());
+                    let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
+                    xx1 = *REAL(parentClip).add(0);
+                    yy1 = *REAL(parentClip).add(1);
+                    xx2 = *REAL(parentClip).add(2);
+                    yy2 = *REAL(parentClip).add(3);
+                    Rf_unprotect(1);
+                } else {
+                    let mut transform: LTransform = [[0.0; 3]; 3];
+                    for i in 0..3usize {
+                        for j in 0..3usize {
+                            transform[i][j] = *REAL(viewportTransform(vp)).add(i + 3 * j);
+                        }
+                    }
+                    let vpWidthCM = *REAL(viewportWidthCM(vp));
+                    let vpHeightCM = *REAL(viewportHeightCM(vp));
+                    let x1 = Rf_protect(if topLevelVP == 0 {
+                        unit(0.0, L_NPC)
+                    } else {
+                        unit(-0.5, L_NPC)
+                    });
+                    let y1 = Rf_protect(if topLevelVP == 0 {
+                        unit(0.0, L_NPC)
+                    } else {
+                        unit(-0.5, L_NPC)
+                    });
+                    let x2 = Rf_protect(if topLevelVP == 0 {
+                        unit(1.0, L_NPC)
+                    } else {
+                        unit(1.5, L_NPC)
+                    });
+                    let y2 = Rf_protect(if topLevelVP == 0 {
+                        unit(1.0, L_NPC)
+                    } else {
+                        unit(1.5, L_NPC)
+                    });
+                    let mut vpc = LViewportContext::default();
+                    getViewportContext(vp, &mut vpc);
+                    let mut gc_buf: [u8; 256] = [0; 256];
+                    let gc = gc_buf.as_ptr() as pGEcontext;
+                    gcontextFromViewport(vp, gc, dd);
+                    transformLocn(
+                        x1,
+                        y1,
+                        0,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xx1,
+                        &mut yy1,
+                    );
+                    transformLocn(
+                        x2,
+                        y2,
+                        0,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xx2,
+                        &mut yy2,
+                    );
+                    Rf_unprotect(4);
+                    xx1 = toDeviceX(xx1, GE_INCHES, dd);
+                    yy1 = toDeviceY(yy1, GE_INCHES, dd);
+                    xx2 = toDeviceX(xx2, GE_INCHES, dd);
+                    yy2 = toDeviceY(yy2, GE_INCHES, dd);
+                    GESetClip(xx1, yy1, xx2, yy2, dd);
+                }
             } else {
-                0.0
-            };
-            if rotationAngle != 0.0
-                && rotationAngle != 90.0
-                && rotationAngle != 270.0
-                && rotationAngle != 360.0
-            {
-                Rf_warning(c"cannot clip to rotated viewport".as_ptr());
                 let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
                 xx1 = *REAL(parentClip).add(0);
                 yy1 = *REAL(parentClip).add(1);
                 xx2 = *REAL(parentClip).add(2);
                 yy2 = *REAL(parentClip).add(3);
-                Rf_unprotect(1);
-            } else {
-                let mut transform: LTransform = [[0.0; 3]; 3];
-                for i in 0..3usize {
-                    for j in 0..3usize {
-                        transform[i][j] = *REAL(viewportTransform(vp)).add(i + 3 * j);
-                    }
+                let parentClipPath =
+                    Rf_protect(VECTOR_ELT(viewportParent(vp), PVP_CLIPPATH as R_xlen_t));
+                if isClipPath(parentClipPath) {
+                    SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, parentClipPath);
                 }
-                let vpWidthCM = *REAL(viewportWidthCM(vp));
-                let vpHeightCM = *REAL(viewportHeightCM(vp));
-                let x1 = Rf_protect(if topLevelVP == 0 {
-                    unit(0.0, L_NPC)
-                } else {
-                    unit(-0.5, L_NPC)
-                });
-                let y1 = Rf_protect(if topLevelVP == 0 {
-                    unit(0.0, L_NPC)
-                } else {
-                    unit(-0.5, L_NPC)
-                });
-                let x2 = Rf_protect(if topLevelVP == 0 {
-                    unit(1.0, L_NPC)
-                } else {
-                    unit(1.5, L_NPC)
-                });
-                let y2 = Rf_protect(if topLevelVP == 0 {
-                    unit(1.0, L_NPC)
-                } else {
-                    unit(1.5, L_NPC)
-                });
-                let mut vpc = LViewportContext::default();
-                getViewportContext(vp, &mut vpc);
-                let mut gc_buf: [u8; 256] = [0; 256];
-                let gc = gc_buf.as_ptr() as pGEcontext;
-                gcontextFromViewport(vp, gc, dd);
-                transformLocn(
-                    x1,
-                    y1,
-                    0,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xx1,
-                    &mut yy1,
-                );
-                transformLocn(
-                    x2,
-                    y2,
-                    0,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xx2,
-                    &mut yy2,
-                );
-                Rf_unprotect(4);
-                xx1 = toDeviceX(xx1, GE_INCHES, dd);
-                yy1 = toDeviceY(yy1, GE_INCHES, dd);
-                xx2 = toDeviceX(xx2, GE_INCHES, dd);
-                yy2 = toDeviceY(yy2, GE_INCHES, dd);
-                GESetClip(xx1, yy1, xx2, yy2, dd);
+                if pushing == 0 && !isClipPath(parentClipPath) {
+                    GESetClip(xx1, yy1, xx2, yy2, dd);
+                }
+                Rf_unprotect(2);
             }
-        } else {
-            let parentClip = Rf_protect(viewportClipRect(viewportParent(vp)));
-            xx1 = *REAL(parentClip).add(0);
-            yy1 = *REAL(parentClip).add(1);
-            xx2 = *REAL(parentClip).add(2);
-            yy2 = *REAL(parentClip).add(3);
-            let parentClipPath =
-                Rf_protect(VECTOR_ELT(viewportParent(vp), PVP_CLIPPATH as R_xlen_t));
-            if isClipPath(parentClipPath) {
-                SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, parentClipPath);
-            }
-            if pushing == 0 && !isClipPath(parentClipPath) {
-                GESetClip(xx1, yy1, xx2, yy2, dd);
-            }
-            Rf_unprotect(2);
+
+            let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+            *REAL(currentClip).add(0) = xx1;
+            *REAL(currentClip).add(1) = yy1;
+            *REAL(currentClip).add(2) = xx2;
+            *REAL(currentClip).add(3) = yy2;
+            SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
+            Rf_unprotect(1);
         }
 
-        let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
-        *REAL(currentClip).add(0) = xx1;
-        *REAL(currentClip).add(1) = yy1;
-        *REAL(currentClip).add(2) = xx2;
-        *REAL(currentClip).add(3) = yy2;
-        SET_VECTOR_ELT(vp, PVP_CLIPRECT as R_xlen_t, currentClip);
-        Rf_unprotect(1);
+        if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path) != 0
+        {
+            // Masks are ignored when resolving a clipping path.
+        } else if isMask(viewportMaskSXP(vp)) {
+            // Resolve after doSetViewport() once this viewport is current.
+        } else if viewportMask(vp) {
+            SET_VECTOR_ELT(
+                vp,
+                PVP_MASK as R_xlen_t,
+                VECTOR_ELT(viewportParent(vp), PVP_MASK as R_xlen_t),
+            );
+        } else {
+            SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, R_NilValue());
+            resolveMask(R_NilValue(), dd);
+        }
+
+        let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+        *REAL(widthCM) = devWidthCM;
+        SET_VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t, widthCM);
+
+        let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+        *REAL(heightCM) = devHeightCM;
+        SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
+
+        Rf_unprotect(2);
+        vp
     }
-
-    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path) != 0
-    {
-        // Masks are ignored when resolving a clipping path.
-    } else if isMask(viewportMaskSXP(vp)) {
-        // Resolve after doSetViewport() once this viewport is current.
-    } else if viewportMask(vp) {
-        SET_VECTOR_ELT(
-            vp,
-            PVP_MASK as R_xlen_t,
-            VECTOR_ELT(viewportParent(vp), PVP_MASK as R_xlen_t),
-        );
-    } else {
-        SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, R_NilValue());
-        resolveMask(R_NilValue(), dd);
-    }
-
-    let widthCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
-    *REAL(widthCM) = devWidthCM;
-    SET_VECTOR_ELT(vp, PVP_DEVWIDTHCM as R_xlen_t, widthCM);
-
-    let heightCM = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
-    *REAL(heightCM) = devHeightCM;
-    SET_VECTOR_ELT(vp, PVP_DEVHEIGHTCM as R_xlen_t, heightCM);
-
-    Rf_unprotect(2);
-    vp
 }
 
 /* ==============================
@@ -476,79 +503,83 @@ pub unsafe fn doSetViewport(vp: SEXP, topLevelVP: c_int, pushing: c_int, dd: pGE
  * ============================== */
 
 pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
-    let dd = getDevice();
-    let vp = Rf_protect(Rf_duplicate(invp));
+    unsafe {
+        let dd = getDevice();
+        let vp = Rf_protect(Rf_duplicate(invp));
 
-    let fcall = Rf_protect(lang2(
-        Rf_install(b"pushedvp\0".as_ptr() as *const c_char),
-        vp,
-    ));
-    let pushedvp = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-    let pushedvp = doSetViewport(
-        pushedvp,
-        if *LOGICAL(hasParent) != 0 { 0 } else { 1 },
-        1,
-        dd,
-    );
+        let fcall = Rf_protect(lang2(
+            Rf_install(b"pushedvp\0".as_ptr() as *const c_char),
+            vp,
+        ));
+        let pushedvp = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        let pushedvp = doSetViewport(
+            pushedvp,
+            if *LOGICAL(hasParent) != 0 { 0 } else { 1 },
+            1,
+            dd,
+        );
 
-    setGridStateElement(dd, GSS_VP, pushedvp);
+        setGridStateElement(dd, GSS_VP, pushedvp);
 
-    {
-        let vpgp = Rf_protect(VECTOR_ELT(pushedvp, VP_GP as R_xlen_t));
-        let fill = getListElement(vpgp, c"fill".as_ptr() as *mut c_char);
-        if fill != R_NilValue() {
-            resolveGPar(vpgp, 1);
-            let pushed_gp = VECTOR_ELT(pushedvp, PVP_GPAR as R_xlen_t);
-            SET_VECTOR_ELT(
-                pushed_gp,
-                GP_FILL as R_xlen_t,
-                getListElement(vpgp, c"fill".as_ptr() as *mut c_char),
-            );
-            setGridStateElement(dd, GSS_GPAR, pushed_gp);
-        }
-        Rf_unprotect(1);
-    }
-
-    {
-        let clip = Rf_protect(viewportClipSXP(pushedvp));
-        if isClipPath(clip) {
-            let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-            if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-                && LENGTH(resolving_path) > 0
-                && *LOGICAL(resolving_path) != 0
-            {
-                Rf_warning(c"Clipping paths within a (clipping) path are not honoured".as_ptr());
-                SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
-            } else {
-                let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
-                SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
-                Rf_unprotect(1);
+        {
+            let vpgp = Rf_protect(VECTOR_ELT(pushedvp, VP_GP as R_xlen_t));
+            let fill = getListElement(vpgp, c"fill".as_ptr() as *mut c_char);
+            if fill != R_NilValue() {
+                resolveGPar(vpgp, 1);
+                let pushed_gp = VECTOR_ELT(pushedvp, PVP_GPAR as R_xlen_t);
+                SET_VECTOR_ELT(
+                    pushed_gp,
+                    GP_FILL as R_xlen_t,
+                    getListElement(vpgp, c"fill".as_ptr() as *mut c_char),
+                );
+                setGridStateElement(dd, GSS_GPAR, pushed_gp);
             }
+            Rf_unprotect(1);
         }
-        Rf_unprotect(1);
-    }
 
-    {
-        let mask = Rf_protect(viewportMaskSXP(pushedvp));
-        if isMask(mask) {
-            let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-            if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-                && LENGTH(resolving_path) > 0
-                && *LOGICAL(resolving_path) != 0
-            {
-                Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr());
-                SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, R_NilValue());
-            } else {
-                let resolvedmask = Rf_protect(resolveMask(mask, dd));
-                SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, resolvedmask);
-                Rf_unprotect(1);
+        {
+            let clip = Rf_protect(viewportClipSXP(pushedvp));
+            if isClipPath(clip) {
+                let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+                if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+                    && LENGTH(resolving_path) > 0
+                    && *LOGICAL(resolving_path) != 0
+                {
+                    Rf_warning(
+                        c"Clipping paths within a (clipping) path are not honoured".as_ptr(),
+                    );
+                    SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, R_NilValue());
+                } else {
+                    let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                    SET_VECTOR_ELT(pushedvp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+                    Rf_unprotect(1);
+                }
             }
+            Rf_unprotect(1);
         }
-        Rf_unprotect(1);
-    }
 
-    Rf_unprotect(3);
-    R_NilValue()
+        {
+            let mask = Rf_protect(viewportMaskSXP(pushedvp));
+            if isMask(mask) {
+                let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+                if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+                    && LENGTH(resolving_path) > 0
+                    && *LOGICAL(resolving_path) != 0
+                {
+                    Rf_warning(c"Masks within a (clipping) path are not honoured".as_ptr());
+                    SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, R_NilValue());
+                } else {
+                    let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                    SET_VECTOR_ELT(pushedvp, PVP_MASK as R_xlen_t, resolvedmask);
+                    Rf_unprotect(1);
+                }
+            }
+            Rf_unprotect(1);
+        }
+
+        Rf_unprotect(3);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -556,131 +587,145 @@ pub unsafe fn L_setviewport(invp: SEXP, hasParent: SEXP) -> SEXP {
  * ============================== */
 
 unsafe fn noChildren(children: SEXP) -> bool {
-    let fcall = Rf_protect(lang2(
-        Rf_install(b"no.children\0".as_ptr() as *const c_char),
-        children,
-    ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-    let r = asBool(result) != 0;
-    Rf_unprotect(2);
-    r
+    unsafe {
+        let fcall = Rf_protect(lang2(
+            Rf_install(b"no.children\0".as_ptr() as *const c_char),
+            children,
+        ));
+        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        let r = asBool(result) != 0;
+        Rf_unprotect(2);
+        r
+    }
 }
 
 unsafe fn childExists(name: SEXP, children: SEXP) -> bool {
-    let fcall = Rf_protect(lang3(
-        Rf_install(b"child.exists\0".as_ptr() as *const c_char),
-        name,
-        children,
-    ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-    let r = asBool(result) != 0;
-    Rf_unprotect(2);
-    r
+    unsafe {
+        let fcall = Rf_protect(lang3(
+            Rf_install(b"child.exists\0".as_ptr() as *const c_char),
+            name,
+            children,
+        ));
+        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        let r = asBool(result) != 0;
+        Rf_unprotect(2);
+        r
+    }
 }
 
 unsafe fn childList(children: SEXP) -> SEXP {
-    let fcall = Rf_protect(lang2(
-        Rf_install(b"child.list\0".as_ptr() as *const c_char),
-        children,
-    ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-    Rf_unprotect(2);
-    result
+    unsafe {
+        let fcall = Rf_protect(lang2(
+            Rf_install(b"child.list\0".as_ptr() as *const c_char),
+            children,
+        ));
+        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        Rf_unprotect(2);
+        result
+    }
 }
 
 unsafe fn pathMatch(path: SEXP, pathsofar: SEXP, strict: SEXP) -> bool {
-    let fcall = Rf_protect(lang4(
-        Rf_install(b"pathMatch\0".as_ptr() as *const c_char),
-        path,
-        pathsofar,
-        strict,
-    ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-    let r = asBool(result) != 0;
-    Rf_unprotect(2);
-    r
+    unsafe {
+        let fcall = Rf_protect(lang4(
+            Rf_install(b"pathMatch\0".as_ptr() as *const c_char),
+            path,
+            pathsofar,
+            strict,
+        ));
+        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        let r = asBool(result) != 0;
+        Rf_unprotect(2);
+        r
+    }
 }
 
 unsafe fn growPath(pathsofar: SEXP, name: SEXP) -> SEXP {
-    if isNull(pathsofar) {
-        return name;
+    unsafe {
+        if isNull(pathsofar) {
+            return name;
+        }
+        let fcall = Rf_protect(lang3(
+            Rf_install(b"growPath\0".as_ptr() as *const c_char),
+            pathsofar,
+            name,
+        ));
+        let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
+        Rf_unprotect(2);
+        result
     }
-    let fcall = Rf_protect(lang3(
-        Rf_install(b"growPath\0".as_ptr() as *const c_char),
-        pathsofar,
-        name,
-    ));
-    let result = Rf_protect(Rf_eval_with_gd(fcall, grid_eval_env(), ptr::null_mut()));
-    Rf_unprotect(2);
-    result
 }
 
 unsafe fn findViewport(name: SEXP, strict: SEXP, vp: SEXP, depth: c_int) -> SEXP {
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(zeroDepth) = 0;
-    let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(curDepth) = depth;
+    unsafe {
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        *INTEGER(zeroDepth) = 0;
+        let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        *INTEGER(curDepth) = depth;
 
-    if noChildren(viewportChildren(vp)) {
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
-    } else if childExists(name, viewportChildren(vp)) {
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, curDepth);
-        SET_VECTOR_ELT(
-            result,
-            1 as R_xlen_t,
-            findVar(installTrChar(STRING_ELT(name, 0)), viewportChildren(vp)),
-        );
-    } else {
-        if *LOGICAL(strict) != 0 {
+        if noChildren(viewportChildren(vp)) {
             SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
             SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
+        } else if childExists(name, viewportChildren(vp)) {
+            SET_VECTOR_ELT(result, 0 as R_xlen_t, curDepth);
+            SET_VECTOR_ELT(
+                result,
+                1 as R_xlen_t,
+                findVar(installTrChar(STRING_ELT(name, 0)), viewportChildren(vp)),
+            );
         } else {
-            let found = Rf_protect(findInChildren(
-                name,
-                strict,
-                viewportChildren(vp),
-                depth + 1,
-            ));
-            SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
-            SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
-            Rf_unprotect(1);
+            if *LOGICAL(strict) != 0 {
+                SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
+                SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
+            } else {
+                let found = Rf_protect(findInChildren(
+                    name,
+                    strict,
+                    viewportChildren(vp),
+                    depth + 1,
+                ));
+                SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
+                SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
+                Rf_unprotect(1);
+            }
         }
+        Rf_unprotect(3);
+        result
     }
-    Rf_unprotect(3);
-    result
 }
 
 unsafe fn findInChildren(name: SEXP, strict: SEXP, children: SEXP, depth: c_int) -> SEXP {
-    let childnames = Rf_protect(childList(children));
-    let n = LENGTH(childnames);
-    let mut count: c_int = 0;
-    let mut found = false;
-    let mut result = R_NilValue();
-    while count < n && !found {
-        let child = Rf_protect(findVar(
-            installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
-            children,
-        ));
-        if !isNull(child) {
-            result = findViewport(name, strict, child, depth);
-            found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
+    unsafe {
+        let childnames = Rf_protect(childList(children));
+        let n = LENGTH(childnames);
+        let mut count: c_int = 0;
+        let mut found = false;
+        let mut result = R_NilValue();
+        while count < n && !found {
+            let child = Rf_protect(findVar(
+                installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
+                children,
+            ));
+            if !isNull(child) {
+                result = findViewport(name, strict, child, depth);
+                found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
+            }
+            Rf_unprotect(1);
+            count += 1;
+        }
+        if !found {
+            let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+            let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+            *INTEGER(zeroDepth) = 0;
+            SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
+            SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
+            Rf_unprotect(2);
+            result = temp;
         }
         Rf_unprotect(1);
-        count += 1;
+        result
     }
-    if !found {
-        let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(zeroDepth) = 0;
-        SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
-        SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
-        Rf_unprotect(2);
-        result = temp;
-    }
-    Rf_unprotect(1);
-    result
 }
 
 unsafe fn findvppathInChildren(
@@ -691,33 +736,35 @@ unsafe fn findvppathInChildren(
     children: SEXP,
     depth: c_int,
 ) -> SEXP {
-    let childnames = Rf_protect(childList(children));
-    let n = LENGTH(childnames);
-    let mut count: c_int = 0;
-    let mut found = false;
-    let mut result = R_NilValue();
-    while count < n && !found {
-        let vp = Rf_protect(findVar(
-            installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
-            children,
-        ));
-        let newpathsofar = Rf_protect(growPath(pathsofar, VECTOR_ELT(vp, VP_NAME as R_xlen_t)));
-        result = findvppath(path, name, strict, newpathsofar, vp, depth);
-        found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
-        count += 1;
-        Rf_unprotect(2);
+    unsafe {
+        let childnames = Rf_protect(childList(children));
+        let n = LENGTH(childnames);
+        let mut count: c_int = 0;
+        let mut found = false;
+        let mut result = R_NilValue();
+        while count < n && !found {
+            let vp = Rf_protect(findVar(
+                installTrChar(STRING_ELT(childnames, count as R_xlen_t)),
+                children,
+            ));
+            let newpathsofar = Rf_protect(growPath(pathsofar, VECTOR_ELT(vp, VP_NAME as R_xlen_t)));
+            result = findvppath(path, name, strict, newpathsofar, vp, depth);
+            found = *INTEGER(VECTOR_ELT(result, 0 as R_xlen_t)) > 0;
+            count += 1;
+            Rf_unprotect(2);
+        }
+        if !found {
+            let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+            let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+            *INTEGER(zeroDepth) = 0;
+            SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
+            SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
+            Rf_unprotect(2);
+            result = temp;
+        }
+        Rf_unprotect(1);
+        result
     }
-    if !found {
-        let temp = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(zeroDepth) = 0;
-        SET_VECTOR_ELT(temp, 0 as R_xlen_t, zeroDepth);
-        SET_VECTOR_ELT(temp, 1 as R_xlen_t, R_NilValue());
-        Rf_unprotect(2);
-        result = temp;
-    }
-    Rf_unprotect(1);
-    result
 }
 
 unsafe fn findvppath(
@@ -728,37 +775,39 @@ unsafe fn findvppath(
     vp: SEXP,
     depth: c_int,
 ) -> SEXP {
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(zeroDepth) = 0;
-    let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-    *INTEGER(curDepth) = depth;
+    unsafe {
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let zeroDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        *INTEGER(zeroDepth) = 0;
+        let curDepth = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+        *INTEGER(curDepth) = depth;
 
-    if noChildren(viewportChildren(vp)) {
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
-    } else if childExists(name, viewportChildren(vp)) && pathMatch(path, pathsofar, strict) {
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, curDepth);
-        SET_VECTOR_ELT(
-            result,
-            1 as R_xlen_t,
-            findVar(installTrChar(STRING_ELT(name, 0)), viewportChildren(vp)),
-        );
-    } else {
-        let found = Rf_protect(findvppathInChildren(
-            path,
-            name,
-            strict,
-            pathsofar,
-            viewportChildren(vp),
-            depth + 1,
-        ));
-        SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
-        SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
-        Rf_unprotect(1);
+        if noChildren(viewportChildren(vp)) {
+            SET_VECTOR_ELT(result, 0 as R_xlen_t, zeroDepth);
+            SET_VECTOR_ELT(result, 1 as R_xlen_t, R_NilValue());
+        } else if childExists(name, viewportChildren(vp)) && pathMatch(path, pathsofar, strict) {
+            SET_VECTOR_ELT(result, 0 as R_xlen_t, curDepth);
+            SET_VECTOR_ELT(
+                result,
+                1 as R_xlen_t,
+                findVar(installTrChar(STRING_ELT(name, 0)), viewportChildren(vp)),
+            );
+        } else {
+            let found = Rf_protect(findvppathInChildren(
+                path,
+                name,
+                strict,
+                pathsofar,
+                viewportChildren(vp),
+                depth + 1,
+            ));
+            SET_VECTOR_ELT(result, 0 as R_xlen_t, VECTOR_ELT(found, 0 as R_xlen_t));
+            SET_VECTOR_ELT(result, 1 as R_xlen_t, VECTOR_ELT(found, 1 as R_xlen_t));
+            Rf_unprotect(1);
+        }
+        Rf_unprotect(3);
+        result
     }
-    Rf_unprotect(3);
-    result
 }
 
 /* ==============================
@@ -766,39 +815,41 @@ unsafe fn findvppath(
  * ============================== */
 
 pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
-    let dd = getDevice();
-    let gvp = gridStateElement(dd, GSS_VP);
-    let found = Rf_protect(findViewport(name, strict, gvp, 1));
-    if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
-        let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
-        setGridStateElement(dd, GSS_VP, vp);
-        {
-            let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
-            if isClipPath(clip) {
-                let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
-                SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+    unsafe {
+        let dd = getDevice();
+        let gvp = gridStateElement(dd, GSS_VP);
+        let found = Rf_protect(findViewport(name, strict, gvp, 1));
+        if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
+            let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
+            setGridStateElement(dd, GSS_VP, vp);
+            {
+                let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
+                if isClipPath(clip) {
+                    let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                    SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+                    Rf_unprotect(1);
+                }
+                Rf_unprotect(1);
+            }
+            {
+                let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
+                if isMask(mask) {
+                    let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                    SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
+                    Rf_unprotect(1);
+                }
                 Rf_unprotect(1);
             }
             Rf_unprotect(1);
-        }
-        {
-            let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
-            if isMask(mask) {
-                let resolvedmask = Rf_protect(resolveMask(mask, dd));
-                SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
-                Rf_unprotect(1);
-            }
+            VECTOR_ELT(found, 0 as R_xlen_t)
+        } else {
             Rf_unprotect(1);
+            Rf_error1(
+                c"Viewport '%s' was not found".as_ptr(),
+                CHAR(STRING_ELT(name, 0)),
+            );
+            R_NilValue()
         }
-        Rf_unprotect(1);
-        VECTOR_ELT(found, 0 as R_xlen_t)
-    } else {
-        Rf_unprotect(1);
-        Rf_error1(
-            c"Viewport '%s' was not found".as_ptr(),
-            CHAR(STRING_ELT(name, 0)),
-        );
-        R_NilValue()
     }
 }
 
@@ -807,39 +858,41 @@ pub unsafe fn L_downviewport(name: SEXP, strict: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
-    let dd = getDevice();
-    let gvp = gridStateElement(dd, GSS_VP);
-    let found = Rf_protect(findvppath(path, name, strict, R_NilValue(), gvp, 1));
-    if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
-        let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
-        setGridStateElement(dd, GSS_VP, vp);
-        {
-            let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
-            if isClipPath(clip) {
-                let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
-                SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+    unsafe {
+        let dd = getDevice();
+        let gvp = gridStateElement(dd, GSS_VP);
+        let found = Rf_protect(findvppath(path, name, strict, R_NilValue(), gvp, 1));
+        if *INTEGER(VECTOR_ELT(found, 0 as R_xlen_t)) > 0 {
+            let vp = doSetViewport(VECTOR_ELT(found, 1 as R_xlen_t), 0, 0, dd);
+            setGridStateElement(dd, GSS_VP, vp);
+            {
+                let clip = Rf_protect(VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t));
+                if isClipPath(clip) {
+                    let resolvedclip = Rf_protect(resolveClipPath(clip, dd));
+                    SET_VECTOR_ELT(vp, PVP_CLIPPATH as R_xlen_t, resolvedclip);
+                    Rf_unprotect(1);
+                }
+                Rf_unprotect(1);
+            }
+            {
+                let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
+                if isMask(mask) {
+                    let resolvedmask = Rf_protect(resolveMask(mask, dd));
+                    SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
+                    Rf_unprotect(1);
+                }
                 Rf_unprotect(1);
             }
             Rf_unprotect(1);
-        }
-        {
-            let mask = Rf_protect(VECTOR_ELT(vp, PVP_MASK as R_xlen_t));
-            if isMask(mask) {
-                let resolvedmask = Rf_protect(resolveMask(mask, dd));
-                SET_VECTOR_ELT(vp, PVP_MASK as R_xlen_t, resolvedmask);
-                Rf_unprotect(1);
-            }
+            VECTOR_ELT(found, 0 as R_xlen_t)
+        } else {
             Rf_unprotect(1);
+            Rf_error1(
+                c"Viewport '%s' was not found".as_ptr(),
+                CHAR(STRING_ELT(name, 0)),
+            );
+            R_NilValue()
         }
-        Rf_unprotect(1);
-        VECTOR_ELT(found, 0 as R_xlen_t)
-    } else {
-        Rf_unprotect(1);
-        Rf_error1(
-            c"Viewport '%s' was not found".as_ptr(),
-            CHAR(STRING_ELT(name, 0)),
-        );
-        R_NilValue()
     }
 }
 
@@ -848,81 +901,84 @@ pub unsafe fn L_downvppath(path: SEXP, name: SEXP, strict: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
-    let dd = getDevice();
-    let mut gvp = gridStateElement(dd, GSS_VP);
-    let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
-    if isNull(newvp) {
-        Rf_error(
-            c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
-        );
-    }
-    for _i in 1..*INTEGER(n) {
-        gvp = newvp;
-        newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
+    unsafe {
+        let dd = getDevice();
+        let mut gvp = gridStateElement(dd, GSS_VP);
+        let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
             Rf_error(
                 c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
             );
         }
-    }
-
-    Rf_protect(gvp);
-    Rf_protect(newvp);
-    {
-        let false0 = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, 1));
-        *LOGICAL(false0) = 0;
-        let fcall = Rf_protect(lang4(
-            Rf_install(c"remove".as_ptr()),
-            VECTOR_ELT(gvp, VP_NAME as R_xlen_t),
-            VECTOR_ELT(newvp, PVP_CHILDREN as R_xlen_t),
-            false0,
-        ));
-        let mut t = fcall;
-        t = CDR(CDR(t));
-        SET_TAG(t, Rf_install(c"envir".as_ptr()));
-        t = CDR(t);
-        SET_TAG(t, Rf_install(c"inherits".as_ptr()));
-        Rf_eval_with_gd(fcall, grid_eval_env(), dd);
-        Rf_unprotect(2);
-    }
-
-    let mut devWidthCM: c_double = 0.0;
-    let mut devHeightCM: c_double = 0.0;
-    getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
-    if deviceChanged(devWidthCM, devHeightCM, newvp) {
-        calcViewportTransform(newvp, viewportParent(newvp), true, dd);
-    }
-    setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
-    setGridStateElement(dd, GSS_VP, newvp);
-
-    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path) != 0)
-    {
-        let parentClip = Rf_protect(viewportClipRect(newvp));
-        let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
-        if isClipPath(parentClipPath) {
-            resolveClipPath(parentClipPath, dd);
-        } else {
-            let xx1 = *REAL(parentClip).add(0);
-            let yy1 = *REAL(parentClip).add(1);
-            let xx2 = *REAL(parentClip).add(2);
-            let yy2 = *REAL(parentClip).add(3);
-            GESetClip(xx1, yy1, xx2, yy2, dd);
+        for _i in 1..*INTEGER(n) {
+            gvp = newvp;
+            newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
+            if isNull(newvp) {
+                Rf_error(
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
+                        .as_ptr(),
+                );
+            }
         }
-        Rf_unprotect(2);
-    }
-    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path) != 0)
-    {
-        resolveMask(VECTOR_ELT(newvp, PVP_MASK as R_xlen_t), dd);
-    }
 
-    SET_VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t, R_NilValue());
-    Rf_unprotect(2);
-    R_NilValue()
+        Rf_protect(gvp);
+        Rf_protect(newvp);
+        {
+            let false0 = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, 1));
+            *LOGICAL(false0) = 0;
+            let fcall = Rf_protect(lang4(
+                Rf_install(c"remove".as_ptr()),
+                VECTOR_ELT(gvp, VP_NAME as R_xlen_t),
+                VECTOR_ELT(newvp, PVP_CHILDREN as R_xlen_t),
+                false0,
+            ));
+            let mut t = fcall;
+            t = CDR(CDR(t));
+            SET_TAG(t, Rf_install(c"envir".as_ptr()));
+            t = CDR(t);
+            SET_TAG(t, Rf_install(c"inherits".as_ptr()));
+            Rf_eval_with_gd(fcall, grid_eval_env(), dd);
+            Rf_unprotect(2);
+        }
+
+        let mut devWidthCM: c_double = 0.0;
+        let mut devHeightCM: c_double = 0.0;
+        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        if deviceChanged(devWidthCM, devHeightCM, newvp) {
+            calcViewportTransform(newvp, viewportParent(newvp), true, dd);
+        }
+        setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
+        setGridStateElement(dd, GSS_VP, newvp);
+
+        let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+        if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path) != 0)
+        {
+            let parentClip = Rf_protect(viewportClipRect(newvp));
+            let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
+            if isClipPath(parentClipPath) {
+                resolveClipPath(parentClipPath, dd);
+            } else {
+                let xx1 = *REAL(parentClip).add(0);
+                let yy1 = *REAL(parentClip).add(1);
+                let xx2 = *REAL(parentClip).add(2);
+                let yy2 = *REAL(parentClip).add(3);
+                GESetClip(xx1, yy1, xx2, yy2, dd);
+            }
+            Rf_unprotect(2);
+        }
+        if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path) != 0)
+        {
+            resolveMask(VECTOR_ELT(newvp, PVP_MASK as R_xlen_t), dd);
+        }
+
+        SET_VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t, R_NilValue());
+        Rf_unprotect(2);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -930,58 +986,61 @@ pub unsafe fn L_unsetviewport(n: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
-    let dd = getDevice();
-    let mut gvp = gridStateElement(dd, GSS_VP);
-    let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
-    if isNull(newvp) {
-        Rf_error(
-            c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
-        );
-    }
-    for _i in 1..*INTEGER(n) {
-        gvp = newvp;
-        newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
+    unsafe {
+        let dd = getDevice();
+        let mut gvp = gridStateElement(dd, GSS_VP);
+        let mut newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
         if isNull(newvp) {
             Rf_error(
                 c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)".as_ptr(),
             );
         }
-    }
-
-    let mut devWidthCM: c_double = 0.0;
-    let mut devHeightCM: c_double = 0.0;
-    getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
-    if deviceChanged(devWidthCM, devHeightCM, newvp) {
-        calcViewportTransform(newvp, viewportParent(newvp), true, dd);
-    }
-    setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
-    setGridStateElement(dd, GSS_VP, newvp);
-
-    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path) != 0)
-    {
-        let parentClip = Rf_protect(viewportClipRect(newvp));
-        let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
-        if isClipPath(parentClipPath) {
-            resolveClipPath(parentClipPath, dd);
-        } else {
-            let xx1 = *REAL(parentClip).add(0);
-            let yy1 = *REAL(parentClip).add(1);
-            let xx2 = *REAL(parentClip).add(2);
-            let yy2 = *REAL(parentClip).add(3);
-            GESetClip(xx1, yy1, xx2, yy2, dd);
+        for _i in 1..*INTEGER(n) {
+            gvp = newvp;
+            newvp = VECTOR_ELT(gvp, PVP_PARENT as R_xlen_t);
+            if isNull(newvp) {
+                Rf_error(
+                    c"cannot pop the top-level viewport ('grid' and 'graphics' output mixed?)"
+                        .as_ptr(),
+                );
+            }
         }
-        Rf_unprotect(2);
+
+        let mut devWidthCM: c_double = 0.0;
+        let mut devHeightCM: c_double = 0.0;
+        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        if deviceChanged(devWidthCM, devHeightCM, newvp) {
+            calcViewportTransform(newvp, viewportParent(newvp), true, dd);
+        }
+        setGridStateElement(dd, GSS_GPAR, VECTOR_ELT(gvp, PVP_PARENTGPAR as R_xlen_t));
+        setGridStateElement(dd, GSS_VP, newvp);
+
+        let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+        if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path) != 0)
+        {
+            let parentClip = Rf_protect(viewportClipRect(newvp));
+            let parentClipPath = Rf_protect(VECTOR_ELT(newvp, PVP_CLIPPATH as R_xlen_t));
+            if isClipPath(parentClipPath) {
+                resolveClipPath(parentClipPath, dd);
+            } else {
+                let xx1 = *REAL(parentClip).add(0);
+                let yy1 = *REAL(parentClip).add(1);
+                let xx2 = *REAL(parentClip).add(2);
+                let yy2 = *REAL(parentClip).add(3);
+                GESetClip(xx1, yy1, xx2, yy2, dd);
+            }
+            Rf_unprotect(2);
+        }
+        if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path) != 0)
+        {
+            resolveMask(VECTOR_ELT(newvp, PVP_MASK as R_xlen_t), dd);
+        }
+        R_NilValue()
     }
-    if !(TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path) != 0)
-    {
-        resolveMask(VECTOR_ELT(newvp, PVP_MASK as R_xlen_t), dd);
-    }
-    R_NilValue()
 }
 
 /* ==============================
@@ -989,65 +1048,85 @@ pub unsafe fn L_upviewport(n: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_getDisplayList() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_DL)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_DL)
+    }
 }
 
 pub unsafe fn L_setDisplayList(dl: SEXP) -> SEXP {
-    let dd = getDevice();
-    setGridStateElement(dd, GSS_DL, dl);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        setGridStateElement(dd, GSS_DL, dl);
+        R_NilValue()
+    }
 }
 
 pub unsafe fn L_getDLelt(index: SEXP) -> SEXP {
-    let dd = getDevice();
-    let dl = Rf_protect(gridStateElement(dd, GSS_DL));
-    let result = VECTOR_ELT(dl, *INTEGER(index) as R_xlen_t);
-    Rf_unprotect(1);
-    result
+    unsafe {
+        let dd = getDevice();
+        let dl = Rf_protect(gridStateElement(dd, GSS_DL));
+        let result = VECTOR_ELT(dl, *INTEGER(index) as R_xlen_t);
+        Rf_unprotect(1);
+        result
+    }
 }
 
 pub unsafe fn L_setDLelt(value: SEXP) -> SEXP {
-    let dd = getDevice();
-    let dl = Rf_protect(gridStateElement(dd, GSS_DL));
-    let dlindex = gridStateElement(dd, GSS_DLINDEX);
-    SET_VECTOR_ELT(dl, *INTEGER(dlindex) as R_xlen_t, value);
-    Rf_unprotect(1);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        let dl = Rf_protect(gridStateElement(dd, GSS_DL));
+        let dlindex = gridStateElement(dd, GSS_DLINDEX);
+        SET_VECTOR_ELT(dl, *INTEGER(dlindex) as R_xlen_t, value);
+        Rf_unprotect(1);
+        R_NilValue()
+    }
 }
 
 pub unsafe fn L_getDLindex() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_DLINDEX)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_DLINDEX)
+    }
 }
 
 pub unsafe fn L_setDLindex(index: SEXP) -> SEXP {
-    let dd = getDevice();
-    setGridStateElement(dd, GSS_DLINDEX, index);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        setGridStateElement(dd, GSS_DLINDEX, index);
+        R_NilValue()
+    }
 }
 
 pub unsafe fn L_getDLon() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_DLON)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_DLON)
+    }
 }
 
 pub unsafe fn L_setDLon(value: SEXP) -> SEXP {
-    let dd = getDevice();
-    let prev = gridStateElement(dd, GSS_DLON);
-    setGridStateElement(dd, GSS_DLON, value);
-    prev
+    unsafe {
+        let dd = getDevice();
+        let prev = gridStateElement(dd, GSS_DLON);
+        setGridStateElement(dd, GSS_DLON, value);
+        prev
+    }
 }
 
 pub unsafe fn L_getEngineDLon() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_ENGINEDLON)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_ENGINEDLON)
+    }
 }
 
 pub unsafe fn L_setEngineDLon(value: SEXP) -> SEXP {
-    let dd = getDevice();
-    setGridStateElement(dd, GSS_ENGINEDLON, value);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        setGridStateElement(dd, GSS_ENGINEDLON, value);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -1055,25 +1134,33 @@ pub unsafe fn L_setEngineDLon(value: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_getCurrentGrob() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_CURRGROB)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_CURRGROB)
+    }
 }
 
 pub unsafe fn L_setCurrentGrob(value: SEXP) -> SEXP {
-    let dd = getDevice();
-    setGridStateElement(dd, GSS_CURRGROB, value);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        setGridStateElement(dd, GSS_CURRGROB, value);
+        R_NilValue()
+    }
 }
 
 pub unsafe fn L_getEngineRecording() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_ENGINERECORDING)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_ENGINERECORDING)
+    }
 }
 
 pub unsafe fn L_setEngineRecording(value: SEXP) -> SEXP {
-    let dd = getDevice();
-    setGridStateElement(dd, GSS_ENGINERECORDING, value);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        setGridStateElement(dd, GSS_ENGINERECORDING, value);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -1081,8 +1168,10 @@ pub unsafe fn L_setEngineRecording(value: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_currentGPar() -> SEXP {
-    let dd = getDevice();
-    gridStateElement(dd, GSS_GPAR)
+    unsafe {
+        let dd = getDevice();
+        gridStateElement(dd, GSS_GPAR)
+    }
 }
 
 /* ==============================
@@ -1090,54 +1179,67 @@ pub unsafe fn L_currentGPar() -> SEXP {
  * ============================== */
 
 pub unsafe fn L_newpagerecording() -> SEXP {
-    let dd = getDevice();
-    if !dd.is_null() {
-        NewFrameConfirm(dd);
+    unsafe {
+        let dd = getDevice();
+        if !dd.is_null() {
+            NewFrameConfirm(dd);
+        }
+        R_NilValue()
     }
-    R_NilValue()
 }
 
 pub unsafe fn L_newpage() -> SEXP {
-    let dd = getDevice();
-    if !dd.is_null() {
-        let currentgp = gridStateElement(dd, GSS_GPAR);
-        let mut gc: [u8; 256] = [0; 256];
-        gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
-        GENewPage(gc.as_ptr() as pGEcontext, dd);
+    unsafe {
+        let dd = getDevice();
+        if !dd.is_null() {
+            let currentgp = gridStateElement(dd, GSS_GPAR);
+            let mut gc: [u8; 256] = [0; 256];
+            gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
+            GENewPage(gc.as_ptr() as pGEcontext, dd);
+        }
+        R_NilValue()
     }
-    R_NilValue()
 }
 
 pub unsafe fn L_clearDefinitions(clearGroups: SEXP) -> SEXP {
-    let dd = getDevice();
-    if !dd.is_null() {
-        setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
-        let clear_groups = if TYPEOF(clearGroups) == SEXPTYPE::LGLSXP && LENGTH(clearGroups) > 0 {
-            if *LOGICAL(clearGroups) != 0 { 1 } else { 0 }
-        } else {
-            0
-        };
-        rmath_grid_release_definitions(dd, clear_groups);
+    unsafe {
+        let dd = getDevice();
+        if !dd.is_null() {
+            setGridStateElement(dd, GSS_RESOLVINGPATH, Rf_ScalarLogical(0));
+            let clear_groups = if TYPEOF(clearGroups) == SEXPTYPE::LGLSXP && LENGTH(clearGroups) > 0
+            {
+                if *LOGICAL(clearGroups) != 0 { 1 } else { 0 }
+            } else {
+                0
+            };
+            rmath_grid_release_definitions(dd, clear_groups);
+        }
+        R_NilValue()
     }
-    R_NilValue()
 }
 
 pub unsafe fn L_initGPar() -> SEXP {
-    let dd = getDevice();
-    initGPar(dd);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        initGPar(dd);
+        R_NilValue()
+    }
 }
 
 pub unsafe fn L_initViewportStack() -> SEXP {
-    let dd = getDevice();
-    initVP(dd);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        initVP(dd);
+        R_NilValue()
+    }
 }
 
 pub unsafe fn L_initDisplayList() -> SEXP {
-    let dd = getDevice();
-    initDL(dd);
-    R_NilValue()
+    unsafe {
+        let dd = getDevice();
+        initDL(dd);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -1152,47 +1254,51 @@ pub unsafe fn getViewportTransform(
     transform: *mut LTransform,
     rotationAngle: *mut c_double,
 ) {
-    let mut devWidthCM: c_double = 0.0;
-    let mut devHeightCM: c_double = 0.0;
-    getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
-    if deviceChanged(devWidthCM, devHeightCM, currentvp) {
-        calcViewportTransform(currentvp, viewportParent(currentvp), true, dd);
-    }
+    unsafe {
+        let mut devWidthCM: c_double = 0.0;
+        let mut devHeightCM: c_double = 0.0;
+        getDeviceSize(dd, &mut devWidthCM, &mut devHeightCM);
+        if deviceChanged(devWidthCM, devHeightCM, currentvp) {
+            calcViewportTransform(currentvp, viewportParent(currentvp), true, dd);
+        }
 
-    let width_cm = viewportWidthCM(currentvp);
-    let height_cm = viewportHeightCM(currentvp);
-    let rotation = viewportRotation(currentvp);
-    let t = viewportTransform(currentvp);
+        let width_cm = viewportWidthCM(currentvp);
+        let height_cm = viewportHeightCM(currentvp);
+        let rotation = viewportRotation(currentvp);
+        let t = viewportTransform(currentvp);
 
-    *vpWidthCM =
-        if !isNull(width_cm) && TYPEOF(width_cm) == SEXPTYPE::REALSXP && LENGTH(width_cm) > 0 {
-            *REAL(width_cm)
-        } else {
-            devWidthCM
-        };
-    *vpHeightCM =
-        if !isNull(height_cm) && TYPEOF(height_cm) == SEXPTYPE::REALSXP && LENGTH(height_cm) > 0 {
+        *vpWidthCM =
+            if !isNull(width_cm) && TYPEOF(width_cm) == SEXPTYPE::REALSXP && LENGTH(width_cm) > 0 {
+                *REAL(width_cm)
+            } else {
+                devWidthCM
+            };
+        *vpHeightCM = if !isNull(height_cm)
+            && TYPEOF(height_cm) == SEXPTYPE::REALSXP
+            && LENGTH(height_cm) > 0
+        {
             *REAL(height_cm)
         } else {
             devHeightCM
         };
-    *rotationAngle =
-        if !isNull(rotation) && TYPEOF(rotation) == SEXPTYPE::REALSXP && LENGTH(rotation) > 0 {
-            *REAL(rotation)
-        } else {
-            0.0
-        };
+        *rotationAngle =
+            if !isNull(rotation) && TYPEOF(rotation) == SEXPTYPE::REALSXP && LENGTH(rotation) > 0 {
+                *REAL(rotation)
+            } else {
+                0.0
+            };
 
-    if !transform.is_null() {
-        for i in 0..3 {
-            for j in 0..3 {
-                (*transform)[i][j] = if i == j { 1.0 } else { 0.0 };
+        if !transform.is_null() {
+            for i in 0..3 {
+                for j in 0..3 {
+                    (*transform)[i][j] = if i == j { 1.0 } else { 0.0 };
+                }
             }
-        }
-        if !isNull(t) && TYPEOF(t) == SEXPTYPE::REALSXP && LENGTH(t) >= 9 {
-            for col in 0..3usize {
-                for row in 0..3usize {
-                    (*transform)[row][col] = *REAL(t).add(col * 3 + row);
+            if !isNull(t) && TYPEOF(t) == SEXPTYPE::REALSXP && LENGTH(t) >= 9 {
+                for col in 0..3usize {
+                    for row in 0..3usize {
+                        (*transform)[row][col] = *REAL(t).add(col * 3 + row);
+                    }
                 }
             }
         }
@@ -1204,187 +1310,189 @@ pub unsafe fn getViewportTransform(
  * ============================== */
 
 pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    set_gp_fill_string(currentgp, c"black".as_ptr());
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        set_gp_fill_string(currentgp, c"black".as_ptr());
 
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
 
-    let nx = unitLength(x);
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nx));
-    let unitto_len = LENGTH(unitto).max(1);
-    let from_axis = if LENGTH(whatfrom) > 0 {
-        *INTEGER(whatfrom).add(0)
-    } else {
-        0
-    };
-    let to_axis = if LENGTH(whatto) > 0 {
-        *INTEGER(whatto).add(0)
-    } else {
-        0
-    };
-
-    for i in 0..nx {
-        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-        let to_unit = *INTEGER(unitto).add((i % unitto_len) as usize);
-        let mut rel_convert = (unitUnit(x, i) == L_NATIVE || unitUnit(x, i) == L_NPC)
-            && (to_unit == L_NATIVE || to_unit == L_NPC)
-            && ((from_axis == to_axis)
-                || (from_axis == 0 && to_axis == 2)
-                || (from_axis == 2 && to_axis == 0)
-                || (from_axis == 1 && to_axis == 3)
-                || (from_axis == 3 && to_axis == 1));
-
-        let mut value_in = match from_axis {
-            0 => {
-                if rel_convert && vpWidthCM < 1e-6 {
-                    transformXYtoNPC(
-                        unitValue(x, i),
-                        unitUnit(x, i),
-                        vpc.xscalemin,
-                        vpc.xscalemax,
-                    )
-                } else {
-                    rel_convert = false;
-                    transformXtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
-                }
-            }
-            1 => {
-                if rel_convert && vpHeightCM < 1e-6 {
-                    transformXYtoNPC(
-                        unitValue(x, i),
-                        unitUnit(x, i),
-                        vpc.yscalemin,
-                        vpc.yscalemax,
-                    )
-                } else {
-                    rel_convert = false;
-                    transformYtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
-                }
-            }
-            2 => {
-                if rel_convert && vpWidthCM < 1e-6 {
-                    transformWHtoNPC(
-                        unitValue(x, i),
-                        unitUnit(x, i),
-                        vpc.xscalemin,
-                        vpc.xscalemax,
-                    )
-                } else {
-                    rel_convert = false;
-                    transformWidthtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
-                }
-            }
-            3 => {
-                if rel_convert && vpHeightCM < 1e-6 {
-                    transformWHtoNPC(
-                        unitValue(x, i),
-                        unitUnit(x, i),
-                        vpc.yscalemin,
-                        vpc.yscalemax,
-                    )
-                } else {
-                    rel_convert = false;
-                    transformHeighttoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
-                }
-            }
-            _ => unitValue(x, i),
+        let nx = unitLength(x);
+        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, nx));
+        let unitto_len = LENGTH(unitto).max(1);
+        let from_axis = if LENGTH(whatfrom) > 0 {
+            *INTEGER(whatfrom).add(0)
+        } else {
+            0
+        };
+        let to_axis = if LENGTH(whatto) > 0 {
+            *INTEGER(whatto).add(0)
+        } else {
+            0
         };
 
-        value_in = match to_axis {
-            0 => {
-                if rel_convert {
-                    transformXYfromNPC(value_in, to_unit, vpc.xscalemin, vpc.xscalemax)
-                } else {
-                    transformXYFromINCHES(
-                        value_in,
-                        to_unit,
-                        vpc.xscalemin,
-                        vpc.xscalemax,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd,
-                    )
-                }
-            }
-            1 => {
-                if rel_convert {
-                    transformXYfromNPC(value_in, to_unit, vpc.yscalemin, vpc.yscalemax)
-                } else {
-                    transformXYFromINCHES(
-                        value_in,
-                        to_unit,
-                        vpc.yscalemin,
-                        vpc.yscalemax,
-                        gc,
-                        vpHeightCM,
-                        vpWidthCM,
-                        dd,
-                    )
-                }
-            }
-            2 => {
-                if rel_convert {
-                    transformWHfromNPC(value_in, to_unit, vpc.xscalemin, vpc.xscalemax)
-                } else {
-                    transformWidthHeightFromINCHES(
-                        value_in,
-                        to_unit,
-                        vpc.xscalemin,
-                        vpc.xscalemax,
-                        gc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        dd,
-                    )
-                }
-            }
-            3 => {
-                if rel_convert {
-                    transformWHfromNPC(value_in, to_unit, vpc.yscalemin, vpc.yscalemax)
-                } else {
-                    transformWidthHeightFromINCHES(
-                        value_in,
-                        to_unit,
-                        vpc.yscalemin,
-                        vpc.yscalemax,
-                        gc,
-                        vpHeightCM,
-                        vpWidthCM,
-                        dd,
-                    )
-                }
-            }
-            _ => value_in,
-        };
+        for i in 0..nx {
+            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            let to_unit = *INTEGER(unitto).add((i % unitto_len) as usize);
+            let mut rel_convert = (unitUnit(x, i) == L_NATIVE || unitUnit(x, i) == L_NPC)
+                && (to_unit == L_NATIVE || to_unit == L_NPC)
+                && ((from_axis == to_axis)
+                    || (from_axis == 0 && to_axis == 2)
+                    || (from_axis == 2 && to_axis == 0)
+                    || (from_axis == 1 && to_axis == 3)
+                    || (from_axis == 3 && to_axis == 1));
 
-        *REAL(answer).add(i as usize) = value_in;
+            let mut value_in = match from_axis {
+                0 => {
+                    if rel_convert && vpWidthCM < 1e-6 {
+                        transformXYtoNPC(
+                            unitValue(x, i),
+                            unitUnit(x, i),
+                            vpc.xscalemin,
+                            vpc.xscalemax,
+                        )
+                    } else {
+                        rel_convert = false;
+                        transformXtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                    }
+                }
+                1 => {
+                    if rel_convert && vpHeightCM < 1e-6 {
+                        transformXYtoNPC(
+                            unitValue(x, i),
+                            unitUnit(x, i),
+                            vpc.yscalemin,
+                            vpc.yscalemax,
+                        )
+                    } else {
+                        rel_convert = false;
+                        transformYtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                    }
+                }
+                2 => {
+                    if rel_convert && vpWidthCM < 1e-6 {
+                        transformWHtoNPC(
+                            unitValue(x, i),
+                            unitUnit(x, i),
+                            vpc.xscalemin,
+                            vpc.xscalemax,
+                        )
+                    } else {
+                        rel_convert = false;
+                        transformWidthtoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                    }
+                }
+                3 => {
+                    if rel_convert && vpHeightCM < 1e-6 {
+                        transformWHtoNPC(
+                            unitValue(x, i),
+                            unitUnit(x, i),
+                            vpc.yscalemin,
+                            vpc.yscalemax,
+                        )
+                    } else {
+                        rel_convert = false;
+                        transformHeighttoINCHES(x, i, vpc, gc, vpWidthCM, vpHeightCM, dd)
+                    }
+                }
+                _ => unitValue(x, i),
+            };
+
+            value_in = match to_axis {
+                0 => {
+                    if rel_convert {
+                        transformXYfromNPC(value_in, to_unit, vpc.xscalemin, vpc.xscalemax)
+                    } else {
+                        transformXYFromINCHES(
+                            value_in,
+                            to_unit,
+                            vpc.xscalemin,
+                            vpc.xscalemax,
+                            gc,
+                            vpWidthCM,
+                            vpHeightCM,
+                            dd,
+                        )
+                    }
+                }
+                1 => {
+                    if rel_convert {
+                        transformXYfromNPC(value_in, to_unit, vpc.yscalemin, vpc.yscalemax)
+                    } else {
+                        transformXYFromINCHES(
+                            value_in,
+                            to_unit,
+                            vpc.yscalemin,
+                            vpc.yscalemax,
+                            gc,
+                            vpHeightCM,
+                            vpWidthCM,
+                            dd,
+                        )
+                    }
+                }
+                2 => {
+                    if rel_convert {
+                        transformWHfromNPC(value_in, to_unit, vpc.xscalemin, vpc.xscalemax)
+                    } else {
+                        transformWidthHeightFromINCHES(
+                            value_in,
+                            to_unit,
+                            vpc.xscalemin,
+                            vpc.xscalemax,
+                            gc,
+                            vpWidthCM,
+                            vpHeightCM,
+                            dd,
+                        )
+                    }
+                }
+                3 => {
+                    if rel_convert {
+                        transformWHfromNPC(value_in, to_unit, vpc.yscalemin, vpc.yscalemax)
+                    } else {
+                        transformWidthHeightFromINCHES(
+                            value_in,
+                            to_unit,
+                            vpc.yscalemin,
+                            vpc.yscalemax,
+                            gc,
+                            vpHeightCM,
+                            vpWidthCM,
+                            dd,
+                        )
+                    }
+                }
+                _ => value_in,
+            };
+
+            *REAL(answer).add(i as usize) = value_in;
+        }
+
+        Rf_unprotect(2);
+        answer
     }
-
-    Rf_unprotect(2);
-    answer
 }
 
 /* ==============================
@@ -1392,65 +1500,67 @@ pub unsafe fn L_convert(x: SEXP, whatfrom: SEXP, whatto: SEXP, unitto: SEXP) -> 
  * ============================== */
 
 pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    set_gp_fill_string(currentgp, c"black".as_ptr());
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        set_gp_fill_string(currentgp, c"black".as_ptr());
 
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    gcontextFromgpar(currentgp, 0, gc, dd);
-
-    let maxn = unitLength(x).max(unitLength(y));
-    let devx = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-    let devy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let as_device =
-        TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
-
-    for i in 0..maxn {
-        let mut xx: c_double = NA_REAL;
-        let mut yy: c_double = NA_REAL;
-        transformLocn(
-            x,
-            y,
-            i,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
             dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
             &mut transform,
-            &mut xx,
-            &mut yy,
+            &mut rotationAngle,
         );
-        if as_device {
-            xx = toDeviceX(xx, GE_INCHES, dd);
-            yy = toDeviceY(yy, GE_INCHES, dd);
-        }
-        *REAL(devx).add(i as usize) = xx;
-        *REAL(devy).add(i as usize) = yy;
-    }
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-    SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
-    SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
-    Rf_unprotect(4);
-    result
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        gcontextFromgpar(currentgp, 0, gc, dd);
+
+        let maxn = unitLength(x).max(unitLength(y));
+        let devx = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
+        let devy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let as_device =
+            TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
+
+        for i in 0..maxn {
+            let mut xx: c_double = NA_REAL;
+            let mut yy: c_double = NA_REAL;
+            transformLocn(
+                x,
+                y,
+                i,
+                vpc,
+                gc,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                &mut transform,
+                &mut xx,
+                &mut yy,
+            );
+            if as_device {
+                xx = toDeviceX(xx, GE_INCHES, dd);
+                yy = toDeviceY(yy, GE_INCHES, dd);
+            }
+            *REAL(devx).add(i as usize) = xx;
+            *REAL(devy).add(i as usize) = yy;
+        }
+
+        SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
+        SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
+        Rf_unprotect(4);
+        result
+    }
 }
 
 /* ==============================
@@ -1458,65 +1568,67 @@ pub unsafe fn L_devLoc(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    set_gp_fill_string(currentgp, c"black".as_ptr());
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        set_gp_fill_string(currentgp, c"black".as_ptr());
 
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    gcontextFromgpar(currentgp, 0, gc, dd);
-
-    let maxn = unitLength(x).max(unitLength(y));
-    let devx = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-    let devy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let as_device =
-        TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
-
-    for i in 0..maxn {
-        let mut xx: c_double = NA_REAL;
-        let mut yy: c_double = NA_REAL;
-        transformDimn(
-            x,
-            y,
-            i,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
             dd,
-            rotationAngle,
-            &mut xx,
-            &mut yy,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
         );
-        if as_device {
-            xx = toDeviceWidth(xx, GE_INCHES, dd);
-            yy = toDeviceHeight(yy, GE_INCHES, dd);
-        }
-        *REAL(devx).add(i as usize) = xx;
-        *REAL(devy).add(i as usize) = yy;
-    }
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-    SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
-    SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
-    Rf_unprotect(4);
-    result
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        gcontextFromgpar(currentgp, 0, gc, dd);
+
+        let maxn = unitLength(x).max(unitLength(y));
+        let devx = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
+        let devy = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, maxn));
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let as_device =
+            TYPEOF(device) == SEXPTYPE::LGLSXP && LENGTH(device) > 0 && *LOGICAL(device) != 0;
+
+        for i in 0..maxn {
+            let mut xx: c_double = NA_REAL;
+            let mut yy: c_double = NA_REAL;
+            transformDimn(
+                x,
+                y,
+                i,
+                vpc,
+                gc,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                rotationAngle,
+                &mut xx,
+                &mut yy,
+            );
+            if as_device {
+                xx = toDeviceWidth(xx, GE_INCHES, dd);
+                yy = toDeviceHeight(yy, GE_INCHES, dd);
+            }
+            *REAL(devx).add(i as usize) = xx;
+            *REAL(devy).add(i as usize) = yy;
+        }
+
+        SET_VECTOR_ELT(result, 0 as R_xlen_t, devx);
+        SET_VECTOR_ELT(result, 1 as R_xlen_t, devy);
+        Rf_unprotect(4);
+        result
+    }
 }
 
 /* ==============================
@@ -1524,55 +1636,58 @@ pub unsafe fn L_devDim(x: SEXP, y: SEXP, device: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_layoutRegion(layoutPosRow: SEXP, layoutPosCol: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    if isNull(viewportLayout(currentvp)) {
-        return R_NilValue();
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        if isNull(viewportLayout(currentvp)) {
+            return R_NilValue();
+        }
+        let mut vpl = LViewportLocation {
+            x: R_NilValue(),
+            y: R_NilValue(),
+            width: R_NilValue(),
+            height: R_NilValue(),
+            hjust: 0.0,
+            vjust: 0.0,
+        };
+        calcViewportLocationFromLayout(layoutPosRow, layoutPosCol, currentvp, &mut vpl);
+
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
+        let vp_width_cm = if !isNull(viewportWidthCM(currentvp))
+            && TYPEOF(viewportWidthCM(currentvp)) == SEXPTYPE::REALSXP
+            && LENGTH(viewportWidthCM(currentvp)) > 0
+        {
+            *REAL(viewportWidthCM(currentvp))
+        } else {
+            1.0
+        };
+        let vp_height_cm = if !isNull(viewportHeightCM(currentvp))
+            && TYPEOF(viewportHeightCM(currentvp)) == SEXPTYPE::REALSXP
+            && LENGTH(viewportHeightCM(currentvp)) > 0
+        {
+            *REAL(viewportHeightCM(currentvp))
+        } else {
+            1.0
+        };
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+
+        let x_cm = transformXtoINCHES(vpl.x, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+        let y_cm = transformYtoINCHES(vpl.y, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+        let w_cm =
+            transformWidthtoINCHES(vpl.width, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+        let h_cm =
+            transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
+
+        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+        *REAL(answer).add(0) = x_cm;
+        *REAL(answer).add(1) = y_cm;
+        *REAL(answer).add(2) = w_cm;
+        *REAL(answer).add(3) = h_cm;
+        Rf_unprotect(1);
+        answer
     }
-    let mut vpl = LViewportLocation {
-        x: R_NilValue(),
-        y: R_NilValue(),
-        width: R_NilValue(),
-        height: R_NilValue(),
-        hjust: 0.0,
-        vjust: 0.0,
-    };
-    calcViewportLocationFromLayout(layoutPosRow, layoutPosCol, currentvp, &mut vpl);
-
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-    let vp_width_cm = if !isNull(viewportWidthCM(currentvp))
-        && TYPEOF(viewportWidthCM(currentvp)) == SEXPTYPE::REALSXP
-        && LENGTH(viewportWidthCM(currentvp)) > 0
-    {
-        *REAL(viewportWidthCM(currentvp))
-    } else {
-        1.0
-    };
-    let vp_height_cm = if !isNull(viewportHeightCM(currentvp))
-        && TYPEOF(viewportHeightCM(currentvp)) == SEXPTYPE::REALSXP
-        && LENGTH(viewportHeightCM(currentvp)) > 0
-    {
-        *REAL(viewportHeightCM(currentvp))
-    } else {
-        1.0
-    };
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-
-    let x_cm = transformXtoINCHES(vpl.x, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
-    let y_cm = transformYtoINCHES(vpl.y, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
-    let w_cm = transformWidthtoINCHES(vpl.width, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
-    let h_cm =
-        transformHeighttoINCHES(vpl.height, 0, vpc, gc, vp_width_cm, vp_height_cm, dd) * 2.54;
-
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
-    *REAL(answer).add(0) = x_cm;
-    *REAL(answer).add(1) = y_cm;
-    *REAL(answer).add(2) = w_cm;
-    *REAL(answer).add(3) = h_cm;
-    Rf_unprotect(1);
-    answer
 }
 
 /* ==============================
@@ -1588,44 +1703,46 @@ unsafe fn rectEdge(
     edgex: *mut c_double,
     edgey: *mut c_double,
 ) {
-    let xm = (xmin + xmax) / 2.0;
-    let ym = (ymin + ymax) / 2.0;
-    let dx = (xmax - xmin) / 2.0;
-    let dy = (ymax - ymin) / 2.0;
+    unsafe {
+        let xm = (xmin + xmax) / 2.0;
+        let ym = (ymin + ymax) / 2.0;
+        let dx = (xmax - xmin) / 2.0;
+        let dy = (ymax - ymin) / 2.0;
 
-    if theta == 0.0 {
-        *edgex = xmax;
-        *edgey = ym;
-    } else if theta == 270.0 {
-        *edgex = xm;
-        *edgey = ymin;
-    } else if theta == 180.0 {
-        *edgex = xmin;
-        *edgey = ym;
-    } else if theta == 90.0 {
-        *edgex = xm;
-        *edgey = ymax;
-    } else {
-        let cutoff = dy / dx;
-        let angle = theta / 180.0 * std::f64::consts::PI;
-        let tan_theta = angle.tan();
-        let cos_theta = angle.cos();
-        let sin_theta = angle.sin();
-        if tan_theta.abs() < cutoff {
-            if cos_theta > 0.0 {
-                *edgex = xmax;
-                *edgey = ym + tan_theta * dx;
-            } else {
-                *edgex = xmin;
-                *edgey = ym - tan_theta * dx;
-            }
+        if theta == 0.0 {
+            *edgex = xmax;
+            *edgey = ym;
+        } else if theta == 270.0 {
+            *edgex = xm;
+            *edgey = ymin;
+        } else if theta == 180.0 {
+            *edgex = xmin;
+            *edgey = ym;
+        } else if theta == 90.0 {
+            *edgex = xm;
+            *edgey = ymax;
         } else {
-            if sin_theta > 0.0 {
-                *edgey = ymax;
-                *edgex = xm + dy / tan_theta;
+            let cutoff = dy / dx;
+            let angle = theta / 180.0 * std::f64::consts::PI;
+            let tan_theta = angle.tan();
+            let cos_theta = angle.cos();
+            let sin_theta = angle.sin();
+            if tan_theta.abs() < cutoff {
+                if cos_theta > 0.0 {
+                    *edgex = xmax;
+                    *edgey = ym + tan_theta * dx;
+                } else {
+                    *edgex = xmin;
+                    *edgey = ym - tan_theta * dx;
+                }
             } else {
-                *edgey = ymin;
-                *edgex = xm - dy / tan_theta;
+                if sin_theta > 0.0 {
+                    *edgey = ymax;
+                    *edgex = xm + dy / tan_theta;
+                } else {
+                    *edgey = ymin;
+                    *edgex = xm - dy / tan_theta;
+                }
             }
         }
     }
@@ -1639,9 +1756,11 @@ unsafe fn circleEdge(
     edgex: *mut c_double,
     edgey: *mut c_double,
 ) {
-    let angle = theta / 180.0 * std::f64::consts::PI;
-    *edgex = x + r * angle.cos();
-    *edgey = y + r * angle.sin();
+    unsafe {
+        let angle = theta / 180.0 * std::f64::consts::PI;
+        *edgex = x + r * angle.cos();
+        *edgey = y + r * angle.sin();
+    }
 }
 
 unsafe fn polygonEdge(
@@ -1652,109 +1771,111 @@ unsafe fn polygonEdge(
     edgex: *mut c_double,
     edgey: *mut c_double,
 ) {
-    let mut xmin_val = f64::MAX;
-    let mut xmax_val = f64::MIN;
-    let mut ymin_val = f64::MAX;
-    let mut ymax_val = f64::MIN;
-    let angle = theta / 180.0 * std::f64::consts::PI;
-    let xm: f64;
-    let ym: f64;
-    let mut found = 0;
+    unsafe {
+        let mut xmin_val = f64::MAX;
+        let mut xmax_val = f64::MIN;
+        let mut ymin_val = f64::MAX;
+        let mut ymax_val = f64::MIN;
+        let angle = theta / 180.0 * std::f64::consts::PI;
+        let xm: f64;
+        let ym: f64;
+        let mut found = 0;
 
-    for i in 0..n as usize {
-        if *x.add(i) < xmin_val {
-            xmin_val = *x.add(i);
+        for i in 0..n as usize {
+            if *x.add(i) < xmin_val {
+                xmin_val = *x.add(i);
+            }
+            if *x.add(i) > xmax_val {
+                xmax_val = *x.add(i);
+            }
+            if *y.add(i) < ymin_val {
+                ymin_val = *y.add(i);
+            }
+            if *y.add(i) > ymax_val {
+                ymax_val = *y.add(i);
+            }
         }
-        if *x.add(i) > xmax_val {
-            xmax_val = *x.add(i);
-        }
-        if *y.add(i) < ymin_val {
-            ymin_val = *y.add(i);
-        }
-        if *y.add(i) > ymax_val {
-            ymax_val = *y.add(i);
-        }
-    }
-    xm = (xmin_val + xmax_val) / 2.0;
-    ym = (ymin_val + ymax_val) / 2.0;
+        xm = (xmin_val + xmax_val) / 2.0;
+        ym = (ymin_val + ymax_val) / 2.0;
 
-    if (xmin_val - xmax_val).abs() < 1e-6
-        || (ymin_val - ymax_val).abs() / (xmin_val - xmax_val).abs() > 1000.0
-    {
-        *edgex = xmin_val;
-        if theta == 90.0 {
-            *edgey = ymax_val;
-        } else if theta == 270.0 {
-            *edgey = ymin_val;
-        } else {
-            *edgey = ym;
-        }
-        return;
-    }
-    if (ymin_val - ymax_val).abs() < 1e-6
-        || (xmin_val - xmax_val).abs() / (ymin_val - ymax_val).abs() > 1000.0
-    {
-        *edgey = ymin_val;
-        if theta == 0.0 {
-            *edgex = xmax_val;
-        } else if theta == 180.0 {
+        if (xmin_val - xmax_val).abs() < 1e-6
+            || (ymin_val - ymax_val).abs() / (xmin_val - xmax_val).abs() > 1000.0
+        {
             *edgex = xmin_val;
+            if theta == 90.0 {
+                *edgey = ymax_val;
+            } else if theta == 270.0 {
+                *edgey = ymin_val;
+            } else {
+                *edgey = ym;
+            }
+            return;
+        }
+        if (ymin_val - ymax_val).abs() < 1e-6
+            || (xmin_val - xmax_val).abs() / (ymin_val - ymax_val).abs() > 1000.0
+        {
+            *edgey = ymin_val;
+            if theta == 0.0 {
+                *edgex = xmax_val;
+            } else if theta == 180.0 {
+                *edgex = xmin_val;
+            } else {
+                *edgex = xm;
+            }
+            return;
+        }
+
+        let mut found_i: usize = 0;
+        for i in 0..n as usize {
+            let v1 = i;
+            let v2 = if i + 1 == n as usize { 0 } else { i + 1 };
+            let mut vangle1 = (*y.add(v1) - ym).atan2(*x.add(v1) - xm);
+            if vangle1 < 0.0 {
+                vangle1 += 2.0 * std::f64::consts::PI;
+            }
+            let mut vangle2 = (*y.add(v2) - ym).atan2(*x.add(v2) - xm);
+            if vangle2 < 0.0 {
+                vangle2 += 2.0 * std::f64::consts::PI;
+            }
+
+            if (vangle1 >= vangle2 && vangle1 >= angle && vangle2 <= angle)
+                || (vangle1 < vangle2
+                    && ((vangle1 >= angle && 0.0 <= angle)
+                        || (vangle2 <= angle && 2.0 * std::f64::consts::PI >= angle)))
+            {
+                found = 1;
+                found_i = i;
+                break;
+            }
+        }
+
+        if found != 0 {
+            let mut x2: f64 = 0.0;
+            let mut y2: f64 = 0.0;
+            rectEdge(
+                xmin_val, ymin_val, xmax_val, ymax_val, theta, &mut x2, &mut y2,
+            );
+            let x3 = *x.add(found_i);
+            let y3 = *y.add(found_i);
+            let x4 = *x.add(if found_i + 1 == n as usize {
+                0
+            } else {
+                found_i + 1
+            });
+            let y4 = *y.add(if found_i + 1 == n as usize {
+                0
+            } else {
+                found_i + 1
+            });
+            let numa = (x4 - x3) * (ym - y3) - (y4 - y3) * (xm - x3);
+            let denom = (y4 - y3) * (x2 - xm) - (x4 - x3) * (y2 - ym);
+            let ua = numa / denom;
+            *edgex = xm + ua * (x2 - xm);
+            *edgey = ym + ua * (y2 - ym);
         } else {
             *edgex = xm;
+            *edgey = ym;
         }
-        return;
-    }
-
-    let mut found_i: usize = 0;
-    for i in 0..n as usize {
-        let v1 = i;
-        let v2 = if i + 1 == n as usize { 0 } else { i + 1 };
-        let mut vangle1 = (*y.add(v1) - ym).atan2(*x.add(v1) - xm);
-        if vangle1 < 0.0 {
-            vangle1 += 2.0 * std::f64::consts::PI;
-        }
-        let mut vangle2 = (*y.add(v2) - ym).atan2(*x.add(v2) - xm);
-        if vangle2 < 0.0 {
-            vangle2 += 2.0 * std::f64::consts::PI;
-        }
-
-        if (vangle1 >= vangle2 && vangle1 >= angle && vangle2 <= angle)
-            || (vangle1 < vangle2
-                && ((vangle1 >= angle && 0.0 <= angle)
-                    || (vangle2 <= angle && 2.0 * std::f64::consts::PI >= angle)))
-        {
-            found = 1;
-            found_i = i;
-            break;
-        }
-    }
-
-    if found != 0 {
-        let mut x2: f64 = 0.0;
-        let mut y2: f64 = 0.0;
-        rectEdge(
-            xmin_val, ymin_val, xmax_val, ymax_val, theta, &mut x2, &mut y2,
-        );
-        let x3 = *x.add(found_i);
-        let y3 = *y.add(found_i);
-        let x4 = *x.add(if found_i + 1 == n as usize {
-            0
-        } else {
-            found_i + 1
-        });
-        let y4 = *y.add(if found_i + 1 == n as usize {
-            0
-        } else {
-            found_i + 1
-        });
-        let numa = (x4 - x3) * (ym - y3) - (y4 - y3) * (xm - x3);
-        let denom = (y4 - y3) * (x2 - xm) - (x4 - x3) * (y2 - ym);
-        let ua = numa / denom;
-        *edgex = xm + ua * (x2 - xm);
-        *edgey = ym + ua * (y2 - ym);
-    } else {
-        *edgex = xm;
-        *edgey = ym;
     }
 }
 
@@ -1770,11 +1891,13 @@ unsafe fn drawArrow(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) {
-    let nt = LENGTH(atype);
-    match *INTEGER(atype).add((i % nt) as usize) {
-        1 => GEPolyline(3, x, y, gc, dd),
-        2 => GEPolygon(3, x, y, gc, dd),
-        _ => {} // intentionally unhandled: unknown arrowhead type
+    unsafe {
+        let nt = LENGTH(atype);
+        match *INTEGER(atype).add((i % nt) as usize) {
+            1 => GEPolyline(3, x, y, gc, dd),
+            2 => GEPolygon(3, x, y, gc, dd),
+            _ => {} // intentionally unhandled: unknown arrowhead type
+        }
     }
 }
 
@@ -1794,20 +1917,22 @@ unsafe fn calcArrow(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) {
-    let l1 = transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
-    let l2 = transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
-    let l = fmin2(l1, l2);
-    let na = LENGTH(angle);
-    let a = DEG2RAD * *REAL(angle).add((i % na) as usize);
-    let xc = x2 - x1;
-    let yc = y2 - y1;
-    let rot = (yc).atan2(xc);
-    *vertx.add(0) = toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd);
-    *verty.add(0) = toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd);
-    *vertx.add(1) = toDeviceX(x1, GE_INCHES, dd);
-    *verty.add(1) = toDeviceY(y1, GE_INCHES, dd);
-    *vertx.add(2) = toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd);
-    *verty.add(2) = toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd);
+    unsafe {
+        let l1 = transformWidthtoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
+        let l2 = transformHeighttoINCHES(length, i, vpc, gc, vpWidthCM, vpHeightCM, dd).abs();
+        let l = fmin2(l1, l2);
+        let na = LENGTH(angle);
+        let a = DEG2RAD * *REAL(angle).add((i % na) as usize);
+        let xc = x2 - x1;
+        let yc = y2 - y1;
+        let rot = (yc).atan2(xc);
+        *vertx.add(0) = toDeviceX(x1 + l * (rot + a).cos(), GE_INCHES, dd);
+        *verty.add(0) = toDeviceY(y1 + l * (rot + a).sin(), GE_INCHES, dd);
+        *vertx.add(1) = toDeviceX(x1, GE_INCHES, dd);
+        *verty.add(1) = toDeviceY(y1, GE_INCHES, dd);
+        *vertx.add(2) = toDeviceX(x1 + l * (rot - a).cos(), GE_INCHES, dd);
+        *verty.add(2) = toDeviceY(y1 + l * (rot - a).sin(), GE_INCHES, dd);
+    }
 }
 
 unsafe fn arrows(
@@ -1824,91 +1949,97 @@ unsafe fn arrows(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) {
-    let ends = VECTOR_ELT(arrow, GRID_ARROWENDS as R_xlen_t);
-    let ne = LENGTH(ends);
-    let mut vertx = [0.0f64; 3];
-    let mut verty = [0.0f64; 3];
-    let mut first = true;
-    let mut last = true;
+    unsafe {
+        let ends = VECTOR_ELT(arrow, GRID_ARROWENDS as R_xlen_t);
+        let ne = LENGTH(ends);
+        let mut vertx = [0.0f64; 3];
+        let mut verty = [0.0f64; 3];
+        let mut first = true;
+        let mut last = true;
 
-    if n < 2 {
-        return;
-    }
-
-    match *INTEGER(ends).add((i % ne) as usize) {
-        2 => {
-            first = false;
+        if n < 2 {
+            return;
         }
-        1 => {
-            last = false;
-        }
-        _ => {} // intentionally unhandled: unknown grid boundary value
-    }
 
-    if first && start {
-        calcArrow(
-            fromDeviceX(*x.add(0), GE_INCHES, dd),
-            fromDeviceY(*y.add(0), GE_INCHES, dd),
-            fromDeviceX(*x.add(1), GE_INCHES, dd),
-            fromDeviceY(*y.add(1), GE_INCHES, dd),
-            VECTOR_ELT(arrow, GRID_ARROWANGLE as R_xlen_t),
-            VECTOR_ELT(arrow, GRID_ARROWLENGTH as R_xlen_t),
-            i,
-            vpc,
-            vpWidthCM,
-            vpHeightCM,
-            vertx.as_mut_ptr(),
-            verty.as_mut_ptr(),
-            gc,
-            dd,
-        );
-        drawArrow(
-            vertx.as_ptr(),
-            verty.as_ptr(),
-            VECTOR_ELT(arrow, GRID_ARROWTYPE as R_xlen_t),
-            i,
-            gc,
-            dd,
-        );
-    }
-    if last && end {
-        calcArrow(
-            fromDeviceX(*x.add((n - 1) as usize), GE_INCHES, dd),
-            fromDeviceY(*y.add((n - 1) as usize), GE_INCHES, dd),
-            fromDeviceX(*x.add((n - 2) as usize), GE_INCHES, dd),
-            fromDeviceY(*y.add((n - 2) as usize), GE_INCHES, dd),
-            VECTOR_ELT(arrow, GRID_ARROWANGLE as R_xlen_t),
-            VECTOR_ELT(arrow, GRID_ARROWLENGTH as R_xlen_t),
-            i,
-            vpc,
-            vpWidthCM,
-            vpHeightCM,
-            vertx.as_mut_ptr(),
-            verty.as_mut_ptr(),
-            gc,
-            dd,
-        );
-        drawArrow(
-            vertx.as_ptr(),
-            verty.as_ptr(),
-            VECTOR_ELT(arrow, GRID_ARROWTYPE as R_xlen_t),
-            i,
-            gc,
-            dd,
-        );
+        match *INTEGER(ends).add((i % ne) as usize) {
+            2 => {
+                first = false;
+            }
+            1 => {
+                last = false;
+            }
+            _ => {} // intentionally unhandled: unknown grid boundary value
+        }
+
+        if first && start {
+            calcArrow(
+                fromDeviceX(*x.add(0), GE_INCHES, dd),
+                fromDeviceY(*y.add(0), GE_INCHES, dd),
+                fromDeviceX(*x.add(1), GE_INCHES, dd),
+                fromDeviceY(*y.add(1), GE_INCHES, dd),
+                VECTOR_ELT(arrow, GRID_ARROWANGLE as R_xlen_t),
+                VECTOR_ELT(arrow, GRID_ARROWLENGTH as R_xlen_t),
+                i,
+                vpc,
+                vpWidthCM,
+                vpHeightCM,
+                vertx.as_mut_ptr(),
+                verty.as_mut_ptr(),
+                gc,
+                dd,
+            );
+            drawArrow(
+                vertx.as_ptr(),
+                verty.as_ptr(),
+                VECTOR_ELT(arrow, GRID_ARROWTYPE as R_xlen_t),
+                i,
+                gc,
+                dd,
+            );
+        }
+        if last && end {
+            calcArrow(
+                fromDeviceX(*x.add((n - 1) as usize), GE_INCHES, dd),
+                fromDeviceY(*y.add((n - 1) as usize), GE_INCHES, dd),
+                fromDeviceX(*x.add((n - 2) as usize), GE_INCHES, dd),
+                fromDeviceY(*y.add((n - 2) as usize), GE_INCHES, dd),
+                VECTOR_ELT(arrow, GRID_ARROWANGLE as R_xlen_t),
+                VECTOR_ELT(arrow, GRID_ARROWLENGTH as R_xlen_t),
+                i,
+                vpc,
+                vpWidthCM,
+                vpHeightCM,
+                vertx.as_mut_ptr(),
+                verty.as_mut_ptr(),
+                gc,
+                dd,
+            );
+            drawArrow(
+                vertx.as_ptr(),
+                verty.as_ptr(),
+                VECTOR_ELT(arrow, GRID_ARROWTYPE as R_xlen_t),
+                i,
+                gc,
+                dd,
+            );
+        }
     }
 }
 
 #[inline]
 unsafe fn gp_fill_is_pattern(gp: SEXP) -> bool {
-    let fill = gpFillSXP(gp);
-    Rf_inherits(fill, c"GridPattern".as_ptr()) != 0
-        || Rf_inherits(fill, c"GridPatternList".as_ptr()) != 0
+    unsafe {
+        let fill = gpFillSXP(gp);
+        Rf_inherits(fill, c"GridPattern".as_ptr()) != 0
+            || Rf_inherits(fill, c"GridPatternList".as_ptr()) != 0
+    }
 }
 
 #[inline]
 unsafe fn set_gp_fill_string(gp: SEXP, fill: *const c_char) {
-    SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_mkString(fill));
+    unsafe {
+        SET_VECTOR_ELT(gp, GP_FILL as R_xlen_t, Rf_mkString(fill));
+    }
 }
 
 /* ==============================
@@ -1916,61 +2047,63 @@ unsafe fn set_gp_fill_string(gp: SEXP, fill: *const c_char) {
  * ============================== */
 
 pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    set_gp_fill_string(currentgp, c"transparent".as_ptr());
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        set_gp_fill_string(currentgp, c"transparent".as_ptr());
 
-    let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
-    let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
+        let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
+        let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    gcontextFromgpar(currentgp, 0, gc, dd);
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        gcontextFromgpar(currentgp, 0, gc, dd);
 
-    let mut xx: c_double = NA_REAL;
-    let mut yy: c_double = NA_REAL;
-    transformLocn(
-        x,
-        y,
-        0,
-        vpc,
-        gc,
-        vpWidthCM,
-        vpHeightCM,
-        dd,
-        &mut transform,
-        &mut xx,
-        &mut yy,
-    );
+        let mut xx: c_double = NA_REAL;
+        let mut yy: c_double = NA_REAL;
+        transformLocn(
+            x,
+            y,
+            0,
+            vpc,
+            gc,
+            vpWidthCM,
+            vpHeightCM,
+            dd,
+            &mut transform,
+            &mut xx,
+            &mut yy,
+        );
 
-    if TYPEOF(prevloc) == SEXPTYPE::REALSXP
-        && LENGTH(prevloc) >= 2
-        && TYPEOF(devloc) == SEXPTYPE::REALSXP
-        && LENGTH(devloc) >= 2
-    {
-        *REAL(prevloc).add(0) = *REAL(devloc).add(0);
-        *REAL(prevloc).add(1) = *REAL(devloc).add(1);
-        *REAL(devloc).add(0) = xx;
-        *REAL(devloc).add(1) = yy;
+        if TYPEOF(prevloc) == SEXPTYPE::REALSXP
+            && LENGTH(prevloc) >= 2
+            && TYPEOF(devloc) == SEXPTYPE::REALSXP
+            && LENGTH(devloc) >= 2
+        {
+            *REAL(prevloc).add(0) = *REAL(devloc).add(0);
+            *REAL(prevloc).add(1) = *REAL(devloc).add(1);
+            *REAL(devloc).add(0) = xx;
+            *REAL(devloc).add(1) = yy;
+        }
+
+        Rf_unprotect(3);
+        R_NilValue()
     }
-
-    Rf_unprotect(3);
-    R_NilValue()
 }
 
 /* ==============================
@@ -1978,92 +2111,94 @@ pub unsafe fn L_moveTo(x: SEXP, y: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    if gp_fill_is_pattern(currentgp) {
-        set_gp_fill_string(currentgp, c"transparent".as_ptr());
-    }
-
-    let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
-    let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    gcontextFromgpar(currentgp, 0, gc, dd);
-
-    let mut xx: c_double = NA_REAL;
-    let mut yy: c_double = NA_REAL;
-    transformLocn(
-        x,
-        y,
-        0,
-        vpc,
-        gc,
-        vpWidthCM,
-        vpHeightCM,
-        dd,
-        &mut transform,
-        &mut xx,
-        &mut yy,
-    );
-
-    if TYPEOF(prevloc) == SEXPTYPE::REALSXP
-        && LENGTH(prevloc) >= 2
-        && TYPEOF(devloc) == SEXPTYPE::REALSXP
-        && LENGTH(devloc) >= 2
-    {
-        *REAL(prevloc).add(0) = *REAL(devloc).add(0);
-        *REAL(prevloc).add(1) = *REAL(devloc).add(1);
-        *REAL(devloc).add(0) = xx;
-        *REAL(devloc).add(1) = yy;
-
-        let xx0 = toDeviceX(*REAL(prevloc).add(0), GE_INCHES, dd);
-        let yy0 = toDeviceY(*REAL(prevloc).add(1), GE_INCHES, dd);
-        let xx1 = toDeviceX(xx, GE_INCHES, dd);
-        let yy1 = toDeviceY(yy, GE_INCHES, dd);
-
-        if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
-            GEMode(1, dd);
-            GELine(xx0, yy0, xx1, yy1, gc, dd);
-            if !isNull(arrow) {
-                let ax = [xx0, xx1];
-                let ay = [yy0, yy1];
-                arrows(
-                    ax.as_ptr(),
-                    ay.as_ptr(),
-                    2,
-                    arrow,
-                    0,
-                    true,
-                    true,
-                    vpc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    gc,
-                    dd,
-                );
-            }
-            GEMode(0, dd);
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        if gp_fill_is_pattern(currentgp) {
+            set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
-    }
 
-    Rf_unprotect(3);
-    R_NilValue()
+        let prevloc = Rf_protect(gridStateElement(dd, GSS_PREVLOC));
+        let devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
+
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        gcontextFromgpar(currentgp, 0, gc, dd);
+
+        let mut xx: c_double = NA_REAL;
+        let mut yy: c_double = NA_REAL;
+        transformLocn(
+            x,
+            y,
+            0,
+            vpc,
+            gc,
+            vpWidthCM,
+            vpHeightCM,
+            dd,
+            &mut transform,
+            &mut xx,
+            &mut yy,
+        );
+
+        if TYPEOF(prevloc) == SEXPTYPE::REALSXP
+            && LENGTH(prevloc) >= 2
+            && TYPEOF(devloc) == SEXPTYPE::REALSXP
+            && LENGTH(devloc) >= 2
+        {
+            *REAL(prevloc).add(0) = *REAL(devloc).add(0);
+            *REAL(prevloc).add(1) = *REAL(devloc).add(1);
+            *REAL(devloc).add(0) = xx;
+            *REAL(devloc).add(1) = yy;
+
+            let xx0 = toDeviceX(*REAL(prevloc).add(0), GE_INCHES, dd);
+            let yy0 = toDeviceY(*REAL(prevloc).add(1), GE_INCHES, dd);
+            let xx1 = toDeviceX(xx, GE_INCHES, dd);
+            let yy1 = toDeviceY(yy, GE_INCHES, dd);
+
+            if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
+                GEMode(1, dd);
+                GELine(xx0, yy0, xx1, yy1, gc, dd);
+                if !isNull(arrow) {
+                    let ax = [xx0, xx1];
+                    let ay = [yy0, yy1];
+                    arrows(
+                        ax.as_ptr(),
+                        ay.as_ptr(),
+                        2,
+                        arrow,
+                        0,
+                        true,
+                        true,
+                        vpc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        gc,
+                        dd,
+                    );
+                }
+                GEMode(0, dd);
+            }
+        }
+
+        Rf_unprotect(3);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -2071,79 +2206,105 @@ pub unsafe fn L_lineTo(x: SEXP, y: SEXP, arrow: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    if gp_fill_is_pattern(currentgp) {
-        set_gp_fill_string(currentgp, c"transparent".as_ptr());
-    }
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-    GEMode(1, dd);
-    let nl = LENGTH(index);
-    for j in 0..nl {
-        let indices = VECTOR_ELT(index, j as R_xlen_t);
-        updateGContext(currentgp, j, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-        let nx = LENGTH(indices);
-        if nx <= 0 {
-            continue;
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        if gp_fill_is_pattern(currentgp) {
+            set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-        let mut xx = vec![NA_REAL; nx as usize];
-        let mut yy = vec![NA_REAL; nx as usize];
-        let mut xold = NA_REAL;
-        let mut yold = NA_REAL;
-        let mut start: usize = 0;
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
 
-        for i in 0..nx as usize {
-            let idx = *INTEGER(indices).add(i);
-            if idx > 0 {
-                transformLocn(
-                    x,
-                    y,
-                    idx - 1,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xx[i],
-                    &mut yy[i],
-                );
-                xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
-                yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
+        GEMode(1, dd);
+        let nl = LENGTH(index);
+        for j in 0..nl {
+            let indices = VECTOR_ELT(index, j as R_xlen_t);
+            updateGContext(currentgp, j, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            let nx = LENGTH(indices);
+            if nx <= 0 {
+                continue;
             }
 
-            let current_finite = xx[i].is_finite() && yy[i].is_finite();
-            let previous_finite = xold.is_finite() && yold.is_finite();
+            let mut xx = vec![NA_REAL; nx as usize];
+            let mut yy = vec![NA_REAL; nx as usize];
+            let mut xold = NA_REAL;
+            let mut yold = NA_REAL;
+            let mut start: usize = 0;
 
-            if current_finite && !previous_finite {
-                start = i;
-            } else if previous_finite && !current_finite {
-                if i.saturating_sub(start) > 1 {
+            for i in 0..nx as usize {
+                let idx = *INTEGER(indices).add(i);
+                if idx > 0 {
+                    transformLocn(
+                        x,
+                        y,
+                        idx - 1,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xx[i],
+                        &mut yy[i],
+                    );
+                    xx[i] = toDeviceX(xx[i], GE_INCHES, dd);
+                    yy[i] = toDeviceY(yy[i], GE_INCHES, dd);
+                }
+
+                let current_finite = xx[i].is_finite() && yy[i].is_finite();
+                let previous_finite = xold.is_finite() && yold.is_finite();
+
+                if current_finite && !previous_finite {
+                    start = i;
+                } else if previous_finite && !current_finite {
+                    if i.saturating_sub(start) > 1 {
+                        GEPolyline(
+                            (i - start) as c_int,
+                            xx.as_ptr().add(start),
+                            yy.as_ptr().add(start),
+                            gc,
+                            dd,
+                        );
+                        if !isNull(arrow) {
+                            arrows(
+                                xx.as_ptr().add(start),
+                                yy.as_ptr().add(start),
+                                (i - start) as c_int,
+                                arrow,
+                                j,
+                                start == 0,
+                                false,
+                                vpc,
+                                vpWidthCM,
+                                vpHeightCM,
+                                gc,
+                                dd,
+                            );
+                        }
+                    }
+                } else if previous_finite && i + 1 == nx as usize {
                     GEPolyline(
-                        (i - start) as c_int,
+                        (nx as usize - start) as c_int,
                         xx.as_ptr().add(start),
                         yy.as_ptr().add(start),
                         gc,
@@ -2153,11 +2314,11 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
                         arrows(
                             xx.as_ptr().add(start),
                             yy.as_ptr().add(start),
-                            (i - start) as c_int,
+                            (nx as usize - start) as c_int,
                             arrow,
                             j,
                             start == 0,
-                            false,
+                            true,
                             vpc,
                             vpWidthCM,
                             vpHeightCM,
@@ -2166,39 +2327,15 @@ pub unsafe fn L_lines(x: SEXP, y: SEXP, index: SEXP, arrow: SEXP) -> SEXP {
                         );
                     }
                 }
-            } else if previous_finite && i + 1 == nx as usize {
-                GEPolyline(
-                    (nx as usize - start) as c_int,
-                    xx.as_ptr().add(start),
-                    yy.as_ptr().add(start),
-                    gc,
-                    dd,
-                );
-                if !isNull(arrow) {
-                    arrows(
-                        xx.as_ptr().add(start),
-                        yy.as_ptr().add(start),
-                        (nx as usize - start) as c_int,
-                        arrow,
-                        j,
-                        start == 0,
-                        true,
-                        vpc,
-                        vpWidthCM,
-                        vpHeightCM,
-                        gc,
-                        dd,
-                    );
-                }
-            }
 
-            xold = xx[i];
-            yold = yy[i];
+                xold = xx[i];
+                yold = yy[i];
+            }
         }
+        GEMode(0, dd);
+        Rf_unprotect(1);
+        R_NilValue()
     }
-    GEMode(0, dd);
-    Rf_unprotect(1);
-    R_NilValue()
 }
 
 /* ==============================
@@ -2217,7 +2354,7 @@ unsafe fn gridXspline(
     _draw: bool,
     _trace: bool,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ==============================
@@ -2233,8 +2370,10 @@ pub unsafe fn L_xspline(
     rep: SEXP,
     index: SEXP,
 ) -> SEXP {
-    gridXspline(x, y, s, o, a, rep, index, 0.0, true, false);
-    R_NilValue()
+    unsafe {
+        gridXspline(x, y, s, o, a, rep, index, 0.0, true, false);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -2251,7 +2390,7 @@ pub unsafe fn L_xsplineBounds(
     index: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    gridXspline(x, y, s, o, a, rep, index, *REAL(theta), false, false)
+    unsafe { gridXspline(x, y, s, o, a, rep, index, *REAL(theta), false, false) }
 }
 
 /* ==============================
@@ -2268,7 +2407,7 @@ pub unsafe fn L_xsplinePoints(
     index: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    gridXspline(x, y, s, o, a, rep, index, *REAL(theta), false, true)
+    unsafe { gridXspline(x, y, s, o, a, rep, index, *REAL(theta), false, true) }
 }
 
 /* ==============================
@@ -2276,101 +2415,103 @@ pub unsafe fn L_xsplinePoints(
  * ============================== */
 
 pub unsafe fn L_segments(x0: SEXP, y0: SEXP, x1: SEXP, y1: SEXP, arrow: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    if gp_fill_is_pattern(currentgp) {
-        set_gp_fill_string(currentgp, c"transparent".as_ptr());
-    }
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        if gp_fill_is_pattern(currentgp) {
+            set_gp_fill_string(currentgp, c"transparent".as_ptr());
+        }
 
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-    let maxn = unitLength(x0)
-        .max(unitLength(y0))
-        .max(unitLength(x1))
-        .max(unitLength(y1));
-    GEMode(1, dd);
-    for i in 0..maxn {
-        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-        let mut xx0: c_double = NA_REAL;
-        let mut yy0: c_double = NA_REAL;
-        let mut xx1: c_double = NA_REAL;
-        let mut yy1: c_double = NA_REAL;
-        transformLocn(
-            x0,
-            y0,
-            i,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
             dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
             &mut transform,
-            &mut xx0,
-            &mut yy0,
+            &mut rotationAngle,
         );
-        transformLocn(
-            x1,
-            y1,
-            i,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
-            dd,
-            &mut transform,
-            &mut xx1,
-            &mut yy1,
-        );
-        xx0 = toDeviceX(xx0, GE_INCHES, dd);
-        yy0 = toDeviceY(yy0, GE_INCHES, dd);
-        xx1 = toDeviceX(xx1, GE_INCHES, dd);
-        yy1 = toDeviceY(yy1, GE_INCHES, dd);
-        if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
-            GELine(xx0, yy0, xx1, yy1, gc, dd);
-            if !isNull(arrow) {
-                let ax = [xx0, xx1];
-                let ay = [yy0, yy1];
-                arrows(
-                    ax.as_ptr(),
-                    ay.as_ptr(),
-                    2,
-                    arrow,
-                    i,
-                    true,
-                    true,
-                    vpc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    gc,
-                    dd,
-                );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
+
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+        let maxn = unitLength(x0)
+            .max(unitLength(y0))
+            .max(unitLength(x1))
+            .max(unitLength(y1));
+        GEMode(1, dd);
+        for i in 0..maxn {
+            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            let mut xx0: c_double = NA_REAL;
+            let mut yy0: c_double = NA_REAL;
+            let mut xx1: c_double = NA_REAL;
+            let mut yy1: c_double = NA_REAL;
+            transformLocn(
+                x0,
+                y0,
+                i,
+                vpc,
+                gc,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                &mut transform,
+                &mut xx0,
+                &mut yy0,
+            );
+            transformLocn(
+                x1,
+                y1,
+                i,
+                vpc,
+                gc,
+                vpWidthCM,
+                vpHeightCM,
+                dd,
+                &mut transform,
+                &mut xx1,
+                &mut yy1,
+            );
+            xx0 = toDeviceX(xx0, GE_INCHES, dd);
+            yy0 = toDeviceY(yy0, GE_INCHES, dd);
+            xx1 = toDeviceX(xx1, GE_INCHES, dd);
+            yy1 = toDeviceY(yy1, GE_INCHES, dd);
+            if xx0.is_finite() && yy0.is_finite() && xx1.is_finite() && yy1.is_finite() {
+                GELine(xx0, yy0, xx1, yy1, gc, dd);
+                if !isNull(arrow) {
+                    let ax = [xx0, xx1];
+                    let ay = [yy0, yy1];
+                    arrows(
+                        ax.as_ptr(),
+                        ay.as_ptr(),
+                        2,
+                        arrow,
+                        i,
+                        true,
+                        true,
+                        vpc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        gc,
+                        dd,
+                    );
+                }
             }
         }
+        GEMode(0, dd);
+        Rf_unprotect(1);
+        R_NilValue()
     }
-    GEMode(0, dd);
-    Rf_unprotect(1);
-    R_NilValue()
 }
 
 /* ==============================
@@ -2387,22 +2528,24 @@ unsafe fn getArrowN(
     ynm1: SEXP,
     yn: SEXP,
 ) -> c_int {
-    let mut maxn = 0;
-    let ny1 = if isNull(y1) { 0 } else { unitLength(y1) };
-    let nx2 = unitLength(x2);
-    let ny2 = unitLength(y2);
-    let nxnm1 = if isNull(xnm1) { 0 } else { unitLength(xnm1) };
-    let nynm1 = if isNull(ynm1) { 0 } else { unitLength(ynm1) };
-    let nxn = unitLength(xn);
-    let nyn = unitLength(yn);
-    maxn = maxn.max(ny1);
-    maxn = maxn.max(nx2);
-    maxn = maxn.max(ny2);
-    maxn = maxn.max(nxnm1);
-    maxn = maxn.max(nynm1);
-    maxn = maxn.max(nxn);
-    maxn = maxn.max(nyn);
-    maxn
+    unsafe {
+        let mut maxn = 0;
+        let ny1 = if isNull(y1) { 0 } else { unitLength(y1) };
+        let nx2 = unitLength(x2);
+        let ny2 = unitLength(y2);
+        let nxnm1 = if isNull(xnm1) { 0 } else { unitLength(xnm1) };
+        let nynm1 = if isNull(ynm1) { 0 } else { unitLength(ynm1) };
+        let nxn = unitLength(xn);
+        let nyn = unitLength(yn);
+        maxn = maxn.max(ny1);
+        maxn = maxn.max(nx2);
+        maxn = maxn.max(ny2);
+        maxn = maxn.max(nxnm1);
+        maxn = maxn.max(nynm1);
+        maxn = maxn.max(nxn);
+        maxn = maxn.max(nyn);
+        maxn
+    }
 }
 
 pub unsafe fn L_arrows(
@@ -2419,67 +2562,84 @@ pub unsafe fn L_arrows(
     ends: SEXP,
     r#type: SEXP,
 ) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    if gp_fill_is_pattern(currentgp) {
-        set_gp_fill_string(currentgp, c"transparent".as_ptr());
-    }
-
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let maxn = getArrowN(x1, x2, xnm1, xn, y1, y2, ynm1, yn);
-    let ne = LENGTH(ends);
-    resolveGPar(currentgp, 0);
-
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-    GEMode(1, dd);
-    for i in 0..maxn {
-        let mut first = true;
-        let mut last = true;
-        match *INTEGER(ends).add((i % ne) as usize) {
-            2 => first = false,
-            1 => last = false,
-            _ => {}
-        }
-        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-        let mut devloc = R_NilValue();
-        if isNull(x1) {
-            devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        if gp_fill_is_pattern(currentgp) {
+            set_gp_fill_string(currentgp, c"transparent".as_ptr());
         }
 
-        if first {
-            let mut xx1: c_double = NA_REAL;
-            let mut yy1: c_double = NA_REAL;
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
+
+        let maxn = getArrowN(x1, x2, xnm1, xn, y1, y2, ynm1, yn);
+        let ne = LENGTH(ends);
+        resolveGPar(currentgp, 0);
+
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+        GEMode(1, dd);
+        for i in 0..maxn {
+            let mut first = true;
+            let mut last = true;
+            match *INTEGER(ends).add((i % ne) as usize) {
+                2 => first = false,
+                1 => last = false,
+                _ => {}
+            }
+            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+            let mut devloc = R_NilValue();
             if isNull(x1) {
-                if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
-                    xx1 = *REAL(devloc).add(0);
-                    yy1 = *REAL(devloc).add(1);
+                devloc = Rf_protect(gridStateElement(dd, GSS_CURRLOC));
+            }
+
+            if first {
+                let mut xx1: c_double = NA_REAL;
+                let mut yy1: c_double = NA_REAL;
+                if isNull(x1) {
+                    if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
+                        xx1 = *REAL(devloc).add(0);
+                        yy1 = *REAL(devloc).add(1);
+                    }
+                } else {
+                    transformLocn(
+                        x1,
+                        y1,
+                        i,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xx1,
+                        &mut yy1,
+                    );
                 }
-            } else {
+                let mut xx2: c_double = NA_REAL;
+                let mut yy2: c_double = NA_REAL;
                 transformLocn(
-                    x1,
-                    y1,
+                    x2,
+                    y2,
                     i,
                     vpc,
                     gc,
@@ -2487,65 +2647,66 @@ pub unsafe fn L_arrows(
                     vpHeightCM,
                     dd,
                     &mut transform,
-                    &mut xx1,
-                    &mut yy1,
+                    &mut xx2,
+                    &mut yy2,
                 );
-            }
-            let mut xx2: c_double = NA_REAL;
-            let mut yy2: c_double = NA_REAL;
-            transformLocn(
-                x2,
-                y2,
-                i,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xx2,
-                &mut yy2,
-            );
 
-            let mut vertx = [0.0; 3];
-            let mut verty = [0.0; 3];
-            calcArrow(
-                xx1,
-                yy1,
-                xx2,
-                yy2,
-                angle,
-                length,
-                i,
-                vpc,
-                vpWidthCM,
-                vpHeightCM,
-                vertx.as_mut_ptr(),
-                verty.as_mut_ptr(),
-                gc,
-                dd,
-            );
-            if toDeviceX(xx2, GE_INCHES, dd).is_finite()
-                && toDeviceY(yy2, GE_INCHES, dd).is_finite()
-                && vertx[1].is_finite()
-                && verty[1].is_finite()
-            {
-                drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
-            }
-        }
-
-        if last {
-            let mut xxnm1: c_double = NA_REAL;
-            let mut yynm1: c_double = NA_REAL;
-            if isNull(xnm1) {
-                if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
-                    xxnm1 = *REAL(devloc).add(0);
-                    yynm1 = *REAL(devloc).add(1);
+                let mut vertx = [0.0; 3];
+                let mut verty = [0.0; 3];
+                calcArrow(
+                    xx1,
+                    yy1,
+                    xx2,
+                    yy2,
+                    angle,
+                    length,
+                    i,
+                    vpc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    vertx.as_mut_ptr(),
+                    verty.as_mut_ptr(),
+                    gc,
+                    dd,
+                );
+                if toDeviceX(xx2, GE_INCHES, dd).is_finite()
+                    && toDeviceY(yy2, GE_INCHES, dd).is_finite()
+                    && vertx[1].is_finite()
+                    && verty[1].is_finite()
+                {
+                    drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
                 }
-            } else {
+            }
+
+            if last {
+                let mut xxnm1: c_double = NA_REAL;
+                let mut yynm1: c_double = NA_REAL;
+                if isNull(xnm1) {
+                    if TYPEOF(devloc) == SEXPTYPE::REALSXP && LENGTH(devloc) >= 2 {
+                        xxnm1 = *REAL(devloc).add(0);
+                        yynm1 = *REAL(devloc).add(1);
+                    }
+                } else {
+                    transformLocn(
+                        xnm1,
+                        ynm1,
+                        i,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xxnm1,
+                        &mut yynm1,
+                    );
+                }
+
+                let mut xxn: c_double = NA_REAL;
+                let mut yyn: c_double = NA_REAL;
                 transformLocn(
-                    xnm1,
-                    ynm1,
+                    xn,
+                    yn,
                     i,
                     vpc,
                     gc,
@@ -2553,61 +2714,45 @@ pub unsafe fn L_arrows(
                     vpHeightCM,
                     dd,
                     &mut transform,
-                    &mut xxnm1,
-                    &mut yynm1,
+                    &mut xxn,
+                    &mut yyn,
                 );
+
+                let mut vertx = [0.0; 3];
+                let mut verty = [0.0; 3];
+                calcArrow(
+                    xxn,
+                    yyn,
+                    xxnm1,
+                    yynm1,
+                    angle,
+                    length,
+                    i,
+                    vpc,
+                    vpWidthCM,
+                    vpHeightCM,
+                    vertx.as_mut_ptr(),
+                    verty.as_mut_ptr(),
+                    gc,
+                    dd,
+                );
+                if toDeviceX(xxnm1, GE_INCHES, dd).is_finite()
+                    && toDeviceY(yynm1, GE_INCHES, dd).is_finite()
+                    && vertx[1].is_finite()
+                    && verty[1].is_finite()
+                {
+                    drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+                }
             }
 
-            let mut xxn: c_double = NA_REAL;
-            let mut yyn: c_double = NA_REAL;
-            transformLocn(
-                xn,
-                yn,
-                i,
-                vpc,
-                gc,
-                vpWidthCM,
-                vpHeightCM,
-                dd,
-                &mut transform,
-                &mut xxn,
-                &mut yyn,
-            );
-
-            let mut vertx = [0.0; 3];
-            let mut verty = [0.0; 3];
-            calcArrow(
-                xxn,
-                yyn,
-                xxnm1,
-                yynm1,
-                angle,
-                length,
-                i,
-                vpc,
-                vpWidthCM,
-                vpHeightCM,
-                vertx.as_mut_ptr(),
-                verty.as_mut_ptr(),
-                gc,
-                dd,
-            );
-            if toDeviceX(xxnm1, GE_INCHES, dd).is_finite()
-                && toDeviceY(yynm1, GE_INCHES, dd).is_finite()
-                && vertx[1].is_finite()
-                && verty[1].is_finite()
-            {
-                drawArrow(vertx.as_ptr(), verty.as_ptr(), r#type, i, gc, dd);
+            if isNull(x1) {
+                Rf_unprotect(1);
             }
         }
-
-        if isNull(x1) {
-            Rf_unprotect(1);
-        }
+        GEMode(0, dd);
+        Rf_unprotect(1);
+        R_NilValue()
     }
-    GEMode(0, dd);
-    Rf_unprotect(1);
-    R_NilValue()
 }
 
 /* ==============================
@@ -2615,107 +2760,109 @@ pub unsafe fn L_arrows(
  * ============================== */
 
 pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path).add(0) != 0
-    {
-        set_gp_fill_string(currentgp, c"black".as_ptr());
-    }
-
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-    GEMode(1, dd);
-    let np = LENGTH(index);
-    for i in 0..np {
-        let indices = VECTOR_ELT(index, i as R_xlen_t);
-        updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-        let nx = LENGTH(indices);
-        if nx <= 0 {
-            continue;
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+        if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path).add(0) != 0
+        {
+            set_gp_fill_string(currentgp, c"black".as_ptr());
         }
 
-        let mut xx = vec![NA_REAL; nx as usize];
-        let mut yy = vec![NA_REAL; nx as usize];
-        let mut xold = NA_REAL;
-        let mut yold = NA_REAL;
-        let mut start: usize = 0;
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-        for j in 0..nx as usize {
-            let idx = *INTEGER(indices).add(j);
-            if idx > 0 {
-                transformLocn(
-                    x,
-                    y,
-                    idx - 1,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xx[j],
-                    &mut yy[j],
-                );
-                xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
-                yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+        GEMode(1, dd);
+        let np = LENGTH(index);
+        for i in 0..np {
+            let indices = VECTOR_ELT(index, i as R_xlen_t);
+            updateGContext(currentgp, i, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            let nx = LENGTH(indices);
+            if nx <= 0 {
+                continue;
             }
 
-            let current_finite = xx[j].is_finite() && yy[j].is_finite();
-            let previous_finite = xold.is_finite() && yold.is_finite();
+            let mut xx = vec![NA_REAL; nx as usize];
+            let mut yy = vec![NA_REAL; nx as usize];
+            let mut xold = NA_REAL;
+            let mut yold = NA_REAL;
+            let mut start: usize = 0;
 
-            if current_finite && !previous_finite {
-                start = j;
-            } else if previous_finite && !current_finite {
-                if j.saturating_sub(start) > 1 {
+            for j in 0..nx as usize {
+                let idx = *INTEGER(indices).add(j);
+                if idx > 0 {
+                    transformLocn(
+                        x,
+                        y,
+                        idx - 1,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xx[j],
+                        &mut yy[j],
+                    );
+                    xx[j] = toDeviceX(xx[j], GE_INCHES, dd);
+                    yy[j] = toDeviceY(yy[j], GE_INCHES, dd);
+                }
+
+                let current_finite = xx[j].is_finite() && yy[j].is_finite();
+                let previous_finite = xold.is_finite() && yold.is_finite();
+
+                if current_finite && !previous_finite {
+                    start = j;
+                } else if previous_finite && !current_finite {
+                    if j.saturating_sub(start) > 1 {
+                        GEPolygon(
+                            (j - start) as c_int,
+                            xx.as_ptr().add(start),
+                            yy.as_ptr().add(start),
+                            gc,
+                            dd,
+                        );
+                    }
+                } else if previous_finite && j + 1 == nx as usize {
                     GEPolygon(
-                        (j - start) as c_int,
+                        (nx as usize - start) as c_int,
                         xx.as_ptr().add(start),
                         yy.as_ptr().add(start),
                         gc,
                         dd,
                     );
                 }
-            } else if previous_finite && j + 1 == nx as usize {
-                GEPolygon(
-                    (nx as usize - start) as c_int,
-                    xx.as_ptr().add(start),
-                    yy.as_ptr().add(start),
-                    gc,
-                    dd,
-                );
-            }
 
-            xold = xx[j];
-            yold = yy[j];
+                xold = xx[j];
+                yold = yy[j];
+            }
         }
+        GEMode(0, dd);
+        Rf_unprotect(1);
+        R_NilValue()
     }
-    GEMode(0, dd);
-    Rf_unprotect(1);
-    R_NilValue()
 }
 
 /* ==============================
@@ -2723,7 +2870,7 @@ pub unsafe fn L_polygon(x: SEXP, y: SEXP, index: SEXP) -> SEXP {
  * ============================== */
 
 unsafe fn gridCircle(_x: SEXP, _y: SEXP, _r: SEXP, _theta: c_double, _draw: bool) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ==============================
@@ -2731,8 +2878,10 @@ unsafe fn gridCircle(_x: SEXP, _y: SEXP, _r: SEXP, _theta: c_double, _draw: bool
  * ============================== */
 
 pub unsafe fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
-    gridCircle(x, y, r, 0.0, true);
-    R_NilValue()
+    unsafe {
+        gridCircle(x, y, r, 0.0, true);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -2740,7 +2889,7 @@ pub unsafe fn L_circle(x: SEXP, y: SEXP, r: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_circleBounds(x: SEXP, y: SEXP, r: SEXP, theta: SEXP) -> SEXP {
-    gridCircle(x, y, r, *REAL(theta), false)
+    unsafe { gridCircle(x, y, r, *REAL(theta), false) }
 }
 
 /* ==============================
@@ -2757,7 +2906,7 @@ unsafe fn gridRect(
     _theta: c_double,
     _draw: bool,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ==============================
@@ -2765,8 +2914,10 @@ unsafe fn gridRect(
  * ============================== */
 
 pub unsafe fn L_rect(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
-    gridRect(x, y, w, h, hjust, vjust, 0.0, true);
-    R_NilValue()
+    unsafe {
+        gridRect(x, y, w, h, hjust, vjust, 0.0, true);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -2782,7 +2933,7 @@ pub unsafe fn L_rectBounds(
     vjust: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    gridRect(x, y, w, h, hjust, vjust, *REAL(theta), false)
+    unsafe { gridRect(x, y, w, h, hjust, vjust, *REAL(theta), false) }
 }
 
 /* ==============================
@@ -2790,102 +2941,104 @@ pub unsafe fn L_rectBounds(
  * ============================== */
 
 pub unsafe fn L_path(x: SEXP, y: SEXP, index: SEXP, rule: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
-    if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
-        && LENGTH(resolving_path) > 0
-        && *LOGICAL(resolving_path).add(0) != 0
-    {
-        set_gp_fill_string(currentgp, c"black".as_ptr());
-    }
-
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-    GEMode(1, dd);
-
-    for h in 0..LENGTH(index) {
-        let poly_ind = VECTOR_ELT(index, h as R_xlen_t);
-        let npoly = LENGTH(poly_ind);
-        if npoly <= 0 {
-            continue;
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        let resolving_path = gridStateElement(dd, GSS_RESOLVINGPATH);
+        if TYPEOF(resolving_path) == SEXPTYPE::LGLSXP
+            && LENGTH(resolving_path) > 0
+            && *LOGICAL(resolving_path).add(0) != 0
+        {
+            set_gp_fill_string(currentgp, c"black".as_ptr());
         }
 
-        let mut ntot: c_int = 0;
-        let mut nper = vec![0i32; npoly as usize];
-        for i in 0..npoly as usize {
-            let n = LENGTH(VECTOR_ELT(poly_ind, i as R_xlen_t));
-            nper[i] = n;
-            ntot += n;
-        }
-        if ntot <= 0 {
-            continue;
-        }
-
-        let mut xx = vec![0.0; ntot as usize];
-        let mut yy = vec![0.0; ntot as usize];
-        let mut k: usize = 0;
-        for i in 0..npoly as usize {
-            let indices = INTEGER(VECTOR_ELT(poly_ind, i as R_xlen_t));
-            for j in 0..nper[i] as usize {
-                transformLocn(
-                    x,
-                    y,
-                    *indices.add(j) - 1,
-                    vpc,
-                    gc,
-                    vpWidthCM,
-                    vpHeightCM,
-                    dd,
-                    &mut transform,
-                    &mut xx[k],
-                    &mut yy[k],
-                );
-                xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
-                yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
-                if !xx[k].is_finite() || !yy[k].is_finite() {
-                    Rf_error(c"non-finite x or y in graphics path".as_ptr());
-                }
-                k += 1;
-            }
-        }
-
-        updateGContext(currentgp, h, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-        GEPath(
-            xx.as_mut_ptr(),
-            yy.as_mut_ptr(),
-            npoly,
-            nper.as_mut_ptr(),
-            asBool(rule),
-            gc,
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
             dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
         );
-    }
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-    GEMode(0, dd);
-    Rf_unprotect(1);
-    R_NilValue()
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+        GEMode(1, dd);
+
+        for h in 0..LENGTH(index) {
+            let poly_ind = VECTOR_ELT(index, h as R_xlen_t);
+            let npoly = LENGTH(poly_ind);
+            if npoly <= 0 {
+                continue;
+            }
+
+            let mut ntot: c_int = 0;
+            let mut nper = vec![0i32; npoly as usize];
+            for i in 0..npoly as usize {
+                let n = LENGTH(VECTOR_ELT(poly_ind, i as R_xlen_t));
+                nper[i] = n;
+                ntot += n;
+            }
+            if ntot <= 0 {
+                continue;
+            }
+
+            let mut xx = vec![0.0; ntot as usize];
+            let mut yy = vec![0.0; ntot as usize];
+            let mut k: usize = 0;
+            for i in 0..npoly as usize {
+                let indices = INTEGER(VECTOR_ELT(poly_ind, i as R_xlen_t));
+                for j in 0..nper[i] as usize {
+                    transformLocn(
+                        x,
+                        y,
+                        *indices.add(j) - 1,
+                        vpc,
+                        gc,
+                        vpWidthCM,
+                        vpHeightCM,
+                        dd,
+                        &mut transform,
+                        &mut xx[k],
+                        &mut yy[k],
+                    );
+                    xx[k] = toDeviceX(xx[k], GE_INCHES, dd);
+                    yy[k] = toDeviceY(yy[k], GE_INCHES, dd);
+                    if !xx[k].is_finite() || !yy[k].is_finite() {
+                        Rf_error(c"non-finite x or y in graphics path".as_ptr());
+                    }
+                    k += 1;
+                }
+            }
+
+            updateGContext(currentgp, h, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+            GEPath(
+                xx.as_mut_ptr(),
+                yy.as_mut_ptr(),
+                npoly,
+                nper.as_mut_ptr(),
+                asBool(rule),
+                gc,
+                dd,
+            );
+        }
+
+        GEMode(0, dd);
+        Rf_unprotect(1);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -2902,178 +3055,180 @@ pub unsafe fn L_raster(
     vjust: SEXP,
     interpolate: SEXP,
 ) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
-    set_gp_fill_string(currentgp, c"transparent".as_ptr());
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = Rf_protect(Rf_duplicate(gridStateElement(dd, GSS_GPAR)));
+        set_gp_fill_string(currentgp, c"transparent".as_ptr());
 
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
-
-    let mut gp_is_scalar = [-1i32; 15];
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let mut gc_cache_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
-    initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
-
-    let n = LENGTH(raster);
-    if n <= 0 {
-        Rf_error(c"Empty raster".as_ptr());
-    }
-
-    let mut image_owned: Vec<c_uint> = Vec::new();
-    let image: *mut c_uint = if Rf_inherits(raster, c"nativeRaster".as_ptr()) != 0
-        && TYPEOF(raster) == SEXPTYPE::INTSXP
-    {
-        INTEGER(raster) as *mut c_uint
-    } else {
-        image_owned = vec![0; n as usize];
-        for i in 0..n as usize {
-            image_owned[i] = RGBpar3(raster as *mut c_void, i as c_int, R_TRANWHITE as c_uint);
-        }
-        image_owned.as_mut_ptr()
-    };
-
-    let dim = getAttrib(raster, R_DimSymbol());
-    if TYPEOF(dim) != SEXPTYPE::INTSXP || LENGTH(dim) < 2 {
-        Rf_error(c"invalid raster dimensions".as_ptr());
-    }
-
-    let mut maxn = unitLength(x);
-    maxn = maxn.max(unitLength(y));
-    maxn = maxn.max(unitLength(w));
-    maxn = maxn.max(unitLength(h));
-    let hjust_len = LENGTH(hjust).max(1) as usize;
-    let vjust_len = LENGTH(vjust).max(1) as usize;
-    let interp_len = LENGTH(interpolate).max(1) as usize;
-
-    GEMode(1, dd);
-    for i in 0..maxn as usize {
-        updateGContext(
-            currentgp,
-            i as c_int,
-            gc,
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
             dd,
-            gp_is_scalar.as_mut_ptr(),
-            gc_cache,
-        );
-
-        let mut xx: c_double = 0.0;
-        let mut yy: c_double = 0.0;
-        transformLocn(
-            x,
-            y,
-            i as c_int,
-            vpc,
-            gc,
-            vpWidthCM,
-            vpHeightCM,
-            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
             &mut transform,
-            &mut xx,
-            &mut yy,
+            &mut rotationAngle,
         );
-        let mut ww = transformWidthtoINCHES(w, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
-        let mut hh = transformHeighttoINCHES(h, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
-        let hjust_i = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
-            *REAL(hjust).add(i % hjust_len)
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
+
+        let mut gp_is_scalar = [-1i32; 15];
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let mut gc_cache_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        let gc_cache = gc_cache_buf.as_mut_ptr() as pGEcontext;
+        initGContext(currentgp, gc, dd, gp_is_scalar.as_mut_ptr(), gc_cache);
+
+        let n = LENGTH(raster);
+        if n <= 0 {
+            Rf_error(c"Empty raster".as_ptr());
+        }
+
+        let mut image_owned: Vec<c_uint> = Vec::new();
+        let image: *mut c_uint = if Rf_inherits(raster, c"nativeRaster".as_ptr()) != 0
+            && TYPEOF(raster) == SEXPTYPE::INTSXP
+        {
+            INTEGER(raster) as *mut c_uint
         } else {
-            0.0
-        };
-        let vjust_i = if TYPEOF(vjust) == SEXPTYPE::REALSXP && LENGTH(vjust) > 0 {
-            *REAL(vjust).add(i % vjust_len)
-        } else {
-            0.0
-        };
-        let interp_i = if TYPEOF(interpolate) == SEXPTYPE::LGLSXP && LENGTH(interpolate) > 0 {
-            *LOGICAL(interpolate).add(i % interp_len)
-        } else {
-            0
+            image_owned = vec![0; n as usize];
+            for i in 0..n as usize {
+                image_owned[i] = RGBpar3(raster as *mut c_void, i as c_int, R_TRANWHITE as c_uint);
+            }
+            image_owned.as_mut_ptr()
         };
 
-        if rotationAngle == 0.0 {
-            xx = justifyX(xx, ww, hjust_i);
-            yy = justifyY(yy, hh, vjust_i);
-            xx = toDeviceX(xx, GE_INCHES, dd);
-            yy = toDeviceY(yy, GE_INCHES, dd);
-            ww = toDeviceWidth(ww, GE_INCHES, dd);
-            hh = toDeviceHeight(hh, GE_INCHES, dd);
-            if xx.is_finite() && yy.is_finite() && ww.is_finite() && hh.is_finite() {
-                GERaster(
-                    image,
-                    *INTEGER(dim).add(1),
-                    *INTEGER(dim).add(0),
-                    xx,
-                    yy,
-                    ww,
-                    hh,
-                    rotationAngle,
-                    interp_i,
-                    gc,
-                    dd,
-                );
-            }
-        } else {
-            let mut xadj: c_double = 0.0;
-            let mut yadj: c_double = 0.0;
-            justification(ww, hh, hjust_i, vjust_i, &mut xadj, &mut yadj);
-            let xadjInches = Rf_protect(unit(xadj, L_INCHES));
-            let yadjInches = Rf_protect(unit(yadj, L_INCHES));
-            let mut dw: c_double = 0.0;
-            let mut dh: c_double = 0.0;
-            transformDimn(
-                xadjInches,
-                yadjInches,
-                0,
+        let dim = getAttrib(raster, R_DimSymbol());
+        if TYPEOF(dim) != SEXPTYPE::INTSXP || LENGTH(dim) < 2 {
+            Rf_error(c"invalid raster dimensions".as_ptr());
+        }
+
+        let mut maxn = unitLength(x);
+        maxn = maxn.max(unitLength(y));
+        maxn = maxn.max(unitLength(w));
+        maxn = maxn.max(unitLength(h));
+        let hjust_len = LENGTH(hjust).max(1) as usize;
+        let vjust_len = LENGTH(vjust).max(1) as usize;
+        let interp_len = LENGTH(interpolate).max(1) as usize;
+
+        GEMode(1, dd);
+        for i in 0..maxn as usize {
+            updateGContext(
+                currentgp,
+                i as c_int,
+                gc,
+                dd,
+                gp_is_scalar.as_mut_ptr(),
+                gc_cache,
+            );
+
+            let mut xx: c_double = 0.0;
+            let mut yy: c_double = 0.0;
+            transformLocn(
+                x,
+                y,
+                i as c_int,
                 vpc,
                 gc,
                 vpWidthCM,
                 vpHeightCM,
                 dd,
-                rotationAngle,
-                &mut dw,
-                &mut dh,
+                &mut transform,
+                &mut xx,
+                &mut yy,
             );
-            let mut xbl = xx + dw;
-            let mut ybl = yy + dh;
-            xbl = toDeviceX(xbl, GE_INCHES, dd);
-            ybl = toDeviceY(ybl, GE_INCHES, dd);
-            ww = toDeviceWidth(ww, GE_INCHES, dd);
-            hh = toDeviceHeight(hh, GE_INCHES, dd);
-            if xbl.is_finite() && ybl.is_finite() && ww.is_finite() && hh.is_finite() {
-                GERaster(
-                    image,
-                    *INTEGER(dim).add(1),
-                    *INTEGER(dim).add(0),
-                    xbl,
-                    ybl,
-                    ww,
-                    hh,
-                    rotationAngle,
-                    interp_i,
+            let mut ww = transformWidthtoINCHES(w, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
+            let mut hh = transformHeighttoINCHES(h, i as c_int, vpc, gc, vpWidthCM, vpHeightCM, dd);
+            let hjust_i = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
+                *REAL(hjust).add(i % hjust_len)
+            } else {
+                0.0
+            };
+            let vjust_i = if TYPEOF(vjust) == SEXPTYPE::REALSXP && LENGTH(vjust) > 0 {
+                *REAL(vjust).add(i % vjust_len)
+            } else {
+                0.0
+            };
+            let interp_i = if TYPEOF(interpolate) == SEXPTYPE::LGLSXP && LENGTH(interpolate) > 0 {
+                *LOGICAL(interpolate).add(i % interp_len)
+            } else {
+                0
+            };
+
+            if rotationAngle == 0.0 {
+                xx = justifyX(xx, ww, hjust_i);
+                yy = justifyY(yy, hh, vjust_i);
+                xx = toDeviceX(xx, GE_INCHES, dd);
+                yy = toDeviceY(yy, GE_INCHES, dd);
+                ww = toDeviceWidth(ww, GE_INCHES, dd);
+                hh = toDeviceHeight(hh, GE_INCHES, dd);
+                if xx.is_finite() && yy.is_finite() && ww.is_finite() && hh.is_finite() {
+                    GERaster(
+                        image,
+                        *INTEGER(dim).add(1),
+                        *INTEGER(dim).add(0),
+                        xx,
+                        yy,
+                        ww,
+                        hh,
+                        rotationAngle,
+                        interp_i,
+                        gc,
+                        dd,
+                    );
+                }
+            } else {
+                let mut xadj: c_double = 0.0;
+                let mut yadj: c_double = 0.0;
+                justification(ww, hh, hjust_i, vjust_i, &mut xadj, &mut yadj);
+                let xadjInches = Rf_protect(unit(xadj, L_INCHES));
+                let yadjInches = Rf_protect(unit(yadj, L_INCHES));
+                let mut dw: c_double = 0.0;
+                let mut dh: c_double = 0.0;
+                transformDimn(
+                    xadjInches,
+                    yadjInches,
+                    0,
+                    vpc,
                     gc,
+                    vpWidthCM,
+                    vpHeightCM,
                     dd,
+                    rotationAngle,
+                    &mut dw,
+                    &mut dh,
                 );
+                let mut xbl = xx + dw;
+                let mut ybl = yy + dh;
+                xbl = toDeviceX(xbl, GE_INCHES, dd);
+                ybl = toDeviceY(ybl, GE_INCHES, dd);
+                ww = toDeviceWidth(ww, GE_INCHES, dd);
+                hh = toDeviceHeight(hh, GE_INCHES, dd);
+                if xbl.is_finite() && ybl.is_finite() && ww.is_finite() && hh.is_finite() {
+                    GERaster(
+                        image,
+                        *INTEGER(dim).add(1),
+                        *INTEGER(dim).add(0),
+                        xbl,
+                        ybl,
+                        ww,
+                        hh,
+                        rotationAngle,
+                        interp_i,
+                        gc,
+                        dd,
+                    );
+                }
+                Rf_unprotect(2);
             }
-            Rf_unprotect(2);
         }
+        GEMode(0, dd);
+        Rf_unprotect(1);
+        R_NilValue()
     }
-    GEMode(0, dd);
-    Rf_unprotect(1);
-    R_NilValue()
 }
 
 /* ==============================
@@ -3081,15 +3236,17 @@ pub unsafe fn L_raster(
  * ============================== */
 
 pub unsafe fn L_cap() -> SEXP {
-    let dd = getDevice();
-    let raster = Rf_protect(GECap(dd));
-    if isNull(raster) {
-        Rf_unprotect(1);
-        R_NilValue()
-    } else {
-        let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, LENGTH(raster)));
-        Rf_unprotect(2);
-        image
+    unsafe {
+        let dd = getDevice();
+        let raster = Rf_protect(GECap(dd));
+        if isNull(raster) {
+            Rf_unprotect(1);
+            R_NilValue()
+        } else {
+            let image = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, LENGTH(raster)));
+            Rf_unprotect(2);
+            image
+        }
     }
 }
 
@@ -3108,7 +3265,7 @@ unsafe fn gridText(
     _theta: c_double,
     _draw: bool,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ==============================
@@ -3124,8 +3281,10 @@ pub unsafe fn L_text(
     rot: SEXP,
     checkOverlap: SEXP,
 ) -> SEXP {
-    gridText(label, x, y, hjust, vjust, rot, checkOverlap, 0.0, true);
-    R_NilValue()
+    unsafe {
+        gridText(label, x, y, hjust, vjust, rot, checkOverlap, 0.0, true);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -3141,19 +3300,21 @@ pub unsafe fn L_textBounds(
     rot: SEXP,
     theta: SEXP,
 ) -> SEXP {
-    let checkOverlap = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
-    *LOGICAL(checkOverlap) = 0;
-    gridText(
-        label,
-        x,
-        y,
-        hjust,
-        vjust,
-        rot,
-        checkOverlap,
-        *REAL(theta),
-        false,
-    )
+    unsafe {
+        let checkOverlap = Rf_allocVector(SEXPTYPE::LGLSXP, 1);
+        *LOGICAL(checkOverlap) = 0;
+        gridText(
+            label,
+            x,
+            y,
+            hjust,
+            vjust,
+            rot,
+            checkOverlap,
+            *REAL(theta),
+            false,
+        )
+    }
 }
 
 /* ==============================
@@ -3161,17 +3322,19 @@ pub unsafe fn L_textBounds(
  * ============================== */
 
 unsafe fn symbolCoords(x: *const f64, y: *const f64, n: c_int, _dd: pGEDevDesc) -> SEXP {
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-    let xs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-    let ys = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-    for i in 0..n as usize {
-        *REAL(xs).add(i) = *x.add(i);
-        *REAL(ys).add(i) = *y.add(i);
+    unsafe {
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+        let xs = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let ys = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        for i in 0..n as usize {
+            *REAL(xs).add(i) = *x.add(i);
+            *REAL(ys).add(i) = *y.add(i);
+        }
+        SET_VECTOR_ELT(result, 0 as R_xlen_t, xs);
+        SET_VECTOR_ELT(result, 1 as R_xlen_t, ys);
+        Rf_unprotect(3);
+        result
     }
-    SET_VECTOR_ELT(result, 0 as R_xlen_t, xs);
-    SET_VECTOR_ELT(result, 1 as R_xlen_t, ys);
-    Rf_unprotect(3);
-    result
 }
 
 /* ==============================
@@ -3238,7 +3401,7 @@ pub unsafe fn gridSymbol(
     _gc: pGEcontext,
     _dd: pGEDevDesc,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ==============================
@@ -3253,7 +3416,7 @@ unsafe fn gridPoints(
     _draw: bool,
     _closed: bool,
 ) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /* ==============================
@@ -3261,7 +3424,7 @@ unsafe fn gridPoints(
  * ============================== */
 
 pub unsafe fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
-    gridPoints(x, y, pch, size, true, false)
+    unsafe { gridPoints(x, y, pch, size, true, false) }
 }
 
 /* ==============================
@@ -3269,7 +3432,7 @@ pub unsafe fn L_points(x: SEXP, y: SEXP, pch: SEXP, size: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SEXP) -> SEXP {
-    gridPoints(x, y, pch, size, false, asBool(closed) != 0)
+    unsafe { gridPoints(x, y, pch, size, false, asBool(closed) != 0) }
 }
 
 /* ==============================
@@ -3277,101 +3440,103 @@ pub unsafe fn L_pointsPoints(x: SEXP, y: SEXP, pch: SEXP, size: SEXP, closed: SE
  * ============================== */
 
 pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentvp = gridStateElement(dd, GSS_VP);
-    let currentgp = gridStateElement(dd, GSS_GPAR);
+    unsafe {
+        let dd = getDevice();
+        let currentvp = gridStateElement(dd, GSS_VP);
+        let currentgp = gridStateElement(dd, GSS_GPAR);
 
-    let mut vpWidthCM: c_double = 0.0;
-    let mut vpHeightCM: c_double = 0.0;
-    let mut rotationAngle: c_double = 0.0;
-    let mut transform: LTransform = [[0.0; 3]; 3];
-    getViewportTransform(
-        currentvp,
-        dd,
-        &mut vpWidthCM,
-        &mut vpHeightCM,
-        &mut transform,
-        &mut rotationAngle,
-    );
+        let mut vpWidthCM: c_double = 0.0;
+        let mut vpHeightCM: c_double = 0.0;
+        let mut rotationAngle: c_double = 0.0;
+        let mut transform: LTransform = [[0.0; 3]; 3];
+        getViewportTransform(
+            currentvp,
+            dd,
+            &mut vpWidthCM,
+            &mut vpHeightCM,
+            &mut transform,
+            &mut rotationAngle,
+        );
 
-    let mut vpc = LViewportContext::default();
-    getViewportContext(currentvp, &mut vpc);
+        let mut vpc = LViewportContext::default();
+        getViewportContext(currentvp, &mut vpc);
 
-    GEMode(1, dd);
-
-    /*
-     * Only set ONE clip rectangle (i.e., NOT vectorised)
-     */
-    let mut gc_buf: [u8; 256] = [0; 256];
-    let gc = gc_buf.as_mut_ptr() as pGEcontext;
-    gcontextFromgpar(currentgp, 0, gc, dd);
-
-    let mut xx: c_double = 0.0;
-    let mut yy: c_double = 0.0;
-    transformLocn(
-        x,
-        y,
-        0,
-        vpc,
-        gc,
-        vpWidthCM,
-        vpHeightCM,
-        dd,
-        &mut transform,
-        &mut xx,
-        &mut yy,
-    );
-    let ww = transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
-    let hh = transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
-
-    /*
-     * We can ONLY clip if the total rotation angle is zero.
-     */
-    if rotationAngle == 0.0 {
-        let hjust_val = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
-            *REAL(hjust)
-        } else {
-            0.0
-        };
-        let vjust_val = if TYPEOF(vjust) == SEXPTYPE::REALSXP && LENGTH(vjust) > 0 {
-            *REAL(vjust)
-        } else {
-            0.0
-        };
-        xx = justifyX(xx, ww, hjust_val);
-        yy = justifyY(yy, hh, vjust_val);
+        GEMode(1, dd);
 
         /*
-         * The graphics engine only takes device coordinates
+         * Only set ONE clip rectangle (i.e., NOT vectorised)
          */
-        xx = toDeviceX(xx, GE_INCHES, dd);
-        yy = toDeviceY(yy, GE_INCHES, dd);
-        let ww_dev = toDeviceWidth(ww, GE_INCHES, dd);
-        let hh_dev = toDeviceHeight(hh, GE_INCHES, dd);
+        let mut gc_buf: [u8; 256] = [0; 256];
+        let gc = gc_buf.as_mut_ptr() as pGEcontext;
+        gcontextFromgpar(currentgp, 0, gc, dd);
 
-        if xx.is_finite() && yy.is_finite() && ww_dev.is_finite() && hh_dev.is_finite() {
-            GESetClip(xx, yy, xx + ww_dev, yy + hh_dev, dd);
+        let mut xx: c_double = 0.0;
+        let mut yy: c_double = 0.0;
+        transformLocn(
+            x,
+            y,
+            0,
+            vpc,
+            gc,
+            vpWidthCM,
+            vpHeightCM,
+            dd,
+            &mut transform,
+            &mut xx,
+            &mut yy,
+        );
+        let ww = transformWidthtoINCHES(w, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
+        let hh = transformHeighttoINCHES(h, 0, vpc, gc, vpWidthCM, vpHeightCM, dd);
+
+        /*
+         * We can ONLY clip if the total rotation angle is zero.
+         */
+        if rotationAngle == 0.0 {
+            let hjust_val = if TYPEOF(hjust) == SEXPTYPE::REALSXP && LENGTH(hjust) > 0 {
+                *REAL(hjust)
+            } else {
+                0.0
+            };
+            let vjust_val = if TYPEOF(vjust) == SEXPTYPE::REALSXP && LENGTH(vjust) > 0 {
+                *REAL(vjust)
+            } else {
+                0.0
+            };
+            xx = justifyX(xx, ww, hjust_val);
+            yy = justifyY(yy, hh, vjust_val);
 
             /*
-             * ALSO set the current clip region for the current viewport so that,
-             * if a viewport is pushed within the current viewport, when that
-             * viewport gets popped again, the clip region returns to what was
-             * set by THIS clipGrob.
+             * The graphics engine only takes device coordinates
              */
-            let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
-            *REAL(currentClip).add(0) = xx;
-            *REAL(currentClip).add(1) = yy;
-            *REAL(currentClip).add(2) = xx + ww_dev;
-            *REAL(currentClip).add(3) = yy + hh_dev;
-            SET_VECTOR_ELT(currentvp, PVP_CLIPRECT as R_xlen_t, currentClip);
-            Rf_unprotect(1);
-        }
-    } else {
-        Rf_warning(c"unable to clip to rotated rectangle".as_ptr());
-    }
+            xx = toDeviceX(xx, GE_INCHES, dd);
+            yy = toDeviceY(yy, GE_INCHES, dd);
+            let ww_dev = toDeviceWidth(ww, GE_INCHES, dd);
+            let hh_dev = toDeviceHeight(hh, GE_INCHES, dd);
 
-    GEMode(0, dd);
-    R_NilValue()
+            if xx.is_finite() && yy.is_finite() && ww_dev.is_finite() && hh_dev.is_finite() {
+                GESetClip(xx, yy, xx + ww_dev, yy + hh_dev, dd);
+
+                /*
+                 * ALSO set the current clip region for the current viewport so that,
+                 * if a viewport is pushed within the current viewport, when that
+                 * viewport gets popped again, the clip region returns to what was
+                 * set by THIS clipGrob.
+                 */
+                let currentClip = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 4));
+                *REAL(currentClip).add(0) = xx;
+                *REAL(currentClip).add(1) = yy;
+                *REAL(currentClip).add(2) = xx + ww_dev;
+                *REAL(currentClip).add(3) = yy + hh_dev;
+                SET_VECTOR_ELT(currentvp, PVP_CLIPRECT as R_xlen_t, currentClip);
+                Rf_unprotect(1);
+            }
+        } else {
+            Rf_warning(c"unable to clip to rotated rectangle".as_ptr());
+        }
+
+        GEMode(0, dd);
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -3379,8 +3544,10 @@ pub unsafe fn L_clip(x: SEXP, y: SEXP, w: SEXP, h: SEXP, hjust: SEXP, vjust: SEX
  * ============================== */
 
 pub unsafe fn L_pretty(scale: SEXP) -> SEXP {
-    let n_ = Rf_ScalarInteger(5);
-    L_pretty2(scale, n_)
+    unsafe {
+        let n_ = Rf_ScalarInteger(5);
+        L_pretty2(scale, n_)
+    }
 }
 
 /* ==============================
@@ -3388,28 +3555,30 @@ pub unsafe fn L_pretty(scale: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
-    let mut min = numeric(scale, 0);
-    let mut max = numeric(scale, 1);
-    let mut n = crate::main::coerce::asInteger(n_);
-    let mut temp: f64;
+    unsafe {
+        let mut min = numeric(scale, 0);
+        let mut max = numeric(scale, 1);
+        let mut n = crate::main::coerce::asInteger(n_);
+        let mut temp: f64;
 
-    let swap = min > max;
-    if swap {
-        temp = min;
-        min = max;
-        max = temp;
+        let swap = min > max;
+        if swap {
+            temp = min;
+            min = max;
+            max = temp;
+        }
+
+        GEPretty(&mut min, &mut max, &mut n);
+
+        if swap {
+            temp = min;
+            min = max;
+            max = temp;
+        }
+
+        let mut axp = [min, max, n as f64];
+        Rf_CreateAtVector(axp.as_mut_ptr(), ptr::null_mut(), n, 0)
     }
-
-    GEPretty(&mut min, &mut max, &mut n);
-
-    if swap {
-        temp = min;
-        min = max;
-        max = temp;
-    }
-
-    let mut axp = [min, max, n as f64];
-    Rf_CreateAtVector(axp.as_mut_ptr(), ptr::null_mut(), n, 0)
 }
 
 /* ==============================
@@ -3417,11 +3586,13 @@ pub unsafe fn L_pretty2(scale: SEXP, n_: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_locator() -> SEXP {
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
-    *REAL(answer).add(0) = f64::NAN;
-    *REAL(answer).add(1) = f64::NAN;
-    Rf_unprotect(1);
-    answer
+    unsafe {
+        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 2));
+        *REAL(answer).add(0) = f64::NAN;
+        *REAL(answer).add(1) = f64::NAN;
+        Rf_unprotect(1);
+        answer
+    }
 }
 
 /* ==============================
@@ -3429,8 +3600,10 @@ pub unsafe fn L_locator() -> SEXP {
  * ============================== */
 
 pub unsafe fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
-    // Full implementation requires unit conversion
-    R_NilValue()
+    unsafe {
+        // Full implementation requires unit conversion
+        R_NilValue()
+    }
 }
 
 /* ==============================
@@ -3438,58 +3611,60 @@ pub unsafe fn L_locnBounds(x: SEXP, y: SEXP, theta: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
-    let dd = getDevice();
-    let currentgp = gridStateElement(dd, GSS_GPAR);
-    let n = if !label.is_null() && label != R_NilValue() {
-        LENGTH(label)
-    } else {
-        0
-    };
-
-    let ascent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-    let descent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-    let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
-
-    let mut gc: [u8; 256] = [0; 256];
-    gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
-
-    for i in 0..n as R_xlen_t {
-        let mut ascent: f64 = 0.0;
-        let mut descent: f64 = 0.0;
-        let mut width: f64 = 0.0;
-        if TYPEOF(label) == SEXPTYPE::EXPRSXP {
-            GEExpressionMetric(
-                VECTOR_ELT(label, i),
-                gc.as_ptr() as pGEcontext,
-                &mut ascent,
-                &mut descent,
-                &mut width,
-                dd,
-            );
+    unsafe {
+        let dd = getDevice();
+        let currentgp = gridStateElement(dd, GSS_GPAR);
+        let n = if !label.is_null() && label != R_NilValue() {
+            LENGTH(label)
         } else {
-            let s = CHAR(STRING_ELT(label, i));
-            let ce = getCharCE(STRING_ELT(label, i));
-            GEStrMetric(
-                s,
-                ce,
-                gc.as_ptr() as pGEcontext,
-                &mut ascent,
-                &mut descent,
-                &mut width,
-                dd,
-            );
-        }
-        *REAL(ascent_vec).add(i as usize) = ascent;
-        *REAL(descent_vec).add(i as usize) = descent;
-        *REAL(width_vec).add(i as usize) = width;
-    }
+            0
+        };
 
-    let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
-    SET_VECTOR_ELT(result, 0, ascent_vec);
-    SET_VECTOR_ELT(result, 1, descent_vec);
-    SET_VECTOR_ELT(result, 2, width_vec);
-    Rf_unprotect(4);
-    result
+        let ascent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let descent_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+        let width_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, n));
+
+        let mut gc: [u8; 256] = [0; 256];
+        gcontextFromgpar(currentgp, 0, gc.as_mut_ptr() as pGEcontext, dd);
+
+        for i in 0..n as R_xlen_t {
+            let mut ascent: f64 = 0.0;
+            let mut descent: f64 = 0.0;
+            let mut width: f64 = 0.0;
+            if TYPEOF(label) == SEXPTYPE::EXPRSXP {
+                GEExpressionMetric(
+                    VECTOR_ELT(label, i),
+                    gc.as_ptr() as pGEcontext,
+                    &mut ascent,
+                    &mut descent,
+                    &mut width,
+                    dd,
+                );
+            } else {
+                let s = CHAR(STRING_ELT(label, i));
+                let ce = getCharCE(STRING_ELT(label, i));
+                GEStrMetric(
+                    s,
+                    ce,
+                    gc.as_ptr() as pGEcontext,
+                    &mut ascent,
+                    &mut descent,
+                    &mut width,
+                    dd,
+                );
+            }
+            *REAL(ascent_vec).add(i as usize) = ascent;
+            *REAL(descent_vec).add(i as usize) = descent;
+            *REAL(width_vec).add(i as usize) = width;
+        }
+
+        let result = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+        SET_VECTOR_ELT(result, 0, ascent_vec);
+        SET_VECTOR_ELT(result, 1, descent_vec);
+        SET_VECTOR_ELT(result, 2, width_vec);
+        Rf_unprotect(4);
+        result
+    }
 }
 
 /* ==============================
@@ -3497,5 +3672,5 @@ pub unsafe fn L_stringMetric(label: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn L_convertToNative(_x: SEXP, _what: SEXP) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }

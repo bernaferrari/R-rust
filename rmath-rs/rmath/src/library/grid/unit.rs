@@ -1,4 +1,3 @@
-#![allow(unsafe_op_in_unsafe_fn)] // legacy C-port unsafe boundary; see docs/unsafe-op-allowlist.tsv.
 /*
  *  R : A Computer Language for Statistical Data Analysis
  *  Port of R's src/library/grid/src/unit.c (2043 lines)
@@ -84,17 +83,17 @@ pub type LViewportContext = super::types::LViewportContext;
 
 /// uValue(X) - get value from a unit scalar (single unit)
 unsafe fn uValue(x: SEXP) -> c_double {
-    *REAL(VECTOR_ELT(x, 0)).add(0)
+    unsafe { *REAL(VECTOR_ELT(x, 0)).add(0) }
 }
 
 /// uData(X) - get data from a unit scalar
 unsafe fn uData(x: SEXP) -> SEXP {
-    VECTOR_ELT(x, 1)
+    unsafe { VECTOR_ELT(x, 1) }
 }
 
 /// uUnit(X) - get unit type from a unit scalar
 unsafe fn uUnit(x: SEXP) -> c_int {
-    *INTEGER(VECTOR_ELT(x, 2)).add(0)
+    unsafe { *INTEGER(VECTOR_ELT(x, 2)).add(0) }
 }
 
 /// isAbsolute(X) - check if unit is an absolute unit type
@@ -199,31 +198,37 @@ fn combineArithmeticUnitValues(op: c_int, value: c_double, values: &[c_double]) 
 
 #[inline]
 unsafe fn gc_pointsize_inches(gc: pGEcontext) -> c_double {
-    if gc.is_null() {
-        12.0 / POINTS_PER_INCH
-    } else {
-        let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-        ((*gc).ps * (*gc).cex) / POINTS_PER_INCH
+    unsafe {
+        if gc.is_null() {
+            12.0 / POINTS_PER_INCH
+        } else {
+            let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+            ((*gc).ps * (*gc).cex) / POINTS_PER_INCH
+        }
     }
 }
 
 #[inline]
 unsafe fn gc_lineheight_inches(gc: pGEcontext) -> c_double {
-    let multiplier = if gc.is_null() {
-        1.2
-    } else {
-        let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-        (*gc).lineheight
-    };
-    gc_pointsize_inches(gc) * multiplier
+    unsafe {
+        let multiplier = if gc.is_null() {
+            1.2
+        } else {
+            let gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+            (*gc).lineheight
+        };
+        gc_pointsize_inches(gc) * multiplier
+    }
 }
 
 unsafe fn unit_data_string(unit: SEXP, index: c_int) -> *const c_char {
-    let data = unitData(unit, index);
-    if data.is_null() || TYPEOF(data) != SEXPTYPE::STRSXP || LENGTH(data) <= 0 {
-        return std::ptr::null();
+    unsafe {
+        let data = unitData(unit, index);
+        if data.is_null() || TYPEOF(data) != SEXPTYPE::STRSXP || LENGTH(data) <= 0 {
+            return std::ptr::null();
+        }
+        CHAR(STRING_ELT(data, (index % LENGTH(data)) as R_xlen_t))
     }
-    CHAR(STRING_ELT(data, (index % LENGTH(data)) as R_xlen_t))
 }
 
 fn fallback_string_metrics(
@@ -259,72 +264,76 @@ unsafe fn string_metrics_inches(
     gc: pGEcontext,
     dd: pGEDevDesc,
 ) -> (c_double, c_double, c_double, c_double) {
-    let text = unit_data_string(unit, index);
-    if text.is_null() || dd.is_null() {
-        return fallback_string_metrics(text, gc);
+    unsafe {
+        let text = unit_data_string(unit, index);
+        if text.is_null() || dd.is_null() {
+            return fallback_string_metrics(text, gc);
+        }
+
+        let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+        let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+
+        let mut ascent = 0.0;
+        let mut descent = 0.0;
+        let mut width = 0.0;
+        rmath_ge_str_metric(
+            text,
+            0,
+            ffi_gc,
+            &mut ascent,
+            &mut descent,
+            &mut width,
+            ffi_dd,
+        );
+        let mut height = rmath_ge_str_height(text, 0, ffi_gc, ffi_dd);
+
+        width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
+        ascent = rmath_ge_from_device_height(ascent, GE_INCHES, ffi_dd);
+        descent = rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd);
+        height = rmath_ge_from_device_height(height, GE_INCHES, ffi_dd);
+
+        if width == 0.0 && height == 0.0 && ascent == 0.0 && descent == 0.0 {
+            return fallback_string_metrics(text, gc);
+        }
+
+        (width, height, ascent, descent)
     }
-
-    let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-    let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
-
-    let mut ascent = 0.0;
-    let mut descent = 0.0;
-    let mut width = 0.0;
-    rmath_ge_str_metric(
-        text,
-        0,
-        ffi_gc,
-        &mut ascent,
-        &mut descent,
-        &mut width,
-        ffi_dd,
-    );
-    let mut height = rmath_ge_str_height(text, 0, ffi_gc, ffi_dd);
-
-    width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
-    ascent = rmath_ge_from_device_height(ascent, GE_INCHES, ffi_dd);
-    descent = rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd);
-    height = rmath_ge_from_device_height(height, GE_INCHES, ffi_dd);
-
-    if width == 0.0 && height == 0.0 && ascent == 0.0 && descent == 0.0 {
-        return fallback_string_metrics(text, gc);
-    }
-
-    (width, height, ascent, descent)
 }
 
 unsafe fn char_metric_inches(gc: pGEcontext, dd: pGEDevDesc) -> (c_double, c_double, c_double) {
-    if dd.is_null() {
-        let pointsize = gc_pointsize_inches(gc);
-        let lineheight = gc_lineheight_inches(gc);
-        return (pointsize * 0.6, lineheight, 0.0);
-    }
+    unsafe {
+        if dd.is_null() {
+            let pointsize = gc_pointsize_inches(gc);
+            let lineheight = gc_lineheight_inches(gc);
+            return (pointsize * 0.6, lineheight, 0.0);
+        }
 
-    let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
-    let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
-    let mut ascent = 0.0;
-    let mut descent = 0.0;
-    let mut width = 0.0;
-    rmath_ge_metric_info(
-        'M' as c_int,
-        ffi_gc,
-        &mut ascent,
-        &mut descent,
-        &mut width,
-        ffi_dd,
-    );
-    let height = rmath_ge_from_device_height(ascent + descent, GE_INCHES, ffi_dd);
-    let width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
-    if width == 0.0 && height == 0.0 {
-        let pointsize = gc_pointsize_inches(gc);
-        let lineheight = gc_lineheight_inches(gc);
-        (pointsize * 0.6, lineheight, 0.0)
-    } else {
-        (
-            width,
-            height.max(gc_lineheight_inches(gc)),
-            rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd),
-        )
+        let ffi_gc = gc as crate::mainutils::graphics_ffi::pGEcontext;
+        let ffi_dd = dd as crate::mainutils::graphics_ffi::pGEDevDesc;
+        let mut ascent = 0.0;
+        let mut descent = 0.0;
+        let mut width = 0.0;
+        rmath_ge_metric_info(
+            'M' as c_int,
+            ffi_gc,
+            &mut ascent,
+            &mut descent,
+            &mut width,
+            ffi_dd,
+        );
+        let height = rmath_ge_from_device_height(ascent + descent, GE_INCHES, ffi_dd);
+        let width = rmath_ge_from_device_width(width, GE_INCHES, ffi_dd);
+        if width == 0.0 && height == 0.0 {
+            let pointsize = gc_pointsize_inches(gc);
+            let lineheight = gc_lineheight_inches(gc);
+            (pointsize * 0.6, lineheight, 0.0)
+        } else {
+            (
+                width,
+                height.max(gc_lineheight_inches(gc)),
+                rmath_ge_from_device_height(descent, GE_INCHES, ffi_dd),
+            )
+        }
     }
 }
 
@@ -338,19 +347,21 @@ unsafe fn transformArithmeticUnitToINCHES(
     dd: pGEDevDesc,
     convert: TransformToInchesFn,
 ) -> c_double {
-    let op = unitUnit(unit, index);
-    let value = unitValue(unit, index);
-    let data = unitData(unit, index);
-    let n = unitLength(data);
-    if n <= 0 {
-        return 0.0;
-    }
+    unsafe {
+        let op = unitUnit(unit, index);
+        let value = unitValue(unit, index);
+        let data = unitData(unit, index);
+        let n = unitLength(data);
+        if n <= 0 {
+            return 0.0;
+        }
 
-    let mut values = Vec::with_capacity(n as usize);
-    for i in 0..n {
-        values.push(convert(data, i, vpc, gc, widthCM, heightCM, dd));
+        let mut values = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            values.push(convert(data, i, vpc, gc, widthCM, heightCM, dd));
+        }
+        combineArithmeticUnitValues(op, value, &values)
     }
-    combineArithmeticUnitValues(op, value, &values)
 }
 
 /* ==============================
@@ -358,18 +369,20 @@ unsafe fn transformArithmeticUnitToINCHES(
  * ============================== */
 
 pub unsafe fn unit(value: c_double, unit_id: c_int) -> SEXP {
-    let units = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
-    SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP, 3));
-    let u = VECTOR_ELT(units, 0);
-    SET_VECTOR_ELT(u, 0 as R_xlen_t, Rf_ScalarReal(value));
-    SET_VECTOR_ELT(u, 1 as R_xlen_t, R_NilValue());
-    SET_VECTOR_ELT(u, 2 as R_xlen_t, Rf_ScalarInteger(unit_id));
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
-    SET_STRING_ELT(cl, 0 as R_xlen_t, Rf_mkChar(c"unit".as_ptr()));
-    SET_STRING_ELT(cl, 1 as R_xlen_t, Rf_mkChar(c"unit_v2".as_ptr()));
-    R_classgets(units, cl);
-    Rf_unprotect(2);
-    units
+    unsafe {
+        let units = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+        SET_VECTOR_ELT(units, 0 as R_xlen_t, Rf_allocVector(SEXPTYPE::VECSXP, 3));
+        let u = VECTOR_ELT(units, 0);
+        SET_VECTOR_ELT(u, 0 as R_xlen_t, Rf_ScalarReal(value));
+        SET_VECTOR_ELT(u, 1 as R_xlen_t, R_NilValue());
+        SET_VECTOR_ELT(u, 2 as R_xlen_t, Rf_ScalarInteger(unit_id));
+        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        SET_STRING_ELT(cl, 0 as R_xlen_t, Rf_mkChar(c"unit".as_ptr()));
+        SET_STRING_ELT(cl, 1 as R_xlen_t, Rf_mkChar(c"unit_v2".as_ptr()));
+        R_classgets(units, cl);
+        Rf_unprotect(2);
+        units
+    }
 }
 
 /* ==============================
@@ -377,11 +390,11 @@ pub unsafe fn unit(value: c_double, unit_id: c_int) -> SEXP {
  * ============================== */
 
 unsafe fn isSimpleUnit(unit: SEXP) -> bool {
-    Rf_inherits(unit, c"simpleUnit".as_ptr()) != 0
+    unsafe { Rf_inherits(unit, c"simpleUnit".as_ptr()) != 0 }
 }
 
 unsafe fn isNewUnit(unit: SEXP) -> bool {
-    Rf_inherits(unit, c"unit_v2".as_ptr()) != 0
+    unsafe { Rf_inherits(unit, c"unit_v2".as_ptr()) != 0 }
 }
 
 unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
@@ -394,38 +407,40 @@ unsafe fn upgradeUnit(unit: SEXP) -> SEXP {
  * ============================== */
 
 pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
-    let l = LENGTH(unit);
-    if l == 0 {
-        // C raises an error here; this port returns NilValue until the error bridge lands.
-        return R_NilValue();
-    }
-    let i = index % l;
-    if isSimpleUnit(unit) {
-        let new_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
-        SET_VECTOR_ELT(
-            new_unit,
-            0 as R_xlen_t,
-            Rf_ScalarReal(*REAL(unit).add(i as usize)),
-        );
-        SET_VECTOR_ELT(new_unit, 1 as R_xlen_t, R_NilValue());
-        let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
-        let unit_val = if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
-            *INTEGER(unit_attr).add(0)
-        } else {
-            0
-        };
-        SET_VECTOR_ELT(new_unit, 2 as R_xlen_t, Rf_ScalarInteger(unit_val));
+    unsafe {
+        let l = LENGTH(unit);
+        if l == 0 {
+            // C raises an error here; this port returns NilValue until the error bridge lands.
+            return R_NilValue();
+        }
+        let i = index % l;
+        if isSimpleUnit(unit) {
+            let new_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+            SET_VECTOR_ELT(
+                new_unit,
+                0 as R_xlen_t,
+                Rf_ScalarReal(*REAL(unit).add(i as usize)),
+            );
+            SET_VECTOR_ELT(new_unit, 1 as R_xlen_t, R_NilValue());
+            let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
+            let unit_val = if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
+                *INTEGER(unit_attr).add(0)
+            } else {
+                0
+            };
+            SET_VECTOR_ELT(new_unit, 2 as R_xlen_t, Rf_ScalarInteger(unit_val));
+            Rf_unprotect(1);
+            return new_unit;
+        }
+        if isNewUnit(unit) {
+            return VECTOR_ELT(unit, i as R_xlen_t);
+        }
+        // Fallback: try to upgrade
+        let unit2 = Rf_protect(upgradeUnit(unit));
+        let res = unitScalar(unit2, index);
         Rf_unprotect(1);
-        return new_unit;
+        res
     }
-    if isNewUnit(unit) {
-        return VECTOR_ELT(unit, i as R_xlen_t);
-    }
-    // Fallback: try to upgrade
-    let unit2 = Rf_protect(upgradeUnit(unit));
-    let res = unitScalar(unit2, index);
-    Rf_unprotect(1);
-    res
 }
 
 /* ==============================
@@ -433,10 +448,12 @@ pub unsafe fn unitScalar(unit: SEXP, index: c_int) -> SEXP {
  * ============================== */
 
 pub unsafe fn unitValue(unit: SEXP, index: c_int) -> c_double {
-    if isSimpleUnit(unit) {
-        return *REAL(unit).add((index % LENGTH(unit)) as usize);
+    unsafe {
+        if isSimpleUnit(unit) {
+            return *REAL(unit).add((index % LENGTH(unit)) as usize);
+        }
+        uValue(unitScalar(unit, index))
     }
-    uValue(unitScalar(unit, index))
 }
 
 /* ==============================
@@ -444,14 +461,16 @@ pub unsafe fn unitValue(unit: SEXP, index: c_int) -> c_double {
  * ============================== */
 
 pub unsafe fn unitUnit(unit: SEXP, index: c_int) -> c_int {
-    if isSimpleUnit(unit) {
-        let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
-        if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
-            return *INTEGER(unit_attr).add(0);
+    unsafe {
+        if isSimpleUnit(unit) {
+            let unit_attr = getAttrib(unit, Rf_install(c"unit".as_ptr()));
+            if TYPEOF(unit_attr) == SEXPTYPE::INTSXP && LENGTH(unit_attr) > 0 {
+                return *INTEGER(unit_attr).add(0);
+            }
+            return 0;
         }
-        return 0;
+        uUnit(unitScalar(unit, index))
     }
-    uUnit(unitScalar(unit, index))
 }
 
 /* ==============================
@@ -459,10 +478,12 @@ pub unsafe fn unitUnit(unit: SEXP, index: c_int) -> c_int {
  * ============================== */
 
 pub unsafe fn unitData(unit: SEXP, index: c_int) -> SEXP {
-    if isSimpleUnit(unit) {
-        return R_NilValue();
+    unsafe {
+        if isSimpleUnit(unit) {
+            return R_NilValue();
+        }
+        uData(unitScalar(unit, index))
     }
-    uData(unitScalar(unit, index))
 }
 
 /* ==============================
@@ -470,10 +491,12 @@ pub unsafe fn unitData(unit: SEXP, index: c_int) -> SEXP {
  * ============================== */
 
 pub unsafe fn unitLength(u: SEXP) -> c_int {
-    if isNewUnit(u) {
-        return LENGTH(u);
+    unsafe {
+        if isNewUnit(u) {
+            return LENGTH(u);
+        }
+        LENGTH(upgradeUnit(u))
     }
-    LENGTH(upgradeUnit(u))
 }
 
 /* ==============================
@@ -481,37 +504,39 @@ pub unsafe fn unitLength(u: SEXP) -> c_int {
  * ============================== */
 
 pub unsafe fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
-    let u = unitUnit(unit, index);
-    let value = unitValue(unit, index);
-    match u {
-        L_SUM => {
-            let data = unitData(unit, index);
-            let n = unitLength(data);
-            let mut values = Vec::with_capacity(n as usize);
-            for i in 0..n {
-                values.push(pureNullUnitValue(data, i));
+    unsafe {
+        let u = unitUnit(unit, index);
+        let value = unitValue(unit, index);
+        match u {
+            L_SUM => {
+                let data = unitData(unit, index);
+                let n = unitLength(data);
+                let mut values = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    values.push(pureNullUnitValue(data, i));
+                }
+                combineArithmeticUnitValues(u, value, &values)
             }
-            combineArithmeticUnitValues(u, value, &values)
-        }
-        L_MIN => {
-            let data = unitData(unit, index);
-            let n = unitLength(data);
-            let mut values = Vec::with_capacity(n as usize);
-            for i in 0..n {
-                values.push(pureNullUnitValue(data, i));
+            L_MIN => {
+                let data = unitData(unit, index);
+                let n = unitLength(data);
+                let mut values = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    values.push(pureNullUnitValue(data, i));
+                }
+                combineArithmeticUnitValues(u, value, &values)
             }
-            combineArithmeticUnitValues(u, value, &values)
-        }
-        L_MAX => {
-            let data = unitData(unit, index);
-            let n = unitLength(data);
-            let mut values = Vec::with_capacity(n as usize);
-            for i in 0..n {
-                values.push(pureNullUnitValue(data, i));
+            L_MAX => {
+                let data = unitData(unit, index);
+                let n = unitLength(data);
+                let mut values = Vec::with_capacity(n as usize);
+                for i in 0..n {
+                    values.push(pureNullUnitValue(data, i));
+                }
+                combineArithmeticUnitValues(u, value, &values)
             }
-            combineArithmeticUnitValues(u, value, &values)
+            _ => value,
         }
-        _ => value,
     }
 }
 
@@ -520,21 +545,23 @@ pub unsafe fn pureNullUnitValue(unit: SEXP, index: c_int) -> c_double {
  * ============================== */
 
 pub unsafe fn pureNullUnit(unit: SEXP, index: c_int, _dd: pGEDevDesc) -> c_int {
-    let u = unitUnit(unit, index);
-    if isArith(u) {
-        let data = unitData(unit, index);
-        let n = unitLength(data);
-        let mut result: c_int = 1;
-        let mut i: c_int = 0;
-        while result != 0 && i < n {
-            result = result & pureNullUnit(data, i, _dd);
-            i += 1;
+    unsafe {
+        let u = unitUnit(unit, index);
+        if isArith(u) {
+            let data = unitData(unit, index);
+            let n = unitLength(data);
+            let mut result: c_int = 1;
+            let mut i: c_int = 0;
+            while result != 0 && i < n {
+                result = result & pureNullUnit(data, i, _dd);
+                i += 1;
+            }
+            result
+        } else {
+            // For non-arithmetic units, just check if it's L_NULL
+            // (simplified from C which also handles grobwidth/grobheight)
+            if u == L_NULL { 1 } else { 0 }
         }
-        result
-    } else {
-        // For non-arithmetic units, just check if it's L_NULL
-        // (simplified from C which also handles grobwidth/grobheight)
-        if u == L_NULL { 1 } else { 0 }
     }
 }
 
@@ -581,14 +608,16 @@ pub unsafe fn transformX(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(x, index);
-    if u == L_NULL {
-        return evaluateNullUnit(unitValue(x, index), widthCM, nullLMode, nullAMode);
+    unsafe {
+        let u = unitUnit(x, index);
+        if u == L_NULL {
+            return evaluateNullUnit(unitValue(x, index), widthCM, nullLMode, nullAMode);
+        }
+        if isArith(u) && pureNullUnit(x, index, dd) != 0 {
+            return evaluateNullUnit(pureNullUnitValue(x, index), widthCM, nullLMode, nullAMode);
+        }
+        transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
     }
-    if isArith(u) && pureNullUnit(x, index, dd) != 0 {
-        return evaluateNullUnit(pureNullUnitValue(x, index), widthCM, nullLMode, nullAMode);
-    }
-    transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
@@ -606,14 +635,16 @@ pub unsafe fn transformY(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(y, index);
-    if u == L_NULL {
-        return evaluateNullUnit(unitValue(y, index), heightCM, nullLMode, nullAMode);
+    unsafe {
+        let u = unitUnit(y, index);
+        if u == L_NULL {
+            return evaluateNullUnit(unitValue(y, index), heightCM, nullLMode, nullAMode);
+        }
+        if isArith(u) && pureNullUnit(y, index, dd) != 0 {
+            return evaluateNullUnit(pureNullUnitValue(y, index), heightCM, nullLMode, nullAMode);
+        }
+        transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
     }
-    if isArith(u) && pureNullUnit(y, index, dd) != 0 {
-        return evaluateNullUnit(pureNullUnitValue(y, index), heightCM, nullLMode, nullAMode);
-    }
-    transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
@@ -631,19 +662,21 @@ pub unsafe fn transformWidth(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(width, index);
-    if u == L_NULL {
-        return evaluateNullUnit(unitValue(width, index), widthCM, nullLMode, nullAMode);
+    unsafe {
+        let u = unitUnit(width, index);
+        if u == L_NULL {
+            return evaluateNullUnit(unitValue(width, index), widthCM, nullLMode, nullAMode);
+        }
+        if isArith(u) && pureNullUnit(width, index, dd) != 0 {
+            return evaluateNullUnit(
+                pureNullUnitValue(width, index),
+                widthCM,
+                nullLMode,
+                nullAMode,
+            );
+        }
+        transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd)
     }
-    if isArith(u) && pureNullUnit(width, index, dd) != 0 {
-        return evaluateNullUnit(
-            pureNullUnitValue(width, index),
-            widthCM,
-            nullLMode,
-            nullAMode,
-        );
-    }
-    transformWidthtoINCHES(width, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
@@ -661,19 +694,21 @@ pub unsafe fn transformHeight(
     nullAMode: c_int,
     dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(height, index);
-    if u == L_NULL {
-        return evaluateNullUnit(unitValue(height, index), heightCM, nullLMode, nullAMode);
+    unsafe {
+        let u = unitUnit(height, index);
+        if u == L_NULL {
+            return evaluateNullUnit(unitValue(height, index), heightCM, nullLMode, nullAMode);
+        }
+        if isArith(u) && pureNullUnit(height, index, dd) != 0 {
+            return evaluateNullUnit(
+                pureNullUnitValue(height, index),
+                heightCM,
+                nullLMode,
+                nullAMode,
+            );
+        }
+        transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd)
     }
-    if isArith(u) && pureNullUnit(height, index, dd) != 0 {
-        return evaluateNullUnit(
-            pureNullUnitValue(height, index),
-            heightCM,
-            nullLMode,
-            nullAMode,
-        );
-    }
-    transformHeighttoINCHES(height, index, vpc, gc, widthCM, heightCM, dd)
 }
 
 /* ==============================
@@ -689,42 +724,44 @@ pub unsafe fn transformXtoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(x, index);
-    let value = unitValue(x, index);
-    if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            x,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformXtoINCHES,
-        );
-    }
-    match u {
-        L_NATIVE => {
-            let range = vpc.xscalemax - vpc.xscalemin;
-            if range == 0.0 {
-                0.0
-            } else {
-                (value - vpc.xscalemin) / range * widthCM / 2.54
-            }
+    unsafe {
+        let u = unitUnit(x, index);
+        let value = unitValue(x, index);
+        if isArith(u) {
+            return transformArithmeticUnitToINCHES(
+                x,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformXtoINCHES,
+            );
         }
-        L_NPC => value * widthCM / 2.54,
-        L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).0,
-        L_STRINGWIDTH => value * string_metrics_inches(x, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
-        L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => 0.0,
-        L_NULL => 0.0,
-        _ => 0.0,
+        match u {
+            L_NATIVE => {
+                let range = vpc.xscalemax - vpc.xscalemin;
+                if range == 0.0 {
+                    0.0
+                } else {
+                    (value - vpc.xscalemin) / range * widthCM / 2.54
+                }
+            }
+            L_NPC => value * widthCM / 2.54,
+            L_SNPC => value * widthCM.min(heightCM) / 2.54,
+            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+            L_LINES => value * gc_lineheight_inches(_gc),
+            L_CHAR => value * char_metric_inches(_gc, _dd).0,
+            L_STRINGWIDTH => value * string_metrics_inches(x, index, _gc, _dd).0,
+            L_STRINGHEIGHT => value * string_metrics_inches(x, index, _gc, _dd).1,
+            L_STRINGASCENT => value * string_metrics_inches(x, index, _gc, _dd).2,
+            L_STRINGDESCENT => value * string_metrics_inches(x, index, _gc, _dd).3,
+            L_GROBX | L_GROBY | L_GROBWIDTH | L_GROBHEIGHT | L_GROBASCENT | L_GROBDESCENT => 0.0,
+            L_NULL => 0.0,
+            _ => 0.0,
+        }
     }
 }
 
@@ -741,41 +778,43 @@ pub unsafe fn transformYtoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(y, index);
-    let value = unitValue(y, index);
-    if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            y,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformYtoINCHES,
-        );
-    }
-    match u {
-        L_NATIVE => {
-            let range = vpc.yscalemax - vpc.yscalemin;
-            if range == 0.0 {
-                0.0
-            } else {
-                (value - vpc.yscalemin) / range * heightCM / 2.54
-            }
+    unsafe {
+        let u = unitUnit(y, index);
+        let value = unitValue(y, index);
+        if isArith(u) {
+            return transformArithmeticUnitToINCHES(
+                y,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformYtoINCHES,
+            );
         }
-        L_NPC => value * heightCM / 2.54,
-        L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).1,
-        L_STRINGWIDTH => value * string_metrics_inches(y, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
-        L_NULL => 0.0,
-        _ => 0.0,
+        match u {
+            L_NATIVE => {
+                let range = vpc.yscalemax - vpc.yscalemin;
+                if range == 0.0 {
+                    0.0
+                } else {
+                    (value - vpc.yscalemin) / range * heightCM / 2.54
+                }
+            }
+            L_NPC => value * heightCM / 2.54,
+            L_SNPC => value * widthCM.min(heightCM) / 2.54,
+            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+            L_LINES => value * gc_lineheight_inches(_gc),
+            L_CHAR => value * char_metric_inches(_gc, _dd).1,
+            L_STRINGWIDTH => value * string_metrics_inches(y, index, _gc, _dd).0,
+            L_STRINGHEIGHT => value * string_metrics_inches(y, index, _gc, _dd).1,
+            L_STRINGASCENT => value * string_metrics_inches(y, index, _gc, _dd).2,
+            L_STRINGDESCENT => value * string_metrics_inches(y, index, _gc, _dd).3,
+            L_NULL => 0.0,
+            _ => 0.0,
+        }
     }
 }
 
@@ -792,41 +831,43 @@ pub unsafe fn transformWidthtoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(w, index);
-    let value = unitValue(w, index);
-    if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            w,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformWidthtoINCHES,
-        );
-    }
-    match u {
-        L_NATIVE => {
-            let range = vpc.xscalemax - vpc.xscalemin;
-            if range == 0.0 {
-                0.0
-            } else {
-                value / range * widthCM / 2.54
-            }
+    unsafe {
+        let u = unitUnit(w, index);
+        let value = unitValue(w, index);
+        if isArith(u) {
+            return transformArithmeticUnitToINCHES(
+                w,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformWidthtoINCHES,
+            );
         }
-        L_NPC => value * widthCM / 2.54,
-        L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).0,
-        L_STRINGWIDTH => value * string_metrics_inches(w, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
-        L_NULL => 0.0,
-        _ => 0.0,
+        match u {
+            L_NATIVE => {
+                let range = vpc.xscalemax - vpc.xscalemin;
+                if range == 0.0 {
+                    0.0
+                } else {
+                    value / range * widthCM / 2.54
+                }
+            }
+            L_NPC => value * widthCM / 2.54,
+            L_SNPC => value * widthCM.min(heightCM) / 2.54,
+            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+            L_LINES => value * gc_lineheight_inches(_gc),
+            L_CHAR => value * char_metric_inches(_gc, _dd).0,
+            L_STRINGWIDTH => value * string_metrics_inches(w, index, _gc, _dd).0,
+            L_STRINGHEIGHT => value * string_metrics_inches(w, index, _gc, _dd).1,
+            L_STRINGASCENT => value * string_metrics_inches(w, index, _gc, _dd).2,
+            L_STRINGDESCENT => value * string_metrics_inches(w, index, _gc, _dd).3,
+            L_NULL => 0.0,
+            _ => 0.0,
+        }
     }
 }
 
@@ -843,41 +884,43 @@ pub unsafe fn transformHeighttoINCHES(
     heightCM: c_double,
     _dd: pGEDevDesc,
 ) -> c_double {
-    let u = unitUnit(h, index);
-    let value = unitValue(h, index);
-    if isArith(u) {
-        return transformArithmeticUnitToINCHES(
-            h,
-            index,
-            vpc,
-            _gc,
-            widthCM,
-            heightCM,
-            _dd,
-            transformHeighttoINCHES,
-        );
-    }
-    match u {
-        L_NATIVE => {
-            let range = vpc.yscalemax - vpc.yscalemin;
-            if range == 0.0 {
-                0.0
-            } else {
-                value / range * heightCM / 2.54
-            }
+    unsafe {
+        let u = unitUnit(h, index);
+        let value = unitValue(h, index);
+        if isArith(u) {
+            return transformArithmeticUnitToINCHES(
+                h,
+                index,
+                vpc,
+                _gc,
+                widthCM,
+                heightCM,
+                _dd,
+                transformHeighttoINCHES,
+            );
         }
-        L_NPC => value * heightCM / 2.54,
-        L_SNPC => value * widthCM.min(heightCM) / 2.54,
-        L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
-        | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
-        L_LINES => value * gc_lineheight_inches(_gc),
-        L_CHAR => value * char_metric_inches(_gc, _dd).1,
-        L_STRINGWIDTH => value * string_metrics_inches(h, index, _gc, _dd).0,
-        L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
-        L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
-        L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
-        L_NULL => 0.0,
-        _ => 0.0,
+        match u {
+            L_NATIVE => {
+                let range = vpc.yscalemax - vpc.yscalemin;
+                if range == 0.0 {
+                    0.0
+                } else {
+                    value / range * heightCM / 2.54
+                }
+            }
+            L_NPC => value * heightCM / 2.54,
+            L_SNPC => value * widthCM.min(heightCM) / 2.54,
+            L_CM | L_INCHES | L_MM | L_POINTS | L_PICAS | L_BIGPOINTS | L_DIDA | L_CICERO
+            | L_SCALEDPOINTS => absoluteUnitToInches(value, u).unwrap_or(0.0),
+            L_LINES => value * gc_lineheight_inches(_gc),
+            L_CHAR => value * char_metric_inches(_gc, _dd).1,
+            L_STRINGWIDTH => value * string_metrics_inches(h, index, _gc, _dd).0,
+            L_STRINGHEIGHT => value * string_metrics_inches(h, index, _gc, _dd).1,
+            L_STRINGASCENT => value * string_metrics_inches(h, index, _gc, _dd).2,
+            L_STRINGDESCENT => value * string_metrics_inches(h, index, _gc, _dd).3,
+            L_NULL => 0.0,
+            _ => 0.0,
+        }
     }
 }
 
@@ -898,14 +941,16 @@ pub unsafe fn transformLocn(
     xx: *mut c_double,
     yy: *mut c_double,
 ) {
-    let mut lin = [0.0; 3];
-    let mut lout = [0.0; 3];
-    *xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
-    *yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
-    location(*xx, *yy, &mut lin);
-    trans(&lin, t, &mut lout);
-    *xx = locationX(&lout);
-    *yy = locationY(&lout);
+    unsafe {
+        let mut lin = [0.0; 3];
+        let mut lout = [0.0; 3];
+        *xx = transformXtoINCHES(x, index, vpc, gc, widthCM, heightCM, dd);
+        *yy = transformYtoINCHES(y, index, vpc, gc, widthCM, heightCM, dd);
+        location(*xx, *yy, &mut lin);
+        trans(&lin, t, &mut lout);
+        *xx = locationX(&lout);
+        *yy = locationY(&lout);
+    }
 }
 
 /* ==============================
@@ -925,16 +970,18 @@ pub unsafe fn transformDimn(
     ww: *mut c_double,
     hh: *mut c_double,
 ) {
-    let mut din = [0.0; 3];
-    let mut dout = [0.0; 3];
-    let mut r = [[0.0; 3]; 3];
-    *ww = transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd);
-    *hh = transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd);
-    location(*ww, *hh, &mut din);
-    rotation(rotationAngle, &mut r);
-    trans(&din, &r, &mut dout);
-    *ww = locationX(&dout);
-    *hh = locationY(&dout);
+    unsafe {
+        let mut din = [0.0; 3];
+        let mut dout = [0.0; 3];
+        let mut r = [[0.0; 3]; 3];
+        *ww = transformWidthtoINCHES(w, index, vpc, gc, widthCM, heightCM, dd);
+        *hh = transformHeighttoINCHES(h, index, vpc, gc, widthCM, heightCM, dd);
+        location(*ww, *hh, &mut din);
+        rotation(rotationAngle, &mut r);
+        trans(&din, &r, &mut dout);
+        *ww = locationX(&dout);
+        *hh = locationY(&dout);
+    }
 }
 
 /* ==============================
@@ -1051,162 +1098,176 @@ pub fn transformWHfromNPC(x: c_double, to: c_int, min: c_double, max: c_double) 
 
 /// Validate that `units` inherits from "unit" class. Returns the input if valid.
 pub unsafe fn validUnits(units: SEXP) -> SEXP {
-    if Rf_inherits(units, b"unit\0".as_ptr() as *const c_char) != 0 {
-        units
-    } else {
-        R_NilValue()
+    unsafe {
+        if Rf_inherits(units, b"unit\0".as_ptr() as *const c_char) != 0 {
+            units
+        } else {
+            R_NilValue()
+        }
     }
 }
 
 /// Construct a unit_v2 object from parallel `amount`, `data`, and `unit_type` vectors.
 pub unsafe fn constructUnits(amount: SEXP, data: SEXP, unit_type: SEXP) -> SEXP {
-    let n = LENGTH(amount);
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
-    for i in 0..n as R_xlen_t {
-        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
-        SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(*REAL(amount).add(i as usize)));
-        SET_VECTOR_ELT(this_unit, 1, VECTOR_ELT(data, i));
-        SET_VECTOR_ELT(
-            this_unit,
-            2,
-            Rf_ScalarInteger(*INTEGER(unit_type).add(i as usize)),
-        );
-        SET_VECTOR_ELT(answer, i, this_unit);
-        Rf_unprotect(1);
+    unsafe {
+        let n = LENGTH(amount);
+        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, n));
+        for i in 0..n as R_xlen_t {
+            let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+            SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(*REAL(amount).add(i as usize)));
+            SET_VECTOR_ELT(this_unit, 1, VECTOR_ELT(data, i));
+            SET_VECTOR_ELT(
+                this_unit,
+                2,
+                Rf_ScalarInteger(*INTEGER(unit_type).add(i as usize)),
+            );
+            SET_VECTOR_ELT(answer, i, this_unit);
+            Rf_unprotect(1);
+        }
+        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
+        R_classgets(answer, cl);
+        Rf_unprotect(2);
+        answer
     }
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
-    SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
-    R_classgets(answer, cl);
-    Rf_unprotect(2);
-    answer
 }
 
 /// Convert a simpleUnit to a unit_v2 object.
 pub unsafe fn asUnit(simple_unit: SEXP) -> SEXP {
-    upgradeUnit(simple_unit)
+    unsafe { upgradeUnit(simple_unit) }
 }
 
 /// Check that all units in a list have the same length. Returns that length or 0.
 pub unsafe fn conformingUnits(unit_list: SEXP) -> SEXP {
-    let n = LENGTH(unit_list);
-    if n == 0 {
-        return Rf_ScalarInteger(0);
-    }
-    let first_len = unitLength(VECTOR_ELT(unit_list, 0));
-    for i in 1..n as R_xlen_t {
-        if unitLength(VECTOR_ELT(unit_list, i)) != first_len {
+    unsafe {
+        let n = LENGTH(unit_list);
+        if n == 0 {
             return Rf_ScalarInteger(0);
         }
+        let first_len = unitLength(VECTOR_ELT(unit_list, 0));
+        for i in 1..n as R_xlen_t {
+            if unitLength(VECTOR_ELT(unit_list, i)) != first_len {
+                return Rf_ScalarInteger(0);
+            }
+        }
+        Rf_ScalarInteger(first_len)
     }
-    Rf_ScalarInteger(first_len)
 }
 
 /// Match a unit type description to its integer code.
 /// Requires R-level unit type lookup; returns R_NilValue until ported.
 pub unsafe fn matchUnit(_units: SEXP, _unit: SEXP) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /// Add two unit objects element-wise, producing a SUM unit.
 pub unsafe fn addUnits(u1: SEXP, u2: SEXP) -> SEXP {
-    let n1 = unitLength(u1);
-    let n2 = unitLength(u2);
-    let nmax = n1.max(n2);
-    if nmax == 0 {
-        return R_NilValue();
-    }
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nmax));
-    for i in 0..nmax as R_xlen_t {
-        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
-        SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
-        let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
-        SET_VECTOR_ELT(data, 0, unitScalar(u1, (i as c_int) % n1));
-        SET_VECTOR_ELT(data, 1, unitScalar(u2, (i as c_int) % n2));
-        SET_VECTOR_ELT(this_unit, 1, data);
-        SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(L_SUM));
-        SET_VECTOR_ELT(answer, i, this_unit);
+    unsafe {
+        let n1 = unitLength(u1);
+        let n2 = unitLength(u2);
+        let nmax = n1.max(n2);
+        if nmax == 0 {
+            return R_NilValue();
+        }
+        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, nmax));
+        for i in 0..nmax as R_xlen_t {
+            let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+            SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
+            let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 2));
+            SET_VECTOR_ELT(data, 0, unitScalar(u1, (i as c_int) % n1));
+            SET_VECTOR_ELT(data, 1, unitScalar(u2, (i as c_int) % n2));
+            SET_VECTOR_ELT(this_unit, 1, data);
+            SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(L_SUM));
+            SET_VECTOR_ELT(answer, i, this_unit);
+            Rf_unprotect(2);
+        }
+        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
+        R_classgets(answer, cl);
         Rf_unprotect(2);
+        answer
     }
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
-    SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
-    R_classgets(answer, cl);
-    Rf_unprotect(2);
-    answer
 }
 
 /// Multiply unit values by a numeric vector (recycled).
 pub unsafe fn multUnits(units: SEXP, values: SEXP) -> SEXP {
-    let n = unitLength(units);
-    let nv = LENGTH(values);
-    if n == 0 {
-        return R_NilValue();
-    }
-    let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
-    if isSimpleUnit(answer) {
-        for i in 0..n as usize {
-            *REAL(answer).add(i) *= *REAL(values).add(i % nv as usize);
+    unsafe {
+        let n = unitLength(units);
+        let nv = LENGTH(values);
+        if n == 0 {
+            return R_NilValue();
         }
-    } else {
-        for i in 0..n {
-            let u = unitScalar(answer, i);
-            if !u.is_null() {
-                let val = unitValue(answer, i) * *REAL(values).add((i as usize) % nv as usize);
-                SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
+        let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
+        if isSimpleUnit(answer) {
+            for i in 0..n as usize {
+                *REAL(answer).add(i) *= *REAL(values).add(i % nv as usize);
+            }
+        } else {
+            for i in 0..n {
+                let u = unitScalar(answer, i);
+                if !u.is_null() {
+                    let val = unitValue(answer, i) * *REAL(values).add((i as usize) % nv as usize);
+                    SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
+                }
             }
         }
+        Rf_unprotect(1);
+        answer
     }
-    Rf_unprotect(1);
-    answer
 }
 
 /// Negate unit values (flip sign).
 pub unsafe fn flipUnits(units: SEXP) -> SEXP {
-    let n = unitLength(units);
-    if n == 0 {
-        return R_NilValue();
-    }
-    let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
-    if isSimpleUnit(answer) {
-        for i in 0..n as usize {
-            *REAL(answer).add(i) = -*REAL(answer).add(i);
+    unsafe {
+        let n = unitLength(units);
+        if n == 0 {
+            return R_NilValue();
         }
-    } else {
-        for i in 0..n {
-            let u = unitScalar(answer, i);
-            if !u.is_null() {
-                let val = -unitValue(answer, i);
-                SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
+        let answer = Rf_protect(crate::main::duplicate::Rf_duplicate(units));
+        if isSimpleUnit(answer) {
+            for i in 0..n as usize {
+                *REAL(answer).add(i) = -*REAL(answer).add(i);
+            }
+        } else {
+            for i in 0..n {
+                let u = unitScalar(answer, i);
+                if !u.is_null() {
+                    let val = -unitValue(answer, i);
+                    SET_VECTOR_ELT(u, 0, Rf_ScalarReal(val));
+                }
             }
         }
+        Rf_unprotect(1);
+        answer
     }
-    Rf_unprotect(1);
-    answer
 }
 
 /// Convert units to absolute units.
 /// Requires device context to resolve relative units (NPC, native, etc.).
 pub unsafe fn absoluteUnits(_units: SEXP) -> SEXP {
-    R_NilValue()
+    unsafe { R_NilValue() }
 }
 
 /// Summarize units with a reduction operation (sum/min/max).
 /// `op_type` should be L_SUM, L_MIN, or L_MAX.
 pub unsafe fn summaryUnits(units: SEXP, op_type: SEXP) -> SEXP {
-    let op = *INTEGER(op_type);
-    let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
-    SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
-    SET_VECTOR_ELT(this_unit, 1, units);
-    SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(op));
-    let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
-    SET_VECTOR_ELT(answer, 0, this_unit);
-    let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
-    SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
-    SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
-    R_classgets(answer, cl);
-    Rf_unprotect(3);
-    answer
+    unsafe {
+        let op = *INTEGER(op_type);
+        let this_unit = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 3));
+        SET_VECTOR_ELT(this_unit, 0, Rf_ScalarReal(1.0));
+        SET_VECTOR_ELT(this_unit, 1, units);
+        SET_VECTOR_ELT(this_unit, 2, Rf_ScalarInteger(op));
+        let answer = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+        SET_VECTOR_ELT(answer, 0, this_unit);
+        let cl = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 2));
+        SET_STRING_ELT(cl, 0, Rf_mkChar(b"unit\0".as_ptr() as *const c_char));
+        SET_STRING_ELT(cl, 1, Rf_mkChar(b"unit_v2\0".as_ptr() as *const c_char));
+        R_classgets(answer, cl);
+        Rf_unprotect(3);
+        answer
+    }
 }
 
 #[cfg(test)]
@@ -1359,21 +1420,23 @@ mod tests {
     }
 
     unsafe fn string_unit(value: c_double, text: &[u8], unit_id: c_int) -> SEXP {
-        let amount = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
-        *REAL(amount).add(0) = value;
-        let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
-        let chars = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        SET_STRING_ELT(
-            chars,
-            0,
-            Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int),
-        );
-        SET_VECTOR_ELT(data, 0, chars);
-        let unit_type = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
-        *INTEGER(unit_type).add(0) = unit_id;
-        let result = constructUnits(amount, data, unit_type);
-        Rf_unprotect(4);
-        result
+        unsafe {
+            let amount = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, 1));
+            *REAL(amount).add(0) = value;
+            let data = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 1));
+            let chars = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            SET_STRING_ELT(
+                chars,
+                0,
+                Rf_mkCharLen(text.as_ptr() as *const c_char, text.len() as c_int),
+            );
+            SET_VECTOR_ELT(data, 0, chars);
+            let unit_type = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 1));
+            *INTEGER(unit_type).add(0) = unit_id;
+            let result = constructUnits(amount, data, unit_type);
+            Rf_unprotect(4);
+            result
+        }
     }
 
     #[test]
