@@ -18,7 +18,7 @@ use crate::sexp::constructors::*;
 use crate::sexp::ffi::{FALSE, NA_INTEGER, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::{R_BaseEnv, R_NilValue};
 use crate::sexp::object::Sexp;
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::dispatch::DispatchGroup;
@@ -34,6 +34,7 @@ use super::dispatch::DispatchGroup;
 pub unsafe fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let arg_list = Rf_cons(args, R_NilValue());
+        let _arg_list_guard = protect(arg_list);
         crate::eval::arithmetic::do_arith(call, op, arg_list, rho)
     }
 }
@@ -43,7 +44,10 @@ pub unsafe fn R_unary(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
 /// Defined in arithmetic.c. Dispatches binary arithmetic operators.
 pub unsafe fn R_binary(call: SEXP, op: SEXP, lhs: SEXP, rhs: SEXP) -> SEXP {
     unsafe {
-        let arg_list = Rf_cons(lhs, Rf_cons(rhs, R_NilValue()));
+        let rhs_list = Rf_cons(rhs, R_NilValue());
+        let _rhs_list_guard = protect(rhs_list);
+        let arg_list = Rf_cons(lhs, rhs_list);
+        let _arg_list_guard = protect(arg_list);
         crate::eval::arithmetic::do_arith(call, op, arg_list, R_NilValue())
     }
 }
@@ -166,14 +170,16 @@ pub unsafe fn cmp_relop(
     unsafe {
         let opsym_name = CHAR(opsym);
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
-        Rf_protect(op);
+        let _op_guard = protect(op);
 
         let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
         let is_obj_y = crate::eval::attrib_core::isObject(y) != 0;
 
         if is_obj_x || is_obj_y {
-            let args = Rf_cons(x, Rf_cons(y, R_NilValue()));
-            Rf_protect(args);
+            let tail = Rf_cons(y, R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(x, tail);
+            let _args_guard = protect(args);
             let mut ans: SEXP = R_NilValue();
             let dispatched = DispatchGroup(
                 b"Ops\x00".as_ptr() as *const c_char,
@@ -207,11 +213,11 @@ pub unsafe fn cmp_arith1(call: SEXP, opsym: SEXP, x: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let opsym_name = CHAR(opsym);
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
-        Rf_protect(op);
+        let _op_guard = protect(op);
 
         if crate::eval::attrib_core::isObject(x) != 0 {
             let args = Rf_cons(x, R_NilValue());
-            Rf_protect(args);
+            let _args_guard = protect(args);
             let mut ans: SEXP = R_NilValue();
             let dispatched = DispatchGroup(
                 b"Ops\x00".as_ptr() as *const c_char,
@@ -249,14 +255,16 @@ pub unsafe fn cmp_arith2(
     unsafe {
         let opsym_name = CHAR(opsym);
         let op = getPrimitive(opsym_name, SEXPTYPE::BUILTINSXP.as_c_int());
-        Rf_protect(op);
+        let _op_guard = protect(op);
 
         let is_obj_x = crate::eval::attrib_core::isObject(x) != 0;
         let is_obj_y = crate::eval::attrib_core::isObject(y) != 0;
 
         if is_obj_x || is_obj_y {
-            let args = Rf_cons(x, Rf_cons(y, R_NilValue()));
-            Rf_protect(args);
+            let tail = Rf_cons(y, R_NilValue());
+            let _tail_guard = protect(tail);
+            let args = Rf_cons(x, tail);
+            let _args_guard = protect(args);
             let mut ans: SEXP = R_NilValue();
             let dispatched = DispatchGroup(
                 b"Ops\x00".as_ptr() as *const c_char,
