@@ -14,6 +14,7 @@ use crate::mainutils::graphics_ffi::{
     rmath_ge_from_device_height, rmath_ge_from_device_width, rmath_ge_metric_info,
     rmath_ge_str_height, rmath_ge_str_metric, rmath_ge_str_width,
 };
+use crate::mainutils::objects::inherits2 as Rf_inherits;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::*;
@@ -24,10 +25,6 @@ use crate::sexp::symbol::Rf_install;
 use super::gpar::pGEDevDesc;
 use super::matrix::{location, locationX, locationY, rotation, trans};
 use super::types::pGEcontext;
-
-unsafe extern "C" {
-    fn Rf_inherits(x: SEXP, klass: *const c_char) -> c_int;
-}
 
 /* ==============================
  * LUnit enum and constants

@@ -36,7 +36,6 @@ use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 // Local helpers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn isInteger(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::INTSXP
 }

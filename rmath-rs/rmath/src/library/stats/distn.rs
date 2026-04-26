@@ -30,7 +30,6 @@ unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
 // Helper: isNumeric
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn isNumeric(x: SEXP) -> bool {
     if x.is_null() {
         return false;

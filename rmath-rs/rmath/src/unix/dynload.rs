@@ -175,7 +175,6 @@ unsafe fn libc_dlerror() -> *mut c_char {
 /// Initialize the function hashing / dynamic loading subsystem.
 /// Compatibility entrypoint for R startup. The OS-specific vtable is immutable
 /// in this port because it contains fixed platform function pointers.
-#[unsafe(no_mangle)]
 pub fn InitFunctionHashing() {
     let _ = os_dyn_symbol_table();
 }

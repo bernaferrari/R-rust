@@ -42,7 +42,6 @@ unsafe fn asLogical(x: SEXP) -> c_int {
     crate::main::coerce::asLogical(x)
 }
 
-#[unsafe(no_mangle)]
 unsafe fn coerceVector(x: SEXP, type_: c_int) -> SEXP {
     crate::main::coerce::coerceVector(x, type_)
 }
@@ -51,7 +50,6 @@ unsafe fn R_rsort(x: *mut c_double, n: c_int) {
     crate::main::sort::R_rsort(x, n)
 }
 
-#[unsafe(no_mangle)]
 unsafe fn Rprintf(msg: &str) -> c_int {
     eprint!("{}", msg);
     0

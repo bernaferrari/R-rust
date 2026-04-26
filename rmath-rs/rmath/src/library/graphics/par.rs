@@ -530,7 +530,6 @@ pub unsafe fn C_layout(args: SEXP) -> SEXP {
 
 /// ProcessInlinePars -- handles inline par specifications in graphics functions.
 /// Stub implementation: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn ProcessInlinePars(_s: SEXP, _dd: pGEDevDesc) {
     /* Stub: full implementation walks a list and calls Specify2 for each tagged pair */
 }
@@ -569,14 +568,12 @@ pub unsafe fn RunregisterBase() -> SEXP {
 
 /// gpptr -- get the current GPar pointer (graphics parameters).
 /// Stub: returns null.
-#[unsafe(no_mangle)]
 pub unsafe fn gpptr(_dd: pGEDevDesc) -> *mut c_void {
     std::ptr::null_mut()
 }
 
 /// dpptr -- get the display GPar pointer (display parameters).
 /// Stub: returns null.
-#[unsafe(no_mangle)]
 pub unsafe fn dpptr(_dd: pGEDevDesc) -> *mut c_void {
     std::ptr::null_mut()
 }

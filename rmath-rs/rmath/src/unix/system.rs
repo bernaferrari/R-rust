@@ -176,7 +176,6 @@ unsafe fn Rstd_read_history(_file: *const c_char) {}
 // Public system interface functions (dispatch through pointers)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn R_Suicide(s: *const c_char) {
     unsafe {
         if let Some(f) = ptr_R_Suicide.with(|v| v.get()) {
@@ -194,7 +193,6 @@ pub unsafe fn R_ShowMessage(s: *const c_char) {
     }
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn R_ReadConsole(
     prompt: *const c_char,
     buf: *mut u8,
@@ -246,7 +244,6 @@ pub fn R_FlushConsole() {
     }
 }
 
-#[unsafe(no_mangle)]
 pub fn R_ClearerrConsole() {
     unsafe {
         if let Some(f) = ptr_R_ClearerrConsole.with(|v| v.get()) {
@@ -366,7 +363,6 @@ pub fn R_GetFDLimit() -> c_int {
     }
 }
 
-#[unsafe(no_mangle)]
 pub fn R_EnsureFDLimit(desired: c_int) -> c_int {
     unsafe {
         #[cfg(unix)]

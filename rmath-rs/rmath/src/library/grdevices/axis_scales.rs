@@ -18,7 +18,6 @@ use crate::sexp::globals::R_NilValue;
 use crate::sexp::protect::*;
 
 /// Stub: CreateAtVector - create axis tick positions.
-#[unsafe(no_mangle)]
 unsafe fn CreateAtVector(
     _axp: *const c_double,
     _usr: *const c_double,

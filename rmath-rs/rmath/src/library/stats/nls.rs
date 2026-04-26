@@ -100,7 +100,6 @@ unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
     crate::sexp::envir::findVar(sym, rho)
 }
 
-#[unsafe(no_mangle)]
 unsafe fn defineVar(sym: SEXP, val: SEXP, rho: SEXP) {
     crate::sexp::envir::defineVar(sym, val, rho)
 }
@@ -182,7 +181,6 @@ unsafe fn mkNamed(sexptype: c_int, names: &[&str]) -> SEXP {
     ans
 }
 
-#[unsafe(no_mangle)]
 unsafe fn mkString(s: &str) -> SEXP {
     let c_s = std::ffi::CString::new(s).unwrap_or_default();
     crate::sexp::constructors::Rf_mkString(c_s.as_ptr())

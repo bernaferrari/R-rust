@@ -15,7 +15,6 @@ use crate::sexp::globals::R_NilValue;
 type pGEDevDesc = *mut std::ffi::c_void;
 
 /// Stub: GEcurrentDevice - returns null.
-#[unsafe(no_mangle)]
 unsafe fn GEcurrentDevice() -> pGEDevDesc {
     ptr::null_mut()
 }

@@ -308,7 +308,6 @@ pub unsafe fn gpLex2(gp: SEXP, i: c_int, gpIsScalar: *mut c_int) -> c_double {
  * resolveGPar -- partial helper
  * ============================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
     gp
 }
@@ -317,7 +316,6 @@ pub unsafe fn resolveGPar(gp: SEXP, _byName: c_int) -> SEXP {
  * gcontextFromgpar -- partial helper
  * ============================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn gcontextFromgpar(_gp: SEXP, _i: c_int, _gc: pGEcontext, _dd: pGEDevDesc) {
     let gp = resolveGPar(_gp, 0);
     if gp.is_null() || Rf_isNull(gp) != 0 {

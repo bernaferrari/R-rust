@@ -105,7 +105,6 @@ pub fn R_Log10(x: c_double) -> c_double {
 
 /// GMapUnits -- map R interpreted unit codes to internal GUnit values.
 /// In interpreted R: 1 = "user", 2 = "figure", 3 = "inches".
-#[unsafe(no_mangle)]
 pub unsafe fn GMapUnits(runits: c_int) -> GUnit {
     match runits {
         1 => USER,
@@ -121,7 +120,6 @@ pub unsafe fn GMapUnits(runits: c_int) -> GUnit {
 
 /// GConvertXUnits -- convert a single x value between unit systems.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GConvertXUnits(
     _x: c_double,
     _fromUnits: GUnit,
@@ -133,7 +131,6 @@ pub unsafe fn GConvertXUnits(
 
 /// GConvertYUnits -- convert a single y value between unit systems.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GConvertYUnits(
     _y: c_double,
     _fromUnits: GUnit,
@@ -185,14 +182,12 @@ pub unsafe fn yDevtoNPC(_y: c_double, _dd: pGEDevDesc) -> c_double {
 
 /// xNPCtoUsr -- convert x from NPC to user coordinates.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn xNPCtoUsr(_x: c_double, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
 /// yNPCtoUsr -- convert y from NPC to user coordinates.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn yNPCtoUsr(_y: c_double, _dd: pGEDevDesc) -> c_double {
     0.0
 }
@@ -215,7 +210,6 @@ pub unsafe fn yDevtoUsr(_y: c_double, _dd: pGEDevDesc) -> c_double {
 
 /// GConvert -- convert a location (x, y) from one coordinate system to another.
 /// Stub: sets both to 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GConvert(
     x: *mut c_double,
     y: *mut c_double,
@@ -237,14 +231,12 @@ pub unsafe fn GConvert(
 
 /// GConvertX -- convert an x location from one coordinate system to another.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GConvertX(_x: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
 
 /// GConvertY -- convert a y location from one coordinate system to another.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GConvertY(_y: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }
@@ -255,7 +247,6 @@ pub unsafe fn GConvertY(_y: c_double, _from: GUnit, _to: GUnit, _dd: pGEDevDesc)
 
 /// GMapWin2Fig -- set up the transformation from user to NFC coordinates.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GMapWin2Fig(_dd: pGEDevDesc) {
     /* Stub: full implementation sets win2fig.{ax,ay,bx,by} from
     gpptr(dd)->plt and usr/logusr arrays */
@@ -263,14 +254,12 @@ pub unsafe fn GMapWin2Fig(_dd: pGEDevDesc) {
 
 /// GNewPlot -- begin a new plot (advance to new frame if needed).
 /// Stub: returns null pointer.
-#[unsafe(no_mangle)]
 pub unsafe fn GNewPlot(_recording: Rboolean) -> pGEDevDesc {
     std::ptr::null_mut()
 }
 
 /// GRecording -- check whether graphics operations should be recorded.
 /// Stub: returns 0 (FALSE).
-#[unsafe(no_mangle)]
 pub unsafe fn GRecording(_call: SEXP, _dd: pGEDevDesc) -> Rboolean {
     0
 }
@@ -299,14 +288,12 @@ pub unsafe fn copyGPar(_source: *mut c_void, _dest: *mut c_void) {
 
 /// GRestore -- restore graphics parameters from the device copy.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GRestore(_dd: pGEDevDesc) {
     /* Stub: full implementation calls copyGPar(dpptr(dd), gpptr(dd)) */
 }
 
 /// GSavePars -- save inline graphical parameters.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GSavePars(_dd: pGEDevDesc) {
     /* Stub: full implementation saves all inline pars to static vars */
 }
@@ -319,14 +306,12 @@ pub unsafe fn GRestorePars(_dd: pGEDevDesc) {
 
 /// GSetState -- set the graphics state flag (records whether GNewPlot called).
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GSetState(_newstate: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation sets dpptr(dd)->state = gpptr(dd)->state */
 }
 
 /// GCheckState -- enquire whether GNewPlot has been called.
 /// Stub: does nothing (does not error).
-#[unsafe(no_mangle)]
 pub unsafe fn GCheckState(_dd: pGEDevDesc) {
     /* Stub: full implementation errors if state==0 or !valid */
 }
@@ -339,7 +324,6 @@ pub unsafe fn GCheckState(_dd: pGEDevDesc) {
 /// Provides default axis information i.e., if user has NOT specified
 /// par(usr=.., {x,y}axp= ..).
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GScale(_min: c_double, _max: c_double, _axis: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation computes axis parameters based on
     lab, xaxs/yaxs, xlog/ylog from gpptr(dd) and calls GAxisPars */
@@ -347,7 +331,6 @@ pub unsafe fn GScale(_min: c_double, _max: c_double, _axis: c_int, _dd: pGEDevDe
 
 /// GSetupAxis -- set up default axis information when user specifies par(usr=...).
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GSetupAxis(_axis: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation calls GPretty and stores axp */
 }
@@ -358,7 +341,6 @@ pub unsafe fn GSetupAxis(_axis: c_int, _dd: pGEDevDesc) {
 
 /// GClip -- update the device clipping region (depends on GP->xpd).
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GClip(_dd: pGEDevDesc) {
     /* Stub: full implementation calls setClipRect + GESetClip */
 }
@@ -406,7 +388,6 @@ pub unsafe fn gcontextFromGP(_gc: pGEcontext, _dd: pGEDevDesc) {
 
 /// GLine -- draw a line from (x1,y1) to (x2,y2).
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GLine(
     _x1: c_double,
     _y1: c_double,
@@ -420,7 +401,6 @@ pub unsafe fn GLine(
 
 /// GLocator -- read the current pen position interactively.
 /// Stub: returns 0 (FALSE).
-#[unsafe(no_mangle)]
 pub unsafe fn GLocator(
     x: *mut c_double,
     y: *mut c_double,
@@ -482,7 +462,6 @@ pub unsafe fn GClipPolygon(
 /// GPolygon -- draw a filled polygon with border.
 /// Filled with color bg and outlined with color fg.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GPolygon(
     _n: c_int,
     _x: *mut c_double,
@@ -509,7 +488,6 @@ pub unsafe fn GPolyline(
 
 /// GCircle -- draw a circle. Filled with color bg and outlined with color fg.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GCircle(
     _x: c_double,
     _y: c_double,
@@ -575,7 +553,6 @@ pub unsafe fn GRaster(
 
 /// GStrWidth -- compute the width of a string.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GStrWidth(
     _str: *const c_char,
     _enc: cetype_t,
@@ -587,7 +564,6 @@ pub unsafe fn GStrWidth(
 
 /// GStrHeight -- compute the height of a string.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GStrHeight(
     _str: *const c_char,
     _enc: cetype_t,
@@ -616,7 +592,6 @@ pub unsafe fn GText(
 /// GArrow -- draw an arrow from (xfrom,yfrom) to (xto,yto).
 /// The length parameter is in inches.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GArrow(
     _xfrom: c_double,
     _yfrom: c_double,
@@ -634,7 +609,6 @@ pub unsafe fn GArrow(
 /// GBox -- draw a box around one of several regions (box(which)).
 /// which=1: plot region (with bty styles), 2: figure, 3: inner, 4: outer/device.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GBox(_which: c_int, _dd: pGEDevDesc) {
     /* Stub: full implementation draws a box around plot/figure/device region
     with various bty styles (o, l, 7, c, [, ], u, n) */
@@ -662,7 +636,6 @@ pub unsafe fn GSymbol(_x: c_double, _y: c_double, _coords: c_int, _pch: c_int, _
 /// side: 1=bottom, 2=left, 3=top, 4=right.
 /// las: 0=parallel to axis, 1=always horizontal, 2=perpendicular, 3=vertical.
 /// Stub: does nothing.
-#[unsafe(no_mangle)]
 pub unsafe fn GMtext(
     _str: *const c_char,
     _enc: cetype_t,
@@ -683,7 +656,6 @@ pub unsafe fn GMtext(
 
 /// GExpressionWidth -- compute the width of a mathematical expression.
 /// Stub: returns 0.0.
-#[unsafe(no_mangle)]
 pub unsafe fn GExpressionWidth(_expr: SEXP, _units: GUnit, _dd: pGEDevDesc) -> c_double {
     0.0
 }

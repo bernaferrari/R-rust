@@ -23,7 +23,6 @@ unsafe fn GEcurrentDevice() -> pGEDevDesc {
 }
 
 /// Stub: GEMode - no-op.
-#[unsafe(no_mangle)]
 unsafe fn GEMode(_mode: c_int, _dd: pGEDevDesc) {
     // no-op
 }

@@ -10,7 +10,6 @@ use crate::nmath::rng::unif_rand;
 /// Use double precision for integer multiplication (against overflow).
 ///
 /// Translated from R's C source: r-source/src/library/stats/src/rcont.c
-#[unsafe(no_mangle)]
 pub unsafe fn rcont2(
     nrow: c_int,
     ncol: c_int,

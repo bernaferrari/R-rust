@@ -76,7 +76,6 @@ fn in2dots(x: c_double) -> c_double {
 /// Uses Rust's format! and then writes via libc::fputs.
 /// Returns the number of bytes written, or -1 on error.
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn fprintf(fp: *mut libc::FILE, fmt: std::fmt::Arguments<'_>) -> c_int {
     let s = fmt.to_string();
     let bytes = s.as_bytes();

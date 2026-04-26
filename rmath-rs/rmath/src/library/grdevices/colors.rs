@@ -3323,7 +3323,6 @@ unsafe extern "C" fn inRGBpar3_dispatch(
     inRGBpar3(x as SEXP, i, bg)
 }
 
-#[unsafe(no_mangle)]
 pub fn initPalette() {
     unsafe {
         crate::main::colors::Rg_set_col_ptrs(

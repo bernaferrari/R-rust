@@ -89,7 +89,6 @@ unsafe fn dev_number(dd: pDevDesc) -> c_int {
     0
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn do_setGraphicsEventEnv(
     _call: SEXP,
     _op: SEXP,
@@ -144,7 +143,6 @@ pub unsafe fn do_setGraphicsEventEnv(
     R_NilValue()
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn do_getGraphicsEventEnv(
     _call: SEXP,
     _op: SEXP,
@@ -180,7 +178,6 @@ unsafe fn have_listening_dev() -> bool {
     false
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn do_getGraphicsEvent(
     _call: SEXP,
     _op: SEXP,
@@ -210,7 +207,6 @@ pub unsafe fn do_getGraphicsEvent(
     result
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn doMouseEvent(
     dd: pDevDesc,
     event: c_int,
@@ -259,7 +255,6 @@ pub unsafe fn doMouseEvent(
     (*dd).gettingEvent = 1;
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn doKeybd(dd: pDevDesc, rkey: c_int, keyname: *const c_char) {
     (*dd).gettingEvent = 0;
 
@@ -298,7 +293,6 @@ pub unsafe fn doKeybd(dd: pDevDesc, rkey: c_int, keyname: *const c_char) {
     (*dd).gettingEvent = 1;
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn doIdle(dd: pDevDesc) {
     (*dd).gettingEvent = 0;
 
@@ -328,7 +322,6 @@ pub unsafe fn doIdle(dd: pDevDesc) {
     (*dd).gettingEvent = 1;
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn doesIdle(dd: pDevDesc) -> c_int {
     let handler = R_findVar(Rf_install(cstr_ptr(IDLE_HANDLER)), (*dd).eventEnv as SEXP);
     if handler != R_UnboundValue() && handler != R_NilValue() {

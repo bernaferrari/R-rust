@@ -110,14 +110,12 @@ unsafe fn isVector(x: SEXP) -> bool {
 /* ==================== Helper: isString ==================== */
 
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn isString(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::STRSXP
 }
 
 /* ==================== Helper: findVar ==================== */
 
-#[unsafe(no_mangle)]
 #[inline]
 unsafe fn findVar(sym: SEXP, rho: SEXP) -> SEXP {
     crate::sexp::envir::R_findVarInFrame(rho, sym)
@@ -143,7 +141,6 @@ pub unsafe fn createGridSystemState() -> SEXP {
 ///
 /// Creates an empty list to hold grob references, sets the display list
 /// index to 0, and marks the display list as active.
-#[unsafe(no_mangle)]
 pub unsafe fn initDL(dd: pGEDevDesc) {
     let dl = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, 100));
     setGridStateElement(dd, GSS_DL, dl);

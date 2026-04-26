@@ -10,6 +10,14 @@
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
+use crate::mainutils::format::{
+    formatComplex, formatComplexS, formatInteger, formatIntegerS, formatLogicalS, formatRaw,
+    formatRawS, formatReal, formatRealS, formatString, formatStringS,
+};
+use crate::mainutils::printutils::{
+    EncodeComplex, EncodeInteger, EncodeLogical, EncodeRaw, EncodeReal0,
+    EncodeString as encode_string, Rprt_adj,
+};
 use crate::sexp::accessors::{
     CHAR, COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL,
     REAL_ELT, Rf_isNull, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
@@ -149,75 +157,14 @@ fn vector_index(i: R_xlen_t, w: c_int) {
     Rprintf!("[{:>width$}] ", i, width = (w - 3).max(0) as usize);
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers: formatStringS, formatLogicalS, formatIntegerS, etc.
-//
-// These are wrappers around the format.rs functions which take SEXP and are
-// already #[unsafe(no_mangle)] pub unsafe extern "C". We call them from Rust code.
-// ---------------------------------------------------------------------------
-
-unsafe extern "C" {
-    fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int);
-    fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int);
-    fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatReal(
-        x: *const f64,
-        n: R_xlen_t,
-        w: *mut c_int,
-        d: *mut c_int,
-        e: *mut c_int,
-        nsmall: c_int,
-    );
-    fn formatRealS(
-        x: SEXP,
-        n: R_xlen_t,
-        w: *mut c_int,
-        d: *mut c_int,
-        e: *mut c_int,
-        nsmall: c_int,
-    );
-    fn formatComplex(
-        x: *const Rcomplex,
-        n: R_xlen_t,
-        wr: *mut c_int,
-        dr: *mut c_int,
-        er: *mut c_int,
-        wi: *mut c_int,
-        di: *mut c_int,
-        ei: *mut c_int,
-        nsmall: c_int,
-    );
-    fn formatComplexS(
-        x: SEXP,
-        n: R_xlen_t,
-        wr: *mut c_int,
-        dr: *mut c_int,
-        er: *mut c_int,
-        wi: *mut c_int,
-        di: *mut c_int,
-        ei: *mut c_int,
-        nsmall: c_int,
-    );
-    fn formatRaw(x: *const std::os::raw::c_void, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatRawS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn EncodeLogical(x: c_int, w: c_int) -> *const c_char;
-    fn EncodeInteger(x: c_int, w: c_int) -> *const c_char;
-    fn EncodeReal0(x: f64, w: c_int, d: c_int, e: c_int, dec: *const c_char) -> *const c_char;
-    fn EncodeComplex(
-        x: Rcomplex,
-        wr: c_int,
-        dr: c_int,
-        er: c_int,
-        wi: c_int,
-        di: c_int,
-        ei: c_int,
-        dec: *const c_char,
-    ) -> *const c_char;
-    fn EncodeRaw(x: u8, prefix: *const c_char) -> *const c_char;
-    fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: c_int) -> *const c_char;
+unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: c_int) -> *const c_char {
+    let justify = match justify {
+        1 => Rprt_adj::right,
+        2 => Rprt_adj::centre,
+        3 => Rprt_adj::none,
+        _ => Rprt_adj::left,
+    };
+    unsafe { encode_string(s, w, quote, justify) }
 }
 
 // ---------------------------------------------------------------------------
@@ -628,7 +575,6 @@ unsafe fn printComplexVectorS(x: SEXP, n: R_xlen_t, indx: c_int) {
 // printVector -- exported
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn printVector(x: SEXP, indx: c_int, quote: c_int) {
     unsafe {
         if x.is_null() {

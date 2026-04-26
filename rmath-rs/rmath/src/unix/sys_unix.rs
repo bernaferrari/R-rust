@@ -177,7 +177,6 @@ pub unsafe fn R_setStartTime() {
 }
 
 /// Get process timing data: [user, system, elapsed, child_user, child_system].
-#[unsafe(no_mangle)]
 pub unsafe fn R_getProcTime(data: *mut c_double) {
     unsafe {
         let et = currentTime() - StartTime.with(|v| v.get());

@@ -903,7 +903,6 @@ unsafe fn isMatrix(x: SEXP) -> bool {
 }
 
 /// Get the number of rows from a matrix's dim attribute.
-#[unsafe(no_mangle)]
 unsafe fn nrows(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;
@@ -923,7 +922,6 @@ unsafe fn nrows(x: SEXP) -> c_int {
 }
 
 /// Get the number of columns from a matrix's dim attribute.
-#[unsafe(no_mangle)]
 unsafe fn ncols(x: SEXP) -> c_int {
     if x.is_null() {
         return 0;

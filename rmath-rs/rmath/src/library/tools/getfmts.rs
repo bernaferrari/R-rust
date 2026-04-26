@@ -256,7 +256,6 @@ pub unsafe fn getfmts(format: SEXP) -> SEXP {
 // ---------------------------------------------------------------------------
 
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
     crate::sexp::accessors::SET_STRING_ELT(x, i, val);
 }

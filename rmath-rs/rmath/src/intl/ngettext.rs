@@ -33,7 +33,6 @@ pub unsafe fn libintl_ngettext(
 }
 
 /// Alias for `libintl_ngettext` (unprefixed, for compatibility).
-#[unsafe(no_mangle)]
 pub unsafe fn ngettext(msgid1: *const c_char, msgid2: *const c_char, n: c_ulong) -> *mut c_char {
     unsafe { libintl_ngettext(msgid1, msgid2, n) }
 }

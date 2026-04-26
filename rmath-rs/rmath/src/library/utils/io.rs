@@ -915,7 +915,6 @@ unsafe fn isVectorAtomic(x: SEXP) -> bool {
 }
 
 /// inherits — check if object has a given class
-#[unsafe(no_mangle)]
 unsafe fn inherits(x: SEXP, _what: *const c_char) -> bool {
     let klass = attrib_core::getAttrib(x, attrib_core::R_ClassSymbol());
     if isNull(klass) {

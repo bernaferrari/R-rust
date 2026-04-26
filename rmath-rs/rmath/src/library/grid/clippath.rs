@@ -42,7 +42,6 @@ use super::types::{pGEDevDesc, *};
 // ---------------------------------------------------------------------------
 
 /// Rf_inherits — check if object inherits from a given class
-#[unsafe(no_mangle)]
 unsafe fn Rf_inherits(x: SEXP, what: *const std::os::raw::c_char) -> c_int {
     if x.is_null() || what.is_null() {
         return 0;

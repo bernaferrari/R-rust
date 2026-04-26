@@ -246,53 +246,42 @@ pub unsafe extern "C" fn GEcurrentDevice() -> pGEDevDesc {
     with_registry(|registry| registry.current_ptr())
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn GEgetDevice(dev: c_int) -> pGEDevDesc {
     with_registry(|registry| registry.device_ptr(dev + 1))
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn curDevice() -> c_int {
     with_registry(|registry| registry.current_internal())
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nextDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.next_external(dev + 1) - 1)
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn prevDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.prev_external(dev + 1) - 1)
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn selectDevice(dev: c_int) -> c_int {
     with_registry(|registry| registry.select_external(dev + 1) - 1)
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn killDevice(dev: c_int) {
     let _ = with_registry(|registry| registry.kill_external(dev + 1));
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn NoDevices() -> c_int {
     with_registry(|registry| registry.no_devices() as c_int)
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn NumDevices() -> c_int {
     with_registry(|registry| registry.num_devices())
 }
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn GEinitDisplayList(_gdd: pGEDevDesc) {}
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn GEcopyDisplayList(_devnum: c_int) {}
 
-#[unsafe(no_mangle)]
 pub unsafe extern "C" fn GECap(_gdd: pGEDevDesc) -> SEXP {
     R_NilValue()
 }

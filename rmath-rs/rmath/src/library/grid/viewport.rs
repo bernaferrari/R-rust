@@ -75,7 +75,6 @@ unsafe fn scalar_real_or(x: SEXP, default_value: f64) -> f64 {
 // Local helper: isLogical
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn isLogical(x: SEXP) -> bool {
     !x.is_null() && TYPEOF(x) == SEXPTYPE::LGLSXP
 }
@@ -84,7 +83,6 @@ unsafe fn isLogical(x: SEXP) -> bool {
 // Local helper: asBool
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn asBool(x: SEXP) -> bool {
     if isLogical(x) {
         *LOGICAL(x) != 0
@@ -97,7 +95,6 @@ unsafe fn asBool(x: SEXP) -> bool {
 // Local helper: ScalarReal
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn ScalarReal(x: f64) -> SEXP {
     let s = Rf_allocVector(SEXPTYPE::REALSXP, 1);
     *REAL(s) = x;
@@ -470,7 +467,6 @@ pub unsafe fn calcViewportTransform(vp: SEXP, parent: SEXP, _incremental: bool, 
 // initVP — initialize the top-level viewport for the current device
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn initVP(dd: *const u8) {
     let dd = dd as pGEDevDesc;
 

@@ -35,6 +35,9 @@ use crate::main::duplicate::duplicate;
 use crate::main::errors::Rf_error;
 use crate::mainutils::bind::isList;
 use crate::mainutils::colors::RGBpar3;
+use crate::mainutils::format::{formatComplex, formatReal};
+use crate::mainutils::objects::inherits2 as inherits;
+use crate::mainutils::printutils::{EncodeComplex, EncodeInteger, EncodeLogical, EncodeReal0};
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
 use crate::sexp::constructors::{Rf_ScalarInteger as ScalarInteger, Rf_length as length};
@@ -293,46 +296,6 @@ unsafe extern "C" {
     /* Sorting */
     fn rsort_with_index(x: *mut c_double, ind: *mut c_int, n: c_int);
 
-    /* Print/format */
-    fn EncodeLogical(x: c_int, w: c_int) -> *const c_char;
-    fn EncodeInteger(x: c_int, w: c_int) -> *const c_char;
-    fn EncodeReal0(
-        x: c_double,
-        w: c_int,
-        d: c_int,
-        e: c_int,
-        outdec: *const c_char,
-    ) -> *const c_char;
-    fn EncodeComplex(
-        x: Rcomplex,
-        w: c_int,
-        d: c_int,
-        e: c_int,
-        wi: c_int,
-        di: c_int,
-        ei: c_int,
-        outdec: *const c_char,
-    ) -> *const c_char;
-    fn formatReal(
-        x: *const c_double,
-        n: R_xlen_t,
-        w: *mut c_int,
-        d: *mut c_int,
-        e: *mut c_int,
-        outdec: c_int,
-    );
-    fn formatComplex(
-        x: *const Rcomplex,
-        n: R_xlen_t,
-        w: *mut c_int,
-        d: *mut c_int,
-        e: *mut c_int,
-        wi: *mut c_int,
-        di: *mut c_int,
-        ei: *mut c_int,
-        outdec: c_int,
-    );
-
     /* R options */
     fn GetOption1(name: SEXP) -> SEXP;
 
@@ -351,8 +314,6 @@ unsafe extern "C" {
     fn ScalarLogical(x: c_int) -> SEXP;
     fn allocList(n: c_int) -> SEXP;
     fn allocVector(type_: c_int, length: c_int) -> SEXP;
-    fn inherits(x: SEXP, cls: *const c_char) -> c_int;
-
     /* List manipulation */
     fn SETCADR(x: SEXP, y: SEXP);
     fn SETCADDR(x: SEXP, y: SEXP);
@@ -583,7 +544,6 @@ unsafe fn FixupPch(pch: SEXP, dflt: c_int) -> SEXP {
 }
 
 /* GEstring_to_pch delegate */
-#[unsafe(no_mangle)]
 unsafe fn GEstring_to_pch(s: SEXP) -> c_int {
     crate::mainutils::engine::GEstring_to_pch(s)
 }
@@ -597,7 +557,6 @@ unsafe fn GE_LTYpar(lty: SEXP, i: c_int) -> c_int {
  * FixupLty -- fix up line type specification.
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn FixupLty(lty: SEXP, dflt: c_int) -> SEXP {
     let n = length(lty);
     let mut ans: SEXP = R_NilValue();
@@ -684,7 +643,6 @@ unsafe fn FixupFont(font: SEXP, dflt: c_int) -> SEXP {
  * FixupCol -- fix up colour specification.
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn FixupCol(col: SEXP, dflt: c_uint) -> SEXP {
     let n = length(col);
     let ans: SEXP;
@@ -1359,7 +1317,6 @@ unsafe fn CheckSymbolPar(p: SEXP, nr: *mut c_int, nc: *mut c_int) {
  * labelformat -- format labels from numbers to strings
  * ======================================================================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn labelformat(labels: SEXP) -> SEXP {
     let n = length(labels);
     let mut ans: SEXP = R_NilValue();

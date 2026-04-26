@@ -58,7 +58,6 @@ unsafe fn do_bmVersion() -> SEXP {
 }
 
 /// contourLines - wrapper for do_contourLines.
-#[unsafe(no_mangle)]
 pub unsafe fn contourLines(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
     do_contourLines(call, op, CDR(args), env)
 }

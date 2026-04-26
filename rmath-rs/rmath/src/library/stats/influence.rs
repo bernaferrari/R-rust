@@ -44,7 +44,6 @@ unsafe fn error(msg: &str) {
     Rf_error(c_msg.as_ptr());
 }
 
-#[unsafe(no_mangle)]
 unsafe fn mkChar(s: &str) -> SEXP {
     let c_str = CString::new(s).unwrap_or_default();
     Rf_mkChar(c_str.as_ptr())

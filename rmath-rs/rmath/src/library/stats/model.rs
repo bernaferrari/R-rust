@@ -114,7 +114,6 @@ unsafe fn isDataFrame(x: SEXP) -> bool {
 // Helper: isLanguage, isSymbol, isMatrix
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn isLanguage(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::LANGSXP
 }
@@ -166,7 +165,6 @@ unsafe fn allocMatrix(sexptype: c_int, nrow: c_int, ncol: c_int) -> SEXP {
 // Local SETCADR / SETCADDR helpers
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn SETCADR(x: SEXP, y: SEXP) {
     if !x.is_null() {
         let cdr = CDR(x);
@@ -176,7 +174,6 @@ unsafe fn SETCADR(x: SEXP, y: SEXP) {
     }
 }
 
-#[unsafe(no_mangle)]
 unsafe fn SETCADDR(x: SEXP, y: SEXP) {
     if !x.is_null() {
         let cddr = CDR(CDR(x));

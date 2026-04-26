@@ -340,7 +340,6 @@ pub unsafe fn format_scientific(
 // formatRaw  -- field width for raw bytes (always 2: "00".."ff")
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if !fieldwidth.is_null() {
@@ -353,7 +352,6 @@ pub unsafe fn formatRaw(_x: *const c_void, _n: R_xlen_t, fieldwidth: *mut c_int)
 // formatRawS  -- SEXP variant (also always 2)
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if !fieldwidth.is_null() {
@@ -369,7 +367,6 @@ pub unsafe fn formatRawS(_x: SEXP, _n: R_xlen_t, fieldwidth: *mut c_int) {
 // Ported from C: iterates SEXP array, calls Rstrlen for display width.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
@@ -401,7 +398,6 @@ pub unsafe fn formatString(x: *const SEXP, n: R_xlen_t, fieldwidth: *mut c_int, 
 // Ported from C: uses STRING_ELT to access elements.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote: c_int) {
     unsafe {
         let mut xmax: c_int = 0;
@@ -433,7 +429,6 @@ pub unsafe fn formatStringS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int, quote:
 // Ported from C: TRUE -> width 4, FALSE -> width 5, NA -> na_width.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
@@ -473,7 +468,6 @@ pub unsafe fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
 // ALTREP support; we use the direct accessor path.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if fieldwidth.is_null() {
@@ -499,7 +493,6 @@ pub unsafe fn formatLogicalS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
 // FORMATINT_RETLOGIC to compute the required field width.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         if x.is_null() || n <= 0 {
@@ -555,7 +548,6 @@ pub unsafe fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int
 // ALTINTEGER_MIN/MAX). We use the simpler direct path via INTEGER().
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
     unsafe {
         *fieldwidth = 1;
@@ -588,7 +580,6 @@ pub unsafe fn formatIntegerS(x: SEXP, n: R_xlen_t, fieldwidth: *mut c_int) {
 /// * `d`      - [out] decimal digits to use
 /// * `e`      - [out] exponent width (0 = fixed format, 1 = 2-digit exp, 2 = 3-digit)
 /// * `nsmall` - minimum number of decimal digits in fixed format
-#[unsafe(no_mangle)]
 pub unsafe fn formatReal(
     x: *const c_double,
     n: R_xlen_t,
@@ -736,7 +727,6 @@ pub unsafe fn formatReal(
 // ALTREP support; we use the direct accessor path.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatRealS(
     x: SEXP,
     n: R_xlen_t,
@@ -785,7 +775,6 @@ pub unsafe fn formatRealS(
 /// Compute format parameters for an array of complex numbers.
 ///
 /// Treats Re and Im parts independently via `formatReal`.
-#[unsafe(no_mangle)]
 pub unsafe fn formatComplex(
     x: *const Rcomplex,
     n: R_xlen_t,
@@ -873,7 +862,6 @@ pub unsafe fn formatComplex(
 // ALTREP support; we use the direct accessor path.
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn formatComplexS(
     x: SEXP,
     n: R_xlen_t,

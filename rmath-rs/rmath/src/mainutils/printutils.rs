@@ -250,7 +250,6 @@ pub unsafe fn R_Decode2Long(p: *mut c_char, ierr: *mut c_int) -> R_size_t {
 ///
 /// Returns a pointer into the active session's print buffer. `x` is the logical
 /// value (NA_LOGICAL for NA), `w` is the minimum field width.
-#[unsafe(no_mangle)]
 pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
     unsafe {
         let rp = current_R_print();
@@ -306,7 +305,6 @@ pub unsafe fn EncodeLogical(x: c_int, w: c_int) -> *const c_char {
 ///
 /// Returns a pointer into the active session's print buffer. `x` is the integer
 /// value (NA_INTEGER for NA), `w` is the minimum field width.
-#[unsafe(no_mangle)]
 pub unsafe fn EncodeInteger(x: c_int, w: c_int) -> *const c_char {
     unsafe {
         let val = if x == NA_INTEGER {
@@ -368,7 +366,6 @@ fn format_number_fixed(x: f64, prec: usize) -> String {
 /// `dec` is the decimal separator string (typically ".").
 ///
 /// Returns a pointer into the active session's print buffer.
-#[unsafe(no_mangle)]
 pub unsafe fn EncodeReal0(
     x: f64,
     w: c_int,
@@ -636,7 +633,6 @@ pub unsafe fn EncodeReal2(x: f64, w: c_int, d: c_int, e: c_int) -> *const c_char
 /// `wr`, `dr`, `er` are width, digits, scientific flag for the real part.
 /// `wi`, `di`, `ei` are width, digits, scientific flag for the imaginary part.
 /// `dec` is the decimal separator string.
-#[unsafe(no_mangle)]
 pub unsafe fn EncodeComplex(
     x: Rcomplex,
     wr: c_int,
@@ -704,7 +700,6 @@ pub unsafe fn EncodeComplex(
 // ---------------------------------------------------------------------------
 
 /// Encode a raw byte as a two-digit hex string with optional prefix.
-#[unsafe(no_mangle)]
 pub unsafe fn EncodeRaw(x: Rbyte, prefix: *const c_char) -> *const c_char {
     unsafe {
         let prefix_str = if prefix.is_null() {
@@ -872,7 +867,6 @@ pub unsafe fn StringFromReal(x: f64, _warn: *mut c_int) -> SEXP {
 /// Compute the escaped display width of a CHARSXP.
 ///
 /// Delegates to `Rstrwid` with the CHARSXP's character data and length.
-#[unsafe(no_mangle)]
 pub unsafe fn Rstrlen(s: SEXP, quote: c_int) -> c_int {
     unsafe {
         if s.is_null() {
@@ -902,7 +896,6 @@ pub enum Rprt_adj {
 /// Handles ASCII escaping (backslash, quotes, control chars -> \n etc.),
 /// padding/justification, and quoting. Returns a pointer to an internal
 /// thread-local buffer.
-#[unsafe(no_mangle)]
 pub unsafe fn EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe {
         if s.is_null() {

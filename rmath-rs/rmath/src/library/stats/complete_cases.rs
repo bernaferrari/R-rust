@@ -36,7 +36,6 @@ unsafe fn isVector(x: SEXP) -> bool {
         || t == SEXPTYPE::EXPRSXP
 }
 
-#[unsafe(no_mangle)]
 unsafe fn isNewList(x: SEXP) -> bool {
     TYPEOF(x) == SEXPTYPE::VECSXP
 }

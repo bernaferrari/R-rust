@@ -15,7 +15,7 @@ use crate::sexp::accessors::{
     COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT,
 };
 use crate::sexp::ffi::R_xlen_t;
-use crate::sexp::ffi::{R_IsNA, Rcomplex, SEXP};
+use crate::sexp::ffi::{R_IsNA, SEXP};
 use crate::sexp::globals::R_NilValue;
 
 // ---------------------------------------------------------------------------
@@ -65,10 +65,14 @@ unsafe fn get_R_print_full() -> MutPtr<R_PrintData> {
 // Functions from printutils (non-SEXP taking ones)
 // ---------------------------------------------------------------------------
 
+use crate::mainutils::format::{
+    formatComplex, formatInteger, formatLogical, formatRaw, formatReal,
+};
 use crate::mainutils::printutils::IndexWidth_xlen as IndexWidth;
 use crate::mainutils::printutils::{
     EncodeComplex, EncodeInteger, EncodeLogical, EncodeRaw, EncodeReal0, Rprt_adj,
 };
+use crate::mainutils::printvector::printVector;
 
 // ---------------------------------------------------------------------------
 // Local wrappers for printutils functions that take SEXP
@@ -86,43 +90,6 @@ static EMPTY_CSTR: [u8; 1] = [0];
 
 unsafe fn local_EncodeString(s: SEXP, w: c_int, quote: c_int, justify: Rprt_adj) -> *const c_char {
     unsafe { crate::mainutils::printutils::EncodeString(s, w, quote, justify) }
-}
-
-// ---------------------------------------------------------------------------
-// Functions from format (extern "C" linkage)
-// ---------------------------------------------------------------------------
-
-unsafe extern "C" {
-    fn formatLogical(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatInteger(x: *const c_int, n: R_xlen_t, fieldwidth: *mut c_int);
-    fn formatReal(
-        x: *const f64,
-        n: R_xlen_t,
-        w: *mut c_int,
-        d: *mut c_int,
-        e: *mut c_int,
-        nsmall: c_int,
-    );
-    fn formatComplex(
-        x: *const Rcomplex,
-        n: R_xlen_t,
-        wr: *mut c_int,
-        dr: *mut c_int,
-        er: *mut c_int,
-        wi: *mut c_int,
-        di: *mut c_int,
-        ei: *mut c_int,
-        nsmall: c_int,
-    );
-    fn formatRaw(x: *const c_void, n: R_xlen_t, fieldwidth: *mut c_int);
-}
-
-// ---------------------------------------------------------------------------
-// Functions from other modules (extern "C" linkage)
-// ---------------------------------------------------------------------------
-
-unsafe extern "C" {
-    fn printVector(x: SEXP, indx: c_int, quote: c_int);
 }
 
 use crate::eval::attrib_core::getAttrib;

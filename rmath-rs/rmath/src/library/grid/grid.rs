@@ -13,6 +13,7 @@ use std::ptr;
 use crate::attrib_core::{R_DimSymbol, R_NamesSymbol, getAttrib, setAttrib};
 use crate::mainutils::engine::{GESetClip, toDeviceHeight, toDeviceWidth, toDeviceX, toDeviceY};
 use crate::mainutils::errors::{Rf_error, Rf_error1, Rf_warning};
+use crate::mainutils::objects::inherits2 as Rf_inherits;
 use crate::mainutils::subset::installTrChar;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
@@ -45,7 +46,6 @@ use super::viewport::*;
 
 unsafe extern "C" {
     fn Rf_duplicate(x: SEXP) -> SEXP;
-    fn Rf_inherits(x: SEXP, klass: *const c_char) -> c_int;
     fn Rf_eval_with_gd(call: SEXP, env: SEXP, dd: pGEDevDesc) -> SEXP;
     fn lang2(symbol: SEXP, arg: SEXP) -> SEXP;
     fn lang3(symbol: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP;
@@ -244,7 +244,6 @@ fn fmax2(a: f64, b: f64) -> f64 {
  * getDevice
  * ============================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn getDevice() -> pGEDevDesc {
     GEcurrentDevice()
 }
@@ -253,7 +252,6 @@ pub unsafe fn getDevice() -> pGEDevDesc {
  * getDeviceSize
  * ============================== */
 
-#[unsafe(no_mangle)]
 pub unsafe fn getDeviceSize(dd: pGEDevDesc, devWidthCM: *mut c_double, devHeightCM: *mut c_double) {
     // Prefer device-driven conversion helpers when available.
     // In headless mode these still give deterministic non-zero sizes.

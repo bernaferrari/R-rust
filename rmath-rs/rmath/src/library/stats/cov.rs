@@ -25,7 +25,6 @@ unsafe fn asBool(x: SEXP) -> bool {
     v != 0 && v != crate::sexp::ffi::NA_INTEGER
 }
 
-#[unsafe(no_mangle)]
 unsafe fn length(x: SEXP) -> c_int {
     Rf_length(x)
 }
@@ -83,7 +82,6 @@ unsafe fn getAttrib(x: SEXP, what: SEXP) -> SEXP {
     crate::attrib_core::getAttrib(x, what)
 }
 
-#[unsafe(no_mangle)]
 unsafe fn duplicate(x: SEXP) -> SEXP {
     crate::main::duplicate::duplicate(x)
 }

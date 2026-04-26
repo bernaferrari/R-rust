@@ -347,7 +347,6 @@ unsafe fn next_control_points(
     copy_control_point(3, k + 3, n, px, py, ps, x, y, s, dd);
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn compute_open_spline(
     n: c_int,
     x: *const c_double,
@@ -386,7 +385,6 @@ pub unsafe fn compute_open_spline(
     }
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn compute_closed_spline(
     n: c_int,
     x: *const c_double,
@@ -420,7 +418,6 @@ pub unsafe fn compute_closed_spline(
     }
 }
 
-#[unsafe(no_mangle)]
 pub unsafe fn get_spline_points() -> (*mut c_double, *mut c_double, c_int) {
     (XPOINTS.get(), YPOINTS.get(), NPOINTS.get())
 }

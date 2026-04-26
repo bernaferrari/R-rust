@@ -50,7 +50,6 @@ thread_local! { static RTcl_interp: Cell<*mut c_void> = Cell::new(ptr::null_mut(
 ///   4. Optionally loads Tk (if DISPLAY is set on Unix)
 ///   5. Registers R_eval, R_call, R_call_lang commands
 ///   6. Sets service mode to TCL_SERVICE_ALL
-#[unsafe(no_mangle)]
 pub unsafe fn tcltk_init(TkUp: *mut c_int) {
     if !TkUp.is_null() {
         *TkUp = 0;

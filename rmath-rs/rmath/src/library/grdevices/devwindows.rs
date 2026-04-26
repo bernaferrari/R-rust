@@ -371,21 +371,18 @@ fn with_windows_device_state<T>(f: impl FnOnce(&mut WindowsDeviceState) -> T) ->
 
 /// Extract R_RED component from a packed R color integer
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn R_RED(color: c_int) -> c_int {
     (color >> 16) & 0xff
 }
 
 /// Extract R_GREEN component from a packed R color integer
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn R_GREEN(color: c_int) -> c_int {
     (color >> 8) & 0xff
 }
 
 /// Extract R_BLUE component from a packed R color integer
 #[inline]
-#[unsafe(no_mangle)]
 unsafe fn R_BLUE(color: c_int) -> c_int {
     color & 0xff
 }
@@ -403,7 +400,6 @@ unsafe fn R_RGBA(r: c_int, g: c_int, b: c_int, a: c_int) -> c_int {
 }
 
 /// Check if a color is fully opaque
-#[unsafe(no_mangle)]
 #[inline]
 unsafe fn R_OPAQUE(color: c_int) -> bool {
     R_ALPHA(color) == 255
