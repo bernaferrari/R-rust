@@ -10,6 +10,7 @@
 //! - Argument evaluation and matching
 //! - Method dispatch
 
+pub mod apply;
 pub mod arithmetic;
 pub mod assignment;
 pub mod attrib_core;

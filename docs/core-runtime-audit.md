@@ -23,12 +23,17 @@ floor-division edge behavior to normal IEEE division and the R-shaped
 `myfmod`/`myfloor` helpers. The new zero-division conformance fixture checks
 stock R parity for `Inf`, `-Inf`, `NaN`, and integer `NA` behavior.
 
-`eval.rs` is functional for the covered runtime slice and is moving toward the
-final Rust shape. Primitive metadata and evaluator limits are now separated into
-focused modules; `PRIMPRINT` follows upstream's `((eval / 100) % 10)` rule; and
-the old `eval::builtin` placeholder delegates to the canonical function table.
-The remaining weak spot is the large builtin dispatch match and the broad
-`unsafe_op_in_unsafe_fn` allow still needed by that compatibility shell.
+`eval.rs` is functional for the covered runtime slice and is now much closer to
+the final Rust shape. Primitive metadata, evaluator limits, and application of
+closures/specials/builtins live in focused modules; `PRIMPRINT` follows
+upstream's `((eval / 100) % 10)` rule; and the old `eval::builtin` placeholder
+delegates to the canonical function table. `eval::apply` makes the important R
+semantic boundary explicit: unevaluated builtins are dispatched before ordinary
+argument evaluation, while evaluated builtins go through one call-frame path.
+The remaining weak spot is that the evaluated builtin table itself is still a
+large string match instead of generated/table-driven metadata, and `eval.rs`
+still has a broad `unsafe_op_in_unsafe_fn` allow for the raw compatibility
+shell.
 
 ## Test Strategy
 
