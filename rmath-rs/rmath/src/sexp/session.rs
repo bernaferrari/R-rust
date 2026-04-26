@@ -27,10 +27,12 @@
 //! operations become no-ops or return errors.
 
 use std::ffi::CString;
+use std::marker::PhantomData;
 use std::os::raw::c_int;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 #[cfg(test)]
 use std::ptr;
+use std::rc::Rc;
 use std::sync::{Arc, atomic::AtomicBool};
 
 use super::context::{RError, RSignal};
@@ -129,6 +131,8 @@ pub struct RSession {
     active: bool,
     /// The owned R instance with isolated state.
     instance: Box<RInstance>,
+    /// Marker that keeps sessions thread-confined at compile time.
+    _thread_confined: PhantomData<Rc<()>>,
 }
 
 impl RSession {
@@ -145,6 +149,7 @@ impl RSession {
         RSession {
             active: true,
             instance,
+            _thread_confined: PhantomData,
         }
     }
 

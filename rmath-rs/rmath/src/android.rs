@@ -1998,6 +1998,92 @@ mod tests {
     }
 
     #[test]
+    fn test_parallel_android_sessions_stress_isolated_state_paths_and_cancellation() {
+        const WORKERS: usize = 4;
+        const ITERS: usize = 8;
+
+        let handles = (0..WORKERS)
+            .map(|worker| {
+                std::thread::spawn(move || {
+                    let root = unique_test_root(&format!("android-parallel-{worker}"));
+                    let files = root.join("files");
+                    let cache = root.join("cache");
+                    let bundled = root.join("bundled-library");
+                    let package = format!("pkg{worker}");
+                    let package_dir = bundled.join(&package);
+                    std::fs::create_dir_all(&package_dir).expect("package dir");
+                    std::fs::write(
+                        package_dir.join("DESCRIPTION"),
+                        format!("Package: {package}\nVersion: 0.0.1\n"),
+                    )
+                    .expect("description");
+
+                    let mut session = RSession::new();
+                    session
+                        .configure_paths(
+                            files.to_str().expect("utf8 files path"),
+                            cache.to_str().expect("utf8 cache path"),
+                            Some(bundled.to_str().expect("utf8 bundled path")),
+                        )
+                        .expect("configure paths");
+                    session.set_seed(100 + worker as u32, 200 + worker as u32);
+
+                    let mut rng_bits = Vec::with_capacity(ITERS);
+                    for iter in 0..ITERS {
+                        let cancelled =
+                            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+                        let cancelled_result =
+                            session.eval_with_cancellation_flag("1 + 1", Some(cancelled));
+                        assert_eq!(cancelled_result.output, "Error: operation cancelled");
+
+                        let code = format!("local_value <- {}; local_value", worker * 100 + iter);
+                        let result = session.eval(&code);
+                        assert_eq!(result.value, (worker * 100 + iter) as f64, "{result:?}");
+                        assert_eq!(
+                            session.eval("exists(\"local_value\")").typed,
+                            RValue::Logical(Some(true))
+                        );
+                        rng_bits.push(session.unif_rand().to_bits());
+                    }
+
+                    assert!(session.package_available(&package));
+                    assert_eq!(
+                        session.package_path(&package),
+                        Some(package_dir.to_string_lossy().into_owned())
+                    );
+                    let temp_dir = cache.join("Rtmp").to_string_lossy().into_owned();
+                    assert_eq!(
+                        session.eval("tempdir()").typed,
+                        string_vector(vec![temp_dir.clone()])
+                    );
+                    assert_eq!(session.eval("1 + 1").output, "[1] 2");
+
+                    let _ = std::fs::remove_dir_all(root);
+                    (worker, rng_bits, temp_dir)
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let summaries = handles
+            .into_iter()
+            .map(|handle| handle.join().expect("parallel session worker panicked"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(summaries.len(), WORKERS);
+        let temp_dirs = summaries
+            .iter()
+            .map(|(_, _, temp_dir)| temp_dir.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(temp_dirs.len(), WORKERS);
+
+        let rng_sequences = summaries
+            .iter()
+            .map(|(_, rng_bits, _)| rng_bits.as_slice())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(rng_sequences.len(), WORKERS);
+    }
+
+    #[test]
     fn test_eval_cancellation_flag_is_scoped_to_session_call() {
         let mut cancelled = RSession::new();
         let mut active = RSession::new();

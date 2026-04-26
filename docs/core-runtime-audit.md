@@ -42,6 +42,16 @@ noncanonical helpers. The raw compatibility shell in `eval.rs` now denies
 remaining pointer conversions are explicit unsafe blocks rather than ambient
 module-wide unsafety.
 
+Android-facing sessions are now explicitly thread-confined in the type system.
+Each `RSession` owns an `RInstance`; the remaining `thread_local!` slot is only
+a compatibility bridge that says which instance is active on the current worker
+while legacy R-shaped accessors run. Ordinary Android use does not require a
+mutable process-global interpreter: create one session per tab/worker, keep it
+on that worker, and configure paths, RNG, cancellation, output capture, and
+package state through the session. The only atomic in this path is an optional
+per-call cancellation token (`Arc<AtomicBool>`) used when another host thread
+needs to request cooperative cancellation; it is not shared interpreter state.
+
 ## Test Strategy
 
 Run stock GNU R tests, but curate them. The full upstream test suite expects the
