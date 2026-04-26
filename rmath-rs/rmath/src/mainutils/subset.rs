@@ -717,13 +717,13 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
         }
 
         // ALTREP fast path -- skip for now (no ALTREP in Rust port)
-        let result: SEXP;
         let n = xlength(indx);
         let nx = xlength(x);
         let mode = TYPEOF(x);
 
         /* protect allocation in case _ELT operations need to allocate */
-        result = Rf_protect(Rf_allocVector3(mode, n));
+        let result = Rf_allocVector3(mode, n);
+        let _result_guard = protect(result);
 
         if TYPEOF(indx) == SEXPTYPE::INTSXP {
             let pindx = INTEGER(indx);
@@ -857,7 +857,6 @@ pub unsafe fn ExtractSubset(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
             }
         }
 
-        Rf_unprotect(1); /* result */
         result
     }
 }
@@ -874,7 +873,7 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
             // Missing arg check
             let missing_sym = Rf_install(std::ffi::CString::new("").unwrap_or_default().as_ptr());
             if s == R_NilValue() {
-                return Rf_protect(crate::mainutils::duplicate::duplicate(x));
+                return crate::mainutils::duplicate::duplicate(x);
             }
         }
 
@@ -895,22 +894,24 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
         };
 
         if is_missing {
-            return Rf_protect(crate::mainutils::duplicate::duplicate(x));
+            return crate::mainutils::duplicate::duplicate(x);
         }
 
         /* Protect s */
-        Rf_protect(s);
+        let _s_guard = protect(s);
 
         /* Check for special matrix subscripting (skip for now -- no strmat2intmat/mat2indsub) */
         /* This optimization requires strmat2intmat and mat2indsub which are not yet ported */
 
         /* Convert to a vector of integer subscripts in the range 1:length(x). */
         let mut stretch: R_xlen_t = 1;
-        let indx = Rf_protect(makeSubscript(x, s, &mut stretch, call));
+        let indx = makeSubscript(x, s, &mut stretch, call);
+        let _indx_guard = protect(indx);
 
         /* Allocate the result. */
         let mode = TYPEOF(x);
-        let result = Rf_protect(ExtractSubset(x, indx, call));
+        let result = ExtractSubset(x, indx, call);
+        let _result_guard = protect(result);
         if mode == SEXPTYPE::VECSXP || mode == SEXPTYPE::EXPRSXP {
             /* we do not duplicate the values when extracting the subset,
             so to be conservative mark the result as NAMED = NAMEDMAX */
@@ -932,22 +933,21 @@ unsafe fn VectorSubset(x: SEXP, s: SEXP, call: SEXP) -> SEXP {
             }
 
             if has_names {
-                Rf_protect(attrib);
-                let nattrib = Rf_protect(ExtractSubset(attrib, indx, call));
+                let _attrib_guard = protect(attrib);
+                let nattrib = ExtractSubset(attrib, indx, call);
+                let _nattrib_guard = protect(nattrib);
                 setAttrib(result, sym_Names(), nattrib);
-                Rf_unprotect(2); /* attrib, nattrib */
             }
 
             /* Handle srcref attribute */
             let srcref = getAttrib(x, sym_Srcref());
             if !isNull(srcref) && TYPEOF(srcref) == SEXPTYPE::VECSXP {
-                let nattrib = Rf_protect(ExtractSubset(srcref, indx, call));
+                let nattrib = ExtractSubset(srcref, indx, call);
+                let _nattrib_guard = protect(nattrib);
                 setAttrib(result, sym_Srcref(), nattrib);
-                Rf_unprotect(1);
             }
         }
 
-        Rf_unprotect(3); /* s, indx, result */
         result
     }
 }
@@ -964,11 +964,14 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let nc = ncols(x);
 
         /* s is protected on entry */
-        let dim = Rf_protect(getAttrib(x, sym_Dim()));
+        let dim = getAttrib(x, sym_Dim());
+        let _dim_guard = protect(dim);
 
         /* Convert row and column subscripts to integer form */
-        let sr = Rf_protect(int_arraySubscript(0, CAR(s), dim, x, call));
-        let sc = Rf_protect(int_arraySubscript(1, CADR(s), dim, x, call));
+        let sr = int_arraySubscript(0, CAR(s), dim, x, call);
+        let _sr_guard = protect(sr);
+        let sc = int_arraySubscript(1, CADR(s), dim, x, call);
+        let _sc_guard = protect(sc);
         let nrs = LENGTH(sr);
         let ncs = LENGTH(sc);
 
@@ -979,10 +982,8 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
 
         let psr = INTEGER(sr);
         let psc = INTEGER(sc);
-        let result = Rf_protect(Rf_allocVector3(
-            TYPEOF(x),
-            (nrs as R_xlen_t) * (ncs as R_xlen_t),
-        ));
+        let result = Rf_allocVector3(TYPEOF(x), (nrs as R_xlen_t) * (ncs as R_xlen_t));
+        let _result_guard = protect(result);
 
         let mut i: R_xlen_t;
         let mut j: R_xlen_t;
@@ -1115,7 +1116,6 @@ unsafe fn MatrixSubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             DropDims(result);
         }
 
-        Rf_unprotect(4); /* dim, sr, sc, result */
         result
     }
 }
@@ -1154,7 +1154,8 @@ unsafe fn findASubIndex(
 unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
     unsafe {
         let mode = TYPEOF(x);
-        let xdims = Rf_protect(getAttrib(x, sym_Dim()));
+        let xdims = getAttrib(x, sym_Dim());
+        let _xdims_guard = protect(xdims);
         let k = length_int(xdims);
         let pxdims = INTEGER(xdims);
 
@@ -1165,10 +1166,12 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         let mut offset_arr: Vec<R_xlen_t> = vec![0; k as usize];
 
         /* Construct subscripts and compute bounds */
+        let mut sub_guards = Vec::with_capacity(k as usize);
         let mut n: R_xlen_t = 1;
         let mut r = s;
         for i in 0..(k as usize) {
-            let sub = Rf_protect(int_arraySubscript(i as c_int, CAR(r), xdims, x, call));
+            let sub = int_arraySubscript(i as c_int, CAR(r), xdims, x, call);
+            sub_guards.push(protect(sub));
             SETCAR(r, sub);
             bound.push(LENGTH(sub));
             subs.push(INTEGER(sub));
@@ -1198,7 +1201,8 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
         }
 
         /* Transfer subset elements */
-        let result = Rf_protect(Rf_allocVector3(mode, n));
+        let result = Rf_allocVector3(mode, n);
+        let _result_guard = protect(result);
 
         for i in 0..n {
             let ii = findASubIndex(
@@ -1338,7 +1342,6 @@ unsafe fn ArraySubset(x: SEXP, s: SEXP, call: SEXP, drop: c_int) -> SEXP {
             DropDims(result);
         }
 
-        Rf_unprotect(2 + k as i32); /* xdims, result, + k for int_arraySubscript results */
         result
     }
 }
@@ -1516,7 +1519,7 @@ pub unsafe fn do_subset(call: SEXP, op: SEXP, args: SEXP, env: SEXP) -> SEXP {
 pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         let _ = (op, rho);
-        Rf_protect(args);
+        let _args_guard = protect(args);
 
         let mut drop: c_int = 1;
         ExtractDropArg(args, &mut drop);
@@ -1525,7 +1528,6 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
         /* Handle NULL case */
         if isNull(x) {
-            Rf_unprotect(1);
             return x;
         }
 
@@ -1536,17 +1538,20 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 
         /* Coerce pair-based objects into generic vectors */
         let mut ax = x;
+        let mut _ax_guard = None;
         if isVector(x) || isVectorList(x) {
-            Rf_protect(ax);
+            _ax_guard = Some(protect(ax));
         } else if isPairList(x) {
             let dim = getAttrib(x, sym_Dim());
             let ndim = length_int(dim);
             if ndim > 1 {
-                ax = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x)));
+                ax = Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x));
+                _ax_guard = Some(protect(ax));
                 setAttrib(ax, sym_DimNames(), getAttrib(x, sym_DimNames()));
                 setAttrib(ax, sym_Names(), getAttrib(x, sym_DimNames()));
             } else {
-                ax = Rf_protect(Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x)));
+                ax = Rf_allocVector3(SEXPTYPE::VECSXP, xlength(x));
+                _ax_guard = Some(protect(ax));
                 setAttrib(ax, sym_Names(), getAttrib(x, sym_Names()));
             }
             let mut px = x;
@@ -1561,52 +1566,54 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
         }
 
         /* The actual subsetting code */
-        let mut ans: SEXP;
-        if nsubs < 2 {
+        let mut ans: SEXP = if nsubs < 2 {
             let dim = getAttrib(x, sym_Dim());
             let ndim = length_int(dim);
-            ans = Rf_protect(VectorSubset(
-                ax,
-                if nsubs == 1 { CAR(subs) } else { R_NilValue() },
-                call,
-            ));
+            let ans = VectorSubset(ax, if nsubs == 1 { CAR(subs) } else { R_NilValue() }, call);
+            let ans_guard = protect(ans);
 
             /* One-dimensional arrays should keep their dimension unless drop && len == 1 */
             if ndim == 1 {
                 let len = length_int(ans);
                 if drop == 0 || len > 1 {
-                    let nm = Rf_protect(getAttrib(ans, sym_Names()));
-                    let attr = Rf_protect(Rf_ScalarInteger(len));
+                    let nm = getAttrib(ans, sym_Names());
+                    let _nm_guard = protect(nm);
+                    let attr = Rf_ScalarInteger(len);
+                    let _attr_guard = protect(attr);
                     if !isNull(getAttrib(dim, sym_Names())) {
                         setAttrib(attr, sym_Names(), getAttrib(dim, sym_Names()));
                     }
                     setAttrib(ans, sym_Dim(), attr);
                     let attrib = getAttrib(x, sym_DimNames());
                     if !isNull(attrib) {
-                        let nattrib = Rf_protect(crate::mainutils::duplicate::duplicate(attrib));
+                        let nattrib = crate::mainutils::duplicate::duplicate(attrib);
+                        let _nattrib_guard = protect(nattrib);
                         SET_VECTOR_ELT(nattrib, 0, nm);
                         setAttrib(ans, sym_DimNames(), nattrib);
                         setAttrib(ans, sym_Names(), R_NilValue());
-                        Rf_unprotect(1); /* nattrib */
                     }
-                    Rf_unprotect(2); /* nm, attr */
                 }
             }
+            std::mem::drop(ans_guard);
+            ans
         } else {
             if nsubs != length_int(getAttrib(x, sym_Dim())) {
                 errorcall(call, "incorrect number of dimensions");
             }
             if nsubs == 2 {
-                ans = Rf_protect(MatrixSubset(ax, subs, call, drop));
+                MatrixSubset(ax, subs, call, drop)
             } else {
-                ans = Rf_protect(ArraySubset(ax, subs, call, drop));
+                ArraySubset(ax, subs, call, drop)
             }
-        }
+        };
+        let _ans_guard = protect(ans);
 
         /* Convert back to LANGSXP if original was a language object */
+        let _lang_ans_guard;
         if xtype == SEXPTYPE::LANGSXP {
             ax = ans;
-            ans = Rf_protect(allocLang(length_int(ax)));
+            ans = allocLang(length_int(ax));
+            _lang_ans_guard = Some(protect(ans));
             if length_int(ax) > 0 {
                 let mut px = ans;
                 let mut idx: c_int = 0;
@@ -1621,7 +1628,7 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
                 RAISE_NAMED(ans, NAMED(ax));
             }
         } else {
-            Rf_protect(ans);
+            _lang_ans_guard = None;
         }
 
         if data_frame_subset {
@@ -1637,7 +1644,6 @@ pub unsafe fn do_subset_dflt(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
             }
         }
 
-        Rf_unprotect(4); /* args, ax, ans, (and one more from the conditional) */
         ans
     }
 }
