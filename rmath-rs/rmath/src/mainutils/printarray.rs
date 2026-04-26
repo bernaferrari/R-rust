@@ -10,6 +10,7 @@
 use std::os::raw::{c_char, c_int, c_void};
 use std::ptr;
 
+use crate::mainutils::printvector::GetMatrixDimnames;
 use crate::sexp::accessors::{
     COMPLEX, INTEGER, LENGTH, LOGICAL, RAW, REAL, STRING_ELT, TYPEOF, VECTOR_ELT,
 };
@@ -122,13 +123,6 @@ unsafe extern "C" {
 
 unsafe extern "C" {
     fn printVector(x: SEXP, indx: c_int, quote: c_int);
-    fn GetMatrixDimnames(
-        x: SEXP,
-        rl: *mut SEXP,
-        cl: *mut SEXP,
-        rn: *mut *const c_char,
-        cn: *mut *const c_char,
-    );
 }
 
 use crate::eval::attrib_core::getAttrib;

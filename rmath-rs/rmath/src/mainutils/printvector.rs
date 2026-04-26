@@ -6,24 +6,13 @@
 //!
 //! Provides printVector() and printNamedVector() for displaying R vectors,
 //! along with type-specific vector printers (printIntegerVector, etc.).
-//!
-//! Functions that are already defined elsewhere (format.rs, printutils.rs,
-//! print.rs, accessors.rs) are NOT redefined here to avoid duplicate
-//! `#[unsafe(no_mangle)]` symbols.  Those include:
-//!   formatInteger, formatReal, formatLogical, formatString, formatRaw,
-//!   formatComplex (and their ALTREP *S variants) -- in format.rs
-//!   EncodeLogical, EncodeInteger, EncodeReal0, EncodeComplex, EncodeRaw,
-//!   EncodeString, Rstrwid, Rstrlen, IndexWidth, VectorIndex, Rprintf,
-//!   get_R_print -- in printutils.rs
-//!   PrintValue, PrintValueEnv, PrintValueRec -- in print.rs
-//!   XLENGTH -- in sexp/accessors.rs
 
 use std::os::raw::{c_char, c_int};
 use std::ptr;
 
 use crate::sexp::accessors::{
     CHAR, COMPLEX, COMPLEX_ELT, INTEGER, INTEGER_ELT, LOGICAL, LOGICAL_ELT, RAW, RAW_ELT, REAL,
-    REAL_ELT, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
+    REAL_ELT, Rf_isNull, STRING_ELT, TYPEOF, VECTOR_ELT, XLENGTH,
 };
 use crate::sexp::attrib_core::getAttrib;
 use crate::sexp::ffi::{ISNAN, NA_INTEGER, NA_REAL, R_IsNA, R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
@@ -1176,7 +1165,6 @@ pub unsafe fn type2str_nowarn(stype: c_int) -> *const c_char {
 // GetMatrixDimnames
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 pub unsafe fn GetMatrixDimnames(
     x: SEXP,
     rl: *mut SEXP,
@@ -1231,10 +1219,6 @@ pub unsafe fn GetMatrixDimnames(
         }
 
         // names(dimnames)[[1]] and [[2]] are CHARSXP values
-        unsafe extern "C" {
-            fn Rf_isNull(x: SEXP) -> c_int;
-        }
-
         if !rn.is_null() {
             let s = VECTOR_ELT(dn_names, 0);
             if !s.is_null() && Rf_isNull(s) == 0 {

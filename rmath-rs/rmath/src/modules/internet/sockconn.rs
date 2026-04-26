@@ -8,6 +8,7 @@
 // structs) is stored in con->private.
 
 use crate::sexp::*;
+use crate::sexp::memory_ext::R_alloc;
 use core::alloc::{Layout, alloc, dealloc};
 use core::ffi::{c_char, c_int, c_void};
 use libc::{FD_SETSIZE, size_t, snprintf, ssize_t, strcpy, strlen};
@@ -152,7 +153,6 @@ unsafe extern "C" {
     fn R_SockWrite(sockp: c_int, buf: *const c_void, len: size_t, timeout: c_int) -> ssize_t;
     fn R_set_nodelay(s: c_int) -> c_int;
     fn REprintf(format: *const i8);
-    fn R_alloc(size: usize, nelem: usize) -> *mut c_void;
 }
 
 // ---------------------------------------------------------------------------

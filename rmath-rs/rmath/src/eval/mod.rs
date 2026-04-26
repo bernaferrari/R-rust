@@ -10,30 +10,35 @@
 //! - Argument evaluation and matching
 //! - Method dispatch
 
-pub mod apply;
-pub mod arithmetic;
-pub mod assignment;
-pub mod attrib_core;
-pub mod bc_eval;
-pub mod bc_stack;
-pub mod builtin;
-pub mod bytecode;
-pub mod closure;
-pub mod complex_arith;
-pub mod context;
-pub mod defaults;
-pub mod dispatch;
-pub mod error;
+pub(crate) mod apply;
+pub(crate) mod arithmetic;
+pub(crate) mod assignment;
+pub(crate) mod attrib_core;
+pub(crate) mod bc_eval;
+pub(crate) mod bc_stack;
+pub(crate) mod builtin;
+pub(crate) mod bytecode;
+pub(crate) mod closure;
+pub(crate) mod complex_arith;
+pub(crate) mod context;
+pub(crate) mod defaults;
+pub(crate) mod dispatch;
+pub(crate) mod error;
 #[allow(clippy::module_inception)]
 pub mod eval;
-pub mod jit;
-pub mod limits;
-pub mod missing;
-pub mod parser;
-pub mod primitive;
-pub mod profiling;
-pub mod special;
-pub mod symbols;
+pub(crate) mod jit;
+pub(crate) mod limits;
+pub(crate) mod missing;
+pub(crate) mod parser;
+pub(crate) mod primitive;
+pub(crate) mod profiling;
+pub(crate) mod special;
+pub(crate) mod symbols;
+
+pub use eval::{
+    EvalContext, EvalError, EvalLimits, PrimitiveDescriptor, eval as eval_sexp, eval_expr,
+    eval_safe, find_var_safe, get_eval_limits, reset_eval_limits, set_eval_limits,
+};
 
 #[cfg(test)]
 mod integration_tests;

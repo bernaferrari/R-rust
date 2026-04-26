@@ -15,8 +15,8 @@
 //!
 //! Rust code should enter through [`EvalContext`] or [`eval_expr`], which work
 //! with owner-scoped `Sexp<'a>` handles and return `Result<Sexp<'a>, String>`.
-//! The C-shaped [`Rf_eval`] entrypoint is kept as a compatibility shell for
-//! ported code that still passes raw `SEXP` pointers.
+//! The C-shaped [`Rf_eval`] entrypoint is crate-local translation scaffolding
+//! for ported code that still passes raw `SEXP` pointers.
 
 use std::os::raw::c_int;
 
@@ -378,7 +378,7 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 }
 
 // ---------------------------------------------------------------------------
-// FFI eval function — thin shim delegating to eval_safe
+// Raw eval function — thin shim delegating to eval_safe
 // ---------------------------------------------------------------------------
 
 /// Evaluate an R expression in an environment.
@@ -390,8 +390,7 @@ unsafe fn get_symbol_name(sym: SEXP) -> String {
 ///
 /// `e` and `rho` must be valid SEXP pointers (or null).
 #[must_use]
-#[unsafe(no_mangle)]
-pub unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn Rf_eval(e: SEXP, rho: SEXP) -> SEXP {
     match (Sexp::from_raw(e), Sexp::from_raw(rho)) {
         (Some(expr), Some(env)) => match eval_expr(expr, env) {
             Ok(result) => result.as_raw(),
@@ -417,7 +416,7 @@ fn is_simple_warning_hook_call(expr: Sexp<'_>) -> bool {
 }
 
 /// Internal eval implementation (legacy, delegates to safe version).
-pub unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn eval_inner(e: SEXP, rho: SEXP) -> SEXP {
     unsafe { Rf_eval(e, rho) }
 }
 
@@ -468,7 +467,7 @@ unsafe fn eval_closure<'a>(e: SEXP, op: SEXP, rho: SEXP) -> Result<Sexp<'a>, Str
 /// Evaluate an expression, preserving the R_Visible flag.
 ///
 /// This is the equivalent of R's `evalKeepVis()` from errors.c.
-pub unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
     let oldvis = crate::sexp::globals::R_Visible();
     let val = unsafe { Rf_eval(e, rho) };
     set_R_Visible(oldvis);
@@ -483,7 +482,7 @@ pub unsafe fn eval_keep_vis(e: SEXP, rho: SEXP) -> SEXP {
 ///
 /// Ported from R's `do_withVisible()` in eval.c.
 /// This is a special `.Internal`.
-pub unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::attrib_core::{R_NamesSymbol, setAttrib};
     use crate::sexp::accessors::{CAR, SET_STRING_ELT, SET_VECTOR_ELT};
     use crate::sexp::constructors::{Rf_ScalarLogical, Rf_allocVector, Rf_mkChar};
@@ -523,7 +522,7 @@ pub unsafe fn do_withVisible(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEX
 ///
 /// Ported from R's `do_recall()` in eval.c.
 /// This is a special `.Internal`.
-pub unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn do_recall(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     use crate::eval::closure::applyClosure;
     use crate::mainutils::errors::Rf_error;
     use crate::sexp::accessors::{CAR, TYPEOF};

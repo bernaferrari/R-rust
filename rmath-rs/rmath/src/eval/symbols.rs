@@ -8,7 +8,9 @@
 use std::ffi::CString;
 
 use crate::sexp::ffi::SEXP;
-use crate::sexp::symbol::Rf_install;
+use crate::sexp::symbol::{
+    R_BraceSymbol, R_ForSymbol, R_IfSymbol, R_RepeatSymbol, R_WhileSymbol, Rf_install,
+};
 
 /// Install and cache commonly used operator symbols.
 ///
@@ -86,11 +88,3 @@ unsafe fn Rf_install_sym(name: &str) -> SEXP {
         Rf_install(cs.as_ptr())
     }
 }
-
-// Convenience re-exports
-pub use crate::sexp::symbol::R_BraceSymbol;
-pub use crate::sexp::symbol::R_DotsSymbol;
-pub use crate::sexp::symbol::R_ForSymbol;
-pub use crate::sexp::symbol::R_IfSymbol;
-pub use crate::sexp::symbol::R_RepeatSymbol;
-pub use crate::sexp::symbol::R_WhileSymbol;

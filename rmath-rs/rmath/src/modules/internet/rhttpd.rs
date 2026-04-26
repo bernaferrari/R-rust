@@ -11,9 +11,11 @@
 // R's built-in HTTP server - serves requests by evaluating httpd() function
 
 use crate::attrib_core::{R_NamesSymbol, getAttrib, setAttrib};
+use crate::eval::eval::Rf_eval;
 use crate::main::coerce::asInteger;
 use crate::main::errors::Rf_error;
 use crate::sexp::accessors::*;
+use crate::sexp::accessors::translateChar;
 use crate::sexp::constructors::*;
 use crate::sexp::ffi::{R_xlen_t, Rbyte, SEXP, SEXPTYPE};
 use crate::sexp::globals::R_NilValue;
@@ -167,7 +169,6 @@ unsafe extern "C" {
     fn install(name: *const c_char) -> SEXP;
     fn mkChar(s: *const c_char) -> SEXP;
     fn mkString(s: *const c_char) -> SEXP;
-    fn translateChar(x: SEXP) -> *const c_char;
     fn translateCharUTF8(x: SEXP) -> *const c_char;
     fn R_FindNamespace(name: SEXP) -> SEXP;
     fn findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
@@ -186,7 +187,6 @@ unsafe extern "C" {
     ) -> *mut c_void;
     fn removeInputHandler(handlers: *mut c_void, ih: *mut c_void);
     fn R_InputHandlers() -> *mut c_void;
-    fn Rf_eval(call: SEXP, rho: SEXP) -> SEXP;
 }
 
 // ============================================================

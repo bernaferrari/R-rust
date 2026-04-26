@@ -180,7 +180,6 @@ unsafe fn isFunction(x: SEXP) -> c_int {
 // Helper: isSymbol — check if SEXP is a symbol
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn isSymbol(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {
@@ -198,7 +197,6 @@ unsafe fn isSymbol(x: SEXP) -> c_int {
 // Helper: translateChar — get C string from CHARSXP
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn translateChar(x: SEXP) -> *const c_char {
     unsafe { crate::sexp::accessors::translateChar(x) }
 }
@@ -207,7 +205,6 @@ unsafe fn translateChar(x: SEXP) -> *const c_char {
 // Helper: streql — compare two C strings
 // ---------------------------------------------------------------------------
 
-#[unsafe(no_mangle)]
 unsafe fn streql(a: *const c_char, b: *const c_char) -> c_int {
     unsafe {
         if a.is_null() || b.is_null() {

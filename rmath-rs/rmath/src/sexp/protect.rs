@@ -17,9 +17,9 @@ use super::object::Sexp;
 /// Automatically unprotects when dropped.
 ///
 /// ```rust,ignore
-/// use rmath::sexp::protect::{protect, Rf_protect, Rf_unprotect};
+/// use rmath::sexp::protect::protect_sexp;
 ///
-/// let guard = protect(some_sexp);
+/// let guard = protect_sexp(some_sexp);
 /// // ... do work ...
 /// // guard automatically unprotects when it goes out of scope
 /// ```
@@ -39,8 +39,8 @@ impl Drop for ProtectGuard {
 
 /// Protect an owner-scoped SEXP handle and return an RAII guard.
 ///
-/// This is the preferred Rust API. Raw pointer protection is retained only for
-/// translated legacy modules that have not yet moved to owner-scoped handles.
+/// This is the Rust API exposed to embedders. Raw pointer protection remains
+/// crate-local translation scaffolding for ported interpreter modules.
 pub fn protect_sexp(value: Sexp<'_>) -> ProtectGuard {
     protect_raw(value.as_raw())
 }
@@ -49,7 +49,7 @@ pub fn protect_sexp(value: Sexp<'_>) -> ProtectGuard {
 ///
 /// Legacy compatibility helper for translated code. Prefer
 /// [`protect_sexp`] when the caller has an owner-scoped value.
-pub fn protect(s: SEXP) -> ProtectGuard {
+pub(crate) fn protect(s: SEXP) -> ProtectGuard {
     protect_raw(s)
 }
 
@@ -64,7 +64,7 @@ fn protect_raw(s: SEXP) -> ProtectGuard {
 ///
 /// This does not call `Rf_protect`; callers must already have pushed `n`
 /// entries and want RAII-style unwinding safety around a manual protect batch.
-pub fn protect_n(n: usize) -> ProtectGuard {
+pub(crate) fn protect_n(n: usize) -> ProtectGuard {
     ProtectGuard { count: n }
 }
 
@@ -127,26 +127,14 @@ pub fn preserve_sexp(value: Sexp<'_>) -> PreserveGuard {
 // Core protect/unprotect functions
 // ---------------------------------------------------------------------------
 
-/// Protect an SEXP from garbage collection.
-///
-/// Pushes the pointer onto the protection stack. Returns the same pointer.
-/// This is the equivalent of R's `PROTECT()` macro.
-#[unsafe(no_mangle)]
-pub unsafe fn Rf_protect(s: SEXP) -> SEXP {
+/// Protect an SEXP from garbage collection for translated interpreter code.
+pub(crate) unsafe fn Rf_protect(s: SEXP) -> SEXP {
     push_protect(s);
     s
 }
 
-/// Unprotect the top n entries from the protection stack.
-///
-/// This is the equivalent of R's `UNPROTECT(n)` macro.
-///
-/// # Safety
-///
-/// This function will not panic. If n exceeds the stack depth,
-/// it unprotects all entries and returns gracefully.
-#[unsafe(no_mangle)]
-pub unsafe fn Rf_unprotect(n: c_int) {
+/// Unprotect the top `n` entries from the protection stack.
+pub(crate) unsafe fn Rf_unprotect(n: c_int) {
     if n <= 0 {
         return;
     }
@@ -164,7 +152,7 @@ pub unsafe fn Rf_unprotect(n: c_int) {
 /// Unprotect the top entry from the protection stack.
 ///
 /// This is the equivalent of R's `UNPROTECT_PTR()` macro.
-pub unsafe fn Rf_unprotect_ptr(s: SEXP) {
+pub(crate) unsafe fn Rf_unprotect_ptr(s: SEXP) {
     if s.is_null() {
         return;
     }
@@ -178,13 +166,13 @@ pub unsafe fn Rf_unprotect_ptr(s: SEXP) {
 /// Get the current number of entries on the protection stack.
 ///
 /// Used by the context system to track protect depth.
-pub fn R_ProtectCount() -> usize {
+pub(crate) fn R_ProtectCount() -> usize {
     super::instance::with_required_current_instance(|inst| inst.protect_stack.len())
 }
 
 /// Iterate over all protected SEXP values on the stack.
 /// Used by the GC to mark protected objects.
-pub fn with_protected_objects<F, R>(f: F) -> R
+pub(crate) fn with_protected_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
@@ -193,7 +181,7 @@ where
 
 /// Update all protect stack references using the given mapping function.
 /// Used by the GC compaction phase to update moved object pointers.
-pub fn update_protect_stack_refs<F>(mut update_fn: F)
+pub(crate) fn update_protect_stack_refs<F>(mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
@@ -206,7 +194,7 @@ where
 
 /// Update all preserve stack references using the given mapping function.
 /// Used by the GC compaction phase to update moved object pointers.
-pub fn update_preserve_stack_refs<F>(mut update_fn: F)
+pub(crate) fn update_preserve_stack_refs<F>(mut update_fn: F)
 where
     F: FnMut(SEXP) -> SEXP,
 {
@@ -219,7 +207,7 @@ where
 
 /// Iterate over all preserved SEXP values.
 /// Used by the GC to mark preserved objects.
-pub fn with_preserved_objects<F, R>(f: F) -> R
+pub(crate) fn with_preserved_objects<F, R>(f: F) -> R
 where
     F: FnOnce(&[SEXP]) -> R,
 {
@@ -231,7 +219,7 @@ where
 // ---------------------------------------------------------------------------
 
 /// Opaque legacy marker used by the `R_ProtectWithIndex` compatibility shim.
-pub struct ProtectIndex {
+pub(crate) struct ProtectIndex {
     _private: (),
 }
 
@@ -347,19 +335,19 @@ pub(crate) fn protect_with_index_raw(s: SEXP, api: &str) -> IndexedProtectGuard 
 /// Protect an SEXP and return a legacy encoded index for later replacement.
 ///
 /// This is the equivalent of R's `R_ProtectWithIndex()`.
-pub unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
+pub(crate) unsafe fn R_ProtectWithIndex(s: SEXP) -> *mut ProtectIndex {
     protect_raw_with_slot(s, "R_ProtectWithIndex").into_legacy_ptr()
 }
 
 /// Free a ProtectIndex returned by R_ProtectWithIndex.
 ///
 /// This is a no-op - the index was just a number, not an allocation.
-pub unsafe fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
+pub(crate) unsafe fn R_FreeProtectIndex(_pi: *mut ProtectIndex) {}
 
 /// Unprotect the entry at the given index and replace it with a new value.
 ///
 /// This is the equivalent of R's `R_Reprotect()`.
-pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
+pub(crate) unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
     reprotect_slot(ProtectionSlot::from_legacy_ptr(index), s);
 }
 
@@ -371,14 +359,14 @@ pub unsafe fn R_Reprotect(s: SEXP, index: *mut ProtectIndex) {
 ///
 /// Unlike Rf_protect, this protection persists until explicitly released.
 /// This is the equivalent of R's `R_PreserveObject()`.
-pub unsafe fn R_PreserveObject(s: SEXP) {
+pub(crate) unsafe fn R_PreserveObject(s: SEXP) {
     push_preserve(s);
 }
 
 /// Release a previously preserved object.
 ///
 /// This is the equivalent of R's `R_ReleaseObject()`.
-pub unsafe fn R_ReleaseObject(s: SEXP) {
+pub(crate) unsafe fn R_ReleaseObject(s: SEXP) {
     release_preserved(s);
 }
 

@@ -67,7 +67,6 @@ pub unsafe fn Rf_allocList(n: c_int) -> SEXP {
 }
 
 /// Create a CHARSXP from a C string.
-#[unsafe(no_mangle)]
 pub unsafe fn Rf_mkChar(s: *const c_char) -> SEXP {
     unsafe {
         if s.is_null() {
@@ -232,10 +231,9 @@ pub unsafe fn Rf_ScalarRaw(x: super::ffi::Rbyte) -> SEXP {
 // ---------------------------------------------------------------------------
 
 /// Check if an SEXP is NULL. Re-export from accessors.
-pub use super::accessors::Rf_isNull;
+pub(crate) use super::accessors::Rf_isNull;
 
 /// Get the length of an SEXP.
-#[unsafe(no_mangle)]
 pub unsafe fn Rf_length(x: SEXP) -> c_int {
     unsafe {
         if x.is_null() || x == R_NilValue() {

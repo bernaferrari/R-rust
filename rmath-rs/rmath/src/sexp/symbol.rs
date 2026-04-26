@@ -104,8 +104,7 @@ pub(crate) fn symbol_name_from_ptr(sym: SEXP) -> Option<String> {
 /// If the name already exists, returns the existing symbol.
 /// Otherwise creates a new SYMSXP node and adds it to the table.
 /// This is the equivalent of R's `Rf_install()`.
-#[unsafe(no_mangle)]
-pub unsafe fn Rf_install(name: *const c_char) -> SEXP {
+pub(crate) unsafe fn Rf_install(name: *const c_char) -> SEXP {
     unsafe {
         if name.is_null() {
             return ptr::null_mut();

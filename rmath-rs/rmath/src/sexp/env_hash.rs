@@ -22,14 +22,14 @@ where
 }
 
 /// Check if an environment has an associated hash table.
-pub fn env_has_hash_table(env: SEXP) -> bool {
+pub(crate) fn env_has_hash_table(env: SEXP) -> bool {
     with_env_hash_tables(|tables| tables.contains_key(&(env as usize)))
 }
 
 /// Look up a symbol in the environment's hash table.
 ///
 /// Returns `None` if no hash table exists or the symbol is not found.
-pub fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
+pub(crate) fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
     with_env_hash_tables(|tables| {
         tables
             .get(&(env as usize))?
@@ -39,7 +39,7 @@ pub fn hash_get(env: SEXP, symbol: SEXP) -> Option<SEXP> {
 }
 
 /// Insert a binding into the environment's hash table (if one exists).
-pub fn hash_insert(env: SEXP, symbol: SEXP, value: SEXP) {
+pub(crate) fn hash_insert(env: SEXP, symbol: SEXP, value: SEXP) {
     with_env_hash_tables(|tables| {
         if let Some(ht) = tables.get_mut(&(env as usize)) {
             ht.insert(symbol as usize, value);
@@ -48,7 +48,7 @@ pub fn hash_insert(env: SEXP, symbol: SEXP, value: SEXP) {
 }
 
 /// Remove a binding from the environment's hash table (if one exists).
-pub fn hash_remove(env: SEXP, symbol: SEXP) {
+pub(crate) fn hash_remove(env: SEXP, symbol: SEXP) {
     with_env_hash_tables(|tables| {
         if let Some(ht) = tables.get_mut(&(env as usize)) {
             ht.remove(&(symbol as usize));
@@ -57,7 +57,7 @@ pub fn hash_remove(env: SEXP, symbol: SEXP) {
 }
 
 /// Promote an environment to use a hash table by bulk-inserting all current bindings.
-pub fn promote_to_hash_table(env: SEXP, bindings: &[(SEXP, SEXP)]) {
+pub(crate) fn promote_to_hash_table(env: SEXP, bindings: &[(SEXP, SEXP)]) {
     with_env_hash_tables(|tables| {
         let ht = tables
             .entry(env as usize)
@@ -69,12 +69,12 @@ pub fn promote_to_hash_table(env: SEXP, bindings: &[(SEXP, SEXP)]) {
 }
 
 /// Check whether a pairlist length exceeds the promotion threshold.
-pub fn should_promote(pairlist_length: usize) -> bool {
+pub(crate) fn should_promote(pairlist_length: usize) -> bool {
     pairlist_length >= PROMOTION_THRESHOLD
 }
 
 /// Remove an environment's hash table entry (for cleanup).
-pub fn remove_env(env: SEXP) {
+pub(crate) fn remove_env(env: SEXP) {
     with_env_hash_tables(|tables| {
         tables.remove(&(env as usize));
     });

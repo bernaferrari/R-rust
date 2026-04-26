@@ -41,6 +41,7 @@ use crate::sexp::constructors::{Rf_ScalarInteger as ScalarInteger, Rf_length as 
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
 use crate::sexp::instance::with_required_current_instance;
+use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::*;
 
 /* ========================================================================
@@ -285,8 +286,7 @@ unsafe extern "C" {
     fn gcontextFromGP(gc: *mut GECtx, dd: pGEDevDesc);
     fn PrintDefaults();
 
-    /* R_alloc / vmax */
-    fn R_alloc(n: usize, size: usize) -> *mut c_void;
+    /* vmax */
     fn vmaxget() -> *mut c_void;
     fn vmaxset(vmax: *mut c_void);
 

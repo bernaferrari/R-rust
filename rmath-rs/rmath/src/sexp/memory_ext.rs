@@ -282,8 +282,7 @@ where
 /// This is the equivalent of R's `R_alloc()` which allocates on the C stack.
 /// In Rust, the active session owns a transient allocation buffer that's freed
 /// on vmaxset().
-#[unsafe(no_mangle)]
-pub unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
+pub(crate) unsafe fn R_alloc(_size: usize, nelem: usize) -> *mut c_void {
     unsafe {
         let total = _size.checked_mul(nelem).unwrap_or(0);
         if total == 0 {

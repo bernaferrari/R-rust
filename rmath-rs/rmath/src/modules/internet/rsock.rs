@@ -4,6 +4,7 @@
 // Unix implementation using libc system calls and lower-level sock.rs functions.
 
 use crate::sexp::*;
+use crate::sexp::memory_ext::R_alloc;
 use core::cell::Cell;
 use core::ffi::{c_char, c_double, c_int, c_void};
 use libc::{
@@ -91,7 +92,6 @@ unsafe extern "C" {
     fn R_socket_strerror(errnum: c_int) -> *mut c_char;
     fn R_set_nonblocking(s: c_int) -> c_int;
     fn REprintf(format: *const i8);
-    fn R_alloc(size: usize, nelem: usize) -> *mut c_void;
 }
 
 thread_local! { static sock_inited: Cell<c_int> = Cell::new(0); }
@@ -819,4 +819,3 @@ pub(crate) unsafe fn R_SockWrite(
     }
     out
 }
-

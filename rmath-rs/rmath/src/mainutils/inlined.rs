@@ -12,4 +12,4 @@
 // These are #[unsafe(no_mangle)] extern "C" functions, so they are already
 // available at link time. The re-exports here are for documentation
 // and for use within the mainutils module.
-pub use crate::sexp::accessors::*;
+pub(crate) use crate::sexp::accessors::*;

@@ -575,8 +575,7 @@ pub fn exists_var_in_frame_safe(rho: Sexp<'_>, symbol: Sexp<'_>) -> bool {
 /// Find a variable in the frame of a single environment (no inheritance).
 ///
 /// FFI wrapper around [`find_var_in_frame_safe`].
-#[unsafe(no_mangle)]
-pub unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
+pub(crate) unsafe fn R_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP {
     if rho.is_null() || symbol.is_null() {
         return R_UnboundValue();
     }
@@ -658,8 +657,7 @@ pub unsafe fn setVar(symbol: SEXP, value: SEXP, rho: SEXP) {
 /// Find a function value for a symbol.
 ///
 /// FFI wrapper around [`find_fun_safe`].
-#[unsafe(no_mangle)]
-pub unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
+pub(crate) unsafe fn findFun(symbol: SEXP, rho: SEXP) -> SEXP {
     if symbol.is_null() {
         return R_UnboundValue();
     }
@@ -795,8 +793,7 @@ pub unsafe fn Rf_createEnv(frame: SEXP, enclos: SEXP) -> SEXP {
 }
 
 /// Create a new hashed environment.
-#[unsafe(no_mangle)]
-pub unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
+pub(crate) unsafe fn R_NewHashedEnv(enclos: SEXP, size: c_int) -> SEXP {
     NewEnvironment(ptr::null_mut(), enclos, ptr::null_mut())
 }
 

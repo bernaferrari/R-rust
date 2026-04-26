@@ -70,7 +70,7 @@ pub fn capture_stderr(msg: &str) {
     }
 }
 
-pub fn format_sexp(x: SEXP) -> String {
+pub(crate) fn format_sexp(x: SEXP) -> String {
     if x.is_null() {
         return "NULL".to_string();
     }
@@ -850,14 +850,14 @@ pub fn print_structure(x: Sexp<'_>, indent: usize) {
 }
 
 /// FFI function: Rf_PrintValue
-pub unsafe fn Rf_PrintValue(x: SEXP) {
+pub(crate) unsafe fn Rf_PrintValue(x: SEXP) {
     if let Some(s) = Sexp::from_raw(x) {
         print_value(s);
     }
 }
 
 /// FFI function: Rf_PrintValueEnv (print with environment context)
-pub unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
+pub(crate) unsafe fn Rf_PrintValueEnv(x: SEXP, _env: SEXP) {
     if let Some(s) = Sexp::from_raw(x) {
         print_value(s);
     }

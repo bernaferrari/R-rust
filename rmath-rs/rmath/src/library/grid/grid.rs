@@ -16,9 +16,10 @@ use crate::mainutils::errors::{Rf_error, Rf_error1, Rf_warning};
 use crate::mainutils::subset::installTrChar;
 use crate::sexp::accessors::*;
 use crate::sexp::constructors::*;
-use crate::sexp::envir::defineVar;
+use crate::sexp::envir::{defineVar, findFun};
 use crate::sexp::ffi::*;
 use crate::sexp::globals::*;
+use crate::sexp::memory_ext::R_alloc;
 use crate::sexp::protect::{Rf_protect, Rf_unprotect};
 use crate::sexp::symbol::Rf_install;
 
@@ -50,7 +51,6 @@ unsafe extern "C" {
     fn lang3(symbol: SEXP, arg1: SEXP, arg2: SEXP) -> SEXP;
     fn lang4(symbol: SEXP, arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP;
     fn findVar(symbol: SEXP, env: SEXP) -> SEXP;
-    fn findFun(symbol: SEXP, env: SEXP) -> SEXP;
     fn SET_TAG(x: SEXP, y: SEXP);
     fn NewFrameConfirm(dev: *const c_void);
     fn NoDevices() -> c_int;
@@ -86,7 +86,6 @@ unsafe extern "C" {
     fn GEunregisterSystem(index: c_int);
     fn vmaxget() -> *mut c_void;
     fn vmaxset(vmax: *mut c_void);
-    fn R_alloc(n: usize, size: usize) -> *mut c_void;
     fn rmath_grid_release_definitions(dd: pGEDevDesc, clear_groups: c_int);
 }
 

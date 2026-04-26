@@ -5,27 +5,27 @@
 //! This module provides Rust-native implementations of R's SEXPREC/SEXP types,
 //! used throughout the R interpreter. The design follows a two-layer approach:
 //! - `ffi` submodule: raw `#[repr(C)]` types for FFI compatibility
-//! - `globals` submodule: global singleton values (R_NilValue, etc.)
-//! - `accessors` submodule: C-compatible accessor functions (TYPEOF, CAR, CDR, etc.)
+//! - internal `globals` storage: global singleton values (R_NilValue, etc.)
+//! - internal C-compatible accessor functions (TYPEOF, CAR, CDR, etc.)
 //! - `memory` submodule: arena allocator for R objects
-//! - `constructors` submodule: FFI constructor functions (allocVector, cons, etc.)
+//! - internal FFI constructor functions (allocVector, cons, etc.)
 //! - `symbol` submodule: symbol table and interning
 
-pub mod accessors;
+pub(crate) mod accessors;
 pub mod altrep;
 pub mod attrib_core;
 pub mod builder;
-pub mod constructors;
+pub(crate) mod constructors;
 pub mod context;
-pub mod env_hash;
+pub(crate) mod env_hash;
 pub mod envir;
 pub mod ffi;
 pub mod gengc;
-pub mod globals;
-pub mod init;
-pub mod instance;
+pub(crate) mod globals;
+pub(crate) mod init;
+pub(crate) mod instance;
 pub mod memory;
-pub mod memory_ext;
+pub(crate) mod memory_ext;
 pub(crate) mod numeric;
 pub mod object;
 pub mod output;

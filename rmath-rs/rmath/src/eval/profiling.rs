@@ -1062,7 +1062,6 @@ unsafe fn R_InitProfiling(
 /// When called with an empty filename, stops profiling.
 ///
 /// Ported from R's `do_Rprof()` in eval.c.
-#[unsafe(no_mangle)]
 pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP {
     unsafe {
         // BC profiling check
@@ -1158,7 +1157,6 @@ pub unsafe fn do_Rprof(call: SEXP, op: SEXP, mut args: SEXP, rho: SEXP) -> SEXP 
 // ---------------------------------------------------------------------------
 
 /// Implement the `Rprofmem()` function for memory profiling.
-#[unsafe(no_mangle)]
 pub unsafe fn do_Rprofmem(call: SEXP, op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
     unsafe { R_NilValue() }
 }

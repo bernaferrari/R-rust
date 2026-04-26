@@ -114,7 +114,6 @@ pub unsafe fn R_EnvironmentSymbol() -> SEXP {
 ///
 /// This is the equivalent of R's `getAttrib()` from attrib.c.
 /// Searches the attribute pairlist for a matching symbol.
-#[unsafe(no_mangle)]
 pub unsafe fn getAttrib(x: SEXP, which: SEXP) -> SEXP {
     unsafe {
         if x.is_null() || which.is_null() {

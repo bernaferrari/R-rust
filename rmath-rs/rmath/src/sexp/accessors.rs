@@ -211,7 +211,6 @@ pub unsafe fn SET_MARK(x: SEXP, v: c_int) {
 }
 
 /// Get the type (same as TYPEOF but as a macro name).
-#[unsafe(no_mangle)]
 pub unsafe fn Rf_isNull(x: SEXP) -> c_int {
     unsafe { (TYPEOF(x) == SEXPTYPE::NILSXP) as c_int }
 }
@@ -675,7 +674,6 @@ pub unsafe fn RAW(x: SEXP) -> *mut super::ffi::Rbyte {
 }
 
 /// Get the character data of a CHARSXP.
-#[unsafe(no_mangle)]
 pub unsafe fn CHAR(x: SEXP) -> *const c_char {
     unsafe { DATAPTR(x) as *const c_char }
 }
@@ -711,7 +709,6 @@ pub unsafe fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, val: SEXP) {
 }
 
 /// Get the i-th element of a VECSXP/EXPRSXP.
-#[unsafe(no_mangle)]
 pub unsafe fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP {
     unsafe {
         if !is_valid_sexp_ptr(x) {

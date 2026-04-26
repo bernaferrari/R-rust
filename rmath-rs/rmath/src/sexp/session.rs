@@ -526,12 +526,12 @@ impl RSession {
     ///
     /// ```
     /// use rmath::sexp::RSession;
-    /// use rmath::sexp::protect::Rf_protect;
-    /// use std::ptr;
+    /// use rmath::sexp::Sexp;
+    /// use rmath::sexp::protect::protect_sexp;
     ///
     /// let session = RSession::new();
     /// session.with_protected(|| {
-    ///     unsafe { Rf_protect(ptr::null_mut()); }
+    ///     let _guard = protect_sexp(Sexp::nil());
     /// });
     /// ```
     pub fn with_protected<F, T>(&self, f: F) -> T
