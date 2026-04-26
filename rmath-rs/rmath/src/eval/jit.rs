@@ -21,7 +21,7 @@ use crate::sexp::constructors::Rf_cons;
 use crate::sexp::ffi::{FALSE, SEXP, SEXPTYPE, TRUE};
 use crate::sexp::globals::R_NilValue;
 use crate::sexp::instance::with_required_current_instance;
-use crate::sexp::protect::Rf_protect;
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 // ---------------------------------------------------------------------------
@@ -486,7 +486,7 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
 
             if TYPEOF(op) == SEXPTYPE::CLOSXP {
                 let arglist = super::dispatch::promiseArgs(CDR(call), rho);
-                Rf_protect(arglist);
+                let _arglist_guard = protect(arglist);
                 let result =
                     super::closure::applyClosure(call, op, arglist, rho, R_NilValue(), TRUE);
                 val = result;
@@ -496,6 +496,7 @@ pub unsafe fn handle_exec_continuation(mut val: SEXP) -> SEXP {
                 if !expr.is_null() {
                     (*expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
                 }
+                let _expr_guard = protect(expr);
                 val = super::eval::Rf_eval(expr, rho);
             }
         }

@@ -40,7 +40,7 @@ use crate::sexp::globals::{
 };
 use crate::sexp::instance::with_required_current_instance;
 use crate::sexp::memory_ext::{NewEnvironment, allocLang, mkPROMISE, vmaxget, vmaxset};
-use crate::sexp::protect::{Rf_protect, Rf_unprotect};
+use crate::sexp::protect::protect;
 use crate::sexp::symbol::Rf_install;
 
 use super::builtin::PRIMNAME;
@@ -78,9 +78,10 @@ pub unsafe fn VectorToPairListNamed(x: SEXP) -> SEXP {
         }
 
         let _vmax = vmaxget();
-        Rf_protect(x);
+        let _x_guard = protect(x);
 
-        let xnames = Rf_protect(getAttrib(x, R_NamesSymbol()));
+        let xnames = getAttrib(x, R_NamesSymbol());
+        let _xnames_guard = protect(xnames);
         let named = if !xnames.is_null() && xnames != R_NilValue() {
             TRUE
         } else {
@@ -103,7 +104,8 @@ pub unsafe fn VectorToPairListNamed(x: SEXP) -> SEXP {
         }
 
         let xnew = if len > 0 {
-            let new = Rf_protect(Rf_allocList(len));
+            let new = Rf_allocList(len);
+            let _new_guard = protect(new);
             let mut xptr = new;
             let n = LENGTH(x);
             for i in 0..n {
@@ -118,13 +120,11 @@ pub unsafe fn VectorToPairListNamed(x: SEXP) -> SEXP {
                     }
                 }
             }
-            Rf_unprotect(1);
             new
         } else {
             Rf_allocList(0)
         };
 
-        Rf_unprotect(2);
         vmaxset(_vmax);
         xnew
     }
@@ -153,14 +153,13 @@ pub unsafe fn DispatchAnyOrEval(
         let has_methods = crate::mainutils::objects::R_has_methods(op);
 
         if has_methods != FALSE {
-            let mut nprotect: c_int = 0;
             let argValue: SEXP;
+            let mut _arg_value_guard = None;
 
             if argsevald == 0 {
                 // Evaluate all arguments
                 argValue = super::dispatch::evalList(args, rho, ptr::null_mut(), 0);
-                Rf_protect(argValue);
-                nprotect += 1;
+                _arg_value_guard = Some(protect(argValue));
             } else {
                 argValue = args;
             }
@@ -176,7 +175,6 @@ pub unsafe fn DispatchAnyOrEval(
                         if !ans.is_null() {
                             *ans = value;
                         }
-                        Rf_unprotect(nprotect);
                         return TRUE as c_int;
                     } else {
                         break;
@@ -187,7 +185,6 @@ pub unsafe fn DispatchAnyOrEval(
 
             // Fall through to regular dispatch
             let dispatch = DispatchOrEval(call, op, generic, argValue, rho, ans, dropmissing, TRUE);
-            Rf_unprotect(nprotect);
             return dispatch;
         }
 
@@ -260,7 +257,8 @@ unsafe fn tryDispatch(
     unsafe {
         let generic_sym = Rf_install(generic);
 
-        let pargs = Rf_protect(promiseArgs(CDR(call), rho));
+        let pargs = promiseArgs(CDR(call), rho);
+        let _pargs_guard = protect(pargs);
 
         // Set the first promise value to x
         if !pargs.is_null() && pargs != R_NilValue() {
@@ -280,13 +278,13 @@ unsafe fn tryDispatch(
                 if !pv.is_null() {
                     *pv = value;
                 }
-                Rf_unprotect(1);
                 return TRUE as c_int;
             }
         }
 
         // Try S3 dispatch
-        let rho1 = Rf_protect(NewEnvironment(R_NilValue(), R_NilValue(), rho));
+        let rho1 = NewEnvironment(R_NilValue(), R_NilValue(), rho);
+        let _rho1_guard = protect(rho1);
 
         let mut dispatched: c_int = FALSE;
         let mut result: SEXP = R_NilValue();
@@ -307,7 +305,6 @@ unsafe fn tryDispatch(
             }
         }
 
-        Rf_unprotect(2);
         if dispatched != FALSE { TRUE } else { FALSE }
     }
 }
@@ -330,7 +327,8 @@ unsafe fn tryAssignDispatch(
 ) -> c_int {
     unsafe {
         // Duplicate the call
-        let ncall = Rf_protect(crate::mainutils::duplicate::Rf_duplicate(call));
+        let ncall = crate::mainutils::duplicate::Rf_duplicate(call);
+        let _ncall_guard = protect(ncall);
 
         // Find the last element and wrap RHS in a promise
         let mut last = ncall;
@@ -341,7 +339,6 @@ unsafe fn tryAssignDispatch(
         SETCAR(last, prom);
 
         let result = tryDispatch(generic, ncall, lhs, rho, pv);
-        Rf_unprotect(1);
         result
     }
 }
@@ -444,7 +441,8 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
         }
 
         // Create new environment enclosed by the method's lexical environment
-        let newrho = Rf_protect(NewEnvironment(R_NilValue(), R_NilValue(), CLOENV(op)));
+        let newrho = NewEnvironment(R_NilValue(), R_NilValue(), CLOENV(op));
+        let _newrho_guard = protect(newrho);
 
         // Copy formal bindings from the generic call
         let mut next = FORMALS(op);
@@ -483,7 +481,6 @@ pub unsafe fn R_execMethod(op: SEXP, rho: SEXP) -> SEXP {
         let body = BODY(op);
         let val = Rf_eval(body, newrho);
 
-        Rf_unprotect(1);
         val
     }
 }
@@ -546,16 +543,14 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
                 // duplicating data until it is needed. If the data are duplicated,
                 // then the wrapper can be discarded at the end of the
                 // assignment process in try_assign_unwrap(). (C lines 2577-2586)
-                Rf_protect(vl);
+                let _vl_guard = protect(vl);
                 vl = crate::mainutils::duplicate::R_shallow_duplicate_attr(vl);
                 defineVar(symbol, vl, rho);
                 INCREMENT_NAMED(vl);
-                Rf_unprotect(1); // vl
             }
             // Look up the location for future mutation (C lines 2587-2589)
-            Rf_protect(vl);
+            let _vl_guard = protect(vl);
             *ploc = R_findVarLocInFrame(rho, symbol);
-            Rf_unprotect(1); // vl
             vl
         } else {
             // Not found locally -- look up in enclosing environments (C lines 2593-2601)
@@ -582,12 +577,11 @@ pub unsafe fn EnsureLocal(symbol: SEXP, rho: SEXP, ploc: *mut R_varloc_t) -> SEX
                 });
             }
             // Create local copy (C lines 2597-2601)
-            Rf_protect(vl);
+            let _vl_guard = protect(vl);
             vl = crate::mainutils::duplicate::shallow_duplicate(vl);
             defineVar(symbol, vl, rho);
             *ploc = R_findVarLocInFrame(rho, symbol);
             INCREMENT_NAMED(vl);
-            Rf_unprotect(1); // vl
             vl
         }
     }
@@ -610,12 +604,13 @@ pub unsafe fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
         };
         let total = nargs + 3;
 
-        Rf_protect(fun);
-        Rf_protect(args);
-        Rf_protect(rhs);
-        Rf_protect(val);
+        let _fun_guard = protect(fun);
+        let _args_guard = protect(args);
+        let _rhs_guard = protect(rhs);
+        let _val_guard = protect(val);
 
-        let tmp = Rf_protect(allocLang(total));
+        let tmp = allocLang(total);
+        let _tmp_guard = protect(tmp);
         let mut ptmp = tmp;
 
         SETCAR(ptmp, fun);
@@ -635,7 +630,6 @@ pub unsafe fn replaceCall(fun: SEXP, val: SEXP, args: SEXP, rhs: SEXP) -> SEXP {
         let value_sym = Rf_install(b"value\x00".as_ptr() as *const c_char);
         SETTAG(ptmp, value_sym);
 
-        Rf_unprotect(5);
         tmp
     }
 }
@@ -756,10 +750,11 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
             return R_NilValue();
         }
 
-        Rf_protect(fun);
+        let _fun_guard = protect(fun);
 
         let result = if TYPEOF(fun) == SEXPTYPE::BUILTINSXP {
-            let evaled_args = Rf_protect(evalList(rest, rho, call, 0));
+            let evaled_args = evalList(rest, rho, call, 0);
+            let _evaled_args_guard = protect(evaled_args);
             let flag = super::eval::PRIMPRINT(fun);
             set_R_Visible(if flag != 1 { TRUE } else { FALSE });
             if let Some(primfun) = super::eval::get_primfun(fun) {
@@ -772,7 +767,8 @@ pub unsafe fn do_forceAndCall(call: SEXP, _op: SEXP, _args: SEXP, rho: SEXP) -> 
                 R_NilValue()
             }
         } else if TYPEOF(fun) == SEXPTYPE::CLOSXP {
-            let pargs = Rf_protect(promiseArgs(rest, rho));
+            let pargs = promiseArgs(rest, rho);
+            let _pargs_guard = protect(pargs);
             // Force the first n promises
             let mut a = pargs;
             let mut count: c_int = 0;
@@ -823,6 +819,7 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
         let expr = CAR(args);
         let mut env = CADR(args);
         let encl = CADDR(args);
+        let mut _env_guard = None;
 
         // Handle enclos
         let mut encl_val = encl;
@@ -840,20 +837,22 @@ pub unsafe fn do_eval(call: SEXP, _op: SEXP, args: SEXP, rho: SEXP) -> SEXP {
             }
             t if t == SEXPTYPE::LISTSXP => {
                 // Create environment from pairlist
-                let dup = Rf_protect(crate::mainutils::duplicate::Rf_duplicate(env));
-                env = Rf_protect(NewEnvironment(R_NilValue(), dup, encl_val));
-                Rf_unprotect(2);
+                let dup = crate::mainutils::duplicate::Rf_duplicate(env);
+                let _dup_guard = protect(dup);
+                env = NewEnvironment(R_NilValue(), dup, encl_val);
+                _env_guard = Some(protect(env));
             }
             t if t == SEXPTYPE::VECSXP => {
-                let x = Rf_protect(VectorToPairListNamed(env));
+                let x = VectorToPairListNamed(env);
+                let _x_guard = protect(x);
                 // Ensure NAMEDMAX on values
                 let mut xptr = x;
                 while !xptr.is_null() && xptr != R_NilValue() {
                     SET_NAMED(CAR(xptr), 2);
                     xptr = CDR(xptr);
                 }
-                env = Rf_protect(NewEnvironment(R_NilValue(), x, encl_val));
-                Rf_unprotect(2);
+                env = NewEnvironment(R_NilValue(), x, encl_val);
+                _env_guard = Some(protect(env));
             }
             t if t == SEXPTYPE::INTSXP || t == SEXPTYPE::REALSXP => {
                 // Numeric environment = sys.frame(n)
@@ -961,23 +960,27 @@ pub unsafe fn evalseq(expr: SEXP, rho: SEXP, forcelocal: c_int) -> SEXP {
             cell
         } else if TYPEOF(expr) == SEXPTYPE::LANGSXP {
             // Complex LHS -- recurse
-            let inner = Rf_protect(evalseq(CADR(expr), rho, forcelocal));
+            let inner = evalseq(CADR(expr), rho, forcelocal);
+            let _inner_guard = protect(inner);
             let target_val = CAR(inner);
             let target_sym = CDR(inner);
 
             // Rebuild the expression with the target value
             let rest = CDDR(expr);
-            let new_inner = Rf_protect(Rf_cons(target_sym, rest));
-            let new_expr = Rf_protect(Rf_cons(CAR(expr), new_inner));
+            let new_inner = Rf_cons(target_sym, rest);
+            let _new_inner_guard = protect(new_inner);
+            let new_expr = Rf_cons(CAR(expr), new_inner);
+            let _new_expr_guard = protect(new_expr);
             if !new_expr.is_null() {
                 (*new_expr).sxpinfo.set_type(SEXPTYPE::LANGSXP);
             }
 
             let nval = Rf_eval(new_expr, rho);
+            let _nval_guard = protect(nval);
 
             // Simplified: always duplicate for safety
             let dup = crate::mainutils::duplicate::shallow_duplicate(nval);
-            Rf_unprotect(3);
+            let _dup_guard = protect(dup);
             let cell = Rf_cons(dup, inner);
             cell
         } else {
